@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SE Prep Portal — Freshworks</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">SE Prep Portal</div>
+      <div id="userbox" class="userbox" hidden>
+        <span id="user-email"></span>
+        <button id="signout" class="link-btn">Sign out</button>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <!-- Sign-in gate (shown only when Firebase auth is configured) -->
+      <section id="signin-view" class="card center" hidden>
+        <h1>SE Prep Portal</h1>
+        <p class="muted">Sign in with your Freshworks Google account to generate pre-call prep.</p>
+        <button id="signin" class="primary">Sign in with Google</button>
+        <p id="signin-error" class="error" hidden></p>
+      </section>
+
+      <!-- App -->
+      <section id="app-view" hidden>
+        <form id="prep-form" class="card">
+          <h1>New prep</h1>
+          <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
+          <div class="grid2">
+            <label>Company name
+              <input id="companyName" type="text" placeholder="Cute cards" required />
+            </label>
+            <label>Prospect email
+              <input id="prospectEmail" type="email" placeholder="jenifer@photocards.pt" required />
+            </label>
+            <label>Meeting type <span class="opt">(optional)</span>
+              <input id="meetingType" type="text" placeholder="Demo — Freshdesk Omni" />
+            </label>
+            <label>AE <span class="opt">(optional)</span>
+              <input id="ae" type="text" placeholder="Account Executive name" />
+            </label>
+          </div>
+          <button id="generate" class="primary" type="submit">Generate prep</button>
+        </form>
+
+        <div id="status" class="status" hidden></div>
+        <article id="result" class="card result" hidden></article>
+
+        <section id="history-section" class="card" hidden>
+          <h2>Recent preps</h2>
+          <ul id="history" class="history"></ul>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
