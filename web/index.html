@@ -3,59 +3,135 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SE Prep Portal — Freshworks</title>
+    <title>SE Singha Paathai — Freshworks</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">SE Prep Portal</div>
-      <div id="userbox" class="userbox" hidden>
-        <span id="user-email"></span>
-        <button id="signout" class="link-btn">Sign out</button>
-      </div>
-    </header>
-
-    <main class="wrap">
-      <!-- Sign-in gate (shown only when Firebase auth is configured) -->
-      <section id="signin-view" class="card center" hidden>
-        <h1>SE Prep Portal</h1>
-        <p class="muted">Sign in with your Freshworks Google account to generate pre-call prep.</p>
-        <button id="signin" class="primary">Sign in with Google</button>
-        <p id="signin-error" class="error" hidden></p>
-      </section>
-
-      <!-- App -->
-      <section id="app-view" hidden>
-        <form id="prep-form" class="card">
-          <h1>New prep</h1>
-          <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
-          <div class="grid2">
-            <label>Company name
-              <input id="companyName" type="text" placeholder="Cute cards" required />
-            </label>
-            <label>Prospect email
-              <input id="prospectEmail" type="email" placeholder="jenifer@photocards.pt" required />
-            </label>
-            <label>Meeting type <span class="opt">(optional)</span>
-              <input id="meetingType" type="text" placeholder="Demo — Freshdesk Omni" />
-            </label>
-            <label>AE <span class="opt">(optional)</span>
-              <input id="ae" type="text" placeholder="Account Executive name" />
-            </label>
-          </div>
-          <button id="generate" class="primary" type="submit">Generate prep</button>
+    <!-- Login -->
+    <div id="login-view" class="login-page">
+      <div class="login-card card">
+        <h1>SE Singha Paathai</h1>
+        <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+        <form id="login-form">
+          <label>Email
+            <input id="login-email" type="email" autocomplete="username" placeholder="se@freshworks.com" required />
+          </label>
+          <label>Password
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••" required />
+          </label>
+          <button class="primary" type="submit">Sign in</button>
         </form>
+        <p id="login-error" class="error" hidden></p>
+        <details class="login-hint">
+          <summary>Demo credentials</summary>
+          <ul class="muted">
+            <li>SE: <code>se@freshworks.com</code> / <code>se123</code></li>
+            <li>Manager: <code>manager@freshworks.com</code> / <code>mgr123</code></li>
+          </ul>
+        </details>
+        <div id="firebase-signin-block" hidden>
+          <p class="muted or-divider">or</p>
+          <button id="signin-google" class="ghost">Sign in with Google</button>
+          <p id="signin-error" class="error" hidden></p>
+        </div>
+      </div>
+    </div>
 
-        <div id="status" class="status" hidden></div>
-        <article id="result" class="card result" hidden></article>
+    <!-- App shell -->
+    <div id="app-shell" class="app-shell" hidden>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+          <div class="sidebar-brand">SE Singha Paathai</div>
+          <button id="sidebar-close" class="sidebar-close" type="button" aria-label="Close menu">×</button>
+        </div>
+        <div class="sidebar-user">
+          <span id="sidebar-user-name" class="sidebar-user-name"></span>
+          <span id="sidebar-user-role" class="sidebar-user-role muted"></span>
+        </div>
+        <nav class="sidebar-nav" role="navigation">
+          <button type="button" class="nav-item" data-view="dashboard">My dashboard</button>
+          <button type="button" class="nav-item" data-view="analysis">New analysis</button>
+          <button type="button" class="nav-item" data-view="precall">Pre-call prep</button>
+        </nav>
+        <div class="sidebar-history">
+          <h3 class="sidebar-history-title">History</h3>
+          <ul id="sidebar-history-list" class="sidebar-history-list"></ul>
+          <p id="sidebar-history-empty" class="muted sidebar-history-empty">No recordings yet.</p>
+        </div>
+        <div class="sidebar-foot">
+          <button id="logout-btn" class="ghost sidebar-logout" type="button">Log out</button>
+        </div>
+      </aside>
+      <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
 
-        <section id="history-section" class="card" hidden>
-          <h2>Recent preps</h2>
-          <ul id="history" class="history"></ul>
-        </section>
-      </section>
-    </main>
+      <div class="app-main">
+        <header class="main-topbar">
+          <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Open menu">☰</button>
+          <span id="main-view-title" class="main-view-title">My dashboard</span>
+        </header>
+
+        <div id="worker-warning" class="status err wrap-banner" hidden></div>
+
+        <main class="main-content">
+          <!-- SE Dashboard -->
+          <section id="view-dashboard" class="view-panel"></section>
+
+          <!-- Manager placeholder -->
+          <section id="view-manager" class="view-panel" hidden>
+            <div class="card center">
+              <h1>Manager view</h1>
+              <p class="muted">Team-wide quality metrics and SE coaching overview — coming soon.</p>
+            </div>
+          </section>
+
+          <!-- Post-call analysis -->
+          <section id="view-analysis" class="view-panel" hidden>
+            <form id="postcall-form" class="card">
+              <h1>Post-call analysis</h1>
+              <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
+              <label>Zoom recording link
+                <input id="pc-recording-url" type="text" required placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123" />
+              </label>
+              <label>Passcode <span class="opt">(only if not in the link above)</span>
+                <input id="pc-recording-pwd" type="password" placeholder="From Zoom email" autocomplete="off" />
+              </label>
+              <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
+              <button id="analyze-call" class="primary" type="submit">Analyze call</button>
+            </form>
+            <div id="postcall-status" class="status" hidden></div>
+            <article id="postcall-result" class="card result" hidden></article>
+          </section>
+
+          <!-- Pre-call prep -->
+          <section id="view-precall" class="view-panel" hidden>
+            <form id="prep-form" class="card">
+              <h1>Pre-call prep</h1>
+              <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
+              <div class="grid2">
+                <label>Company name
+                  <input id="companyName" type="text" placeholder="GetGo" required />
+                </label>
+                <label>Prospect email
+                  <input id="prospectEmail" type="email" placeholder="farhan@getgo.sg" required />
+                </label>
+              </div>
+              <label>Additional context <span class="opt">(RH answers, notes, meeting type)</span>
+                <textarea id="additionalContext" rows="5" placeholder="Paste Roundhouse answers, AE notes, or meeting context here…"></textarea>
+              </label>
+              <button id="generate" class="primary" type="submit">Generate prep</button>
+            </form>
+            <div id="prep-status" class="status" hidden></div>
+            <article id="prep-result" class="card result" hidden></article>
+            <section id="history-section" class="card" hidden>
+              <h2>Recent preps</h2>
+              <ul id="history" class="history"></ul>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <script type="module" src="./app.js"></script>
+    <script type="module" src="./postcall.js"></script>
   </body>
 </html>

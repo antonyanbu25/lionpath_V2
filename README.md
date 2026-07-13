@@ -1,21 +1,52 @@
-# SE Prep Portal
+# SE Singha Paathai — SE Dashboard
 
-Internal portal that turns a **company name + prospect email** into a researched, pre-filled
-pre-demo prep brief (Freshworks CX / Solution Engineering). An SE fills two fields; a Cloudflare
-Worker calls Claude with the built-in web-search tool, grounds the demo plan and competitor
-positioning in the Freshworks knowledge base, and returns a structured brief that renders into
-the standard "SE Pre-Demo Prep" sections.
+Internal portal for Freshworks Solution Engineers: **pre-call prep** and **post-call analysis**
+in one dashboard.
 
 ```
-web/ (Cloudflare Pages)  ──►  worker/ (Cloudflare Worker)  ──►  Claude (web_search)
+web/ (Cloudflare Pages)  ──►  worker/ (Cloudflare Worker)  ──►  LLM (Claude / Gemini)
         │                              │
-   Firebase Auth (Google)        ANTHROPIC_API_KEY (secret)
-   Firestore (prep history)
+   Firebase Auth (Google)        API keys (secrets)
+   Firestore (history)
 ```
+
+**Tabs:**
+- **Pre-call** — company + email (+ RH context) → researched demo prep brief
+- **Post-call** — Zoom transcript → call summary, SE next steps, quality coach
 
 **Why the split:** Firebase's free (Spark) plan blocks outbound network calls from Cloud
-Functions, so the Claude call runs on the Cloudflare Worker (free tier allows `fetch`), which
-also keeps the API key off the client. Firebase is used only for Auth + Firestore.
+Functions, so LLM calls run on the Cloudflare Worker (free tier allows `fetch`), which
+also keeps API keys off the client. Firebase is used only for Auth + Firestore.
+
+---
+
+## Team quick start
+
+### For SEs (daily use) — no `npm run dev`
+
+Once the app is deployed to Cloudflare, **all 680 SEs just open the Pages URL** in a browser.
+No local setup, no terminals, no API keys on their machines.
+
+### For developers (building / testing changes)
+
+After `git clone`, you need **two terminals** while developing locally:
+
+| Terminal | Command | URL |
+|----------|---------|-----|
+| 1 — Worker | `cd worker && npm install && npm run dev` | http://localhost:8787 |
+| 2 — Web | `cd web && npx wrangler pages dev .` | http://localhost:8788 |
+
+Each teammate who runs the worker locally needs a **Gemini API key** in `worker/.dev.vars` (gitignored):
+
+```bash
+cd worker
+cp .dev.vars.example .dev.vars   # if present, or create manually
+# Add: GEMINI_API_KEY = "your-key-from-google-ai-studio"
+```
+
+Set `WORKER_BASE_URL` in `web/firebase-config.js` to `http://localhost:8787` for local dev.
+
+**Deploy once** (`wrangler deploy` + Pages deploy) — production SEs never run `npm run dev`.
 
 ---
 
@@ -31,9 +62,9 @@ also keeps the API key off the client. Firebase is used only for Auth + Firestor
 ```bash
 cd worker
 npm install
-npx wrangler secret put ANTHROPIC_API_KEY   # paste your key when prompted
-# for local dev, wrangler reads .dev.vars — create it (gitignored):
-echo 'ANTHROPIC_API_KEY = "sk-ant-..."' > .dev.vars
+# Gemini (default provider) — for local dev, wrangler reads .dev.vars (gitignored):
+echo 'GEMINI_API_KEY = "your-key"' > .dev.vars
+# Or Anthropic: npx wrangler secret put ANTHROPIC_API_KEY
 npm run dev                                  # serves http://localhost:8787
 ```
 
@@ -43,6 +74,11 @@ Smoke test:
 curl -s http://localhost:8787/api/generate-prep \
   -H 'content-type: application/json' \
   -d '{"companyName":"Cute cards","prospectEmail":"jenifer@photocards.pt"}' | jq .prep.companySnapshot
+
+# Post-call smoke test (paste a short transcript)
+curl -s http://localhost:8787/api/analyze-call \
+  -H 'content-type: application/json' \
+  -d '{"transcript":"SE: Thanks for joining. What support tools do you use?\nCustomer: We use Zendesk.\nSE: Great, let me show Freddy AI deflection.","companyName":"GetGo"}' | jq .analysis.callSummary.headline
 ```
 
 Config lives in `worker/wrangler.toml` (`[vars]`):
@@ -50,6 +86,7 @@ Config lives in `worker/wrangler.toml` (`[vars]`):
 - `MODEL` — `claude-sonnet-5` (default: fast + strong) or `claude-opus-4-8` for max quality.
 - `EFFORT` — `low | medium | high | xhigh | max`. Default `medium` (balances speed and the
   reasoning-heavy synthesis). Bump to `high` if briefs read generic; drop to `low` for max speed.
+- `POSTCALL_EFFORT` — effort for post-call analysis (default `low`; no web research).
 - `ALLOWED_ORIGINS` — comma-separated Pages origins for CORS (add your Pages URL for prod).
 - `ALLOWED_EMAIL_DOMAIN` — restrict sign-in (default `freshworks.com`).
 - `FIREBASE_PROJECT_ID` — **leave empty to disable auth**; set it to enforce Firebase ID-token
@@ -73,9 +110,34 @@ cd web
 npx wrangler pages dev .        # serves http://localhost:8788
 ```
 
+### Dummy login (default — no Firebase)
+
+When `firebaseConfig.projectId` is empty, the portal uses **dummy credentials** and stores
+post-call history in **localStorage** (per SE email). Firebase SSO can replace this later.
+
+| Role | Email | Password |
+|------|-------|----------|
+| SE | `se@freshworks.com` | `se123` |
+| SE (alt) | `se1@freshworks.com` / `se2@freshworks.com` | `se123` |
+| Manager | `manager@freshworks.com` | `mgr123` |
+
+**SE flow after login:**
+- **My dashboard** — cumulative call quality metrics across all analyzed recordings
+- **New analysis** — paste Zoom link → summary, next steps, quality coach
+- **History** (sidebar) — click any past recording to reload its analysis
+- **Pre-call prep** — unchanged research brief flow
+
+Manager login shows a placeholder team view (coming soon).
+
+Smoke test (dashboard aggregation, no browser):
+
+```bash
+node web/scripts/test-dashboard.mjs
+```
+
 Edit `web/firebase-config.js`:
-- Leave `firebaseConfig.projectId` empty → no-auth preview (form works, no sign-in/history).
-- Set `WORKER_URL` to your Worker URL (`http://localhost:8787/api/generate-prep` locally).
+- Leave `firebaseConfig.projectId` empty → no-auth preview (forms work, no sign-in/history).
+- Set `WORKER_BASE_URL` to your Worker URL (`http://localhost:8787` locally).
 
 ## 3. Firebase (optional — enables sign-in + history)
 
@@ -102,8 +164,71 @@ cd worker && npx wrangler deploy
 cd web && npx wrangler pages deploy .
 ```
 
-After deploy, set `WORKER_URL` in `web/firebase-config.js` to the production Worker URL and add
+After deploy, set `WORKER_BASE_URL` in `web/firebase-config.js` to the production Worker URL and add
 the Pages origin to the Worker's `ALLOWED_ORIGINS`.
+
+---
+
+## Post-call (new)
+
+**MVP flow:** SE pastes or uploads a Zoom VTT transcript → Worker parses speakers/duration
+deterministically → LLM produces:
+
+1. **Call summary** — attendees, topics, pains confirmed, objections, competitive mentions
+2. **Next steps** — prioritized SE actions, AE actions, follow-up email draft, CRM notes
+3. **Quality coach** — 6-dimension rubric with scores, evidence, strengths, improvements
+
+**Latency:** post-call skips web research; target **8–20s** with `gemini-3.1-flash-lite`, or
+**20–40s** with Claude Sonnet at `low` effort.
+
+### Zoom transcript (no OAuth app required)
+
+| Method | What SE does | Status |
+|--------|----------------|--------|
+| **Recording link + passcode** | Paste `zoom.us/rec/share/…` or `…/rec/play/…` + passcode | **Done** |
+| Paste / upload VTT | Manual fallback | Done |
+| Zoom OAuth (phase 2) | Connect Zoom account | Optional later |
+
+**Recording link flow** (`worker/src/zoomShare.ts`):
+1. SE copies the **share link** from Zoom (Cloud Recordings → Share).
+2. If the link includes `?pwd=…` (admin setting: *Embed passcode in shareable link*), one click works.
+3. Otherwise paste the **plain passcode** from the “recording is ready” email.
+4. Worker calls Zoom’s public share APIs → downloads VTT → Gemini analyzes.
+
+**Zoom admin settings that help:**
+- Cloud recording + **Audio transcript** enabled
+- **Allow anyone with link to download** (for transcript file access)
+- **Embed passcode in shareable link** (best UX — no separate passcode field)
+
+**Limitations:** Links that require Zoom login (not just passcode), expired recordings, or on-demand registration pages are not supported without OAuth.
+
+### Model strategy (speed vs quality)
+
+| Use case | Default model | Why | Latency target |
+|----------|---------------|-----|----------------|
+| Pre-call (research) | **gemini-3.1-flash-lite** + `google_search` | Fastest model available on new API keys; thinking disabled | **15–45s** |
+| Pre-call (max quality) | `gemini-3.5-flash` or Claude Sonnet + web_search | Richer synthesis | 30–90s |
+| Post-call (transcript) | **gemini-3.1-flash-lite** | Structured JSON, no search; tail-trimmed transcript | **8–20s** |
+| Testing (no GCP yet) | Claude Sonnet `low` effort | Already wired | 20–40s |
+
+**Speed optimizations in `wrangler.toml`:**
+- `EFFORT=low` and `thinkingBudget=0` on Gemini (no extended thinking)
+- Pre-call: 2–3 web searches (not 4+); JSON schema enforced via API (not duplicated in prompt)
+- Post-call: last ~6k words of transcript (~30–40 min of speech) sent to the model
+
+Older Gemini models (`2.0-flash`, `2.5-flash`) are **not available on new API keys** — use `3.1-flash-lite` or `3.5-flash`.
+
+To switch post-call to Gemini when GCP access lands:
+```toml
+LLM_PROVIDER = "gemini"
+MODEL = "gemini-3.1-flash-lite"
+POSTCALL_MODEL = "gemini-3.1-flash-lite"
+POSTCALL_EFFORT = "low"
+EFFORT = "low"
+```
+```bash
+wrangler secret put GEMINI_API_KEY
+```
 
 ---
 
@@ -113,9 +238,8 @@ the Pages origin to the Worker's `ALLOWED_ORIGINS`.
   confidence) + a Demo Plan (use-case table, close, and a differentiator table that appears only
   for vendors named in the stack), plus a collapsible Sources list. Defined by
   `worker/src/schema.ts` and rendered by `web/app.js`.
-- **Latency:** with Sonnet 5 + `medium` effort + capped searches, generation is ~20–40s; the UI
-  shows a "researching…" state. If it ever exceeds limits, switch the Worker→browser leg to
-  streaming (SSE).
+- **Latency:** with `gemini-3.1-flash-lite` + `low` effort + capped searches, pre-call is ~**15–45s**;
+  post-call ~**8–20s**. The UI shows expected wait times and disables double-submit during generation.
 - **Speed vs. determinism (phase 2):** for faster, more consistent attendee/firmographic/stack
   data, wire enrichment connectors (Apollo/ZoomInfo/Clay) + a tech-stack API and run them in
   parallel, then one short synthesis call. Requires authorizing those paid connectors — deferred
@@ -125,4 +249,6 @@ the Pages origin to the Worker's `ALLOWED_ORIGINS`.
   web research and are cited in the brief's Sources section; gaps say "unknown" rather than being
   invented.
 - **Cost:** `web_search` bills ~$10 / 1,000 searches plus normal tokens — negligible at SE volume.
-- Scope is **pre-call** prep only; post-call automation is a later phase.
+- **Pre-call input:** company name, prospect email, and optional **additional context** (RH answers).
+  Meeting type / AE fields removed from UI — paste that into additional context instead.
+- **Post-call** is live in the Post-call tab; Zoom OAuth activates when credentials are configured.

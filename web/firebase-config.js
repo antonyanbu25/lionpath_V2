@@ -12,9 +12,18 @@ export const firebaseConfig = {
   appId: "",
 };
 
-// Your deployed Worker endpoint. For local dev with `wrangler dev` this is
-// http://localhost:8787/api/generate-prep .
-export const WORKER_URL = "http://localhost:8787/api/generate-prep";
+// Worker base URL — match the page hostname so localhost vs 127.0.0.1 both work locally.
+function workerBaseUrl() {
+  if (typeof location !== "undefined" && location.hostname) {
+    return `${location.protocol}//${location.hostname}:8787`;
+  }
+  return "http://localhost:8787";
+}
+
+export const WORKER_BASE_URL = workerBaseUrl();
+
+// Legacy alias — pre-call endpoint
+export const WORKER_URL = `${WORKER_BASE_URL}/api/generate-prep`;
 
 // Restrict Google sign-in to this domain (also enforced server-side in the Worker).
 export const ALLOWED_EMAIL_DOMAIN = "freshworks.com";

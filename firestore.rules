@@ -7,7 +7,13 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.uid == request.auth.uid
                     && request.auth.token.email_verified == true;
-      // Preps are immutable once written.
+      allow update, delete: if false;
+    }
+    match /postcalls/{doc} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.auth.token.email_verified == true;
       allow update, delete: if false;
     }
   }

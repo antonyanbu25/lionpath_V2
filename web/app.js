@@ -1,12 +1,42 @@
-import { firebaseConfig, WORKER_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
+import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
+import {
+  authMode,
+  getSession,
+  loginDummy,
+  logout,
+  onSessionChange,
+  persistFirebaseSession,
+} from "./auth.js";
+import { listPostCallAnalyses, getPostCallAnalysis } from "./history.js";
+import { normalizeQualityCoach } from "./quality-score.js";
+import { renderDashboard } from "./dashboard.js";
+import {
+  displayPostCall,
+  onSessionReady,
+  onSessionCleared,
+  setOnAnalysisSaved,
+} from "./postcall.js";
 
 const authEnabled = !!firebaseConfig.projectId;
+const PREP_URL = `${WORKER_BASE_URL}/api/generate-prep`;
+const WORKER_DOWN_MSG =
+  `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
+  "Start the worker in another terminal: cd worker → npm.cmd run dev (look for Ready on port 8787). " +
+  "Use the same hostname for web and worker (both localhost or both 127.0.0.1), then refresh.";
 
-let fb = null; // Firebase handles (populated by initFirebase when auth is enabled)
-let currentUser = null;
+let fb = null;
+let currentSession = null;
+let currentView = "dashboard";
 
 const $ = (id) => document.getElementById(id);
 const show = (el, on = true) => { el.hidden = !on; };
+
+const VIEW_TITLES = {
+  dashboard: "My dashboard",
+  analysis: "New analysis",
+  precall: "Pre-call prep",
+  manager: "Manager view",
+};
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -20,7 +50,102 @@ const emailDomain = (email) => {
 const joinDot = (arr) => (arr || []).filter((x) => !isUnknown(x)).map(esc).join(" · ");
 const cell = (v) => (isUnknown(v) ? '<span class="muted">unknown</span>' : esc(v));
 
-// ---------- Rendering (matches SE_Prep_Template_GetGo.md) ----------
+// ---------- Views ----------
+
+function switchView(name) {
+  currentView = name;
+  const isManager = currentSession?.role === "manager";
+  const panels = {
+    dashboard: $("view-dashboard"),
+    analysis: $("view-analysis"),
+    precall: $("view-precall"),
+    manager: $("view-manager"),
+  };
+
+  if (isManager && name === "dashboard") {
+    name = "manager";
+  }
+
+  Object.entries(panels).forEach(([key, el]) => show(el, key === name));
+  $("main-view-title").textContent = VIEW_TITLES[name] || name;
+
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === name || (name === "manager" && btn.dataset.view === "dashboard"));
+  });
+
+  if (name === "dashboard" && !isManager) {
+    renderDashboard($("view-dashboard"), currentSession.email, {
+      onOpenCall: (id) => openHistoryItem(id),
+    });
+  }
+
+  history.replaceState(null, "", `#${name}`);
+  closeSidebar();
+}
+
+function openHistoryItem(id) {
+  const record = getPostCallAnalysis(currentSession.email, id);
+  if (!record?.result) return;
+  switchView("analysis");
+  displayPostCall(record.result, { title: record.title });
+  document.querySelectorAll(".sidebar-history-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.id === id);
+  });
+}
+
+function refreshSidebarHistory() {
+  if (!currentSession?.email) return;
+  const list = listPostCallAnalyses(currentSession.email);
+  const ul = $("sidebar-history-list");
+  const empty = $("sidebar-history-empty");
+
+  if (!list.length) {
+    ul.innerHTML = "";
+    show(empty, true);
+    return;
+  }
+
+  show(empty, false);
+  ul.innerHTML = list
+    .slice(0, 20)
+    .map((r) => {
+      const when = r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "";
+      const qc = r.analysis?.qualityCoach;
+      const score = qc ? normalizeQualityCoach(qc).overallScore : null;
+      const scoreBadge = score != null ? `<span class="hist-score">${score}/10</span>` : "";
+      return `<li>
+        <button type="button" class="sidebar-history-item" data-id="${esc(r.id)}" title="${esc(r.title)}">
+          <span class="hist-title">${esc(r.title)}</span>
+          <span class="hist-meta">${scoreBadge}<span class="hist-when">${esc(when)}</span></span>
+        </button>
+      </li>`;
+    })
+    .join("");
+
+  ul.querySelectorAll(".sidebar-history-item").forEach((btn) => {
+    btn.onclick = () => openHistoryItem(btn.dataset.id);
+  });
+}
+
+function updateSidebarUser() {
+  $("sidebar-user-name").textContent = currentSession?.name || "";
+  $("sidebar-user-role").textContent =
+    currentSession?.role === "manager" ? "Manager" : "Solution Engineer";
+}
+
+// ---------- Sidebar mobile ----------
+
+function openSidebar() {
+  $("sidebar").classList.add("open");
+  show($("sidebar-backdrop"), true);
+}
+
+function closeSidebar() {
+  $("sidebar").classList.remove("open");
+  show($("sidebar-backdrop"), false);
+}
+
+// ---------- Rendering (pre-call) ----------
 
 function renderPrep(p, meta = {}) {
   const rs = p.researchSnapshot || {};
@@ -79,7 +204,7 @@ function renderPrep(p, meta = {}) {
         .join("")}</ul></details>`
     : "";
 
-  const sub = [meta.domain, !isUnknown(meta.meetingType) ? meta.meetingType : "", !isUnknown(meta.ae) ? `AE: ${meta.ae}` : ""]
+  const sub = [meta.domain, meta.additionalContext ? "context provided" : ""]
     .filter(Boolean).map(esc).join(" · ");
 
   return `
@@ -94,7 +219,7 @@ function renderPrep(p, meta = {}) {
 }
 
 function displayPrep(prep, meta) {
-  const result = $("result");
+  const result = $("prep-result");
   result.innerHTML = renderPrep(prep, meta || {});
   show(result, true);
   const copyBtn = $("copy-json");
@@ -107,68 +232,80 @@ function displayPrep(prep, meta) {
 async function generate(e) {
   e.preventDefault();
   const btn = $("generate");
-  const status = $("status");
+  const status = $("prep-status");
   const payload = {
     companyName: $("companyName").value.trim(),
     prospectEmail: $("prospectEmail").value.trim(),
-    meetingType: $("meetingType").value.trim() || undefined,
-    ae: $("ae").value.trim() || undefined,
+    additionalContext: $("additionalContext").value.trim() || undefined,
   };
   const meta = {
     company: payload.companyName,
     domain: emailDomain(payload.prospectEmail),
-    meetingType: payload.meetingType,
-    ae: payload.ae,
+    additionalContext: payload.additionalContext,
   };
   btn.disabled = true;
   status.className = "status";
-  status.textContent = "Researching the prospect and drafting the brief… usually 20–40 seconds.";
+  status.textContent = "Researching the prospect and drafting the brief… usually 15–45 seconds. Please wait.";
   show(status, true);
-  show($("result"), false);
+  show($("prep-result"), false);
+  const form = $("prep-form");
+  form?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = true; });
 
   try {
     const headers = { "content-type": "application/json" };
-    if (authEnabled && currentUser) headers["Authorization"] = `Bearer ${await currentUser.getIdToken()}`;
-    const res = await fetch(WORKER_URL, { method: "POST", headers, body: JSON.stringify(payload) });
-    const data = await res.json();
+    if (authEnabled && fb?.auth?.currentUser) {
+      headers["Authorization"] = `Bearer ${await fb.auth.currentUser.getIdToken()}`;
+    }
+    const res = await fetch(PREP_URL, { method: "POST", headers, body: JSON.stringify(payload) });
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(raw.slice(0, 300) || `Request failed (${res.status}).`);
+    }
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
 
     displayPrep(data.prep, meta);
     show(status, false);
-    if (authEnabled && currentUser) await savePrep(payload, data.prep);
+    if (authEnabled && fb?.auth?.currentUser) await savePrep(payload, data.prep);
   } catch (err) {
     status.className = "status err";
-    status.textContent = err.message || "Something went wrong.";
+    const msg = err.message || "Something went wrong.";
+    status.textContent =
+      msg === "Failed to fetch" || /network|fetch/i.test(msg) ? WORKER_DOWN_MSG : msg;
   } finally {
     btn.disabled = false;
+    $("prep-form")?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = false; });
   }
 }
 
-// ---------- Firestore history ----------
+// ---------- Firestore prep history (when Firebase enabled) ----------
 
 async function savePrep(input, prep) {
   try {
+    const user = fb.auth.currentUser;
     await fb.addDoc(fb.collection(fb.db, "preps"), {
-      uid: currentUser.uid,
-      email: currentUser.email,
+      uid: user.uid,
+      email: user.email,
       company: input.companyName,
       prospectEmail: input.prospectEmail,
-      meetingType: input.meetingType || "",
-      ae: input.ae || "",
+      additionalContext: input.additionalContext || "",
       prep,
       createdAt: fb.serverTimestamp(),
     });
-    await loadHistory();
+    await loadPrepHistory();
   } catch (err) {
     console.warn("Could not save to history:", err);
   }
 }
 
-async function loadHistory() {
-  if (!authEnabled || !currentUser) return;
+async function loadPrepHistory() {
+  if (!authEnabled || !fb?.auth?.currentUser) return;
   const section = $("history-section");
   try {
-    const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", currentUser.uid));
+    const user = fb.auth.currentUser;
+    const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
     const snap = await fb.getDocs(q);
     const docs = snap.docs
       .map((d) => d.data())
@@ -185,7 +322,7 @@ async function loadHistory() {
     $("history").querySelectorAll("button[data-i]").forEach((b) =>
       (b.onclick = () => {
         const d = docs[Number(b.dataset.i)];
-        displayPrep(d.prep, { company: d.company, domain: emailDomain(d.prospectEmail), meetingType: d.meetingType, ae: d.ae });
+        displayPrep(d.prep, { company: d.company, domain: emailDomain(d.prospectEmail), additionalContext: d.additionalContext });
       }));
     show(section, true);
   } catch (err) {
@@ -194,7 +331,65 @@ async function loadHistory() {
   }
 }
 
-// ---------- Auth / boot ----------
+// ---------- Auth UI ----------
+
+function showLogin() {
+  show($("login-view"), true);
+  show($("app-shell"), false);
+  currentSession = null;
+  onSessionCleared();
+}
+
+function showApp(session) {
+  currentSession = session;
+  show($("login-view"), false);
+  show($("app-shell"), true);
+  updateSidebarUser();
+  refreshSidebarHistory();
+
+  const tokenFn = authEnabled && fb?.auth?.currentUser
+    ? () => fb.auth.currentUser.getIdToken()
+    : null;
+  onSessionReady(session, tokenFn);
+
+  const defaultView = session.role === "manager" ? "manager" : "dashboard";
+  const hash = location.hash.replace("#", "");
+  const valid = ["dashboard", "analysis", "precall", "manager"];
+  switchView(valid.includes(hash) ? hash : defaultView);
+
+  if (authEnabled) loadPrepHistory();
+}
+
+function handleSession(session) {
+  if (session) showApp(session);
+  else showLogin();
+}
+
+// ---------- Dummy login ----------
+
+function initDummyAuth() {
+  $("login-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const errEl = $("login-error");
+    show(errEl, false);
+    const result = loginDummy($("login-email").value, $("login-password").value);
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      show(errEl, true);
+      return;
+    }
+    handleSession(result.session);
+  });
+
+  $("logout-btn").onclick = () => logout();
+
+  const existing = getSession();
+  if (existing) handleSession(existing);
+
+  onSessionChange(handleSession);
+}
+
+// ---------- Firebase auth (optional) ----------
 
 async function initFirebase() {
   const [{ initializeApp }, authMod, fsMod] = await Promise.all([
@@ -215,38 +410,82 @@ async function initFirebase() {
     where: fsMod.where, getDocs: fsMod.getDocs, serverTimestamp: fsMod.serverTimestamp,
   };
 
-  $("signin").onclick = async () => {
+  show($("firebase-signin-block"), true);
+
+  $("signin-google").onclick = async () => {
     show($("signin-error"), false);
     try { await fb.signInWithPopup(auth, provider); }
     catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
   };
-  $("signout").onclick = () => fb.signOut(auth);
+
+  $("logout-btn").onclick = async () => {
+    await fb.signOut(auth);
+    logout();
+  };
 
   authMod.onAuthStateChanged(auth, (user) => {
     if (user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`))) {
-      currentUser = user;
-      $("user-email").textContent = user.email;
-      show($("userbox"), true);
-      show($("signin-view"), false);
-      show($("app-view"), true);
-      loadHistory();
+      persistFirebaseSession(user);
+      handleSession(getSession());
     } else {
       if (user) fb.signOut(auth);
-      currentUser = null;
-      show($("userbox"), false);
-      show($("app-view"), false);
-      show($("signin-view"), true);
+      logout();
     }
   });
+
+  const existing = getSession();
+  if (existing) handleSession(existing);
+  onSessionChange(handleSession);
+}
+
+async function warnIfWorkerDown() {
+  const banner = $("worker-warning");
+  if (!banner) return;
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/api/config`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    banner.hidden = true;
+  } catch {
+    banner.textContent = WORKER_DOWN_MSG;
+    banner.hidden = false;
+  }
 }
 
 function boot() {
   $("prep-form").addEventListener("submit", generate);
-  if (authEnabled) {
-    show($("signin-view"), true);
+
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.onclick = () => {
+      if (btn.dataset.view === "analysis") {
+        show($("postcall-result"), false);
+        show($("postcall-status"), false);
+      }
+      switchView(btn.dataset.view);
+    };
+  });
+
+  $("sidebar-toggle").onclick = openSidebar;
+  $("sidebar-close").onclick = closeSidebar;
+  $("sidebar-backdrop").onclick = closeSidebar;
+
+  setOnAnalysisSaved(() => {
+    refreshSidebarHistory();
+    if (currentView === "dashboard") {
+      renderDashboard($("view-dashboard"), currentSession.email, {
+        onOpenCall: (id) => openHistoryItem(id),
+      });
+    }
+  });
+
+  if (authMode() === "firebase") {
     initFirebase();
   } else {
-    show($("app-view"), true);
+    initDummyAuth();
+    const existing = getSession();
+    if (!existing) showLogin();
   }
+
+  void warnIfWorkerDown();
 }
+
 boot();

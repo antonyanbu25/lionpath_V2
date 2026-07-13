@@ -4,14 +4,19 @@ compatibility_date = "2024-11-01"
 
 # Public/non-secret config. Secrets are set with `wrangler secret put`.
 [vars]
-# LLM provider. "anthropic" implemented; add adapters in src/providers/ for "gemini", "ollama", etc.
-LLM_PROVIDER = "anthropic"
-# Model id (provider-specific). Sonnet 5 = fast + strong for this task; "claude-opus-4-8" for max quality.
-MODEL = "claude-sonnet-5"
-# Reasoning depth: low | medium | high | xhigh | max. medium balances speed and synthesis quality.
-EFFORT = "medium"
-# Comma-separated allowed origins for CORS (the Pages URL(s)). "*" only for local dev.
-ALLOWED_ORIGINS = "http://localhost:8788"
+# LLM provider for pre-call prep. "gemini" | "anthropic" | "ollama" (see src/providers/).
+LLM_PROVIDER = "gemini"
+# Model id (provider-specific). gemini-3.1-flash-lite = fastest for new API keys + google_search grounding.
+# Tradeoff: slightly less synthesis depth than gemini-3.5-flash — bump MODEL if briefs feel thin.
+MODEL = "gemini-3.1-flash-lite"
+# Reasoning depth: low | medium | high | xhigh | max. low = fastest prep (thinking disabled on Gemini).
+EFFORT = "low"
+# Post-call: structured JSON scorecard — no web search; lite model is enough and ~2× faster.
+POSTCALL_LLM_PROVIDER = "gemini"
+POSTCALL_MODEL = "gemini-3.1-flash-lite"
+POSTCALL_EFFORT = "low"
+# Comma-separated allowed origins for CORS. Include both localhost and 127.0.0.1 for local dev.
+ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788"
 # Restrict sign-in to this email domain. Empty = allow any verified Google account.
 ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Firebase project id — used to verify ID tokens (audience/issuer check).
@@ -19,3 +24,9 @@ FIREBASE_PROJECT_ID = ""
 
 # Secrets (set via CLI, never committed):
 #   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put ZOOM_CLIENT_SECRET
+# Zoom OAuth (optional — phase 2):
+# ZOOM_CLIENT_ID = ""
+# ZOOM_CLIENT_SECRET = ""   # use secret put, not vars
+# ZOOM_REDIRECT_URI = "http://localhost:8787/api/zoom/callback"

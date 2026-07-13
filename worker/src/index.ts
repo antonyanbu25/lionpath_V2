@@ -1,10 +1,15 @@
-// Cloudflare Worker entry. Routes POST /api/generate-prep, applies CORS, and (when a
-// Firebase project id is configured) verifies the caller's Firebase ID token and email
-// domain before calling Claude. The ANTHROPIC_API_KEY never leaves the Worker.
+// Cloudflare Worker entry. Routes:
+//   POST /api/generate-prep   — pre-call research brief
+//   POST /api/analyze-call    — post-call summary + next steps + quality coach
+//   GET  /api/zoom/status     — whether Zoom OAuth is configured
+//   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
 
 import { generatePrep, type Env as PrepEnv, type PrepInput } from "./prep";
+import { analyzePostCall, type PostCallInput } from "./postcall";
+import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
+import { fetchTranscriptFromShareLink } from "./zoomShare";
 
-interface Env extends PrepEnv {
+interface Env extends PrepEnv, ZoomEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -18,7 +23,7 @@ function corsHeaders(origin: string, allowed: string[]): Record<string, string> 
       : allowed[0] || "";
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -92,6 +97,19 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<Ve
   return { email: String(payload.email).toLowerCase(), uid: String(payload.sub) };
 }
 
+async function requireUser(request: Request, env: Env, cors: Record<string, string>): Promise<VerifiedUser | null> {
+  if (!env.FIREBASE_PROJECT_ID) return null;
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token) throw Object.assign(new Error("Sign-in required."), { status: 401 });
+  const user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
+  const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
+  if (domain && !user.email.endsWith(`@${domain}`)) {
+    throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
+  }
+  return user;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
@@ -101,34 +119,78 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/api/generate-prep") {
-      return json({ error: "Not found." }, 404, cors);
-    }
+    const path = url.pathname;
 
     try {
-      // Auth — enforced only once a Firebase project id is configured.
-      let user: VerifiedUser | null = null;
-      if (env.FIREBASE_PROJECT_ID) {
-        const auth = request.headers.get("Authorization") || "";
-        const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-        if (!token) return json({ error: "Sign-in required." }, 401, cors);
-        user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
-        const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
-        if (domain && !user.email.endsWith(`@${domain}`)) {
-          return json({ error: `Access limited to @${domain} accounts.` }, 403, cors);
+      if (request.method === "GET" && path === "/api/zoom/status") {
+        return json({ configured: zoomConfigured(env) }, 200, cors);
+      }
+
+      if (request.method === "GET" && path === "/api/config") {
+        return json(
+          {
+            prep: { provider: env.LLM_PROVIDER || "gemini", model: env.MODEL || "gemini-3.5-flash" },
+            postcall: {
+              provider: env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini",
+              model: env.POSTCALL_MODEL || "gemini-3.5-flash",
+            },
+            zoom: { configured: zoomConfigured(env) },
+            keys: {
+              anthropic: !!env.ANTHROPIC_API_KEY,
+              gemini: !!env.GEMINI_API_KEY,
+            },
+          },
+          200,
+          cors,
+        );
+      }
+
+      if (request.method === "GET" && path === "/api/zoom/auth") {
+        await requireUser(request, env, cors);
+        const state = crypto.randomUUID();
+        const authUrl = zoomAuthUrl(env, state);
+        return json({ authUrl, state }, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/generate-prep") {
+        await requireUser(request, env, cors);
+        const input = (await request.json()) as Partial<PrepInput>;
+        if (!input.companyName || !input.prospectEmail) {
+          return json({ error: "companyName and prospectEmail are required." }, 400, cors);
         }
+        const prep = await generatePrep(env, input as PrepInput);
+        return json({ prep }, 200, cors);
       }
 
-      const input = (await request.json()) as Partial<PrepInput>;
-      if (!input.companyName || !input.prospectEmail) {
-        return json({ error: "companyName and prospectEmail are required." }, 400, cors);
+      if (request.method === "POST" && path === "/api/fetch-transcript") {
+        await requireUser(request, env, cors);
+        const body = (await request.json()) as { recordingUrl?: string; recordingPassword?: string };
+        if (!body.recordingUrl?.trim()) {
+          return json({ error: "recordingUrl is required." }, 400, cors);
+        }
+        const result = await fetchTranscriptFromShareLink(
+          body.recordingUrl.trim(),
+          body.recordingPassword?.trim(),
+        );
+        return json(result, 200, cors);
       }
 
-      const prep = await generatePrep(env, input as PrepInput);
-      return json({ prep, user }, 200, cors);
+      if (request.method === "POST" && path === "/api/analyze-call") {
+        await requireUser(request, env, cors);
+        const input = (await request.json()) as Partial<PostCallInput>;
+        if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
+          return json({ error: "Paste a transcript or a Zoom recording link (with passcode if needed)." }, 400, cors);
+        }
+        const result = await analyzePostCall(env, input as PostCallInput);
+        return json(result, 200, cors);
+      }
+
+      return json({ error: "Not found." }, 404, cors);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unexpected error.";
-      const status = /sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500;
+      const status =
+        (err as { status?: number }).status ??
+        (/sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500);
       return json({ error: message }, status, cors);
     }
   },

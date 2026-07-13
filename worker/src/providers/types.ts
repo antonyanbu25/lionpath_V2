@@ -3,21 +3,26 @@
 // pipeline (prep.ts) never changes.
 
 export interface ProviderEnv {
-  LLM_PROVIDER?: string; // "anthropic" (default) | "gemini" | "ollama" | ...
-  MODEL?: string; // provider-specific model id, e.g. "claude-sonnet-5"
-  EFFORT?: string; // "low" | "medium" | "high" | "xhigh" | "max" (providers that support it)
+  LLM_PROVIDER?: string;
+  MODEL?: string;
+  EFFORT?: string;
+  POSTCALL_LLM_PROVIDER?: string;
+  POSTCALL_MODEL?: string;
+  POSTCALL_EFFORT?: string;
   ANTHROPIC_API_KEY?: string;
-  // Future provider credentials (add as needed):
-  // GEMINI_API_KEY?: string;
-  // OLLAMA_BASE_URL?: string;
+  GEMINI_API_KEY?: string;
 }
 
 export interface LlmRequest {
   system: string;
   user: string;
   maxTokens: number;
-  effort?: string; // ignored by providers that don't support it
-  research?: boolean; // enable web research if the provider supports it
+  effort?: string;
+  research?: boolean;
+  /** JSON Schema for structured output (Gemini responseSchema). */
+  jsonSchema?: Record<string, unknown>;
+  /** Gemini 2.5+ — set 0 to disable thinking for lower latency on long transcripts. */
+  thinkingBudget?: number;
 }
 
 export interface LlmResult {

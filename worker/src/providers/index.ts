@@ -9,17 +9,27 @@
 
 import type { LlmProvider, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
+import { geminiProvider } from "./gemini";
 
 export function getProvider(env: ProviderEnv): LlmProvider {
-  const provider = (env.LLM_PROVIDER || "anthropic").toLowerCase();
+  const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
+  return resolveProvider(provider, env);
+}
+
+/** Post-call uses its own provider/model so it can differ from pre-call (e.g. faster model, no web search). */
+export function getPostCallProvider(env: ProviderEnv): LlmProvider {
+  const provider = (env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini").toLowerCase();
+  const model = env.POSTCALL_MODEL;
+  if (provider === "gemini") return geminiProvider(env, model);
+  return resolveProvider(provider, env);
+}
+
+function resolveProvider(provider: string, env: ProviderEnv): LlmProvider {
   switch (provider) {
     case "anthropic":
       return anthropicProvider(env);
     case "gemini":
-      throw new Error(
-        "Gemini provider not implemented yet. Add worker/src/providers/gemini.ts implementing " +
-          "LlmProvider (map research → google_search grounding) and register it in providers/index.ts.",
-      );
+      return geminiProvider(env);
     case "ollama":
       throw new Error(
         "Ollama provider not implemented yet. Add worker/src/providers/ollama.ts implementing " +

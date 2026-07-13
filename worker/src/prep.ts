@@ -6,6 +6,7 @@
 // being invented. Confidence is embedded inline in techStack.summary, per the GetGo template.
 
 import { FRESHWORKS_KB } from "./kb";
+import { extractJson } from "./json";
 import { PREP_SCHEMA, type Prep } from "./schema";
 import { getProvider } from "./providers";
 import type { ProviderEnv } from "./providers/types";
@@ -16,9 +17,10 @@ export interface PrepInput {
   companyName: string;
   prospectEmail: string;
   prospectName?: string;
+  additionalContext?: string;
   meetingType?: string;
   ae?: string;
-  effort?: string; // optional per-request override (for A/B testing); sanitized below
+  effort?: string;
 }
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -28,12 +30,26 @@ export function deriveDomain(email: string): string {
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
 }
 
-function systemPrompt(): string {
+function usesGeminiStructuredOutput(env: Env): boolean {
+  return (env.LLM_PROVIDER || "gemini").toLowerCase() === "gemini";
+}
+
+function systemPrompt(env: Env): string {
+  const schemaBlock = usesGeminiStructuredOutput(env)
+    ? `OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
+fences, no prose. The API enforces the schema (researchSnapshot, demoPlan, sources); use "unknown"
+or [] where empty.`
+    : `OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
+fences, no prose before or after. It must match exactly this JSON Schema (all fields required;
+use "unknown" or [] where empty):
+
+${JSON.stringify(PREP_SCHEMA)}`;
+
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
 prep brief.
 
-RESEARCH — be fast and focused (aim for 3–4 searches max):
+RESEARCH — be fast and focused (aim for 2–3 searches max):
 - Start from the company website and "what they do".
 - One query for recent, relevant news.
 - Infer the support tech stack from signals like the help-center/KB URL pattern (e.g. a
@@ -62,11 +78,7 @@ FILL THE BRIEF:
 ${FRESHWORKS_KB}
 === END KNOWLEDGE BASE ===
 
-OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
-fences, no prose before or after. It must match exactly this JSON Schema (all fields required;
-use "unknown" or [] where empty):
-
-${JSON.stringify(PREP_SCHEMA)}`;
+${schemaBlock}`;
 }
 
 function userPrompt(input: PrepInput, domain: string): string {
@@ -78,6 +90,9 @@ function userPrompt(input: PrepInput, domain: string): string {
     `Prospect company domain: ${domain}`,
   ];
   if (input.prospectName) lines.push(`Prospect contact name: ${input.prospectName}`);
+  if (input.additionalContext) {
+    lines.push("", "Additional context from SE / Roundhouse answers:", input.additionalContext);
+  }
   if (input.meetingType) lines.push(`Meeting type: ${input.meetingType}`);
   if (input.ae) lines.push(`Account Executive: ${input.ae}`);
   lines.push(
@@ -87,40 +102,23 @@ function userPrompt(input: PrepInput, domain: string): string {
   return lines.join("\n");
 }
 
-function extractJson(text: string): Prep {
-  const trimmed = (text || "").trim();
-  if (!trimmed) throw new Error("Model returned no text content to parse.");
-  let candidate = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if ((start > 0 || end < candidate.length - 1) && start >= 0 && end > start) {
-    candidate = candidate.slice(start, end + 1);
-  }
-  try {
-    return JSON.parse(candidate) as Prep;
-  } catch (e) {
-    throw new Error(`Could not parse prep JSON from model output: ${(e as Error).message}`);
-  }
-}
-
 export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
   const domain = deriveDomain(input.prospectEmail);
   if (!domain) throw new Error("Could not derive a domain from the prospect email.");
 
   const effort = ALLOWED_EFFORT.includes(input.effort || "")
     ? (input.effort as string)
-    : env.EFFORT || "medium";
+    : env.EFFORT || "low";
 
   const provider = getProvider(env);
   const result = await provider.generate({
-    // Headroom for adaptive thinking (on by default at medium/high effort) PLUS the JSON brief.
-    // 4000 was too low — thinking consumed the budget and the model hit max_tokens before
-    // emitting any text ("no text content to parse").
-    maxTokens: 12000,
-    system: systemPrompt(),
+    maxTokens: 8000,
+    system: systemPrompt(env),
     user: userPrompt(input, domain),
     effort,
     research: true,
+    thinkingBudget: 0,
+    jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
   });
-  return extractJson(result.text);
+  return extractJson<Prep>(result.text);
 }
