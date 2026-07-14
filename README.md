@@ -21,6 +21,9 @@ also keeps API keys off the client. Firebase is used only for Auth + Firestore.
 **Team onboarding:** For detailed local setup, Cloudflare Tunnel sharing, and production
 deploy pointers, see **[TEAM_SETUP.md](./TEAM_SETUP.md)**.
 
+**Post-call feature (demo / presentation):** See **[docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md)** —
+elevator pitch, flow diagram, Quality Coach dimensions, scoring, Zoom requirements, and leadership FAQ.
+
 ---
 
 ## Team quick start (5 steps)
