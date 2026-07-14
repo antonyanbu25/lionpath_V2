@@ -18,6 +18,9 @@ web/ (Cloudflare Pages)  ──►  worker/ (Cloudflare Worker)  ──►  LLM 
 Functions, so LLM calls run on the Cloudflare Worker (free tier allows `fetch`), which
 also keeps API keys off the client. Firebase is used only for Auth + Firestore.
 
+**Team onboarding:** For detailed local setup, Cloudflare Tunnel sharing, and production
+deploy pointers, see **[TEAM_SETUP.md](./TEAM_SETUP.md)**.
+
 ---
 
 ## Team quick start (5 steps)
