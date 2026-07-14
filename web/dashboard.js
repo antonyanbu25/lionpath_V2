@@ -151,7 +151,7 @@ export function aggregateQualityMetrics(analyses) {
 
       scoreTrend: [],
 
-      scoreBands: { excellent: 0, good: 0, developing: 0, needsFocus: 0 },
+      scoreBands: { excellent: 0, strong: 0, good: 0, developing: 0, needsFocus: 0 },
 
     };
 
@@ -163,7 +163,7 @@ export function aggregateQualityMetrics(analyses) {
 
   const dimMap = new Map();
 
-  const scoreBands = { excellent: 0, good: 0, developing: 0, needsFocus: 0 };
+  const scoreBands = { excellent: 0, strong: 0, good: 0, developing: 0, needsFocus: 0 };
 
 
 
@@ -712,11 +712,13 @@ function renderScoreDistribution(bands, total) {
 
   const segments = [
 
-    { key: "excellent", label: "Excellent (8+)", count: bands.excellent, cls: "good" },
+    { key: "excellent", label: "Excellent (9+)", count: bands.excellent, cls: "good" },
 
-    { key: "good", label: "Good (6–8)", count: bands.good, cls: "ok" },
+    { key: "strong", label: "Strong (7–8.9)", count: bands.strong, cls: "ok" },
 
-    { key: "developing", label: "Developing (4–6)", count: bands.developing, cls: "ok" },
+    { key: "good", label: "Good (5.5–6.9)", count: bands.good, cls: "ok" },
+
+    { key: "developing", label: "Developing (4–5.4)", count: bands.developing, cls: "ok" },
 
     { key: "needsFocus", label: "Needs focus (<4)", count: bands.needsFocus, cls: "weak" },
 

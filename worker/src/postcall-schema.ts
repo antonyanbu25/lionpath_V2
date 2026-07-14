@@ -107,11 +107,21 @@ export const POSTCALL_SCHEMA = {
             additionalProperties: false,
             required: ["name", "score", "maxScore", "feedback", "evidence"],
             properties: {
-              name: { type: "string" },
-              score: { type: "number" },
-              maxScore: { type: "number" },
-              feedback: { type: "string" },
-              evidence: { type: "string" },
+              name: {
+                type: "string",
+                description:
+                  "One of: Discovery, Demo alignment, Objections, Value articulation, Next-step clarity, Talk balance",
+              },
+              score: {
+                type: "number",
+                minimum: 1,
+                maximum: 5,
+                description:
+                  "Strict 1–5 rubric: 1=missed, 2=needs improvement, 3=acceptable with gaps (typical avg call), 4=solid SE execution, 5=exceptional (rare). Average SE call ~3–3.5 per dimension.",
+              },
+              maxScore: { type: "number", description: "Always 5." },
+              feedback: { type: "string", description: "Specific coaching feedback citing gaps or strengths." },
+              evidence: { type: "string", description: "Direct quote or paraphrase from transcript supporting the score." },
             },
           },
         },

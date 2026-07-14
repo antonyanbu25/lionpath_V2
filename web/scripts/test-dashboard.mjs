@@ -84,7 +84,8 @@ const checks = [
 
   ["score trend chronological", metrics.scoreTrend[0]?.overallScore === 8.7],
 
-  ["score bands excellent", metrics.scoreBands.excellent === 1],
+  ["score bands excellent", metrics.scoreBands.excellent === 0],
+  ["score bands strong", metrics.scoreBands.strong === 1],
   ["score bands good", metrics.scoreBands.good === 1],
   ["score bands developing", metrics.scoreBands.developing === 0],
   ["score bands needs focus", metrics.scoreBands.needsFocus === 1],

@@ -18,10 +18,11 @@ export function computeOverallScore(dimensions) {
   return Math.round((ratioSum / count) * 10 * 10) / 10;
 }
 
-/** @param {number} score — 0–10 */
+/** @param {number} score — 0–10 (strict MVP calibration) */
 export function overallLabelFromScore(score) {
-  if (score >= 8) return "Excellent";
-  if (score >= 6) return "Good";
+  if (score >= 9) return "Excellent";
+  if (score >= 7) return "Strong";
+  if (score >= 5.5) return "Good";
   if (score >= 4) return "Developing";
   return "Needs focus";
 }
@@ -41,8 +42,9 @@ export function normalizeQualityCoach(qc) {
 
 /** @param {number} overall — 0–10 */
 export function scoreBand(overall) {
-  if (overall >= 8) return "excellent";
-  if (overall >= 6) return "good";
+  if (overall >= 9) return "excellent";
+  if (overall >= 7) return "strong";
+  if (overall >= 5.5) return "good";
   if (overall >= 4) return "developing";
   return "needsFocus";
 }

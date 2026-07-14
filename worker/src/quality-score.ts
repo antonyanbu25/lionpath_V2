@@ -26,10 +26,11 @@ export function computeOverallScore(dimensions: { score: number; maxScore: numbe
   return Math.round((ratioSum / count) * 10 * 10) / 10;
 }
 
-/** Map 0–10 overall score to a coaching label. */
+/** Map 0–10 overall score to a coaching label (strict MVP calibration). */
 export function overallLabelFromScore(score: number): string {
-  if (score >= 8) return "Excellent";
-  if (score >= 6) return "Good";
+  if (score >= 9) return "Excellent";
+  if (score >= 7) return "Strong";
+  if (score >= 5.5) return "Good";
   if (score >= 4) return "Developing";
   return "Needs focus";
 }

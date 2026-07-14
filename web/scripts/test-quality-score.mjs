@@ -13,8 +13,9 @@ const dims = [
 const checks = [
   ["avg 4.5/5 → 9.0", computeOverallScore(dims) === 9],
   ["9.0 → Excellent", overallLabelFromScore(9) === "Excellent"],
-  ["8.0 → Excellent", overallLabelFromScore(8) === "Excellent"],
-  ["7.0 → Good", overallLabelFromScore(7) === "Good"],
+  ["8.0 → Strong", overallLabelFromScore(8) === "Strong"],
+  ["7.0 → Strong", overallLabelFromScore(7) === "Strong"],
+  ["6.0 → Good", overallLabelFromScore(6) === "Good"],
   ["5.0 → Developing", overallLabelFromScore(5) === "Developing"],
   ["3.0 → Needs focus", overallLabelFromScore(3) === "Needs focus"],
   [
