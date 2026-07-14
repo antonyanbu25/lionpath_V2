@@ -9,8 +9,8 @@ LLM_PROVIDER = "gemini"
 # Model id (provider-specific). gemini-3.1-flash-lite = fastest for new API keys + google_search grounding.
 # Tradeoff: slightly less synthesis depth than gemini-3.5-flash — bump MODEL if briefs feel thin.
 MODEL = "gemini-3.1-flash-lite"
-# Reasoning depth: low | medium | high | xhigh | max. low = fastest prep (thinking disabled on Gemini).
-EFFORT = "low"
+# Reasoning depth: low | medium | high | xhigh | max. medium = balanced prep quality/speed.
+EFFORT = "medium"
 # Post-call: structured JSON scorecard — no web search; lite model is enough and ~2× faster.
 POSTCALL_LLM_PROVIDER = "gemini"
 POSTCALL_MODEL = "gemini-3.1-flash-lite"

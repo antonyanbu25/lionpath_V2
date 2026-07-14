@@ -20,7 +20,7 @@ export interface PrepInput {
   additionalContext?: string;
   meetingType?: string;
   ae?: string;
-  effort?: string;
+  effort?: string; // optional per-request override (for A/B testing); sanitized below
 }
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -30,26 +30,12 @@ export function deriveDomain(email: string): string {
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
 }
 
-function usesGeminiStructuredOutput(env: Env): boolean {
-  return (env.LLM_PROVIDER || "gemini").toLowerCase() === "gemini";
-}
-
-function systemPrompt(env: Env): string {
-  const schemaBlock = usesGeminiStructuredOutput(env)
-    ? `OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
-fences, no prose. The API enforces the schema (researchSnapshot, demoPlan, sources); use "unknown"
-or [] where empty.`
-    : `OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
-fences, no prose before or after. It must match exactly this JSON Schema (all fields required;
-use "unknown" or [] where empty):
-
-${JSON.stringify(PREP_SCHEMA)}`;
-
+function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
 prep brief.
 
-RESEARCH — be fast and focused (aim for 2–3 searches max):
+RESEARCH — be fast and focused (aim for 3–4 searches max):
 - Start from the company website and "what they do".
 - One query for recent, relevant news.
 - Infer the support tech stack from signals like the help-center/KB URL pattern (e.g. a
@@ -78,7 +64,13 @@ FILL THE BRIEF:
 ${FRESHWORKS_KB}
 === END KNOWLEDGE BASE ===
 
-${schemaBlock}`;
+OUTPUT — CRITICAL: respond with a SINGLE, strictly valid JSON object and nothing else:
+- No markdown, no code fences, no text before or after the object.
+- No citation markers (e.g. [1], superscripts), footnotes, or comments.
+- No trailing commas; quote and escape every string properly.
+It must match exactly this JSON Schema (all fields required; use "unknown" or [] where empty):
+
+${JSON.stringify(PREP_SCHEMA)}`;
 }
 
 function userPrompt(input: PrepInput, domain: string): string {
@@ -108,17 +100,43 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
 
   const effort = ALLOWED_EFFORT.includes(input.effort || "")
     ? (input.effort as string)
-    : env.EFFORT || "low";
+    : env.EFFORT || "medium";
 
   const provider = getProvider(env);
   const result = await provider.generate({
-    maxTokens: 8000,
-    system: systemPrompt(env),
+    // Headroom for adaptive thinking PLUS the JSON brief. Lower limits caused models to hit
+    // max_tokens before emitting any text ("no text content to parse").
+    maxTokens: 12000,
+    system: systemPrompt(),
     user: userPrompt(input, domain),
     effort,
     research: true,
-    thinkingBudget: 0,
-    jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
+    // Prompt-instructed JSON only — responseSchema cannot be combined with google_search grounding.
   });
-  return extractJson<Prep>(result.text);
+
+  try {
+    return extractJson<Prep>(result.text);
+  } catch (err) {
+    // LLMs occasionally emit slightly-malformed JSON (a stray token, a citation mark). One cheap
+    // repair pass — no research, just "fix this into valid JSON" — reliably recovers it.
+    const repaired = await provider.generate({
+      system:
+        "You repair malformed JSON. Output ONLY a single valid JSON object — no markdown, no " +
+        "commentary, no citation markers.",
+      user:
+        `This must be ONE JSON object matching the schema but it failed to parse ` +
+        `(${(err as Error).message}). Return the corrected JSON only.\n\nSCHEMA:\n` +
+        `${JSON.stringify(PREP_SCHEMA)}\n\nTEXT:\n${result.text}`,
+      maxTokens: 8000,
+      effort: "low",
+      research: false,
+    });
+    try {
+      return extractJson<Prep>(repaired.text);
+    } catch (err2) {
+      throw new Error(
+        `Could not parse prep JSON even after a repair attempt: ${(err2 as Error).message}`,
+      );
+    }
+  }
 }

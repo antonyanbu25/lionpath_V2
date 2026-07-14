@@ -23,7 +23,9 @@ interface GeminiPart {
 
 interface GeminiResponse {
 
-  candidates?: { content?: { parts?: GeminiPart[] } }[];
+  candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+
+  promptFeedback?: { blockReason?: string };
 
   error?: { message?: string };
 
@@ -161,11 +163,33 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
 
 
 
-      const parts = data.candidates?.[0]?.content?.parts || [];
+      const cand = data.candidates?.[0];
+
+      if (!cand) {
+
+        const blocked = data.promptFeedback?.blockReason;
+
+        throw new Error(`Gemini returned no candidates${blocked ? ` (blocked: ${blocked})` : ""}.`);
+
+      }
+
+
+
+      const parts = cand.content?.parts || [];
 
       const text = extractAnswerText(parts);
 
-      if (!text) throw new Error("Gemini returned no text content.");
+      if (!text) {
+
+        throw new Error(
+
+          `Gemini produced no text (finishReason: ${cand.finishReason ?? "unknown"}). ` +
+
+            `If "MAX_TOKENS", raise maxTokens; if "SAFETY"/"RECITATION", the query was filtered.`,
+
+        );
+
+      }
 
       return { text };
 
