@@ -1,17 +1,47 @@
 /**
- * Post-call analysis history — localStorage per user email for now.
- * Replace the storage backend with Firestore when Firebase is enabled.
+ * Post-call analysis history — persisted in localStorage per SE email.
+ * Auth session (sessionStorage) is separate and cleared on logout.
  */
 
-const STORAGE_PREFIX = "se-sp-postcalls:";
+export const STORAGE_PREFIX = "se-singha-history:";
+const LEGACY_PREFIX = "se-sp-postcalls:";
 
-function storageKey(email) {
-  return `${STORAGE_PREFIX}${String(email || "").toLowerCase()}`;
+/** @param {string} email */
+export function normalizeUserEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+/** @param {string} email */
+export function storageKey(email) {
+  return `${STORAGE_PREFIX}${normalizeUserEmail(email)}`;
+}
+
+function legacyStorageKey(email) {
+  return `${LEGACY_PREFIX}${normalizeUserEmail(email)}`;
+}
+
+function migrateLegacyKey(email) {
+  const key = storageKey(email);
+  const legacyKey = legacyStorageKey(email);
+  try {
+    if (localStorage.getItem(key)) return;
+    const legacy = localStorage.getItem(legacyKey);
+    if (!legacy) return;
+    localStorage.setItem(key, legacy);
+    localStorage.removeItem(legacyKey);
+  } catch {
+    // ignore quota / private-mode errors during migration
+  }
 }
 
 function readAll(email) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) return [];
+
+  migrateLegacyKey(normalized);
+
   try {
-    const raw = localStorage.getItem(storageKey(email));
+    const raw = localStorage.getItem(storageKey(normalized));
     if (!raw) return [];
     const list = JSON.parse(raw);
     return Array.isArray(list) ? list : [];
@@ -21,7 +51,15 @@ function readAll(email) {
 }
 
 function writeAll(email, list) {
-  localStorage.setItem(storageKey(email), JSON.stringify(list));
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) return false;
+  try {
+    localStorage.setItem(storageKey(normalized), JSON.stringify(list));
+    return true;
+  } catch (err) {
+    console.warn("Could not persist post-call history:", err);
+    return false;
+  }
 }
 
 /**

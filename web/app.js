@@ -93,8 +93,18 @@ function openHistoryItem(id) {
   });
 }
 
+function clearSidebarHistory() {
+  const ul = $("sidebar-history-list");
+  const empty = $("sidebar-history-empty");
+  if (ul) ul.innerHTML = "";
+  if (empty) show(empty, true);
+}
+
 function refreshSidebarHistory() {
-  if (!currentSession?.email) return;
+  if (!currentSession?.email) {
+    clearSidebarHistory();
+    return;
+  }
   const list = listPostCallAnalyses(currentSession.email);
   const ul = $("sidebar-history-list");
   const empty = $("sidebar-history-empty");
@@ -337,6 +347,7 @@ function showLogin() {
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
+  clearSidebarHistory();
   onSessionCleared();
 }
 
@@ -345,6 +356,7 @@ function showApp(session) {
   show($("login-view"), false);
   show($("app-shell"), true);
   updateSidebarUser();
+  // Reload persisted post-call history for this SE email from localStorage.
   refreshSidebarHistory();
 
   const tokenFn = authEnabled && fb?.auth?.currentUser

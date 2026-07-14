@@ -1,6 +1,6 @@
 /** Smoke test for history storage + dashboard aggregation (no browser). */
 
-import { savePostCallAnalysis, listPostCallAnalyses } from "../history.js";
+import { savePostCallAnalysis, listPostCallAnalyses, storageKey } from "../history.js";
 
 import { aggregateQualityMetrics } from "../dashboard.js";
 import { computeOverallScore, overallLabelFromScore } from "../quality-score.js";
@@ -25,7 +25,7 @@ globalThis.localStorage = {
 
 const TEST_EMAIL = "test-se@freshworks.com";
 
-const STORAGE_KEY = `se-sp-postcalls:${TEST_EMAIL}`;
+const STORAGE_KEY = storageKey(TEST_EMAIL);
 
 
 

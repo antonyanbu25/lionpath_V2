@@ -64,6 +64,7 @@ export function loginDummy(email, password) {
   return { ok: true, session };
 }
 
+/** Clears auth session only — post-call history stays in localStorage per email. */
 export function logout() {
   sessionStorage.removeItem(SESSION_KEY);
   listeners.forEach((fn) => fn(null));
@@ -75,7 +76,7 @@ export function sessionFromFirebaseUser(user) {
   const role = user.email.startsWith("manager@") ? "manager" : "se";
   return {
     role,
-    email: user.email,
+    email: String(user.email).trim().toLowerCase(),
     name: user.displayName || user.email.split("@")[0],
     uid: user.uid,
   };
