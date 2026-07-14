@@ -110,18 +110,30 @@ async function historyHeaders() {
 }
 
 /** @param {string} email */
-async function fetchRemoteHistory(email) {
+export async function fetchHistoryFromWorker(email) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return [];
   const url = `${WORKER_BASE_URL}/api/history?email=${encodeURIComponent(normalized)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: await historyHeaders(),
-    signal: AbortSignal.timeout(12000),
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: await historyHeaders(),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (err) {
+    console.error("[history] GET /api/history network error:", err.message || err);
+    throw err;
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `History fetch failed (${res.status})`);
+    const msg = err.error || `History fetch failed (${res.status})`;
+    if (res.status === 404) {
+      console.error("[history] GET /api/history returned 404 — redeploy worker with history endpoints");
+    } else {
+      console.error(`[history] GET /api/history failed (${res.status}):`, msg);
+    }
+    throw new Error(msg);
   }
   const data = await res.json();
   return Array.isArray(data.entries) ? data.entries : [];
@@ -139,7 +151,9 @@ async function pushRemoteEntry(email, entry) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `History save failed (${res.status})`);
+    const msg = err.error || `History save failed (${res.status})`;
+    console.error(`[history] POST /api/history entry failed (${res.status}):`, msg);
+    throw new Error(msg);
   }
   return true;
 }
@@ -156,16 +170,11 @@ async function pushRemoteEntries(email, entries) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `History sync failed (${res.status})`);
+    const msg = err.error || `History sync failed (${res.status})`;
+    console.error(`[history] POST /api/history bulk failed (${res.status}):`, msg);
+    throw new Error(msg);
   }
   return true;
-}
-
-/** Fire-and-forget remote save after local write. */
-function syncEntryToWorker(email, entry) {
-  void pushRemoteEntry(email, entry).catch((err) => {
-    console.warn("[history] remote save failed (local copy kept):", err.message || err);
-  });
 }
 
 /**
@@ -180,7 +189,7 @@ export async function syncHistoryOnLogin(email) {
   const local = readAll(normalized);
   let remote = [];
   try {
-    remote = await fetchRemoteHistory(normalized);
+    remote = await fetchHistoryFromWorker(normalized);
   } catch (err) {
     console.warn("[history] could not load remote history:", err.message || err);
     return local;
@@ -211,7 +220,7 @@ export async function syncHistoryOnLogin(email) {
  * @param {object} result — full API response { analysis, transcriptMeta }
  * @returns {object} saved record
  */
-export function savePostCallAnalysis(email, input, result) {
+export async function savePostCallAnalysis(email, input, result) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) {
     console.warn("[history] save skipped — missing email");
@@ -232,11 +241,17 @@ export function savePostCallAnalysis(email, input, result) {
   list.unshift(record);
   const trimmed = list.slice(0, MAX_ENTRIES);
   const ok = writeAll(normalized, trimmed);
-  if (ok) {
-    console.info(`[history] saved "${record.title}" → ${storageKey(normalized)} (${trimmed.length} total)`);
-    syncEntryToWorker(normalized, record);
-  } else {
+  if (!ok) {
     console.warn(`[history] save failed for ${storageKey(normalized)}`);
+    return null;
+  }
+
+  console.info(`[history] saved "${record.title}" → ${storageKey(normalized)} (${trimmed.length} total)`);
+  try {
+    await pushRemoteEntry(normalized, record);
+    console.info(`[history] synced "${record.title}" to server for ${normalized}`);
+  } catch (err) {
+    console.warn("[history] remote save failed (local copy kept):", err.message || err);
   }
   return record;
 }

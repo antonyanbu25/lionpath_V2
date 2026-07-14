@@ -173,6 +173,12 @@ body {
   padding: 0 8px;
   margin: 0;
 }
+.sidebar-history-sync {
+  font-size: 12px;
+  padding: 0 8px 8px;
+  margin: 0;
+  font-style: italic;
+}
 .sidebar-history-item {
   display: flex;
   flex-direction: column;
@@ -522,7 +528,22 @@ a { color: var(--accent); }
 .email-draft pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0 0; font-size: 14px; }
 .crm-notes { background: var(--accent-bg); padding: 12px 14px; border-radius: 8px; }
 
-/* Quality coach scorecard */
+/* Quality coach scorecard — nested inside .result section like pre-call subsections */
+.result section .qc-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #faf9f7;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.result section .qc-scorecard { margin-bottom: 14px; }
+.result section .qc-scorecard h3 { margin-top: 0; }
+.result section .qc-insights { margin-top: 4px; }
+
 .qc-section { margin-bottom: 0; }
 .qc-dashboard {
   display: grid;

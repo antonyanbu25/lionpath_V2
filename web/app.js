@@ -107,23 +107,30 @@ function refreshDashboardFromStorage() {
   });
 }
 
-function loadPersistedHistory() {
+function setSidebarHistorySyncing(on) {
+  const el = $("sidebar-history-sync");
+  if (el) show(el, on);
+}
+
+async function loadPersistedHistory() {
   if (!currentSession?.email) {
     clearSidebarHistory();
-    return Promise.resolve(0);
+    return 0;
   }
-  return syncHistoryOnLogin(currentSession.email)
-    .then((list) => {
-      refreshSidebarHistory();
-      const count = list.length;
-      console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
-      return count;
-    })
-    .catch((err) => {
-      console.warn("[app] history sync failed:", err);
-      refreshSidebarHistory();
-      return listPostCallAnalyses(currentSession.email).length;
-    });
+  setSidebarHistorySyncing(true);
+  try {
+    const list = await syncHistoryOnLogin(currentSession.email);
+    refreshSidebarHistory();
+    const count = list.length;
+    console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
+    return count;
+  } catch (err) {
+    console.warn("[app] history sync failed:", err);
+    refreshSidebarHistory();
+    return listPostCallAnalyses(currentSession.email).length;
+  } finally {
+    setSidebarHistorySyncing(false);
+  }
 }
 
 function refreshSidebarHistory() {
@@ -378,7 +385,7 @@ function showLogin() {
   onSessionCleared();
 }
 
-function showApp(session) {
+async function showApp(session) {
   currentSession = session?.email
     ? { ...session, email: String(session.email).trim().toLowerCase() }
     : session;
@@ -392,17 +399,17 @@ function showApp(session) {
   setHistoryAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
 
-  void loadPersistedHistory().then(() => {
-    const defaultView = session.role === "manager" ? "manager" : "dashboard";
-    const hash = location.hash.replace("#", "");
-    const valid = ["dashboard", "analysis", "precall", "manager"];
-    switchView(valid.includes(hash) ? hash : defaultView);
-    if (authEnabled) loadPrepHistory();
-  });
+  await loadPersistedHistory();
+
+  const defaultView = session.role === "manager" ? "manager" : "dashboard";
+  const hash = location.hash.replace("#", "");
+  const valid = ["dashboard", "analysis", "precall", "manager"];
+  switchView(valid.includes(hash) ? hash : defaultView);
+  if (authEnabled) loadPrepHistory();
 }
 
 function handleSession(session) {
-  if (session) showApp(session);
+  if (session) void showApp(session);
   else showLogin();
 }
 
@@ -510,8 +517,9 @@ function boot() {
   $("sidebar-backdrop").onclick = closeSidebar;
 
   setOnAnalysisSaved(() => {
-    loadPersistedHistory();
-    if (currentView === "dashboard") refreshDashboardFromStorage();
+    void loadPersistedHistory().then(() => {
+      if (currentView === "dashboard") refreshDashboardFromStorage();
+    });
   });
 
   if (authMode() === "firebase") {

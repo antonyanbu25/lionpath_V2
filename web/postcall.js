@@ -227,28 +227,25 @@ function renderQualityCoach(qc) {
   const normalized = normalizeQualityCoach(qc);
   const dims = normalized.dimensions || [];
   return `
-    <section class="qc-section">
-      <h2>Quality coach</h2>
-      <div class="qc-dashboard">
-        <div class="qc-hero">
-          ${renderScoreGauge(normalized.overallScore, 10)}
-          <div class="qc-hero-meta">
-            <span class="qc-overall-label">${esc(normalized.overallLabel)}</span>
-            <p class="muted qc-hero-hint">Tap a dimension below for feedback and transcript evidence.</p>
-          </div>
+    <div class="qc-dashboard">
+      <div class="qc-hero">
+        ${renderScoreGauge(normalized.overallScore, 10)}
+        <div class="qc-hero-meta">
+          <span class="qc-overall-label">${esc(normalized.overallLabel)}</span>
+          <p class="muted qc-hero-hint">Tap a dimension below for feedback and transcript evidence.</p>
         </div>
-        ${renderRadarChart(dims)}
       </div>
-      <div class="qc-scorecard">
-        <h3>Scorecard</h3>
-        <div class="qc-dim-list">${renderDimensionRows(dims)}</div>
-      </div>
-      <div class="qc-insights">
-        ${renderInsightCards(normalized.strengths, "Strengths", "good")}
-        ${renderInsightCards(normalized.improvements, "Improvements", "ok")}
-        ${renderInsightCards(normalized.missedOpportunities, "Missed opportunities", "weak")}
-      </div>
-    </section>`;
+      ${renderRadarChart(dims)}
+    </div>
+    <h3>Scorecard</h3>
+    <div class="qc-scorecard">
+      <div class="qc-dim-list">${renderDimensionRows(dims)}</div>
+    </div>
+    <div class="qc-insights">
+      ${renderInsightCards(normalized.strengths, "Strengths", "good")}
+      ${renderInsightCards(normalized.improvements, "Improvements", "ok")}
+      ${renderInsightCards(normalized.missedOpportunities, "Missed opportunities", "weak")}
+    </div>`;
 }
 
 export function renderPostCall(data, meta = {}) {
@@ -281,6 +278,33 @@ export function renderPostCall(data, meta = {}) {
     tm.wordCount ? `${tm.wordCount} words` : "",
   ].filter(Boolean).map(esc).join(" · ");
 
+  const summarySnapshot = `
+    <h2>Call summary</h2>
+    <table class="snap">
+      <tr><th>Headline</th><td>${esc(cs.headline || meta.title || "Call analysis")}</td></tr>
+      <tr><th>Customer context</th><td>${esc(cs.customerContext)}</td></tr>
+      <tr><th>Key topics</th><td>${(cs.keyTopics || []).length ? (cs.keyTopics || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+      <tr><th>Pain points</th><td>${(cs.painPointsConfirmed || []).length ? (cs.painPointsConfirmed || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+      <tr><th>Objections</th><td>${(cs.objectionsRaised || []).length ? (cs.objectionsRaised || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+      <tr><th>Competitive mentions</th><td>${(cs.competitiveMentions || []).length ? (cs.competitiveMentions || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+      <tr><th>Decisions made</th><td>${(cs.decisionsMade || []).length ? (cs.decisionsMade || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+      <tr><th>Open questions</th><td>${(cs.openQuestions || []).length ? (cs.openQuestions || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
+    </table>
+    <h3>Attendees</h3>${attendees}`;
+
+  const nextSteps = `
+    <h2>Next steps</h2>
+    <h3>SE actions</h3>${seActions}
+    <h3>AE actions</h3>${list((ns.aeActions || []).map((x) => `${x.action} (${x.priority}) — ${x.rationale}`))}
+    <h3>Customer commitments</h3>${list(ns.customerCommitments)}
+    <h3>Suggested follow-up email</h3>
+    <div class="email-draft">
+      <p><strong>Subject:</strong> ${esc(ns.suggestedFollowUpEmail?.subject)}</p>
+      <pre>${esc(ns.suggestedFollowUpEmail?.body)}</pre>
+    </div>
+    <h3>CRM notes</h3>
+    <p class="crm-notes">${esc(ns.crmNotes)}</p>`;
+
   return `
     <div class="toolbar">
       <button class="ghost" onclick="window.print()">Print / PDF</button>
@@ -291,34 +315,12 @@ export function renderPostCall(data, meta = {}) {
       <h2 style="border:none">${esc(cs.headline || meta.title || "Call analysis")}</h2>
       <span class="sub">${metaLine}</span>
     </div>
-
+    <section>${summarySnapshot}</section>
+    <section>${nextSteps}</section>
     <section>
-      <h2>Call summary</h2>
-      <p>${esc(cs.customerContext)}</p>
-      <h3>Attendees</h3>${attendees}
-      <h3>Key topics</h3>${list(cs.keyTopics)}
-      <h3>Pain points confirmed</h3>${list(cs.painPointsConfirmed)}
-      <h3>Objections raised</h3>${list(cs.objectionsRaised)}
-      <h3>Competitive mentions</h3>${list(cs.competitiveMentions)}
-      <h3>Decisions made</h3>${list(cs.decisionsMade)}
-      <h3>Open questions</h3>${list(cs.openQuestions)}
-    </section>
-
-    <section>
-      <h2>Next steps</h2>
-      <h3>SE actions</h3>${seActions}
-      <h3>AE actions</h3>${list((ns.aeActions || []).map((x) => `${x.action} (${x.priority}) — ${x.rationale}`))}
-      <h3>Customer commitments</h3>${list(ns.customerCommitments)}
-      <h3>Suggested follow-up email</h3>
-      <div class="email-draft">
-        <p><strong>Subject:</strong> ${esc(ns.suggestedFollowUpEmail?.subject)}</p>
-        <pre>${esc(ns.suggestedFollowUpEmail?.body)}</pre>
-      </div>
-      <h3>CRM notes</h3>
-      <p class="crm-notes">${esc(ns.crmNotes)}</p>
-    </section>
-
-    ${renderQualityCoach(qc)}`;
+      <h2>Quality coach</h2>
+      ${renderQualityCoach(qc)}
+    </section>`;
 }
 
 export function displayPostCall(data, meta) {
@@ -392,7 +394,7 @@ async function analyzeCall(e) {
 
     if (currentSession?.email) {
       const email = normalizeUserEmail(currentSession.email);
-      const record = savePostCallHistory(email, payload, data);
+      const record = await savePostCallHistory(email, payload, data);
       if (record) onAnalysisSaved?.(record);
     } else {
       console.warn("[postcall] analysis not saved — no logged-in SE session");

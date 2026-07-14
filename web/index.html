@@ -12,7 +12,7 @@
       <div class="login-card card">
         <h1>SE Singha Paathai</h1>
         <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
-        <p class="login-banner" role="note">Use a normal browser window for saved history. Incognito clears data when closed.</p>
+        <p class="login-banner" role="note">History syncs from the server on sign-in — works in incognito and after logout. Local cache is cleared when you close a private window.</p>
         <form id="login-form">
           <label>Email
             <input id="login-email" type="email" autocomplete="username" placeholder="se@freshworks.com" required />
@@ -56,6 +56,7 @@
         </nav>
         <div class="sidebar-history">
           <h3 class="sidebar-history-title">History</h3>
+          <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing history…</p>
           <ul id="sidebar-history-list" class="sidebar-history-list"></ul>
           <p id="sidebar-history-empty" class="muted sidebar-history-empty">No recordings yet.</p>
         </div>
