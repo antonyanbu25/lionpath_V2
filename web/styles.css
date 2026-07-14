@@ -466,6 +466,14 @@ body {
 .center { text-align: center; }
 .muted { color: var(--muted); }
 .opt { color: var(--muted); font-weight: 400; font-size: 12px; }
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.field-hint.warn { color: var(--amber); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; }
 input {

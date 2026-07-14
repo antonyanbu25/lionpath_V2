@@ -4,6 +4,7 @@
 // Grounding rules: Freshworks facts come only from the KB; prospect facts come only from web
 // research and are cited; gaps use "-" rather than being invented.
 
+import { isLikelyInvalidDomain, suggestDomain } from "./domain";
 import { FRESHWORKS_KB } from "./kb";
 import { extractJson } from "./json";
 import { PREP_SCHEMA, type Prep } from "./schema";
@@ -35,12 +36,16 @@ customer discovery + demo call. Research the prospect on the web, then produce a
 SE prep one-pager.
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
-- Start from the company website and "what they do".
-- One query for recent, relevant news.
-- Infer the support tech stack from signals like the help-center/KB URL pattern (e.g. a
-  help.<domain> on Zendesk), careers pages, or job posts.
+- PRIMARY target: the COMPANY NAME (Google-search it first). Prospect email domains are often
+  typos, aliases, or parent-company addresses — never rely on the domain alone.
+- If the domain looks invalid or returns no real site, ignore it and research by company name.
+- For well-known organizations (e.g. Khan Academy, Stripe, Shopify), use established public
+  facts from their official site and reputable sources — never return all "-" or "unknown".
+- Start from the official company website, then "what they do" and recent news.
+- Infer the support tech stack from signals like help-center/KB URL patterns (e.g. Zendesk),
+  careers pages, or job posts.
 Use ONLY web findings for prospect facts; cite each non-obvious claim in "sources" with its URL.
-Where you can't find something, write "-" for string fields (or leave arrays empty) — never invent.
+Where you truly can't find something, write "-" for string fields (or leave arrays empty).
 
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
@@ -87,13 +92,30 @@ ${JSON.stringify(PREP_SCHEMA)}`;
 }
 
 function userPrompt(input: PrepInput, domain: string): string {
+  const invalidDomain = isLikelyInvalidDomain(domain, input.companyName);
+  const suggested = suggestDomain(input.companyName);
+
   const lines = [
     `Prepare the prep brief for this upcoming call.`,
     ``,
-    `Company: ${input.companyName}`,
+    `Company (PRIMARY research target): ${input.companyName}`,
     `Prospect email: ${input.prospectEmail}`,
-    `Prospect company domain: ${domain}`,
+    `Email domain (hint only): ${domain}`,
   ];
+
+  if (invalidDomain) {
+    lines.push(
+      ``,
+      `⚠ The email domain "${domain}" looks misspelled or non-official.`,
+      `Research "${input.companyName}" by COMPANY NAME via web search — do NOT rely on this domain.`,
+    );
+    if (suggested) {
+      lines.push(`Likely official domain: ${suggested} (verify via search, not the typo domain).`);
+    }
+  } else if (suggested && domain.toLowerCase() !== suggested.toLowerCase()) {
+    lines.push(`Note: official domain may be ${suggested} — confirm via search if needed.`);
+  }
+
   if (input.prospectName) lines.push(`Prospect contact name: ${input.prospectName}`);
   if (input.additionalContext) {
     lines.push("", "Additional context from SE / Roundhouse answers:", input.additionalContext);
@@ -102,7 +124,9 @@ function userPrompt(input: PrepInput, domain: string): string {
   if (input.ae) lines.push(`Account Executive: ${input.ae}`);
   lines.push(
     ``,
-    `Research ${domain}, infer the support model and stack, and fill every field of the schema.`,
+    `Google-search "${input.companyName}" first, infer their support model and stack,`,
+    `and fill every comparison row and section of the schema with real findings.`,
+    `For recognizable orgs, use public knowledge — never leave the entire brief empty.`,
   );
   return lines.join("\n");
 }

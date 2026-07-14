@@ -47,6 +47,56 @@ const emailDomain = (email) => {
   const at = String(email || "").lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
 };
+
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
+const DOMAIN_TYPO_MARKERS = [/acadmey/i, /academey/i, /acadamy/i];
+const WELL_KNOWN_DOMAINS = {
+  "khan academy": "khanacademy.org",
+  "khan academey": "khanacademy.org",
+};
+
+function suggestDomainFromCompany(companyName) {
+  const key = String(companyName || "").trim().toLowerCase();
+  if (WELL_KNOWN_DOMAINS[key]) return WELL_KNOWN_DOMAINS[key];
+  const words = key.split(/\s+/).filter(Boolean);
+  if (words.length >= 1 && words.length <= 4) {
+    const slug = words.join("").replace(/[^a-z0-9]/gi, "").toLowerCase();
+    if (slug.length >= 4) return `${slug}.com`;
+  }
+  return null;
+}
+
+function validateProspectDomain(email, companyName) {
+  const domain = emailDomain(email);
+  if (!email?.trim()) return null;
+  const hints = [];
+  if (domain && !DOMAIN_RE.test(domain)) hints.push("Email domain format looks invalid.");
+  if (domain && DOMAIN_TYPO_MARKERS.some((p) => p.test(domain))) {
+    const suggested = suggestDomainFromCompany(companyName) || "khanacademy.org";
+    hints.push(`Possible typo — did you mean ${suggested}?`);
+  }
+  const suggested = suggestDomainFromCompany(companyName);
+  if (suggested && domain && domain !== suggested) {
+    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (norm(domain.split(".")[0]) !== norm(suggested.split(".")[0])) {
+      hints.push(`For ${companyName.trim()}, official domain is usually ${suggested}.`);
+    }
+  }
+  return hints.length ? hints.join(" ") : null;
+}
+
+function updateDomainHint() {
+  const hint = $("domain-hint");
+  if (!hint) return;
+  const msg = validateProspectDomain($("prospectEmail")?.value, $("companyName")?.value);
+  if (msg) {
+    hint.textContent = msg;
+    hint.className = "field-hint warn";
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+  }
+}
 const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
 const prepBullets = (arr) => {
   const items = (arr || []).filter((x) => !isUnknown(x));
@@ -207,6 +257,11 @@ function closeSidebar() {
 // ---------- Rendering (pre-call) ----------
 
 function renderPrep(p, meta = {}) {
+  if (!p?.comparison && (p?.researchSnapshot || p?.demoPlan)) {
+    return `
+      <div class="status err">This prep uses an older format. Regenerate to get the comparison-table brief.</div>`;
+  }
+
   const cmp = p.comparison || {};
   const se = p.seActions || {};
 
@@ -528,6 +583,8 @@ async function warnIfWorkerDown() {
 
 function boot() {
   $("prep-form").addEventListener("submit", generate);
+  $("prospectEmail")?.addEventListener("input", updateDomainHint);
+  $("companyName")?.addEventListener("input", updateDomainHint);
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.onclick = () => {

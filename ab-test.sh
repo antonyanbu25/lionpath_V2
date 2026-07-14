@@ -50,7 +50,7 @@ for entry in "${PROSPECTS[@]}"; do
     printf 'HTTP %s, %ss → %s\n' "$http" "$secs" "$file"
     SUMMARY="${SUMMARY}${name}\t${eff}\t${http}\t${secs}s\n"
     if command -v jq >/dev/null 2>&1; then
-      jq -r '.error // (.prep.demoPlan.useCases[]? | "     #\(.rank) \(.useCase)")' "$file" 2>/dev/null || true
+      jq -r '.error // (.prep.seActions.topUseCase // "-") | "     use case: \(.)"' "$file" 2>/dev/null || true
     fi
   done
   echo
