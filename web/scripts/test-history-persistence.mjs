@@ -1,4 +1,4 @@
-/** Logout/login persistence — history in localStorage, session in sessionStorage. */
+/** Logout/login and browser-restart persistence — history in localStorage, session dual-stored. */
 
 import {
   STORAGE_PREFIX,
@@ -8,6 +8,7 @@ import {
 } from "../history.js";
 import { buildDashboardMetrics } from "../dashboard.js";
 import { computeOverallScore, overallLabelFromScore } from "../quality-score.js";
+import { getSession, loginDummy, logout } from "../auth.js";
 
 const store = new Map();
 globalThis.localStorage = {
@@ -25,7 +26,6 @@ globalThis.sessionStorage = {
 
 const SE1 = "se1@freshworks.com";
 const SE2 = "se2@freshworks.com";
-const SESSION_KEY = "se-sp-session";
 
 function sampleResult(headline) {
   const dimensions = [
@@ -48,14 +48,6 @@ function sampleResult(headline) {
   };
 }
 
-function login(email) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ role: "se", email, name: "Test" }));
-}
-
-function logout() {
-  sessionStorage.removeItem(SESSION_KEY);
-}
-
 function clearAll() {
   store.clear();
   sessionStore.clear();
@@ -64,7 +56,7 @@ function clearAll() {
 clearAll();
 
 // SE1 saves an analysis while logged in
-login(SE1);
+loginDummy(SE1, "se123");
 savePostCallAnalysis(SE1, { recordingUrl: "https://zoom.us/rec/1" }, sampleResult("Call A"));
 
 if (listPostCallAnalyses(SE1).length !== 1) {
@@ -74,7 +66,7 @@ if (listPostCallAnalyses(SE1).length !== 1) {
 
 // Logout clears session only — history must remain
 logout();
-if (sessionStorage.getItem(SESSION_KEY) !== null) {
+if (getSession() !== null) {
   console.error("FAILED: session not cleared on logout");
   process.exit(1);
 }
@@ -84,7 +76,7 @@ if (listPostCallAnalyses(SE1).length !== 1) {
 }
 
 // Same SE logs back in — history and dashboard should restore
-login(SE1);
+loginDummy(SE1, "se123");
 const afterRelogin = listPostCallAnalyses(SE1);
 if (afterRelogin.length !== 1 || afterRelogin[0].title !== "Call A") {
   console.error("FAILED: history not restored after re-login");
@@ -97,8 +89,20 @@ if (metrics.totalCalls !== 1) {
   process.exit(1);
 }
 
+// Browser close: sessionStorage cleared, localStorage keeps auth + history
+sessionStore.clear();
+if (getSession()?.email !== SE1) {
+  console.error("FAILED: session not restored from localStorage after browser restart");
+  process.exit(1);
+}
+if (listPostCallAnalyses(SE1).length !== 1) {
+  console.error("FAILED: history lost after simulated browser restart");
+  process.exit(1);
+}
+
 // SE2 has separate history
-login(SE2);
+logout();
+loginDummy(SE2, "se123");
 if (listPostCallAnalyses(SE2).length !== 0) {
   console.error("FAILED: SE2 should start with empty history");
   process.exit(1);
@@ -116,4 +120,4 @@ if (!storageKey(SE1).startsWith(STORAGE_PREFIX)) {
 }
 
 clearAll();
-console.log("OK — history persists across logout/login");
+console.log("OK — history persists across logout/login and browser restart");

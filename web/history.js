@@ -53,8 +53,14 @@ function readAll(email) {
 function writeAll(email, list) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return false;
+  const key = storageKey(normalized);
   try {
-    localStorage.setItem(storageKey(normalized), JSON.stringify(list));
+    const payload = JSON.stringify(list);
+    localStorage.setItem(key, payload);
+    if (localStorage.getItem(key) !== payload) {
+      console.warn("[history] write verification failed for", key);
+      return false;
+    }
     return true;
   } catch (err) {
     console.warn("Could not persist post-call history:", err);
@@ -69,6 +75,12 @@ function writeAll(email, list) {
  * @returns {object} saved record
  */
 export function savePostCallAnalysis(email, input, result) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) {
+    console.warn("[history] save skipped — missing email");
+    return null;
+  }
+
   const analysis = result?.analysis;
   const record = {
     id: crypto.randomUUID(),
@@ -79,11 +91,20 @@ export function savePostCallAnalysis(email, input, result) {
     transcriptMeta: result?.transcriptMeta || null,
     result,
   };
-  const list = readAll(email);
+  const list = readAll(normalized);
   list.unshift(record);
-  writeAll(email, list.slice(0, 100));
+  const trimmed = list.slice(0, 100);
+  const ok = writeAll(normalized, trimmed);
+  if (ok) {
+    console.info(`[history] saved "${record.title}" → ${storageKey(normalized)} (${trimmed.length} total)`);
+  } else {
+    console.warn(`[history] save failed for ${storageKey(normalized)}`);
+  }
   return record;
 }
+
+/** Alias used by postcall flow and tests. */
+export const savePostCallHistory = savePostCallAnalysis;
 
 /** @returns {object[]} newest first */
 export function listPostCallAnalyses(email) {

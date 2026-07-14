@@ -1,5 +1,5 @@
 import { firebaseConfig, WORKER_BASE_URL } from "./firebase-config.js";
-import { savePostCallAnalysis } from "./history.js";
+import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 
 const authEnabled = !!firebaseConfig.projectId;
@@ -391,8 +391,11 @@ async function analyzeCall(e) {
     show(status, false);
 
     if (currentSession?.email) {
-      const record = savePostCallAnalysis(currentSession.email, payload, data);
-      onAnalysisSaved?.(record);
+      const email = normalizeUserEmail(currentSession.email);
+      const record = savePostCallHistory(email, payload, data);
+      if (record) onAnalysisSaved?.(record);
+    } else {
+      console.warn("[postcall] analysis not saved — no logged-in SE session");
     }
   } catch (err) {
     status.className = "status err";
@@ -412,7 +415,9 @@ async function analyzeCall(e) {
 }
 
 export function onSessionReady(session, tokenFn) {
-  currentSession = session;
+  currentSession = session?.email
+    ? { ...session, email: String(session.email).trim().toLowerCase() }
+    : session;
   getAuthToken = tokenFn || null;
 }
 

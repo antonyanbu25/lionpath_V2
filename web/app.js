@@ -100,6 +100,24 @@ function clearSidebarHistory() {
   if (empty) show(empty, true);
 }
 
+function refreshDashboardFromStorage() {
+  if (!currentSession?.email || currentSession.role === "manager") return;
+  renderDashboard($("view-dashboard"), currentSession.email, {
+    onOpenCall: (id) => openHistoryItem(id),
+  });
+}
+
+function loadPersistedHistory() {
+  if (!currentSession?.email) {
+    clearSidebarHistory();
+    return 0;
+  }
+  refreshSidebarHistory();
+  const count = listPostCallAnalyses(currentSession.email).length;
+  console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
+  return count;
+}
+
 function refreshSidebarHistory() {
   if (!currentSession?.email) {
     clearSidebarHistory();
@@ -352,17 +370,18 @@ function showLogin() {
 }
 
 function showApp(session) {
-  currentSession = session;
+  currentSession = session?.email
+    ? { ...session, email: String(session.email).trim().toLowerCase() }
+    : session;
   show($("login-view"), false);
   show($("app-shell"), true);
   updateSidebarUser();
-  // Reload persisted post-call history for this SE email from localStorage.
-  refreshSidebarHistory();
+  loadPersistedHistory();
 
   const tokenFn = authEnabled && fb?.auth?.currentUser
     ? () => fb.auth.currentUser.getIdToken()
     : null;
-  onSessionReady(session, tokenFn);
+  onSessionReady(currentSession, tokenFn);
 
   const defaultView = session.role === "manager" ? "manager" : "dashboard";
   const hash = location.hash.replace("#", "");
@@ -481,12 +500,8 @@ function boot() {
   $("sidebar-backdrop").onclick = closeSidebar;
 
   setOnAnalysisSaved(() => {
-    refreshSidebarHistory();
-    if (currentView === "dashboard") {
-      renderDashboard($("view-dashboard"), currentSession.email, {
-        onOpenCall: (id) => openHistoryItem(id),
-      });
-    }
+    loadPersistedHistory();
+    if (currentView === "dashboard") refreshDashboardFromStorage();
   });
 
   if (authMode() === "firebase") {

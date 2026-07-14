@@ -1,11 +1,13 @@
 /**
  * Authentication — dummy credentials now; Firebase SSO can replace this module later.
- * Session is stored in sessionStorage as { role, email, name }.
+ * Session is stored in sessionStorage for the tab, with a localStorage backup so reopening
+ * the browser restores login and post-call history can load immediately.
  */
 
 import { firebaseConfig } from "./firebase-config.js";
 
 const SESSION_KEY = "se-sp-session";
+const SESSION_LOCAL_KEY = "se-sp-session-local";
 
 /** Dummy accounts for development until Firebase SSO is wired. */
 export const DUMMY_USERS = {
@@ -23,22 +25,54 @@ export function isDummyAuth() {
   return authMode() === "dummy";
 }
 
-/** @returns {{ role: string, email: string, name: string, uid?: string } | null} */
-export function getSession() {
+function normalizeSession(session) {
+  if (!session?.email || !session?.role) return null;
+  return {
+    ...session,
+    email: String(session.email).trim().toLowerCase(),
+    name: session.name || session.email.split("@")[0],
+  };
+}
+
+function readStoredSession(storage) {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = storage.getItem(SESSION_KEY) ?? storage.getItem(SESSION_LOCAL_KEY);
     if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s?.email || !s?.role) return null;
-    return s;
+    return normalizeSession(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
+/** @returns {{ role: string, email: string, name: string, uid?: string } | null} */
+export function getSession() {
+  let session = readStoredSession(sessionStorage);
+  if (session) return session;
+
+  session = readStoredSession(localStorage);
+  if (!session) return null;
+
+  // Browser was closed — sessionStorage cleared; restore tab session from localStorage.
+  try {
+    const json = JSON.stringify(session);
+    sessionStorage.setItem(SESSION_KEY, json);
+  } catch (err) {
+    console.warn("Could not restore sessionStorage session:", err);
+  }
+  return session;
+}
+
 function setSession(session) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  listeners.forEach((fn) => fn(session));
+  const normalized = normalizeSession(session);
+  if (!normalized) return;
+  const json = JSON.stringify(normalized);
+  try {
+    sessionStorage.setItem(SESSION_KEY, json);
+    localStorage.setItem(SESSION_LOCAL_KEY, json);
+  } catch (err) {
+    console.warn("Could not persist auth session:", err);
+  }
+  listeners.forEach((fn) => fn(normalized));
 }
 
 const listeners = new Set();
@@ -67,6 +101,11 @@ export function loginDummy(email, password) {
 /** Clears auth session only — post-call history stays in localStorage per email. */
 export function logout() {
   sessionStorage.removeItem(SESSION_KEY);
+  try {
+    localStorage.removeItem(SESSION_LOCAL_KEY);
+  } catch {
+    // ignore private-mode / quota errors
+  }
   listeners.forEach((fn) => fn(null));
 }
 
