@@ -35,6 +35,16 @@ body {
   width: 100%;
   max-width: 400px;
 }
+.login-banner {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #5c4a1a;
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  border-radius: 8px;
+}
 .login-card form {
   display: flex;
   flex-direction: column;

@@ -8,8 +8,17 @@ import { generatePrep, type Env as PrepEnv, type PrepInput } from "./prep";
 import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
+import {
+  historyKvAvailable,
+  loadHistory,
+  normalizeHistoryEmail,
+  replaceHistory,
+  saveHistoryEntry,
+  type HistoryEntry,
+  type HistoryEnv,
+} from "./history";
 
-interface Env extends PrepEnv, ZoomEnv {
+interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -97,7 +106,7 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<Ve
   return { email: String(payload.email).toLowerCase(), uid: String(payload.sub) };
 }
 
-async function requireUser(request: Request, env: Env, cors: Record<string, string>): Promise<VerifiedUser | null> {
+async function requireUser(request: Request, env: Env): Promise<VerifiedUser | null> {
   if (!env.FIREBASE_PROJECT_ID) return null;
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -108,6 +117,30 @@ async function requireUser(request: Request, env: Env, cors: Record<string, stri
     throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
   }
   return user;
+}
+
+function assertAllowedEmail(email: string, env: Env): string {
+  const normalized = normalizeHistoryEmail(email);
+  if (!normalized) throw Object.assign(new Error("email is required."), { status: 400 });
+  const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
+  if (domain && !normalized.endsWith(`@${domain}`)) {
+    throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
+  }
+  return normalized;
+}
+
+/** Firebase auth when configured; otherwise demo mode accepts email in query/body. */
+async function resolveHistoryEmail(
+  request: Request,
+  env: Env,
+  fallbackEmail?: string,
+): Promise<string> {
+  const user = await requireUser(request, env);
+  if (user) return user.email;
+  if (env.FIREBASE_PROJECT_ID) {
+    throw Object.assign(new Error("Sign-in required."), { status: 401 });
+  }
+  return assertAllowedEmail(fallbackEmail || "", env);
 }
 
 export default {
@@ -139,6 +172,7 @@ export default {
               anthropic: !!env.ANTHROPIC_API_KEY,
               gemini: !!env.GEMINI_API_KEY,
             },
+            history: { kv: historyKvAvailable(env) },
           },
           200,
           cors,
@@ -146,14 +180,23 @@ export default {
       }
 
       if (request.method === "GET" && path === "/api/zoom/auth") {
-        await requireUser(request, env, cors);
+        await requireUser(request, env);
         const state = crypto.randomUUID();
         const authUrl = zoomAuthUrl(env, state);
         return json({ authUrl, state }, 200, cors);
       }
 
+      if (request.method === "GET" && path === "/api/history") {
+        if (!historyKvAvailable(env)) {
+          return json({ error: "History storage is not configured." }, 503, cors);
+        }
+        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
+        const entries = await loadHistory(env, email);
+        return json({ email, entries }, 200, cors);
+      }
+
       if (request.method === "POST" && path === "/api/generate-prep") {
-        await requireUser(request, env, cors);
+        await requireUser(request, env);
         const input = (await request.json()) as Partial<PrepInput>;
         if (!input.companyName || !input.prospectEmail) {
           return json({ error: "companyName and prospectEmail are required." }, 400, cors);
@@ -163,7 +206,7 @@ export default {
       }
 
       if (request.method === "POST" && path === "/api/fetch-transcript") {
-        await requireUser(request, env, cors);
+        await requireUser(request, env);
         const body = (await request.json()) as { recordingUrl?: string; recordingPassword?: string };
         if (!body.recordingUrl?.trim()) {
           return json({ error: "recordingUrl is required." }, 400, cors);
@@ -176,13 +219,36 @@ export default {
       }
 
       if (request.method === "POST" && path === "/api/analyze-call") {
-        await requireUser(request, env, cors);
+        await requireUser(request, env);
         const input = (await request.json()) as Partial<PostCallInput>;
         if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
           return json({ error: "Paste a transcript or a Zoom recording link (with passcode if needed)." }, 400, cors);
         }
         const result = await analyzePostCall(env, input as PostCallInput);
         return json(result, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/history") {
+        if (!historyKvAvailable(env)) {
+          return json({ error: "History storage is not configured." }, 503, cors);
+        }
+        const body = (await request.json()) as {
+          email?: string;
+          entry?: HistoryEntry;
+          entries?: HistoryEntry[];
+        };
+        const email = await resolveHistoryEmail(request, env, body.email || "");
+
+        if (Array.isArray(body.entries)) {
+          const entries = await replaceHistory(env, email, body.entries);
+          return json({ email, entries, count: entries.length }, 200, cors);
+        }
+
+        if (!body.entry?.id || typeof body.entry.timestamp !== "number") {
+          return json({ error: "entry with id and timestamp is required." }, 400, cors);
+        }
+        const entries = await saveHistoryEntry(env, email, body.entry);
+        return json({ email, entry: body.entry, count: entries.length }, 200, cors);
       }
 
       return json({ error: "Not found." }, 404, cors);

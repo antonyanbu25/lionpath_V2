@@ -7,7 +7,7 @@ import {
   onSessionChange,
   persistFirebaseSession,
 } from "./auth.js";
-import { listPostCallAnalyses, getPostCallAnalysis } from "./history.js";
+import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { renderDashboard } from "./dashboard.js";
 import {
@@ -110,12 +110,20 @@ function refreshDashboardFromStorage() {
 function loadPersistedHistory() {
   if (!currentSession?.email) {
     clearSidebarHistory();
-    return 0;
+    return Promise.resolve(0);
   }
-  refreshSidebarHistory();
-  const count = listPostCallAnalyses(currentSession.email).length;
-  console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
-  return count;
+  return syncHistoryOnLogin(currentSession.email)
+    .then((list) => {
+      refreshSidebarHistory();
+      const count = list.length;
+      console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
+      return count;
+    })
+    .catch((err) => {
+      console.warn("[app] history sync failed:", err);
+      refreshSidebarHistory();
+      return listPostCallAnalyses(currentSession.email).length;
+    });
 }
 
 function refreshSidebarHistory() {
@@ -365,6 +373,7 @@ function showLogin() {
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
+  clearHistoryAuthGetter();
   clearSidebarHistory();
   onSessionCleared();
 }
@@ -376,19 +385,20 @@ function showApp(session) {
   show($("login-view"), false);
   show($("app-shell"), true);
   updateSidebarUser();
-  loadPersistedHistory();
 
   const tokenFn = authEnabled && fb?.auth?.currentUser
     ? () => fb.auth.currentUser.getIdToken()
     : null;
+  setHistoryAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
 
-  const defaultView = session.role === "manager" ? "manager" : "dashboard";
-  const hash = location.hash.replace("#", "");
-  const valid = ["dashboard", "analysis", "precall", "manager"];
-  switchView(valid.includes(hash) ? hash : defaultView);
-
-  if (authEnabled) loadPrepHistory();
+  void loadPersistedHistory().then(() => {
+    const defaultView = session.role === "manager" ? "manager" : "dashboard";
+    const hash = location.hash.replace("#", "");
+    const valid = ["dashboard", "analysis", "precall", "manager"];
+    switchView(valid.includes(hash) ? hash : defaultView);
+    if (authEnabled) loadPrepHistory();
+  });
 }
 
 function handleSession(session) {
