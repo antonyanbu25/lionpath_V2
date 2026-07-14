@@ -9,7 +9,8 @@ import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
 import {
-  historyKvAvailable,
+  historyStorageAvailable,
+  historyStorageKind,
   loadHistory,
   normalizeHistoryEmail,
   replaceHistory,
@@ -172,7 +173,10 @@ export default {
               anthropic: !!env.ANTHROPIC_API_KEY,
               gemini: !!env.GEMINI_API_KEY,
             },
-            history: { kv: historyKvAvailable(env) },
+            history: {
+              available: historyStorageAvailable(env),
+              storage: historyStorageKind(env),
+            },
           },
           200,
           cors,
@@ -187,7 +191,7 @@ export default {
       }
 
       if (request.method === "GET" && path === "/api/history") {
-        if (!historyKvAvailable(env)) {
+        if (!historyStorageAvailable(env)) {
           return json({ error: "History storage is not configured." }, 503, cors);
         }
         const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
@@ -229,7 +233,7 @@ export default {
       }
 
       if (request.method === "POST" && path === "/api/history") {
-        if (!historyKvAvailable(env)) {
+        if (!historyStorageAvailable(env)) {
           return json({ error: "History storage is not configured." }, 503, cors);
         }
         const body = (await request.json()) as {

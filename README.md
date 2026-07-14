@@ -21,6 +21,9 @@ also keeps API keys off the client. Firebase is used only for Auth + Firestore.
 **Team onboarding:** For detailed local setup, Cloudflare Tunnel sharing, and production
 deploy pointers, see **[TEAM_SETUP.md](./TEAM_SETUP.md)**.
 
+**VPS hosting (Netcup / self-hosted):** See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** —
+Docker Compose + Caddy on `lion.benjaminsquare.com` / `api.lion.benjaminsquare.com`.
+
 **Post-call feature (demo / presentation):** See **[docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md)** —
 elevator pitch, flow diagram, Quality Coach dimensions, scoring, Zoom requirements, and leadership FAQ.
 
@@ -173,6 +176,21 @@ The Worker verifies the Google-signed ID token (signature via Firebase's public 
 audience/issuer/expiry) and the `@freshworks.com` email domain before calling Claude.
 
 ## 4. Deploy
+
+### Option A — VPS (Netcup / self-hosted) — recommended for `lion.benjaminsquare.com`
+
+See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. One-command stack: Caddy HTTPS, nginx web,
+Node worker with file-based history at `/var/lib/se-paathai/history`.
+
+```bash
+# On the VPS (after SSH login)
+cd /opt/se-singha-paathai/deploy/vps
+./setup.sh    # once
+nano .env     # set GEMINI_API_KEY
+./start.sh
+```
+
+### Option B — Cloudflare Worker + Pages
 
 ```bash
 # Worker
