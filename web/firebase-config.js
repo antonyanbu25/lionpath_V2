@@ -12,13 +12,22 @@ export const firebaseConfig = {
   appId: "",
 };
 
-// Worker base URL — match the page hostname so localhost vs 127.0.0.1 both work locally.
+// Worker base URL — auto-detect local dev vs Mac Cloudflare Tunnel (lion.benjaminsquare.com).
 function workerBaseUrl() {
   if (typeof location !== "undefined" && location.hostname) {
-    return `${location.protocol}//${location.hostname}:8787`;
+    const host = location.hostname;
+    // Production tunnel: web on lion.*, API on api.lion.*
+    if (host === "lion.benjaminsquare.com") {
+      return "https://api.lion.benjaminsquare.com";
+    }
+    // Local dev: same hostname, port 8787 (localhost:8788 → localhost:8787)
+    return `${location.protocol}//${host}:8787`;
   }
   return "http://localhost:8787";
 }
+
+// Manual override (uncomment while testing a different tunnel domain):
+// export const WORKER_BASE_URL = "https://api.lion.benjaminsquare.com";
 
 export const WORKER_BASE_URL = workerBaseUrl();
 

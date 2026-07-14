@@ -7,3 +7,6 @@ dist/
 ab-out/
 token.json
 credentials.json
+.tunnel-token
+scripts/mac/.tunnel-token
+logs/

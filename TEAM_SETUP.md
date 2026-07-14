@@ -122,6 +122,8 @@ node web/scripts/test-dashboard.mjs
 
 **ELI5:** Instead of every teammate installing Node and an API key, **one person** runs the app (or points at production) and Cloudflare gives the team a normal HTTPS URL like `https://se-paathai.yourdomain.com`.
 
+> **Mac host for `lion.benjaminsquare.com`:** See **[docs/MAC_TUNNEL_SETUP.md](./docs/MAC_TUNNEL_SETUP.md)** for the full copy-paste guide (prerequisites, Zero Trust tunnel, `start-all.sh`, launchd, team login).
+
 ### Prerequisites
 
 - A **Cloudflare account** with **Zero Trust** (free tier is enough for tunnels)
