@@ -6,8 +6,8 @@ Host **SE Singha Paathai** on your own server instead of running the worker on a
 
 | Public URL | Service |
 |------------|---------|
-| https://lion.benjaminsquare.com | Web UI |
-| https://api.lion.benjaminsquare.com | Worker API |
+| https://lionpath.benjaminsquare.com | Web UI |
+| https://lionpathapi.benjaminsquare.com | Worker API |
 
 ---
 
@@ -36,10 +36,21 @@ Read **[deploy/vps/SECURITY.md](../deploy/vps/SECURITY.md)** — SSH keys, `.env
 
 Point both hostnames to your VPS public IP (e.g. `89.58.33.163`):
 
-| Type | Name | Value |
-|------|------|-------|
-| A | `lion` | `YOUR_VPS_IP` |
-| A | `api.lion` | `YOUR_VPS_IP` |
+| Type | Name | Value | Proxy |
+|------|------|-------|-------|
+| A | `lionpath` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
+| A | `lionpathapi` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
+
+**Important:** Both records must be **DNS only** — not proxied through Cloudflare (orange cloud). Caddy on the VPS obtains Let's Encrypt certificates directly; proxied records route traffic to Cloudflare IPs and break HTTPS + CORS.
+
+Verify after propagation:
+
+```bash
+nslookup lionpath.benjaminsquare.com
+nslookup lionpathapi.benjaminsquare.com
+```
+
+Both should return your VPS IP (e.g. `89.58.33.163`), not Cloudflare proxy IPs (`104.21.x.x`).
 
 Wait for DNS propagation (often 5–30 minutes). Caddy will obtain Let's Encrypt certificates on first start.
 
@@ -114,17 +125,17 @@ docker compose logs -f worker
 
 ```bash
 # API health / config
-curl -s https://api.lion.benjaminsquare.com/api/config | head
+curl -s https://lionpathapi.benjaminsquare.com/api/config | head
 
 # Web UI
-curl -s -o /dev/null -w "%{http_code}\n" https://lion.benjaminsquare.com
+curl -s -o /dev/null -w "%{http_code}\n" https://lionpath.benjaminsquare.com
 ```
 
 In a browser:
 
-1. Open **https://lion.benjaminsquare.com**
+1. Open **https://lionpath.benjaminsquare.com**
 2. Log in with demo credentials (`se@freshworks.com` / `se123`)
-3. Run a post-call analysis — Network tab should call `api.lion.benjaminsquare.com`
+3. Run a post-call analysis — Network tab should call `lionpathapi.benjaminsquare.com`
 4. Reload and check **History** — entries persist via file storage on the VPS
 
 ---
@@ -148,6 +159,12 @@ cd deploy/vps
 ./start.sh
 ```
 
+After pulling domain changes, restart Caddy so it picks up the new `Caddyfile`:
+
+```bash
+docker compose restart caddy
+```
+
 ---
 
 ## Architecture
@@ -156,12 +173,12 @@ cd deploy/vps
 Internet
    │
    ▼
-Caddy :443 ──┬── lion.benjaminsquare.com ──► nginx :8788 (static web/)
-             └── api.lion.benjaminsquare.com ──► worker :8787 (Node + Gemini)
-                                                      │
-                                                      ▼
-                                            /var/lib/se-paathai/history/
-                                            (JSON per SE email, mode 600)
+Caddy :443 ──┬── lionpath.benjaminsquare.com ──► nginx :8788 (static web/)
+             └── lionpathapi.benjaminsquare.com ──► worker :8787 (Node + Gemini)
+                                                        │
+                                                        ▼
+                                              /var/lib/se-paathai/history/
+                                              (JSON per SE email, mode 600)
 ```
 
 **History without Cloudflare KV:** the worker uses file-based storage when `HISTORY_FILE_DIR=/data/history` (mapped to `/var/lib/se-paathai/history` on the host).
@@ -183,8 +200,9 @@ ufw status
 | Problem | Fix |
 |---------|-----|
 | Certificate error on first start | DNS not propagated — wait and `docker compose restart caddy` |
+| `nslookup` shows Cloudflare IPs for API | Set `lionpathapi` A record to **DNS only** (grey cloud), not proxied |
 | `Failed to fetch` in browser | Worker down — `docker compose logs worker` |
-| CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://lion.benjaminsquare.com` |
+| CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://lionpath.benjaminsquare.com` |
 | History empty after reload | Check `HISTORY_FILE_DIR` and volume mount; `ls -la /var/lib/se-paathai/history` |
 | 502 from Caddy | `docker compose ps` — ensure worker and web are healthy |
 
