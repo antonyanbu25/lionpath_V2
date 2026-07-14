@@ -34,7 +34,7 @@ elevator pitch, flow diagram, Quality Coach dimensions, scoring, Zoom requiremen
 **ELI5 — run the app on your laptop (not production):**
 
 1. **Install Node.js** — Download the LTS installer from [nodejs.org](https://nodejs.org/) and click through it. Node is the engine that runs our code on your computer.
-2. **Get the code** — In a terminal: `git clone https://github.com/kuttas246/se-singha-paathai.git`, then `cd se-singha-paathai`.
+2. **Get the code** — In a terminal: `git clone https://github.com/skut264/lionpath.git`, then `cd lionpath`.
 3. **Copy the API key file** — `cd worker`, copy `.dev.vars.example` to `.dev.vars`, and put your **Gemini API key** inside (from [Google AI Studio](https://aistudio.google.com/apikey)). Never commit `.dev.vars` — it stays only on your machine.
 4. **Open two terminal windows** — **Window A (behind the scenes):** `cd worker`, `npm install`, `npm run dev` → listens on **http://localhost:8787**. **Window B (the website):** `cd web`, `npx wrangler pages dev .` → listens on **http://localhost:8788**.
 5. **Open the app** — In your browser go to **http://localhost:8788**. Log in with **se@freshworks.com** / **se123** (dummy credentials for local testing only).

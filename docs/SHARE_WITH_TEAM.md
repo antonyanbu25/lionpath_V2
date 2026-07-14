@@ -2,7 +2,7 @@
 
 **Freshworks Solution Engineering · Internal MVP**
 
-**GitHub:** https://github.com/kuttas246/se-singha-paathai
+**GitHub:** https://github.com/skut264/lionpath
 
 ---
 
@@ -104,8 +104,8 @@ For developers who want to run the app on their own Windows laptop. **No adminis
 ### Step 1 — Clone the repo
 
 ```powershell
-git clone https://github.com/kuttas246/se-singha-paathai.git
-cd se-singha-paathai
+git clone https://github.com/skut264/lionpath.git
+cd lionpath
 ```
 
 ### Step 2 — Add your API key (never commit this file)
@@ -215,7 +215,7 @@ Nothing once deployed. SEs open the portal URL in a browser — no npm, no API k
 | SE login | se@freshworks.com / se123 |
 | Local dev URL (developers) | http://localhost:8788 |
 | Local API (background) | http://localhost:8787 |
-| GitHub repo | https://github.com/kuttas246/se-singha-paathai |
+| GitHub repo | https://github.com/skut264/lionpath |
 | API key location (devs only) | worker\.dev.vars (gitignored, never commit) |
 
 ---
