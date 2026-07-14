@@ -47,8 +47,24 @@ const emailDomain = (email) => {
   const at = String(email || "").lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
 };
-const joinDot = (arr) => (arr || []).filter((x) => !isUnknown(x)).map(esc).join(" · ");
-const cell = (v) => (isUnknown(v) ? '<span class="muted">unknown</span>' : esc(v));
+const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+const prepBullets = (arr) => {
+  const items = (arr || []).filter((x) => !isUnknown(x));
+  return items.length
+    ? `<ul class="prep-bullets">${items.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
+    : '<p class="muted">—</p>';
+};
+
+const COMPARISON_ROWS = [
+  ["industry", "Industry"],
+  ["sizeAgents", "Size / agents"],
+  ["supportChannels", "Support channels"],
+  ["incumbentStack", "Incumbent stack"],
+  ["supportPortal", "Support portal"],
+  ["integrations", "Integrations"],
+  ["webChatWidget", "Web chat widget"],
+  ["fundingParent", "Funding / parent"],
+];
 
 // ---------- Views ----------
 
@@ -191,55 +207,60 @@ function closeSidebar() {
 // ---------- Rendering (pre-call) ----------
 
 function renderPrep(p, meta = {}) {
-  const rs = p.researchSnapshot || {};
-  const ts = rs.techStack || {};
-  const dp = p.demoPlan || {};
+  const cmp = p.comparison || {};
+  const se = p.seActions || {};
 
-  const attendees = (rs.attendees || []).length
-    ? (rs.attendees || [])
-        .map((a) => `${esc(a.name)}${a.email && !isUnknown(a.email) ? ` (${esc(a.email)})` : ""}${a.note && !isUnknown(a.note) ? ` — ${esc(a.note)}` : ""}`)
-        .join("<br>")
-    : '<span class="muted">unknown</span>';
+  const compareRows = COMPARISON_ROWS.map(([key, label]) => {
+    const row = cmp[key] || {};
+    return `<tr><th class="prep-row-label">${esc(label)}</th><td>${dash(row.thisCompany)}</td><td>${dash(row.industryNorm)}</td></tr>`;
+  }).join("");
 
-  const gaps = (rs.discoveryGaps || []).length
-    ? (rs.discoveryGaps || [])
-        .map((g) => `<strong>${esc(g.label)}:</strong> ${esc(g.question)}`)
-        .join("<br><br>")
-    : '<span class="muted">none</span>';
-
-  const snapshot = `
-    <h2>Research Snapshot</h2>
-    <table class="snap">
-      <tr><th>Attendee</th><td>${attendees}</td></tr>
-      <tr><th>What they do</th><td>${cell(rs.whatTheyDo)}</td></tr>
-      <tr><th>Size</th><td>${cell(rs.size)}</td></tr>
-      <tr><th>Support channels</th><td>${cell(rs.supportChannels)}</td></tr>
-      <tr><th>Tech stack</th><td>${cell(ts.summary)}</td></tr>
-      <tr><th>Pain points</th><td>${joinDot(rs.painPoints) || '<span class="muted">unknown</span>'}</td></tr>
-      <tr><th>Goals</th><td>${joinDot(rs.goals) || '<span class="muted">unknown</span>'}</td></tr>
-      <tr><th>Discovery gaps</th><td>${gaps}</td></tr>
+  const compareTable = `
+    <table class="prep-compare">
+      <thead><tr><th></th><th>This company</th><th>Industry norm</th></tr></thead>
+      <tbody>${compareRows}</tbody>
     </table>`;
 
-  const useCases = (dp.useCases || []).length
-    ? `<table><tr><th class="num">#</th><th>Use case</th><th>Why</th></tr>${(dp.useCases || [])
-        .map((u) => `<tr><td class="num">${esc(u.rank)}</td><td>${esc(u.useCase)}</td><td>${esc(u.why)}</td></tr>`)
-        .join("")}</table>`
-    : '<p class="muted">No use cases returned.</p>';
+  const gaps = (se.discoveryGaps || []).filter((q) => !isUnknown(q));
+  const gapsHtml = gaps.length
+    ? `<ul class="prep-bullets">${gaps.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>`
+    : '<p class="muted">—</p>';
 
-  const diffs = (dp.differentiators || []).length
-    ? `<table><tr><th>vs.</th><th>Key points</th></tr>${(dp.differentiators || [])
-        .map((d) => `<tr><td>${esc(d.vendor)}</td><td><ul>${(d.points || []).map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></td></tr>`)
-        .join("")}</table>`
-    : '<p class="muted">No incumbent tool identified — position on unified platform + Freddy AI, not against a named competitor.</p>';
+  const demoSteps = (se.demoFlow || []).filter((s) => !isUnknown(s));
+  const demoHtml = demoSteps.length
+    ? `<ol class="prep-steps">${demoSteps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
+    : '<p class="muted">—</p>';
 
-  const demo = `
-    <h2>Demo Plan</h2>
-    <p><strong>Flow:</strong> ${cell(dp.flow)}</p>
-    <h3>Use cases <span class="opt">(SE picks the Freshworks feature for each)</span></h3>
-    ${useCases}
-    ${dp.close && !isUnknown(dp.close) ? `<h3>Close</h3><p>${esc(dp.close)}</p>` : ""}
-    <h3>Differentiator <span class="opt">(only vs. vendors named in the stack)</span></h3>
-    ${diffs}`;
+  const seActions = `
+    <div class="prep-action-grid">
+      <div class="prep-action-block prep-action-wide">
+        <h3>Top use case</h3>
+        <p class="prep-lead">${dash(se.topUseCase)}</p>
+      </div>
+      <div class="prep-action-block">
+        <h3>Pain points</h3>
+        ${prepBullets(se.painPoints)}
+      </div>
+      <div class="prep-action-block">
+        <h3>Discovery gaps</h3>
+        ${gapsHtml}
+      </div>
+      <div class="prep-action-block prep-action-wide">
+        <h3>Demo flow</h3>
+        ${demoHtml}
+      </div>
+    </div>`;
+
+  const attendees = (p.attendees || []).length
+    ? `<ul class="prep-attendee-list">${(p.attendees || [])
+        .map((a) => {
+          const parts = [esc(a.name)];
+          if (a.email && !isUnknown(a.email)) parts.push(`<span class="prep-att-email">${esc(a.email)}</span>`);
+          if (a.note && !isUnknown(a.note)) parts.push(`<span class="prep-att-note">${esc(a.note)}</span>`);
+          return `<li>${parts.join(" · ")}</li>`;
+        })
+        .join("")}</ul>`
+    : '<p class="muted">—</p>';
 
   const sources = (p.sources || []).length
     ? `<details class="sources"><summary>Sources (${p.sources.length})</summary><ul>${(p.sources || [])
@@ -256,9 +277,15 @@ function renderPrep(p, meta = {}) {
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
     <div class="head"><h2 style="border:none">${esc(meta.company || "")}</h2><span class="sub">${sub}</span></div>
-    <section>${snapshot}</section>
-    <section>${demo}</section>
-    ${sources}`;
+    <section class="prep-hero">${compareTable}</section>
+    <section><h2>About the business</h2>${prepBullets(p.aboutBusiness)}</section>
+    <section><h2>Support process</h2>${prepBullets(p.supportProcess)}</section>
+    <section><h2>Workflows</h2>${prepBullets(p.workflows)}</section>
+    <section><h2>SE playbook</h2>${seActions}</section>
+    <footer class="prep-footer">
+      <div class="prep-attendees"><h3>Attendees</h3>${attendees}</div>
+      ${sources}
+    </footer>`;
 }
 
 function displayPrep(prep, meta) {

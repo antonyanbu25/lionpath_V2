@@ -1,9 +1,8 @@
-// Provider-agnostic prep pipeline. Builds the GetGo-format prompt, calls whichever LLM provider
+// Provider-agnostic prep pipeline. Builds the SE one-pager prompt, calls whichever LLM provider
 // is configured (see providers/index.ts), and parses the returned JSON defensively.
 //
-// Grounding rules (mirrors rfp-automation/agents/drafter.py): Freshworks facts come only from the
-// KB; prospect facts come only from web research and are cited; gaps say "unknown" rather than
-// being invented. Confidence is embedded inline in techStack.summary, per the GetGo template.
+// Grounding rules: Freshworks facts come only from the KB; prospect facts come only from web
+// research and are cited; gaps use "-" rather than being invented.
 
 import { FRESHWORKS_KB } from "./kb";
 import { extractJson } from "./json";
@@ -33,32 +32,46 @@ export function deriveDomain(email: string): string {
 function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
-prep brief.
+SE prep one-pager.
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
 - Start from the company website and "what they do".
 - One query for recent, relevant news.
 - Infer the support tech stack from signals like the help-center/KB URL pattern (e.g. a
-  help.<domain> on Zendesk), careers pages, or job posts — and mark how confident you are.
+  help.<domain> on Zendesk), careers pages, or job posts.
 Use ONLY web findings for prospect facts; cite each non-obvious claim in "sources" with its URL.
-Where you can't find something, write "unknown" (or leave the array empty) — never invent.
+Where you can't find something, write "-" for string fields (or leave arrays empty) — never invent.
 
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
 
-FILL THE BRIEF:
-- researchSnapshot.techStack.summary: prose that names detected tools per category WITH inline
-  confidence, e.g. "Helpdesk/KB: Zendesk (inferred from help.<domain> URL, medium confidence).
-  CRM/Chat/Phone: unknown." Put every incumbent vendor you actually detect into
-  researchSnapshot.techStack.namedVendors (used to decide competitor positioning).
-- painPoints / goals: short phrases tied to their business + support model.
-- discoveryGaps: 3–5 items, each a short label (e.g. "Stack", "Team/volume", "Incidents",
-  "AI maturity") + one sharp question that closes the biggest gap in what you found.
-- demoPlan.flow: one line. demoPlan.useCases: 3–4 ranked use cases with a one-line "why" each
-  (do NOT name a specific Freshworks feature — the SE picks that). demoPlan.close: a short
-  paragraph tying the pitch to their scale/goal + a pilot suggestion.
-- demoPlan.differentiators: include an entry ONLY for each vendor in techStack.namedVendors,
-  with 1–3 KB-grounded points. If namedVendors is empty, return an empty array.
+OUTPUT FORMAT — one scrollable page, bullets not paragraphs:
+- Total output ~600–800 words across all fields.
+- Table cells (comparison.*.thisCompany and comparison.*.industryNorm): max 12 words each.
+- Bullet items (aboutBusiness, supportProcess, workflows, seActions.painPoints): max 15 words each.
+- seActions.demoFlow steps: max 15 words each, 4–5 numbered steps (strings only, no numbers in text).
+- seActions.discoveryGaps: exactly 3 sharp questions (strings, no labels).
+- seActions.painPoints: 3–4 items.
+- aboutBusiness, supportProcess, workflows: 3–5 bullets each.
+- sources: 3–5 cited URLs for prospect facts.
+
+COMPARISON TABLE (hero) — fill every row; industryNorm = one short typical line for their sector:
+- industry: vertical / what they sell
+- sizeAgents: headcount or support-team size if known
+- supportChannels: email, phone, chat, social, etc.
+- incumbentStack: helpdesk, CRM, chat, phone vendors detected
+- supportPortal: self-service portal / KB URL or platform
+- integrations: key systems tied to support (CRM, billing, etc.)
+- webChatWidget: on-site chat widget if any
+- fundingParent: funding round, PE owner, or parent company
+
+SE ACTION BLOCKS:
+- seActions.topUseCase: single highest-value demo angle (one line, max 15 words).
+- seActions.painPoints: 3–4 likely pains tied to their support model.
+- seActions.discoveryGaps: 3 questions that close the biggest research gaps.
+- seActions.demoFlow: 4–5 demo steps in order (SE picks Freshworks features live — do not name SKUs).
+
+ATTENDEES: include prospect contact if known; note role uncertainty briefly in note field.
 
 === FRESHWORKS KNOWLEDGE BASE ===
 ${FRESHWORKS_KB}
@@ -68,7 +81,7 @@ OUTPUT — CRITICAL: respond with a SINGLE, strictly valid JSON object and nothi
 - No markdown, no code fences, no text before or after the object.
 - No citation markers (e.g. [1], superscripts), footnotes, or comments.
 - No trailing commas; quote and escape every string properly.
-It must match exactly this JSON Schema (all fields required; use "unknown" or [] where empty):
+It must match exactly this JSON Schema (all fields required; use "-" or [] where empty):
 
 ${JSON.stringify(PREP_SCHEMA)}`;
 }
@@ -104,21 +117,16 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
 
   const provider = getProvider(env);
   const result = await provider.generate({
-    // Headroom for adaptive thinking PLUS the JSON brief. Lower limits caused models to hit
-    // max_tokens before emitting any text ("no text content to parse").
     maxTokens: 12000,
     system: systemPrompt(),
     user: userPrompt(input, domain),
     effort,
     research: true,
-    // Prompt-instructed JSON only — responseSchema cannot be combined with google_search grounding.
   });
 
   try {
     return extractJson<Prep>(result.text);
   } catch (err) {
-    // LLMs occasionally emit slightly-malformed JSON (a stray token, a citation mark). One cheap
-    // repair pass — no research, just "fix this into valid JSON" — reliably recovers it.
     const repaired = await provider.generate({
       system:
         "You repair malformed JSON. Output ONLY a single valid JSON object — no markdown, no " +
