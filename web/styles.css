@@ -757,10 +757,197 @@ a { color: var(--accent); }
   .main-content { padding: 16px 12px; }
 }
 @media print {
-  .sidebar, .main-topbar, .toolbar, #prep-form, #postcall-form, #history-section, #zoom-banner, #prep-status, #postcall-status, .wrap-banner { display: none !important; }
+  .sidebar, .main-topbar, .toolbar, #prep-form, #postcall-form, #history-section, #zoom-banner, #prep-status, #postcall-status, .wrap-banner, .site-footer { display: none !important; }
   .app-main { margin: 0; }
   .main-content { max-width: none; padding: 0; }
   .card { border: none; }
   .qc-dim { break-inside: avoid; }
   .qc-dim .qc-dim-body { display: block !important; }
+}
+
+/* Site footer */
+.site-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: rgba(247, 247, 245, 0.92);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+}
+.site-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+.site-footer a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.login-page,
+.app-shell {
+  padding-bottom: 44px;
+}
+
+/* About page */
+.about-page {
+  min-height: 100vh;
+  padding-bottom: 52px;
+}
+.about-header {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 20px 8px;
+}
+.about-back {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.about-back:hover { text-decoration: underline; }
+.about-kicker {
+  font-size: 13px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.about-header h1 {
+  font-size: 28px;
+  margin: 0 0 10px;
+  line-height: 1.2;
+}
+.about-lead {
+  font-size: 16px;
+  margin: 0;
+  line-height: 1.55;
+}
+.about-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 20px 24px;
+}
+.about-section h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.about-section h3,
+.about-subhead {
+  font-size: 15px;
+  margin: 20px 0 8px;
+}
+.about-section p {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.about-list {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  font-size: 15px;
+}
+.about-list li { margin: 6px 0; }
+.about-note,
+.about-calibration,
+.about-demo-path {
+  font-size: 14px;
+  margin-bottom: 0;
+}
+.about-steps {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.about-steps li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  font-size: 15px;
+}
+.about-step-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 999px;
+}
+.about-callout {
+  margin-top: 20px;
+  padding: 16px 18px;
+  background: #faf9f7;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+}
+.about-callout strong {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.about-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.about-grid2 h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.about-grid2 p { margin: 0; font-size: 13px; }
+.about-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.about-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.about-table th,
+.about-table td {
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+.about-table th {
+  background: #faf9f7;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.about-table code {
+  font-size: 12px;
+  background: #f0f0ec;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.about-cta { margin: 20px 0 0; }
+.about-btn {
+  display: inline-block;
+  text-decoration: none;
+}
+@media (max-width: 620px) {
+  .about-header { padding: 24px 16px 8px; }
+  .about-header h1 { font-size: 24px; }
+  .about-main { padding: 8px 16px 24px; }
+  .about-grid2 { grid-template-columns: 1fr; }
 }

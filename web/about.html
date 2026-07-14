@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About — SE Singha Paathai</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="about-page">
+    <header class="about-header">
+      <a href="./index.html" class="about-back">← Back to app</a>
+      <p class="about-kicker muted">SE Singha Paathai · Freshworks Solution Engineering</p>
+      <h1>About this project</h1>
+      <p class="about-lead muted">
+        A coaching portal that turns recorded customer demos into summaries, next steps, and quality feedback — in under a minute.
+      </p>
+    </header>
+
+    <main class="about-main">
+      <section class="card about-section">
+        <h2>What is it?</h2>
+        <p>
+          <strong>SE Singha Paathai</strong> helps Solution Engineers debrief after customer calls without the manual write-up.
+          Paste a Zoom recording link and the system reads what was actually said on the call, then returns three things:
+        </p>
+        <ul class="about-list">
+          <li><strong>Call summary</strong> — a structured recap of who was on the call, what was discussed, and what was decided</li>
+          <li><strong>Next steps</strong> — prioritized actions, a follow-up email draft, and CRM-ready notes</li>
+          <li><strong>Quality Coach</strong> — an evidence-based scorecard on how the SE ran the demo</li>
+        </ul>
+        <p class="muted about-note">
+          It is designed to support every SE with a consistent debrief — not to replace the SE or manager judgment.
+        </p>
+      </section>
+
+      <section class="card about-section">
+        <h2>How post-call analysis works</h2>
+        <p class="muted">No file uploads in the default flow — just paste your Zoom cloud recording link.</p>
+        <ol class="about-steps">
+          <li>
+            <span class="about-step-num">1</span>
+            <div>
+              <strong>Sign in</strong> to the SE portal.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">2</span>
+            <div>
+              <strong>Open “New analysis”</strong> and paste the Zoom recording URL from your “recording is ready” email.
+              Add the passcode if it is not in the link — or paste both in one line.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">3</span>
+            <div>
+              <strong>Click “Analyze call.”</strong> The system fetches the audio transcript from Zoom’s share link.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">4</span>
+            <div>
+              <strong>Wait ~10–25 seconds.</strong> The UI shows progress and prevents double-submit.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">5</span>
+            <div>
+              <strong>Review results</strong> — summary, next steps, and Quality Coach. Copy the follow-up email or print the page.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">6</span>
+            <div>
+              <strong>History and dashboard update</strong> — the analysis is saved under your account and feeds your quality metrics.
+            </div>
+          </li>
+        </ol>
+        <div class="about-callout">
+          <strong>What you get from each analysis</strong>
+          <div class="about-grid2">
+            <div>
+              <h3>Call summary</h3>
+              <p class="muted">Headline, customer context, attendees, key topics, pain points, objections, competitive mentions, decisions, and open questions.</p>
+            </div>
+            <div>
+              <h3>Next steps</h3>
+              <p class="muted">SE and AE action items, customer commitments, a suggested follow-up email, and paste-ready CRM notes.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card about-section">
+        <h2>Quality Coach</h2>
+        <p>
+          Coaching feedback modeled on how an SE manager would QA a recorded demo — honest and evidence-based, not flattering.
+        </p>
+        <ul class="about-list">
+          <li><strong>Overall score</strong> — 0–10 gauge with a label (Excellent, Strong, Good, Developing, Needs focus)</li>
+          <li><strong>Radar chart</strong> — visual profile across all six dimensions</li>
+          <li><strong>Expandable scorecard</strong> — each dimension shows score, written feedback, and transcript evidence</li>
+          <li><strong>Strengths, improvements, and missed opportunities</strong> — actionable coaching takeaways</li>
+        </ul>
+
+        <h3 class="about-subhead">Six coaching dimensions</h3>
+        <p class="muted">Each dimension is scored 1–5. The AI cites transcript evidence — it does not invent moments that did not happen.</p>
+        <div class="about-table-wrap">
+          <table class="about-table">
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>What it measures</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Discovery</strong></td>
+                <td>Did you uncover real pain before jumping into the demo?</td>
+              </tr>
+              <tr>
+                <td><strong>Demo alignment</strong></td>
+                <td>Did you show capabilities tied to what the customer said they need?</td>
+              </tr>
+              <tr>
+                <td><strong>Objections</strong></td>
+                <td>When concerns came up, did you acknowledge and respond with specifics?</td>
+              </tr>
+              <tr>
+                <td><strong>Value articulation</strong></td>
+                <td>Did you connect Freshworks to business outcomes — not just list features?</td>
+              </tr>
+              <tr>
+                <td><strong>Next-step clarity</strong></td>
+                <td>Did the call end with clear owners, dates, and commitments?</td>
+              </tr>
+              <tr>
+                <td><strong>Talk balance</strong></td>
+                <td>Was speaking time reasonably balanced between SE and customer?</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card about-section">
+        <h2>Scoring explained</h2>
+
+        <h3 class="about-subhead">Per dimension (1–5)</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Score</th>
+                <th>Label</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>5</strong></td>
+                <td>Exceptional</td>
+                <td>Best-in-class execution with clear transcript proof</td>
+              </tr>
+              <tr>
+                <td><strong>4</strong></td>
+                <td>Solid</td>
+                <td>Meets SE expectations; only minor gaps</td>
+              </tr>
+              <tr>
+                <td><strong>3</strong></td>
+                <td>Acceptable</td>
+                <td>Basic execution with noticeable weaknesses — typical for an average call</td>
+              </tr>
+              <tr>
+                <td><strong>2</strong></td>
+                <td>Needs improvement</td>
+                <td>Significant misses or weak handling</td>
+              </tr>
+              <tr>
+                <td><strong>1</strong></td>
+                <td>Missed</td>
+                <td>Dimension largely absent or handled poorly</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">Overall score (out of 10)</h3>
+        <p class="muted">
+          Computed automatically from the six dimension scores. The AI does not assign the overall number directly — this keeps scoring consistent.
+        </p>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>9.0+</strong></td><td>Excellent</td></tr>
+              <tr><td><strong>7.0 – 8.9</strong></td><td>Strong</td></tr>
+              <tr><td><strong>5.5 – 6.9</strong></td><td>Good</td></tr>
+              <tr><td><strong>4.0 – 5.4</strong></td><td>Developing</td></tr>
+              <tr><td><strong>Below 4.0</strong></td><td>Needs focus</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="about-calibration muted">
+          Scoring is intentionally strict for the MVP. A typical average call should land around 3–3.5 per dimension (~6–7 overall).
+          A score of 5 on any dimension requires specific transcript evidence of excellence.
+        </p>
+      </section>
+
+      <section class="card about-section about-demo">
+        <h2>Demo login</h2>
+        <p class="muted">For local demos and shared environments — dummy auth, not production SSO.</p>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Password</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>SE</td>
+                <td><code>se@freshworks.com</code></td>
+                <td><code>se123</code></td>
+              </tr>
+              <tr>
+                <td>Manager</td>
+                <td><code>manager@freshworks.com</code></td>
+                <td><code>mgr123</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="about-demo-path muted">
+          <strong>Suggested demo path:</strong> Log in as SE → New analysis → paste a Zoom recording link → review results → open My dashboard → click a History item to reload a past call.
+        </p>
+        <p class="about-cta">
+          <a href="./index.html" class="primary about-btn">Open the app</a>
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span class="muted">SE Singha Paathai · Freshworks</span>
+    </footer>
+  </body>
+</html>
