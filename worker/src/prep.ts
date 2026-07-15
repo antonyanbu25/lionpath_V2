@@ -34,7 +34,7 @@ export function deriveDomain(email: string): string {
 function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
-SE Discovery one-pager with glance hierarchy: must-see top strip, good-to-see details below.
+SE Discovery one-pager: header strip + ONE Account Snapshot table (top-to-bottom, no extra blocks).
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
 - PRIMARY target: the COMPANY NAME (Google-search it first). Prospect email domains are often
@@ -43,40 +43,42 @@ RESEARCH — be fast and focused (aim for 3–4 searches max):
 - For well-known organizations (e.g. Khan Academy, Stripe, Shopify), use established public
   facts from their official site and reputable sources.
 - Start from the official company website, then "what they do" and recent news.
-- Infer the support tech stack from signals like help-center/KB URL patterns (e.g. Zendesk),
-  careers pages, or job posts.
+- Infer the support tech stack from help-center/KB URL patterns (e.g. Zendesk), careers pages,
+  or job posts.
 Use ONLY web findings for prospect facts; cite each non-obvious claim in "sources" with its URL.
 Where you truly can't find something, write "unknown" for string fields (or leave arrays empty).
 
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
 
-OUTPUT FORMAT — tables and bullets ONLY (no paragraphs):
-WORD CAPS (strict):
+OUTPUT FORMAT — single Account Snapshot table shape (no paragraphs):
+WORD CAPS (strict — max 2 lines per cell when rendered):
 - description: max 15 words.
 - Table cells (fitSnapshot, businessContext, incumbent, companySizeAgents): max 8 words each.
-- Bullets (workflows, discoveryKit, sources.claim): max 12 words each.
+- discoveryKit question/because: max 12 words each.
 - industryUseCases: max 10 words each, max 3 items.
 - painCapabilityValue cells: max 8 words each — qualitative value ONLY, NO fabricated stats.
+- sources.claim: max 12 words each.
 
-NO-REPEAT RULE — facts in must-see top strip (fitSnapshot, incumbent, industryUseCases,
-supportMaturity, companySizeAgents) must NOT repeat in businessContext, discoveryKit, or
-painCapabilityValue. Use different angles or omit duplicates.
+NO-REPEAT RULE — facts in FIT and ACCOUNT FACTS rows must NOT repeat verbatim in discoveryKit
+or painCapabilityValue. Use different angles or omit duplicates.
 
-MUST-SEE TOP STRIP:
-1. description — one-line company summary, max 15 words.
-2. incumbent — {incumbent_name, displacement} where displacement is greenfield|homegrown|entrenched.
-3. fitSnapshot — max 6 rows. Drop zero-signal rows where industryNorm restates thisCompany.
-   Each row: label, thisCompany, industryNorm (max 8 words), gap enum (large|partial|parity),
-   gapVerdict (one word shown with dot, e.g. Behind, Partial, Aligned).
-4. supportMaturity — Y|N|unknown for: selfServicePortal, webChat, phone, omnichannel.
-5. industryUseCases — max 3 short phrases, max 10 words each.
-6. companySizeAgents — {agents, estimated}. Set estimated=true if inferred from headcount signals.
+ACCOUNT SNAPSHOT TABLE (fill JSON to match this top-to-bottom layout):
 
-GOOD-TO-SEE (collapsible detail — still fill in JSON):
-- businessContext table: market, model, users, uptimeNeed, fundingParent, headOffice,
-  demography, languages; signals.supportJobListings and signals.similarwebVisitors if available.
-- workflows: max 4 bullets, max 12 words each.
+HEADER (rendered above table): description, incumbent, attendees.
+
+FIT — exactly 3 rows with these labels:
+  Omnichannel Support | AI Deflection | Agent Assist
+Each row: label, thisCompany, industryNorm (max 8 words), gap enum (large|partial|parity),
+gapVerdict (one word with dot, e.g. Behind, Partial, Aligned).
+
+ACCOUNT FACTS (businessContext + incumbent + companySizeAgents):
+- incumbent — {incumbent_name, displacement} where displacement is greenfield|homegrown|entrenched.
+- companySizeAgents — {agents, estimated}. Set estimated=true if inferred.
+- businessContext — market, model (business model), users, uptimeNeed, fundingParent, headOffice,
+  languages (max 8 words each).
+
+INDUSTRY USE CASES — max 3 short phrases, max 10 words each.
 
 DISCOVERY KIT — max 3 pairs of {question, because}:
 - question: max 12 words; because: max 12 words.

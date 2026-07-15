@@ -1,5 +1,4 @@
-// Pre-call (Discovery) output shape (v5): must-see top strip + collapsible good-to-see.
-// Model fills JSON; frontend renders one-pager with glance hierarchy.
+// Pre-call (Discovery) output shape (v6): header strip + single Account Snapshot table.
 
 const fitRow = {
   type: "object",
@@ -45,12 +44,6 @@ const pcvRow = {
   },
 } as const;
 
-const maturityFlag = {
-  type: "string",
-  enum: ["Y", "N", "unknown"],
-  description: "Y=confirmed, N=not present, unknown=not found",
-} as const;
-
 export const PREP_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -58,7 +51,6 @@ export const PREP_SCHEMA = {
     "description",
     "incumbent",
     "fitSnapshot",
-    "supportMaturity",
     "industryUseCases",
     "companySizeAgents",
     "businessContext",
@@ -84,21 +76,11 @@ export const PREP_SCHEMA = {
     },
     fitSnapshot: {
       type: "array",
-      maxItems: 6,
+      minItems: 3,
+      maxItems: 3,
       items: fitRow,
       description:
-        "Must-see comparison — max 6 rows. Drop zero-signal rows where industry norm restates company.",
-    },
-    supportMaturity: {
-      type: "object",
-      additionalProperties: false,
-      required: ["selfServicePortal", "webChat", "phone", "omnichannel"],
-      properties: {
-        selfServicePortal: maturityFlag,
-        webChat: maturityFlag,
-        phone: maturityFlag,
-        omnichannel: maturityFlag,
-      },
+        "FIT section — exactly 3 rows: Omnichannel Support, AI Deflection, Agent Assist. Max 8 words per cell.",
     },
     industryUseCases: {
       type: "array",
@@ -120,41 +102,15 @@ export const PREP_SCHEMA = {
     businessContext: {
       type: "object",
       additionalProperties: false,
-      required: [
-        "market",
-        "model",
-        "users",
-        "uptimeNeed",
-        "fundingParent",
-        "headOffice",
-        "demography",
-        "languages",
-        "signals",
-        "workflows",
-      ],
+      required: ["market", "model", "users", "uptimeNeed", "fundingParent", "headOffice", "languages"],
       properties: {
         market: { type: "string", description: "Max 8 words." },
-        model: { type: "string", description: "Max 8 words." },
+        model: { type: "string", description: "Business model, max 8 words." },
         users: { type: "string", description: "Max 8 words." },
         uptimeNeed: { type: "string", description: "Max 8 words." },
         fundingParent: { type: "string", description: "Max 8 words." },
         headOffice: { type: "string", description: "Max 8 words." },
-        demography: { type: "string", description: "Max 8 words." },
         languages: { type: "string", description: "Max 8 words." },
-        signals: {
-          type: "object",
-          additionalProperties: false,
-          required: ["supportJobListings", "similarwebVisitors"],
-          properties: {
-            supportJobListings: { type: "string", description: "Max 8 words or unknown." },
-            similarwebVisitors: { type: "string", description: "Max 8 words or unknown." },
-          },
-        },
-        workflows: {
-          type: "array",
-          maxItems: 4,
-          items: { type: "string", description: "Max 12 words per bullet." },
-        },
       },
     },
     discoveryKit: {
@@ -226,12 +182,6 @@ export interface Prep {
     displacement: "greenfield" | "homegrown" | "entrenched";
   };
   fitSnapshot: FitSnapshotRow[];
-  supportMaturity: {
-    selfServicePortal: "Y" | "N" | "unknown";
-    webChat: "Y" | "N" | "unknown";
-    phone: "Y" | "N" | "unknown";
-    omnichannel: "Y" | "N" | "unknown";
-  };
   industryUseCases: string[];
   companySizeAgents: {
     agents: string;
@@ -244,13 +194,7 @@ export interface Prep {
     uptimeNeed: string;
     fundingParent: string;
     headOffice: string;
-    demography: string;
     languages: string;
-    signals: {
-      supportJobListings: string;
-      similarwebVisitors: string;
-    };
-    workflows: string[];
   };
   discoveryKit: DiscoveryKitItem[];
   painCapabilityValue: PainCapabilityValueRow[];

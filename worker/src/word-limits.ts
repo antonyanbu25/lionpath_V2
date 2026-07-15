@@ -89,11 +89,15 @@ function trimBullets(arr: unknown, maxItems?: number): string[] {
   return maxItems ? items.slice(0, maxItems) : items;
 }
 
-function trimMaturityFlag(v: unknown): "Y" | "N" | "unknown" {
-  const s = String(v ?? "").trim().toUpperCase();
-  if (s === "Y" || s === "YES") return "Y";
-  if (s === "N" || s === "NO") return "N";
-  return "unknown";
+const FIT_LABELS = ["Omnichannel Support", "AI Deflection", "Agent Assist"] as const;
+
+function normalizeFitLabel(label: string, index: number): string {
+  const raw = trimCell(label);
+  const lower = raw.toLowerCase();
+  for (const fixed of FIT_LABELS) {
+    if (lower.includes(fixed.split(" ")[0].toLowerCase())) return fixed;
+  }
+  return FIT_LABELS[index] || raw;
 }
 
 function trimDisplacement(v: unknown): "greenfield" | "homegrown" | "entrenched" {
@@ -104,7 +108,27 @@ function trimDisplacement(v: unknown): "greenfield" | "homegrown" | "entrenched"
 
 export function normalizePrepOutput(raw: Prep): Prep {
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
-  const sig = bc.signals || { supportJobListings: "unknown", similarwebVisitors: "unknown" };
+  const fitRows = (raw.fitSnapshot || []).slice(0, 3).map((row, index) => {
+    const gap =
+      row.gap === "large" || row.gap === "partial" || row.gap === "parity" ? row.gap : "partial";
+    return {
+      label: normalizeFitLabel(row.label, index),
+      thisCompany: trimCell(row.thisCompany),
+      industryNorm: trimCell(row.industryNorm),
+      gap,
+      gapVerdict: trimGapVerdict(row.gapVerdict, gap),
+    };
+  });
+  while (fitRows.length < 3) {
+    const index = fitRows.length;
+    fitRows.push({
+      label: FIT_LABELS[index],
+      thisCompany: "unknown",
+      industryNorm: "unknown",
+      gap: "partial",
+      gapVerdict: "Partial",
+    });
+  }
 
   return {
     description: trimDescription(raw.description),
@@ -112,23 +136,7 @@ export function normalizePrepOutput(raw: Prep): Prep {
       incumbent_name: trimCell(raw.incumbent?.incumbent_name),
       displacement: trimDisplacement(raw.incumbent?.displacement),
     },
-    fitSnapshot: (raw.fitSnapshot || []).slice(0, 6).map((row) => {
-      const gap =
-        row.gap === "large" || row.gap === "partial" || row.gap === "parity" ? row.gap : "partial";
-      return {
-        label: trimCell(row.label),
-        thisCompany: trimCell(row.thisCompany),
-        industryNorm: trimCell(row.industryNorm),
-        gap,
-        gapVerdict: trimGapVerdict(row.gapVerdict, gap),
-      };
-    }),
-    supportMaturity: {
-      selfServicePortal: trimMaturityFlag(raw.supportMaturity?.selfServicePortal),
-      webChat: trimMaturityFlag(raw.supportMaturity?.webChat),
-      phone: trimMaturityFlag(raw.supportMaturity?.phone),
-      omnichannel: trimMaturityFlag(raw.supportMaturity?.omnichannel),
-    },
+    fitSnapshot: fitRows,
     industryUseCases: (Array.isArray(raw.industryUseCases) ? raw.industryUseCases : [])
       .map((x) => trimUseCase(x))
       .filter((x) => x)
@@ -144,13 +152,7 @@ export function normalizePrepOutput(raw: Prep): Prep {
       uptimeNeed: trimCell(bc.uptimeNeed),
       fundingParent: trimCell(bc.fundingParent),
       headOffice: trimCell(bc.headOffice),
-      demography: trimCell(bc.demography),
       languages: trimCell(bc.languages),
-      signals: {
-        supportJobListings: trimCell(sig.supportJobListings),
-        similarwebVisitors: trimCell(sig.similarwebVisitors),
-      },
-      workflows: trimBullets(bc.workflows, 4),
     },
     discoveryKit: (raw.discoveryKit || []).slice(0, 3).map((item) => ({
       question: trimBullet(item.question),

@@ -132,7 +132,14 @@ function decisionDot(power) {
 }
 
 function isV5Prep(p) {
-  return !!(p?.incumbent?.displacement && p?.supportMaturity && p?.companySizeAgents);
+  if (p?.supportMaturity || p?.businessContext?.signals || p?.businessContext?.workflows) return false;
+  return !!(
+    p?.incumbent?.displacement &&
+    p?.companySizeAgents &&
+    p?.businessContext?.market &&
+    Array.isArray(p?.fitSnapshot) &&
+    p.fitSnapshot.length >= 1
+  );
 }
 
 const DISPLACEMENT_LABELS = {
@@ -141,28 +148,18 @@ const DISPLACEMENT_LABELS = {
   entrenched: "Entrenched",
 };
 
-function renderMaturityChip(label, flag) {
-  const val = String(flag || "unknown").toUpperCase();
-  const cls = val === "Y" ? "mat-y" : val === "N" ? "mat-n" : "mat-unknown";
-  const text = val === "Y" ? "Y" : val === "N" ? "N" : "?";
-  return `<span class="maturity-chip ${cls}" title="${esc(label)}: ${esc(text)}">${esc(label)} <strong>${esc(text)}</strong></span>`;
+function sectionLabelRow(label) {
+  return `<tr class="section-label"><td colspan="4">${esc(label)}</td></tr>`;
 }
 
-const BIZ_ROWS = [
-  ["market", "Market"],
-  ["model", "Business model"],
-  ["users", "Users"],
-  ["uptimeNeed", "Uptime need"],
-  ["fundingParent", "Funding / parent"],
-  ["headOffice", "Head office"],
-  ["demography", "Demography"],
-  ["languages", "Languages"],
-];
+function factRow(label, valueHtml) {
+  return `<tr class="fact-row"><th class="fact-label">${esc(label)}</th><td colspan="3" class="fact-value">${valueHtml}</td></tr>`;
+}
 
-const SIGNAL_ROWS = [
-  ["supportJobListings", "Support job listings"],
-  ["similarwebVisitors", "Similarweb visitors"],
-];
+function incumbentFact(inc) {
+  const disp = inc.displacement || "greenfield";
+  return `${truncateWords(inc.incumbent_name, 8)} <span class="displacement-badge displacement-${esc(disp)}">${esc(DISPLACEMENT_LABELS[disp] || disp)}</span>`;
+}
 
 // ---------- Tabs ----------
 
@@ -424,7 +421,7 @@ function prefersReducedMotion() {
 function initPrepAnimations(root) {
   if (!root) return;
   root.classList.add("anim-root");
-  const blocks = root.querySelectorAll(".header-strip, .must-see, .good-to-see, section, .prep-footer, .momentum-hero");
+  const blocks = root.querySelectorAll(".header-strip, .account-snapshot-wrap, .prep-footer, .momentum-hero");
   blocks.forEach((el, i) => {
     el.classList.add("anim-block");
     el.style.setProperty("--anim-delay", `${i * 50}ms`);
@@ -450,7 +447,7 @@ function renderPrep(p, meta = {}) {
     return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery brief.</div>`;
   }
   if (!isV5Prep(p)) {
-    return `<div class="status err">This prep uses the v4 format. Regenerate to get the v5 Discovery brief.</div>`;
+    return `<div class="status err">This prep uses an older format. Regenerate to get the Account Snapshot brief.</div>`;
   }
 
   const attendeeChips = (p.attendees || []).length
@@ -464,13 +461,13 @@ function renderPrep(p, meta = {}) {
         .join("")
     : '<span class="muted">—</span>';
 
-  const snapshot = p.fitSnapshot || [];
+  const snapshot = (p.fitSnapshot || []).slice(0, 3);
   const focalIdx = snapshot.findIndex((r) => r.gap === "large");
   const focalRowIdx = focalIdx >= 0 ? focalIdx : 0;
 
   const fitRows = snapshot
     .map(
-      (row, idx) => `<tr class="${idx === focalRowIdx ? "focal-gap-row" : ""}">
+      (row, idx) => `<tr class="fit-row${idx === focalRowIdx ? " focal-gap-row" : ""}">
         <th class="prep-row-label">${truncateWords(row.label, 8)}</th>
         <td>${truncateWords(row.thisCompany, 8)}</td>
         <td>${truncateWords(row.industryNorm, 8)}</td>
@@ -479,95 +476,56 @@ function renderPrep(p, meta = {}) {
     )
     .join("");
 
-  const fitTable = fitRows
-    ? `<table class="prep-compare fit-snapshot">
-        <thead><tr><th></th><th>This company</th><th>Industry norm</th><th>Gap</th></tr></thead>
-        <tbody>${fitRows}</tbody>
-      </table>`
-    : '<p class="muted">—</p>';
-
   const inc = p.incumbent || {};
-  const disp = inc.displacement || "greenfield";
-  const incumbentRow = `<div class="incumbent-row displacement-${esc(disp)}">
-    <span class="incumbent-label">Incumbent</span>
-    <span class="incumbent-name">${truncateWords(inc.incumbent_name, 8)}</span>
-    <span class="displacement-badge">${esc(DISPLACEMENT_LABELS[disp] || disp)}</span>
-  </div>`;
+  const csa = p.companySizeAgents || {};
+  const bc = p.businessContext || {};
+  const agentsVal = `${truncateWords(csa.agents, 8)}${csa.estimated ? ' <span class="est-label">est.</span>' : ""}`;
 
-  const mat = p.supportMaturity || {};
-  const maturityChips = `<div class="maturity-chips">
-    ${renderMaturityChip("Self-service", mat.selfServicePortal)}
-    ${renderMaturityChip("Web chat", mat.webChat)}
-    ${renderMaturityChip("Phone", mat.phone)}
-    ${renderMaturityChip("Omnichannel", mat.omnichannel)}
-  </div>`;
+  const accountFacts = [
+    factRow("Incumbent", incumbentFact(inc)),
+    factRow("Support agents", agentsVal),
+    factRow("Market", dash(bc.market)),
+    factRow("Business model", dash(bc.model)),
+    factRow("Users", dash(bc.users)),
+    factRow("Uptime need", dash(bc.uptimeNeed)),
+    factRow("Funding / parent", dash(bc.fundingParent)),
+    factRow("Head office", dash(bc.headOffice)),
+    factRow("Languages", dash(bc.languages)),
+  ].join("");
 
   const useCases = (p.industryUseCases || []).filter((x) => !isUnknown(x)).slice(0, 3);
-  const useCaseHtml = useCases.length
-    ? `<ul class="use-case-list">${useCases.map((u) => `<li>${truncateWords(u, 10)}</li>`).join("")}</ul>`
-    : '<p class="muted">—</p>';
-
-  const csa = p.companySizeAgents || {};
-  const sizeHtml = `<div class="company-size-row">
-    <span class="company-size-label">Support agents</span>
-    <span class="company-size-value">${truncateWords(csa.agents, 8)}${csa.estimated ? ' <span class="est-label">est.</span>' : ""}</span>
-  </div>`;
-
-  const bc = p.businessContext || {};
-  const sig = bc.signals || {};
-  const bizTable = `<table class="kv-table">
-    <tbody>${BIZ_ROWS.map(
-      ([key, label]) =>
-        `<tr><th>${esc(label)}</th><td>${truncateWords(bc[key], 8)}</td></tr>`,
-    ).join("")}</tbody>
-  </table>`;
-
-  const signalTable = `<table class="kv-table signal-table">
-    <tbody>${SIGNAL_ROWS.map(
-      ([key, label]) =>
-        `<tr><th>${esc(label)}</th><td>${truncateWords(sig[key], 8)}</td></tr>`,
-    ).join("")}</tbody>
-  </table>`;
-
-  const workflows = (bc.workflows || []).filter((x) => !isUnknown(x));
-  const workflowHtml = workflows.length
-    ? `<ul class="prep-bullets">${workflows
-        .slice(0, 4)
-        .map((b) => `<li>${truncateWords(b, 12)}</li>`)
-        .join("")}</ul>`
-    : '<p class="muted">—</p>';
+  const useCaseRows = useCases.length
+    ? useCases.map((u) => `<tr class="use-case-row"><td colspan="4">${truncateWords(u, 10)}</td></tr>`).join("")
+    : `<tr class="use-case-row"><td colspan="4" class="muted">—</td></tr>`;
 
   const kit = (p.discoveryKit || []).slice(0, 3);
-  const kitHtml = kit.length
-    ? `<table class="discovery-kit">
-        <thead><tr><th>Ask this</th><th>Because</th></tr></thead>
-        <tbody>${kit
-          .map(
-            (item) => `<tr>
-              <td>${truncateWords(item.question, 12)}</td>
-              <td class="because-cell">${truncateWords(item.because, 12)}</td>
-            </tr>`,
-          )
-          .join("")}</tbody>
-      </table>`
-    : '<p class="muted">—</p>';
+  const kitHeader = `<tr class="sub-header"><th>Ask this</th><th colspan="3">Because</th></tr>`;
+  const kitRows = kit.length
+    ? kit
+        .map(
+          (item) => `<tr>
+            <td>${truncateWords(item.question, 12)}</td>
+            <td colspan="3" class="because-cell">${truncateWords(item.because, 12)}</td>
+          </tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="4" class="muted">—</td></tr>`;
 
   const pcv = (p.painCapabilityValue || []).slice(0, 3);
-  const flowHtml = pcv.length
-    ? `<div class="flowchart flowchart-anim">${pcv
+  const pcvHeader = `<tr class="sub-header"><th>Pain</th><th>Capability</th><th colspan="2">Value</th></tr>`;
+  const pcvRows = pcv.length
+    ? pcv
         .map(
-          (row) => `<div class="flow-row">
-            <span class="flow-cell pain">${truncateWords(row.pain, 8)}</span>
-            <span class="flow-arrow" aria-hidden="true">→</span>
-            <span class="flow-cell cap">${truncateWords(row.capability, 8)}</span>
-            <span class="flow-arrow" aria-hidden="true">→</span>
-            <span class="flow-cell val">${truncateWords(row.value, 8)}</span>
-          </div>`,
+          (row) => `<tr>
+            <td>${truncateWords(row.pain, 8)}</td>
+            <td>${truncateWords(row.capability, 8)}</td>
+            <td colspan="2">${truncateWords(row.value, 8)}</td>
+          </tr>`,
         )
-        .join("")}</div>`
-    : '<p class="muted">—</p>';
+        .join("")
+    : `<tr><td colspan="4" class="muted">—</td></tr>`;
 
-  const demoLinksHtml = renderDemoLinks(p);
+  const resourcesRow = renderResourcesRow(p);
 
   const sources = (p.sources || []).length
     ? `<details class="sources"><summary>Sources (${p.sources.length})</summary><ul>${(p.sources || [])
@@ -588,7 +546,7 @@ function renderPrep(p, meta = {}) {
       <button class="ghost" onclick="window.print()">Print / PDF</button>
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
-    <header class="header-strip must-see-strip">
+    <header class="header-strip">
       <div class="header-main">
         <h2 class="one-pager-title">${esc(meta.company || "")}</h2>
         ${domain ? `<span class="header-domain">${domain}</span>` : ""}
@@ -596,50 +554,42 @@ function renderPrep(p, meta = {}) {
       <p class="header-desc">${truncateWords(p.description, 15)}</p>
       <div class="attendee-chips">${attendeeChips}</div>
     </header>
-    <div class="must-see">
-      ${incumbentRow}
-      <section class="prep-hero"><h2>Fit snapshot</h2>${fitTable}</section>
-      <section class="maturity-section"><h2>Support maturity</h2>${maturityChips}</section>
-      <section class="use-cases-section"><h2>Industry use cases</h2>${useCaseHtml}</section>
-      ${sizeHtml}
-      <section><h2>Discovery kit</h2>${kitHtml}</section>
+    <div class="account-snapshot-wrap">
+      <table class="account-snapshot prep-compare">
+        <tbody>
+          ${sectionLabelRow("FIT")}
+          <tr class="col-header"><th>Attribute</th><th>This company</th><th>Industry norm</th><th>Gap</th></tr>
+          ${fitRows}
+          ${sectionLabelRow("Account facts")}
+          ${accountFacts}
+          ${sectionLabelRow("Industry use cases")}
+          ${useCaseRows}
+          ${sectionLabelRow("Discovery kit")}
+          ${kitHeader}
+          ${kitRows}
+          ${sectionLabelRow("Demo prep")}
+          ${pcvHeader}
+          ${pcvRows}
+          ${sectionLabelRow("Resources")}
+          ${resourcesRow}
+        </tbody>
+      </table>
     </div>
-    <details class="good-to-see" open>
-      <summary>More context &amp; demo prep</summary>
-      <details class="more-context" open>
-        <summary>More context</summary>
-        <section class="biz-context">
-          <h2>Business context</h2>
-          <div class="biz-grid">${bizTable}
-            <div class="workflows-block"><h3>Workflows</h3>${workflowHtml}</div>
-          </div>
-        </section>
-        <section class="signals-section"><h2>Signals</h2>${signalTable}</section>
-      </details>
-      ${demoLinksHtml}
-      <details class="demo-prep-section">
-        <summary>Demo prep</summary>
-        ${flowHtml}
-      </details>
-      <footer class="prep-footer">${sources}</footer>
-    </details>`;
+    <footer class="prep-footer">${sources}</footer>`;
 }
 
-function renderDemoLinks(prep) {
+function renderResourcesRow(prep) {
   const links = pickDemoLinks(prep);
-  if (!links.length) return "";
-
+  if (!links.length) {
+    return `<tr class="resources-row"><td colspan="4" class="muted">—</td></tr>`;
+  }
   const chips = links
     .map(
       (link) =>
         `<a class="demo-link-chip" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" title="${esc(link.label)}">${esc(link.label)}<span class="demo-link-ext" aria-hidden="true">↗</span></a>`,
     )
     .join("");
-
-  return `<div class="demo-resources">
-    <p class="demo-resources-label">Demo resources</p>
-    <div class="demo-link-chips">${chips}</div>
-  </div>`;
+  return `<tr class="resources-row"><td colspan="4"><div class="demo-link-chips">${chips}</div></td></tr>`;
 }
 
 function displayPrep(prep, meta) {

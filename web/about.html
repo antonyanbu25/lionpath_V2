@@ -324,6 +324,51 @@
         <p class="muted about-print-hint">Full markdown version: <code>docs/CODE_LOGIC.md</code> in the repo.</p>
       </section>
 
+      <section id="discovery-wireframe" class="card about-section print-wireframe-guide">
+        <div class="about-section-head">
+          <h2>Discovery pre-call wireframe</h2>
+          <button type="button" class="ghost about-print-btn" onclick="printWireframeGuide()">Print / Save as PDF</button>
+        </div>
+        <p class="muted">
+          One <strong>Account Snapshot</strong> table for the SE prep brief — share with the team before changing layout.
+          ≤8 words per cell · no invented stats · one printed page.
+        </p>
+        <pre class="about-wireframe" aria-label="Discovery table wireframe">HEADER (above table)
+  Company · domain · description · attendee chips
+
+ONE TABLE — top to bottom:
+
+  FIT — Attribute | This company | Industry norm | GAP + dot
+    Omnichannel Support · AI Deflection · Agent Assist (3 rows)
+
+  ACCOUNT FACTS — label | value (8 rows)
+    Incumbent [greenfield/homegrown/entrenched] · agents est. · market · model
+    users · uptime · funding/parent · HQ · languages
+
+  INDUSTRY USE CASES — up to 3 rows
+
+  DISCOVERY KIT — Ask this | Because (max 3)
+
+  DEMO PREP — Pain | Capability | Value (max 3, qualitative only)
+
+  RESOURCES — demo script · customer reference · slide pack
+    + Zendesk/Intercom battlecards only if detected
+
+FOOTER — Sources (collapsible)
+
+REMOVED: maturity chips · signals block · extra card stacks</pre>
+        <p class="muted about-print-hint">
+          Full doc: <a href="https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md">DISCOVERY_WIREFRAME.md</a>
+          · Slack copy-paste: <code>docs/SLACK_DISCOVERY_WIREFRAME.txt</code>
+        </p>
+        <h3 class="about-subhead">Team feedback</h3>
+        <ul class="about-list muted">
+          <li>Approve layout, or change section order / rows?</li>
+          <li>Sources in footer vs inside table?</li>
+          <li>Resource link count OK?</li>
+        </ul>
+      </section>
+
       <section class="card about-section about-demo">
         <h2>Demo login</h2>
         <p class="muted">For local demos and shared environments — dummy auth, not production SSO.</p>
@@ -362,7 +407,9 @@
 
     <footer class="site-footer">
       <span class="muted">SE Singha Paathai · Freshworks</span>
+      <a href="#discovery-wireframe" class="muted" style="margin-left:1rem">Discovery wireframe</a>
       <a href="#code-logic" class="muted" style="margin-left:1rem">How the code works</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md" class="muted" style="margin-left:1rem">DISCOVERY_WIREFRAME.md</a>
       <a href="https://github.com/skut264/lionpath/blob/main/docs/CODE_LOGIC.md" class="muted" style="margin-left:1rem">CODE_LOGIC.md</a>
       <a href="https://github.com/skut264/lionpath/blob/main/README.md" class="muted" style="margin-left:1rem">README</a>
       <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md" class="muted" style="margin-left:1rem">VPS deploy guide</a>
@@ -372,6 +419,11 @@
         document.body.classList.add("print-code-guide");
         window.print();
         window.addEventListener("afterprint", () => document.body.classList.remove("print-code-guide"), { once: true });
+      }
+      function printWireframeGuide() {
+        document.body.classList.add("print-wireframe-guide");
+        window.print();
+        window.addEventListener("afterprint", () => document.body.classList.remove("print-wireframe-guide"), { once: true });
       }
     </script>
   </body>
