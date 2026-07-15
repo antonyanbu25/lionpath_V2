@@ -750,5 +750,9 @@ export function renderManagerDashboard(container) {
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
 export function renderDashboard(container, email, opts = {}) {
+  if (!container) {
+    console.error("[dashboard] missing #view-dashboard container — cannot render launchpad");
+    return;
+  }
   renderSeLaunchpad(container, email, opts);
 }

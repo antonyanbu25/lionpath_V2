@@ -259,7 +259,6 @@ function refreshActiveDashboard() {
 // ---------- Views ----------
 
 function switchView(name) {
-  currentView = name;
   const isManager = isManagerRole(currentSession);
   const panels = {
     dashboard: $("view-dashboard"),
@@ -282,17 +281,24 @@ function switchView(name) {
     switchWorkspaceTab("discovery");
   }
 
-  Object.entries(panels).forEach(([key, el]) => show(el, key === name));
-  $("main-view-title").textContent = VIEW_TITLES[name] || name;
+  currentView = name;
+
+  Object.entries(panels).forEach(([key, el]) => {
+    if (el) show(el, key === name);
+  });
+
+  const titleEl = $("main-view-title");
+  if (titleEl) titleEl.textContent = VIEW_TITLES[name] || name;
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
 
+  const email = currentSession?.email || "";
   if (name === "dashboard" && !isManager) {
-    renderDashboard($("view-dashboard"), currentSession.email, dashboardOpts());
+    renderDashboard($("view-dashboard"), email, dashboardOpts());
   } else if (name === "coaching" && !isManager) {
-    renderCoaching($("view-coaching"), currentSession.email, {
+    renderCoaching($("view-coaching"), email, {
       onOpenCall: (id) => openHistoryItem(id),
     });
   } else if (name === "manager" && isManager) {
@@ -339,12 +345,14 @@ async function loadPersistedHistory() {
   try {
     const list = await syncHistoryOnLogin(currentSession.email);
     refreshSidebarHistory();
+    refreshDashboardFromStorage();
     const count = list.length;
     console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
     return count;
   } catch (err) {
     console.warn("[app] history sync failed:", err);
     refreshSidebarHistory();
+    refreshDashboardFromStorage();
     return listPostCallAnalyses(currentSession.email).length;
   } finally {
     setSidebarHistorySyncing(false);
