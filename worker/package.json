@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:node": "node scripts/dev-node.mjs",
     "deploy": "wrangler deploy",
     "start:node": "tsx src/node-server.ts",
     "typecheck": "tsc --noEmit"

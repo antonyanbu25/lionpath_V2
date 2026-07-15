@@ -19,6 +19,7 @@ import {
 
 const authEnabled = !!firebaseConfig.projectId;
 const PREP_URL = `${WORKER_BASE_URL}/api/generate-prep`;
+const TAB_STORAGE_KEY = "lionpath-active-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
   "Start the worker in another terminal: cd worker → npm.cmd run dev (look for Ready on port 8787). " +
@@ -33,8 +34,7 @@ const show = (el, on = true) => { el.hidden = !on; };
 
 const VIEW_TITLES = {
   dashboard: "My dashboard",
-  analysis: "New analysis",
-  precall: "Pre-call prep",
+  workspace: "One-pagers",
   manager: "Manager view",
 };
 
@@ -42,7 +42,15 @@ function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown";
+const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
+const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+
+function truncateWords(text, max) {
+  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= max) return esc(words.join(" "));
+  return `${esc(words.slice(0, max).join(" "))}<span class="trunc-ellipsis">…</span>`;
+}
+
 const emailDomain = (email) => {
   const at = String(email || "").lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
@@ -97,24 +105,83 @@ function updateDomainHint() {
     hint.hidden = true;
   }
 }
-const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
-const prepBullets = (arr) => {
-  const items = (arr || []).filter((x) => !isUnknown(x));
-  return items.length
-    ? `<ul class="prep-bullets">${items.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
-    : '<p class="muted">—</p>';
-};
 
-const COMPARISON_ROWS = [
-  ["industry", "Industry"],
-  ["sizeAgents", "Size / agents"],
-  ["supportChannels", "Support channels"],
-  ["incumbentStack", "Incumbent stack"],
-  ["supportPortal", "Support portal"],
-  ["integrations", "Integrations"],
-  ["webChatWidget", "Web chat widget"],
+function gapDot(gap) {
+  const cls = gap === "large" ? "gap-large" : gap === "parity" ? "gap-parity" : "gap-partial";
+  const label = gap === "large" ? "Large gap" : gap === "parity" ? "Parity" : "Partial gap";
+  return `<span class="gap-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
+}
+
+function decisionDot(power) {
+  const cls =
+    power === "decision_maker" ? "dot-green" : power === "influencer" ? "dot-grey" : "dot-red";
+  const label =
+    power === "decision_maker" ? "Decision maker" : power === "influencer" ? "Influencer" : "Unknown";
+  return `<span class="power-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
+}
+
+const BIZ_ROWS = [
+  ["market", "Market"],
+  ["model", "Business model"],
+  ["users", "Users"],
+  ["uptimeNeed", "Uptime need"],
+  ["incumbent", "Incumbent"],
+  ["industryUseCase", "Industry use case"],
   ["fundingParent", "Funding / parent"],
 ];
+
+// ---------- Tabs ----------
+
+function getStoredTab() {
+  const t = localStorage.getItem(TAB_STORAGE_KEY);
+  return t === "postcall" ? "postcall" : "discovery";
+}
+
+function setStoredTab(tab) {
+  localStorage.setItem(TAB_STORAGE_KEY, tab);
+}
+
+function switchWorkspaceTab(tab) {
+  const discovery = tab === "discovery";
+  const panels = { discovery: $("tab-discovery"), postcall: $("tab-postcall") };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  Object.entries(panels).forEach(([key, el]) => {
+    const showPanel = key === (discovery ? "discovery" : "postcall");
+    if (showPanel) {
+      show(el, true);
+      el.classList.remove("tab-exit");
+      el.classList.add("tab-enter");
+      if (!reduceMotion) {
+        requestAnimationFrame(() => {
+          el.classList.remove("tab-enter");
+          el.classList.add("tab-active");
+        });
+      } else {
+        el.classList.remove("tab-enter");
+        el.classList.add("tab-active");
+      }
+    } else if (!el.hidden) {
+      if (reduceMotion) {
+        show(el, false);
+        el.classList.remove("tab-active", "tab-exit", "tab-enter");
+      } else {
+        el.classList.remove("tab-active");
+        el.classList.add("tab-exit");
+        setTimeout(() => {
+          show(el, false);
+          el.classList.remove("tab-exit", "tab-enter");
+        }, 220);
+      }
+    }
+  });
+
+  document.querySelectorAll(".app-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+    btn.setAttribute("aria-selected", btn.dataset.tab === tab ? "true" : "false");
+  });
+  setStoredTab(tab);
+}
 
 // ---------- Views ----------
 
@@ -123,13 +190,20 @@ function switchView(name) {
   const isManager = currentSession?.role === "manager";
   const panels = {
     dashboard: $("view-dashboard"),
-    analysis: $("view-analysis"),
-    precall: $("view-precall"),
+    workspace: $("view-workspace"),
     manager: $("view-manager"),
   };
 
   if (isManager && name === "dashboard") {
     name = "manager";
+  }
+
+  if (name === "analysis") {
+    name = "workspace";
+    switchWorkspaceTab("postcall");
+  } else if (name === "precall") {
+    name = "workspace";
+    switchWorkspaceTab("discovery");
   }
 
   Object.entries(panels).forEach(([key, el]) => show(el, key === name));
@@ -152,7 +226,8 @@ function switchView(name) {
 function openHistoryItem(id) {
   const record = getPostCallAnalysis(currentSession.email, id);
   if (!record?.result) return;
-  switchView("analysis");
+  switchView("workspace");
+  switchWorkspaceTab("postcall");
   displayPostCall(record.result, { title: record.title });
   document.querySelectorAll(".sidebar-history-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
@@ -254,102 +329,168 @@ function closeSidebar() {
   show($("sidebar-backdrop"), false);
 }
 
-// ---------- Rendering (pre-call) ----------
+// ---------- Rendering (Discovery) ----------
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function initPrepAnimations(root) {
+  if (!root) return;
+  root.classList.add("anim-root");
+  const blocks = root.querySelectorAll(".header-strip, section, .prep-footer");
+  blocks.forEach((el, i) => {
+    el.classList.add("anim-block");
+    el.style.setProperty("--anim-delay", `${i * 50}ms`);
+  });
+
+  root.querySelectorAll(".flow-row").forEach((row, rowIdx) => {
+    row.querySelectorAll(".flow-cell, .flow-arrow").forEach((cell, cellIdx) => {
+      cell.style.setProperty("--flow-delay", `${rowIdx * 140 + cellIdx * 55}ms`);
+    });
+  });
+
+  if (prefersReducedMotion()) {
+    root.classList.add("anim-ready");
+    return;
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => root.classList.add("anim-ready"));
+  });
+}
 
 function renderPrep(p, meta = {}) {
-  if (!p?.comparison && (p?.researchSnapshot || p?.demoPlan)) {
-    return `
-      <div class="status err">This prep uses an older format. Regenerate to get the comparison-table brief.</div>`;
+  if (!p?.fitSnapshot && (p?.comparison || p?.researchSnapshot || p?.demoPlan)) {
+    return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery brief.</div>`;
   }
 
-  const cmp = p.comparison || {};
-  const se = p.seActions || {};
-
-  const compareRows = COMPARISON_ROWS.map(([key, label]) => {
-    const row = cmp[key] || {};
-    return `<tr><th class="prep-row-label">${esc(label)}</th><td>${dash(row.thisCompany)}</td><td>${dash(row.industryNorm)}</td></tr>`;
-  }).join("");
-
-  const compareTable = `
-    <table class="prep-compare">
-      <thead><tr><th></th><th>This company</th><th>Industry norm</th></tr></thead>
-      <tbody>${compareRows}</tbody>
-    </table>`;
-
-  const gaps = (se.discoveryGaps || []).filter((q) => !isUnknown(q));
-  const gapsHtml = gaps.length
-    ? `<ul class="prep-bullets">${gaps.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>`
-    : '<p class="muted">—</p>';
-
-  const demoSteps = (se.demoFlow || []).filter((s) => !isUnknown(s));
-  const demoHtml = demoSteps.length
-    ? `<ol class="prep-steps">${demoSteps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`
-    : '<p class="muted">—</p>';
-
-  const seActions = `
-    <div class="prep-action-grid">
-      <div class="prep-action-block prep-action-wide">
-        <h3>Top use case</h3>
-        <p class="prep-lead">${dash(se.topUseCase)}</p>
-      </div>
-      <div class="prep-action-block">
-        <h3>Pain points</h3>
-        ${prepBullets(se.painPoints)}
-      </div>
-      <div class="prep-action-block">
-        <h3>Discovery gaps</h3>
-        ${gapsHtml}
-      </div>
-      <div class="prep-action-block prep-action-wide">
-        <h3>Demo flow</h3>
-        ${demoHtml}
-      </div>
-    </div>`;
-
-  const attendees = (p.attendees || []).length
-    ? `<ul class="prep-attendee-list">${(p.attendees || [])
+  const attendeeChips = (p.attendees || []).length
+    ? (p.attendees || [])
         .map((a) => {
-          const parts = [esc(a.name)];
-          if (a.email && !isUnknown(a.email)) parts.push(`<span class="prep-att-email">${esc(a.email)}</span>`);
-          if (a.note && !isUnknown(a.note)) parts.push(`<span class="prep-att-note">${esc(a.note)}</span>`);
-          return `<li>${parts.join(" · ")}</li>`;
+          const parts = [`<span class="attendee-chip">${decisionDot(a.decisionPower)}${dash(a.name)}`];
+          if (!isUnknown(a.role)) parts.push(`<span class="chip-role">${truncateWords(a.role, 10)}</span>`);
+          parts.push("</span>");
+          return parts.join(" · ");
         })
+        .join("")
+    : '<span class="muted">—</span>';
+
+  const snapshot = p.fitSnapshot || [];
+  const focalIdx = snapshot.findIndex((r) => r.gap === "large");
+  const focalRowIdx = focalIdx >= 0 ? focalIdx : 0;
+
+  const fitRows = snapshot
+    .map(
+      (row, idx) => `<tr class="${idx === focalRowIdx ? "focal-gap-row" : ""}">
+        <th class="prep-row-label">${truncateWords(row.label, 10)}</th>
+        <td>${truncateWords(row.thisCompany, 10)}</td>
+        <td>${truncateWords(row.industryNorm, 10)}</td>
+        <td class="gap-cell">${gapDot(row.gap)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const fitTable = fitRows
+    ? `<table class="prep-compare fit-snapshot">
+        <thead><tr><th></th><th>This company</th><th>Industry norm</th><th>Gap</th></tr></thead>
+        <tbody>${fitRows}</tbody>
+      </table>`
+    : '<p class="muted">—</p>';
+
+  const bc = p.businessContext || {};
+  const bizTable = `<table class="kv-table">
+    <tbody>${BIZ_ROWS.map(
+      ([key, label]) =>
+        `<tr><th>${esc(label)}</th><td>${truncateWords(bc[key], 10)}</td></tr>`,
+    ).join("")}</tbody>
+  </table>`;
+
+  const workflows = (bc.workflows || []).filter((x) => !isUnknown(x));
+  const workflowHtml = workflows.length
+    ? `<ul class="prep-bullets">${workflows
+        .slice(0, 4)
+        .map((b) => `<li>${truncateWords(b, 14)}</li>`)
         .join("")}</ul>`
+    : '<p class="muted">—</p>';
+
+  const kit = (p.discoveryKit || []).slice(0, 4);
+  const kitHtml = kit.length
+    ? `<table class="discovery-kit">
+        <thead><tr><th>Ask this</th><th>Because</th></tr></thead>
+        <tbody>${kit
+          .map(
+            (item) => `<tr>
+              <td>${truncateWords(item.question, 14)}</td>
+              <td class="because-cell">${truncateWords(item.because, 12)}</td>
+            </tr>`,
+          )
+          .join("")}</tbody>
+      </table>`
+    : '<p class="muted">—</p>';
+
+  const pcv = (p.painCapabilityValue || []).slice(0, 3);
+  const flowHtml = pcv.length
+    ? `<div class="flowchart flowchart-anim">${pcv
+        .map(
+          (row) => `<div class="flow-row">
+            <span class="flow-cell pain">${truncateWords(row.pain, 10)}</span>
+            <span class="flow-arrow" aria-hidden="true">→</span>
+            <span class="flow-cell cap">${truncateWords(row.capability, 10)}</span>
+            <span class="flow-arrow" aria-hidden="true">→</span>
+            <span class="flow-cell val">${truncateWords(row.value, 10)}</span>
+          </div>`,
+        )
+        .join("")}</div>`
     : '<p class="muted">—</p>';
 
   const sources = (p.sources || []).length
     ? `<details class="sources"><summary>Sources (${p.sources.length})</summary><ul>${(p.sources || [])
-        .map((s) => `<li>${esc(s.claim)} — ${s.url && !isUnknown(s.url) ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : '<span class="muted">no link</span>'}</li>`)
+        .map((s) => {
+          const url = s.url && !isUnknown(s.url) ? s.url : null;
+          const link = url
+            ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`
+            : '<span class="muted">unknown</span>';
+          return `<li>${truncateWords(s.claim, 14)} — ${link}</li>`;
+        })
         .join("")}</ul></details>`
     : "";
 
-  const sub = [meta.domain, meta.additionalContext ? "context provided" : ""]
-    .filter(Boolean).map(esc).join(" · ");
+  const domain = meta.domain ? esc(meta.domain) : "";
 
   return `
     <div class="toolbar">
       <button class="ghost" onclick="window.print()">Print / PDF</button>
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
-    <div class="head"><h2 class="one-pager-title">${esc(meta.company || "")}</h2><span class="sub">${sub}</span></div>
-    <section class="prep-hero">${compareTable}</section>
-    <section><h2>About the business</h2>${prepBullets(p.aboutBusiness)}</section>
-    <section><h2>Support process</h2>${prepBullets(p.supportProcess)}</section>
-    <section><h2>Workflows</h2>${prepBullets(p.workflows)}</section>
-    <section><h2>SE playbook</h2>${seActions}</section>
-    <footer class="prep-footer">
-      <div class="prep-attendees"><h3>Attendees</h3>${attendees}</div>
-      ${sources}
-    </footer>`;
+    <header class="header-strip">
+      <div class="header-main">
+        <h2 class="one-pager-title">${esc(meta.company || "")}</h2>
+        ${domain ? `<span class="header-domain">${domain}</span>` : ""}
+      </div>
+      <p class="header-desc">${truncateWords(p.description, 25)}</p>
+      <div class="attendee-chips">${attendeeChips}</div>
+    </header>
+    <section class="prep-hero"><h2>Fit snapshot</h2>${fitTable}</section>
+    <section class="biz-context">
+      <h2>Business context</h2>
+      <div class="biz-grid">${bizTable}
+        <div class="workflows-block"><h3>Workflows</h3>${workflowHtml}</div>
+      </div>
+    </section>
+    <section><h2>Discovery kit</h2>${kitHtml}</section>
+    <section><h2>Demo prep</h2>${flowHtml}</section>
+    <footer class="prep-footer">${sources}</footer>`;
 }
 
 function displayPrep(prep, meta) {
   const result = $("prep-result");
+  result.classList.remove("anim-root", "anim-ready");
   result.innerHTML = renderPrep(prep, meta || {});
   show(result, true);
+  initPrepAnimations(result);
   const copyBtn = $("copy-json");
   if (copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(JSON.stringify(prep, null, 2));
-  result.scrollIntoView({ behavior: "smooth", block: "start" });
+  result.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
 // ---------- Generate ----------
@@ -447,6 +588,7 @@ async function loadPrepHistory() {
     $("history").querySelectorAll("button[data-i]").forEach((b) =>
       (b.onclick = () => {
         const d = docs[Number(b.dataset.i)];
+        switchWorkspaceTab("discovery");
         displayPrep(d.prep, { company: d.company, domain: emailDomain(d.prospectEmail), additionalContext: d.additionalContext });
       }));
     show(section, true);
@@ -481,13 +623,16 @@ async function showApp(session) {
   setHistoryAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
 
-  await loadPersistedHistory();
-
   const defaultView = session.role === "manager" ? "manager" : "dashboard";
   const hash = location.hash.replace("#", "");
-  const valid = ["dashboard", "analysis", "precall", "manager"];
+  const valid = ["dashboard", "workspace", "analysis", "precall", "manager"];
   switchView(valid.includes(hash) ? hash : defaultView);
+  if (hash === "workspace" || hash === "analysis" || hash === "precall" || !hash) {
+    switchWorkspaceTab(getStoredTab());
+  }
   if (authEnabled) loadPrepHistory();
+
+  void loadPersistedHistory();
 }
 
 function handleSession(session) {
@@ -586,11 +731,19 @@ function boot() {
   $("prospectEmail")?.addEventListener("input", updateDomainHint);
   $("companyName")?.addEventListener("input", updateDomainHint);
 
+  document.querySelectorAll(".app-tab").forEach((btn) => {
+    btn.onclick = () => {
+      switchWorkspaceTab(btn.dataset.tab);
+      if (btn.dataset.tab === "postcall") {
+        show($("postcall-status"), false);
+      }
+    };
+  });
+
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.onclick = () => {
-      if (btn.dataset.view === "analysis") {
-        show($("postcall-result"), false);
-        show($("postcall-status"), false);
+      if (btn.dataset.view === "workspace") {
+        switchWorkspaceTab(getStoredTab());
       }
       switchView(btn.dataset.view);
     };

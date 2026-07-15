@@ -1,5 +1,5 @@
-// Provider-agnostic prep pipeline. Builds the SE one-pager prompt, calls whichever LLM provider
-// is configured (see providers/index.ts), and parses the returned JSON defensively.
+// Provider-agnostic prep pipeline. Builds the SE Discovery one-pager prompt, calls whichever LLM
+// provider is configured (see providers/index.ts), and parses the returned JSON defensively.
 //
 // Grounding rules: Freshworks facts come only from the KB; prospect facts come only from web
 // research and are cited; gaps use "-" rather than being invented.
@@ -10,6 +10,7 @@ import { extractJson } from "./json";
 import { PREP_SCHEMA, type Prep } from "./schema";
 import { getProvider } from "./providers";
 import type { ProviderEnv } from "./providers/types";
+import { normalizePrepOutput } from "./word-limits";
 
 export type Env = ProviderEnv;
 
@@ -33,7 +34,7 @@ export function deriveDomain(email: string): string {
 function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
-SE prep one-pager.
+SE Discovery one-pager.
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
 - PRIMARY target: the COMPANY NAME (Google-search it first). Prospect email domains are often
@@ -50,33 +51,36 @@ Where you truly can't find something, write "-" for string fields (or leave arra
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
 
-OUTPUT FORMAT — one scrollable page, bullets not paragraphs:
-- Total output ~600–800 words across all fields.
-- Table cells (comparison.*.thisCompany and comparison.*.industryNorm): max 12 words each.
-- Bullet items (aboutBusiness, supportProcess, workflows, seActions.painPoints): max 15 words each.
-- seActions.demoFlow steps: max 15 words each, 4–5 numbered steps (strings only, no numbers in text).
-- seActions.discoveryGaps: exactly 3 sharp questions (strings, no labels).
-- seActions.painPoints: 3–4 items.
-- aboutBusiness, supportProcess, workflows: 3–5 bullets each.
-- sources: 3–5 cited URLs for prospect facts.
+OUTPUT FORMAT — one printable page, tables and bullets ONLY (no paragraphs):
+- description: one-line company summary, max 25 words.
+- Table cells (fitSnapshot.*, businessContext key values): max 10 words each.
+- Bullets (workflows, discoveryKit.question, sources.claim): max 14 words each.
+- discoveryKit.because: max 12 words each.
+- painCapabilityValue cells: max 10 words each.
 
-COMPARISON TABLE (hero) — fill every row; industryNorm = one short typical line for their sector:
-- industry: vertical / what they sell
-- sizeAgents: headcount or support-team size if known
-- supportChannels: email, phone, chat, social, etc.
-- incumbentStack: helpdesk, CRM, chat, phone vendors detected
-- supportPortal: self-service portal / KB URL or platform
-- integrations: key systems tied to support (CRM, billing, etc.)
-- webChatWidget: on-site chat widget if any
-- fundingParent: funding round, PE owner, or parent company
+NO-REPEAT RULE — facts in fitSnapshot hero table must NOT appear in businessContext,
+discoveryKit, or painCapabilityValue below. Use different angles or omit duplicates.
 
-SE ACTION BLOCKS:
-- seActions.topUseCase: single highest-value demo angle (one line, max 15 words).
-- seActions.painPoints: 3–4 likely pains tied to their support model.
-- seActions.discoveryGaps: 3 questions that close the biggest research gaps.
-- seActions.demoFlow: 4–5 demo steps in order (SE picks Freshworks features live — do not name SKUs).
+FIT SNAPSHOT (hero) — max 6 rows with gap enum per row:
+- label: short row name (e.g. Industry, Support channels, Incumbent stack)
+- thisCompany / industryNorm: max 10 words each
+- gap: "large" (big Freshworks opportunity), "partial" (some fit), "parity" (already strong)
 
-ATTENDEES: include prospect contact if known; note role uncertainty briefly in note field.
+BUSINESS CONTEXT — key/value table rows + workflows bullets (max 4):
+- market, model, users, uptimeNeed, incumbent, industryUseCase, fundingParent
+- workflows: max 4 bullets, max 14 words each
+
+DISCOVERY KIT — max 4 pairs of {question, because}:
+- question: sharp discovery question, max 14 words
+- because: why to ask, max 12 words
+
+DEMO PREP FLOWCHART — painCapabilityValue, max 3 rows:
+- pain → capability → value (Freshworks angle), max 10 words per cell
+
+ATTENDEES: include prospect contact if known; decisionPower enum:
+decision_maker | influencer | unknown
+
+SOURCES: 3–5 cited URLs; use "unknown" if URL not found.
 
 === FRESHWORKS KNOWLEDGE BASE ===
 ${FRESHWORKS_KB}
@@ -96,7 +100,7 @@ function userPrompt(input: PrepInput, domain: string): string {
   const suggested = suggestDomain(input.companyName);
 
   const lines = [
-    `Prepare the prep brief for this upcoming call.`,
+    `Prepare the Discovery brief for this upcoming call.`,
     ``,
     `Company (PRIMARY research target): ${input.companyName}`,
     `Prospect email: ${input.prospectEmail}`,
@@ -125,10 +129,15 @@ function userPrompt(input: PrepInput, domain: string): string {
   lines.push(
     ``,
     `Google-search "${input.companyName}" first, infer their support model and stack,`,
-    `and fill every comparison row and section of the schema with real findings.`,
+    `and fill fitSnapshot, businessContext, discoveryKit, and painCapabilityValue with real findings.`,
     `For recognizable orgs, use public knowledge — never leave the entire brief empty.`,
+    `Enforce all word caps strictly.`,
   );
   return lines.join("\n");
+}
+
+function parsePrep(text: string): Prep {
+  return normalizePrepOutput(extractJson<Prep>(text));
 }
 
 export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
@@ -149,7 +158,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
   });
 
   try {
-    return extractJson<Prep>(result.text);
+    return parsePrep(result.text);
   } catch (err) {
     const repaired = await provider.generate({
       system:
@@ -164,7 +173,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
       research: false,
     });
     try {
-      return extractJson<Prep>(repaired.text);
+      return parsePrep(repaired.text);
     } catch (err2) {
       throw new Error(
         `Could not parse prep JSON even after a repair attempt: ${(err2 as Error).message}`,

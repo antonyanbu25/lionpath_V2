@@ -232,7 +232,7 @@ export async function savePostCallAnalysis(email, input, result) {
     id: crypto.randomUUID(),
     timestamp: Date.now(),
     zoomLink: input?.recordingUrl || "",
-    title: analysis?.callSummary?.headline || "Call analysis",
+    title: analysis?.callHeader?.title || analysis?.callSummary?.headline || "Call analysis",
     analysis,
     transcriptMeta: result?.transcriptMeta || null,
     result,

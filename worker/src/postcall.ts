@@ -8,6 +8,7 @@ import { POSTCALL_SCHEMA, type PostCallAnalysis, type PostCallResult } from "./p
 import { normalizeQualityCoach } from "./quality-score";
 import { parseTranscript, trimTranscript } from "./transcript";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
+import { normalizePostCallOutput } from "./word-limits";
 
 export type Env = ProviderEnv;
 
@@ -31,7 +32,7 @@ function usesGeminiStructuredOutput(env: Env): boolean {
 
 function systemPrompt(env: Env): string {
   const schemaBlock = usesGeminiStructuredOutput(env)
-    ? `OUTPUT — CRITICAL: one JSON object only (callSummary, nextSteps, qualityCoach). No markdown.`
+    ? `OUTPUT — CRITICAL: one JSON object only (callHeader, momentum, followUpTable, signals, nextSteps, qualityCoach, artifacts). No markdown.`
     : `OUTPUT — CRITICAL: respond with a SINGLE JSON object and nothing else. No markdown, no code
 fences. It must match exactly this JSON Schema (all fields required):
 
@@ -40,29 +41,43 @@ ${JSON.stringify(POSTCALL_SCHEMA)}`;
   return `You are a senior Freshworks Solution Engineering manager reviewing a completed customer call.
 Score like a sales engineering manager doing QA, not a cheerleader.
 
-Produce: (1) callSummary — factual recap; (2) nextSteps — SE/AE actions, follow-up email, CRM notes;
-(3) qualityCoach — score six dimensions 1–5 each with feedback and transcript evidence:
-Discovery, Demo alignment, Objections, Value articulation, Next-step clarity, Talk balance.
-Also list strengths (genuine positives only), improvements (actionable gaps), and missedOpportunities.
-Do not output an overall score — it is computed from dimension averages.
+Produce a scannable post-call one-pager with tables and bullets ONLY (no paragraphs).
+
+WORD CAPS (strict):
+- Table cells (followUpTable, nextSteps, callHeader fields): max 10 words each.
+- Bullets (signals.*, qualityCoach strengths/improvements/missed): max 14 words each.
+- momentum.reason: max 20 words.
+- callHeader.title: max 25 words.
+
+STRUCTURE:
+1. callHeader — title, duration, date, attendees with influence enum (high|medium|low).
+2. momentum — status enum Advancing|Stalled|At risk, reason, topAction, topActionDue.
+   Separate from quality score — reflects deal momentum not SE execution quality.
+3. followUpTable — SINGLE source for decisions, commitments, SE actions, AE actions,
+   objections, next meeting. Each row: category, thisCall (max 10 words), followUp (max 10 words).
+   Do NOT duplicate these facts elsewhere.
+4. signals — painsConfirmed (max 4), objectionsOpen (max 4), competitors (max 4), one line each.
+5. nextSteps — Owner|Action|Due|Why table. Set isRisk=true for rows derived from coach
+   missed opportunities (prefix action with "Risk: ").
+6. qualityCoach — six dimensions 1–5 with feedback and evidence (max 14 words each).
+   strengths: top 2, improvements: top 2, missedOpportunities: top 1 only.
+   Do not output overall score — computed from dimensions.
+7. artifacts — suggestedFollowUpEmail (subject+body) and crmNotes.
 
 DIMENSION SCORING RUBRIC (strict — calibrate to real SE QA standards):
-- 5/5 Exceptional (rare): repeated, specific transcript evidence of best-in-class execution; reserve for top ~5% of calls
+- 5/5 Exceptional (rare): repeated, specific transcript evidence of best-in-class execution
 - 4/5 Solid: meets SE expectations with only minor gaps
-- 3/5 Acceptable: basic execution but noticeable weaknesses — this is the typical score for an average call
+- 3/5 Acceptable: basic execution but noticeable weaknesses — typical average call
 - 2/5 Needs improvement: significant misses or weak execution
 - 1/5 Missed: dimension largely absent or handled poorly
 
 CALIBRATION — apply strictly:
 - A typical average SE call should land ~3–3.5/5 per dimension, NOT 4–5
-- Only award 5 when there is clear, specific transcript evidence of excellence — "good enough" is 3 or 4 at most
-- Score DOWN aggressively for: shallow discovery (few open questions, pain not quantified), generic demo
-  (features not tied to stated needs), weak next steps (no dates, owners, or mutual commitments),
-  SE talk-time dominance (>60% SE talk), surface-level objection handling, vague value statements
-- If evidence is thin or generic, score 2–3 and say why in feedback
-- Most calls should have 2–4 improvements and 1–3 missed opportunities
+- Only award 5 when there is clear, specific transcript evidence of excellence
+- Score DOWN for shallow discovery, generic demo, weak next steps, SE talk dominance
+- If evidence is thin, score 2–3 and say why in feedback
 
-Rules: never fabricate; empty arrays if not discussed; cite transcript evidence; keep lists scannable.
+Rules: never fabricate; empty arrays if not discussed; cite transcript evidence.
 
 ${schemaBlock}`;
 }
@@ -84,6 +99,25 @@ function userPrompt(input: PostCallInput, parsed: ReturnType<typeof parseTranscr
   }
   lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
   return lines.join("\n");
+}
+
+function parseAnalysis(
+  raw: Omit<PostCallAnalysis, "qualityCoach"> & {
+    qualityCoach: Parameters<typeof normalizeQualityCoach>[0];
+  },
+): PostCallAnalysis {
+  const trimmed = normalizePostCallOutput({
+    ...raw,
+    qualityCoach: {
+      ...raw.qualityCoach,
+      overallScore: 0,
+      overallLabel: "",
+    },
+  });
+  return {
+    ...trimmed,
+    qualityCoach: normalizeQualityCoach(trimmed.qualityCoach),
+  };
 }
 
 export async function analyzePostCall(env: Env, input: PostCallInput): Promise<PostCallResult> {
@@ -119,13 +153,24 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     jsonSchema: POSTCALL_SCHEMA as unknown as Record<string, unknown>,
   });
 
-  const raw = extractJson<Omit<PostCallAnalysis, "qualityCoach"> & { qualityCoach: Parameters<typeof normalizeQualityCoach>[0] }>(
-    result.text,
+  const analysis = parseAnalysis(
+    extractJson<
+      Omit<PostCallAnalysis, "qualityCoach"> & {
+        qualityCoach: Parameters<typeof normalizeQualityCoach>[0];
+      }
+    >(result.text),
   );
-  const analysis: PostCallAnalysis = {
-    ...raw,
-    qualityCoach: normalizeQualityCoach(raw.qualityCoach),
-  };
+
+  if (!analysis.callHeader.duration && parsed.durationMinutes != null) {
+    analysis.callHeader.duration = `~${parsed.durationMinutes} min`;
+  }
+  if (!analysis.callHeader.title && meetingTitle) {
+    analysis.callHeader.title = meetingTitle;
+  }
+  if (!analysis.callHeader.date && input.meetingDate) {
+    analysis.callHeader.date = input.meetingDate;
+  }
+
   return {
     analysis,
     transcriptMeta: {

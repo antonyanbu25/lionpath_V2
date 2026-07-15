@@ -588,11 +588,15 @@ function renderDimensionBarChart(dimensions) {
 
   return `
 
-    <section class="card dash-section dash-dim-chart">
+    <section class="dash-section dash-dim-chart">
 
-      <h2>Dimension averages</h2>
+      <h2 class="dash-section-title">Dimension averages</h2>
 
-      <div class="dash-dim-rows">${rows}</div>
+      <div class="card dash-dim-card">
+
+        <div class="dash-dim-rows">${rows}</div>
+
+      </div>
 
     </section>`;
 
@@ -686,19 +690,23 @@ function renderTrendChart(trend) {
 
   return `
 
-    <section class="card dash-section dash-trend-section">
+    <section class="dash-section dash-trend-section">
 
-      <h2>Score trend</h2>
+      <h2 class="dash-section-title">Score trend</h2>
 
-      <p class="muted dash-chart-sub">Last ${n} call${n === 1 ? "" : "s"} · oldest → newest</p>
+      <div class="card dash-trend-card">
 
-      <svg class="dash-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Overall score trend over recent calls">
+        <p class="muted dash-chart-sub">Last ${n} call${n === 1 ? "" : "s"} · oldest → newest</p>
 
-        ${gridLines}
+        <svg class="dash-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Overall score trend over recent calls">
 
-        ${bars}
+          ${gridLines}
 
-      </svg>
+          ${bars}
+
+        </svg>
+
+      </div>
 
     </section>`;
 
@@ -780,33 +788,37 @@ function renderScoreDistribution(bands, total) {
 
   return `
 
-    <section class="card dash-section dash-distribution-section">
+    <section class="dash-section dash-distribution-section">
 
-      <h2>Score distribution</h2>
+      <h2 class="dash-section-title">Score distribution</h2>
 
-      <div class="dash-distribution">
+      <div class="card dash-distribution-card">
 
-        <div class="dash-donut-wrap" role="img" aria-label="Call score distribution across ${total} calls">
+        <div class="dash-distribution">
 
-          <svg class="dash-donut-svg" viewBox="0 0 120 120" aria-hidden="true">
+          <div class="dash-donut-wrap" role="img" aria-label="Call score distribution across ${total} calls">
 
-            <circle class="dash-donut-track" cx="60" cy="60" r="${r}" />
+            <svg class="dash-donut-svg" viewBox="0 0 120 120" aria-hidden="true">
 
-            ${arcs}
+              <circle class="dash-donut-track" cx="60" cy="60" r="${r}" />
 
-          </svg>
+              ${arcs}
 
-          <div class="dash-donut-center">
+            </svg>
 
-            <span class="dash-donut-total">${total}</span>
+            <div class="dash-donut-center">
 
-            <span class="dash-donut-total-label">calls</span>
+              <span class="dash-donut-total">${total}</span>
+
+              <span class="dash-donut-total-label">calls</span>
+
+            </div>
 
           </div>
 
-        </div>
+          <div class="dash-donut-legend">${legend}</div>
 
-        <div class="dash-donut-legend">${legend}</div>
+        </div>
 
       </div>
 
@@ -823,6 +835,8 @@ function renderStatCards(metrics) {
     return `
 
       <div class="dash-empty card">
+
+        <div class="dash-empty-icon" aria-hidden="true">📊</div>
 
         <h2>No calls analyzed yet</h2>
 
@@ -844,9 +858,9 @@ function renderStatCards(metrics) {
 
   return `
 
-    <div class="dash-stats">
+    <div class="dash-stats prep-action-grid">
 
-      <div class="dash-stat card">
+      <div class="dash-stat prep-action-block">
 
         <span class="dash-stat-label">Calls analyzed</span>
 
@@ -854,7 +868,7 @@ function renderStatCards(metrics) {
 
       </div>
 
-      <div class="dash-stat card">
+      <div class="dash-stat prep-action-block">
 
         <span class="dash-stat-label">Avg overall score</span>
 
@@ -862,21 +876,21 @@ function renderStatCards(metrics) {
 
       </div>
 
-      <div class="dash-stat card">
+      <div class="dash-stat prep-action-block">
 
         <span class="dash-stat-label">Strongest dimension</span>
 
-        <span class="dash-stat-value good">${esc(best?.name || "—")}</span>
+        <span class="dash-stat-value dash-stat-text good">${esc(radarDimensionLabel(best?.name) || "—")}</span>
 
         <span class="dash-stat-sub">${best ? `${best.avgScore.toFixed(1)}/${best.maxScore}` : ""}</span>
 
       </div>
 
-      <div class="dash-stat card">
+      <div class="dash-stat prep-action-block">
 
         <span class="dash-stat-label">Focus area</span>
 
-        <span class="dash-stat-value weak">${esc(worst?.name || "—")}</span>
+        <span class="dash-stat-value dash-stat-text weak">${esc(radarDimensionLabel(worst?.name) || "—")}</span>
 
         <span class="dash-stat-sub">${worst ? `${worst.avgScore.toFixed(1)}/${worst.maxScore}` : ""}</span>
 
@@ -892,11 +906,17 @@ function renderChartsTop(metrics) {
 
   return `
 
-    <section class="card dash-section dash-charts-top">
+    <section class="dash-section">
 
-      ${renderScoreGauge(metrics.avgOverall, 10)}
+      <h2 class="dash-section-title">Quality overview</h2>
 
-      ${renderRadarChart(metrics.dimensions)}
+      <div class="card dash-charts-top qc-dashboard">
+
+        ${renderScoreGauge(metrics.avgOverall, 10)}
+
+        ${renderRadarChart(metrics.dimensions)}
+
+      </div>
 
     </section>`;
 
@@ -916,17 +936,25 @@ function renderRecentTable(recentCalls) {
 
       return `
 
-        <tr data-call-id="${esc(c.id)}">
+        <button type="button" class="dash-recent-item dash-call-link" data-call-id="${esc(c.id)}">
 
-          <td><button type="button" class="link-btn dash-call-link" data-call-id="${esc(c.id)}">${esc(c.title)}</button></td>
+          <span class="dash-recent-main">
 
-          <td class="qc-dim-score ${cls}">${c.overallScore}/10</td>
+            <span class="dash-recent-title">${esc(c.title)}</span>
 
-          <td class="muted dash-recent-label">${esc(c.overallLabel)}</td>
+            <span class="muted dash-recent-label">${esc(c.overallLabel)}</span>
 
-          <td class="muted dash-recent-when">${esc(formatDate(c.timestamp))}</td>
+          </span>
 
-        </tr>`;
+          <span class="dash-recent-meta">
+
+            <span class="dash-recent-score qc-dim-score ${cls}">${c.overallScore}/10</span>
+
+            <span class="muted dash-recent-when">${esc(formatDate(c.timestamp))}</span>
+
+          </span>
+
+        </button>`;
 
     })
 
@@ -934,17 +962,11 @@ function renderRecentTable(recentCalls) {
 
   return `
 
-    <section class="card dash-section dash-recent-compact">
+    <section class="dash-section dash-recent-section">
 
-      <h2>Recent calls</h2>
+      <h2 class="dash-section-title">Recent calls</h2>
 
-      <table class="dash-recent-table">
-
-        <thead><tr><th>Call</th><th>Score</th><th>Label</th><th>When</th></tr></thead>
-
-        <tbody>${rows}</tbody>
-
-      </table>
+      <div class="dash-recent-list">${rows}</div>
 
     </section>`;
 
@@ -972,33 +994,37 @@ export function renderDashboard(container, email, opts = {}) {
 
   container.innerHTML = `
 
-    <div class="dash-header">
+    <div class="dash-one-pager one-pager">
 
-      <h1>My dashboard</h1>
+      <div class="head dash-head">
 
-      <p class="muted">Cumulative call quality from your analyzed recordings.</p>
+        <h1 class="one-pager-title">My dashboard</h1>
 
-    </div>
-
-    ${renderStatCards(metrics)}
-
-    ${hasData ? `
-
-      ${renderChartsTop(metrics)}
-
-      ${renderDimensionBarChart(metrics.dimensions)}
-
-      <div class="dash-charts-bottom">
-
-        ${renderTrendChart(metrics.scoreTrend)}
-
-        ${renderScoreDistribution(metrics.scoreBands, metrics.totalCalls)}
+        <span class="sub muted">Cumulative call quality from your analyzed recordings</span>
 
       </div>
 
-    ` : ""}
+      ${renderStatCards(metrics)}
 
-    ${renderRecentTable(metrics.recentCalls)}`;
+      ${hasData ? `
+
+        ${renderChartsTop(metrics)}
+
+        ${renderDimensionBarChart(metrics.dimensions)}
+
+        <div class="dash-charts-bottom">
+
+          ${renderTrendChart(metrics.scoreTrend)}
+
+          ${renderScoreDistribution(metrics.scoreBands, metrics.totalCalls)}
+
+        </div>
+
+      ` : ""}
+
+      ${renderRecentTable(metrics.recentCalls)}
+
+    </div>`;
 
 
 

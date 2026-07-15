@@ -16,6 +16,15 @@ function esc(v) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
+const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+
+function truncateWords(text, max) {
+  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= max) return esc(words.join(" "));
+  return `${esc(words.slice(0, max).join(" "))}<span class="trunc-ellipsis">…</span>`;
+}
+
 async function authHeaders() {
   const headers = { "content-type": "application/json" };
   if (authEnabled && getAuthToken) {
@@ -39,53 +48,31 @@ function parseRecordingInput(rawUrl, rawPwd) {
   return { recordingUrl: url, recordingPassword: password || undefined };
 }
 
-const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown";
-const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
-
-function bulletBlock(arr) {
-  const items = (arr || []).filter((x) => !isUnknown(x));
-  return items.length
-    ? `<ul class="prep-bullets">${items.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
-    : '<p class="muted">—</p>';
-}
-
-const CALL_SNAPSHOT_ROWS = [
-  ["customerContext", "Customer context", "text"],
-  ["keyTopics", "Key topics", "list"],
-  ["painPointsConfirmed", "Pain points confirmed", "list"],
-  ["objectionsRaised", "Objections raised", "list"],
-  ["competitiveMentions", "Competitive mentions", "list"],
-  ["decisionsMade", "Decisions made", "list"],
-  ["openQuestions", "Open questions", "list"],
-];
-
-const FOLLOW_UP_HINTS = {
-  customerContext: "—",
-  keyTopics: "—",
-  painPointsConfirmed: "Reinforce in follow-up",
-  objectionsRaised: "Prepare responses",
-  competitiveMentions: "Differentiate",
-  decisionsMade: "Document in CRM",
-  openQuestions: "Next meeting agenda",
+const CATEGORY_LABELS = {
+  decision: "Decision",
+  commitment: "Commitment",
+  se_action: "SE action",
+  ae_action: "AE action",
+  objection: "Objection",
+  next_meeting: "Next meeting",
 };
 
-function priorityClass(p) {
-  const v = String(p || "").toLowerCase();
-  if (v === "high") return "pill high";
-  if (v === "low") return "pill low";
-  return "pill med";
+function influenceDot(level) {
+  const cls = level === "high" ? "dot-green" : level === "medium" ? "dot-amber" : "dot-grey";
+  const label = level === "high" ? "High influence" : level === "medium" ? "Medium influence" : "Low influence";
+  return `<span class="power-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
 }
 
-function renderCallCell(value, type) {
-  if (type === "text") return dash(value);
-  return bulletBlock(value);
+function momentumClass(status) {
+  if (status === "Advancing") return "momentum-advancing";
+  if (status === "At risk") return "momentum-risk";
+  return "momentum-stalled";
 }
 
-function renderFollowUpCell(key, value, type) {
-  if (type === "text" || !value || (Array.isArray(value) && !value.filter((x) => !isUnknown(x)).length)) {
-    return '<span class="muted">—</span>';
-  }
-  return `<span class="follow-hint">${esc(FOLLOW_UP_HINTS[key] || "—")}</span>`;
+function momentumArrow(status) {
+  if (status === "Advancing") return "↑";
+  if (status === "At risk") return "↓";
+  return "→";
 }
 
 function barClass(score, max = 5) {
@@ -103,17 +90,18 @@ function scorePct(score, max) {
 function renderScoreGauge(score, max = 10) {
   const r = 52;
   const c = 2 * Math.PI * r;
-  const dash = c * (score / max);
+  const dashLen = c * (score / max);
   const cls = barClass(score, max);
   return `
-    <div class="qc-gauge" role="img" aria-label="Overall score ${esc(score)} out of ${esc(max)}">
+    <div class="qc-gauge" role="img" aria-label="Overall score ${esc(score)} out of ${esc(max)}" data-score="${esc(score)}" data-max="${esc(max)}">
       <svg class="qc-gauge-svg" viewBox="0 0 120 120" aria-hidden="true">
         <circle class="qc-gauge-track" cx="60" cy="60" r="${r}" />
         <circle class="qc-gauge-fill ${cls}" cx="60" cy="60" r="${r}"
-          stroke-dasharray="${dash} ${c}" transform="rotate(-90 60 60)" />
+          data-target-dash="${dashLen}" data-circumference="${c}"
+          stroke-dasharray="0 ${c}" transform="rotate(-90 60 60)" />
       </svg>
       <div class="qc-gauge-text">
-        <span class="qc-gauge-score ${cls}">${esc(score)}</span>
+        <span class="qc-gauge-score ${cls}" data-target="${esc(score)}">0</span>
         <span class="qc-gauge-denom">/${esc(max)}</span>
       </div>
     </div>`;
@@ -133,8 +121,7 @@ function normalizeDimensionKey(name) {
 }
 
 function radarDimensionLabel(name) {
-  const mapped = RADAR_DIMENSION_LABELS[normalizeDimensionKey(name)];
-  return mapped || String(name ?? "");
+  return RADAR_DIMENSION_LABELS[normalizeDimensionKey(name)] || String(name ?? "");
 }
 
 function radarLabelAnchor(angle) {
@@ -153,10 +140,6 @@ function wrapRadarLabelLines(label) {
   if (label.length <= 14) return [label];
   const lastSpace = label.lastIndexOf(" ");
   if (lastSpace > 0) return [label.slice(0, lastSpace), label.slice(lastSpace + 1)];
-  const hyphenIdx = label.indexOf("-");
-  if (hyphenIdx > 0 && hyphenIdx < label.length - 1) {
-    return [label.slice(0, hyphenIdx + 1), label.slice(hyphenIdx + 1).trim()];
-  }
   return [label];
 }
 
@@ -198,10 +181,9 @@ function renderRadarChart(dimensions) {
       const y2 = cy + maxR * Math.sin(angle);
       const lx = cx + labelR * Math.cos(angle);
       const ly = cy + labelR * Math.sin(angle);
-      const label = radarDimensionLabel(d.name);
       return `
         <line class="qc-radar-axis" x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" />
-        ${renderRadarLabelText(label, lx, ly, angle)}`;
+        ${renderRadarLabelText(radarDimensionLabel(d.name), lx, ly, angle)}`;
     })
     .join("");
   const dataPts = dimensions.map((d, i) => {
@@ -221,10 +203,10 @@ function renderRadarChart(dimensions) {
   return `
     <div class="qc-radar-wrap">
       <p class="qc-radar-title">Dimension profile</p>
-      <svg class="qc-radar" viewBox="0 0 260 260" role="img" aria-label="Radar chart of coaching dimension scores">
+      <svg class="qc-radar qc-radar-anim" viewBox="0 0 260 260" role="img" aria-label="Radar chart of coaching dimension scores">
         ${rings}
         ${axes}
-        <polygon class="qc-radar-data" points="${dataPts.join(" ")}" />
+        <polygon class="qc-radar-data" points="${dataPts.join(" ")}" data-anim="radar" />
         ${dots}
       </svg>
     </div>`;
@@ -246,23 +228,20 @@ function renderDimensionRows(dimensions) {
             <span class="qc-dim-score ${cls}">${esc(d.score)}/${esc(d.maxScore)}</span>
           </summary>
           <div class="qc-dim-body">
-            <p class="qc-dim-feedback">${esc(d.feedback)}</p>
-            <blockquote class="qc-dim-evidence"><span class="qc-ev-label">Evidence</span>${esc(d.evidence)}</blockquote>
+            <p class="qc-dim-feedback">${truncateWords(d.feedback, 14)}</p>
+            <blockquote class="qc-dim-evidence"><span class="qc-ev-label">Evidence</span>${truncateWords(d.evidence, 14)}</blockquote>
           </div>
         </details>`;
     })
     .join("");
 }
 
-function renderInsightCards(items, title, tone) {
-  const list = (items || []).length
-    ? `<ul>${(items || []).map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
+function renderInsightList(items, title, tone) {
+  const list = (items || []).filter((x) => !isUnknown(x));
+  const html = list.length
+    ? `<ul>${list.map((i) => `<li>${truncateWords(i, 14)}</li>`).join("")}</ul>`
     : '<p class="muted">None noted.</p>';
-  return `
-    <div class="qc-insight qc-insight-${tone}">
-      <h4>${esc(title)}</h4>
-      ${list}
-    </div>`;
+  return `<div class="qc-insight qc-insight-${tone}"><h4>${esc(title)}</h4>${html}</div>`;
 }
 
 function renderQualityCoach(qc) {
@@ -274,104 +253,202 @@ function renderQualityCoach(qc) {
         ${renderScoreGauge(normalized.overallScore, 10)}
         <div class="qc-hero-meta">
           <span class="qc-overall-label">${esc(normalized.overallLabel)}</span>
-          <p class="muted qc-hero-hint">Tap a dimension below for feedback and transcript evidence.</p>
+          <p class="muted qc-hero-hint">Quality score — separate from deal momentum above.</p>
         </div>
       </div>
       ${renderRadarChart(dims)}
     </div>
-    <h3>Scorecard</h3>
-    <div class="qc-scorecard">
-      <div class="qc-dim-list">${renderDimensionRows(dims)}</div>
+    <div class="qc-insights qc-insights-compact">
+      ${renderInsightList(normalized.strengths?.slice(0, 2), "Top strengths", "good")}
+      ${renderInsightList(normalized.improvements?.slice(0, 2), "Top improvements", "ok")}
+      ${renderInsightList(normalized.missedOpportunities?.slice(0, 1), "Missed opportunity", "weak")}
     </div>
-    <div class="qc-insights">
-      ${renderInsightCards(normalized.strengths, "Strengths", "good")}
-      ${renderInsightCards(normalized.improvements, "Improvements", "ok")}
-      ${renderInsightCards(normalized.missedOpportunities, "Missed opportunities", "weak")}
-    </div>`;
+    <details class="qc-details sources">
+      <summary>Details — full scorecard</summary>
+      <div class="qc-scorecard">
+        <div class="qc-dim-list">${renderDimensionRows(dims)}</div>
+      </div>
+    </details>`;
 }
 
-function renderSeActionList(actions) {
-  const items = (actions || []).filter((x) => x?.action && !isUnknown(x.action));
-  if (!items.length) return '<p class="muted">No SE actions.</p>';
-  return `<ul class="prep-bullets action-bullets">${items
-    .map((x) => {
-      const parts = [
-        `<span class="${priorityClass(x.priority)}">${esc(x.priority)}</span>`,
-        `<strong>${esc(x.action)}</strong>`,
-      ];
-      if (x.dueHint && !isUnknown(x.dueHint)) parts.push(`<span class="muted due-hint">${esc(x.dueHint)}</span>`);
-      if (x.rationale && !isUnknown(x.rationale)) parts.push(`<span class="action-rationale">${esc(x.rationale)}</span>`);
-      return `<li class="action-item">${parts.join(" · ")}</li>`;
-    })
-    .join("")}</ul>`;
+function renderLegacyPostCall(data, meta) {
+  const a = data.analysis;
+  const cs = a.callSummary || {};
+  return `
+    <div class="status err">This analysis uses an older format. Re-run analysis for the new post-call one-pager.</div>
+    <div class="head"><h2 class="one-pager-title">${esc(cs.headline || meta.title || "Call analysis")}</h2></div>`;
 }
 
-function renderAeActionList(actions) {
-  const items = (actions || []).filter((x) => x?.action && !isUnknown(x.action));
-  if (!items.length) return '<p class="muted">None noted.</p>';
-  return `<ul class="prep-bullets">${items
-    .map((x) => `<li><span class="${priorityClass(x.priority)}">${esc(x.priority)}</span> · ${esc(x.action)}${x.rationale && !isUnknown(x.rationale) ? ` — <span class="muted">${esc(x.rationale)}</span>` : ""}</li>`)
-    .join("")}</ul>`;
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function radarPolygonPerimeter(polygon) {
+  const pts = (polygon.getAttribute("points") || "")
+    .trim()
+    .split(/\s+/)
+    .map((p) => p.split(",").map(Number));
+  let len = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    len += Math.hypot(x2 - x1, y2 - y1);
+  }
+  return len;
+}
+
+function animateScoreGauge(gauge, duration = 380) {
+  const fill = gauge?.querySelector(".qc-gauge-fill");
+  const scoreEl = gauge?.querySelector(".qc-gauge-score[data-target]");
+  if (!fill || !scoreEl) return;
+
+  const targetDash = parseFloat(fill.dataset.targetDash || "0");
+  const circumference = parseFloat(fill.dataset.circumference || "0");
+  const targetScore = parseFloat(scoreEl.dataset.target || "0");
+
+  if (prefersReducedMotion()) {
+    fill.style.strokeDasharray = `${targetDash} ${circumference}`;
+    scoreEl.textContent = String(targetScore);
+    return;
+  }
+
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - (1 - t) ** 3;
+    const dash = targetDash * eased;
+    fill.style.strokeDasharray = `${dash} ${circumference}`;
+    scoreEl.textContent = String(Math.round(targetScore * eased * 10) / 10);
+    if (t < 1) requestAnimationFrame(tick);
+    else scoreEl.textContent = String(targetScore);
+  }
+  requestAnimationFrame(tick);
+}
+
+export function initPostCallAnimations(root) {
+  if (!root) return;
+  root.classList.add("anim-root");
+
+  const blocks = root.querySelectorAll(".header-strip, section, .prep-footer");
+  blocks.forEach((el, i) => {
+    el.classList.add("anim-block");
+    el.style.setProperty("--anim-delay", `${i * 50}ms`);
+  });
+
+  const radarPoly = root.querySelector(".qc-radar-data[data-anim]");
+  if (radarPoly) {
+    const perimeter = radarPolygonPerimeter(radarPoly);
+    radarPoly.style.setProperty("--radar-perimeter", String(perimeter));
+    radarPoly.style.strokeDasharray = `${perimeter}`;
+    radarPoly.style.strokeDashoffset = String(perimeter);
+  }
+
+  root.querySelectorAll(".qc-gauge[data-score]").forEach((gauge) => animateScoreGauge(gauge));
+
+  if (prefersReducedMotion()) {
+    root.classList.add("anim-ready");
+    if (radarPoly) radarPoly.style.strokeDashoffset = "0";
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      root.classList.add("anim-ready");
+      if (radarPoly) radarPoly.style.strokeDashoffset = "0";
+    });
+  });
+}
+
+function getCallTitle(analysis, meta) {
+  return analysis?.callHeader?.title || analysis?.callSummary?.headline || meta.title || "Call analysis";
 }
 
 export function renderPostCall(data, meta = {}) {
   const a = data.analysis;
-  const cs = a.callSummary;
-  const ns = a.nextSteps;
-  const qc = a.qualityCoach;
+  if (!a?.callHeader && a?.callSummary) {
+    return renderLegacyPostCall(data, meta);
+  }
+
+  const hdr = a.callHeader || {};
+  const mom = a.momentum || {};
+  const sig = a.signals || {};
+  const arts = a.artifacts || {};
   const tm = data.transcriptMeta || {};
 
-  const compareRows = CALL_SNAPSHOT_ROWS.map(([key, label, type]) => {
-    const value = cs[key];
-    return `<tr>
-      <th class="prep-row-label">${esc(label)}</th>
-      <td>${renderCallCell(value, type)}</td>
-      <td>${renderFollowUpCell(key, value, type)}</td>
-    </tr>`;
-  }).join("");
-
-  const compareTable = `
-    <table class="prep-compare call-compare">
-      <thead><tr><th></th><th>This call</th><th>Follow-up</th></tr></thead>
-      <tbody>${compareRows}</tbody>
-    </table>`;
-
-  const attendees = (cs.attendees || []).length
-    ? `<ul class="prep-attendee-list">${(cs.attendees || [])
+  const attendeeChips = (hdr.attendees || []).length
+    ? (hdr.attendees || [])
         .map((x) => {
-          const parts = [esc(x.name)];
-          if (x.role && !isUnknown(x.role)) parts.push(`<span class="prep-att-note">${esc(x.role)}</span>`);
-          if (x.engagement && !isUnknown(x.engagement)) parts.push(`<span class="prep-att-note">${esc(x.engagement)}</span>`);
-          return `<li>${parts.join(" · ")}</li>`;
+          const parts = [`<span class="attendee-chip">${influenceDot(x.influence)}${dash(x.name)}`];
+          if (!isUnknown(x.role)) parts.push(`<span class="chip-role">${truncateWords(x.role, 10)}</span>`);
+          parts.push("</span>");
+          return parts.join(" · ");
         })
-        .join("")}</ul>`
-    : '<p class="muted">No attendees identified.</p>';
+        .join("")
+    : '<span class="muted">—</span>';
 
-  const topSeAction = (ns.seActions || []).find((x) => x?.action && !isUnknown(x.action));
+  const metaLine = [hdr.duration, hdr.date].filter((x) => !isUnknown(x)).map(esc).join(" · ");
 
-  const sePlaybook = `
-    <div class="prep-action-grid">
-      <div class="prep-action-block prep-action-wide">
-        <h3>Top priority</h3>
-        <p class="prep-lead">${topSeAction ? esc(topSeAction.action) : '<span class="muted">—</span>'}</p>
-      </div>
-      <div class="prep-action-block prep-action-wide">
-        <h3>SE actions</h3>
-        ${renderSeActionList(ns.seActions)}
-      </div>
-      <div class="prep-action-block">
-        <h3>AE actions</h3>
-        ${renderAeActionList(ns.aeActions)}
-      </div>
-      <div class="prep-action-block">
-        <h3>Customer commitments</h3>
-        ${bulletBlock(ns.customerCommitments)}
-      </div>
-    </div>`;
+  const followRows = (a.followUpTable || [])
+    .filter((row) => !isUnknown(row.thisCall) || !isUnknown(row.followUp))
+    .map(
+      (row) => `<tr>
+        <th class="prep-row-label">${esc(CATEGORY_LABELS[row.category] || row.category)}</th>
+        <td>${truncateWords(row.thisCall, 10)}</td>
+        <td>${truncateWords(row.followUp, 10)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const followTable = followRows
+    ? `<table class="prep-compare call-compare">
+        <thead><tr><th></th><th>This call</th><th>Follow-up</th></tr></thead>
+        <tbody>${followRows}</tbody>
+      </table>`
+    : '<p class="muted">—</p>';
+
+  const signalCol = (items, tone) => {
+    const list = (items || []).filter((x) => !isUnknown(x)).slice(0, 4);
+    return list.length
+      ? `<ul class="signal-list">${list.map((x) => `<li>${truncateWords(x, 14)}</li>`).join("")}</ul>`
+      : '<p class="muted">—</p>';
+  };
+
+  const nextRows = (a.nextSteps || [])
+    .filter((row) => !isUnknown(row.action))
+    .map(
+      (row) => `<tr class="${row.isRisk ? "risk-row" : ""}">
+        <td>${truncateWords(row.owner, 10)}</td>
+        <td>${row.isRisk ? '<span class="risk-flag">⚠</span> ' : ""}${truncateWords(row.action, 10)}</td>
+        <td>${truncateWords(row.due, 10)}</td>
+        <td>${truncateWords(row.why, 10)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const nextTable = nextRows
+    ? `<table class="next-steps-table">
+        <thead><tr><th>Owner</th><th>Action</th><th>Due</th><th>Why</th></tr></thead>
+        <tbody>${nextRows}</tbody>
+      </table>`
+    : '<p class="muted">—</p>';
+
+  const followUpEmail = arts.suggestedFollowUpEmail?.subject || arts.suggestedFollowUpEmail?.body
+    ? `<details class="sources email-sources">
+        <summary>Follow-up email</summary>
+        <div class="email-draft">
+          <p><strong>Subject:</strong> ${esc(arts.suggestedFollowUpEmail?.subject)}</p>
+          <pre>${esc(arts.suggestedFollowUpEmail?.body)}</pre>
+        </div>
+      </details>`
+    : "";
+
+  const crmBlock = arts.crmNotes && !isUnknown(arts.crmNotes)
+    ? `<details class="sources crm-sources"><summary>CRM notes</summary><p class="crm-notes">${esc(arts.crmNotes)}</p></details>`
+    : "";
 
   const transcriptDetails = tm.wordCount || tm.durationMinutes != null || (tm.speakers || []).length
     ? `<details class="sources transcript-sources">
-        <summary>Transcript details</summary>
+        <summary>Transcript</summary>
         <ul>
           ${tm.durationMinutes != null ? `<li>Duration: ~${esc(tm.durationMinutes)} min</li>` : ""}
           ${tm.wordCount ? `<li>Word count: ${esc(tm.wordCount)}</li>` : ""}
@@ -381,21 +458,7 @@ export function renderPostCall(data, meta = {}) {
       </details>`
     : "";
 
-  const followUpEmail = ns.suggestedFollowUpEmail?.subject || ns.suggestedFollowUpEmail?.body
-    ? `<details class="sources email-sources">
-        <summary>Suggested follow-up email</summary>
-        <div class="email-draft">
-          <p><strong>Subject:</strong> ${esc(ns.suggestedFollowUpEmail?.subject)}</p>
-          <pre>${esc(ns.suggestedFollowUpEmail?.body)}</pre>
-        </div>
-      </details>`
-    : '<p class="muted">No follow-up email draft.</p>';
-
-  const metaLine = [
-    meta.title,
-    tm.durationMinutes != null ? `~${tm.durationMinutes} min` : "",
-    tm.wordCount ? `${tm.wordCount} words` : "",
-  ].filter(Boolean).map(esc).join(" · ");
+  const momCls = momentumClass(mom.status);
 
   return `
     <div class="toolbar">
@@ -403,49 +466,55 @@ export function renderPostCall(data, meta = {}) {
       <button class="ghost" id="copy-postcall-json">Copy JSON</button>
       <button class="ghost" id="copy-followup">Copy follow-up email</button>
     </div>
-    <div class="head">
-      <h2 class="one-pager-title">${esc(cs.headline || meta.title || "Call analysis")}</h2>
-      <span class="sub">${metaLine}</span>
-    </div>
-    <section class="prep-hero">${compareTable}</section>
-    <section><h2>Discussion highlights</h2>${bulletBlock(cs.keyTopics)}</section>
-    <section><h2>Pains & objections</h2>
-      <div class="split-blocks">
-        <div class="prep-action-block"><h3>Pain points confirmed</h3>${bulletBlock(cs.painPointsConfirmed)}</div>
-        <div class="prep-action-block"><h3>Objections raised</h3>${bulletBlock(cs.objectionsRaised)}</div>
+    <header class="header-strip">
+      <div class="header-main">
+        <h2 class="one-pager-title">${esc(getCallTitle(a, meta))}</h2>
+        ${metaLine ? `<span class="header-meta">${metaLine}</span>` : ""}
+      </div>
+      <div class="attendee-chips">${attendeeChips}</div>
+    </header>
+    <section class="outcome-bar outcome-focal ${momCls}">
+      <div class="outcome-status">
+        <span class="outcome-arrow" aria-hidden="true">${momentumArrow(mom.status)}</span>
+        <span class="outcome-label">${esc(mom.status || "Stalled")}</span>
+      </div>
+      <p class="outcome-reason">${truncateWords(mom.reason, 20)}</p>
+      <div class="outcome-action">
+        <strong>Top action:</strong> ${truncateWords(mom.topAction, 10)}
+        ${!isUnknown(mom.topActionDue) ? ` · <span class="muted">Due ${truncateWords(mom.topActionDue, 10)}</span>` : ""}
       </div>
     </section>
-    <section><h2>Competitive & decisions</h2>
-      <div class="split-blocks">
-        <div class="prep-action-block"><h3>Competitive mentions</h3>${bulletBlock(cs.competitiveMentions)}</div>
-        <div class="prep-action-block"><h3>Decisions made</h3>${bulletBlock(cs.decisionsMade)}</div>
+    <section class="prep-hero"><h2>This call → Follow-up</h2>${followTable}</section>
+    <section class="signals-row">
+      <h2>Signals</h2>
+      <div class="signals-grid">
+        <div class="signal-col signal-pains"><h3>Pains confirmed</h3>${signalCol(sig.painsConfirmed, "green")}</div>
+        <div class="signal-col signal-objections"><h3>Objections open</h3>${signalCol(sig.objectionsOpen, "amber")}</div>
+        <div class="signal-col signal-competitors"><h3>Competitors</h3>${signalCol(sig.competitors, "neutral")}</div>
       </div>
     </section>
-    <section><h2>Open questions</h2>${bulletBlock(cs.openQuestions)}</section>
-    <section><h2>SE playbook</h2>${sePlaybook}</section>
-    <section><h2>Quality coach</h2>${renderQualityCoach(qc)}</section>
-    <footer class="prep-footer">
-      <div class="prep-attendees"><h3>Attendees</h3>${attendees}</div>
-      ${followUpEmail}
-      ${ns.crmNotes && !isUnknown(ns.crmNotes) ? `<div class="crm-block"><h3>CRM notes</h3><p class="crm-notes">${esc(ns.crmNotes)}</p></div>` : ""}
-      ${transcriptDetails}
-    </footer>`;
+    <section><h2>Next steps</h2>${nextTable}</section>
+    <section><h2>Quality coach</h2>${renderQualityCoach(a.qualityCoach)}</section>
+    <footer class="prep-footer">${followUpEmail}${crmBlock}${transcriptDetails}</footer>`;
 }
 
 export function displayPostCall(data, meta) {
   const result = $("postcall-result");
+  result.classList.remove("anim-root", "anim-ready");
   result.innerHTML = renderPostCall(data, meta);
   show(result, true);
+  initPostCallAnimations(result);
   const copyJson = $("copy-postcall-json");
   if (copyJson) copyJson.onclick = () => navigator.clipboard.writeText(JSON.stringify(data, null, 2));
   const copyEmail = $("copy-followup");
   if (copyEmail) {
     copyEmail.onclick = () => {
-      const e = data.analysis?.nextSteps?.suggestedFollowUpEmail;
+      const e = data.analysis?.artifacts?.suggestedFollowUpEmail
+        || data.analysis?.nextSteps?.suggestedFollowUpEmail;
       if (e) navigator.clipboard.writeText(`Subject: ${e.subject}\n\n${e.body}`);
     };
   }
-  result.scrollIntoView({ behavior: "smooth", block: "start" });
+  result.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
 let onAnalysisSaved = null;
@@ -497,7 +566,7 @@ async function analyzeCall(e) {
     }
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
 
-    meta.title = data.analysis?.callSummary?.headline || "";
+    meta.title = getCallTitle(data.analysis, meta);
     displayPostCall(data, meta);
     show(status, false);
 

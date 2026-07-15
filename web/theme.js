@@ -10,6 +10,7 @@ function preferredTheme() {
 
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.style.colorScheme = theme;
   localStorage.setItem(THEME_KEY, theme);
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     const isDark = theme === "dark";

@@ -21,7 +21,7 @@
 
     <!-- Login -->
     <div id="login-view" class="login-page">
-      <div class="login-card card">
+      <div class="login-card card form-panel">
         <div class="login-card-head">
           <div>
             <h1>SE Singha Paathai</h1>
@@ -68,8 +68,7 @@
         </div>
         <nav class="sidebar-nav" role="navigation">
           <button type="button" class="nav-item" data-view="dashboard">My dashboard</button>
-          <button type="button" class="nav-item" data-view="analysis">New analysis</button>
-          <button type="button" class="nav-item" data-view="precall">Pre-call prep</button>
+          <button type="button" class="nav-item" data-view="workspace">One-pagers</button>
         </nav>
         <div class="sidebar-history">
           <h3 class="sidebar-history-title">History</h3>
@@ -104,49 +103,55 @@
             </div>
           </section>
 
-          <!-- Post-call analysis -->
-          <section id="view-analysis" class="view-panel" hidden>
-            <form id="postcall-form" class="card">
-              <h1>Post-call analysis</h1>
-              <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
-              <label>Zoom recording link
-                <input id="pc-recording-url" type="text" required placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123" />
-              </label>
-              <label>Passcode <span class="opt">(only if not in the link above)</span>
-                <input id="pc-recording-pwd" type="password" placeholder="From Zoom email" autocomplete="off" />
-              </label>
-              <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
-              <button id="analyze-call" class="primary" type="submit">Analyze call</button>
-            </form>
-            <div id="postcall-status" class="status" hidden></div>
-            <article id="postcall-result" class="card result one-pager" hidden></article>
-          </section>
+          <!-- Discovery + Post-call workspace -->
+          <section id="view-workspace" class="view-panel" hidden>
+            <nav class="app-tabs" role="tablist" aria-label="One-pager type">
+              <button type="button" class="app-tab active" data-tab="discovery" role="tab" aria-selected="true">Discovery</button>
+              <button type="button" class="app-tab" data-tab="postcall" role="tab" aria-selected="false">Post-call</button>
+            </nav>
 
-          <!-- Pre-call prep -->
-          <section id="view-precall" class="view-panel" hidden>
-            <form id="prep-form" class="card">
-              <h1>Pre-call prep</h1>
-              <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
-              <div class="grid2">
-                <label>Company name
-                  <input id="companyName" type="text" placeholder="GetGo" required />
+            <div id="tab-discovery" class="tab-panel tab-active" role="tabpanel">
+              <form id="prep-form" class="card form-panel">
+                <h1>Discovery</h1>
+                <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
+                <div class="grid2">
+                  <label>Company name
+                    <input id="companyName" type="text" placeholder="GetGo" required />
+                  </label>
+                  <label>Prospect email
+                    <input id="prospectEmail" type="email" placeholder="farhan@getgo.sg" required />
+                    <span id="domain-hint" class="field-hint" hidden></span>
+                  </label>
+                </div>
+                <label>Additional context <span class="opt">(RH answers, notes, meeting type)</span>
+                  <textarea id="additionalContext" rows="5" placeholder="Paste Roundhouse answers, AE notes, or meeting context here…"></textarea>
                 </label>
-                <label>Prospect email
-                  <input id="prospectEmail" type="email" placeholder="farhan@getgo.sg" required />
-                  <span id="domain-hint" class="field-hint" hidden></span>
+                <button id="generate" class="primary" type="submit">Generate prep</button>
+              </form>
+              <div id="prep-status" class="status" hidden></div>
+              <article id="prep-result" class="card result one-pager" hidden></article>
+              <section id="history-section" class="card form-panel" hidden>
+                <h2>Recent preps</h2>
+                <ul id="history" class="history"></ul>
+              </section>
+            </div>
+
+            <div id="tab-postcall" class="tab-panel" role="tabpanel" hidden>
+              <form id="postcall-form" class="card form-panel">
+                <h1>Post-call</h1>
+                <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
+                <label>Zoom recording link
+                  <input id="pc-recording-url" type="text" required placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123" />
                 </label>
-              </div>
-              <label>Additional context <span class="opt">(RH answers, notes, meeting type)</span>
-                <textarea id="additionalContext" rows="5" placeholder="Paste Roundhouse answers, AE notes, or meeting context here…"></textarea>
-              </label>
-              <button id="generate" class="primary" type="submit">Generate prep</button>
-            </form>
-            <div id="prep-status" class="status" hidden></div>
-            <article id="prep-result" class="card result one-pager" hidden></article>
-            <section id="history-section" class="card" hidden>
-              <h2>Recent preps</h2>
-              <ul id="history" class="history"></ul>
-            </section>
+                <label>Passcode <span class="opt">(only if not in the link above)</span>
+                  <input id="pc-recording-pwd" type="password" placeholder="From Zoom email" autocomplete="off" />
+                </label>
+                <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
+                <button id="analyze-call" class="primary" type="submit">Analyze call</button>
+              </form>
+              <div id="postcall-status" class="status" hidden></div>
+              <article id="postcall-result" class="card result one-pager" hidden></article>
+            </div>
           </section>
         </main>
       </div>
