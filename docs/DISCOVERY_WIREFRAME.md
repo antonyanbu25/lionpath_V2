@@ -9,50 +9,40 @@ ONE table · read top → bottom · ≤8 words per cell · no invented stats · 
 ```
 [ Print / PDF ]  [ Copy JSON ]
 
-HEADER (above table)
-  Company name
-  domain
-  One-line description
-  Attendee chips (name · role · decision dot)
-
+| Company name | domain | One-line description | Attendee chips (name · role · dot) |
 | FIT |
 | Attribute           | This company | Industry norm | GAP |
 | Omnichannel Support |              |               |     |
 | AI Deflection       |              |               |     |
 | Agent Assist        |              |               |     |
-
 | ACCOUNT FACTS |
-| Incumbent        | |
-| Support agents   | |
-| Market           | |
-| Business model   | |
-| Users            | |
-| Uptime need      | |
-| Funding / parent | |
-| Head office      | |
-| Languages        | |
-
+| Incumbent        | value (colspan) |
+| Support agents   |                 |
+| Market           |                 |
+| Business model   |                 |
+| Users            |                 |
+| Uptime need      |                 |
+| Funding / parent |                 |
+| Head office      |                 |
+| Languages        |                 |
 | INDUSTRY USE CASES (max 3) |
-| |
-| |
-| |
-
+| use case (colspan) |
+|                  |
+|                  |
 | DISCOVERY KIT (max 3) |
 | Ask this | Because |
 |          |         |
 |          |         |
 |          |         |
-
 | DEMO PREP (max 3) |
 | Pain | Capability | Value |
 |      |            |       |
 |      |            |       |
 |      |            |       |
-
 | RESOURCES |
-| [link] [link] [link] |
+| [link] [link] [link] (colspan) |
 
-Sources (collapsible footer)
+Sources (collapsible footer — outside table)
 ```
 
 ---
@@ -62,6 +52,7 @@ Sources (collapsible footer)
 - Support Maturity chip block
 - Signals block (job listings / Similarweb)
 - Separate cards and second collapsible stack
+- Header block above table (merged into first row)
 
 ---
 

@@ -421,7 +421,7 @@ function prefersReducedMotion() {
 function initPrepAnimations(root) {
   if (!root) return;
   root.classList.add("anim-root");
-  const blocks = root.querySelectorAll(".header-strip, .account-snapshot-wrap, .prep-footer, .momentum-hero");
+  const blocks = root.querySelectorAll(".account-snapshot-wrap, .prep-footer, .momentum-hero");
   blocks.forEach((el, i) => {
     el.classList.add("anim-block");
     el.style.setProperty("--anim-delay", `${i * 50}ms`);
@@ -541,22 +541,22 @@ function renderPrep(p, meta = {}) {
 
   const domain = meta.domain ? esc(meta.domain) : "";
 
+  const accountHeaderRow = `<tr class="account-header-row">
+        <td class="account-company"><span class="one-pager-title">${esc(meta.company || "")}</span></td>
+        <td class="account-domain">${domain || '<span class="muted">—</span>'}</td>
+        <td class="account-desc">${truncateWords(p.description, 15)}</td>
+        <td class="account-attendees"><div class="attendee-chips">${attendeeChips}</div></td>
+      </tr>`;
+
   return `
     <div class="toolbar">
       <button class="ghost" onclick="window.print()">Print / PDF</button>
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
-    <header class="header-strip">
-      <div class="header-main">
-        <h2 class="one-pager-title">${esc(meta.company || "")}</h2>
-        ${domain ? `<span class="header-domain">${domain}</span>` : ""}
-      </div>
-      <p class="header-desc">${truncateWords(p.description, 15)}</p>
-      <div class="attendee-chips">${attendeeChips}</div>
-    </header>
     <div class="account-snapshot-wrap">
       <table class="account-snapshot prep-compare">
         <tbody>
+          ${accountHeaderRow}
           ${sectionLabelRow("FIT")}
           <tr class="col-header"><th>Attribute</th><th>This company</th><th>Industry norm</th><th>Gap</th></tr>
           ${fitRows}
