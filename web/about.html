@@ -213,6 +213,101 @@
         </p>
       </section>
 
+      <section id="code-logic" class="card about-section about-code-logic">
+        <div class="about-code-head">
+          <h2>How the code works</h2>
+          <button type="button" class="ghost about-print-btn" onclick="printCodeGuide()">Print / Save as PDF</button>
+        </div>
+        <p class="muted about-note">Technical overview for the team — architecture, request flows, and where to edit prompts or UI.</p>
+
+        <h3 class="about-subhead">What it is</h3>
+        <p>
+          <strong>Lionpath</strong> (SE Singha Paathai) is an internal SE portal with two workflows in one app:
+          <strong>pre-call prep</strong> (research brief before discovery) and <strong>post-call analysis</strong>
+          (summary, next steps, Quality Coach after a Zoom recording).
+        </p>
+
+        <h3 class="about-subhead">Architecture</h3>
+        <pre class="about-arch" aria-label="Architecture diagram">Browser (web/)  →  Worker API (worker/)  →  Gemini (structured JSON)
+                      ↓
+              History storage (KV or file)</pre>
+        <ul class="about-list">
+          <li><strong>web/</strong> — Static HTML/JS/CSS served by nginx. No build step.</li>
+          <li><strong>worker/</strong> — TypeScript API: LLM calls, Zoom transcript fetch, history sync.</li>
+          <li><strong>Gemini</strong> — Returns JSON matching strict schemas; prompts enforce word caps.</li>
+        </ul>
+
+        <h3 class="about-subhead">Request flows</h3>
+        <div class="about-callout">
+          <strong>1. Discovery prep</strong>
+          <p class="muted">Form in <code>app.js</code> → <code>POST /api/generate-prep</code> → <code>prep.ts</code> (prompt + Gemini + web research) → <code>word-limits.ts</code> trims → <code>app.js</code> renders one-pager. ~15–45s.</p>
+        </div>
+        <div class="about-callout">
+          <strong>2. Post-call analysis</strong>
+          <p class="muted">Zoom URL in <code>postcall.js</code> → <code>POST /api/analyze-call</code> → <code>postcall.ts</code> fetches transcript, calls Gemini → <code>quality-score.ts</code> computes overall score → <code>postcall.js</code> renders result. ~10–25s.</p>
+        </div>
+        <div class="about-callout">
+          <strong>3. History</strong>
+          <p class="muted"><code>history.js</code> caches in localStorage, syncs to Worker on login via <code>GET/POST /api/history</code>. Dashboard reads entries for metrics and sidebar.</p>
+        </div>
+
+        <h3 class="about-subhead">Key files</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Path</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td><code>web/app.js</code></td><td>Auth, routing, prep form + render</td></tr>
+              <tr><td><code>web/postcall.js</code></td><td>Post-call form, result display</td></tr>
+              <tr><td><code>web/auth.js</code></td><td>Demo login or Firebase SSO</td></tr>
+              <tr><td><code>web/history.js</code></td><td>localStorage + server sync</td></tr>
+              <tr><td><code>web/dashboard.js</code></td><td>SE and manager dashboards</td></tr>
+              <tr><td><code>worker/src/index.ts</code></td><td>API routes, CORS, auth</td></tr>
+              <tr><td><code>worker/src/prep.ts</code></td><td>Pre-call prompt + generation</td></tr>
+              <tr><td><code>worker/src/postcall.ts</code></td><td>Post-call prompt + analysis</td></tr>
+              <tr><td><code>deploy/vps/</code></td><td>Docker: nginx + worker + Caddy</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">Auth and roles</h3>
+        <p>Demo mode uses hardcoded credentials in <code>auth.js</code>. Session persists in <code>sessionStorage</code> + <code>localStorage</code>.</p>
+        <ul class="about-list">
+          <li><strong>SE</strong> (<code>se@freshworks.com</code> / <code>se123</code>) — prep, post-call, own dashboard and history</li>
+          <li><strong>Manager</strong> (<code>manager@freshworks.com</code> / <code>mgr123</code>) — team rollup dashboard</li>
+        </ul>
+        <p class="muted">Production: set Firebase <code>projectId</code> in <code>firebase-config.js</code>; Worker verifies Bearer tokens.</p>
+
+        <h3 class="about-subhead">Data pipeline</h3>
+        <p class="muted">Both flows follow the same pattern:</p>
+        <pre class="about-arch">Form → POST /api/... → Gemini JSON → validate + trim → render one-pager HTML</pre>
+        <p class="muted">Output is tables and bullets only. Prompts set strict word caps; UI truncates if needed.</p>
+
+        <h3 class="about-subhead">VPS deploy</h3>
+        <p class="muted">
+          <code>deploy/vps/docker-compose.yml</code> runs nginx (web on 8788), worker (8787), and Caddy (TLS).
+          UI: <code>lionpath.benjaminsquare.com</code> · API: <code>lionpathapi.benjaminsquare.com</code>.
+          History persists in a mounted volume. See <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md">VPS deploy guide</a>.
+        </p>
+
+        <h3 class="about-subhead">Where to change things</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Change</th><th>File(s)</th></tr></thead>
+            <tbody>
+              <tr><td>Pre-call AI prompt</td><td><code>worker/src/prep.ts</code></td></tr>
+              <tr><td>Post-call AI prompt</td><td><code>worker/src/postcall.ts</code></td></tr>
+              <tr><td>JSON schemas</td><td><code>schema.ts</code>, <code>postcall-schema.ts</code></td></tr>
+              <tr><td>Word caps</td><td><code>worker/src/word-limits.ts</code></td></tr>
+              <tr><td>Prep UI + render</td><td><code>web/app.js</code></td></tr>
+              <tr><td>Post-call UI + render</td><td><code>web/postcall.js</code></td></tr>
+              <tr><td>Styles / print</td><td><code>web/styles.css</code></td></tr>
+              <tr><td>API routes / auth</td><td><code>worker/src/index.ts</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted about-print-hint">Full markdown version: <code>docs/CODE_LOGIC.md</code> in the repo.</p>
+      </section>
+
       <section class="card about-section about-demo">
         <h2>Demo login</h2>
         <p class="muted">For local demos and shared environments — dummy auth, not production SSO.</p>
@@ -251,9 +346,17 @@
 
     <footer class="site-footer">
       <span class="muted">SE Singha Paathai · Freshworks</span>
+      <a href="#code-logic" class="muted" style="margin-left:1rem">How the code works</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/CODE_LOGIC.md" class="muted" style="margin-left:1rem">CODE_LOGIC.md</a>
       <a href="https://github.com/skut264/lionpath/blob/main/README.md" class="muted" style="margin-left:1rem">README</a>
-      <a href="https://github.com/skut264/lionpath/blob/main/docs/POST_CALL_OVERVIEW.md" class="muted" style="margin-left:1rem">Post-call overview</a>
       <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md" class="muted" style="margin-left:1rem">VPS deploy guide</a>
     </footer>
+    <script>
+      function printCodeGuide() {
+        document.body.classList.add("print-code-guide");
+        window.print();
+        window.addEventListener("afterprint", () => document.body.classList.remove("print-code-guide"), { once: true });
+      }
+    </script>
   </body>
 </html>
