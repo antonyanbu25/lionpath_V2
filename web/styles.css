@@ -1268,14 +1268,40 @@ details.sources ul { margin-top: 10px; }
 .signal-list { margin: 0; padding-left: 16px; }
 .signal-list li { margin: 3px 0; line-height: 1.35; }
 
-/* Next steps */
-.next-steps-table { font-size: 13px; }
-.next-steps-table th {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--muted);
+/* Next steps — compact table sized to content */
+.next-steps-section { margin-top: 0; }
+.result .next-steps-table {
+  width: auto;
+  max-width: 100%;
+  table-layout: auto;
+  font-size: 12px;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
+.result .next-steps-table th,
+.result .next-steps-table td {
+  padding: 5px 10px;
+  line-height: 1.35;
+  width: auto;
+  white-space: normal;
+  border-bottom: 1px solid var(--border-soft);
+}
+.result .next-steps-table thead th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--surface-muted);
+  white-space: nowrap;
+  padding: 4px 10px;
+}
+.result .next-steps-table tbody tr:last-child td { border-bottom: none; }
+.result .next-steps-table td:first-child { white-space: nowrap; }
+.result .next-steps-table .risk-row td { padding-left: 8px; }
 .risk-row { background: var(--danger-bg); border-left: 4px solid var(--danger); }
 .risk-flag { color: var(--danger); }
 

@@ -493,8 +493,8 @@ export function renderPostCall(data, meta = {}) {
         <div class="signal-col signal-competitors"><h3>Competitors</h3>${signalCol(sig.competitors, "neutral")}</div>
       </div>
     </section>
-    <section><h2>Next steps</h2>${nextTable}</section>
     <section><h2>Quality coach</h2>${renderQualityCoach(a.qualityCoach)}</section>
+    <section class="next-steps-section"><h2>Next steps</h2>${nextTable}</section>
     <footer class="prep-footer">${followUpEmail}${crmBlock}${transcriptDetails}</footer>`;
 }
 
