@@ -1,100 +1,145 @@
-# SE Singha Paathai — SE Portal
+# Lionpath — SE Singha Paathai
 
 **One portal for Freshworks Solution Engineers:** research a prospect **before** the call, then debrief **after** the call — summaries, next steps, and coaching in a single dashboard.
 
-**Live (team):** **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)**  
-**Repo:** [github.com/skut264/lionpath](https://github.com/skut264/lionpath)
-
-| Doc | Audience |
-|-----|----------|
-| [web/about.html](./web/about.html) | Boss / SEs — what the portal does (browser-friendly) |
-| [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
-| [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers — local setup, tunnel sharing, onboarding |
-| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| | |
+|---|---|
+| **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
+| **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
+| **Repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
+| **Demo login** | `se@freshworks.com` / `se123` |
 
 ---
 
-## Pre-call prep
+## What it does
 
-**When to use:** Before a discovery or demo — you have a company name, prospect email, and optionally Roundhouse (RH) answers or other context.
+Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core workflows:
 
-**What the SE does:**
+| Workflow | When to use | What you get |
+|----------|-------------|--------------|
+| **Pre-call prep** | Before discovery or demo — you have a company name, prospect email, and optional context | A printable one-pager brief: company vs industry comparison, business context, and an SE playbook |
+| **Post-call analysis** | After a recorded customer call — you have a Zoom cloud recording link | Call summary, prioritized next steps (including follow-up email + CRM notes), and a Quality Coach scorecard |
 
-1. Sign in to the portal.
-2. Open the **Pre-call prep** tab.
-3. Enter **company name**, **prospect email**, and optional **additional context** (paste RH answers, meeting notes, or AE notes here).
-4. Click **Generate prep brief** and wait ~15–45 seconds.
-
-**What you get** (Gemini + web research, grounded on the Freshworks knowledge base):
-
-| Output | Contents |
-|--------|----------|
-| **Research Snapshot** | What they do, size, support channels, inferred tech stack (with inline confidence), pain points, goals, discovery-gap questions |
-| **Demo Plan** | Suggested flow, 3–4 ranked use cases (SE picks the Freshworks feature), close paragraph, competitor differentiators only for vendors detected in the stack |
-| **Sources** | Collapsible list of cited URLs for prospect facts — gaps say "unknown" rather than being invented |
-
-**How it works under the hood:** The web UI posts to `/api/generate-prep` on the worker. The worker derives the company domain from the prospect email, runs Gemini with `google_search` grounding (3–4 focused searches), merges Freshworks facts from `worker/src/kb.ts`, and returns structured JSON (`worker/src/prep.ts`, `worker/src/schema.ts`). The portal renders a printable one-pager (`web/app.js`).
-
-**SE tips:**
-
-- Put RH questionnaire answers in **additional context** — meeting-type / AE fields were removed from the UI on purpose.
-- Expect **15–45s** with the default fast model (`gemini-3.1-flash-lite`); the UI disables double-submit while researching.
-- Print / PDF or copy raw JSON from the toolbar when done.
+Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
 ---
 
-## Post-call analysis
+## Key features (current release)
 
-**When to use:** After a recorded customer demo or discovery call — you have a Zoom cloud recording link.
+### Pre-call — v3 one-pager
 
-**What the SE does:**
+- **Comparison hero table** — This company vs industry norm across industry, size/agents, support channels, incumbent stack, integrations, and more
+- **Bullet sections** — About the business, support process, workflows
+- **SE playbook grid** — Top use case, pain points, discovery-gap questions, demo flow steps
+- **Collapsible sources** — Cited URLs for prospect facts; gaps say "unknown" rather than being invented
+- **Smarter domain handling** — Company name is the primary research target; the UI warns on likely email-domain typos (e.g. `khanacademey.org` → `khanacademy.org`)
 
-1. Sign in and open **New analysis**.
-2. Paste the **Zoom recording share link** (and passcode if not embedded in the URL).
-3. Click **Analyze call** and wait ~10–25 seconds.
-4. Review **call summary**, **next steps** (including follow-up email draft + CRM notes), and **Quality Coach** scorecard.
-5. Open **My dashboard** for cumulative quality metrics, or **History** (sidebar) to reload any past analysis.
+**Typical wait:** 15–45 seconds (Gemini + web research).
 
-**What you get:**
+### Post-call — redesigned one-pager
 
-| Output | Contents |
-|--------|----------|
-| **Call summary** | Headline, customer context, attendees, topics, pains confirmed, objections, competitive mentions, decisions, open questions |
-| **Next steps** | Prioritized SE/AE actions, customer commitments, copy-ready follow-up email, CRM notes |
-| **Quality Coach** | Six-dimension rubric (Discovery, Demo alignment, Objections, Value articulation, Next-step clarity, Talk balance) with scores, evidence, strengths, and improvements |
-| **Dashboard & history** | Rolling averages, radar chart, score trend, recent calls table; sidebar history (up to 100 items) |
+Mirrors the pre-call layout for a consistent SE experience:
 
-**Zoom requirements (no OAuth for MVP):** Cloud recording + audio transcript enabled; share link downloadable; embedding passcode in the link is best UX. See [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) for the full leadership walkthrough, scoring calibration, and FAQ.
+- **Comparison hero** — This call vs follow-up across key call dimensions
+- **Bullet sections** — Discussion highlights, pains & objections, competitive mentions & decisions, open questions
+- **SE playbook grid** — Top priority action, SE/AE tasks, customer commitments
+- **Quality Coach** — Six-dimension rubric (Discovery, Demo alignment, Objections, Value articulation, Next-step clarity, Talk balance) with scores, evidence, strengths, and improvements
+- **Collapsible sources** — Suggested follow-up email, CRM notes, transcript details
 
-**Latency:** Post-call skips web research — typically **8–20s** (Gemini Flash Lite) after a 2–5s transcript fetch.
+**Typical wait:** 10–25 seconds (Zoom transcript fetch + Gemini analysis).
+
+### UI/UX overhaul
+
+- Fluid, professional dashboard layout with a soothing teal/blue palette
+- **Dark mode toggle** — persisted in browser localStorage
+- Responsive sidebar with call history and quality-score badges
+- Print / PDF and copy-to-clipboard on every result
+
+### Lion splash (first visit)
+
+A 5-second branded animation with a lion roar plays on the **first visit to the portal** (cookie-based, `index.html` only). Returning users go straight to the app.
+
+### Post-call intelligence
+
+- **Gemini** structured JSON extraction from Zoom audio transcripts
+- **Quality scorecard** calibrated for honest, evidence-based coaching (not cheerleading)
+- **Zoom integration** — paste share link + passcode; no Zoom OAuth required for MVP
+- **Server-side history** on VPS production — analyses sync across sessions via the worker API; local dev falls back to browser storage
+
+### Authentication (demo)
+
+| Role | Email | Password |
+|------|-------|----------|
+| **SE** | `se@freshworks.com` | `se123` |
+| **SE (alt)** | `se1@freshworks.com` / `se2@freshworks.com` | `se123` |
+| **Manager** | `manager@freshworks.com` | `mgr123` |
+
+Production will move to **Firebase Google SSO** with `@freshworks.com` domain restriction. Config is ready; enable when the Firebase project ID is set.
 
 ---
 
-## Architecture
+## Screenshots & views (no images attached)
+
+| View | What an SE sees |
+|------|-----------------|
+| **Login** | Branded sign-in with demo credential hints |
+| **My dashboard** | Rolling quality averages, radar chart, score trend, recent calls table |
+| **Pre-call prep** | Company + email form → v3 one-pager with comparison table and SE playbook |
+| **New analysis** | Zoom link form → redesigned post-call one-pager with Quality Coach |
+| **History (sidebar)** | Past analyses with quality scores; click to reload any call |
+| **Manager view** | Placeholder team dashboard (rollup planned — see Roadmap) |
+
+For a leadership-friendly walkthrough of post-call flow and FAQ, see **[docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md)**.  
+For a browser-friendly product summary, see **[web/about.html](./web/about.html)**.
+
+---
+
+## Architecture (brief)
 
 ```
 Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (default) or Claude
        │                           │
   Firebase Auth (optional)     API keys (server secrets only)
-  Firestore / localStorage     Zoom share API → VTT transcript
+  localStorage / Firestore     Zoom share API → VTT transcript
+                               File/KV history (VPS / Cloudflare)
 ```
 
 | Layer | Role |
 |-------|------|
-| **`web/`** | Static portal — pre-call form, post-call analysis UI, dashboard, history |
-| **`worker/`** | Node/Cloudflare Worker — `/api/generate-prep`, `/api/analyze-call`, auth verification |
-| **LLM** | Gemini (default) with web search for pre-call; structured JSON for post-call |
+| **`web/`** | Static portal — pre-call, post-call, dashboard, history, dark mode |
+| **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/history`, Zoom transcript fetch |
+| **VPS (production)** | Docker Compose + Caddy HTTPS — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** |
+| **LLM** | Gemini 3.1 Flash Lite (default) — web search for pre-call; structured JSON for post-call |
 
-**Why a worker instead of browser-side AI?** API keys must stay server-side; Firebase Spark blocks outbound LLM calls from Cloud Functions; one pipeline keeps schema and scoring consistent for every SE.
+**Why a worker instead of browser-side AI?** API keys stay server-side; one pipeline keeps schema, scoring, and prompts consistent for every SE.
 
-### Production URLs (VPS)
+---
 
-| URL | Service |
-|-----|---------|
-| **https://lionpath.benjaminsquare.com** | Web UI |
-| **https://lionpathapi.benjaminsquare.com** | Worker API |
+## Recent updates
 
-Deploy: **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** — Docker Compose + Caddy on Netcup (or any Linux VPS). Alternative: Cloudflare Worker + Pages (see Deploy section below).
+| Area | What changed |
+|------|--------------|
+| **Pre-call v3** | New one-pager format — comparison table, bullet sections, SE playbook grid, collapsible sources |
+| **Post-call redesign** | Results now mirror pre-call layout — comparison hero, playbook grid, Quality Coach section |
+| **UI/UX** | Full visual refresh — teal/blue palette, fluid dashboard, dark mode toggle |
+| **Lion splash** | 5s branded animation + roar on first portal visit |
+| **Prep accuracy** | Company name prioritized over email domain; typo detection and validation hints in the form |
+| **Post-call backend** | Gemini analysis, Quality Coach scorecard, Zoom link flow, server-side history on VPS |
+| **Production deploy** | Live on VPS at `lionpath.benjaminsquare.com` + `lionpathapi.benjaminsquare.com` |
+| **Team workflow** | Feature branches → PR to `main` → deploy from `main` |
+
+---
+
+## Roadmap
+
+| Item | Status |
+|------|--------|
+| **Firebase Google SSO** | Config ready; enable when project ID is set |
+| **Firestore history** (cross-device, durable) | Rules exist; wired when Firebase is on |
+| **Manager team dashboard** | Rollup across SEs — placeholder view exists today |
+| **Formal manager-approved rubric** | Replace MVP AI calibration with signed-off criteria |
+| **Zoom OAuth** | Optional — for accounts where share links are restricted |
+| **Manual VTT upload in UI** | API supports it; UI is link-first today |
 
 ---
 
@@ -102,16 +147,14 @@ Deploy: **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** — Docker Compose + Cadd
 
 ### For SEs (daily use) — no install
 
-Once deployed, **open the portal in a browser**. No `npm`, no API keys on SE laptops.
-
-1. Go to **https://lionpath.benjaminsquare.com**
-2. Log in (demo: `se@freshworks.com` / `se123` — production will use Google SSO)
+1. Open **https://lionpath.benjaminsquare.com**
+2. Log in (`se@freshworks.com` / `se123`)
 3. **Before a call:** Pre-call prep → company + email + context → brief
 4. **After a call:** New analysis → Zoom link → summary, next steps, Quality Coach
 
 ### For developers (local laptop)
 
-**ELI5 — two terminals on your machine:**
+**Two terminals on your machine:**
 
 1. **Install Node.js** — LTS from [nodejs.org](https://nodejs.org/)
 2. **Clone:** `git clone https://github.com/skut264/lionpath.git` → `cd lionpath`
@@ -122,14 +165,56 @@ Once deployed, **open the portal in a browser**. No `npm`, no API keys on SE lap
 
 Set `WORKER_BASE_URL` in `web/firebase-config.js` to `http://localhost:8787` for local dev.
 
-Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.md)**
-
 | Terminal | Command | URL |
 |----------|---------|-----|
 | 1 — Worker | `cd worker && npm install && npm run dev` | http://localhost:8787 |
 | 2 — Web | `cd web && npx wrangler pages dev .` | http://localhost:8788 |
 
-**8788** is the browser URL; **8787** is the API the UI calls in the background.
+Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.md)**
+
+### Team development workflow
+
+1. Create a **feature branch** from `main` (e.g. `feature/fix-prep-typo-domain`)
+2. Develop and test locally (both terminals above)
+3. Open a **pull request to `main`** for review
+4. Deploy production from `main` — see Deploy section below
+
+---
+
+## Documentation
+
+| Doc | Audience |
+|-----|----------|
+| [web/about.html](./web/about.html) | Boss / SEs — what the portal does (browser-friendly) |
+| [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
+| [docs/SHARE_WITH_TEAM.md](./docs/SHARE_WITH_TEAM.md) | SEs & managers — team share pack |
+| [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers — local setup, tunnel sharing, onboarding |
+| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| [deploy/vps/SECURITY.md](./deploy/vps/SECURITY.md) | IT / admin — secrets, SSH, file permissions |
+
+---
+
+## Deploy
+
+### Option A — VPS (production — `lionpath.benjaminsquare.com`)
+
+See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+./setup.sh    # once
+nano .env     # GEMINI_API_KEY, ALLOWED_ORIGINS=https://lionpath.benjaminsquare.com
+./start.sh
+```
+
+### Option B — Cloudflare Worker + Pages
+
+```bash
+cd worker && npx wrangler deploy
+cd web && npx wrangler pages deploy .
+```
+
+Set `WORKER_BASE_URL` in `web/firebase-config.js` to the production Worker URL; add the Pages origin to `ALLOWED_ORIGINS`.
 
 ---
 
@@ -169,54 +254,7 @@ Config in `worker/wrangler.toml` (`[vars]`):
 - `ALLOWED_EMAIL_DOMAIN` — sign-in restriction (default `freshworks.com`)
 - `FIREBASE_PROJECT_ID` — empty disables auth; set to enforce ID-token verification
 
-**Changing provider:** add `worker/src/providers/<name>.ts`, register in `providers/index.ts`, set `LLM_PROVIDER`. Web research is provider-specific (Anthropic `web_search`, Gemini `google_search`).
-
-### Web — dummy login (no Firebase)
-
-When `firebaseConfig.projectId` is empty, the portal uses dummy credentials and stores history in **localStorage**.
-
-| Role | Email | Password |
-|------|-------|----------|
-| SE | `se@freshworks.com` | `se123` |
-| SE (alt) | `se1@freshworks.com` / `se2@freshworks.com` | `se123` |
-| Manager | `manager@freshworks.com` | `mgr123` |
-
-**SE views after login:** My dashboard · New analysis · History · Pre-call prep
-
-### Firebase (optional — sign-in + durable history)
-
-1. Create Firebase project; enable **Authentication → Google**.
-2. Enable **Firestore**; deploy `firestore.rules`.
-3. Copy web config into `web/firebase-config.js`.
-4. Set Worker `FIREBASE_PROJECT_ID` and add Pages/VPS origin to `ALLOWED_ORIGINS`.
-
----
-
-## Deploy
-
-### Option A — VPS (recommended for `lionpath.benjaminsquare.com`)
-
-See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
-
-```bash
-cd /opt/se-singha-paathai/deploy/vps
-./setup.sh    # once
-nano .env     # GEMINI_API_KEY, ALLOWED_ORIGINS=https://lionpath.benjaminsquare.com
-./start.sh
-```
-
-### Option B — Cloudflare Worker + Pages
-
-```bash
-cd worker && npx wrangler deploy
-cd web && npx wrangler pages deploy .
-```
-
-Set `WORKER_BASE_URL` in `web/firebase-config.js` to the production Worker URL; add the Pages origin to `ALLOWED_ORIGINS`.
-
----
-
-## Model strategy & notes
+### Model strategy
 
 | Use case | Default model | Latency target |
 |----------|---------------|----------------|
@@ -224,8 +262,6 @@ Set `WORKER_BASE_URL` in `web/firebase-config.js` to the production Worker URL; 
 | Pre-call (max quality) | `gemini-3.5-flash` or Claude + web search | 30–90s |
 | Post-call (transcript) | `gemini-3.1-flash-lite` | **8–20s** |
 
-- **Output format:** Research Snapshot table + Demo Plan + collapsible Sources (`worker/src/schema.ts`, `web/app.js`).
-- **Grounding:** Freshworks facts from `worker/src/kb.ts` only; prospect facts from web research with citations.
-- **Post-call transcript:** Last ~6k words (~30–40 min of speech) for speed.
-- **Zoom link flow:** `worker/src/zoomShare.ts` — share/play URL + passcode → public Zoom APIs → VTT → analysis. OAuth is optional later.
-- **Cost:** Web search ~$10 / 1k searches plus tokens — negligible at SE volume.
+- **Grounding:** Freshworks facts from `worker/src/kb.ts`; prospect facts from web research with citations
+- **Post-call transcript:** Last ~6k words (~30–40 min of speech) for speed
+- **Zoom link flow:** `worker/src/zoomShare.ts` — share/play URL + passcode → public Zoom APIs → VTT → analysis
