@@ -1,61 +1,59 @@
-Team — Discovery pre-call wireframe for review
+Team — Discovery pre-call wireframe (skeleton only)
 
-We're collapsing the prep page into ONE "Account Snapshot" table (table first, minimal scroll, 1 printed page).
-
-Please review and reply in thread:
+ONE "Account Snapshot" table. Please review and reply in thread:
 1. Approve as-is
 2. Change section order
 3. Add/remove rows
 4. Sources in footer vs inside table
 
-Key decisions:
-• ONE table only — no maturity chips, no signals block, no extra cards
-• FIT = 3 fixed rows (Omnichannel Support, AI Deflection, Agent Assist)
-• GAP column = one-word verdict + coloured dot (red/amber/green)
-• Demo prep Value = qualitative only (no fake % or ROI stats)
-• Resource links only when relevant (e.g. Zendesk battlecard if Zendesk detected)
+Full doc: https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md
+Visual: https://lionpath.benjaminsquare.com/about.html#discovery-wireframe
 
-Full wireframe doc: https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md
-About page (visual): https://lionpath.benjaminsquare.com/about.html#discovery-wireframe
-
---- WIREFRAME (paste below if no link access) ---
+--- WIREFRAME SKELETON ---
 
 HEADER (above table)
-  Company name · domain
-  One-line description (≤15 words)
-  Attendee chips: name · role · decision dot
+  Company name
+  domain
+  One-line description
+  Attendee chips (name · role · decision dot)
 
-ONE TABLE — read top to bottom:
+| FIT |
+| Attribute           | This company | Industry norm | GAP |
+| Omnichannel Support |              |               |     |
+| AI Deflection       |              |               |     |
+| Agent Assist        |              |               |     |
 
-  [FIT]
-  Attribute | This company | Industry norm | GAP
-  Omnichannel Support | ... | ... | Behind ●
-  AI Deflection        | ... | ... | Large ●
-  Agent Assist         | ... | ... | Partial ●
+| ACCOUNT FACTS |
+| Incumbent        | |
+| Support agents   | |
+| Market           | |
+| Business model   | |
+| Users            | |
+| Uptime need      | |
+| Funding / parent | |
+| Head office      | |
+| Languages        | |
 
-  [ACCOUNT FACTS]  (label | value spans 3 cols)
-  Incumbent (+ greenfield/homegrown/entrenched tag)
-  Support agents (est.)
-  Market, Business model, Users, Uptime need
-  Funding/parent, Head office, Languages
+| INDUSTRY USE CASES (max 3) |
+| |
+| |
+| |
 
-  [INDUSTRY USE CASES] max 3 rows
+| DISCOVERY KIT (max 3) |
+| Ask this | Because |
+|          |         |
+|          |         |
+|          |         |
 
-  [DISCOVERY KIT] max 3
-  Ask this | Because
+| DEMO PREP (max 3) |
+| Pain | Capability | Value |
+|      |            |       |
+|      |            |       |
+|      |            |       |
 
-  [DEMO PREP] max 3
-  Pain | Capability | Value (no invented stats)
+| RESOURCES |
+| [link] [link] [link] |
 
-  [RESOURCES]
-  Demo script · Customer reference · Slide pack
-  + conditional Zendesk/Intercom/ROI links
+Sources (collapsible footer)
 
-FOOTER: Sources (collapsible)
-
-REMOVED: Support Maturity block, Signals block, separate card stacks
-
-Questions for you:
-- Sources in footer OK?
-- Too many resource links?
-- All 8 account fact rows required?
+REMOVED: Support Maturity block · Signals block · separate card stacks
