@@ -7,11 +7,28 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <!-- Lion splash (index only — see splash.js) -->
+    <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
+      <div class="lion-splash-inner">
+        <div class="lion-mascot" aria-hidden="true">
+          <span class="lion-face">🦁</span>
+          <span class="lion-ring"></span>
+        </div>
+        <h1 class="lion-title">SE Singha Paathai</h1>
+        <p class="lion-tagline muted">Freshworks Solution Engineering</p>
+      </div>
+    </div>
+
     <!-- Login -->
     <div id="login-view" class="login-page">
       <div class="login-card card">
-        <h1>SE Singha Paathai</h1>
-        <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+        <div class="login-card-head">
+          <div>
+            <h1>SE Singha Paathai</h1>
+            <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+          </div>
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">🌙</button>
+        </div>
         <p class="login-banner" role="note">History syncs from the server on sign-in — works in incognito and after logout. Local cache is cleared when you close a private window.</p>
         <form id="login-form">
           <label>Email
@@ -70,6 +87,7 @@
         <header class="main-topbar">
           <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Open menu">☰</button>
           <span id="main-view-title" class="main-view-title">My dashboard</span>
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">🌙</button>
         </header>
 
         <div id="worker-warning" class="status err wrap-banner" hidden></div>
@@ -101,7 +119,7 @@
               <button id="analyze-call" class="primary" type="submit">Analyze call</button>
             </form>
             <div id="postcall-status" class="status" hidden></div>
-            <article id="postcall-result" class="card result" hidden></article>
+            <article id="postcall-result" class="card result one-pager" hidden></article>
           </section>
 
           <!-- Pre-call prep -->
@@ -124,7 +142,7 @@
               <button id="generate" class="primary" type="submit">Generate prep</button>
             </form>
             <div id="prep-status" class="status" hidden></div>
-            <article id="prep-result" class="card result" hidden></article>
+            <article id="prep-result" class="card result one-pager" hidden></article>
             <section id="history-section" class="card" hidden>
               <h2>Recent preps</h2>
               <ul id="history" class="history"></ul>
@@ -138,6 +156,8 @@
       <a href="./about.html" target="_blank" rel="noopener noreferrer">Get to know the project</a>
     </footer>
 
+    <script type="module" src="./theme.js"></script>
+    <script type="module" src="./splash.js"></script>
     <script type="module" src="./app.js"></script>
     <script type="module" src="./postcall.js"></script>
   </body>

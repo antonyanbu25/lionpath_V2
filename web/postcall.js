@@ -39,11 +39,53 @@ function parseRecordingInput(rawUrl, rawPwd) {
   return { recordingUrl: url, recordingPassword: password || undefined };
 }
 
+const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown";
+const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+
+function bulletBlock(arr) {
+  const items = (arr || []).filter((x) => !isUnknown(x));
+  return items.length
+    ? `<ul class="prep-bullets">${items.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
+    : '<p class="muted">—</p>';
+}
+
+const CALL_SNAPSHOT_ROWS = [
+  ["customerContext", "Customer context", "text"],
+  ["keyTopics", "Key topics", "list"],
+  ["painPointsConfirmed", "Pain points confirmed", "list"],
+  ["objectionsRaised", "Objections raised", "list"],
+  ["competitiveMentions", "Competitive mentions", "list"],
+  ["decisionsMade", "Decisions made", "list"],
+  ["openQuestions", "Open questions", "list"],
+];
+
+const FOLLOW_UP_HINTS = {
+  customerContext: "—",
+  keyTopics: "—",
+  painPointsConfirmed: "Reinforce in follow-up",
+  objectionsRaised: "Prepare responses",
+  competitiveMentions: "Differentiate",
+  decisionsMade: "Document in CRM",
+  openQuestions: "Next meeting agenda",
+};
+
 function priorityClass(p) {
   const v = String(p || "").toLowerCase();
   if (v === "high") return "pill high";
   if (v === "low") return "pill low";
   return "pill med";
+}
+
+function renderCallCell(value, type) {
+  if (type === "text") return dash(value);
+  return bulletBlock(value);
+}
+
+function renderFollowUpCell(key, value, type) {
+  if (type === "text" || !value || (Array.isArray(value) && !value.filter((x) => !isUnknown(x)).length)) {
+    return '<span class="muted">—</span>';
+  }
+  return `<span class="follow-hint">${esc(FOLLOW_UP_HINTS[key] || "—")}</span>`;
 }
 
 function barClass(score, max = 5) {
@@ -248,6 +290,30 @@ function renderQualityCoach(qc) {
     </div>`;
 }
 
+function renderSeActionList(actions) {
+  const items = (actions || []).filter((x) => x?.action && !isUnknown(x.action));
+  if (!items.length) return '<p class="muted">No SE actions.</p>';
+  return `<ul class="prep-bullets action-bullets">${items
+    .map((x) => {
+      const parts = [
+        `<span class="${priorityClass(x.priority)}">${esc(x.priority)}</span>`,
+        `<strong>${esc(x.action)}</strong>`,
+      ];
+      if (x.dueHint && !isUnknown(x.dueHint)) parts.push(`<span class="muted due-hint">${esc(x.dueHint)}</span>`);
+      if (x.rationale && !isUnknown(x.rationale)) parts.push(`<span class="action-rationale">${esc(x.rationale)}</span>`);
+      return `<li class="action-item">${parts.join(" · ")}</li>`;
+    })
+    .join("")}</ul>`;
+}
+
+function renderAeActionList(actions) {
+  const items = (actions || []).filter((x) => x?.action && !isUnknown(x.action));
+  if (!items.length) return '<p class="muted">None noted.</p>';
+  return `<ul class="prep-bullets">${items
+    .map((x) => `<li><span class="${priorityClass(x.priority)}">${esc(x.priority)}</span> · ${esc(x.action)}${x.rationale && !isUnknown(x.rationale) ? ` — <span class="muted">${esc(x.rationale)}</span>` : ""}</li>`)
+    .join("")}</ul>`;
+}
+
 export function renderPostCall(data, meta = {}) {
   const a = data.analysis;
   const cs = a.callSummary;
@@ -255,55 +321,81 @@ export function renderPostCall(data, meta = {}) {
   const qc = a.qualityCoach;
   const tm = data.transcriptMeta || {};
 
+  const compareRows = CALL_SNAPSHOT_ROWS.map(([key, label, type]) => {
+    const value = cs[key];
+    return `<tr>
+      <th class="prep-row-label">${esc(label)}</th>
+      <td>${renderCallCell(value, type)}</td>
+      <td>${renderFollowUpCell(key, value, type)}</td>
+    </tr>`;
+  }).join("");
+
+  const compareTable = `
+    <table class="prep-compare call-compare">
+      <thead><tr><th></th><th>This call</th><th>Follow-up</th></tr></thead>
+      <tbody>${compareRows}</tbody>
+    </table>`;
+
   const attendees = (cs.attendees || []).length
-    ? `<table><tr><th>Name</th><th>Role</th><th>Engagement</th></tr>${(cs.attendees || [])
-        .map((x) => `<tr><td>${esc(x.name)}</td><td>${esc(x.role)}</td><td>${esc(x.engagement)}</td></tr>`)
-        .join("")}</table>`
+    ? `<ul class="prep-attendee-list">${(cs.attendees || [])
+        .map((x) => {
+          const parts = [esc(x.name)];
+          if (x.role && !isUnknown(x.role)) parts.push(`<span class="prep-att-note">${esc(x.role)}</span>`);
+          if (x.engagement && !isUnknown(x.engagement)) parts.push(`<span class="prep-att-note">${esc(x.engagement)}</span>`);
+          return `<li>${parts.join(" · ")}</li>`;
+        })
+        .join("")}</ul>`
     : '<p class="muted">No attendees identified.</p>';
 
-  const list = (items) =>
-    (items || []).length
-      ? `<ul>${(items || []).map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
-      : '<p class="muted">None noted.</p>';
+  const topSeAction = (ns.seActions || []).find((x) => x?.action && !isUnknown(x.action));
 
-  const seActions = (ns.seActions || []).length
-    ? `<table><tr><th>Action</th><th>Priority</th><th>Due</th><th>Why</th></tr>${(ns.seActions || [])
-        .map((x) => `<tr><td>${esc(x.action)}</td><td><span class="${priorityClass(x.priority)}">${esc(x.priority)}</span></td><td>${esc(x.dueHint)}</td><td>${esc(x.rationale)}</td></tr>`)
-        .join("")}</table>`
-    : '<p class="muted">No SE actions.</p>';
+  const sePlaybook = `
+    <div class="prep-action-grid">
+      <div class="prep-action-block prep-action-wide">
+        <h3>Top priority</h3>
+        <p class="prep-lead">${topSeAction ? esc(topSeAction.action) : '<span class="muted">—</span>'}</p>
+      </div>
+      <div class="prep-action-block prep-action-wide">
+        <h3>SE actions</h3>
+        ${renderSeActionList(ns.seActions)}
+      </div>
+      <div class="prep-action-block">
+        <h3>AE actions</h3>
+        ${renderAeActionList(ns.aeActions)}
+      </div>
+      <div class="prep-action-block">
+        <h3>Customer commitments</h3>
+        ${bulletBlock(ns.customerCommitments)}
+      </div>
+    </div>`;
+
+  const transcriptDetails = tm.wordCount || tm.durationMinutes != null || (tm.speakers || []).length
+    ? `<details class="sources transcript-sources">
+        <summary>Transcript details</summary>
+        <ul>
+          ${tm.durationMinutes != null ? `<li>Duration: ~${esc(tm.durationMinutes)} min</li>` : ""}
+          ${tm.wordCount ? `<li>Word count: ${esc(tm.wordCount)}</li>` : ""}
+          ${tm.speakerCount ? `<li>Speakers: ${esc(tm.speakerCount)}</li>` : ""}
+          ${(tm.speakers || []).length ? `<li>Names: ${(tm.speakers || []).map(esc).join(", ")}</li>` : ""}
+        </ul>
+      </details>`
+    : "";
+
+  const followUpEmail = ns.suggestedFollowUpEmail?.subject || ns.suggestedFollowUpEmail?.body
+    ? `<details class="sources email-sources">
+        <summary>Suggested follow-up email</summary>
+        <div class="email-draft">
+          <p><strong>Subject:</strong> ${esc(ns.suggestedFollowUpEmail?.subject)}</p>
+          <pre>${esc(ns.suggestedFollowUpEmail?.body)}</pre>
+        </div>
+      </details>`
+    : '<p class="muted">No follow-up email draft.</p>';
 
   const metaLine = [
     meta.title,
     tm.durationMinutes != null ? `~${tm.durationMinutes} min` : "",
     tm.wordCount ? `${tm.wordCount} words` : "",
   ].filter(Boolean).map(esc).join(" · ");
-
-  const summarySnapshot = `
-    <h2>Call summary</h2>
-    <table class="snap">
-      <tr><th>Headline</th><td>${esc(cs.headline || meta.title || "Call analysis")}</td></tr>
-      <tr><th>Customer context</th><td>${esc(cs.customerContext)}</td></tr>
-      <tr><th>Key topics</th><td>${(cs.keyTopics || []).length ? (cs.keyTopics || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-      <tr><th>Pain points</th><td>${(cs.painPointsConfirmed || []).length ? (cs.painPointsConfirmed || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-      <tr><th>Objections</th><td>${(cs.objectionsRaised || []).length ? (cs.objectionsRaised || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-      <tr><th>Competitive mentions</th><td>${(cs.competitiveMentions || []).length ? (cs.competitiveMentions || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-      <tr><th>Decisions made</th><td>${(cs.decisionsMade || []).length ? (cs.decisionsMade || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-      <tr><th>Open questions</th><td>${(cs.openQuestions || []).length ? (cs.openQuestions || []).map(esc).join(" · ") : '<span class="muted">None noted.</span>'}</td></tr>
-    </table>
-    <h3>Attendees</h3>${attendees}`;
-
-  const nextSteps = `
-    <h2>Next steps</h2>
-    <h3>SE actions</h3>${seActions}
-    <h3>AE actions</h3>${list((ns.aeActions || []).map((x) => `${x.action} (${x.priority}) — ${x.rationale}`))}
-    <h3>Customer commitments</h3>${list(ns.customerCommitments)}
-    <h3>Suggested follow-up email</h3>
-    <div class="email-draft">
-      <p><strong>Subject:</strong> ${esc(ns.suggestedFollowUpEmail?.subject)}</p>
-      <pre>${esc(ns.suggestedFollowUpEmail?.body)}</pre>
-    </div>
-    <h3>CRM notes</h3>
-    <p class="crm-notes">${esc(ns.crmNotes)}</p>`;
 
   return `
     <div class="toolbar">
@@ -312,15 +404,32 @@ export function renderPostCall(data, meta = {}) {
       <button class="ghost" id="copy-followup">Copy follow-up email</button>
     </div>
     <div class="head">
-      <h2 style="border:none">${esc(cs.headline || meta.title || "Call analysis")}</h2>
+      <h2 class="one-pager-title">${esc(cs.headline || meta.title || "Call analysis")}</h2>
       <span class="sub">${metaLine}</span>
     </div>
-    <section>${summarySnapshot}</section>
-    <section>${nextSteps}</section>
-    <section>
-      <h2>Quality coach</h2>
-      ${renderQualityCoach(qc)}
-    </section>`;
+    <section class="prep-hero">${compareTable}</section>
+    <section><h2>Discussion highlights</h2>${bulletBlock(cs.keyTopics)}</section>
+    <section><h2>Pains & objections</h2>
+      <div class="split-blocks">
+        <div class="prep-action-block"><h3>Pain points confirmed</h3>${bulletBlock(cs.painPointsConfirmed)}</div>
+        <div class="prep-action-block"><h3>Objections raised</h3>${bulletBlock(cs.objectionsRaised)}</div>
+      </div>
+    </section>
+    <section><h2>Competitive & decisions</h2>
+      <div class="split-blocks">
+        <div class="prep-action-block"><h3>Competitive mentions</h3>${bulletBlock(cs.competitiveMentions)}</div>
+        <div class="prep-action-block"><h3>Decisions made</h3>${bulletBlock(cs.decisionsMade)}</div>
+      </div>
+    </section>
+    <section><h2>Open questions</h2>${bulletBlock(cs.openQuestions)}</section>
+    <section><h2>SE playbook</h2>${sePlaybook}</section>
+    <section><h2>Quality coach</h2>${renderQualityCoach(qc)}</section>
+    <footer class="prep-footer">
+      <div class="prep-attendees"><h3>Attendees</h3>${attendees}</div>
+      ${followUpEmail}
+      ${ns.crmNotes && !isUnknown(ns.crmNotes) ? `<div class="crm-block"><h3>CRM notes</h3><p class="crm-notes">${esc(ns.crmNotes)}</p></div>` : ""}
+      ${transcriptDetails}
+    </footer>`;
 }
 
 export function displayPostCall(data, meta) {

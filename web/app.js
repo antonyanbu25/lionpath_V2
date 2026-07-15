@@ -331,7 +331,7 @@ function renderPrep(p, meta = {}) {
       <button class="ghost" onclick="window.print()">Print / PDF</button>
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
-    <div class="head"><h2 style="border:none">${esc(meta.company || "")}</h2><span class="sub">${sub}</span></div>
+    <div class="head"><h2 class="one-pager-title">${esc(meta.company || "")}</h2><span class="sub">${sub}</span></div>
     <section class="prep-hero">${compareTable}</section>
     <section><h2>About the business</h2>${prepBullets(p.aboutBusiness)}</section>
     <section><h2>Support process</h2>${prepBullets(p.supportProcess)}</section>
