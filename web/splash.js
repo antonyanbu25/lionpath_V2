@@ -43,7 +43,7 @@ function runSplash() {
   el.classList.add("lion-splash-active");
   document.body.classList.add("splash-lock");
 
-  window.setTimeout(playRoar, 600);
+  window.setTimeout(() => playRoar({ short: true }), 600);
 
   window.setTimeout(() => {
     el.classList.add("lion-splash-fade");

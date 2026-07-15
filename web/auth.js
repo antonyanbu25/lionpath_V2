@@ -125,3 +125,44 @@ export function persistFirebaseSession(user) {
   const session = sessionFromFirebaseUser(user);
   if (session) setSession(session);
 }
+
+/** @param {{ role?: string, email?: string } | null | undefined} session */
+export function isManagerRole(session) {
+  if (!session) return false;
+  if (session.role === "manager") return true;
+  return String(session.email || "").toLowerCase().startsWith("manager@");
+}
+
+/** @param {{ role?: string, email?: string } | null | undefined} session */
+export function isSeRole(session) {
+  return !!session && !isManagerRole(session);
+}
+
+/** All SE emails for manager team views (dummy accounts + any with stored history). */
+export function listTeamSeEmails() {
+  const fromAccounts = Object.entries(DUMMY_USERS)
+    .filter(([, u]) => u.role === "se")
+    .map(([email]) => email);
+
+  const seen = new Set(fromAccounts);
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith("se-singha-history:")) continue;
+      const email = key.slice("se-singha-history:".length).toLowerCase();
+      if (email && !email.startsWith("manager@") && !seen.has(email)) {
+        seen.add(email);
+        fromAccounts.push(email);
+      }
+    }
+  } catch {
+    // ignore private-mode errors
+  }
+  return fromAccounts;
+}
+
+/** @param {string} email */
+export function displayNameForEmail(email) {
+  const key = String(email || "").trim().toLowerCase();
+  return DUMMY_USERS[key]?.name || key.split("@")[0] || "SE";
+}

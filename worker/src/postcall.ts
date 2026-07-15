@@ -44,25 +44,32 @@ Score like a sales engineering manager doing QA, not a cheerleader.
 Produce a scannable post-call one-pager with tables and bullets ONLY (no paragraphs).
 
 WORD CAPS (strict):
-- Table cells (followUpTable, nextSteps, callHeader fields): max 10 words each.
-- Bullets (signals.*, qualityCoach strengths/improvements/missed): max 14 words each.
-- momentum.reason: max 20 words.
-- callHeader.title: max 25 words.
+- Table cells (followUpTable, nextSteps owner/action/due, callHeader duration/date): max 8 words.
+- Bullets (signals.*, qualityCoach strengths/improvements/missed, dimension feedback): max 12 words.
+- nextSteps.why: max 14 words.
+- momentum.reason: max 18 words.
+- callHeader.title: max 15 words.
 
-STRUCTURE:
+STRUCTURE (UI render order — callHeader first, then momentum hero):
 1. callHeader — title, duration, date, attendees with influence enum (high|medium|low).
-2. momentum — status enum Advancing|Stalled|At risk, reason, topAction, topActionDue.
-   Separate from quality score — reflects deal momentum not SE execution quality.
-3. followUpTable — SINGLE source for decisions, commitments, SE actions, AE actions,
-   objections, next meeting. Each row: category, thisCall (max 10 words), followUp (max 10 words).
-   Do NOT duplicate these facts elsewhere.
+2. momentum — HERO immediately below header. status enum Advancing|Stalled|At risk, reason (max 18 words),
+   topAction, topActionDue. Deal momentum ≠ quality score.
+3. followUpTable — SINGLE summary of decisions, commitments, SE actions, AE actions,
+   objections, next meeting. Each row: category, thisCall (max 8 words), followUp (max 8 words).
+   Do NOT repeat these rows in nextSteps.
 4. signals — painsConfirmed (max 4), objectionsOpen (max 4), competitors (max 4), one line each.
-5. nextSteps — Owner|Action|Due|Why table. Set isRisk=true for rows derived from coach
-   missed opportunities (prefix action with "Risk: ").
-6. qualityCoach — six dimensions 1–5 with feedback and evidence (max 14 words each).
+5. nextSteps — Owner|Action|Due|Why table for actionable items NOT already in followUpTable.
+   Include AE follow-ups, customer internal-review commitments, and coach missed opportunities.
+   Why max 14 words. Set isRisk=true for rows from missedOpportunities (concrete action, no "Risk:" prefix).
+6. qualityCoach — six dimensions 1–5 with feedback and evidence (max 12 words each).
    strengths: top 2, improvements: top 2, missedOpportunities: top 1 only.
    Do not output overall score — computed from dimensions.
-7. artifacts — suggestedFollowUpEmail (subject+body) and crmNotes.
+7. artifacts — suggestedFollowUpEmail (subject+body) and crmNotes (collapsible in UI).
+
+DEDUPE RULE — followUpTable vs nextSteps:
+- followUpTable = what was decided/committed on the call (summary pairs).
+- nextSteps = who must do what next that is NOT already captured in followUpTable.
+- Never put the same action in both (e.g. "send link" / "share recording" belong in followUpTable only).
 
 DIMENSION SCORING RUBRIC (strict — calibrate to real SE QA standards):
 - 5/5 Exceptional (rare): repeated, specific transcript evidence of best-in-class execution
@@ -161,14 +168,22 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     >(result.text),
   );
 
-  if (!analysis.callHeader.duration && parsed.durationMinutes != null) {
-    analysis.callHeader.duration = `~${parsed.durationMinutes} min`;
+  const header = analysis.callHeader;
+  if (!header.duration && parsed.durationMinutes != null) {
+    header.duration = `~${parsed.durationMinutes} min`;
   }
-  if (!analysis.callHeader.title && meetingTitle) {
-    analysis.callHeader.title = meetingTitle;
+  if (!header.title && meetingTitle) {
+    header.title = meetingTitle;
   }
-  if (!analysis.callHeader.date && input.meetingDate) {
-    analysis.callHeader.date = input.meetingDate;
+  if (!header.date && input.meetingDate) {
+    header.date = input.meetingDate;
+  }
+  if (!header.attendees?.length && parsed.speakers.length) {
+    header.attendees = parsed.speakers.slice(0, 8).map((name) => ({
+      name,
+      role: "unknown",
+      influence: "medium" as const,
+    }));
   }
 
   return {

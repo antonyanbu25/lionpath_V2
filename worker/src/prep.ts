@@ -34,48 +34,56 @@ export function deriveDomain(email: string): string {
 function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
 customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
-SE Discovery one-pager.
+SE Discovery one-pager with glance hierarchy: must-see top strip, good-to-see details below.
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
 - PRIMARY target: the COMPANY NAME (Google-search it first). Prospect email domains are often
   typos, aliases, or parent-company addresses — never rely on the domain alone.
 - If the domain looks invalid or returns no real site, ignore it and research by company name.
 - For well-known organizations (e.g. Khan Academy, Stripe, Shopify), use established public
-  facts from their official site and reputable sources — never return all "-" or "unknown".
+  facts from their official site and reputable sources.
 - Start from the official company website, then "what they do" and recent news.
 - Infer the support tech stack from signals like help-center/KB URL patterns (e.g. Zendesk),
   careers pages, or job posts.
 Use ONLY web findings for prospect facts; cite each non-obvious claim in "sources" with its URL.
-Where you truly can't find something, write "-" for string fields (or leave arrays empty).
+Where you truly can't find something, write "unknown" for string fields (or leave arrays empty).
 
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
 
-OUTPUT FORMAT — one printable page, tables and bullets ONLY (no paragraphs):
-- description: one-line company summary, max 25 words.
-- Table cells (fitSnapshot.*, businessContext key values): max 10 words each.
-- Bullets (workflows, discoveryKit.question, sources.claim): max 14 words each.
-- discoveryKit.because: max 12 words each.
-- painCapabilityValue cells: max 10 words each.
+OUTPUT FORMAT — tables and bullets ONLY (no paragraphs):
+WORD CAPS (strict):
+- description: max 15 words.
+- Table cells (fitSnapshot, businessContext, incumbent, companySizeAgents): max 8 words each.
+- Bullets (workflows, discoveryKit, sources.claim): max 12 words each.
+- industryUseCases: max 10 words each, max 3 items.
+- painCapabilityValue cells: max 8 words each — qualitative value ONLY, NO fabricated stats.
 
-NO-REPEAT RULE — facts in fitSnapshot hero table must NOT appear in businessContext,
-discoveryKit, or painCapabilityValue below. Use different angles or omit duplicates.
+NO-REPEAT RULE — facts in must-see top strip (fitSnapshot, incumbent, industryUseCases,
+supportMaturity, companySizeAgents) must NOT repeat in businessContext, discoveryKit, or
+painCapabilityValue. Use different angles or omit duplicates.
 
-FIT SNAPSHOT (hero) — max 6 rows with gap enum per row:
-- label: short row name (e.g. Industry, Support channels, Incumbent stack)
-- thisCompany / industryNorm: max 10 words each
-- gap: "large" (big Freshworks opportunity), "partial" (some fit), "parity" (already strong)
+MUST-SEE TOP STRIP:
+1. description — one-line company summary, max 15 words.
+2. incumbent — {incumbent_name, displacement} where displacement is greenfield|homegrown|entrenched.
+3. fitSnapshot — max 6 rows. Drop zero-signal rows where industryNorm restates thisCompany.
+   Each row: label, thisCompany, industryNorm (max 8 words), gap enum (large|partial|parity),
+   gapVerdict (one word shown with dot, e.g. Behind, Partial, Aligned).
+4. supportMaturity — Y|N|unknown for: selfServicePortal, webChat, phone, omnichannel.
+5. industryUseCases — max 3 short phrases, max 10 words each.
+6. companySizeAgents — {agents, estimated}. Set estimated=true if inferred from headcount signals.
 
-BUSINESS CONTEXT — key/value table rows + workflows bullets (max 4):
-- market, model, users, uptimeNeed, incumbent, industryUseCase, fundingParent
-- workflows: max 4 bullets, max 14 words each
+GOOD-TO-SEE (collapsible detail — still fill in JSON):
+- businessContext table: market, model, users, uptimeNeed, fundingParent, headOffice,
+  demography, languages; signals.supportJobListings and signals.similarwebVisitors if available.
+- workflows: max 4 bullets, max 12 words each.
 
-DISCOVERY KIT — max 4 pairs of {question, because}:
-- question: sharp discovery question, max 14 words
-- because: why to ask, max 12 words
+DISCOVERY KIT — max 3 pairs of {question, because}:
+- question: max 12 words; because: max 12 words.
 
-DEMO PREP FLOWCHART — painCapabilityValue, max 3 rows:
-- pain → capability → value (Freshworks angle), max 10 words per cell
+DEMO PREP — painCapabilityValue, max 3 rows:
+- pain → capability → value (Freshworks angle). Value must be qualitative — never invent ROI %,
+  dollar savings, or metrics not found in research.
 
 ATTENDEES: include prospect contact if known; decisionPower enum:
 decision_maker | influencer | unknown
@@ -90,7 +98,7 @@ OUTPUT — CRITICAL: respond with a SINGLE, strictly valid JSON object and nothi
 - No markdown, no code fences, no text before or after the object.
 - No citation markers (e.g. [1], superscripts), footnotes, or comments.
 - No trailing commas; quote and escape every string properly.
-It must match exactly this JSON Schema (all fields required; use "-" or [] where empty):
+It must match exactly this JSON Schema (all fields required; use "unknown" or [] where empty):
 
 ${JSON.stringify(PREP_SCHEMA)}`;
 }
@@ -155,6 +163,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
     user: userPrompt(input, domain),
     effort,
     research: true,
+    jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
   });
 
   try {
@@ -171,6 +180,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
       maxTokens: 8000,
       effort: "low",
       research: false,
+      jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
     });
     try {
       return parsePrep(repaired.text);

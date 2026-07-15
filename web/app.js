@@ -8,10 +8,13 @@ import {
   logout,
   onSessionChange,
   persistFirebaseSession,
+  isManagerRole,
 } from "./auth.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
-import { renderDashboard } from "./dashboard.js";
+import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
+import { renderCoaching } from "./coaching.js";
+import { pickDemoLinks } from "./demo-links.js";
 import {
   displayPostCall,
   onSessionReady,
@@ -36,8 +39,9 @@ const show = (el, on = true) => { el.hidden = !on; };
 
 const VIEW_TITLES = {
   dashboard: "My dashboard",
+  coaching: "My coaching",
   workspace: "One-pagers",
-  manager: "Manager view",
+  manager: "Manager dashboard",
 };
 
 function esc(v) {
@@ -114,6 +118,11 @@ function gapDot(gap) {
   return `<span class="gap-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
 }
 
+function gapCell(row) {
+  const verdict = String(row.gapVerdict || "").trim() || (row.gap === "large" ? "Behind" : row.gap === "parity" ? "Aligned" : "Partial");
+  return `<span class="gap-verdict">${esc(verdict)}</span> ${gapDot(row.gap)}`;
+}
+
 function decisionDot(power) {
   const cls =
     power === "decision_maker" ? "dot-green" : power === "influencer" ? "dot-grey" : "dot-red";
@@ -122,14 +131,37 @@ function decisionDot(power) {
   return `<span class="power-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
 }
 
+function isV5Prep(p) {
+  return !!(p?.incumbent?.displacement && p?.supportMaturity && p?.companySizeAgents);
+}
+
+const DISPLACEMENT_LABELS = {
+  greenfield: "Greenfield",
+  homegrown: "Homegrown",
+  entrenched: "Entrenched",
+};
+
+function renderMaturityChip(label, flag) {
+  const val = String(flag || "unknown").toUpperCase();
+  const cls = val === "Y" ? "mat-y" : val === "N" ? "mat-n" : "mat-unknown";
+  const text = val === "Y" ? "Y" : val === "N" ? "N" : "?";
+  return `<span class="maturity-chip ${cls}" title="${esc(label)}: ${esc(text)}">${esc(label)} <strong>${esc(text)}</strong></span>`;
+}
+
 const BIZ_ROWS = [
   ["market", "Market"],
   ["model", "Business model"],
   ["users", "Users"],
   ["uptimeNeed", "Uptime need"],
-  ["incumbent", "Incumbent"],
-  ["industryUseCase", "Industry use case"],
   ["fundingParent", "Funding / parent"],
+  ["headOffice", "Head office"],
+  ["demography", "Demography"],
+  ["languages", "Languages"],
+];
+
+const SIGNAL_ROWS = [
+  ["supportJobListings", "Support job listings"],
+  ["similarwebVisitors", "Similarweb visitors"],
 ];
 
 // ---------- Tabs ----------
@@ -185,19 +217,64 @@ function switchWorkspaceTab(tab) {
   setStoredTab(tab);
 }
 
+function dashboardOpts() {
+  return {
+    seName: currentSession?.name,
+    onOpenCall: (id) => openHistoryItem(id),
+    onPrep: () => {
+      switchView("precall");
+    },
+    onAnalyze: () => {
+      switchView("analysis");
+    },
+    onCoaching: () => {
+      switchView("coaching");
+    },
+  };
+}
+
+function updateNavForRole() {
+  const isManager = isManagerRole(currentSession);
+  document.querySelectorAll(".nav-item[data-role]").forEach((btn) => {
+    const role = btn.dataset.role;
+    const showBtn = role === "manager" ? isManager : !isManager;
+    btn.hidden = !showBtn;
+  });
+}
+
+function refreshActiveDashboard() {
+  if (!currentSession?.email) return;
+  if (isManagerRole(currentSession)) {
+    if (currentView === "manager") {
+      renderManagerDashboard($("view-manager"));
+    }
+    return;
+  }
+  if (currentView === "dashboard") {
+    renderDashboard($("view-dashboard"), currentSession.email, dashboardOpts());
+  } else if (currentView === "coaching") {
+    renderCoaching($("view-coaching"), currentSession.email, {
+      onOpenCall: (id) => openHistoryItem(id),
+    });
+  }
+}
+
 // ---------- Views ----------
 
 function switchView(name) {
   currentView = name;
-  const isManager = currentSession?.role === "manager";
+  const isManager = isManagerRole(currentSession);
   const panels = {
     dashboard: $("view-dashboard"),
+    coaching: $("view-coaching"),
     workspace: $("view-workspace"),
     manager: $("view-manager"),
   };
 
-  if (isManager && name === "dashboard") {
-    name = "manager";
+  if (isManager) {
+    if (name === "dashboard" || name === "coaching") name = "manager";
+  } else if (name === "manager") {
+    name = "dashboard";
   }
 
   if (name === "analysis") {
@@ -212,13 +289,17 @@ function switchView(name) {
   $("main-view-title").textContent = VIEW_TITLES[name] || name;
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === name || (name === "manager" && btn.dataset.view === "dashboard"));
+    btn.classList.toggle("active", btn.dataset.view === name);
   });
 
   if (name === "dashboard" && !isManager) {
-    renderDashboard($("view-dashboard"), currentSession.email, {
+    renderDashboard($("view-dashboard"), currentSession.email, dashboardOpts());
+  } else if (name === "coaching" && !isManager) {
+    renderCoaching($("view-coaching"), currentSession.email, {
       onOpenCall: (id) => openHistoryItem(id),
     });
+  } else if (name === "manager" && isManager) {
+    renderManagerDashboard($("view-manager"));
   }
 
   history.replaceState(null, "", `#${name}`);
@@ -244,10 +325,7 @@ function clearSidebarHistory() {
 }
 
 function refreshDashboardFromStorage() {
-  if (!currentSession?.email || currentSession.role === "manager") return;
-  renderDashboard($("view-dashboard"), currentSession.email, {
-    onOpenCall: (id) => openHistoryItem(id),
-  });
+  refreshActiveDashboard();
 }
 
 function setSidebarHistorySyncing(on) {
@@ -317,7 +395,7 @@ function updateSidebarUser() {
   const name = currentSession?.name || "";
   $("sidebar-user-name").textContent = name;
   $("sidebar-user-role").textContent =
-    currentSession?.role === "manager" ? "Manager" : "Solution Engineer";
+    isManagerRole(currentSession) ? "Manager" : "Solution Engineer";
   const avatar = $("sidebar-user-avatar");
   if (avatar) {
     avatar.textContent = name ? name.charAt(0).toUpperCase() : "🦁";
@@ -346,7 +424,7 @@ function prefersReducedMotion() {
 function initPrepAnimations(root) {
   if (!root) return;
   root.classList.add("anim-root");
-  const blocks = root.querySelectorAll(".header-strip, section, .prep-footer");
+  const blocks = root.querySelectorAll(".header-strip, .must-see, .good-to-see, section, .prep-footer, .momentum-hero");
   blocks.forEach((el, i) => {
     el.classList.add("anim-block");
     el.style.setProperty("--anim-delay", `${i * 50}ms`);
@@ -371,12 +449,15 @@ function renderPrep(p, meta = {}) {
   if (!p?.fitSnapshot && (p?.comparison || p?.researchSnapshot || p?.demoPlan)) {
     return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery brief.</div>`;
   }
+  if (!isV5Prep(p)) {
+    return `<div class="status err">This prep uses the v4 format. Regenerate to get the v5 Discovery brief.</div>`;
+  }
 
   const attendeeChips = (p.attendees || []).length
     ? (p.attendees || [])
         .map((a) => {
           const parts = [`<span class="attendee-chip">${decisionDot(a.decisionPower)}${dash(a.name)}`];
-          if (!isUnknown(a.role)) parts.push(`<span class="chip-role">${truncateWords(a.role, 10)}</span>`);
+          if (!isUnknown(a.role)) parts.push(`<span class="chip-role">${truncateWords(a.role, 8)}</span>`);
           parts.push("</span>");
           return parts.join(" · ");
         })
@@ -390,10 +471,10 @@ function renderPrep(p, meta = {}) {
   const fitRows = snapshot
     .map(
       (row, idx) => `<tr class="${idx === focalRowIdx ? "focal-gap-row" : ""}">
-        <th class="prep-row-label">${truncateWords(row.label, 10)}</th>
-        <td>${truncateWords(row.thisCompany, 10)}</td>
-        <td>${truncateWords(row.industryNorm, 10)}</td>
-        <td class="gap-cell">${gapDot(row.gap)}</td>
+        <th class="prep-row-label">${truncateWords(row.label, 8)}</th>
+        <td>${truncateWords(row.thisCompany, 8)}</td>
+        <td>${truncateWords(row.industryNorm, 8)}</td>
+        <td class="gap-cell">${gapCell(row)}</td>
       </tr>`,
     )
     .join("");
@@ -405,11 +486,46 @@ function renderPrep(p, meta = {}) {
       </table>`
     : '<p class="muted">—</p>';
 
+  const inc = p.incumbent || {};
+  const disp = inc.displacement || "greenfield";
+  const incumbentRow = `<div class="incumbent-row displacement-${esc(disp)}">
+    <span class="incumbent-label">Incumbent</span>
+    <span class="incumbent-name">${truncateWords(inc.incumbent_name, 8)}</span>
+    <span class="displacement-badge">${esc(DISPLACEMENT_LABELS[disp] || disp)}</span>
+  </div>`;
+
+  const mat = p.supportMaturity || {};
+  const maturityChips = `<div class="maturity-chips">
+    ${renderMaturityChip("Self-service", mat.selfServicePortal)}
+    ${renderMaturityChip("Web chat", mat.webChat)}
+    ${renderMaturityChip("Phone", mat.phone)}
+    ${renderMaturityChip("Omnichannel", mat.omnichannel)}
+  </div>`;
+
+  const useCases = (p.industryUseCases || []).filter((x) => !isUnknown(x)).slice(0, 3);
+  const useCaseHtml = useCases.length
+    ? `<ul class="use-case-list">${useCases.map((u) => `<li>${truncateWords(u, 10)}</li>`).join("")}</ul>`
+    : '<p class="muted">—</p>';
+
+  const csa = p.companySizeAgents || {};
+  const sizeHtml = `<div class="company-size-row">
+    <span class="company-size-label">Support agents</span>
+    <span class="company-size-value">${truncateWords(csa.agents, 8)}${csa.estimated ? ' <span class="est-label">est.</span>' : ""}</span>
+  </div>`;
+
   const bc = p.businessContext || {};
+  const sig = bc.signals || {};
   const bizTable = `<table class="kv-table">
     <tbody>${BIZ_ROWS.map(
       ([key, label]) =>
-        `<tr><th>${esc(label)}</th><td>${truncateWords(bc[key], 10)}</td></tr>`,
+        `<tr><th>${esc(label)}</th><td>${truncateWords(bc[key], 8)}</td></tr>`,
+    ).join("")}</tbody>
+  </table>`;
+
+  const signalTable = `<table class="kv-table signal-table">
+    <tbody>${SIGNAL_ROWS.map(
+      ([key, label]) =>
+        `<tr><th>${esc(label)}</th><td>${truncateWords(sig[key], 8)}</td></tr>`,
     ).join("")}</tbody>
   </table>`;
 
@@ -417,18 +533,18 @@ function renderPrep(p, meta = {}) {
   const workflowHtml = workflows.length
     ? `<ul class="prep-bullets">${workflows
         .slice(0, 4)
-        .map((b) => `<li>${truncateWords(b, 14)}</li>`)
+        .map((b) => `<li>${truncateWords(b, 12)}</li>`)
         .join("")}</ul>`
     : '<p class="muted">—</p>';
 
-  const kit = (p.discoveryKit || []).slice(0, 4);
+  const kit = (p.discoveryKit || []).slice(0, 3);
   const kitHtml = kit.length
     ? `<table class="discovery-kit">
         <thead><tr><th>Ask this</th><th>Because</th></tr></thead>
         <tbody>${kit
           .map(
             (item) => `<tr>
-              <td>${truncateWords(item.question, 14)}</td>
+              <td>${truncateWords(item.question, 12)}</td>
               <td class="because-cell">${truncateWords(item.because, 12)}</td>
             </tr>`,
           )
@@ -441,15 +557,17 @@ function renderPrep(p, meta = {}) {
     ? `<div class="flowchart flowchart-anim">${pcv
         .map(
           (row) => `<div class="flow-row">
-            <span class="flow-cell pain">${truncateWords(row.pain, 10)}</span>
+            <span class="flow-cell pain">${truncateWords(row.pain, 8)}</span>
             <span class="flow-arrow" aria-hidden="true">→</span>
-            <span class="flow-cell cap">${truncateWords(row.capability, 10)}</span>
+            <span class="flow-cell cap">${truncateWords(row.capability, 8)}</span>
             <span class="flow-arrow" aria-hidden="true">→</span>
-            <span class="flow-cell val">${truncateWords(row.value, 10)}</span>
+            <span class="flow-cell val">${truncateWords(row.value, 8)}</span>
           </div>`,
         )
         .join("")}</div>`
     : '<p class="muted">—</p>';
+
+  const demoLinksHtml = renderDemoLinks(p);
 
   const sources = (p.sources || []).length
     ? `<details class="sources"><summary>Sources (${p.sources.length})</summary><ul>${(p.sources || [])
@@ -458,7 +576,7 @@ function renderPrep(p, meta = {}) {
           const link = url
             ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`
             : '<span class="muted">unknown</span>';
-          return `<li>${truncateWords(s.claim, 14)} — ${link}</li>`;
+          return `<li>${truncateWords(s.claim, 12)} — ${link}</li>`;
         })
         .join("")}</ul></details>`
     : "";
@@ -470,24 +588,58 @@ function renderPrep(p, meta = {}) {
       <button class="ghost" onclick="window.print()">Print / PDF</button>
       <button class="ghost" id="copy-json">Copy JSON</button>
     </div>
-    <header class="header-strip">
+    <header class="header-strip must-see-strip">
       <div class="header-main">
         <h2 class="one-pager-title">${esc(meta.company || "")}</h2>
         ${domain ? `<span class="header-domain">${domain}</span>` : ""}
       </div>
-      <p class="header-desc">${truncateWords(p.description, 25)}</p>
+      <p class="header-desc">${truncateWords(p.description, 15)}</p>
       <div class="attendee-chips">${attendeeChips}</div>
     </header>
-    <section class="prep-hero"><h2>Fit snapshot</h2>${fitTable}</section>
-    <section class="biz-context">
-      <h2>Business context</h2>
-      <div class="biz-grid">${bizTable}
-        <div class="workflows-block"><h3>Workflows</h3>${workflowHtml}</div>
-      </div>
-    </section>
-    <section><h2>Discovery kit</h2>${kitHtml}</section>
-    <section><h2>Demo prep</h2>${flowHtml}</section>
-    <footer class="prep-footer">${sources}</footer>`;
+    <div class="must-see">
+      ${incumbentRow}
+      <section class="prep-hero"><h2>Fit snapshot</h2>${fitTable}</section>
+      <section class="maturity-section"><h2>Support maturity</h2>${maturityChips}</section>
+      <section class="use-cases-section"><h2>Industry use cases</h2>${useCaseHtml}</section>
+      ${sizeHtml}
+      <section><h2>Discovery kit</h2>${kitHtml}</section>
+    </div>
+    <details class="good-to-see" open>
+      <summary>More context &amp; demo prep</summary>
+      <details class="more-context" open>
+        <summary>More context</summary>
+        <section class="biz-context">
+          <h2>Business context</h2>
+          <div class="biz-grid">${bizTable}
+            <div class="workflows-block"><h3>Workflows</h3>${workflowHtml}</div>
+          </div>
+        </section>
+        <section class="signals-section"><h2>Signals</h2>${signalTable}</section>
+      </details>
+      ${demoLinksHtml}
+      <details class="demo-prep-section">
+        <summary>Demo prep</summary>
+        ${flowHtml}
+      </details>
+      <footer class="prep-footer">${sources}</footer>
+    </details>`;
+}
+
+function renderDemoLinks(prep) {
+  const links = pickDemoLinks(prep);
+  if (!links.length) return "";
+
+  const chips = links
+    .map(
+      (link) =>
+        `<a class="demo-link-chip" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" title="${esc(link.label)}">${esc(link.label)}<span class="demo-link-ext" aria-hidden="true">↗</span></a>`,
+    )
+    .join("");
+
+  return `<div class="demo-resources">
+    <p class="demo-resources-label">Demo resources</p>
+    <div class="demo-link-chips">${chips}</div>
+  </div>`;
 }
 
 function displayPrep(prep, meta) {
@@ -636,9 +788,11 @@ async function showApp(session, opts = {}) {
   setHistoryAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
 
-  const defaultView = session.role === "manager" ? "manager" : "dashboard";
+  updateNavForRole();
+
+  const defaultView = isManagerRole(session) ? "manager" : "dashboard";
   const hash = location.hash.replace("#", "");
-  const valid = ["dashboard", "workspace", "analysis", "precall", "manager"];
+  const valid = ["dashboard", "coaching", "workspace", "analysis", "precall", "manager"];
   switchView(valid.includes(hash) ? hash : defaultView);
   if (hash === "workspace" || hash === "analysis" || hash === "precall" || !hash) {
     switchWorkspaceTab(getStoredTab());
@@ -773,7 +927,9 @@ function boot() {
 
   setOnAnalysisSaved(() => {
     void loadPersistedHistory().then(() => {
-      if (currentView === "dashboard") refreshDashboardFromStorage();
+      if (currentView === "dashboard" || currentView === "coaching" || currentView === "manager") {
+        refreshDashboardFromStorage();
+      }
     });
   });
 

@@ -1,5 +1,5 @@
-// Post-call analysis output shape (v4) — momentum hero, follow-up table, signals, next steps,
-// quality coach, and artifacts. transcriptMeta is computed in postcall.ts.
+// Post-call analysis output shape (v5) — momentum hero at top, follow-up table, signals,
+// next steps, quality coach, and artifacts. transcriptMeta is computed in postcall.ts.
 
 export const POSTCALL_SCHEMA = {
   type: "object",
@@ -19,9 +19,9 @@ export const POSTCALL_SCHEMA = {
       additionalProperties: false,
       required: ["title", "duration", "date", "attendees"],
       properties: {
-        title: { type: "string", description: "Call title, max 25 words." },
-        duration: { type: "string", description: "e.g. 45 min, max 10 words." },
-        date: { type: "string", description: "Meeting date, max 10 words." },
+        title: { type: "string", description: "Call title, max 15 words." },
+        duration: { type: "string", description: "e.g. 45 min, max 8 words." },
+        date: { type: "string", description: "Meeting date, max 8 words." },
         attendees: {
           type: "array",
           items: {
@@ -30,7 +30,7 @@ export const POSTCALL_SCHEMA = {
             required: ["name", "role", "influence"],
             properties: {
               name: { type: "string" },
-              role: { type: "string", description: "Max 10 words." },
+              role: { type: "string", description: "Max 8 words." },
               influence: {
                 type: "string",
                 enum: ["high", "medium", "low"],
@@ -50,9 +50,9 @@ export const POSTCALL_SCHEMA = {
           type: "string",
           enum: ["Advancing", "Stalled", "At risk"],
         },
-        reason: { type: "string", description: "Max 20 words." },
-        topAction: { type: "string", description: "Max 10 words." },
-        topActionDue: { type: "string", description: "Max 10 words." },
+        reason: { type: "string", description: "Max 18 words." },
+        topAction: { type: "string", description: "Max 8 words." },
+        topActionDue: { type: "string", description: "Max 8 words." },
       },
     },
     followUpTable: {
@@ -68,8 +68,8 @@ export const POSTCALL_SCHEMA = {
             type: "string",
             enum: ["decision", "commitment", "se_action", "ae_action", "objection", "next_meeting"],
           },
-          thisCall: { type: "string", description: "Max 10 words." },
-          followUp: { type: "string", description: "Max 10 words." },
+          thisCall: { type: "string", description: "Max 8 words." },
+          followUp: { type: "string", description: "Max 8 words." },
         },
       },
     },
@@ -81,17 +81,17 @@ export const POSTCALL_SCHEMA = {
         painsConfirmed: {
           type: "array",
           maxItems: 4,
-          items: { type: "string", description: "Max 14 words, one line." },
+          items: { type: "string", description: "Max 12 words, one line." },
         },
         objectionsOpen: {
           type: "array",
           maxItems: 4,
-          items: { type: "string", description: "Max 14 words, one line." },
+          items: { type: "string", description: "Max 12 words, one line." },
         },
         competitors: {
           type: "array",
           maxItems: 4,
-          items: { type: "string", description: "Max 14 words, one line." },
+          items: { type: "string", description: "Max 12 words, one line." },
         },
       },
     },
@@ -102,10 +102,10 @@ export const POSTCALL_SCHEMA = {
         additionalProperties: false,
         required: ["owner", "action", "due", "why", "isRisk"],
         properties: {
-          owner: { type: "string", description: "Max 10 words." },
-          action: { type: "string", description: "Max 10 words." },
-          due: { type: "string", description: "Max 10 words." },
-          why: { type: "string", description: "Max 10 words." },
+          owner: { type: "string", description: "Max 8 words." },
+          action: { type: "string", description: "Max 8 words." },
+          due: { type: "string", description: "Max 8 words." },
+          why: { type: "string", description: "Max 14 words." },
           isRisk: {
             type: "boolean",
             description: "true for coach missed-opportunity risk flags",
@@ -132,25 +132,25 @@ export const POSTCALL_SCHEMA = {
               },
               score: { type: "number", minimum: 1, maximum: 5 },
               maxScore: { type: "number", description: "Always 5." },
-              feedback: { type: "string", description: "Max 14 words." },
-              evidence: { type: "string", description: "Max 14 words." },
+              feedback: { type: "string", description: "Max 12 words." },
+              evidence: { type: "string", description: "Max 12 words." },
             },
           },
         },
         strengths: {
           type: "array",
           maxItems: 2,
-          items: { type: "string", description: "Max 14 words." },
+          items: { type: "string", description: "Max 12 words." },
         },
         improvements: {
           type: "array",
           maxItems: 2,
-          items: { type: "string", description: "Max 14 words." },
+          items: { type: "string", description: "Max 12 words." },
         },
         missedOpportunities: {
           type: "array",
           maxItems: 1,
-          items: { type: "string", description: "Max 14 words." },
+          items: { type: "string", description: "Max 12 words." },
         },
       },
     },

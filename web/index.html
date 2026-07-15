@@ -74,9 +74,17 @@
           </div>
         </div>
         <nav class="sidebar-nav" role="navigation">
-          <button type="button" class="nav-item" data-view="dashboard" title="My dashboard">
-            <span class="nav-icon" aria-hidden="true">📊</span>
+          <button type="button" class="nav-item" data-view="dashboard" data-role="se" title="My dashboard">
+            <span class="nav-icon" aria-hidden="true">🚀</span>
             <span class="nav-label">My dashboard</span>
+          </button>
+          <button type="button" class="nav-item" data-view="coaching" data-role="se" title="My coaching">
+            <span class="nav-icon" aria-hidden="true">📈</span>
+            <span class="nav-label">My coaching</span>
+          </button>
+          <button type="button" class="nav-item" data-view="manager" data-role="manager" title="Manager dashboard" hidden>
+            <span class="nav-icon" aria-hidden="true">👥</span>
+            <span class="nav-label">Manager dashboard</span>
           </button>
           <button type="button" class="nav-item" data-view="workspace" title="One-pagers">
             <span class="nav-icon" aria-hidden="true">📄</span>
@@ -112,16 +120,14 @@
         <div id="worker-warning" class="status err wrap-banner" hidden></div>
 
         <main class="main-content">
-          <!-- SE Dashboard -->
+          <!-- SE Dashboard (launchpad) -->
           <section id="view-dashboard" class="view-panel"></section>
 
-          <!-- Manager placeholder -->
-          <section id="view-manager" class="view-panel" hidden>
-            <div class="card center">
-              <h1>Manager view</h1>
-              <p class="muted">Team-wide quality metrics and SE coaching overview — coming soon.</p>
-            </div>
-          </section>
+          <!-- SE Coaching -->
+          <section id="view-coaching" class="view-panel" hidden></section>
+
+          <!-- Manager dashboard -->
+          <section id="view-manager" class="view-panel" hidden></section>
 
           <!-- Discovery + Post-call workspace -->
           <section id="view-workspace" class="view-panel" hidden>

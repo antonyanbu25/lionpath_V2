@@ -29,7 +29,16 @@ export function overallLabelFromScore(score) {
 
 /** @param {object} qc */
 export function normalizeQualityCoach(qc) {
-  if (!qc) return qc;
+  if (!qc) {
+    return {
+      overallScore: 0,
+      overallLabel: overallLabelFromScore(0),
+      dimensions: [],
+      strengths: [],
+      improvements: [],
+      missedOpportunities: [],
+    };
+  }
   const dimensions = qc.dimensions || [];
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);

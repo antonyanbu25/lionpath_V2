@@ -228,8 +228,8 @@ function renderDimensionRows(dimensions) {
             <span class="qc-dim-score ${cls}">${esc(d.score)}/${esc(d.maxScore)}</span>
           </summary>
           <div class="qc-dim-body">
-            <p class="qc-dim-feedback">${truncateWords(d.feedback, 14)}</p>
-            <blockquote class="qc-dim-evidence"><span class="qc-ev-label">Evidence</span>${truncateWords(d.evidence, 14)}</blockquote>
+            <p class="qc-dim-feedback">${truncateWords(d.feedback, 12)}</p>
+            <blockquote class="qc-dim-evidence"><span class="qc-ev-label">Evidence</span>${truncateWords(d.evidence, 12)}</blockquote>
           </div>
         </details>`;
     })
@@ -239,7 +239,7 @@ function renderDimensionRows(dimensions) {
 function renderInsightList(items, title, tone) {
   const list = (items || []).filter((x) => !isUnknown(x));
   const html = list.length
-    ? `<ul>${list.map((i) => `<li>${truncateWords(i, 14)}</li>`).join("")}</ul>`
+    ? `<ul>${list.map((i) => `<li>${truncateWords(i, 12)}</li>`).join("")}</ul>`
     : '<p class="muted">None noted.</p>';
   return `<div class="qc-insight qc-insight-${tone}"><h4>${esc(title)}</h4>${html}</div>`;
 }
@@ -329,7 +329,7 @@ export function initPostCallAnimations(root) {
   if (!root) return;
   root.classList.add("anim-root");
 
-  const blocks = root.querySelectorAll(".header-strip, section, .prep-footer");
+  const blocks = root.querySelectorAll(".header-strip, .momentum-hero, section, .prep-footer");
   blocks.forEach((el, i) => {
     el.classList.add("anim-block");
     el.style.setProperty("--anim-delay", `${i * 50}ms`);
@@ -363,23 +363,133 @@ function getCallTitle(analysis, meta) {
   return analysis?.callHeader?.title || analysis?.callSummary?.headline || meta.title || "Call analysis";
 }
 
+function coalesceAttendees(analysis) {
+  const hdr = analysis?.callHeader || {};
+  const cs = analysis?.callSummary || {};
+  const list = hdr.attendees ?? analysis?.attendees ?? cs.attendees ?? [];
+  return Array.isArray(list) ? list : [];
+}
+
+function normalizeActionKey(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function actionTextsSimilar(a, b) {
+  const na = normalizeActionKey(a);
+  const nb = normalizeActionKey(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const wa = new Set(na.split(" ").filter((w) => w.length > 2));
+  const wb = new Set(nb.split(" ").filter((w) => w.length > 2));
+  if (!wa.size || !wb.size) return false;
+  let overlap = 0;
+  for (const w of wa) if (wb.has(w)) overlap++;
+  return overlap / Math.min(wa.size, wb.size) >= 0.6;
+}
+
+function followUpTexts(followUpTable) {
+  return (followUpTable || [])
+    .flatMap((row) => [row.thisCall, row.followUp])
+    .filter((t) => !isUnknown(t));
+}
+
+function dedupeNextSteps(nextSteps, followUpTable) {
+  const fuTexts = followUpTexts(followUpTable);
+  return (nextSteps || []).filter((step) => {
+    if (step.isRisk) return true;
+    if (isUnknown(step.action)) return false;
+    return !fuTexts.some((fu) => actionTextsSimilar(step.action, fu));
+  });
+}
+
+function inferSeOwner(attendees) {
+  const se = (attendees || []).find((a) => /se|solution|engineer/i.test(String(a.role ?? "")));
+  if (se && !isUnknown(se.name)) return se.name;
+  const named = (attendees || []).find((a) => !isUnknown(a.name));
+  return named?.name || "SE";
+}
+
+function injectRiskRow(nextSteps, missed, momentum, attendees) {
+  if (isUnknown(missed)) return nextSteps || [];
+  const action = String(missed).replace(/^risk:\s*/i, "").trim();
+  if (isUnknown(action)) return nextSteps || [];
+  const steps = nextSteps || [];
+  if (steps.some((s) => s.isRisk || actionTextsSimilar(s.action, action))) return steps;
+  return [{
+    owner: inferSeOwner(attendees),
+    action,
+    due: "Next call",
+    why: momentum?.reason && !isUnknown(momentum.reason) ? momentum.reason : "Deal momentum at risk",
+    isRisk: true,
+  }, ...steps];
+}
+
+/** Normalize v4 + partial v5 payloads before render. */
+function normalizeAnalysisForRender(raw) {
+  if (!raw) return null;
+  const cs = raw.callSummary || {};
+  const hdr = raw.callHeader || {};
+  const attendees = coalesceAttendees(raw);
+  const followUpTable = raw.followUpTable || [];
+  const momentum = raw.momentum || {};
+  const qualityCoach = raw.qualityCoach || {
+    dimensions: [],
+    strengths: [],
+    improvements: [],
+    missedOpportunities: [],
+  };
+  const missed = (qualityCoach.missedOpportunities || []).find((x) => !isUnknown(x));
+  const nextSteps = dedupeNextSteps(
+    injectRiskRow(raw.nextSteps || [], missed, momentum, attendees),
+    followUpTable,
+  );
+
+  return {
+    ...raw,
+    callHeader: {
+      title: hdr.title || cs.headline || raw.title || "",
+      duration: hdr.duration || cs.duration || raw.duration || "",
+      date: hdr.date || cs.date || raw.date || "",
+      attendees,
+    },
+    momentum,
+    signals: raw.signals || { painsConfirmed: [], objectionsOpen: [], competitors: [] },
+    followUpTable,
+    nextSteps,
+    qualityCoach,
+    artifacts: raw.artifacts || {
+      suggestedFollowUpEmail: { subject: "", body: "" },
+      crmNotes: "",
+    },
+  };
+}
+
 export function renderPostCall(data, meta = {}) {
-  const a = data.analysis;
-  if (!a?.callHeader && a?.callSummary) {
+  const raw = data?.analysis;
+  if (!raw) {
+    return `<div class="status err">No analysis data returned. Try running analysis again.</div>`;
+  }
+  if (!raw?.callHeader && raw?.callSummary && !raw?.momentum?.status) {
     return renderLegacyPostCall(data, meta);
   }
 
-  const hdr = a.callHeader || {};
-  const mom = a.momentum || {};
-  const sig = a.signals || {};
-  const arts = a.artifacts || {};
+  const a = normalizeAnalysisForRender(raw);
+  const hdr = a.callHeader;
+  const mom = a.momentum;
+  const sig = a.signals;
+  const arts = a.artifacts;
   const tm = data.transcriptMeta || {};
 
-  const attendeeChips = (hdr.attendees || []).length
-    ? (hdr.attendees || [])
+  const attendeeChips = hdr.attendees.length
+    ? hdr.attendees
         .map((x) => {
           const parts = [`<span class="attendee-chip">${influenceDot(x.influence)}${dash(x.name)}`];
-          if (!isUnknown(x.role)) parts.push(`<span class="chip-role">${truncateWords(x.role, 10)}</span>`);
+          if (!isUnknown(x.role)) parts.push(`<span class="chip-role">${truncateWords(x.role, 8)}</span>`);
           parts.push("</span>");
           return parts.join(" · ");
         })
@@ -393,8 +503,8 @@ export function renderPostCall(data, meta = {}) {
     .map(
       (row) => `<tr>
         <th class="prep-row-label">${esc(CATEGORY_LABELS[row.category] || row.category)}</th>
-        <td>${truncateWords(row.thisCall, 10)}</td>
-        <td>${truncateWords(row.followUp, 10)}</td>
+        <td>${truncateWords(row.thisCall, 8)}</td>
+        <td>${truncateWords(row.followUp, 8)}</td>
       </tr>`,
     )
     .join("");
@@ -406,10 +516,10 @@ export function renderPostCall(data, meta = {}) {
       </table>`
     : '<p class="muted">—</p>';
 
-  const signalCol = (items, tone) => {
+  const signalCol = (items) => {
     const list = (items || []).filter((x) => !isUnknown(x)).slice(0, 4);
     return list.length
-      ? `<ul class="signal-list">${list.map((x) => `<li>${truncateWords(x, 14)}</li>`).join("")}</ul>`
+      ? `<ul class="signal-list">${list.map((x) => `<li>${truncateWords(x, 12)}</li>`).join("")}</ul>`
       : '<p class="muted">—</p>';
   };
 
@@ -417,10 +527,10 @@ export function renderPostCall(data, meta = {}) {
     .filter((row) => !isUnknown(row.action))
     .map(
       (row) => `<tr class="${row.isRisk ? "risk-row" : ""}">
-        <td>${truncateWords(row.owner, 10)}</td>
-        <td>${row.isRisk ? '<span class="risk-flag">⚠</span> ' : ""}${truncateWords(row.action, 10)}</td>
-        <td>${truncateWords(row.due, 10)}</td>
-        <td>${truncateWords(row.why, 10)}</td>
+        <td>${truncateWords(row.owner, 8)}</td>
+        <td>${row.isRisk ? '<span class="risk-flag">⚠</span> ' : ""}${truncateWords(row.action, 8)}</td>
+        <td>${truncateWords(row.due, 8)}</td>
+        <td>${truncateWords(row.why, 14)}</td>
       </tr>`,
     )
     .join("");
@@ -460,6 +570,18 @@ export function renderPostCall(data, meta = {}) {
 
   const momCls = momentumClass(mom.status);
 
+  const momentumHero = `<section class="outcome-bar outcome-focal momentum-hero ${momCls}">
+    <div class="outcome-status">
+      <span class="outcome-arrow" aria-hidden="true">${momentumArrow(mom.status)}</span>
+      <span class="outcome-label">${esc(mom.status || "Stalled")}</span>
+    </div>
+    <p class="outcome-reason">${truncateWords(mom.reason, 18)}</p>
+    <div class="outcome-action">
+      <strong>Top action:</strong> ${truncateWords(mom.topAction, 8)}
+      ${!isUnknown(mom.topActionDue) ? ` · <span class="muted">Due ${truncateWords(mom.topActionDue, 8)}</span>` : ""}
+    </div>
+  </section>`;
+
   return `
     <div class="toolbar">
       <button class="ghost" onclick="window.print()">Print / PDF</button>
@@ -473,35 +595,31 @@ export function renderPostCall(data, meta = {}) {
       </div>
       <div class="attendee-chips">${attendeeChips}</div>
     </header>
-    <section class="outcome-bar outcome-focal ${momCls}">
-      <div class="outcome-status">
-        <span class="outcome-arrow" aria-hidden="true">${momentumArrow(mom.status)}</span>
-        <span class="outcome-label">${esc(mom.status || "Stalled")}</span>
-      </div>
-      <p class="outcome-reason">${truncateWords(mom.reason, 20)}</p>
-      <div class="outcome-action">
-        <strong>Top action:</strong> ${truncateWords(mom.topAction, 10)}
-        ${!isUnknown(mom.topActionDue) ? ` · <span class="muted">Due ${truncateWords(mom.topActionDue, 10)}</span>` : ""}
-      </div>
-    </section>
+    ${momentumHero}
     <section class="prep-hero"><h2>This call → Follow-up</h2>${followTable}</section>
     <section class="signals-row">
       <h2>Signals</h2>
       <div class="signals-grid">
-        <div class="signal-col signal-pains"><h3>Pains confirmed</h3>${signalCol(sig.painsConfirmed, "green")}</div>
-        <div class="signal-col signal-objections"><h3>Objections open</h3>${signalCol(sig.objectionsOpen, "amber")}</div>
-        <div class="signal-col signal-competitors"><h3>Competitors</h3>${signalCol(sig.competitors, "neutral")}</div>
+        <div class="signal-col signal-pains"><h3>Pains confirmed</h3>${signalCol(sig.painsConfirmed)}</div>
+        <div class="signal-col signal-objections"><h3>Objections open</h3>${signalCol(sig.objectionsOpen)}</div>
+        <div class="signal-col signal-competitors"><h3>Competitors</h3>${signalCol(sig.competitors)}</div>
       </div>
     </section>
-    <section><h2>Quality coach</h2>${renderQualityCoach(a.qualityCoach)}</section>
     <section class="next-steps-section"><h2>Next steps</h2>${nextTable}</section>
+    <section><h2>Quality coach</h2>${renderQualityCoach(a.qualityCoach)}</section>
     <footer class="prep-footer">${followUpEmail}${crmBlock}${transcriptDetails}</footer>`;
 }
 
 export function displayPostCall(data, meta) {
   const result = $("postcall-result");
+  if (!result) return;
   result.classList.remove("anim-root", "anim-ready");
-  result.innerHTML = renderPostCall(data, meta);
+  try {
+    result.innerHTML = renderPostCall(data, meta);
+  } catch (err) {
+    console.error("[postcall] render failed:", err);
+    result.innerHTML = `<div class="status err">${esc(err.message || "Could not render analysis.")}</div>`;
+  }
   show(result, true);
   initPostCallAnimations(result);
   const copyJson = $("copy-postcall-json");
