@@ -218,40 +218,63 @@
           <h2>How the code works</h2>
           <button type="button" class="ghost about-print-btn" onclick="printCodeGuide()">Print / Save as PDF</button>
         </div>
-        <p class="muted about-note">Technical overview for the team — architecture, request flows, and where to edit prompts or UI.</p>
+        <p class="about-note"><strong>Paste <code>docs/CODE_LOGIC.md</code> to your AI coding assistant before starting a task on this repo.</strong></p>
 
         <h3 class="about-subhead">What it is</h3>
-        <p>
-          <strong>Lionpath</strong> (SE Singha Paathai) is an internal SE portal with two workflows in one app:
-          <strong>pre-call prep</strong> (research brief before discovery) and <strong>post-call analysis</strong>
-          (summary, next steps, Quality Coach after a Zoom recording).
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Flow</th><th>When</th><th>Output</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pre-call prep</strong></td><td>Before discovery — company + email</td><td>Research brief one-pager</td></tr>
+              <tr><td><strong>Post-call analysis</strong></td><td>After Zoom recording</td><td>Summary, next steps, Quality Coach</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">Rule #1 — SCHEMA ↔ RENDER contract</h3>
+        <p class="muted">
+          Worker JSON (<code>schema.ts</code> / <code>postcall-schema.ts</code>) must match what
+          <code>word-limits.ts</code> normalizes and <code>app.js</code> / <code>postcall.js</code> render.
+          Change field names or shapes in all four places together.
         </p>
+
+        <h3 class="about-subhead">Blast radius</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>You change…</th><th>Also update…</th><th>Safety</th></tr></thead>
+            <tbody>
+              <tr><td><code>schema.ts</code></td><td><code>prep.ts</code>, <code>word-limits.ts</code>, <code>app.js</code></td><td>CHANGE TOGETHER</td></tr>
+              <tr><td><code>postcall-schema.ts</code></td><td><code>postcall.ts</code>, <code>word-limits.ts</code>, <code>quality-score.ts</code>, <code>postcall.js</code></td><td>CHANGE TOGETHER</td></tr>
+              <tr><td><code>word-limits.ts</code> caps</td><td>Nothing required</td><td>SAFE alone</td></tr>
+              <tr><td><code>styles.css</code></td><td>Nothing</td><td>SAFE alone</td></tr>
+              <tr><td><code>auth.js</code></td><td><code>app.js</code>, <code>dashboard.js</code>, <code>history.js</code></td><td>TEST BOTH LOGINS</td></tr>
+              <tr><td><code>prep.ts</code> / <code>postcall.ts</code> prompts</td><td>Schema only if JSON shape changes</td><td>SAFE / CHANGE TOGETHER</td></tr>
+              <tr><td><code>index.ts</code> routes</td><td><code>app.js</code>, <code>postcall.js</code>, <code>history.js</code>, <code>firebase-config.js</code></td><td>CHANGE TOGETHER</td></tr>
+            </tbody>
+          </table>
+        </div>
 
         <h3 class="about-subhead">Architecture</h3>
         <pre class="about-arch" aria-label="Architecture diagram">Browser (web/)  →  Worker API (worker/)  →  Gemini (structured JSON)
                       ↓
               History storage (KV or file)</pre>
-        <ul class="about-list">
-          <li><strong>web/</strong> — Static HTML/JS/CSS served by nginx. No build step.</li>
-          <li><strong>worker/</strong> — TypeScript API: LLM calls, Zoom transcript fetch, history sync.</li>
-          <li><strong>Gemini</strong> — Returns JSON matching strict schemas; prompts enforce word caps.</li>
-        </ul>
+        <p class="muted">Ops setup: <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md">docs/VPS_DEPLOY.md</a></p>
 
         <h3 class="about-subhead">Request flows</h3>
         <div class="about-callout">
           <strong>1. Discovery prep</strong>
-          <p class="muted">Form in <code>app.js</code> → <code>POST /api/generate-prep</code> → <code>prep.ts</code> (prompt + Gemini + web research) → <code>word-limits.ts</code> trims → <code>app.js</code> renders one-pager. ~15–45s.</p>
+          <p class="muted"><code>app.js</code> form → <code>POST /api/generate-prep</code> → <code>prep.ts</code> (prompt + Gemini) → <code>word-limits.ts</code> → <code>renderPrep</code>. ~15–45s.</p>
         </div>
         <div class="about-callout">
           <strong>2. Post-call analysis</strong>
-          <p class="muted">Zoom URL in <code>postcall.js</code> → <code>POST /api/analyze-call</code> → <code>postcall.ts</code> fetches transcript, calls Gemini → <code>quality-score.ts</code> computes overall score → <code>postcall.js</code> renders result. ~10–25s.</p>
+          <p class="muted"><code>postcall.js</code> → <code>POST /api/analyze-call</code> → <code>postcall.ts</code> → <code>quality-score.ts</code> → <code>renderPostCall</code>. ~10–25s.</p>
         </div>
         <div class="about-callout">
           <strong>3. History</strong>
-          <p class="muted"><code>history.js</code> caches in localStorage, syncs to Worker on login via <code>GET/POST /api/history</code>. Dashboard reads entries for metrics and sidebar.</p>
+          <p class="muted"><code>history.js</code> localStorage + <code>GET/POST /api/history</code> sync on login. Dashboard reads entries.</p>
         </div>
 
-        <h3 class="about-subhead">Key files</h3>
+        <h3 class="about-subhead">Key modules</h3>
         <div class="about-table-wrap">
           <table class="about-table about-table-compact">
             <thead><tr><th>Path</th><th>Role</th></tr></thead>
@@ -264,30 +287,22 @@
               <tr><td><code>worker/src/index.ts</code></td><td>API routes, CORS, auth</td></tr>
               <tr><td><code>worker/src/prep.ts</code></td><td>Pre-call prompt + generation</td></tr>
               <tr><td><code>worker/src/postcall.ts</code></td><td>Post-call prompt + analysis</td></tr>
-              <tr><td><code>deploy/vps/</code></td><td>Docker: nginx + worker + Caddy</td></tr>
+              <tr><td><code>worker/src/schema.ts</code></td><td>Prep JSON schema</td></tr>
+              <tr><td><code>worker/src/postcall-schema.ts</code></td><td>Post-call JSON schema</td></tr>
+              <tr><td><code>worker/src/word-limits.ts</code></td><td>Word caps + normalize output</td></tr>
             </tbody>
           </table>
         </div>
 
         <h3 class="about-subhead">Auth and roles</h3>
-        <p>Demo mode uses hardcoded credentials in <code>auth.js</code>. Session persists in <code>sessionStorage</code> + <code>localStorage</code>.</p>
         <ul class="about-list">
-          <li><strong>SE</strong> (<code>se@freshworks.com</code> / <code>se123</code>) — prep, post-call, own dashboard and history</li>
+          <li><strong>SE</strong> (<code>se@freshworks.com</code> / <code>se123</code>) — prep, post-call, own dashboard</li>
           <li><strong>Manager</strong> (<code>manager@freshworks.com</code> / <code>mgr123</code>) — team rollup dashboard</li>
         </ul>
-        <p class="muted">Production: set Firebase <code>projectId</code> in <code>firebase-config.js</code>; Worker verifies Bearer tokens.</p>
 
         <h3 class="about-subhead">Data pipeline</h3>
-        <p class="muted">Both flows follow the same pattern:</p>
         <pre class="about-arch">Form → POST /api/... → Gemini JSON → validate + trim → render one-pager HTML</pre>
-        <p class="muted">Output is tables and bullets only. Prompts set strict word caps; UI truncates if needed.</p>
-
-        <h3 class="about-subhead">VPS deploy</h3>
-        <p class="muted">
-          <code>deploy/vps/docker-compose.yml</code> runs nginx (web on 8788), worker (8787), and Caddy (TLS).
-          UI: <code>lionpath.benjaminsquare.com</code> · API: <code>lionpathapi.benjaminsquare.com</code>.
-          History persists in a mounted volume. See <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md">VPS deploy guide</a>.
-        </p>
+        <p class="muted">Tables and bullets only. Prompts set word caps; UI truncates if needed.</p>
 
         <h3 class="about-subhead">Where to change things</h3>
         <div class="about-table-wrap">
@@ -302,6 +317,7 @@
               <tr><td>Post-call UI + render</td><td><code>web/postcall.js</code></td></tr>
               <tr><td>Styles / print</td><td><code>web/styles.css</code></td></tr>
               <tr><td>API routes / auth</td><td><code>worker/src/index.ts</code></td></tr>
+              <tr><td>Worker URL</td><td><code>web/firebase-config.js</code></td></tr>
             </tbody>
           </table>
         </div>
