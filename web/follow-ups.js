@@ -93,11 +93,39 @@ function companyFromRecord(record) {
   return (parts[0] || title).trim();
 }
 
+/**
+ * Normalize post-call nextSteps — API may return an array of rows or a structured object.
+ * @param {unknown} nextSteps
+ * @returns {{ owner?: string, action: string, due?: string }[]}
+ */
+export function stepsFromNextSteps(nextSteps) {
+  if (Array.isArray(nextSteps)) return nextSteps;
+  if (!nextSteps || typeof nextSteps !== "object") return [];
+
+  const items = [];
+  const push = (owner, list) => {
+    for (const step of Array.isArray(list) ? list : []) {
+      const action = step?.action || step?.followUp || step?.thisCall;
+      if (!action) continue;
+      items.push({
+        owner,
+        action: String(action),
+        due: step.due || step.dueHint || "",
+      });
+    }
+  };
+
+  push("SE", nextSteps.seActions);
+  push("AE", nextSteps.aeActions);
+  push("Customer", nextSteps.customerCommitments);
+  return items;
+}
+
 function normalizeSteps(record) {
   const a = record.analysis || {};
   const items = [];
 
-  for (const step of a.nextSteps || []) {
+  for (const step of stepsFromNextSteps(a.nextSteps)) {
     if (!step?.action || UNKNOWN_DUE.has(String(step.action).toLowerCase())) continue;
     items.push({
       owner: step.owner || "SE",

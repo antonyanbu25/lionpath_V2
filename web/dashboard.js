@@ -6,7 +6,7 @@
 import { listAnalysesWithQuality, listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { normalizeQualityCoach, scoreBand } from "./quality-score.js";
-import { aggregateFollowUps, renderFollowUpsSection } from "./follow-ups.js";
+import { aggregateFollowUps, renderFollowUpsSection, stepsFromNextSteps } from "./follow-ups.js";
 import { listTeamSeEmails, displayNameForEmail } from "./auth.js";
 
 function esc(v) {
@@ -125,7 +125,7 @@ export function aggregateQualityMetrics(analyses) {
     const qc = normalizeQualityCoach(r.analysis.qualityCoach);
     const mom = r.analysis?.momentum || {};
     const company = companyFromRecord(r);
-    const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
+    const nextStep = stepsFromNextSteps(r.analysis?.nextSteps).find((s) => s.action)?.action
       || mom.topAction
       || "—";
     return {
@@ -200,8 +200,9 @@ export function buildCoachingNudge(email, metrics) {
   const themes = new Map();
 
   for (const rec of deduped) {
-    const missed = rec.analysis?.qualityCoach?.missedOpportunities || [];
-    for (const m of missed) {
+    const missed = rec.analysis?.qualityCoach?.missedOpportunities;
+    const missedList = Array.isArray(missed) ? missed : [];
+    for (const m of missedList) {
       const t = String(m ?? "").trim();
       if (!t || t.toLowerCase() === "unknown") continue;
       themes.set(t, (themes.get(t) || 0) + 1);
