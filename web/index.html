@@ -59,25 +59,44 @@
     <div id="app-shell" class="app-shell" hidden>
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-head">
-          <div class="sidebar-brand">SE Singha Paathai</div>
+          <div class="sidebar-brand">
+            <span class="sidebar-brand-icon" aria-hidden="true">🦁</span>
+            <span class="sidebar-brand-text">SE Singha Paathai</span>
+          </div>
+          <button id="sidebar-collapse" class="sidebar-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true">‹</button>
           <button id="sidebar-close" class="sidebar-close" type="button" aria-label="Close menu">×</button>
         </div>
         <div class="sidebar-user">
-          <span id="sidebar-user-name" class="sidebar-user-name"></span>
-          <span id="sidebar-user-role" class="sidebar-user-role muted"></span>
+          <span id="sidebar-user-avatar" class="sidebar-user-avatar" aria-hidden="true"></span>
+          <div class="sidebar-user-text">
+            <span id="sidebar-user-name" class="sidebar-user-name"></span>
+            <span id="sidebar-user-role" class="sidebar-user-role muted"></span>
+          </div>
         </div>
         <nav class="sidebar-nav" role="navigation">
-          <button type="button" class="nav-item" data-view="dashboard">My dashboard</button>
-          <button type="button" class="nav-item" data-view="workspace">One-pagers</button>
+          <button type="button" class="nav-item" data-view="dashboard" title="My dashboard">
+            <span class="nav-icon" aria-hidden="true">📊</span>
+            <span class="nav-label">My dashboard</span>
+          </button>
+          <button type="button" class="nav-item" data-view="workspace" title="One-pagers">
+            <span class="nav-icon" aria-hidden="true">📄</span>
+            <span class="nav-label">One-pagers</span>
+          </button>
         </nav>
         <div class="sidebar-history">
-          <h3 class="sidebar-history-title">History</h3>
+          <h3 class="sidebar-history-title">
+            <span class="sidebar-history-icon" aria-hidden="true">🕐</span>
+            <span class="sidebar-history-label">History</span>
+          </h3>
           <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing history…</p>
           <ul id="sidebar-history-list" class="sidebar-history-list"></ul>
           <p id="sidebar-history-empty" class="muted sidebar-history-empty">No recordings yet.</p>
         </div>
         <div class="sidebar-foot">
-          <button id="logout-btn" class="ghost sidebar-logout" type="button">Log out</button>
+          <button id="logout-btn" class="ghost sidebar-logout" type="button" title="Log out">
+            <span class="nav-icon" aria-hidden="true">⎋</span>
+            <span class="nav-label">Log out</span>
+          </button>
         </div>
       </aside>
       <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
@@ -85,6 +104,7 @@
       <div class="app-main">
         <header class="main-topbar">
           <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Open menu">☰</button>
+          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true">🦁</span>
           <span id="main-view-title" class="main-view-title">My dashboard</span>
           <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">🌙</button>
         </header>

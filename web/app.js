@@ -1,3 +1,5 @@
+import { playRoar, triggerSignInPulse } from "./lion-roar.js";
+import { initSidebar } from "./sidebar.js";
 import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
 import {
   authMode,
@@ -312,9 +314,15 @@ function refreshSidebarHistory() {
 }
 
 function updateSidebarUser() {
-  $("sidebar-user-name").textContent = currentSession?.name || "";
+  const name = currentSession?.name || "";
+  $("sidebar-user-name").textContent = name;
   $("sidebar-user-role").textContent =
     currentSession?.role === "manager" ? "Manager" : "Solution Engineer";
+  const avatar = $("sidebar-user-avatar");
+  if (avatar) {
+    avatar.textContent = name ? name.charAt(0).toUpperCase() : "🦁";
+    avatar.title = name;
+  }
 }
 
 // ---------- Sidebar mobile ----------
@@ -609,13 +617,18 @@ function showLogin() {
   onSessionCleared();
 }
 
-async function showApp(session) {
+async function showApp(session, opts = {}) {
   currentSession = session?.email
     ? { ...session, email: String(session.email).trim().toLowerCase() }
     : session;
   show($("login-view"), false);
   show($("app-shell"), true);
   updateSidebarUser();
+
+  if (opts.freshLogin) {
+    playRoar();
+    triggerSignInPulse();
+  }
 
   const tokenFn = authEnabled && fb?.auth?.currentUser
     ? () => fb.auth.currentUser.getIdToken()
@@ -635,8 +648,8 @@ async function showApp(session) {
   void loadPersistedHistory();
 }
 
-function handleSession(session) {
-  if (session) void showApp(session);
+function handleSession(session, opts = {}) {
+  if (session) void showApp(session, opts);
   else showLogin();
 }
 
@@ -653,7 +666,7 @@ function initDummyAuth() {
       show(errEl, true);
       return;
     }
-    handleSession(result.session);
+    handleSession(result.session, { freshLogin: true });
   });
 
   $("logout-btn").onclick = () => logout();
@@ -689,7 +702,11 @@ async function initFirebase() {
 
   $("signin-google").onclick = async () => {
     show($("signin-error"), false);
-    try { await fb.signInWithPopup(auth, provider); }
+    try {
+      await fb.signInWithPopup(auth, provider);
+      playRoar();
+      triggerSignInPulse();
+    }
     catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
   };
 
@@ -727,6 +744,7 @@ async function warnIfWorkerDown() {
 }
 
 function boot() {
+  initSidebar();
   $("prep-form").addEventListener("submit", generate);
   $("prospectEmail")?.addEventListener("input", updateDomainHint);
   $("companyName")?.addEventListener("input", updateDomainHint);
