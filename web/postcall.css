@@ -1,0 +1,471 @@
+/* Post-call wireframe — Dew tokens from dew-theme.css */
+
+#view-postcall {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
+}
+
+#view-postcall .tip {
+  font-size: 13px;
+  margin-top: 8px;
+  color: var(--dew-text-secondary);
+}
+
+#view-postcall .tip code {
+  font-size: 12px;
+  background: var(--dew-hairline);
+  color: var(--dew-text-secondary);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+#postcall-status {
+  margin: 0 26px 16px;
+}
+
+/* Result island */
+#postcall-result.postcall-result-card {
+  padding: 0;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: var(--dew-shadow-island);
+  overflow: hidden;
+  margin-top: 0;
+}
+
+#postcall-result .one-pager {
+  padding: 22px 26px 28px;
+}
+
+#postcall-result .toolbar {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--dew-hairline);
+  gap: 8px;
+}
+
+/* Call header */
+#postcall-result .header-strip {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+#postcall-result .one-pager-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--dew-text);
+}
+
+#postcall-result .header-meta {
+  font-size: 13px;
+  color: var(--dew-text-muted);
+}
+
+#postcall-result .attendee-chip {
+  background: var(--dew-surface-subtle);
+  border: 1px solid var(--dew-border);
+  border-radius: 10px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+
+#postcall-result .chip-role {
+  color: var(--dew-text-muted);
+}
+
+/* Momentum summary — semantic Dew tints, no animated gradient */
+#postcall-result .outcome-bar {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 18px;
+  align-items: start;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  box-shadow: none;
+  font-size: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+#postcall-result .outcome-bar::before {
+  display: none;
+}
+
+#postcall-result .outcome-bar.momentum-advancing {
+  border-left: 4px solid var(--dew-green);
+  background: var(--dew-green-tint);
+}
+
+#postcall-result .outcome-bar.momentum-stalled {
+  border-left: 4px solid var(--dew-amber);
+  background: var(--dew-amber-tint);
+}
+
+#postcall-result .outcome-bar.momentum-risk {
+  border-left: 4px solid var(--dew-red);
+  background: var(--dew-red-tint);
+}
+
+#postcall-result .momentum-hero .outcome-label {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+#postcall-result .outcome-arrow {
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.9;
+}
+
+#postcall-result .outcome-bar.momentum-advancing .outcome-label {
+  color: var(--dew-green);
+}
+
+#postcall-result .outcome-bar.momentum-stalled .outcome-label {
+  color: var(--dew-amber);
+}
+
+#postcall-result .outcome-bar.momentum-risk .outcome-label {
+  color: var(--dew-red);
+}
+
+#postcall-result .outcome-reason {
+  font-size: 14px;
+  color: var(--dew-text);
+  line-height: 1.5;
+}
+
+#postcall-result .outcome-action {
+  font-size: 13px;
+  color: var(--dew-text-secondary);
+}
+
+#postcall-result .outcome-action strong {
+  color: var(--dew-text);
+  font-weight: 600;
+}
+
+/* Section headings */
+#postcall-result section {
+  margin-bottom: 28px;
+}
+
+#postcall-result h2 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dew-text-muted);
+  margin: 0 0 12px;
+}
+
+/* This call → Follow-up table */
+#postcall-result .prep-compare {
+  width: 100%;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  box-shadow: none;
+  font-size: 13px;
+}
+
+#postcall-result .prep-compare th,
+#postcall-result .prep-compare td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--dew-hairline);
+}
+
+#postcall-result .prep-compare tr:last-child th,
+#postcall-result .prep-compare tr:last-child td {
+  border-bottom: none;
+}
+
+#postcall-result .prep-compare thead th {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text-muted);
+  font-size: 10px;
+}
+
+#postcall-result .prep-compare .prep-row-label {
+  background: var(--dew-surface-faint);
+  color: var(--dew-text-secondary);
+  font-size: 12px;
+}
+
+/* Signal columns */
+#postcall-result .signals-grid {
+  gap: 12px;
+}
+
+#postcall-result .signal-col {
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  box-shadow: none;
+  padding: 14px 16px;
+  font-size: 13px;
+  transition: box-shadow var(--transition);
+}
+
+#postcall-result .signal-col:hover {
+  transform: none;
+  box-shadow: var(--dew-shadow-island);
+}
+
+#postcall-result .signal-col h3 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--dew-text-muted);
+}
+
+#postcall-result .signal-pains {
+  border-left: 3px solid var(--dew-green);
+}
+
+#postcall-result .signal-objections {
+  border-left: 3px solid var(--dew-amber);
+}
+
+#postcall-result .signal-competitors {
+  border-left: 3px solid var(--dew-text-faint);
+}
+
+#postcall-result .signal-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
+#postcall-result .signal-list li {
+  margin: 4px 0;
+  line-height: 1.4;
+  color: var(--dew-text);
+}
+
+/* Next steps */
+#postcall-result .next-steps-table {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  box-shadow: none;
+  font-size: 13px;
+}
+
+#postcall-result .next-steps-table th,
+#postcall-result .next-steps-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dew-hairline);
+}
+
+#postcall-result .next-steps-table thead th {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text-muted);
+  font-size: 10px;
+}
+
+#postcall-result .next-steps-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+#postcall-result .risk-row {
+  background: var(--dew-red-tint);
+  border-left: 3px solid var(--dew-red);
+}
+
+#postcall-result .risk-flag {
+  color: var(--dew-red);
+}
+
+/* Quality coach */
+#postcall-result section .qc-dashboard,
+#postcall-result .qc-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 20px 22px;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: none;
+}
+
+#postcall-result .qc-overall-label {
+  background: var(--dew-primary-tint);
+  color: var(--dew-primary);
+}
+
+#postcall-result .qc-hero-hint {
+  color: var(--dew-text-muted);
+}
+
+#postcall-result .qc-radar-title {
+  color: var(--dew-text-muted);
+}
+
+#postcall-result .qc-radar-grid,
+#postcall-result .qc-radar-axis {
+  stroke: var(--dew-border);
+}
+
+#postcall-result .qc-radar-label {
+  fill: var(--dew-text-muted);
+}
+
+#postcall-result .qc-radar-data {
+  fill: color-mix(in srgb, var(--dew-primary) 16%, transparent);
+  stroke: var(--dew-primary);
+}
+
+[data-theme="dark"] #postcall-result .qc-radar-data {
+  fill: color-mix(in srgb, var(--dew-primary) 22%, transparent);
+}
+
+#postcall-result .qc-radar-dot {
+  fill: var(--dew-primary);
+}
+
+#postcall-result .qc-insights {
+  gap: 12px;
+}
+
+#postcall-result .qc-insight {
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  padding: 14px 16px;
+  box-shadow: none;
+  font-size: 13px;
+}
+
+#postcall-result .qc-insight-good {
+  border-top: none;
+  border-left: 3px solid var(--dew-green);
+  background: var(--dew-green-tint);
+}
+
+#postcall-result .qc-insight-good h4 {
+  color: var(--dew-green);
+}
+
+#postcall-result .qc-insight-ok {
+  border-top: none;
+  border-left: 3px solid var(--dew-amber);
+  background: var(--dew-amber-tint);
+}
+
+#postcall-result .qc-insight-ok h4 {
+  color: var(--dew-amber);
+}
+
+#postcall-result .qc-insight-weak {
+  border-top: none;
+  border-left: 3px solid var(--dew-red);
+  background: var(--dew-red-tint);
+}
+
+#postcall-result .qc-insight-weak h4 {
+  color: var(--dew-red);
+}
+
+#postcall-result .qc-insight h4 {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+#postcall-result .qc-dim {
+  border: 1px solid var(--dew-border);
+  border-radius: 10px;
+  background: var(--dew-surface);
+}
+
+#postcall-result .qc-dim:hover {
+  border-color: var(--dew-input-border);
+}
+
+#postcall-result .qc-dim-body {
+  background: var(--dew-surface-subtle);
+  border-top: 1px solid var(--dew-hairline);
+}
+
+#postcall-result .qc-dim-evidence {
+  border-left-color: var(--dew-primary);
+  background: var(--dew-surface);
+}
+
+#postcall-result .qc-ev-label {
+  color: var(--dew-primary);
+}
+
+#postcall-result .qc-details summary {
+  color: var(--dew-text);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Expandable footer blocks */
+#postcall-result details.sources summary {
+  color: var(--dew-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#postcall-result details.sources summary:hover {
+  color: var(--dew-primary-hover);
+}
+
+#postcall-result .email-draft {
+  background: var(--dew-surface-subtle);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+}
+
+#postcall-result .crm-notes {
+  background: var(--dew-primary-tint);
+  border: 1px solid color-mix(in srgb, var(--dew-primary) 18%, var(--dew-border));
+  border-radius: var(--dew-radius-lg);
+  color: var(--dew-text);
+}
+
+#postcall-result .prep-footer {
+  margin-top: 4px;
+  padding-top: 20px;
+  border-top: 1px solid var(--dew-border);
+}
+
+@media (max-width: 900px) {
+  #postcall-result .signals-grid,
+  #postcall-result section .qc-dashboard,
+  #postcall-result .qc-dashboard,
+  #postcall-result .qc-insights {
+    grid-template-columns: 1fr;
+  }
+
+  #postcall-result .outcome-bar {
+    grid-template-columns: 1fr;
+  }
+
+  #postcall-result .outcome-status {
+    grid-row: auto;
+  }
+
+  #postcall-result .outcome-action {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #postcall-result .signal-col:hover {
+    box-shadow: none;
+  }
+}

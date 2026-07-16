@@ -1,0 +1,11 @@
+# Copy to .dev.vars (gitignored) and fill in your keys.
+# Required for pre-call + post-call (both use Gemini by default).
+GEMINI_API_KEY = "AIza..."
+
+# Optional — only if LLM_PROVIDER = "anthropic"
+# ANTHROPIC_API_KEY = "sk-ant-..."
+
+# Optional — Zoom OAuth (phase 2)
+# ZOOM_CLIENT_ID = "your_zoom_client_id"
+# ZOOM_CLIENT_SECRET = "your_zoom_client_secret"
+# ZOOM_REDIRECT_URI = "http://localhost:8787/api/zoom/callback"

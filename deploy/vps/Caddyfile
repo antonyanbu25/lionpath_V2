@@ -1,0 +1,25 @@
+# Caddy reverse proxy — automatic HTTPS via Let's Encrypt.
+# DNS must point lionpath.* and lionpathapi.* to this VPS (DNS only — not Cloudflare proxied).
+
+{
+	email admin@benjaminsquare.com
+}
+
+lionpath.benjaminsquare.com {
+	encode gzip zstd
+	reverse_proxy web:8788
+}
+
+lionpathapi.benjaminsquare.com {
+	encode gzip zstd
+	reverse_proxy worker:8787
+}
+
+# Optional: gate the portal with HTTP basic auth (uncomment and set hashed password).
+# Run: docker compose exec caddy caddy hash-password
+# lionpath.benjaminsquare.com {
+# 	basicauth {
+# 		demo $2a$14$...replace-with-caddy-hash-password...
+# 	}
+# 	reverse_proxy web:8788
+# }

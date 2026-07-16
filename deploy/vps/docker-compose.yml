@@ -1,0 +1,60 @@
+# SE Singha Paathai — VPS stack (Docker Compose + Caddy)
+#
+# Web UI:  lionpath.benjaminsquare.com  → web:8788
+# API:    lionpathapi.benjaminsquare.com → worker:8787
+#
+# First-time setup: see docs/VPS_DEPLOY.md and run setup.sh on the VPS.
+
+services:
+  worker:
+    build:
+      context: ../../worker
+      dockerfile: ../deploy/vps/Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8787"
+      HOST: "0.0.0.0"
+      HISTORY_FILE_DIR: /data/history
+    volumes:
+      - /var/lib/se-paathai/history:/data/history
+    expose:
+      - "8787"
+    networks:
+      - paathai
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ../../web:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "8788"
+    networks:
+      - paathai
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - worker
+      - web
+    networks:
+      - paathai
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  paathai:
+    driver: bridge

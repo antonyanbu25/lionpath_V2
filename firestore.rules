@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Prep history: a signed-in user can create and read only their own documents.
+    match /preps/{doc} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.auth.token.email_verified == true;
+      allow update, delete: if false;
+    }
+    match /postcalls/{doc} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.auth.token.email_verified == true;
+      allow update, delete: if false;
+    }
+  }
+}

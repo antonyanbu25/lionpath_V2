@@ -1,0 +1,49 @@
+Team — Discovery pre-call wireframe (skeleton only)
+
+ONE continuous "Account Snapshot" table (header rows inside, not above). Please review and reply in thread:
+1. Approve as-is
+2. Change section order
+3. Add/remove rows
+4. Sources in footer vs inside table
+
+Full doc: https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md
+Visual: https://lionpath.benjaminsquare.com/about.html#discovery-wireframe
+
+--- WIREFRAME SKELETON (one table) ---
+
+| Company name | domain | One-line description | Attendee chips (name · role · dot) |
+| FIT |
+| Attribute           | This company | Industry norm | GAP |
+| Omnichannel Support |              |               |     |
+| AI Deflection       |              |               |     |
+| Agent Assist        |              |               |     |
+| ACCOUNT FACTS |
+| Incumbent        | value (colspan) |
+| Support agents   |                 |
+| Market           |                 |
+| Business model   |                 |
+| Users            |                 |
+| Uptime need      |                 |
+| Funding / parent |                 |
+| Head office      |                 |
+| Languages        |                 |
+| INDUSTRY USE CASES (max 3) |
+| use case (colspan) |
+|                  |
+|                  |
+| DISCOVERY KIT (max 3) |
+| Ask this | Because |
+|          |         |
+|          |         |
+|          |         |
+| DEMO PREP (max 3) |
+| Pain | Capability | Value |
+|      |            |       |
+|      |            |       |
+|      |            |       |
+| RESOURCES |
+| [link] [link] [link] (colspan) |
+
+Sources (collapsible footer — outside table)
+
+REMOVED: Support Maturity block · Signals block · separate card stacks · header above table
