@@ -57,7 +57,10 @@
           </div>
           <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </div>
-        <form id="login-form" class="login-form">
+        <div id="auth-loading" class="auth-loading" aria-live="polite" aria-busy="true">
+          <p class="muted">Loading sign-in…</p>
+        </div>
+        <form id="login-form" class="login-form" hidden>
           <fw-input
             id="login-email"
             label="Email"
@@ -79,7 +82,7 @@
           <fw-button id="login-submit" color="primary" type="submit">Sign in</fw-button>
         </form>
         <p id="login-error" class="error" hidden></p>
-        <details class="login-hint">
+        <details class="login-hint" hidden>
           <summary>Demo credentials</summary>
           <ul class="muted">
             <li>SE: <code>se@freshworks.com</code> / <code>se123</code></li>

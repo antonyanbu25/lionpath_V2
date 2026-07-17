@@ -440,6 +440,33 @@ async function savePrep(input, prep, meta) {
 
 // ---------- Auth UI ----------
 
+function setAuthLoading(loading) {
+  const el = $("auth-loading");
+  if (el) {
+    el.hidden = !loading;
+    el.setAttribute("aria-busy", loading ? "true" : "false");
+  }
+}
+
+function showDummyLoginUI() {
+  setAuthLoading(false);
+  show($("login-form"), true);
+  const hint = document.querySelector(".login-hint");
+  if (hint) hint.hidden = false;
+  show($("firebase-signin-block"), false);
+}
+
+function showFirebaseLoginUI() {
+  setAuthLoading(false);
+  show($("login-form"), false);
+  const hint = document.querySelector(".login-hint");
+  if (hint) hint.hidden = true;
+  const block = $("firebase-signin-block");
+  show(block, true);
+  const divider = block?.querySelector(".or-divider");
+  if (divider) divider.hidden = true;
+}
+
 function showLogin() {
   show($("login-view"), true);
   show($("app-shell"), false);
@@ -448,6 +475,8 @@ function showLogin() {
   clearTasksAuthGetter();
   clearSidebarHistory();
   onSessionCleared();
+  if (authMode() === "firebase") showFirebaseLoginUI();
+  else showDummyLoginUI();
 }
 
 async function showApp(session, opts = {}) {
@@ -597,14 +626,6 @@ async function initFirebase() {
     query: fsMod.query, where: fsMod.where, getDocs: fsMod.getDocs, serverTimestamp: fsMod.serverTimestamp,
   };
 
-  show($("login-form"), false);
-  const hint = document.querySelector(".login-hint");
-  if (hint) hint.hidden = true;
-  const block = $("firebase-signin-block");
-  show(block, true);
-  const divider = block?.querySelector(".or-divider");
-  if (divider) divider.hidden = true;
-
   const signIn = async () => {
     show($("signin-error"), false);
     try {
@@ -635,8 +656,12 @@ async function initFirebase() {
   });
 
   const existing = getSession();
-  if (existing) handleSession(existing);
-  else showLogin();
+  if (existing) {
+    setAuthLoading(false);
+    handleSession(existing);
+  } else {
+    showLogin();
+  }
   onSessionChange(handleSession);
 }
 
@@ -715,11 +740,11 @@ function boot() {
   });
 
   if (authMode() === "firebase") {
-    initFirebase();
+    void initFirebase();
   } else {
     initDummyAuth();
-    const existing = getSession();
-    if (!existing) showLogin();
+    if (getSession()) setAuthLoading(false);
+    else showLogin();
   }
 
   void warnIfWorkerDown();
