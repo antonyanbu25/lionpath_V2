@@ -12,6 +12,10 @@ ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Optional — only if LLM_PROVIDER = "anthropic"
 # ANTHROPIC_API_KEY = "sk-ant-..."
 
+# Vertex AI on GCP (Cloud Run) — omit GEMINI_API_KEY; uses service account ADC instead.
+# GOOGLE_CLOUD_PROJECT = "se-singha-paathi"
+# VERTEX_LOCATION = "us-central1"
+
 # Optional — ZoomInfo person enrich fallback when LinkedIn/web search finds no experience data
 # ZOOMINFO_API_KEY = "your_zoominfo_bearer_token"
 

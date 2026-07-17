@@ -625,7 +625,7 @@ async function updateSideStats(container, email, fetchRemotePreps) {
   const preps = container.querySelector('[data-stat="preps"]');
   const doneWeek = container.querySelector('[data-stat="done-week"]');
   if (open) open.textContent = String(m.openTotal);
-  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps));
+  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps, email));
   if (doneWeek) doneWeek.textContent = String(m.completedThisWeek);
 }
 
@@ -677,7 +677,7 @@ function mountDashboardTasks(container, email, opts = {}) {
 export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
+  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps, email);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">

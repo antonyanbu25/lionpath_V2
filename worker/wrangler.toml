@@ -32,9 +32,10 @@ preview_id = "00000000000000000000000000000002"
 
 # Secrets (set via CLI, never committed):
 #   wrangler secret put ANTHROPIC_API_KEY
-#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put GEMINI_API_KEY          # Google AI Studio — required for wrangler/Workers
 #   wrangler secret put ZOOMINFO_API_KEY   # optional — person research fallback
 #   wrangler secret put ZOOM_CLIENT_SECRET
+# Vertex AI on Cloud Run uses GOOGLE_CLOUD_PROJECT + ADC (no GEMINI_API_KEY).
 # Zoom OAuth (optional — phase 2):
 # ZOOM_CLIENT_ID = ""
 # ZOOM_CLIENT_SECRET = ""   # use secret put, not vars

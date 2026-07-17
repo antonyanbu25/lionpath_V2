@@ -5,6 +5,14 @@
 // (form works against the Worker, no sign-in, no history). Fill it in via
 // firebase-config.local.js to turn on Google sign-in and Firestore history.
 
+/** Shipped for production hosts (client config — auth enforced by Firebase + Worker). */
+const PRODUCTION_FIREBASE = {
+  apiKey: "AIzaSyCtV1K1h3kwcsObxSyBi0qDTxaivArn8HE",
+  authDomain: "se-singha-paathi.firebaseapp.com",
+  projectId: "se-singha-paathi",
+  appId: "1:781846715448:web:bb597d2d001b64d374dacd",
+};
+
 export const firebaseConfig = {
   apiKey: "",
   authDomain: "",
@@ -12,18 +20,26 @@ export const firebaseConfig = {
   appId: "",
 };
 
+function isProductionHost(host) {
+  return host === "portal.benjaminsquare.com" || host.endsWith(".run.app");
+}
+
 /**
  * Merge optional local overrides from firebase-config.local.js (gitignored).
  * Call once before boot when Firebase SSO should be enabled locally or on VPS.
  */
 export async function loadFirebaseConfig() {
+  const host = typeof location !== "undefined" ? location.hostname : "";
+  if (isProductionHost(host)) {
+    Object.assign(firebaseConfig, PRODUCTION_FIREBASE);
+  }
   try {
     const mod = await import("./firebase-config.local.js");
     if (mod?.firebaseConfig && typeof mod.firebaseConfig === "object") {
       Object.assign(firebaseConfig, mod.firebaseConfig);
     }
   } catch {
-    // Local file missing — dummy login mode (empty projectId).
+    // Local file missing — dummy login mode on localhost only.
   }
   return firebaseConfig;
 }
@@ -35,6 +51,9 @@ function workerBaseUrl() {
     // Production VPS: web on portal.*, API on portalapi.*
     if (host === "portal.benjaminsquare.com") {
       return "https://portalapi.benjaminsquare.com";
+    }
+    if (host.endsWith(".run.app")) {
+      return "https://prep-portal-api-781846715448.us-central1.run.app";
     }
     // Local dev: same hostname, port 8787 (localhost:8788 → localhost:8787)
     return `${location.protocol}//${host}:8787`;

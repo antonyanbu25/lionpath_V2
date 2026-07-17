@@ -29,6 +29,27 @@ export async function readFieldValueAsync(el) {
   return readFieldValue(el);
 }
 
+/** @param {HTMLElement | null | undefined} el @param {string} value */
+export function setFieldValue(el, value) {
+  if (!el) return;
+  const v = String(value ?? "");
+  if ("value" in el) el.value = v;
+  const inner = el.shadowRoot?.querySelector("input, textarea");
+  if (inner) inner.value = v;
+}
+
+/** @param {HTMLElement | null | undefined} el @param {string} value */
+export async function setFieldValueAsync(el, value) {
+  setFieldValue(el, value);
+  if (typeof el?.setValue === "function") {
+    try {
+      await el.setValue(String(value ?? ""));
+    } catch {
+      // fall back to property set above
+    }
+  }
+}
+
 /** @param {ParentNode | null | undefined} form @param {boolean} disabled */
 export function setFormFieldsDisabled(form, disabled) {
   form?.querySelectorAll("fw-input, fw-textarea, fw-button, fw-select").forEach((el) => {

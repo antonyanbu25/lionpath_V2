@@ -21,32 +21,33 @@ gcloud config set project se-singha-paathi
 
 gcloud services enable \
   run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  secretmanager.googleapis.com storage.googleapis.com
+  secretmanager.googleapis.com storage.googleapis.com aiplatform.googleapis.com
 
 gcloud artifacts repositories create prep-portal \
   --repository-format=docker --location=us-central1 \
   --description="Prep portal API + web" 2>/dev/null || true
 
 gsutil mb -l us-central1 gs://se-singha-paathi-prep-history 2>/dev/null || true
-
-echo -n "PASTE_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
-  --data-file=- --replication-policy=automatic 2>/dev/null \
-  || echo -n "PASTE_GEMINI_API_KEY" | gcloud secrets versions add gemini-api-key --data-file=-
 ```
 
-Grant Cloud Run access to the secret and GCS bucket (replace `PROJECT_NUMBER`):
+Grant Cloud Run access to GCS history bucket (replace `PROJECT_NUMBER`):
 
 ```bash
 PROJECT_NUMBER=$(gcloud projects describe se-singha-paathi --format='value(projectNumber)')
 
-gcloud secrets add-iam-policy-binding gemini-api-key \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role=roles/secretmanager.secretAccessor
-
 gsutil iam ch \
   serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com:objectAdmin \
   gs://se-singha-paathi-prep-history
+
+# Vertex AI — Cloud Run service account needs aiplatform.user (no API key secret).
+gcloud projects add-iam-policy-binding se-singha-paathi \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
 ```
+
+**LLM auth:** Cloud Run uses **Vertex AI** via the Cloud Run service account (Application Default Credentials). No `GEMINI_API_KEY` secret is required.
+
+For local / VPS dev, keep using `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ### 1. Firebase config (before web build)
 
@@ -88,7 +89,6 @@ gcloud run deploy prep-portal-api \
   --cpu 1 \
   --min-instances 0 \
   --max-instances 10 \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
   --set-env-vars "\
 LLM_PROVIDER=gemini,\
 MODEL=gemini-3.1-flash-lite,\
@@ -96,6 +96,8 @@ EFFORT=medium,\
 POSTCALL_LLM_PROVIDER=gemini,\
 POSTCALL_MODEL=gemini-3.1-flash-lite,\
 POSTCALL_EFFORT=low,\
+GOOGLE_CLOUD_PROJECT=se-singha-paathi,\
+VERTEX_LOCATION=us-central1,\
 ALLOWED_ORIGINS=https://portal.benjaminsquare.com,\
 ALLOWED_EMAIL_DOMAIN=freshworks.com,\
 FIREBASE_PROJECT_ID=se-singha-paathi,\
@@ -104,10 +106,13 @@ HISTORY_FILE_DIR=/data/history" \
   --add-volume-mount volume=history,mount-path=/data/history
 ```
 
+When `GOOGLE_CLOUD_PROJECT` is set and `GEMINI_API_KEY` is **not**, the worker calls Gemini via **Vertex AI** using the Cloud Run service account.
+
 Optional env vars (add to `--set-env-vars` or Secret Manager):
 
 | Variable | Purpose |
 |----------|---------|
+| `GEMINI_API_KEY` | Google AI Studio fallback (not needed on Cloud Run if using Vertex) |
 | `ANTHROPIC_API_KEY` | Anthropic fallback |
 | `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` / `ZOOM_REDIRECT_URI` | Zoom OAuth (phase 2) |
 | `ZOOMINFO_API_KEY` | ZoomInfo research |
@@ -214,5 +219,7 @@ gcloud run deploy prep-portal-web \
 | No Google sign-in button | Rebuild web with `web/firebase-config.local.js` present |
 | History not persisting | Check GCS volume mount and bucket IAM on compute SA |
 | Domain mapping stuck | Verify domain ownership in GCP; DNS CNAME propagated |
+| Gemini 403 on Cloud Run | Grant `roles/aiplatform.user` to the Cloud Run service account; enable `aiplatform.googleapis.com` |
+| Gemini works locally but not on Cloud Run | Local uses `GEMINI_API_KEY`; Cloud Run needs `GOOGLE_CLOUD_PROJECT` + Vertex IAM |
 
 See also: [`docs/FIREBASE_SETUP.md`](../../docs/FIREBASE_SETUP.md), [`docs/VPS_DEPLOY.md`](../../docs/VPS_DEPLOY.md).

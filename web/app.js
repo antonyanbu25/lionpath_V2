@@ -18,14 +18,16 @@ import {
   clearTasksAuthGetter,
 } from "./tasks.js";
 import { normalizeQualityCoach } from "./quality-score.js";
+import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
 import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
 import {
   initPrecall,
-  loadLocalBriefs,
+  listSidebarBriefs,
   openPrepBrief,
   parseProspectEmails,
+  syncPrepBriefsOnLogin,
 } from "./precall.js";
 import {
   displayPostCall,
@@ -160,7 +162,22 @@ function buildFetchRemotePreps() {
     return snap.docs.map((d) => {
       const data = d.data();
       const when = data.createdAt?.toDate?.()?.toLocaleDateString?.() || "";
-      return { id: d.id, company: data.company, when };
+      const savedAt = data.createdAt?.toDate?.()?.getTime?.() || 0;
+      return {
+        id: d.id,
+        company: data.company,
+        when,
+        savedAt,
+        prep: data.prep,
+        prospectEmail: data.prospectEmail,
+        additionalContext: data.additionalContext || "",
+        input: {
+          companyName: data.company,
+          prospectEmail: data.prospectEmail,
+          prospectEmails: data.prospectEmails || (data.prospectEmail ? [data.prospectEmail] : []),
+          additionalContext: data.additionalContext || "",
+        },
+      };
     });
   };
 }
@@ -294,6 +311,7 @@ async function loadPersistedHistory() {
   setSidebarHistorySyncing(true);
   try {
     const list = await syncHistoryOnLogin(currentSession.email);
+    await syncPrepBriefsOnLogin(currentSession.email, buildFetchRemotePreps());
     await syncTasksOnLogin(currentSession.email);
     await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
     refreshSidebarHistory();
@@ -310,7 +328,11 @@ async function loadPersistedHistory() {
 }
 
 function openPrepBriefItem(id) {
-  if (!openPrepBrief(id)) return;
+  const result = openPrepBrief(id, currentSession?.email);
+  if (!result.ok) {
+    console.warn("[app]", result.error || "Could not open brief.");
+    return;
+  }
   switchView("precall");
   document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
@@ -334,8 +356,8 @@ function refreshSidebarRecentWork() {
     return;
   }
 
-  const briefs = loadLocalBriefs().slice(0, 5);
-  const calls = listPostCallAnalyses(currentSession.email).slice(0, 5);
+  const briefs = listSidebarBriefs(currentSession.email);
+  const calls = dedupeAnalysesByCallIdentity(listPostCallAnalyses(currentSession.email)).slice(0, 5);
 
   const prepList = $("sidebar-prep-list");
   const callList = $("sidebar-call-list");
@@ -689,6 +711,7 @@ function boot() {
     prepUrl: PREP_URL,
     authEnabled: isAuthEnabled(),
     workerDownMsg: WORKER_DOWN_MSG,
+    getEmail: () => currentSession?.email || "",
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
     switchView,
     onGenerated: async (payload, prep, meta) => {

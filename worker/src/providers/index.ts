@@ -11,6 +11,8 @@ import type { LlmProvider, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
 
+const GEMINI_ALIASES = new Set(["gemini", "vertex", "gemini-vertex"]);
+
 export function getProvider(env: ProviderEnv): LlmProvider {
   const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
   return resolveProvider(provider, env);
@@ -20,7 +22,7 @@ export function getProvider(env: ProviderEnv): LlmProvider {
 export function getPostCallProvider(env: ProviderEnv): LlmProvider {
   const provider = (env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini").toLowerCase();
   const model = env.POSTCALL_MODEL;
-  if (provider === "gemini") return geminiProvider(env, model);
+  if (GEMINI_ALIASES.has(provider)) return geminiProvider(env, model);
   return resolveProvider(provider, env);
 }
 
@@ -29,6 +31,8 @@ function resolveProvider(provider: string, env: ProviderEnv): LlmProvider {
     case "anthropic":
       return anthropicProvider(env);
     case "gemini":
+    case "vertex":
+    case "gemini-vertex":
       return geminiProvider(env);
     case "ollama":
       throw new Error(

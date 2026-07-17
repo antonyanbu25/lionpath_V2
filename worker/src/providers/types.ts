@@ -11,6 +11,11 @@ export interface ProviderEnv {
   POSTCALL_EFFORT?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Vertex AI on GCP — used when GEMINI_API_KEY is unset (Cloud Run ADC). */
+  GOOGLE_CLOUD_PROJECT?: string;
+  VERTEX_PROJECT?: string;
+  VERTEX_LOCATION?: string;
+  GOOGLE_CLOUD_LOCATION?: string;
   /** Optional — ZoomInfo person enrich fallback when LinkedIn/web search finds no experience data. */
   ZOOMINFO_API_KEY?: string;
 }

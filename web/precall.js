@@ -1,6 +1,6 @@
 /** Pre-call wireframe — state, generate flow, interactions. */
 
-import { readFieldValueAsync, setFormFieldsDisabled } from "./crayons-ui.js";
+import { readFieldValueAsync, setFieldValueAsync, setFormFieldsDisabled } from "./crayons-ui.js";
 import {
   isV8Prep,
   isV7Prep,
@@ -14,7 +14,8 @@ import {
 } from "./precall-render.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
-const BRIEFS_KEY = "lionpath_briefs";
+const PREP_BRIEFS_PREFIX = "se-singha-prep-history:";
+const LEGACY_BRIEFS_KEY = "lionpath_briefs";
 const MAX_BRIEFS = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -36,16 +37,53 @@ export function parseProspectEmails(raw) {
   return out;
 }
 
-export function getBriefById(id) {
-  return loadLocalBriefs().find((b) => b.id === id) || null;
+export function normalizeUserEmail(email) {
+  return String(email || "").trim().toLowerCase();
 }
 
-export function openPrepBrief(id) {
-  const record = getBriefById(id);
-  if (!record?.prep) return false;
-  state.activeBriefId = id;
-  displayPrepResult(record.prep, record.meta || { company: record.company });
-  return true;
+function briefsStorageKey(email) {
+  return `${PREP_BRIEFS_PREFIX}${normalizeUserEmail(email)}`;
+}
+
+function migrateLegacyBriefs(email) {
+  const key = briefsStorageKey(email);
+  try {
+    if (localStorage.getItem(key)) return;
+    const legacy = localStorage.getItem(LEGACY_BRIEFS_KEY);
+    if (!legacy) return;
+    localStorage.setItem(key, legacy);
+    localStorage.removeItem(LEGACY_BRIEFS_KEY);
+  } catch {
+    // ignore quota / private-mode errors during migration
+  }
+}
+
+export function briefKey(input, meta) {
+  const company = String(meta?.company || input?.companyName || "").trim().toLowerCase();
+  const email = String(input?.prospectEmail || input?.prospectEmails?.[0] || "").trim().toLowerCase();
+  return `${company}|${email}`;
+}
+
+function recordTimestamp(record) {
+  if (record?.savedAt) return Number(record.savedAt) || 0;
+  if (record?.when) {
+    const parsed = Date.parse(record.when);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
+export function dedupeBriefs(list) {
+  const byKey = new Map();
+  for (const record of list || []) {
+    if (!record?.prep) continue;
+    const key = record.briefKey || briefKey(record.input || {}, record.meta || { company: record.company });
+    const existing = byKey.get(key);
+    if (!existing || recordTimestamp(record) >= recordTimestamp(existing)) {
+      byKey.set(key, { ...record, briefKey: key });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => recordTimestamp(b) - recordTimestamp(a));
 }
 
 let deps = {};
@@ -78,6 +116,10 @@ function accountId(meta) {
     .slice(0, 48);
 }
 
+function getBriefsEmail() {
+  return normalizeUserEmail(deps.getEmail?.() || "");
+}
+
 function loadChecks() {
   try {
     state.checks = JSON.parse(localStorage.getItem(CHECKS_KEY) || "{}");
@@ -90,38 +132,91 @@ function saveChecks() {
   localStorage.setItem(CHECKS_KEY, JSON.stringify(state.checks));
 }
 
-export function loadLocalBriefs() {
+export function loadLocalBriefs(email) {
+  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
+  if (!normalized) return [];
+  migrateLegacyBriefs(normalized);
   try {
-    return JSON.parse(localStorage.getItem(BRIEFS_KEY) || "[]");
+    const raw = localStorage.getItem(briefsStorageKey(normalized));
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 }
 
-/** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
-export async function countPrepsGenerated(fetchRemotePreps) {
-  const local = loadLocalBriefs();
-  const seen = new Set(local.map((b) => `${b.company || ""}|${b.when || ""}|${b.id || ""}`));
-  let count = local.length;
+function saveLocalBriefs(email, list) {
+  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
+  if (!normalized) return;
+  const deduped = dedupeBriefs(list);
+  localStorage.setItem(briefsStorageKey(normalized), JSON.stringify(deduped.slice(0, MAX_BRIEFS)));
+}
+
+export function listSidebarBriefs(email) {
+  return dedupeBriefs(loadLocalBriefs(email)).slice(0, 5);
+}
+
+export function getBriefById(id, email) {
+  return loadLocalBriefs(email).find((b) => b.id === id) || null;
+}
+
+function remoteToBriefRecord(r) {
+  const input = {
+    companyName: r.company,
+    prospectEmail: r.prospectEmail || r.input?.prospectEmail,
+    prospectEmails: r.input?.prospectEmails || (r.prospectEmail ? [r.prospectEmail] : []),
+    additionalContext: r.input?.additionalContext || r.additionalContext,
+  };
+  const meta = {
+    company: r.company,
+    domain: emailDomain(input.prospectEmail),
+    additionalContext: input.additionalContext,
+  };
+  const key = briefKey(input, meta);
+  return {
+    id: r.id || accountId(meta),
+    briefKey: key,
+    company: r.company,
+    kind: "Discovery",
+    when: r.when || new Date().toLocaleDateString(),
+    savedAt: r.savedAt || Date.now(),
+    prep: r.prep,
+    meta,
+    input,
+  };
+}
+
+export async function syncPrepBriefsOnLogin(email, fetchRemotePreps) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) return [];
+  migrateLegacyBriefs(normalized);
+  let local = dedupeBriefs(loadLocalBriefs(normalized));
   if (typeof fetchRemotePreps === "function") {
     try {
       const remote = await fetchRemotePreps();
-      for (const r of remote || []) {
-        const key = `${r.company || ""}|${r.when || ""}|${r.id || ""}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          count++;
-        }
-      }
+      const remoteRecords = (remote || []).filter((r) => r?.prep).map(remoteToBriefRecord);
+      local = dedupeBriefs([...local, ...remoteRecords]);
+    } catch (err) {
+      console.warn("[precall] prep sync failed:", err);
+    }
+  }
+  saveLocalBriefs(normalized, local);
+  return local;
+}
+
+/** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
+export async function countPrepsGenerated(fetchRemotePreps, email) {
+  let list = dedupeBriefs(loadLocalBriefs(email));
+  if (typeof fetchRemotePreps === "function") {
+    try {
+      const remote = (await fetchRemotePreps()).filter((r) => r?.prep).map(remoteToBriefRecord);
+      list = dedupeBriefs([...list, ...remote]);
     } catch {
       // demo / offline — local count only
     }
   }
-  return count;
-}
-
-function saveLocalBriefs(list) {
-  localStorage.setItem(BRIEFS_KEY, JSON.stringify(list.slice(0, MAX_BRIEFS)));
+  return list.length;
 }
 
 function prefersReducedMotion() {
@@ -195,6 +290,23 @@ export function displayPrepResult(prep, meta = {}) {
   showResultView(prep, meta);
 }
 
+async function restorePrepForm(input) {
+  if (!input) return;
+  const emails = input.prospectEmails?.length ? input.prospectEmails.join(", ") : input.prospectEmail || "";
+  await setFieldValueAsync($("companyName"), input.companyName || "");
+  await setFieldValueAsync($("prospectEmail"), emails);
+  await setFieldValueAsync($("additionalContext"), input.additionalContext || "");
+}
+
+export function openPrepBrief(id, email) {
+  const record = getBriefById(id, email);
+  if (!record?.prep) return { ok: false, error: "Brief not found." };
+  state.activeBriefId = id;
+  void restorePrepForm(record.input);
+  displayPrepResult(record.prep, record.meta || { company: record.company });
+  return { ok: true };
+}
+
 function openSourcePopover(label, ev) {
   const prep = state.currentPrep;
   if (!prep?.sources) return;
@@ -247,68 +359,76 @@ function wireTabInteractions() {
   });
 }
 
-function pushBriefRecord(record) {
-  const list = loadLocalBriefs().filter((b) => b.id !== record.id);
-  list.unshift(record);
-  saveLocalBriefs(list);
-}
-
-export function saveBriefToSidebar(input, prep, meta) {
+export function saveBriefToSidebar(input, prep, meta, email) {
   if (!isV8Prep(prep)) return;
-  const id = `${accountId(meta)}-${Date.now()}`;
-  pushBriefRecord({
+  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
+  if (!normalized) return;
+  const key = briefKey(input, meta);
+  const existing = loadLocalBriefs(normalized).find(
+    (b) => (b.briefKey || briefKey(b.input || {}, b.meta || { company: b.company })) === key,
+  );
+  const id = existing?.id || accountId(meta);
+  const record = {
     id,
+    briefKey: key,
     company: meta.company || input.companyName,
     kind: "Discovery",
     when: new Date().toLocaleDateString(),
+    savedAt: Date.now(),
     prep,
     meta,
     input,
-  });
+  };
+  const list = loadLocalBriefs(normalized).filter(
+    (b) => b.id !== id && (b.briefKey || briefKey(b.input || {}, b.meta || { company: b.company })) !== key,
+  );
+  list.unshift(record);
+  saveLocalBriefs(normalized, list);
   state.activeBriefId = id;
 }
 
 export async function generatePrep(e) {
   e?.preventDefault?.();
   if (state.loading) return;
+  state.loading = true;
 
   const btn = $("generate");
   const status = $("prep-status");
-  const rawEmails = await readFieldValueAsync($("prospectEmail"));
-  const emails = parseProspectEmails(rawEmails);
-  if (!emails.length) {
-    if (status) {
-      status.className = "status err";
-      status.textContent = "Enter at least one valid prospect email (comma-separated for multiple).";
-      show(status, true);
-    }
-    return;
-  }
-
-  const payload = {
-    companyName: await readFieldValueAsync($("companyName")),
-    prospectEmail: emails[0],
-    prospectEmails: emails,
-    additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
-  };
-  const meta = {
-    company: payload.companyName,
-    domain: emailDomain(emails[0]),
-    additionalContext: payload.additionalContext,
-  };
-
-  state.loading = true;
   if (btn) btn.disabled = true;
   if (btn) btn.loading = true;
-  if (status) {
-    status.className = "status";
-    status.textContent = "Researching account…";
-    show(status, true);
-  }
-  show($("prep-result-view"), false);
-  setFormFieldsDisabled($("prep-form"), true);
 
   try {
+    const rawEmails = await readFieldValueAsync($("prospectEmail"));
+    const emails = parseProspectEmails(rawEmails);
+    if (!emails.length) {
+      if (status) {
+        status.className = "status err";
+        status.textContent = "Enter at least one valid prospect email (comma-separated for multiple).";
+        show(status, true);
+      }
+      return;
+    }
+
+    const payload = {
+      companyName: await readFieldValueAsync($("companyName")),
+      prospectEmail: emails[0],
+      prospectEmails: emails,
+      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
+    };
+    const meta = {
+      company: payload.companyName,
+      domain: emailDomain(emails[0]),
+      additionalContext: payload.additionalContext,
+    };
+
+    if (status) {
+      status.className = "status";
+      status.textContent = "Researching account…";
+      show(status, true);
+    }
+    show($("prep-result-view"), false);
+    setFormFieldsDisabled($("prep-form"), true);
+
     const headers = { "content-type": "application/json" };
     if (deps.authEnabled && deps.getToken) {
       headers.Authorization = `Bearer ${await deps.getToken()}`;
@@ -360,9 +480,6 @@ export function initPrecall(options) {
   });
 
   $("prep-form")?.addEventListener("submit", (e) => {
-    void generatePrep(e);
-  });
-  $("generate")?.addEventListener("fwClick", (e) => {
     void generatePrep(e);
   });
 }

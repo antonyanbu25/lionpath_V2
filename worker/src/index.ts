@@ -181,7 +181,7 @@ export default {
             zoom: { configured: zoomConfigured(env) },
             keys: {
               anthropic: !!env.ANTHROPIC_API_KEY,
-              gemini: !!env.GEMINI_API_KEY,
+              gemini: !!env.GEMINI_API_KEY || !!(env.GOOGLE_CLOUD_PROJECT || env.VERTEX_PROJECT),
               zoominfo: !!env.ZOOMINFO_API_KEY,
             },
             history: {

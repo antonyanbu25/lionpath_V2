@@ -17,6 +17,7 @@
     "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs"
   },
   "dependencies": {
+    "google-auth-library": "^10.9.0",
     "tsx": "^4.19.0"
   },
   "devDependencies": {
