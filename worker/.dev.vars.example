@@ -2,8 +2,18 @@
 # Required for pre-call + post-call (both use Gemini by default).
 GEMINI_API_KEY = "AIza..."
 
+# Firebase Auth — set to enable Google SSO locally (requires firebase-config.local.js in web/)
+FIREBASE_PROJECT_ID = "se-singha-paathi"
+
+# CORS for local web dev (wrangler pages dev on 8788)
+ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788"
+ALLOWED_EMAIL_DOMAIN = "freshworks.com"
+
 # Optional — only if LLM_PROVIDER = "anthropic"
 # ANTHROPIC_API_KEY = "sk-ant-..."
+
+# Optional — ZoomInfo person enrich fallback when LinkedIn/web search finds no experience data
+# ZOOMINFO_API_KEY = "your_zoominfo_bearer_token"
 
 # Optional — Zoom OAuth (phase 2)
 # ZOOM_CLIENT_ID = "your_zoom_client_id"

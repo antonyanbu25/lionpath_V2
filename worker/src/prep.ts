@@ -13,6 +13,7 @@ import { PREP_SCHEMA, type Prep } from "./schema";
 import { getProvider } from "./providers";
 import type { ProviderEnv } from "./providers/types";
 import { normalizePrepOutput } from "./word-limits";
+import { enrichPrepProspectsFromResearch, runResearch } from "./research-orchestrator";
 
 export type Env = ProviderEnv;
 
@@ -86,6 +87,7 @@ WORD CAPS (strict):
 - supportJD bullets: max 14 words each; title max 12 words.
 - evaluatorJD.tools[]: max 4 words each, max 8 tools from evaluator prospect's LinkedIn JD/profile.
 - prospects[].experienceSummary: max 20 words — overall career/work experience summary.
+  REQUIRED when pre-research or LinkedIn/web sources provide role, years, or prior employers — never leave "unknown" if any career data exists.
 - likelyPains: max 12 words each, max 5 items.
 - discoveryKit question/because: max 12 words each.
 - industryUseCases: return empty array [] (deprecated).
@@ -181,7 +183,12 @@ It must match exactly this JSON Schema (all fields required; use "unknown" or []
 ${JSON.stringify(PREP_SCHEMA)}`;
 }
 
-function userPrompt(input: PrepInput, domain: string, emails: string[]): string {
+function userPrompt(
+  input: PrepInput,
+  domain: string,
+  emails: string[],
+  researchBlock?: string,
+): string {
   const invalidDomain = isLikelyInvalidDomain(domain, input.companyName);
   const suggested = suggestDomain(input.companyName);
 
@@ -213,10 +220,14 @@ function userPrompt(input: PrepInput, domain: string, emails: string[]): string 
   }
   if (input.meetingType) lines.push(`Meeting type: ${input.meetingType}`);
   if (input.ae) lines.push(`Account Executive: ${input.ae}`);
+  if (researchBlock) {
+    lines.push("", researchBlock);
+  }
   lines.push(
     ``,
     `Google-search "${input.companyName}" first, infer their support model and stack,`,
     `Research EACH prospect email and populate prospects[] with one entry per person.`,
+    `For each prospect: fill experienceSummary from LinkedIn/web/pre-research (years + role + sector); include priorEmployers and competitorTouchpoints when found.`,
     `and fill facts, signals, fitSnapshot, prospects, icpFit (with frameworkRefs citing ICP traits), discoveryKit, likelyPains (context pains first), painCapabilityValue (one row per likelyPain → feature → values), and checklist with real findings.`,
     `For recognizable orgs, use public knowledge — never leave the entire brief empty.`,
     `Enforce all word caps strictly.`,
@@ -224,8 +235,12 @@ function userPrompt(input: PrepInput, domain: string, emails: string[]): string 
   return lines.join("\n");
 }
 
-function parsePrep(text: string): Prep {
-  return normalizePrepOutput(extractJson<Prep>(text));
+function parsePrep(text: string, researchProspects?: Parameters<typeof enrichPrepProspectsFromResearch>[0]): Prep {
+  const raw = extractJson<Prep>(text);
+  if (researchProspects?.length && Array.isArray(raw.prospects)) {
+    enrichPrepProspectsFromResearch(researchProspects, raw.prospects);
+  }
+  return normalizePrepOutput(raw);
 }
 
 export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
@@ -247,18 +262,25 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
     ? (input.effort as string)
     : env.EFFORT || "medium";
 
+  const research = await runResearch(env, {
+    companyName: input.companyName,
+    domain,
+    emails,
+    prospectName: input.prospectName,
+  });
+
   const provider = getProvider(env);
   const result = await provider.generate({
     maxTokens: 12000,
     system: systemPrompt(),
-    user: userPrompt(normalizedInput, domain, emails),
+    user: userPrompt(normalizedInput, domain, emails, research.promptBlock),
     effort,
     research: true,
     jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
   });
 
   try {
-    return parsePrep(result.text);
+    return parsePrep(result.text, research.prospects);
   } catch (err) {
     const repaired = await provider.generate({
       system:
@@ -274,7 +296,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
       jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
     });
     try {
-      return parsePrep(repaired.text);
+      return parsePrep(repaired.text, research.prospects);
     } catch (err2) {
       throw new Error(
         `Could not parse prep JSON even after a repair attempt: ${(err2 as Error).message}`,

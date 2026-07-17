@@ -9,6 +9,8 @@
     "deploy": "wrangler deploy",
     "start:node": "tsx src/node-server.ts",
     "typecheck": "tsc --noEmit",
+    "test:normalize": "tsx scripts/test-prep-normalize.ts",
+    "test:research": "tsx scripts/test-research-orchestrator.ts",
     "build:icp": "node scripts/extract-icp.mjs && node scripts/extract-omni-personas.mjs && node scripts/generate-icp-kb.mjs",
     "build:icp:kb-only": "node scripts/generate-icp-kb.mjs",
     "build:benchmark": "node scripts/extract-benchmark.mjs && node scripts/generate-benchmark-kb.mjs",

@@ -85,6 +85,23 @@ const checks: [string, boolean][] = [
   ["fit legacy AI Deflection", out.fitSnapshot[1]?.label === "Self Serve"],
   ["prospects normalized", out.prospects.length >= 1],
   ["prospect experienceSummary", out.prospects[0]?.experienceSummary !== "unknown"],
+  [
+    "prospect experienceSummary synthesized",
+    normalizePrepOutput({
+      ...raw,
+      prospects: [
+        {
+          name: "Alex",
+          role: "Director",
+          totalExperience: "10 years",
+          experienceSummary: "unknown",
+          priorEmployers: ["Globex"],
+          competitorTouchpoints: [],
+          sourceLabel: "S2",
+        },
+      ],
+    }).prospects[0]?.experienceSummary !== "unknown",
+  ],
   ["evaluatorJD tools normalized", Array.isArray(out.evaluatorJD?.tools)],
   ["icpFit normalized", out.icpFit?.product === "Freshdesk" && out.icpFit.verdict === "Strong"],
   ["icpFit frameworkRefs", (out.icpFit?.frameworkRefs?.length || 0) >= 1],

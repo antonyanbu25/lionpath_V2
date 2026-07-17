@@ -34,6 +34,7 @@ function buildEnv(): NodeEnv {
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ZOOMINFO_API_KEY: process.env.ZOOMINFO_API_KEY,
     ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID,
     ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET,
     ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI,

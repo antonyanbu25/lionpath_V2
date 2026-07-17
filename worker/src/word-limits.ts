@@ -1,6 +1,7 @@
 // Server-side word-cap enforcement for prep/post-call JSON (v5).
 
 import { attachPrepAssets } from "./prep-assets";
+import { synthesizeExperienceSummary } from "./research/validate";
 import {
   FACT_KEYS,
   FIT_LABELS,
@@ -389,7 +390,13 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
     name: trimCell(p.name),
     role: trimCell(p.role),
     totalExperience: trimWords(String(p.totalExperience ?? ""), 6) || "unknown",
-    experienceSummary: trimWords(String(p.experienceSummary ?? ""), 20) || "unknown",
+    experienceSummary:
+      synthesizeExperienceSummary({
+        experienceSummary: trimWords(String(p.experienceSummary ?? ""), 20) || undefined,
+        totalExperience: String(p.totalExperience ?? ""),
+        role: trimCell(p.role),
+        priorEmployers: trimBullets(p.priorEmployers, 4).map((e) => trimWords(e, 6)).filter(Boolean),
+      }) || "unknown",
     priorEmployers: trimBullets(p.priorEmployers, 4).map((e) => trimWords(e, 6)).filter(Boolean),
     competitorTouchpoints: trimBullets(p.competitorTouchpoints, 4)
       .map((t) => trimWords(t, 8))

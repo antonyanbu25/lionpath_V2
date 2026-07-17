@@ -97,7 +97,8 @@ const prospectRow = {
     totalExperience: { type: "string", description: "Years experience e.g. 12 years, max 6 words." },
     experienceSummary: {
       type: "string",
-      description: "Overall work experience summary e.g. 12 years B2B SaaS support leadership, max 20 words.",
+      description:
+        "Overall work experience summary e.g. 12 years B2B SaaS support leadership, max 20 words. Required when role, years, or prior employers are known.",
     },
     priorEmployers: {
       type: "array",

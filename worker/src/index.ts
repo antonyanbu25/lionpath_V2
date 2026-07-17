@@ -182,6 +182,7 @@ export default {
             keys: {
               anthropic: !!env.ANTHROPIC_API_KEY,
               gemini: !!env.GEMINI_API_KEY,
+              zoominfo: !!env.ZOOMINFO_API_KEY,
             },
             history: {
               available: historyStorageAvailable(env),

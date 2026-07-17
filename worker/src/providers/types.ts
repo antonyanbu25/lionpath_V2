@@ -11,6 +11,8 @@ export interface ProviderEnv {
   POSTCALL_EFFORT?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Optional — ZoomInfo person enrich fallback when LinkedIn/web search finds no experience data. */
+  ZOOMINFO_API_KEY?: string;
 }
 
 export interface LlmRequest {
