@@ -1,8 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        var KEY = "lionpath_theme";
+        var theme = localStorage.getItem(KEY);
+        if (theme !== "light" && theme !== "dark") theme = "light";
+        var root = document.documentElement;
+        root.setAttribute("data-theme", theme);
+        root.style.colorScheme = theme;
+        root.classList.toggle("fw-dark-theme", theme === "dark");
+      })();
+    </script>
     <title>SE Singha Paathai — Freshworks</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -295,8 +306,7 @@
       <a href="./about.html#discovery-wireframe" target="_blank" rel="noopener noreferrer" style="margin-left:1rem">Discovery wireframe</a>
     </footer>
 
-    <script type="module" src="./theme.js"></script>
-    <script type="module" src="./splash.js"></script>
+    <script type="module" src="./theme.js?v=20260717"></script>
     <script type="module" src="./app.js"></script>
     <script type="module" src="./postcall.js"></script>
   </body>
