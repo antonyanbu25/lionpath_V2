@@ -4,7 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SE Singha Paathai — Freshworks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./dew-theme.css" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./precall.css" />
+    <link rel="stylesheet" href="./postcall.css" />
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
+    ></script>
   </head>
   <body>
     <!-- Lion splash (index only — see splash.js) -->
@@ -21,23 +39,34 @@
 
     <!-- Login -->
     <div id="login-view" class="login-page">
-      <div class="login-card card form-panel">
+      <fw-card class="login-card form-panel">
         <div class="login-card-head">
           <div>
             <h1>SE Singha Paathai</h1>
             <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
           </div>
-          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">🌙</button>
+          <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </div>
-        <p class="login-banner" role="note">History syncs from the server on sign-in — works in incognito and after logout. Local cache is cleared when you close a private window.</p>
-        <form id="login-form">
-          <label>Email
-            <input id="login-email" type="email" autocomplete="username" placeholder="se@freshworks.com" required />
-          </label>
-          <label>Password
-            <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••" required />
-          </label>
-          <button class="primary" type="submit">Sign in</button>
+        <form id="login-form" class="login-form">
+          <fw-input
+            id="login-email"
+            label="Email"
+            type="email"
+            autocomplete="username"
+            placeholder="se@freshworks.com"
+            required
+            clear-input
+          ></fw-input>
+          <fw-input
+            id="login-password"
+            label="Password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="••••••"
+            required
+            clear-input
+          ></fw-input>
+          <fw-button id="login-submit" color="primary" type="submit">Sign in</fw-button>
         </form>
         <p id="login-error" class="error" hidden></p>
         <details class="login-hint">
@@ -49,24 +78,27 @@
         </details>
         <div id="firebase-signin-block" hidden>
           <p class="muted or-divider">or</p>
-          <button id="signin-google" class="ghost">Sign in with Google</button>
+          <fw-button id="signin-google" color="secondary" fill="outline">Sign in with Google</fw-button>
           <p id="signin-error" class="error" hidden></p>
         </div>
-      </div>
+      </fw-card>
     </div>
 
     <!-- App shell -->
     <div id="app-shell" class="app-shell" hidden>
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-head">
+        <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
+          <fw-icon class="sidebar-collapse-icon" name="chevron-left" size="12" aria-hidden="true"></fw-icon>
+        </fw-button>
+        <div class="sidebar-inner">
+          <div class="sidebar-head">
           <div class="sidebar-brand">
-            <span class="sidebar-brand-icon" aria-hidden="true">🦁</span>
+            <span class="sidebar-brand-icon" aria-hidden="true">SP</span>
             <span class="sidebar-brand-text">SE Singha Paathai</span>
           </div>
-          <button id="sidebar-collapse" class="sidebar-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true">‹</button>
-          <button id="sidebar-close" class="sidebar-close" type="button" aria-label="Close menu">×</button>
-        </div>
-        <div class="sidebar-user">
+          <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
+          </div>
+          <div class="sidebar-user">
           <span id="sidebar-user-avatar" class="sidebar-user-avatar" aria-hidden="true"></span>
           <div class="sidebar-user-text">
             <span id="sidebar-user-name" class="sidebar-user-name"></span>
@@ -74,114 +106,201 @@
           </div>
         </div>
         <nav class="sidebar-nav" role="navigation">
-          <button type="button" class="nav-item" data-view="dashboard" data-role="se" title="My dashboard">
-            <span class="nav-icon" aria-hidden="true">🚀</span>
+          <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="My dashboard">
+            <fw-icon slot="before-label" class="nav-icon" name="nav-dashboard" size="16"></fw-icon>
             <span class="nav-label">My dashboard</span>
-          </button>
-          <button type="button" class="nav-item" data-view="coaching" data-role="se" title="My coaching">
-            <span class="nav-icon" aria-hidden="true">📈</span>
-            <span class="nav-label">My coaching</span>
-          </button>
-          <button type="button" class="nav-item" data-view="manager" data-role="manager" title="Manager dashboard" hidden>
-            <span class="nav-icon" aria-hidden="true">👥</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
+            <span class="nav-label">Pre-call</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call">
+            <fw-icon slot="before-label" class="nav-icon" name="phone" size="16"></fw-icon>
+            <span class="nav-label">Post-call</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Manager dashboard" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
             <span class="nav-label">Manager dashboard</span>
-          </button>
-          <button type="button" class="nav-item" data-view="workspace" title="One-pagers">
-            <span class="nav-icon" aria-hidden="true">📄</span>
-            <span class="nav-label">One-pagers</span>
-          </button>
+          </fw-button>
         </nav>
-        <div class="sidebar-history">
+        <div class="sidebar-recent-work">
           <h3 class="sidebar-history-title">
-            <span class="sidebar-history-icon" aria-hidden="true">🕐</span>
-            <span class="sidebar-history-label">History</span>
+            <fw-icon class="sidebar-history-icon" name="calendar-time" size="14"></fw-icon>
+            <span class="sidebar-history-label">Recent work</span>
           </h3>
-          <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing history…</p>
-          <ul id="sidebar-history-list" class="sidebar-history-list"></ul>
-          <p id="sidebar-history-empty" class="muted sidebar-history-empty">No recordings yet.</p>
+          <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing…</p>
+          <div class="sidebar-recent-section">
+            <h4 class="sidebar-recent-subtitle">Discovery briefs</h4>
+            <ul id="sidebar-prep-list" class="sidebar-history-list"></ul>
+            <p id="sidebar-prep-empty" class="muted sidebar-history-empty">No discovery briefs yet.</p>
+          </div>
+          <div class="sidebar-recent-section">
+            <h4 class="sidebar-recent-subtitle">Call reviews</h4>
+            <ul id="sidebar-call-list" class="sidebar-history-list"></ul>
+            <p id="sidebar-call-empty" class="muted sidebar-history-empty">No call reviews yet.</p>
+          </div>
         </div>
         <div class="sidebar-foot">
-          <button id="logout-btn" class="ghost sidebar-logout" type="button" title="Log out">
-            <span class="nav-icon" aria-hidden="true">⎋</span>
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
+            <span class="nav-label">Feedback</span>
+          </fw-button>
+          <fw-button id="logout-btn" class="sidebar-logout" color="secondary" fill="clear" title="Log out">
+            <fw-icon slot="before-label" class="nav-icon" name="arrow-left" size="16"></fw-icon>
             <span class="nav-label">Log out</span>
-          </button>
+          </fw-button>
+        </div>
         </div>
       </aside>
       <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
 
       <div class="app-main">
         <header class="main-topbar">
-          <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Open menu">☰</button>
-          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true">🦁</span>
+          <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
+          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
           <span id="main-view-title" class="main-view-title">My dashboard</span>
-          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">🌙</button>
+          <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </header>
 
-        <div id="worker-warning" class="status err wrap-banner" hidden></div>
+        <fw-inline-message id="worker-warning" class="wrap-banner worker-banner" type="error" closable="false" hidden></fw-inline-message>
 
         <main class="main-content">
-          <!-- SE Dashboard (launchpad) -->
-          <section id="view-dashboard" class="view-panel"></section>
-
-          <!-- SE Coaching -->
-          <section id="view-coaching" class="view-panel" hidden></section>
+          <!-- SE Dashboard (Overview + Coaching tabs) -->
+          <section id="view-dashboard" class="view-panel">
+            <fw-tabs id="dash-tabs" class="dash-tabs" active-tab-name="overview">
+              <fw-tab slot="tab" panel="overview">Overview</fw-tab>
+              <fw-tab slot="tab" panel="coaching">Coaching</fw-tab>
+              <fw-tab-panel name="overview">
+                <div id="dash-tab-overview" class="dash-tab-panel tab-active" role="tabpanel"></div>
+              </fw-tab-panel>
+              <fw-tab-panel name="coaching">
+                <div id="dash-tab-coaching" class="dash-tab-panel" role="tabpanel"></div>
+              </fw-tab-panel>
+            </fw-tabs>
+          </section>
 
           <!-- Manager dashboard -->
           <section id="view-manager" class="view-panel" hidden></section>
 
-          <!-- Discovery + Post-call workspace -->
-          <section id="view-workspace" class="view-panel" hidden>
-            <nav class="app-tabs" role="tablist" aria-label="One-pager type">
-              <button type="button" class="app-tab active" data-tab="discovery" role="tab" aria-selected="true">Discovery</button>
-              <button type="button" class="app-tab" data-tab="postcall" role="tab" aria-selected="false">Post-call</button>
-            </nav>
-
-            <div id="tab-discovery" class="tab-panel tab-active" role="tabpanel">
-              <form id="prep-form" class="card form-panel">
-                <h1>Discovery</h1>
-                <p class="muted">Enter the prospect's company and email — we'll research and draft the brief.</p>
-                <div class="grid2">
-                  <label>Company name
-                    <input id="companyName" type="text" placeholder="GetGo" required />
-                  </label>
-                  <label>Prospect email
-                    <input id="prospectEmail" type="email" placeholder="farhan@getgo.sg" required />
-                    <span id="domain-hint" class="field-hint" hidden></span>
-                  </label>
+          <!-- Pre-call -->
+          <section id="view-precall" class="view-panel" hidden>
+            <div id="prep-form-view" class="prep-form-wrap">
+              <div class="prep-form-center">
+                <div class="prep-form-heading">
+                  <h1>Prep for your next call</h1>
+                  <p class="muted">Drop in a company and a prospect email — we'll research the account and draft your discovery + demo brief.</p>
                 </div>
-                <label>Additional context <span class="opt">(RH answers, notes, meeting type)</span>
-                  <textarea id="additionalContext" rows="5" placeholder="Paste Roundhouse answers, AE notes, or meeting context here…"></textarea>
-                </label>
-                <button id="generate" class="primary" type="submit">Generate prep</button>
-              </form>
-              <div id="prep-status" class="status" hidden></div>
-              <article id="prep-result" class="card result one-pager" hidden></article>
-              <section id="history-section" class="card form-panel" hidden>
-                <h2>Recent preps</h2>
-                <ul id="history" class="history"></ul>
-              </section>
+                <fw-card class="prep-form-card">
+                  <form id="prep-form">
+                    <div class="prep-form-grid">
+                      <fw-input id="companyName" label="Company" type="text" placeholder="endurancedoors" required clear-input></fw-input>
+                      <div class="prep-email-field">
+                        <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Separate multiple emails with commas — we research each contact" required clear-input></fw-input>
+                        <fw-tooltip content="Add everyone on the call, e.g. alex@acme.com, sam@acme.com. Each person appears in the Prospect information column.">
+                          <span class="prep-email-tip muted">Multiple emails supported</span>
+                        </fw-tooltip>
+                        <span id="domain-hint" class="field-hint" hidden></span>
+                      </div>
+                    </div>
+                    <fw-textarea
+                      id="additionalContext"
+                      label="Additional context"
+                      hint-text="Optional · AE notes, Roundhouse answers"
+                      rows="4"
+                      placeholder="Paste AE notes, Roundhouse answers, or meeting type…"
+                    ></fw-textarea>
+                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Generate brief</fw-button>
+                  </form>
+                </fw-card>
+                <p class="prep-form-footnote">Signals pulled from website, LinkedIn, funding records &amp; traffic estimates.</p>
+              </div>
             </div>
+            <div id="prep-status" class="status" hidden></div>
+            <div id="prep-legacy-fallback" hidden></div>
+            <div id="prep-result-view" hidden>
+              <div id="prep-result-header" class="prep-result-header"></div>
+              <fw-tabs id="prep-tabs" active-tab-name="discovery">
+                <fw-tab slot="tab" panel="discovery">Discovery</fw-tab>
+                <fw-tab slot="tab" panel="demo">Demo prep</fw-tab>
+                <fw-tab-panel name="discovery">
+                  <div class="prep-tab-panel-wrap">
+                    <div id="prep-tab-discovery"></div>
+                  </div>
+                </fw-tab-panel>
+                <fw-tab-panel name="demo">
+                  <div class="prep-tab-panel-wrap">
+                    <div id="prep-tab-demo"></div>
+                  </div>
+                </fw-tab-panel>
+              </fw-tabs>
+            </div>
+            <div id="prep-source-popover" hidden></div>
+          </section>
 
-            <div id="tab-postcall" class="tab-panel" role="tabpanel" hidden>
-              <form id="postcall-form" class="card form-panel">
-                <h1>Post-call</h1>
-                <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
-                <label>Zoom recording link
-                  <input id="pc-recording-url" type="text" required placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123" />
-                </label>
-                <label>Passcode <span class="opt">(only if not in the link above)</span>
-                  <input id="pc-recording-pwd" type="password" placeholder="From Zoom email" autocomplete="off" />
-                </label>
-                <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
-                <button id="analyze-call" class="primary" type="submit">Analyze call</button>
-              </form>
-              <div id="postcall-status" class="status" hidden></div>
-              <article id="postcall-result" class="card result one-pager" hidden></article>
+          <!-- Post-call -->
+          <section id="view-postcall" class="view-panel" hidden>
+            <div id="postcall-form-view" class="prep-form-wrap">
+              <div class="prep-form-center">
+                <div class="prep-form-heading">
+                  <h1>Post-call analysis</h1>
+                  <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
+                </div>
+                <fw-card class="prep-form-card">
+                  <form id="postcall-form">
+                    <fw-input
+                      id="pc-recording-url"
+                      label="Zoom recording link"
+                      type="text"
+                      required
+                      placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
+                      clear-input
+                    ></fw-input>
+                    <fw-input
+                      id="pc-recording-pwd"
+                      label="Passcode"
+                      hint-text="Only if not in the link above"
+                      type="password"
+                      placeholder="From Zoom email"
+                      autocomplete="off"
+                      clear-input
+                    ></fw-input>
+                    <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
+                    <fw-button id="analyze-call" color="primary" type="submit" style="width:100%;margin-top:14px">Analyze call</fw-button>
+                  </form>
+                </fw-card>
+                <p class="prep-form-footnote">Transcript pulled from Zoom — analysis usually takes 10–25 seconds.</p>
+              </div>
             </div>
+            <div id="postcall-status" class="status" hidden></div>
+            <fw-card id="postcall-result" class="result one-pager postcall-result-card" hidden></fw-card>
           </section>
         </main>
       </div>
     </div>
+
+    <fw-modal id="feedback-modal" title-text="Send feedback" is-open="false">
+      <fw-modal-content>
+        <form id="feedback-form" class="feedback-form">
+          <fw-select id="feedback-category" label="Category" value="idea">
+            <fw-select-option value="bug">Bug</fw-select-option>
+            <fw-select-option value="idea">Idea</fw-select-option>
+            <fw-select-option value="data">Data quality</fw-select-option>
+          </fw-select>
+          <fw-textarea
+            id="feedback-text"
+            label="Your feedback"
+            rows="5"
+            placeholder="What worked, what didn't, or what you'd like to see…"
+            required
+          ></fw-textarea>
+          <div class="feedback-actions">
+            <fw-button id="feedback-close" type="button" color="secondary" fill="outline">Cancel</fw-button>
+            <fw-button id="feedback-submit" type="submit" color="primary">Submit</fw-button>
+          </div>
+          <p id="feedback-status" class="status" hidden></p>
+        </form>
+      </fw-modal-content>
+    </fw-modal>
 
     <footer class="site-footer">
       <a href="./about.html" target="_blank" rel="noopener noreferrer">Read about the project</a>

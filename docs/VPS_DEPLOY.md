@@ -6,8 +6,8 @@ Host **SE Singha Paathai** on your own server instead of running the worker on a
 
 | Public URL | Service |
 |------------|---------|
-| https://lionpath.benjaminsquare.com | Web UI |
-| https://lionpathapi.benjaminsquare.com | Worker API |
+| https://portal.benjaminsquare.com | Web UI |
+| https://portalapi.benjaminsquare.com | Worker API |
 
 ---
 
@@ -38,16 +38,16 @@ Point both hostnames to your VPS public IP (e.g. `89.58.33.163`):
 
 | Type | Name | Value | Proxy |
 |------|------|-------|-------|
-| A | `lionpath` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
-| A | `lionpathapi` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
+| A | `portal` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
+| A | `portalapi` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
 
 **Important:** Both records must be **DNS only** — not proxied through Cloudflare (orange cloud). Caddy on the VPS obtains Let's Encrypt certificates directly; proxied records route traffic to Cloudflare IPs and break HTTPS + CORS.
 
 Verify after propagation:
 
 ```bash
-nslookup lionpath.benjaminsquare.com
-nslookup lionpathapi.benjaminsquare.com
+nslookup portal.benjaminsquare.com
+nslookup portalapi.benjaminsquare.com
 ```
 
 Both should return your VPS IP (e.g. `89.58.33.163`), not Cloudflare proxy IPs (`104.21.x.x`).
@@ -125,17 +125,17 @@ docker compose logs -f worker
 
 ```bash
 # API health / config
-curl -s https://lionpathapi.benjaminsquare.com/api/config | head
+curl -s https://portalapi.benjaminsquare.com/api/config | head
 
 # Web UI
-curl -s -o /dev/null -w "%{http_code}\n" https://lionpath.benjaminsquare.com
+curl -s -o /dev/null -w "%{http_code}\n" https://portal.benjaminsquare.com
 ```
 
 In a browser:
 
-1. Open **https://lionpath.benjaminsquare.com**
+1. Open **https://portal.benjaminsquare.com**
 2. Log in with demo credentials (`se@freshworks.com` / `se123`)
-3. Run a post-call analysis — Network tab should call `lionpathapi.benjaminsquare.com`
+3. Run a post-call analysis — Network tab should call `portalapi.benjaminsquare.com`
 4. Reload and check **History** — entries persist via file storage on the VPS
 
 ---
@@ -173,8 +173,8 @@ docker compose restart caddy
 Internet
    │
    ▼
-Caddy :443 ──┬── lionpath.benjaminsquare.com ──► nginx :8788 (static web/)
-             └── lionpathapi.benjaminsquare.com ──► worker :8787 (Node + Gemini)
+Caddy :443 ──┬── portal.benjaminsquare.com ──► nginx :8788 (static web/)
+             └── portalapi.benjaminsquare.com ──► worker :8787 (Node + Gemini)
                                                         │
                                                         ▼
                                               /var/lib/se-paathai/history/
@@ -200,9 +200,9 @@ ufw status
 | Problem | Fix |
 |---------|-----|
 | Certificate error on first start | DNS not propagated — wait and `docker compose restart caddy` |
-| `nslookup` shows Cloudflare IPs for API | Set `lionpathapi` A record to **DNS only** (grey cloud), not proxied |
+| `nslookup` shows Cloudflare IPs for API | Set `portalapi` A record to **DNS only** (grey cloud), not proxied |
 | `Failed to fetch` in browser | Worker down — `docker compose logs worker` |
-| CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://lionpath.benjaminsquare.com` |
+| CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://portal.benjaminsquare.com` |
 | History empty after reload | Check `HISTORY_FILE_DIR` and volume mount; `ls -la /var/lib/se-paathai/history` |
 | 502 from Caddy | `docker compose ps` — ensure worker and web are healthy |
 

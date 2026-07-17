@@ -7,8 +7,6 @@
  * Force replay without clearing cookie: index.html?splash=1
  */
 
-import { playRoar } from "./lion-roar.js";
-
 const COOKIE_NAME = "lionpath_splash_seen";
 const SPLASH_MS = 2000;
 
@@ -42,8 +40,6 @@ function runSplash() {
   el.hidden = false;
   el.classList.add("lion-splash-active");
   document.body.classList.add("splash-lock");
-
-  window.setTimeout(() => playRoar({ short: true }), 600);
 
   window.setTimeout(() => {
     el.classList.add("lion-splash-fade");

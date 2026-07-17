@@ -37,7 +37,10 @@ export function initSidebar() {
     appShell?.classList.toggle("sidebar-is-collapsed", collapsed);
     collapseBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     collapseBtn.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-    collapseBtn.textContent = collapsed ? "›" : "‹";
+    const icon = collapseBtn.querySelector(".sidebar-collapse-icon");
+    if (icon) {
+      icon.setAttribute("name", collapsed ? "chevron-right" : "chevron-left");
+    }
   }
 
   function setCollapsed(collapsed) {
@@ -47,7 +50,7 @@ export function initSidebar() {
     applyCollapsed(collapsed);
   }
 
-  collapseBtn.addEventListener("click", () => {
+  collapseBtn.addEventListener("fwClick", () => {
     setCollapsed(!sidebar.classList.contains("sidebar-collapsed"));
   });
 

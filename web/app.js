@@ -1,6 +1,7 @@
-import { playRoar, triggerSignInPulse } from "./lion-roar.js";
+import { readFieldValue, readFieldValueAsync } from "./crayons-ui.js";
+import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
-import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
+import { initFeedback } from "./feedback.js";
 import {
   authMode,
   getSession,
@@ -11,10 +12,22 @@ import {
   isManagerRole,
 } from "./auth.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
+import {
+  syncTasksOnLogin,
+  syncTasksAfterActivity,
+  setTasksAuthGetter,
+  clearTasksAuthGetter,
+} from "./tasks.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
-import { pickDemoLinks } from "./demo-links.js";
+import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
+import {
+  initPrecall,
+  loadLocalBriefs,
+  openPrepBrief,
+  parseProspectEmails,
+} from "./precall.js";
 import {
   displayPostCall,
   onSessionReady,
@@ -24,7 +37,7 @@ import {
 
 const authEnabled = !!firebaseConfig.projectId;
 const PREP_URL = `${WORKER_BASE_URL}/api/generate-prep`;
-const TAB_STORAGE_KEY = "lionpath-active-tab";
+const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
   "Start the worker in another terminal: cd worker → npm.cmd run dev (look for Ready on port 8787). " +
@@ -33,14 +46,15 @@ const WORKER_DOWN_MSG =
 let fb = null;
 let currentSession = null;
 let currentView = "dashboard";
+let currentDashTab = "overview";
 
 const $ = (id) => document.getElementById(id);
 const show = (el, on = true) => { el.hidden = !on; };
 
 const VIEW_TITLES = {
   dashboard: "My dashboard",
-  coaching: "My coaching",
-  workspace: "One-pagers",
+  precall: "Pre-call",
+  postcall: "Post-call",
   manager: "Manager dashboard",
 };
 
@@ -48,15 +62,6 @@ function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
-const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
-
-function truncateWords(text, max) {
-  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
-  if (words.length <= max) return esc(words.join(" "));
-  return `${esc(words.slice(0, max).join(" "))}<span class="trunc-ellipsis">…</span>`;
-}
-
 const emailDomain = (email) => {
   const at = String(email || "").lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
@@ -80,7 +85,9 @@ function suggestDomainFromCompany(companyName) {
   return null;
 }
 
-function validateProspectDomain(email, companyName) {
+function validateProspectDomain(emailRaw, companyName) {
+  const emails = parseProspectEmails(emailRaw);
+  const email = emails[0] || String(emailRaw || "").trim();
   const domain = emailDomain(email);
   if (!email?.trim()) return null;
   const hints = [];
@@ -102,7 +109,7 @@ function validateProspectDomain(email, companyName) {
 function updateDomainHint() {
   const hint = $("domain-hint");
   if (!hint) return;
-  const msg = validateProspectDomain($("prospectEmail")?.value, $("companyName")?.value);
+  const msg = validateProspectDomain(readFieldValue($("prospectEmail")), readFieldValue($("companyName")));
   if (msg) {
     hint.textContent = msg;
     hint.className = "field-hint warn";
@@ -112,122 +119,72 @@ function updateDomainHint() {
   }
 }
 
-function gapDot(gap) {
-  const cls = gap === "large" ? "gap-large" : gap === "parity" ? "gap-parity" : "gap-partial";
-  const label = gap === "large" ? "Large gap" : gap === "parity" ? "Parity" : "Partial gap";
-  return `<span class="gap-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
+function getStoredDashTab() {
+  const t = localStorage.getItem(DASH_TAB_STORAGE_KEY);
+  return t === "coaching" ? "coaching" : "overview";
 }
 
-function gapCell(row) {
-  const verdict = String(row.gapVerdict || "").trim() || (row.gap === "large" ? "Behind" : row.gap === "parity" ? "Aligned" : "Partial");
-  return `<span class="gap-verdict">${esc(verdict)}</span> ${gapDot(row.gap)}`;
+function setStoredDashTab(tab) {
+  localStorage.setItem(DASH_TAB_STORAGE_KEY, tab);
 }
 
-function decisionDot(power) {
-  const cls =
-    power === "decision_maker" ? "dot-green" : power === "influencer" ? "dot-grey" : "dot-red";
-  const label =
-    power === "decision_maker" ? "Decision maker" : power === "influencer" ? "Influencer" : "Unknown";
-  return `<span class="power-dot ${cls}" title="${label}" aria-label="${label}"></span>`;
+function switchDashboardTab(tab) {
+  const normalized = tab === "coaching" ? "coaching" : "overview";
+  currentDashTab = normalized;
+
+  const dashTabs = $("dash-tabs");
+  if (dashTabs && dashTabs.activeTabName !== normalized) {
+    dashTabs.activeTabName = normalized;
+  }
+
+  setStoredDashTab(normalized);
+
+  if (currentView === "dashboard" && currentSession?.email && !isManagerRole(currentSession)) {
+    void renderDashboardPanels(currentSession.email, dashboardOpts());
+  }
+
+  if (currentView === "dashboard") {
+    const hashBase = normalized === "coaching" ? "dashboard/coaching" : "dashboard";
+    history.replaceState(null, "", `#${hashBase}`);
+  }
 }
 
-function isV5Prep(p) {
-  if (p?.supportMaturity || p?.businessContext?.signals || p?.businessContext?.workflows) return false;
-  return !!(
-    p?.incumbent?.displacement &&
-    p?.companySizeAgents &&
-    p?.businessContext?.market &&
-    Array.isArray(p?.fitSnapshot) &&
-    p.fitSnapshot.length >= 1
-  );
-}
-
-const DISPLACEMENT_LABELS = {
-  greenfield: "Greenfield",
-  homegrown: "Homegrown",
-  entrenched: "Entrenched",
-};
-
-function sectionLabelRow(label) {
-  return `<tr class="section-label"><td colspan="4">${esc(label)}</td></tr>`;
-}
-
-function factRow(label, valueHtml) {
-  return `<tr class="fact-row"><th class="fact-label">${esc(label)}</th><td colspan="3" class="fact-value">${valueHtml}</td></tr>`;
-}
-
-function incumbentFact(inc) {
-  const disp = inc.displacement || "greenfield";
-  return `${truncateWords(inc.incumbent_name, 8)} <span class="displacement-badge displacement-${esc(disp)}">${esc(DISPLACEMENT_LABELS[disp] || disp)}</span>`;
-}
-
-// ---------- Tabs ----------
-
-function getStoredTab() {
-  const t = localStorage.getItem(TAB_STORAGE_KEY);
-  return t === "postcall" ? "postcall" : "discovery";
-}
-
-function setStoredTab(tab) {
-  localStorage.setItem(TAB_STORAGE_KEY, tab);
-}
-
-function switchWorkspaceTab(tab) {
-  const discovery = tab === "discovery";
-  const panels = { discovery: $("tab-discovery"), postcall: $("tab-postcall") };
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  Object.entries(panels).forEach(([key, el]) => {
-    const showPanel = key === (discovery ? "discovery" : "postcall");
-    if (showPanel) {
-      show(el, true);
-      el.classList.remove("tab-exit");
-      el.classList.add("tab-enter");
-      if (!reduceMotion) {
-        requestAnimationFrame(() => {
-          el.classList.remove("tab-enter");
-          el.classList.add("tab-active");
-        });
-      } else {
-        el.classList.remove("tab-enter");
-        el.classList.add("tab-active");
-      }
-    } else if (!el.hidden) {
-      if (reduceMotion) {
-        show(el, false);
-        el.classList.remove("tab-active", "tab-exit", "tab-enter");
-      } else {
-        el.classList.remove("tab-active");
-        el.classList.add("tab-exit");
-        setTimeout(() => {
-          show(el, false);
-          el.classList.remove("tab-exit", "tab-enter");
-        }, 220);
-      }
-    }
-  });
-
-  document.querySelectorAll(".app-tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tab === tab);
-    btn.setAttribute("aria-selected", btn.dataset.tab === tab ? "true" : "false");
-  });
-  setStoredTab(tab);
+function buildFetchRemotePreps() {
+  if (!authEnabled || !fb?.auth?.currentUser || !fb?.db) return undefined;
+  return async () => {
+    const user = fb.auth.currentUser;
+    const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
+    const snap = await fb.getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      const when = data.createdAt?.toDate?.()?.toLocaleDateString?.() || "";
+      return { id: d.id, company: data.company, when };
+    });
+  };
 }
 
 function dashboardOpts() {
   return {
     seName: currentSession?.name,
+    fetchRemotePreps: buildFetchRemotePreps(),
     onOpenCall: (id) => openHistoryItem(id),
     onPrep: () => {
       switchView("precall");
     },
     onAnalyze: () => {
-      switchView("analysis");
+      switchView("postcall");
     },
     onCoaching: () => {
-      switchView("coaching");
+      switchView("dashboard", { dashTab: "coaching" });
     },
   };
+}
+
+async function renderDashboardPanels(email, opts = {}) {
+  await renderDashboard($("dash-tab-overview"), email, opts);
+  renderCoaching($("dash-tab-coaching"), email, {
+    onOpenCall: opts.onOpenCall || ((id) => openHistoryItem(id)),
+  });
 }
 
 function updateNavForRole() {
@@ -248,83 +205,74 @@ function refreshActiveDashboard() {
     return;
   }
   if (currentView === "dashboard") {
-    renderDashboard($("view-dashboard"), currentSession.email, dashboardOpts());
-  } else if (currentView === "coaching") {
-    renderCoaching($("view-coaching"), currentSession.email, {
-      onOpenCall: (id) => openHistoryItem(id),
-    });
+    void renderDashboardPanels(currentSession.email, dashboardOpts());
   }
 }
 
 // ---------- Views ----------
 
-function switchView(name) {
+function normalizeViewName(name) {
+  if (name === "analysis" || name === "workspace") return "postcall";
+  return name;
+}
+
+function switchView(name, opts = {}) {
+  if (name === "coaching" || name === "dashboard/coaching") {
+    opts = { dashTab: "coaching", ...opts };
+    name = "dashboard";
+  }
+  name = normalizeViewName(name);
+  currentView = name;
   const isManager = isManagerRole(currentSession);
   const panels = {
     dashboard: $("view-dashboard"),
-    coaching: $("view-coaching"),
-    workspace: $("view-workspace"),
+    precall: $("view-precall"),
+    postcall: $("view-postcall"),
     manager: $("view-manager"),
   };
 
   if (isManager) {
-    if (name === "dashboard" || name === "coaching") name = "manager";
+    if (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall") {
+      name = "manager";
+    }
   } else if (name === "manager") {
     name = "dashboard";
   }
 
-  if (name === "analysis") {
-    name = "workspace";
-    switchWorkspaceTab("postcall");
-  } else if (name === "precall") {
-    name = "workspace";
-    switchWorkspaceTab("discovery");
-  }
-
-  currentView = name;
-
-  Object.entries(panels).forEach(([key, el]) => {
-    if (el) show(el, key === name);
-  });
-
-  const titleEl = $("main-view-title");
-  if (titleEl) titleEl.textContent = VIEW_TITLES[name] || name;
+  Object.entries(panels).forEach(([key, el]) => show(el, key === name));
+  $("main-view-title").textContent = VIEW_TITLES[name] || name;
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
 
-  const email = currentSession?.email || "";
   if (name === "dashboard" && !isManager) {
-    renderDashboard($("view-dashboard"), email, dashboardOpts());
-  } else if (name === "coaching" && !isManager) {
-    renderCoaching($("view-coaching"), email, {
-      onOpenCall: (id) => openHistoryItem(id),
-    });
+    const dashTab = opts.dashTab || currentDashTab || getStoredDashTab();
+    switchDashboardTab(dashTab);
   } else if (name === "manager" && isManager) {
     renderManagerDashboard($("view-manager"));
   }
 
-  history.replaceState(null, "", `#${name}`);
+  const hash =
+    name === "dashboard" && currentDashTab === "coaching"
+      ? "dashboard/coaching"
+      : name;
+  history.replaceState(null, "", `#${hash}`);
   closeSidebar();
 }
 
 function openHistoryItem(id) {
   const record = getPostCallAnalysis(currentSession.email, id);
   if (!record?.result) return;
-  switchView("workspace");
-  switchWorkspaceTab("postcall");
+  switchView("postcall");
   displayPostCall(record.result, { title: record.title });
-  document.querySelectorAll(".sidebar-history-item").forEach((el) => {
+  document.querySelectorAll(".sidebar-call-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
   });
 }
 
 function clearSidebarHistory() {
-  const ul = $("sidebar-history-list");
-  const empty = $("sidebar-history-empty");
-  if (ul) ul.innerHTML = "";
-  if (empty) show(empty, true);
+  clearSidebarRecentWork();
 }
 
 function refreshDashboardFromStorage() {
@@ -344,56 +292,105 @@ async function loadPersistedHistory() {
   setSidebarHistorySyncing(true);
   try {
     const list = await syncHistoryOnLogin(currentSession.email);
+    await syncTasksOnLogin(currentSession.email);
+    await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
     refreshSidebarHistory();
-    refreshDashboardFromStorage();
     const count = list.length;
     console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
     return count;
   } catch (err) {
     console.warn("[app] history sync failed:", err);
     refreshSidebarHistory();
-    refreshDashboardFromStorage();
     return listPostCallAnalyses(currentSession.email).length;
   } finally {
     setSidebarHistorySyncing(false);
   }
 }
 
-function refreshSidebarHistory() {
+function openPrepBriefItem(id) {
+  if (!openPrepBrief(id)) return;
+  switchView("precall");
+  document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.id === id);
+  });
+}
+
+function clearSidebarRecentWork() {
+  const prepList = $("sidebar-prep-list");
+  const callList = $("sidebar-call-list");
+  const prepEmpty = $("sidebar-prep-empty");
+  const callEmpty = $("sidebar-call-empty");
+  if (prepList) prepList.innerHTML = "";
+  if (callList) callList.innerHTML = "";
+  if (prepEmpty) show(prepEmpty, true);
+  if (callEmpty) show(callEmpty, true);
+}
+
+function refreshSidebarRecentWork() {
   if (!currentSession?.email) {
-    clearSidebarHistory();
-    return;
-  }
-  const list = listPostCallAnalyses(currentSession.email);
-  const ul = $("sidebar-history-list");
-  const empty = $("sidebar-history-empty");
-
-  if (!list.length) {
-    ul.innerHTML = "";
-    show(empty, true);
+    clearSidebarRecentWork();
     return;
   }
 
-  show(empty, false);
-  ul.innerHTML = list
-    .slice(0, 20)
-    .map((r) => {
-      const when = r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "";
-      const qc = r.analysis?.qualityCoach;
-      const score = qc ? normalizeQualityCoach(qc).overallScore : null;
-      const scoreBadge = score != null ? `<span class="hist-score">${score}/10</span>` : "";
-      return `<li>
-        <button type="button" class="sidebar-history-item" data-id="${esc(r.id)}" title="${esc(r.title)}">
+  const briefs = loadLocalBriefs().slice(0, 5);
+  const calls = listPostCallAnalyses(currentSession.email).slice(0, 5);
+
+  const prepList = $("sidebar-prep-list");
+  const callList = $("sidebar-call-list");
+  const prepEmpty = $("sidebar-prep-empty");
+  const callEmpty = $("sidebar-call-empty");
+
+  if (prepList) {
+    if (!briefs.length) {
+      prepList.innerHTML = "";
+      show(prepEmpty, true);
+    } else {
+      show(prepEmpty, false);
+      prepList.innerHTML = briefs
+        .map(
+          (b) => `<li>
+        <fw-button class="sidebar-history-item sidebar-prep-item" color="secondary" fill="clear" data-id="${esc(b.id)}" title="${esc(b.company || "Brief")}">
+          <span class="hist-title">${esc(b.company || "Account")}</span>
+          <span class="hist-meta"><span class="hist-when">${esc(b.when || "")}</span></span>
+        </fw-button>
+      </li>`,
+        )
+        .join("");
+      prepList.querySelectorAll(".sidebar-prep-item").forEach((btn) => {
+        btn.addEventListener("fwClick", () => openPrepBriefItem(btn.dataset.id));
+      });
+    }
+  }
+
+  if (callList) {
+    if (!calls.length) {
+      callList.innerHTML = "";
+      show(callEmpty, true);
+    } else {
+      show(callEmpty, false);
+      callList.innerHTML = calls
+        .map((r) => {
+          const when = r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "";
+          const qc = r.analysis?.qualityCoach;
+          const score = qc ? normalizeQualityCoach(qc).overallScore : null;
+          const scoreBadge = score != null ? `<span class="hist-score">${score}/10</span>` : "";
+          return `<li>
+        <fw-button class="sidebar-history-item sidebar-call-item" color="secondary" fill="clear" data-id="${esc(r.id)}" title="${esc(r.title)}">
           <span class="hist-title">${esc(r.title)}</span>
           <span class="hist-meta">${scoreBadge}<span class="hist-when">${esc(when)}</span></span>
-        </button>
+        </fw-button>
       </li>`;
-    })
-    .join("");
+        })
+        .join("");
+      callList.querySelectorAll(".sidebar-call-item").forEach((btn) => {
+        btn.addEventListener("fwClick", () => openHistoryItem(btn.dataset.id));
+      });
+    }
+  }
+}
 
-  ul.querySelectorAll(".sidebar-history-item").forEach((btn) => {
-    btn.onclick = () => openHistoryItem(btn.dataset.id);
-  });
+function refreshSidebarHistory() {
+  refreshSidebarRecentWork();
 }
 
 function updateSidebarUser() {
@@ -420,253 +417,9 @@ function closeSidebar() {
   show($("sidebar-backdrop"), false);
 }
 
-// ---------- Rendering (Discovery) ----------
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-function initPrepAnimations(root) {
-  if (!root) return;
-  root.classList.add("anim-root");
-  const blocks = root.querySelectorAll(".account-snapshot-wrap, .prep-footer, .momentum-hero");
-  blocks.forEach((el, i) => {
-    el.classList.add("anim-block");
-    el.style.setProperty("--anim-delay", `${i * 50}ms`);
-  });
-
-  root.querySelectorAll(".flow-row").forEach((row, rowIdx) => {
-    row.querySelectorAll(".flow-cell, .flow-arrow").forEach((cell, cellIdx) => {
-      cell.style.setProperty("--flow-delay", `${rowIdx * 140 + cellIdx * 55}ms`);
-    });
-  });
-
-  if (prefersReducedMotion()) {
-    root.classList.add("anim-ready");
-    return;
-  }
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => root.classList.add("anim-ready"));
-  });
-}
-
-function renderPrep(p, meta = {}) {
-  if (!p?.fitSnapshot && (p?.comparison || p?.researchSnapshot || p?.demoPlan)) {
-    return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery brief.</div>`;
-  }
-  if (!isV5Prep(p)) {
-    return `<div class="status err">This prep uses an older format. Regenerate to get the Account Snapshot brief.</div>`;
-  }
-
-  const attendeeChips = (p.attendees || []).length
-    ? (p.attendees || [])
-        .map((a) => {
-          const parts = [`<span class="attendee-chip">${decisionDot(a.decisionPower)}${dash(a.name)}`];
-          if (!isUnknown(a.role)) parts.push(`<span class="chip-role">${truncateWords(a.role, 8)}</span>`);
-          parts.push("</span>");
-          return parts.join(" · ");
-        })
-        .join("")
-    : '<span class="muted">—</span>';
-
-  const snapshot = (p.fitSnapshot || []).slice(0, 3);
-  const focalIdx = snapshot.findIndex((r) => r.gap === "large");
-  const focalRowIdx = focalIdx >= 0 ? focalIdx : 0;
-
-  const fitRows = snapshot
-    .map(
-      (row, idx) => `<tr class="fit-row${idx === focalRowIdx ? " focal-gap-row" : ""}">
-        <th class="prep-row-label">${truncateWords(row.label, 8)}</th>
-        <td>${truncateWords(row.thisCompany, 8)}</td>
-        <td>${truncateWords(row.industryNorm, 8)}</td>
-        <td class="gap-cell">${gapCell(row)}</td>
-      </tr>`,
-    )
-    .join("");
-
-  const inc = p.incumbent || {};
-  const csa = p.companySizeAgents || {};
-  const bc = p.businessContext || {};
-  const agentsVal = `${truncateWords(csa.agents, 8)}${csa.estimated ? ' <span class="est-label">est.</span>' : ""}`;
-
-  const accountFacts = [
-    factRow("Incumbent", incumbentFact(inc)),
-    factRow("Support agents", agentsVal),
-    factRow("Market", dash(bc.market)),
-    factRow("Business model", dash(bc.model)),
-    factRow("Users", dash(bc.users)),
-    factRow("Uptime need", dash(bc.uptimeNeed)),
-    factRow("Funding / parent", dash(bc.fundingParent)),
-    factRow("Head office", dash(bc.headOffice)),
-    factRow("Languages", dash(bc.languages)),
-  ].join("");
-
-  const useCases = (p.industryUseCases || []).filter((x) => !isUnknown(x)).slice(0, 3);
-  const useCaseRows = useCases.length
-    ? useCases.map((u) => `<tr class="use-case-row"><td colspan="4">${truncateWords(u, 10)}</td></tr>`).join("")
-    : `<tr class="use-case-row"><td colspan="4" class="muted">—</td></tr>`;
-
-  const kit = (p.discoveryKit || []).slice(0, 3);
-  const kitHeader = `<tr class="sub-header"><th>Ask this</th><th colspan="3">Because</th></tr>`;
-  const kitRows = kit.length
-    ? kit
-        .map(
-          (item) => `<tr>
-            <td>${truncateWords(item.question, 12)}</td>
-            <td colspan="3" class="because-cell">${truncateWords(item.because, 12)}</td>
-          </tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="4" class="muted">—</td></tr>`;
-
-  const pcv = (p.painCapabilityValue || []).slice(0, 3);
-  const pcvHeader = `<tr class="sub-header"><th>Pain</th><th>Capability</th><th colspan="2">Value</th></tr>`;
-  const pcvRows = pcv.length
-    ? pcv
-        .map(
-          (row) => `<tr>
-            <td>${truncateWords(row.pain, 8)}</td>
-            <td>${truncateWords(row.capability, 8)}</td>
-            <td colspan="2">${truncateWords(row.value, 8)}</td>
-          </tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="4" class="muted">—</td></tr>`;
-
-  const resourcesRow = renderResourcesRow(p);
-
-  const sources = (p.sources || []).length
-    ? `<details class="sources"><summary>Sources (${p.sources.length})</summary><ul>${(p.sources || [])
-        .map((s) => {
-          const url = s.url && !isUnknown(s.url) ? s.url : null;
-          const link = url
-            ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`
-            : '<span class="muted">unknown</span>';
-          return `<li>${truncateWords(s.claim, 12)} — ${link}</li>`;
-        })
-        .join("")}</ul></details>`
-    : "";
-
-  const domain = meta.domain ? esc(meta.domain) : "";
-
-  const accountHeaderRow = `<tr class="account-header-row">
-        <td class="account-company"><span class="one-pager-title">${esc(meta.company || "")}</span></td>
-        <td class="account-domain">${domain || '<span class="muted">—</span>'}</td>
-        <td class="account-desc">${truncateWords(p.description, 15)}</td>
-        <td class="account-attendees"><div class="attendee-chips">${attendeeChips}</div></td>
-      </tr>`;
-
-  return `
-    <div class="toolbar">
-      <button class="ghost" onclick="window.print()">Print / PDF</button>
-      <button class="ghost" id="copy-json">Copy JSON</button>
-    </div>
-    <div class="account-snapshot-wrap">
-      <table class="account-snapshot prep-compare">
-        <tbody>
-          ${accountHeaderRow}
-          ${sectionLabelRow("FIT")}
-          <tr class="col-header"><th>Attribute</th><th>This company</th><th>Industry norm</th><th>Gap</th></tr>
-          ${fitRows}
-          ${sectionLabelRow("Account facts")}
-          ${accountFacts}
-          ${sectionLabelRow("Industry use cases")}
-          ${useCaseRows}
-          ${sectionLabelRow("Discovery kit")}
-          ${kitHeader}
-          ${kitRows}
-          ${sectionLabelRow("Demo prep")}
-          ${pcvHeader}
-          ${pcvRows}
-          ${sectionLabelRow("Resources")}
-          ${resourcesRow}
-        </tbody>
-      </table>
-    </div>
-    <footer class="prep-footer">${sources}</footer>`;
-}
-
-function renderResourcesRow(prep) {
-  const links = pickDemoLinks(prep);
-  if (!links.length) {
-    return `<tr class="resources-row"><td colspan="4" class="muted">—</td></tr>`;
-  }
-  const chips = links
-    .map(
-      (link) =>
-        `<a class="demo-link-chip" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" title="${esc(link.label)}">${esc(link.label)}<span class="demo-link-ext" aria-hidden="true">↗</span></a>`,
-    )
-    .join("");
-  return `<tr class="resources-row"><td colspan="4"><div class="demo-link-chips">${chips}</div></td></tr>`;
-}
-
-function displayPrep(prep, meta) {
-  const result = $("prep-result");
-  result.classList.remove("anim-root", "anim-ready");
-  result.innerHTML = renderPrep(prep, meta || {});
-  show(result, true);
-  initPrepAnimations(result);
-  const copyBtn = $("copy-json");
-  if (copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(JSON.stringify(prep, null, 2));
-  result.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
-}
-
-// ---------- Generate ----------
-
-async function generate(e) {
-  e.preventDefault();
-  const btn = $("generate");
-  const status = $("prep-status");
-  const payload = {
-    companyName: $("companyName").value.trim(),
-    prospectEmail: $("prospectEmail").value.trim(),
-    additionalContext: $("additionalContext").value.trim() || undefined,
-  };
-  const meta = {
-    company: payload.companyName,
-    domain: emailDomain(payload.prospectEmail),
-    additionalContext: payload.additionalContext,
-  };
-  btn.disabled = true;
-  status.className = "status";
-  status.textContent = "Researching the prospect and drafting the brief… usually 15–45 seconds. Please wait.";
-  show(status, true);
-  show($("prep-result"), false);
-  const form = $("prep-form");
-  form?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = true; });
-
-  try {
-    const headers = { "content-type": "application/json" };
-    if (authEnabled && fb?.auth?.currentUser) {
-      headers["Authorization"] = `Bearer ${await fb.auth.currentUser.getIdToken()}`;
-    }
-    const res = await fetch(PREP_URL, { method: "POST", headers, body: JSON.stringify(payload) });
-    const raw = await res.text();
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      throw new Error(raw.slice(0, 300) || `Request failed (${res.status}).`);
-    }
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
-
-    displayPrep(data.prep, meta);
-    show(status, false);
-    if (authEnabled && fb?.auth?.currentUser) await savePrep(payload, data.prep);
-  } catch (err) {
-    status.className = "status err";
-    const msg = err.message || "Something went wrong.";
-    status.textContent =
-      msg === "Failed to fetch" || /network|fetch/i.test(msg) ? WORKER_DOWN_MSG : msg;
-  } finally {
-    btn.disabled = false;
-    $("prep-form")?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = false; });
-  }
-}
-
 // ---------- Firestore prep history (when Firebase enabled) ----------
 
-async function savePrep(input, prep) {
+async function savePrep(input, prep, meta) {
   try {
     const user = fb.auth.currentUser;
     await fb.addDoc(fb.collection(fb.db, "preps"), {
@@ -678,41 +431,8 @@ async function savePrep(input, prep) {
       prep,
       createdAt: fb.serverTimestamp(),
     });
-    await loadPrepHistory();
   } catch (err) {
     console.warn("Could not save to history:", err);
-  }
-}
-
-async function loadPrepHistory() {
-  if (!authEnabled || !fb?.auth?.currentUser) return;
-  const section = $("history-section");
-  try {
-    const user = fb.auth.currentUser;
-    const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
-    const snap = await fb.getDocs(q);
-    const docs = snap.docs
-      .map((d) => d.data())
-      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      .slice(0, 10);
-    if (!docs.length) { show(section, false); return; }
-    $("history").innerHTML = docs
-      .map((d, i) => {
-        const when = d.createdAt?.seconds ? new Date(d.createdAt.seconds * 1000).toLocaleString() : "";
-        return `<li><span><strong>${esc(d.company)}</strong> · ${esc(d.prospectEmail)}</span>
-          <span><button class="link-btn" data-i="${i}">view</button> <span class="when">${esc(when)}</span></span></li>`;
-      })
-      .join("");
-    $("history").querySelectorAll("button[data-i]").forEach((b) =>
-      (b.onclick = () => {
-        const d = docs[Number(b.dataset.i)];
-        switchWorkspaceTab("discovery");
-        displayPrep(d.prep, { company: d.company, domain: emailDomain(d.prospectEmail), additionalContext: d.additionalContext });
-      }));
-    show(section, true);
-  } catch (err) {
-    console.warn("Could not load history:", err);
-    show(section, false);
   }
 }
 
@@ -723,6 +443,7 @@ function showLogin() {
   show($("app-shell"), false);
   currentSession = null;
   clearHistoryAuthGetter();
+  clearTasksAuthGetter();
   clearSidebarHistory();
   onSessionCleared();
 }
@@ -736,7 +457,6 @@ async function showApp(session, opts = {}) {
   updateSidebarUser();
 
   if (opts.freshLogin) {
-    playRoar();
     triggerSignInPulse();
   }
 
@@ -744,19 +464,28 @@ async function showApp(session, opts = {}) {
     ? () => fb.auth.currentUser.getIdToken()
     : null;
   setHistoryAuthGetter(tokenFn);
+  setTasksAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
 
   updateNavForRole();
 
   const defaultView = isManagerRole(session) ? "manager" : "dashboard";
   const hash = location.hash.replace("#", "");
-  const valid = ["dashboard", "coaching", "workspace", "analysis", "precall", "manager"];
-  switchView(valid.includes(hash) ? hash : defaultView);
-  if (hash === "workspace" || hash === "analysis" || hash === "precall" || !hash) {
-    switchWorkspaceTab(getStoredTab());
+  const hashAliases = {
+    coaching: { view: "dashboard", dashTab: "coaching" },
+    "dashboard/coaching": { view: "dashboard", dashTab: "coaching" },
+    analysis: { view: "postcall" },
+    workspace: { view: "postcall" },
+  };
+  const alias = hashAliases[hash];
+  if (alias) {
+    switchView(alias.view, { dashTab: alias.dashTab });
+  } else {
+    const valid = ["dashboard", "precall", "postcall", "manager"];
+    switchView(valid.includes(hash) ? hash : defaultView, {
+      dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
+    });
   }
-  if (authEnabled) loadPrepHistory();
-
   void loadPersistedHistory();
 }
 
@@ -767,21 +496,61 @@ function handleSession(session, opts = {}) {
 
 // ---------- Dummy login ----------
 
-function initDummyAuth() {
-  $("login-form").addEventListener("submit", (e) => {
-    e.preventDefault();
+let loginInFlight = false;
+
+async function submitLogin(e) {
+  if (loginInFlight) return;
+  loginInFlight = true;
+  try {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
     const errEl = $("login-error");
     show(errEl, false);
-    const result = loginDummy($("login-email").value, $("login-password").value);
+
+    const email = await readFieldValueAsync($("login-email"));
+    const password = await readFieldValueAsync($("login-password"));
+
+    if (!email || !password) {
+      errEl.textContent = "Enter email and password.";
+      show(errEl, true);
+      return;
+    }
+
+    const result = loginDummy(email, password);
     if (!result.ok) {
       errEl.textContent = result.error;
       show(errEl, true);
       return;
     }
     handleSession(result.session, { freshLogin: true });
-  });
+  } finally {
+    loginInFlight = false;
+  }
+}
 
-  $("logout-btn").onclick = () => logout();
+function wireLoginHandlers() {
+  $("login-form")?.addEventListener("submit", (e) => {
+    void submitLogin(e);
+  });
+  $("login-submit")?.addEventListener("fwClick", (e) => {
+    void submitLogin(e);
+  });
+  $("login-submit")?.addEventListener("click", (e) => {
+    void submitLogin(e);
+  });
+  $("login-password")?.addEventListener("fwInputEnter", () => {
+    void submitLogin();
+  });
+}
+
+function initDummyAuth() {
+  if (customElements.get("fw-button")) {
+    wireLoginHandlers();
+  } else {
+    customElements.whenDefined("fw-button").then(wireLoginHandlers);
+  }
+
+  $("logout-btn")?.addEventListener("fwClick", () => logout());
 
   const existing = getSession();
   if (existing) handleSession(existing);
@@ -812,20 +581,19 @@ async function initFirebase() {
 
   show($("firebase-signin-block"), true);
 
-  $("signin-google").onclick = async () => {
+  $("signin-google")?.addEventListener("fwClick", async () => {
     show($("signin-error"), false);
     try {
       await fb.signInWithPopup(auth, provider);
-      playRoar();
       triggerSignInPulse();
     }
     catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
-  };
+  });
 
-  $("logout-btn").onclick = async () => {
+  $("logout-btn")?.addEventListener("fwClick", async () => {
     await fb.signOut(auth);
     logout();
-  };
+  });
 
   authMod.onAuthStateChanged(auth, (user) => {
     if (user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`))) {
@@ -857,35 +625,60 @@ async function warnIfWorkerDown() {
 
 function boot() {
   initSidebar();
-  $("prep-form").addEventListener("submit", generate);
+  initFeedback({
+    workerUrl: WORKER_BASE_URL,
+    getEmail: () => currentSession?.email || "",
+    getToken: async () => fb?.auth?.currentUser?.getIdToken(),
+  });
+  initPrecall({
+    prepUrl: PREP_URL,
+    authEnabled,
+    workerDownMsg: WORKER_DOWN_MSG,
+    getToken: async () => fb?.auth?.currentUser?.getIdToken(),
+    switchView,
+    onGenerated: async (payload, prep, meta) => {
+      if (currentSession?.email) {
+        void syncTasksAfterActivity(currentSession.email, {
+          seName: currentSession.name,
+          prepResult: prep,
+          company: payload.companyName,
+        }).then(() => {
+          if (currentView === "dashboard") refreshDashboardFromStorage();
+        });
+      }
+      if (authEnabled && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
+      if (currentView === "dashboard") refreshDashboardFromStorage();
+      refreshSidebarRecentWork();
+    },
+  });
+
+  $("prospectEmail")?.addEventListener("fwInput", updateDomainHint);
   $("prospectEmail")?.addEventListener("input", updateDomainHint);
+  $("companyName")?.addEventListener("fwInput", updateDomainHint);
   $("companyName")?.addEventListener("input", updateDomainHint);
 
-  document.querySelectorAll(".app-tab").forEach((btn) => {
-    btn.onclick = () => {
-      switchWorkspaceTab(btn.dataset.tab);
-      if (btn.dataset.tab === "postcall") {
-        show($("postcall-status"), false);
-      }
-    };
+  const dashTabs = $("dash-tabs");
+  if (dashTabs) {
+    dashTabs.addEventListener("fwChange", (ev) => {
+      const tab = ev.detail?.activeTabName || ev.detail?.tabName || ev.detail?.panel || "overview";
+      switchDashboardTab(tab);
+    });
+  }
+
+  document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
+    btn.addEventListener("fwClick", () => switchView(btn.dataset.view));
   });
 
-  document.querySelectorAll(".nav-item").forEach((btn) => {
-    btn.onclick = () => {
-      if (btn.dataset.view === "workspace") {
-        switchWorkspaceTab(getStoredTab());
-      }
-      switchView(btn.dataset.view);
-    };
-  });
-
-  $("sidebar-toggle").onclick = openSidebar;
-  $("sidebar-close").onclick = closeSidebar;
+  $("sidebar-toggle")?.addEventListener("fwClick", openSidebar);
+  $("sidebar-close")?.addEventListener("fwClick", closeSidebar);
   $("sidebar-backdrop").onclick = closeSidebar;
 
   setOnAnalysisSaved(() => {
-    void loadPersistedHistory().then(() => {
-      if (currentView === "dashboard" || currentView === "coaching" || currentView === "manager") {
+    void loadPersistedHistory().then(async () => {
+      if (currentSession?.email) {
+        await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
+      }
+      if (currentView === "dashboard" || currentView === "manager") {
         refreshDashboardFromStorage();
       }
     });

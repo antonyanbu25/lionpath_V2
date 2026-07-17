@@ -6,6 +6,8 @@
 
 import { isLikelyInvalidDomain, suggestDomain } from "./domain";
 import { FRESHWORKS_KB } from "./kb";
+import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } from "./icp-kb";
+import { CUSTOMER_SERVICE_BENCHMARK_KB } from "./benchmark-kb";
 import { extractJson } from "./json";
 import { PREP_SCHEMA, type Prep } from "./schema";
 import { getProvider } from "./providers";
@@ -17,11 +19,33 @@ export type Env = ProviderEnv;
 export interface PrepInput {
   companyName: string;
   prospectEmail: string;
+  prospectEmails?: string[];
   prospectName?: string;
   additionalContext?: string;
   meetingType?: string;
   ae?: string;
   effort?: string; // optional per-request override (for A/B testing); sanitized below
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+/** Parse comma/semicolon-separated emails; dedupe; cap at 5. */
+export function resolveProspectEmails(input: PrepInput): string[] {
+  const fromArray = (input.prospectEmails || []).map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+  const fromString = String(input.prospectEmail || "")
+    .split(/[,;]+/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const merged = [...fromArray, ...fromString].filter((e) => EMAIL_RE.test(e));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of merged) {
+    if (seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -33,8 +57,9 @@ export function deriveDomain(email: string): string {
 
 function systemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a colleague for an upcoming
-customer discovery + demo call. Research the prospect on the web, then produce a tight, scannable
-SE Discovery one-pager: header strip + ONE Account Snapshot table (top-to-bottom, no extra blocks).
+customer discovery + demo call. Research the prospect on the web, then produce a structured
+Discovery + Demo prep brief for the SE portal wireframe (Account facts, Signals, Fit, Discovery kit,
+Demo script, sandbox checklist).
 
 RESEARCH — be fast and focused (aim for 3–4 searches max):
 - PRIMARY target: the COMPANY NAME (Google-search it first). Prospect email domains are often
@@ -51,50 +76,98 @@ Where you truly can't find something, write "unknown" for string fields (or leav
 FRESHWORKS FACTS — use ONLY the knowledge base below (products, capabilities, industry fit,
 competitor differentiators, reference customers). Do not invent Freshworks facts.
 
-OUTPUT FORMAT — single Account Snapshot table shape (no paragraphs):
-WORD CAPS (strict — max 2 lines per cell when rendered):
-- description: max 15 words.
-- Table cells (fitSnapshot, businessContext, incumbent, companySizeAgents): max 8 words each.
+OUTPUT FORMAT — wireframe brief sections:
+WORD CAPS (strict):
+- description: max 15 words (one-line header).
+- about: max 60 words (account facts paragraph).
+- fitSnapshot / businessContext / incumbent / companySizeAgents cells: max 8 words each.
+- facts[].value: max 12 words; facts[].key from standard list below.
+- signals[].value: max 12 words; signals[].label MUST be exactly one of the six fixed labels.
+- supportJD bullets: max 14 words each; title max 12 words.
+- likelyPains: max 12 words each, max 5 items.
 - discoveryKit question/because: max 12 words each.
-- industryUseCases: max 10 words each, max 3 items.
-- painCapabilityValue cells: max 8 words each — qualitative value ONLY, NO fabricated stats.
-- sources.claim: max 12 words each.
+- industryUseCases: return empty array [] (deprecated).
+- painCapabilityValue: one row per prioritized pain (max 5). pain max 12 words; capability max 8 words; values[] = 2–3 bullets (max 10 words each). At most one values bullet across all rows may cite BENCHMARK KB.
+- icpFit highlights[] and gaps[] max 2 each, max 10 words; frameworkRefs[] max 2, max 8 words. Scannable bullets only.
+- checklist items: max 10 words each, max 6 sandbox setup steps for Freshworks demo.
+- sources[].title: max 12 words; confidence 0–100 integer.
 
-NO-REPEAT RULE — facts in FIT and ACCOUNT FACTS rows must NOT repeat verbatim in discoveryKit
-or painCapabilityValue. Use different angles or omit duplicates.
+NO-REPEAT RULE — facts in FIT and facts[] must NOT repeat verbatim in discoveryKit.
+painCapabilityValue pains SHOULD match likelyPains[] strings; capability and values must use different angles than discoveryKit.
 
-ACCOUNT SNAPSHOT TABLE (fill JSON to match this top-to-bottom layout):
+HEADER: description, about, incumbent, attendees.
 
-HEADER (rendered above table): description, incumbent, attendees.
+FACTS[] — up to 8 rows with keys (in order if known):
+Industry, Head office, Company size, Support team, Business model, Ownership, Parent company, Languages.
+Each row: key, value, sourceLabel referencing sources[].label.
 
-FIT — exactly 3 rows with these labels:
-  Omnichannel Support | AI Deflection | Agent Assist
-Each row: label, thisCompany, industryNorm (max 8 words), gap enum (large|partial|parity),
-gapVerdict (one word with dot, e.g. Behind, Partial, Aligned).
+SIGNALS[] — exactly 6 rows with these labels (verbatim):
+Incumbent tool | Integrations | Web chat widget | AI in their current tech stack | Support portal | Hiring support roles
+Each: label, value, sourceLabel.
 
-ACCOUNT FACTS (businessContext + incumbent + companySizeAgents):
-- incumbent — {incumbent_name, displacement} where displacement is greenfield|homegrown|entrenched.
-- companySizeAgents — {agents, estimated}. Set estimated=true if inferred.
-- businessContext — market, model (business model), users, uptimeNeed, fundingParent, headOffice,
-  languages (max 8 words each).
+PROSPECTS[] — one entry per prospect email provided; research each on LinkedIn/web:
+{ name, role, totalExperience, priorEmployers[], competitorTouchpoints[], sourceLabel }
+Research LinkedIn/careers for role, years experience, prior employers, known Zendesk/Intercom/Zoho use.
+Map attendees[] when sparse; never leave prospects empty.
 
-INDUSTRY USE CASES — max 3 short phrases, max 10 words each.
+ICP FIT — icpFit: { product, verdict, score?, highlights[], gaps[], frameworkRefs[] }
+- product: "Freshdesk Omni" OR "Freshdesk" — choose ONE using AUTHORITATIVE ICP docs below ONLY
+- Score against the SELECTED product ICP doc only
+- verdict: Strong | Moderate | Weak | Unknown — use Unknown if account data insufficient
+- highlights[] and gaps[] MUST cite named framework traits — max 2 each, max 10 words, scannable bullets
+- frameworkRefs[]: 1–2 exact trait/zone names from the chosen ICP doc (verbatim from framework), max 8 words each
+- Never invent ICP criteria outside the AUTHORITATIVE framework blocks below
+- When prospect role matches OMNI PERSONAS KB, align discovery hooks to persona pains (web sources for facts)
 
-DISCOVERY KIT — max 3 pairs of {question, because}:
-- question: max 12 words; because: max 12 words.
+SUPPORT JD — supportJD: { title, sourceLabel, bullets[] up to 4 } from LinkedIn/careers if found.
 
-DEMO PREP — painCapabilityValue, max 3 rows:
-- pain → capability → value (Freshworks angle). Value must be qualitative — never invent ROI %,
-  dollar savings, or metrics not found in research.
+FIT — exactly 3 rows: Support channels | Self Serve | Agent Assist
+Each: label, thisCompany, industryNorm, gap (large|partial|parity), gapVerdict (one word).
 
-ATTENDEES: include prospect contact if known; decisionPower enum:
-decision_maker | influencer | unknown
+Also fill businessContext + companySizeAgents + incumbent for downstream use.
 
-SOURCES: 3–5 cited URLs; use "unknown" if URL not found.
+LIKELY PAINS — max 5 bullet strings inferred from research.
+If Additional context from SE lists customer pains, prepend those to likelyPains[] (dedupe, keep context pains first).
+
+DISCOVERY KIT — max 3 {question, because} pairs.
+
+DEMO SCRIPT — painCapabilityValue: one row per prioritized pain (same order as likelyPains[], max 5 rows).
+Pain priority: Additional context pains first (already at top of likelyPains), then remaining likelyPains items.
+
+For EACH row:
+- pain: use the matching likelyPains[] string verbatim (shorten to 12 words max if needed)
+- capability: one Freshdesk/Omni feature aligned with icpFit.product that addresses THIS pain
+- values[]: 2–3 concise outcome bullets for this pain; at most ONE bullet across all rows may cite BENCHMARK KB
+Do not invent pains outside likelyPains[] / Additional context. Keep pain and capability to one line each.
+
+CHECKLIST — max 6 sandbox setup items (e.g. configure widget, sample tickets, admin login).
+
+ATTENDEES: prospect contact if known; decisionPower: decision_maker | influencer | unknown
+
+SOURCES — 3–8 entries with label S1, S2, S3… each { label, title, url, confidence }.
+Assign confidence: High ≥80, Medium ≥55, Low <55 based on source quality.
+Every facts[].sourceLabel, signals[].sourceLabel, supportJD.sourceLabel MUST match a sources[].label.
+Use url "unknown" if not found.
 
 === FRESHWORKS KNOWLEDGE BASE ===
 ${FRESHWORKS_KB}
 === END KNOWLEDGE BASE ===
+
+=== FRESHDESK ICP — AUTHORITATIVE (email-first / smaller teams) ===
+${FRESHDESK_ICP_KB}
+=== END FRESHDESK ICP ===
+
+=== FRESHDESK OMNI ICP — AUTHORITATIVE (omnichannel / 50+ agents) ===
+${FRESHDESK_OMNI_ICP_KB}
+=== END FRESHDESK OMNI ICP ===
+
+=== FRESHDESK OMNI PERSONAS — AUTHORITATIVE (buying committee hooks) ===
+${FRESHDESK_OMNI_PERSONAS_KB}
+=== END FRESHDESK OMNI PERSONAS ===
+
+=== CUSTOMER SERVICE BENCHMARK — AUTHORITATIVE (stats only) ===
+${CUSTOMER_SERVICE_BENCHMARK_KB}
+=== END BENCHMARK ===
 
 OUTPUT — CRITICAL: respond with a SINGLE, strictly valid JSON object and nothing else:
 - No markdown, no code fences, no text before or after the object.
@@ -105,7 +178,7 @@ It must match exactly this JSON Schema (all fields required; use "unknown" or []
 ${JSON.stringify(PREP_SCHEMA)}`;
 }
 
-function userPrompt(input: PrepInput, domain: string): string {
+function userPrompt(input: PrepInput, domain: string, emails: string[]): string {
   const invalidDomain = isLikelyInvalidDomain(domain, input.companyName);
   const suggested = suggestDomain(input.companyName);
 
@@ -113,7 +186,8 @@ function userPrompt(input: PrepInput, domain: string): string {
     `Prepare the Discovery brief for this upcoming call.`,
     ``,
     `Company (PRIMARY research target): ${input.companyName}`,
-    `Prospect email: ${input.prospectEmail}`,
+    `Prospect emails (${emails.length}): ${emails.join(", ")}`,
+    `Primary email: ${emails[0] || input.prospectEmail}`,
     `Email domain (hint only): ${domain}`,
   ];
 
@@ -139,7 +213,8 @@ function userPrompt(input: PrepInput, domain: string): string {
   lines.push(
     ``,
     `Google-search "${input.companyName}" first, infer their support model and stack,`,
-    `and fill fitSnapshot, businessContext, discoveryKit, and painCapabilityValue with real findings.`,
+    `Research EACH prospect email and populate prospects[] with one entry per person.`,
+    `and fill facts, signals, fitSnapshot, prospects, icpFit (with frameworkRefs citing ICP traits), discoveryKit, likelyPains (context pains first), painCapabilityValue (one row per likelyPain → feature → values), and checklist with real findings.`,
     `For recognizable orgs, use public knowledge — never leave the entire brief empty.`,
     `Enforce all word caps strictly.`,
   );
@@ -151,8 +226,19 @@ function parsePrep(text: string): Prep {
 }
 
 export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
-  const domain = deriveDomain(input.prospectEmail);
+  const emails = resolveProspectEmails(input);
+  if (!emails.length) {
+    throw new Error("At least one valid prospect email is required.");
+  }
+  const primaryEmail = emails[0];
+  const domain = deriveDomain(primaryEmail);
   if (!domain) throw new Error("Could not derive a domain from the prospect email.");
+
+  const normalizedInput: PrepInput = {
+    ...input,
+    prospectEmail: primaryEmail,
+    prospectEmails: emails,
+  };
 
   const effort = ALLOWED_EFFORT.includes(input.effort || "")
     ? (input.effort as string)
@@ -162,7 +248,7 @@ export async function generatePrep(env: Env, input: PrepInput): Promise<Prep> {
   const result = await provider.generate({
     maxTokens: 12000,
     system: systemPrompt(),
-    user: userPrompt(input, domain),
+    user: userPrompt(normalizedInput, domain, emails),
     effort,
     research: true,
     jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,

@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
-| **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
+| **Live app** | **[https://portal.benjaminsquare.com](https://portal.benjaminsquare.com)** |
+| **API** | **[https://portalapi.benjaminsquare.com](https://portalapi.benjaminsquare.com)** |
 | **Repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
 | **Demo login** | `se@freshworks.com` / `se123` |
 
@@ -125,7 +125,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 | **Lion splash** | 5s branded animation + roar on first portal visit |
 | **Prep accuracy** | Company name prioritized over email domain; typo detection and validation hints in the form |
 | **Post-call backend** | Gemini analysis, Quality Coach scorecard, Zoom link flow, server-side history on VPS |
-| **Production deploy** | Live on VPS at `lionpath.benjaminsquare.com` + `lionpathapi.benjaminsquare.com` |
+| **Production deploy** | Live on VPS at `portal.benjaminsquare.com` + `portalapi.benjaminsquare.com` |
 | **Team workflow** | Feature branches → PR to `main` → deploy from `main` |
 
 ---
@@ -147,7 +147,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 ### For SEs (daily use) — no install
 
-1. Open **https://lionpath.benjaminsquare.com**
+1. Open **https://portal.benjaminsquare.com**
 2. Log in (`se@freshworks.com` / `se123`)
 3. **Before a call:** Pre-call prep → company + email + context → brief
 4. **After a call:** New analysis → Zoom link → summary, next steps, Quality Coach
@@ -189,21 +189,21 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
 | [docs/SHARE_WITH_TEAM.md](./docs/SHARE_WITH_TEAM.md) | SEs & managers — team share pack |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers — local setup, tunnel sharing, onboarding |
-| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`portal` + `portalapi` URLs) |
 | [deploy/vps/SECURITY.md](./deploy/vps/SECURITY.md) | IT / admin — secrets, SSH, file permissions |
 
 ---
 
 ## Deploy
 
-### Option A — VPS (production — `lionpath.benjaminsquare.com`)
+### Option A — VPS (production — `portal.benjaminsquare.com`)
 
 See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps
 ./setup.sh    # once
-nano .env     # GEMINI_API_KEY, ALLOWED_ORIGINS=https://lionpath.benjaminsquare.com
+nano .env     # GEMINI_API_KEY, ALLOWED_ORIGINS=https://portal.benjaminsquare.com
 ./start.sh
 ```
 
@@ -250,7 +250,7 @@ Config in `worker/wrangler.toml` (`[vars]`):
 - `LLM_PROVIDER` — `gemini` (default on VPS) or `anthropic`
 - `MODEL` / `EFFORT` — pre-call model and reasoning effort
 - `POSTCALL_EFFORT` — post-call effort (default `low`; no web research)
-- `ALLOWED_ORIGINS` — CORS (include `https://lionpath.benjaminsquare.com` in prod)
+- `ALLOWED_ORIGINS` — CORS (include `https://portal.benjaminsquare.com` in prod)
 - `ALLOWED_EMAIL_DOMAIN` — sign-in restriction (default `freshworks.com`)
 - `FIREBASE_PROJECT_ID` — empty disables auth; set to enforce ID-token verification
 

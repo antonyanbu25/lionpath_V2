@@ -53,7 +53,7 @@ Browser (web/)  →  Worker API (worker/)  →  Gemini (structured JSON)
 - **`worker/`** — TypeScript API on Cloudflare Workers (dev) or Node on the VPS. Handles LLM calls, Zoom transcript fetch, and history sync.
 - **Gemini** — Returns JSON matching strict schemas. Prompts enforce word caps; **the trimmer** trims after parse.
 
-Live: UI `lionpath.benjaminsquare.com` · API `lionpathapi.benjaminsquare.com`.  
+Live: UI `portal.benjaminsquare.com` · API `portalapi.benjaminsquare.com`.  
 Server setup: see `docs/VPS_DEPLOY.md`.
 
 ### 1. Discovery prep generation

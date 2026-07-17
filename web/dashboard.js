@@ -6,8 +6,11 @@
 import { listAnalysesWithQuality, listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { normalizeQualityCoach, scoreBand } from "./quality-score.js";
-import { aggregateFollowUps, renderFollowUpsSection, stepsFromNextSteps } from "./follow-ups.js";
+import { aggregateFollowUps } from "./follow-ups.js";
 import { listTeamSeEmails, displayNameForEmail } from "./auth.js";
+import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
+import { countPrepsGenerated } from "./precall.js";
+import { wireCallLinks } from "./crayons-ui.js";
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -125,7 +128,7 @@ export function aggregateQualityMetrics(analyses) {
     const qc = normalizeQualityCoach(r.analysis.qualityCoach);
     const mom = r.analysis?.momentum || {};
     const company = companyFromRecord(r);
-    const nextStep = stepsFromNextSteps(r.analysis?.nextSteps).find((s) => s.action)?.action
+    const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
       || mom.topAction
       || "—";
     return {
@@ -200,9 +203,8 @@ export function buildCoachingNudge(email, metrics) {
   const themes = new Map();
 
   for (const rec of deduped) {
-    const missed = rec.analysis?.qualityCoach?.missedOpportunities;
-    const missedList = Array.isArray(missed) ? missed : [];
-    for (const m of missedList) {
+    const missed = rec.analysis?.qualityCoach?.missedOpportunities || [];
+    for (const m of missed) {
       const t = String(m ?? "").trim();
       if (!t || t.toLowerCase() === "unknown") continue;
       themes.set(t, (themes.get(t) || 0) + 1);
@@ -362,9 +364,9 @@ function renderDimensionBarChart(dimensions) {
   return `
     <section class="dash-section dash-dim-chart">
       <h2 class="dash-section-title">Dimension averages</h2>
-      <div class="card dash-dim-card">
+      <fw-card class="dash-dim-card">
         <div class="dash-dim-rows">${rows}</div>
-      </div>
+      </fw-card>
     </section>`;
 }
 
@@ -413,13 +415,13 @@ function renderTrendChart(trend) {
   return `
     <section class="dash-section dash-trend-section">
       <h2 class="dash-section-title">Score trend</h2>
-      <div class="card dash-trend-card">
+      <fw-card class="dash-trend-card">
         <p class="muted dash-chart-sub">Last ${n} call${n === 1 ? "" : "s"} · oldest → newest</p>
         <svg class="dash-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Overall score trend over recent calls">
           ${gridLines}
           ${bars}
         </svg>
-      </div>
+      </fw-card>
     </section>`;
 }
 
@@ -462,7 +464,7 @@ function renderScoreDistribution(bands, total) {
   return `
     <section class="dash-section dash-distribution-section">
       <h2 class="dash-section-title">Score distribution</h2>
-      <div class="card dash-distribution-card">
+      <fw-card class="dash-distribution-card">
         <div class="dash-distribution">
           <div class="dash-donut-wrap" role="img" aria-label="Call score distribution across ${total} calls">
             <svg class="dash-donut-svg" viewBox="0 0 120 120" aria-hidden="true">
@@ -476,18 +478,18 @@ function renderScoreDistribution(bands, total) {
           </div>
           <div class="dash-donut-legend">${legend}</div>
         </div>
-      </div>
+      </fw-card>
     </section>`;
 }
 
 export function renderCoachingCharts(metrics) {
   if (!metrics.totalCalls) {
     return `
-      <div class="dash-empty card">
+      <fw-card class="dash-empty">
         <div class="dash-empty-icon" aria-hidden="true">📈</div>
         <h2>No coaching data yet</h2>
         <p class="muted">Analyze a few calls to see quality trends, dimension averages, and score distribution.</p>
-      </div>`;
+      </fw-card>`;
   }
 
   const avgCls = barClass(metrics.avgOverall, 10);
@@ -514,10 +516,10 @@ export function renderCoachingCharts(metrics) {
     </div>
     <section class="dash-section">
       <h2 class="dash-section-title">Quality overview</h2>
-      <div class="card dash-charts-top qc-dashboard">
+      <fw-card class="dash-charts-top qc-dashboard">
         ${renderScoreGauge(metrics.avgOverall, 10)}
         ${renderRadarChart(metrics.dimensions)}
-      </div>
+      </fw-card>
     </section>
     ${renderDimensionBarChart(metrics.dimensions)}
     <div class="dash-charts-bottom">
@@ -526,70 +528,144 @@ export function renderCoachingCharts(metrics) {
     </div>`;
 }
 
-function renderActionStrip() {
+function renderOverviewEmptyState() {
   return `
-    <section class="launch-hero" aria-label="Quick actions">
-      <div class="launch-action-strip">
-        <button type="button" class="launch-action-btn launch-action-primary" data-action="prep">
-          <span class="launch-action-icon" aria-hidden="true">📋</span>
-          <span class="launch-action-text">
-            <span class="launch-action-label">Prep a call</span>
-            <span class="launch-action-sub muted">Discovery brief in minutes</span>
-          </span>
-        </button>
-        <button type="button" class="launch-action-btn" data-action="analyze">
-          <span class="launch-action-icon" aria-hidden="true">🎙</span>
-          <span class="launch-action-text">
-            <span class="launch-action-label">Analyze a recording</span>
-            <span class="launch-action-sub muted">Post-call summary &amp; coaching</span>
-          </span>
-        </button>
-      </div>
-    </section>`;
+    <fw-card class="dash-empty launch-empty">
+      <div class="dash-empty-icon" aria-hidden="true">🚀</div>
+      <h3>Get started</h3>
+      <p class="muted">Run pre-call prep or analyze a recording to populate your task list.</p>
+      <p class="task-empty-links">
+        <fw-button color="link" data-action="prep">Pre-call prep</fw-button>
+        ·
+        <fw-button color="link" data-action="analyze">Analyze a recording</fw-button>
+      </p>
+    </fw-card>`;
 }
 
-function renderRecentCallsLaunchpad(recentCalls) {
-  if (!recentCalls.length) {
-    return `
-      <section class="dash-section launch-recent" aria-labelledby="recent-heading">
-        <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
-        <div class="dash-empty card launch-empty">
-          <div class="dash-empty-icon" aria-hidden="true">🎙</div>
-          <h3>No calls yet</h3>
-          <p class="muted">Analyze a Zoom recording to see momentum and next actions here.</p>
-        </div>
-      </section>`;
-  }
-
-  const rows = recentCalls.map((c) => {
-    const momCls = momentumClass(c.momentum);
-    const scoreCls = barClass(c.overallScore, 10);
-    return `
-      <button type="button" class="launch-recent-row dash-call-link" data-call-id="${esc(c.id)}">
+function renderRecentCallRow(c, { compact = false } = {}) {
+  const momCls = momentumClass(c.momentum);
+  const scoreCls = barClass(c.overallScore, 10);
+  const innerCls = compact ? " launch-recent-inner-side" : "";
+  const nextCol = compact
+    ? ""
+    : `<span class="launch-recent-next muted">${esc(c.nextAction)}</span>`;
+  return `
+    <fw-button class="launch-recent-row dash-call-link" color="secondary" fill="clear" data-call-id="${esc(c.id)}">
+      <span class="launch-recent-inner${innerCls}">
         <span class="launch-recent-company">${esc(c.company)}</span>
         <span class="launch-recent-date muted">${esc(formatShortDate(c.timestamp))}</span>
         <span class="launch-recent-momentum ${momCls}">${esc(c.momentum)}</span>
-        <span class="launch-recent-next muted">${esc(c.nextAction)}</span>
+        ${nextCol}
         <span class="launch-recent-score qc-dim-score ${scoreCls}">${c.overallScore}/10</span>
-      </button>`;
-  }).join("");
+      </span>
+    </fw-button>`;
+}
+
+function renderRecentCallsLaunchpad(recentCalls) {
+  const compact = recentCalls.slice(0, 5);
+  if (!compact.length) {
+    return `
+      <section class="dash-section launch-recent" aria-labelledby="recent-heading">
+        <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
+        ${renderOverviewEmptyState()}
+      </section>`;
+  }
+
+  const rows = compact.map((c) => renderRecentCallRow(c)).join("");
 
   return `
     <section class="dash-section launch-recent" aria-labelledby="recent-heading">
       <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
-      <div class="launch-recent-list card">${rows}</div>
+      <fw-card class="launch-recent-list">${rows}</fw-card>
     </section>`;
 }
 
-function renderCoachingNudge(nudgeText) {
+export function renderCoachingNudgeCard(nudgeText) {
   return `
     <section class="dash-section launch-nudge" aria-labelledby="nudge-heading">
       <h2 id="nudge-heading" class="dash-section-title">Coaching nudge</h2>
-      <div class="card launch-nudge-card">
+      <fw-card class="launch-nudge-card">
         <p class="launch-nudge-text">${esc(nudgeText)}</p>
-        <button type="button" class="link-btn launch-nudge-link" data-action="coaching">See full coaching →</button>
+      </fw-card>
+    </section>`;
+}
+
+function renderSideStats(taskMetrics, callMetrics, prepsCount = 0) {
+  const avgScore = callMetrics.avgOverall != null
+    ? callMetrics.avgOverall.toFixed(1)
+    : "—";
+  return `
+    <section class="dash-section dash-side-stats" aria-labelledby="side-stats-heading">
+      <h2 id="side-stats-heading" class="dash-section-title">Snapshot</h2>
+      <div class="dash-side-stats-grid">
+        <div class="dash-stat prep-action-block">
+          <span class="dash-stat-label">Open tasks</span>
+          <span class="dash-stat-value" data-stat="open">${taskMetrics.openTotal}</span>
+        </div>
+        <div class="dash-stat prep-action-block">
+          <span class="dash-stat-label">Preps generated</span>
+          <span class="dash-stat-value" data-stat="preps">${prepsCount}</span>
+        </div>
+        <div class="dash-stat prep-action-block">
+          <span class="dash-stat-label">Done this week</span>
+          <span class="dash-stat-value good" data-stat="done-week">${taskMetrics.completedThisWeek}</span>
+        </div>
+        <div class="dash-stat prep-action-block">
+          <span class="dash-stat-label">Calls analyzed</span>
+          <span class="dash-stat-value" data-stat="calls">${callMetrics.totalCalls}</span>
+          <span class="dash-stat-sub">${avgScore !== "—" ? `${avgScore}/10 avg` : "No coaching data"}</span>
+        </div>
       </div>
     </section>`;
+}
+
+async function updateSideStats(container, email, fetchRemotePreps) {
+  const m = aggregateTaskMetrics(listTasks(email));
+  const open = container.querySelector('[data-stat="open"]');
+  const preps = container.querySelector('[data-stat="preps"]');
+  const doneWeek = container.querySelector('[data-stat="done-week"]');
+  if (open) open.textContent = String(m.openTotal);
+  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps));
+  if (doneWeek) doneWeek.textContent = String(m.completedThisWeek);
+}
+
+function renderRecentCallsSide(recentCalls) {
+  const compact = recentCalls.slice(0, 5);
+  if (!compact.length) {
+    return `
+      <section class="dash-section launch-recent dash-side-recent" aria-labelledby="recent-heading">
+        <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
+        <p class="muted dash-side-empty">Analyze a recording to see call activity here.</p>
+      </section>`;
+  }
+
+  const rows = compact.map((c) => renderRecentCallRow(c, { compact: true })).join("");
+
+  return `
+    <section class="dash-section launch-recent dash-side-recent" aria-labelledby="recent-heading">
+      <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
+      <fw-card class="launch-recent-list">${rows}</fw-card>
+    </section>`;
+}
+
+function mountDashboardTasks(container, email, opts = {}) {
+  const chartsMount = container.querySelector("#task-charts-mount");
+  const boardMount = container.querySelector("#task-board-mount");
+  if (!boardMount) return;
+
+  const tasks = listTasks(email);
+  const fetchRemotePreps = opts.fetchRemotePreps;
+  const taskOpts = {
+    ...opts,
+    onTasksChanged: () => {
+      const updated = listTasks(email);
+      if (chartsMount) renderTaskCharts(chartsMount, updated);
+      void updateSideStats(container, email, fetchRemotePreps);
+    },
+  };
+
+  if (chartsMount) renderTaskCharts(chartsMount, tasks);
+  renderTaskBoard(boardMount, email, taskOpts);
 }
 
 /**
@@ -598,30 +674,39 @@ function renderCoachingNudge(nudgeText) {
  * @param {string} email
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
-export function renderSeLaunchpad(container, email, opts = {}) {
+export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
-  const followUps = aggregateFollowUps(email, { seName: opts.seName });
-  const nudge = buildCoachingNudge(email, metrics);
+  const taskMetrics = aggregateTaskMetrics(listTasks(email));
+  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">
       <div class="head dash-head">
         <h1 class="one-pager-title">My dashboard</h1>
-        <span class="sub muted">Your SE launchpad — prep, analyze, and stay on top of follow-ups.</span>
+        <span class="sub muted">Tasks, priorities, and recent call activity.</span>
       </div>
-      ${renderActionStrip()}
-      ${renderFollowUpsSection(followUps)}
-      ${renderRecentCallsLaunchpad(metrics.recentCalls)}
-      ${renderCoachingNudge(nudge)}
+      <div class="dash-split">
+        <div class="dash-split-main">
+          <div id="task-charts-mount"></div>
+          <div id="task-board-mount"></div>
+        </div>
+        <aside class="dash-split-side">
+          ${renderSideStats(taskMetrics, metrics, prepsCount)}
+          ${renderRecentCallsSide(metrics.recentCalls)}
+        </aside>
+      </div>
     </div>`;
 
-  container.querySelectorAll(".dash-call-link").forEach((btn) => {
-    btn.onclick = () => opts.onOpenCall?.(btn.dataset.callId);
-  });
+  mountDashboardTasks(container, email, opts);
 
-  container.querySelector('[data-action="prep"]')?.addEventListener("click", () => opts.onPrep?.());
-  container.querySelector('[data-action="analyze"]')?.addEventListener("click", () => opts.onAnalyze?.());
-  container.querySelector('[data-action="coaching"]')?.addEventListener("click", () => opts.onCoaching?.());
+  wireCallLinks(container, opts.onOpenCall);
+
+  container.querySelectorAll('[data-action="prep"]').forEach((btn) => {
+    btn.addEventListener("fwClick", () => opts.onPrep?.());
+  });
+  container.querySelectorAll('[data-action="analyze"]').forEach((btn) => {
+    btn.addEventListener("fwClick", () => opts.onAnalyze?.());
+  });
 }
 
 function buildTeamMetrics() {
@@ -670,7 +755,7 @@ function renderManagerSeTable(seRows) {
   return `
     <section class="dash-section manager-table-section">
       <h2 class="dash-section-title">Per-SE overview</h2>
-      <div class="card manager-table-card">
+      <fw-card class="manager-table-card">
         <div class="manager-table-wrap">
           <table class="manager-se-table">
             <thead>
@@ -685,7 +770,7 @@ function renderManagerSeTable(seRows) {
             <tbody>${rows}</tbody>
           </table>
         </div>
-      </div>
+      </fw-card>
     </section>`;
 }
 
@@ -724,10 +809,10 @@ export function renderManagerDashboard(container) {
         </div>
         <section class="dash-section">
           <h2 class="dash-section-title">Team quality overview</h2>
-          <div class="card dash-charts-top qc-dashboard">
+          <fw-card class="dash-charts-top qc-dashboard">
             ${renderScoreGauge(teamMetrics.avgOverall, 10)}
             ${renderRadarChart(teamMetrics.dimensions)}
-          </div>
+          </fw-card>
         </section>
         ${renderDimensionBarChart(teamMetrics.dimensions)}
         <div class="dash-charts-bottom">
@@ -735,11 +820,11 @@ export function renderManagerDashboard(container) {
           ${renderScoreDistribution(teamMetrics.scoreBands, teamMetrics.totalCalls)}
         </div>
       ` : `
-        <div class="dash-empty card">
+        <fw-card class="dash-empty">
           <div class="dash-empty-icon" aria-hidden="true">👥</div>
           <h2>No team data yet</h2>
           <p class="muted">SEs need to analyze calls before team metrics appear here.</p>
-        </div>
+        </fw-card>
       `}
       ${renderManagerSeTable(seRows)}
     </div>`;
@@ -750,10 +835,6 @@ export function renderManagerDashboard(container) {
  * @param {string} email
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
-export function renderDashboard(container, email, opts = {}) {
-  if (!container) {
-    console.error("[dashboard] missing #view-dashboard container — cannot render launchpad");
-    return;
-  }
-  renderSeLaunchpad(container, email, opts);
+export async function renderDashboard(container, email, opts = {}) {
+  await renderSeLaunchpad(container, email, opts);
 }

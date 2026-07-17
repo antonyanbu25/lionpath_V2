@@ -1,63 +1,78 @@
-import { pickDemoLinks } from "../demo-links.js";
+import { isV8Prep, isV7Prep, isV6Prep } from "../precall-render.js";
 
-const samplePrep = {
-  description: "Online learning platform for students worldwide",
+const v6 = {
+  description: "Legacy one pager",
   incumbent: { incumbent_name: "Zendesk", displacement: "entrenched" },
-  fitSnapshot: [
-    { label: "Omnichannel Support", thisCompany: "Email only", industryNorm: "Omnichannel expected", gap: "large", gapVerdict: "Behind" },
-    { label: "AI Deflection", thisCompany: "Basic FAQ", industryNorm: "AI self-service", gap: "partial", gapVerdict: "Partial" },
-    { label: "Agent Assist", thisCompany: "No copilot", industryNorm: "AI assist common", gap: "large", gapVerdict: "Behind" },
-  ],
-  industryUseCases: ["Student account help", "Billing disputes", "Content access issues"],
-  companySizeAgents: { agents: "40-60", estimated: true },
+  companySizeAgents: { agents: "10", estimated: false },
   businessContext: {
-    market: "EdTech nonprofit",
-    model: "Donation-funded free",
-    users: "150M learners",
-    uptimeNeed: "24/7 global",
-    fundingParent: "Nonprofit grants",
-    headOffice: "Mountain View CA",
-    languages: "40+ languages",
+    market: "SaaS",
+    model: "B2B",
+    users: "Teams",
+    uptimeNeed: "24/7",
+    fundingParent: "VC",
+    headOffice: "SF",
+    languages: "English",
   },
-  discoveryKit: [
-    { question: "How do agents route tickets today?", because: "Maps omnichannel gap" },
-    { question: "What deflection rate do you target?", because: "Sizes AI opportunity" },
+  fitSnapshot: [
+    { label: "Support channels", thisCompany: "Email", industryNorm: "Omni", gap: "large", gapVerdict: "Behind" },
+    { label: "Self Serve", thisCompany: "None", industryNorm: "AI", gap: "large", gapVerdict: "Behind" },
+    { label: "Agent Assist", thisCompany: "None", industryNorm: "Assist", gap: "partial", gapVerdict: "Partial" },
   ],
-  painCapabilityValue: [
-    { pain: "Slow email queues", capability: "Unified inbox", value: "Faster student replies" },
-  ],
-  attendees: [{ name: "Jane Doe", role: "VP Support", decisionPower: "decision_maker" }],
-  sources: [{ claim: "Uses Zendesk help center", url: "https://example.com" }],
+  industryUseCases: ["Billing help"],
+  discoveryKit: [{ question: "Q?", because: "Because" }],
+  painCapabilityValue: [{ pain: "P", capability: "C", value: "V" }],
+  attendees: [],
+  sources: [{ claim: "Site", url: "https://x.com" }],
 };
 
-function isV5Prep(p) {
-  if (p?.supportMaturity || p?.businessContext?.signals || p?.businessContext?.workflows) return false;
-  return !!(
-    p?.incumbent?.displacement &&
-    p?.companySizeAgents &&
-    p?.businessContext?.market &&
-    Array.isArray(p?.fitSnapshot) &&
-    p.fitSnapshot.length >= 1
-  );
-}
+const v7only = {
+  description: "V7 brief",
+  about: "About text",
+  facts: [{ key: "Industry", value: "SaaS", sourceLabel: "S1" }],
+  signals: [{ label: "Incumbent tool", value: "Zendesk", sourceLabel: "S1" }],
+  incumbent: { incumbent_name: "Zendesk", displacement: "entrenched" },
+  fitSnapshot: [],
+  supportJD: { title: "Agent", sourceLabel: "S1", bullets: [] },
+  likelyPains: [],
+  industryUseCases: [],
+  checklist: [],
+  companySizeAgents: { agents: "10", estimated: false },
+  businessContext: {
+    market: "SaaS",
+    model: "B2B",
+    users: "Teams",
+    uptimeNeed: "24/7",
+    fundingParent: "VC",
+    headOffice: "SF",
+    languages: "English",
+  },
+  discoveryKit: [],
+  painCapabilityValue: [],
+  attendees: [],
+  sources: [
+    { label: "S1", title: "Site", url: "https://x.com", confidence: 80 },
+    { label: "S2", title: "LI", url: "unknown", confidence: 50 },
+    { label: "S3", title: "Jobs", url: "unknown", confidence: 40 },
+  ],
+};
 
 const checks = [
-  ["isV5Prep accepts new shape", isV5Prep(samplePrep)],
-  ["isV5Prep rejects old supportMaturity", !isV5Prep({ ...samplePrep, supportMaturity: { selfServicePortal: "Y" } })],
-  ["pickDemoLinks returns links", pickDemoLinks(samplePrep).length > 0],
-  ["fitSnapshot has 3 rows", samplePrep.fitSnapshot.length === 3],
-  ["no signals in businessContext", !samplePrep.businessContext.signals],
+  ["isV6Prep accepts legacy", isV6Prep(v6)],
+  ["isV7Prep rejects v6", !isV7Prep(v6)],
+  ["isV8Prep rejects v6", !isV8Prep(v6)],
+  ["isV7Prep accepts v7only", isV7Prep(v7only)],
+  ["isV8Prep rejects v7 without prospects", !isV8Prep(v7only)],
+  ["isV7Prep rejects old supportMaturity", !isV7Prep({ ...v6, supportMaturity: { selfServicePortal: "Y" } })],
 ];
 
 let failed = 0;
 for (const [name, ok] of checks) {
   if (!ok) {
-    console.error(`FAIL: ${name}`);
+    console.error("FAIL:", name);
     failed++;
   } else {
-    console.log(`ok: ${name}`);
+    console.log("ok:", name);
   }
 }
-
 if (failed) process.exit(1);
-console.log("prep render contract checks passed");
+console.log(`\n${checks.length} prep shape checks passed.`);

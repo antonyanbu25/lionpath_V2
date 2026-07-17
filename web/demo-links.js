@@ -53,10 +53,12 @@ function gatherPrepText(prep) {
     push(row.gapVerdict);
   }
 
-  for (const row of prep?.industryUseCases || []) push(row);
+  for (const row of prep?.industryUseCases || []) {
+    push(typeof row === "string" ? row : row?.name);
+  }
 
   for (const src of prep?.sources || []) {
-    push(src.claim);
+    push(src.title ?? src.claim);
     push(src.url);
   }
 

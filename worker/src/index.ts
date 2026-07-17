@@ -4,7 +4,7 @@
 //   GET  /api/zoom/status     — whether Zoom OAuth is configured
 //   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
 
-import { generatePrep, type Env as PrepEnv, type PrepInput } from "./prep";
+import { generatePrep, resolveProspectEmails, type Env as PrepEnv, type PrepInput } from "./prep";
 import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
@@ -18,6 +18,16 @@ import {
   type HistoryEntry,
   type HistoryEnv,
 } from "./history";
+import {
+  deleteTask,
+  loadTasks,
+  patchTask,
+  saveTasks,
+  tasksStorageAvailable,
+  upsertTask,
+  type Task,
+} from "./tasks";
+import { appendFeedback, feedbackStorageAvailable, loadGlobalFeedback, loadFeedback, normalizeFeedbackCategory, type FeedbackEntry } from "./feedback";
 
 interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_ORIGINS?: string;
@@ -33,7 +43,7 @@ function corsHeaders(origin: string, allowed: string[]): Record<string, string> 
       : allowed[0] || "";
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -177,6 +187,14 @@ export default {
               available: historyStorageAvailable(env),
               storage: historyStorageKind(env),
             },
+            tasks: {
+              available: tasksStorageAvailable(env),
+              storage: historyStorageKind(env),
+            },
+            feedback: {
+              available: feedbackStorageAvailable(env),
+              storage: historyStorageKind(env),
+            },
           },
           200,
           cors,
@@ -202,10 +220,18 @@ export default {
       if (request.method === "POST" && path === "/api/generate-prep") {
         await requireUser(request, env);
         const input = (await request.json()) as Partial<PrepInput>;
-        if (!input.companyName || !input.prospectEmail) {
-          return json({ error: "companyName and prospectEmail are required." }, 400, cors);
+        if (!input.companyName) {
+          return json({ error: "companyName is required." }, 400, cors);
         }
-        const prep = await generatePrep(env, input as PrepInput);
+        const emails = resolveProspectEmails(input as PrepInput);
+        if (!emails.length && !input.prospectEmail?.trim()) {
+          return json({ error: "At least one valid prospect email is required." }, 400, cors);
+        }
+        const prep = await generatePrep(env, {
+          ...(input as PrepInput),
+          prospectEmail: emails[0] || String(input.prospectEmail).trim(),
+          prospectEmails: emails.length ? emails : undefined,
+        });
         return json({ prep }, 200, cors);
       }
 
@@ -230,6 +256,116 @@ export default {
         }
         const result = await analyzePostCall(env, input as PostCallInput);
         return json(result, 200, cors);
+      }
+
+      if (request.method === "GET" && path === "/api/tasks") {
+        if (!tasksStorageAvailable(env)) {
+          return json({ error: "Task storage is not configured." }, 503, cors);
+        }
+        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
+        const tasks = await loadTasks(env, email);
+        return json({ email, tasks }, 200, cors);
+      }
+
+      const taskPatchMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
+      if (request.method === "PATCH" && taskPatchMatch) {
+        if (!tasksStorageAvailable(env)) {
+          return json({ error: "Task storage is not configured." }, 503, cors);
+        }
+        const body = (await request.json()) as Partial<Task> & { email?: string };
+        const email = await resolveHistoryEmail(request, env, body.email || "");
+        const task = await patchTask(env, email, taskPatchMatch[1], body);
+        if (!task) return json({ error: "Task not found." }, 404, cors);
+        return json({ email, task }, 200, cors);
+      }
+
+      if (request.method === "DELETE" && taskPatchMatch) {
+        if (!tasksStorageAvailable(env)) {
+          return json({ error: "Task storage is not configured." }, 503, cors);
+        }
+        const body = (await request.json().catch(() => ({}))) as { email?: string };
+        const email = await resolveHistoryEmail(
+          request,
+          env,
+          body.email || url.searchParams.get("email") || "",
+        );
+        const ok = await deleteTask(env, email, taskPatchMatch[1]);
+        if (!ok) return json({ error: "Task not found." }, 404, cors);
+        return json({ email, deleted: taskPatchMatch[1] }, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/tasks") {
+        if (!tasksStorageAvailable(env)) {
+          return json({ error: "Task storage is not configured." }, 503, cors);
+        }
+        const body = (await request.json()) as {
+          email?: string;
+          task?: Task;
+          tasks?: Task[];
+        };
+        const email = await resolveHistoryEmail(request, env, body.email || "");
+
+        if (Array.isArray(body.tasks)) {
+          const tasks = await saveTasks(env, email, body.tasks);
+          return json({ email, tasks, count: tasks.length }, 200, cors);
+        }
+
+        if (!body.task?.id || !body.task.title) {
+          return json({ error: "task with id and title is required." }, 400, cors);
+        }
+        const tasks = await upsertTask(env, email, body.task);
+        return json({ email, task: body.task, count: tasks.length }, 200, cors);
+      }
+
+      if (request.method === "GET" && path === "/api/feedback") {
+        if (!feedbackStorageAvailable(env)) {
+          return json({ error: "Feedback storage is not configured." }, 503, cors);
+        }
+        const global = url.searchParams.get("global") === "1";
+        if (global) {
+          const entries = await loadGlobalFeedback(env);
+          return json({ entries, count: entries.length }, 200, cors);
+        }
+        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
+        const entries = await loadFeedback(env, email);
+        return json({ email, entries, count: entries.length }, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/feedback") {
+        if (!feedbackStorageAvailable(env)) {
+          return json({ error: "Feedback storage is not configured." }, 503, cors);
+        }
+        const body = (await request.json()) as {
+          email?: string;
+          entry?: Partial<FeedbackEntry> & { body?: string };
+          message?: string;
+          body?: string;
+          category?: string;
+          id?: string;
+          page?: string;
+          createdAt?: number;
+        };
+        const email = await resolveHistoryEmail(request, env, body.email || body.entry?.email || "");
+        const nested = body.entry || {};
+        const message = String(
+          nested.message || nested.body || body.message || body.body || "",
+        ).trim();
+        if (!message) {
+          return json({ error: "entry.message is required." }, 400, cors);
+        }
+        const entry: FeedbackEntry = {
+          id: nested.id || body.id || crypto.randomUUID(),
+          category: normalizeFeedbackCategory(String(nested.category || body.category || "Idea")),
+          message: message.slice(0, 4000),
+          page: nested.page || body.page,
+          email,
+          createdAt: nested.createdAt || body.createdAt || Date.now(),
+        };
+        const entries = await appendFeedback(env, email, entry);
+        console.info(
+          `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
+        );
+        return json({ email, entry, count: entries.length }, 200, cors);
       }
 
       if (request.method === "POST" && path === "/api/history") {

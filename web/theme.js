@@ -11,6 +11,7 @@ function preferredTheme() {
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.style.colorScheme = theme;
+  document.documentElement.classList.toggle("fw-dark-theme", theme === "dark");
   localStorage.setItem(THEME_KEY, theme);
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     const isDark = theme === "dark";
@@ -27,6 +28,7 @@ function toggleTheme() {
 export function initTheme() {
   applyTheme(preferredTheme());
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    btn.addEventListener("fwClick", toggleTheme);
     btn.addEventListener("click", toggleTheme);
   });
 }

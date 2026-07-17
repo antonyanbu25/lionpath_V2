@@ -4,7 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>About — SE Singha Paathai</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./dew-theme.css" />
     <link rel="stylesheet" href="./styles.css" />
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
+    ></script>
   </head>
   <body class="about-page">
     <header class="about-header">
@@ -17,7 +27,7 @@
     </header>
 
     <main class="about-main">
-      <section class="card about-section">
+      <fw-card class="about-section">
         <h2>What is it?</h2>
         <p>
           <strong>SE Singha Paathai</strong> helps Solution Engineers debrief after customer calls without the manual write-up.
@@ -31,9 +41,9 @@
         <p class="muted about-note">
           It is designed to support every SE with a consistent debrief — not to replace the SE or manager judgment.
         </p>
-      </section>
+      </fw-card>
 
-      <section class="card about-section">
+      <fw-card class="about-section">
         <h2>How post-call analysis works</h2>
         <p class="muted">No file uploads in the default flow — just paste your Zoom cloud recording link.</p>
         <ol class="about-steps">
@@ -88,9 +98,9 @@
             </div>
           </div>
         </div>
-      </section>
+      </fw-card>
 
-      <section class="card about-section">
+      <fw-card class="about-section">
         <h2>Quality Coach</h2>
         <p>
           Coaching feedback modeled on how an SE manager would QA a recorded demo — honest and evidence-based, not flattering.
@@ -140,9 +150,9 @@
             </tbody>
           </table>
         </div>
-      </section>
+      </fw-card>
 
-      <section class="card about-section">
+      <fw-card class="about-section">
         <h2>Scoring explained</h2>
 
         <h3 class="about-subhead">Per dimension (1–5)</h3>
@@ -211,12 +221,12 @@
           Scoring is intentionally strict for the MVP. A typical average call should land around 3–3.5 per dimension (~6–7 overall).
           A score of 5 on any dimension requires specific transcript evidence of excellence.
         </p>
-      </section>
+      </fw-card>
 
-      <section id="code-logic" class="card about-section about-code-logic">
+      <fw-card id="code-logic" class="about-section about-code-logic">
         <div class="about-code-head">
           <h2>How the code works</h2>
-          <button type="button" class="ghost about-print-btn" onclick="printCodeGuide()">Print / Save as PDF</button>
+          <fw-button class="about-print-btn" color="secondary" fill="outline" data-print-guide="code">Print / Save as PDF</fw-button>
         </div>
         <p class="about-note"><strong>Paste <code>docs/CODE_LOGIC.md</code> to your AI coding assistant before starting a task on this repo.</strong></p>
 
@@ -313,12 +323,12 @@
           </table>
         </div>
         <p class="muted about-print-hint">Full markdown version: <code>docs/CODE_LOGIC.md</code> in the repo.</p>
-      </section>
+      </fw-card>
 
-      <section id="discovery-wireframe" class="card about-section print-wireframe-guide">
+      <fw-card id="discovery-wireframe" class="about-section print-wireframe-guide">
         <div class="about-section-head">
           <h2>Discovery pre-call wireframe</h2>
-          <button type="button" class="ghost about-print-btn" onclick="printWireframeGuide()">Print / Save as PDF</button>
+          <fw-button class="about-print-btn" color="secondary" fill="outline" data-print-guide="wireframe">Print / Save as PDF</fw-button>
         </div>
         <p class="muted">
           One continuous <strong>Account Snapshot</strong> table — company header is the first row, not a separate block above.
@@ -370,12 +380,12 @@ REMOVED: Support Maturity block · Signals block · separate card stacks · head
           <li>Sources in footer vs inside table?</li>
           <li>Resource link count OK?</li>
         </ul>
-      </section>
+      </fw-card>
 
-      <section class="card about-section about-demo">
+      <fw-card class="about-section about-demo">
         <h2>Demo login</h2>
         <p class="muted">For local demos and shared environments — dummy auth, not production SSO.</p>
-        <p class="muted">Team portal: <a href="https://lionpath.benjaminsquare.com">https://lionpath.benjaminsquare.com</a></p>
+        <p class="muted">Team portal: <a href="https://portal.benjaminsquare.com">https://portal.benjaminsquare.com</a></p>
         <div class="about-table-wrap">
           <table class="about-table about-table-compact">
             <thead>
@@ -403,9 +413,9 @@ REMOVED: Support Maturity block · Signals block · separate card stacks · head
           <strong>Suggested demo path:</strong> Log in as SE → New analysis → paste a Zoom recording link → review results → open My dashboard → click a History item to reload a past call.
         </p>
         <p class="about-cta">
-          <a href="./index.html" class="primary about-btn">Open the app</a>
+          <a href="./index.html"><fw-button color="primary" class="about-btn">Open the app</fw-button></a>
         </p>
-      </section>
+      </fw-card>
     </main>
 
     <footer class="site-footer">
@@ -428,6 +438,8 @@ REMOVED: Support Maturity block · Signals block · separate card stacks · head
         window.print();
         window.addEventListener("afterprint", () => document.body.classList.remove("print-wireframe-guide"), { once: true });
       }
+      document.querySelector('[data-print-guide="code"]')?.addEventListener("fwClick", printCodeGuide);
+      document.querySelector('[data-print-guide="wireframe"]')?.addEventListener("fwClick", printWireframeGuide);
     </script>
   </body>
 </html>

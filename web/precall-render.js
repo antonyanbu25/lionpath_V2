@@ -1,0 +1,448 @@
+/** Pure HTML builders for pre-call wireframe (v8 brief). */
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
+const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+
+export const SIGNAL_TOOLTIPS = {
+  "Incumbent tool":
+    "Current helpdesk or CX platform inferred from help center URLs, job posts, or public stack mentions.",
+  Integrations:
+    "CRM, billing, or ops tools the support team likely connects to — probe integration pain in discovery.",
+  "Web chat widget":
+    "Whether live chat or messaging is exposed on their site — signals omnichannel maturity and widget swap opportunity.",
+  "AI in their current tech stack":
+    "Existing AI bots, copilots, or automation in their support stack — not Freshworks; use to position Freddy differentiation.",
+  "Support portal":
+    "Self-service KB or customer portal vendor — indicates deflection motion and content migration scope.",
+  "Hiring support roles":
+    "Open support or CX hiring — often signals growth, turnover, or tooling change windows.",
+};
+
+export function isV7Prep(p) {
+  return !!(p?.about && Array.isArray(p?.facts) && Array.isArray(p?.signals) && p.signals.length >= 1);
+}
+
+export function isV8Prep(p) {
+  return isV7Prep(p) && Array.isArray(p?.prospects) && p.prospects.length >= 1;
+}
+
+export function isV6Prep(p) {
+  if (p?.supportMaturity || p?.businessContext?.signals || p?.businessContext?.workflows) return false;
+  if (isV7Prep(p)) return false;
+  return !!(
+    p?.incumbent?.displacement &&
+    p?.companySizeAgents &&
+    p?.businessContext?.market &&
+    Array.isArray(p?.fitSnapshot) &&
+    p.fitSnapshot.length >= 1
+  );
+}
+
+export function confidenceMeta(conf) {
+  const n = Number(conf);
+  if (n >= 80) return { word: "High", color: "var(--dew-green)", pct: n };
+  if (n >= 55) return { word: "Medium", color: "var(--dew-amber)", pct: n };
+  return { word: "Low", color: "var(--dew-red)", pct: n };
+}
+
+export function companyMono(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  const w = parts[0] || "?";
+  return w.slice(0, 2).toUpperCase();
+}
+
+export function logoGradient(name) {
+  const hash = String(name || "")
+    .split("")
+    .reduce((a, c) => a + c.charCodeAt(0), 0);
+  const hues = [
+    "linear-gradient(135deg,#2c5cc5,#7c5cfc)",
+    "linear-gradient(135deg,#0aa06e,#2c5cc5)",
+    "linear-gradient(135deg,#f79009,#e5484d)",
+    "linear-gradient(135deg,#7c5cfc,#2c5cc5)",
+  ];
+  return hues[hash % hues.length];
+}
+
+function sourceBadge(label, conf, idx) {
+  const meta = confidenceMeta(conf);
+  return `<button type="button" class="prep-src-badge" data-src-idx="${idx}" aria-label="Source ${esc(label)}">
+    ${esc(label)}<span class="prep-src-dot" style="background:${meta.color}"></span>
+  </button>`;
+}
+
+function sectionHead(title, dotColor) {
+  return `<div class="prep-section-head">
+    <span class="prep-section-dot" style="background:${dotColor}"></span>
+    <span class="dew-mono-label">${esc(title)}</span>
+  </div>`;
+}
+
+function signalLabelWithTooltip(label) {
+  const tip = SIGNAL_TOOLTIPS[label] || "";
+  if (!tip) return esc(label);
+  return `<fw-tooltip content="${esc(tip)}">
+    <span class="prep-signal-label-wrap">
+      <span>${esc(label)}</span>
+      <fw-icon name="info" size="12" class="prep-signal-info" aria-label="About this signal"></fw-icon>
+    </span>
+  </fw-tooltip>`;
+}
+
+function icpVerdictClass(verdict) {
+  if (verdict === "Strong") return "good";
+  if (verdict === "Moderate") return "ok";
+  if (verdict === "Weak") return "weak";
+  return "muted";
+}
+
+function renderIcpFitment(icpFit, sources) {
+  if (!icpFit) return "";
+  const verdictCls = icpVerdictClass(icpFit.verdict);
+  const score =
+    typeof icpFit.score === "number" && Number.isFinite(icpFit.score)
+      ? `<span class="prep-icp-score muted">${icpFit.score}/100</span>`
+      : "";
+  const highlights = (icpFit.highlights || [])
+    .map((h) => `<li>${dash(h)}</li>`)
+    .join("");
+  const gaps = (icpFit.gaps || [])
+    .map((g) => `<li>${dash(g)}</li>`)
+    .join("");
+  const refs = (icpFit.frameworkRefs || []).filter((r) => !isUnknown(r));
+  const refChips = refs.length
+    ? `<div class="prep-icp-ref-chips">${refs.map((r) => `<span class="prep-icp-ref-chip">${dash(r)}</span>`).join("")}</div>`
+    : "";
+  const hasDetails = highlights || gaps || refChips;
+  const src = sources[0];
+  const srcBadge = src ? sourceBadge(src.label, src.confidence, 0) : "";
+  return `<div class="prep-icp-block">
+    <div class="prep-icp-head">
+      <span class="dew-mono-label">ICP fitment</span>
+      <span class="prep-icp-product">${esc(icpFit.product || "Freshdesk")}</span>
+      <span class="prep-icp-verdict prep-icp-pill ${verdictCls}">${esc(icpFit.verdict || "Unknown")}</span>
+      ${score}
+      ${srcBadge}
+    </div>
+    ${
+      hasDetails
+        ? `<details class="prep-icp-details">
+        <summary class="prep-icp-details-summary">Highlights &amp; gaps</summary>
+        <div class="prep-icp-details-body">
+          ${highlights ? `<div class="prep-icp-subhead muted">Highlights</div><ul class="prep-icp-list">${highlights}</ul>` : ""}
+          ${gaps ? `<div class="prep-icp-subhead muted">Gaps to probe</div><ul class="prep-icp-list prep-icp-gaps">${gaps}</ul>` : ""}
+          ${refChips ? `<div class="prep-icp-subhead muted">Framework</div>${refChips}` : ""}
+        </div>
+      </details>`
+        : ""
+    }
+  </div>`;
+}
+
+function renderFactRows(facts, sources) {
+  return (facts || [])
+    .map((f, i) => {
+      const src = sources.find((s) => s.label === f.sourceLabel) || sources[i % sources.length];
+      const conf = src?.confidence ?? 50;
+      return `<div class="prep-kv-row">
+        <span class="prep-kv-key">${esc(f.key)}</span>
+        <span class="prep-kv-val">${dash(f.value)} ${sourceBadge(f.sourceLabel, conf, sources.indexOf(src))}</span>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderSignalRows(signals, sources) {
+  return (signals || [])
+    .map((s, i) => {
+      const src = sources.find((x) => x.label === s.sourceLabel) || sources[i % sources.length];
+      const conf = src?.confidence ?? 50;
+      return `<div class="prep-signal-row">
+        <div class="prep-signal-top">
+          <span class="prep-kv-key prep-signal-label">${signalLabelWithTooltip(s.label)}</span>
+          ${sourceBadge(s.sourceLabel, conf, sources.indexOf(src))}
+        </div>
+        <div class="prep-signal-val">${dash(s.value)}</div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderProspectColumn(prospects, sources) {
+  const list = prospects?.length ? prospects : [];
+  if (!list.length) {
+    return `<p class="muted">No prospect profiles yet — regenerate the brief.</p>`;
+  }
+  return list
+    .map((p, i) => {
+      const mono = companyMono(p.name);
+      const src = sources.find((s) => s.label === p.sourceLabel) || sources[i % sources.length];
+      const conf = src?.confidence ?? 50;
+      const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
+      const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
+      return `<div class="prep-prospect-card">
+        <div class="prep-prospect-head">
+          <span class="prep-prospect-avatar">${esc(mono)}</span>
+          <div>
+            <div class="prep-prospect-name">${dash(p.name)}</div>
+            <div class="prep-prospect-role muted">${dash(p.role)}</div>
+          </div>
+          ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
+        </div>
+        <div class="prep-kv-row"><span class="prep-kv-key">Experience</span><span class="prep-kv-val">${dash(p.totalExperience)}</span></div>
+        <div class="prep-kv-row"><span class="prep-kv-key">Prior employers</span><span class="prep-kv-val">${employers.length ? esc(employers.join(", ")) : dash("")}</span></div>
+        <div class="prep-kv-row"><span class="prep-kv-key">Competitor touchpoints</span><span class="prep-kv-val">${touchpoints.length ? esc(touchpoints.join(", ")) : dash("")}</span></div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderSupportJDBlock(supportJD, sources) {
+  const src = sources.find((s) => s.label === supportJD?.sourceLabel) || sources[1] || sources[0];
+  const conf = src?.confidence ?? 55;
+  return `<div class="prep-jd-block prep-jd-full">
+    <div class="prep-jd-head">
+      <span class="prep-jd-title">Support agent JD · LinkedIn</span>
+      ${sourceBadge(supportJD?.sourceLabel || src?.label || "S2", conf, sources.indexOf(src))}
+    </div>
+    <p class="muted prep-jd-role">${dash(supportJD?.title)}</p>
+    <ul class="prep-jd-bullets">${(supportJD?.bullets || [])
+      .map((b) => `<li>${dash(b)}</li>`)
+      .join("") || '<li class="muted">—</li>'}</ul>
+  </div>`;
+}
+
+function renderFitGrid(fitSnapshot) {
+  return (fitSnapshot || [])
+    .slice(0, 3)
+    .map(
+      (ft) => `<div class="prep-fit-cell">
+        <div class="prep-fit-attr">${esc(ft.label)}</div>
+        <div class="prep-fit-row">
+          <span class="prep-chip prep-chip-them">Them</span>
+          <span class="prep-fit-text">${dash(ft.thisCompany)}</span>
+        </div>
+        <div class="prep-fit-row">
+          <span class="prep-chip prep-chip-norm">Norm</span>
+          <span class="prep-fit-text muted">${dash(ft.industryNorm)}</span>
+        </div>
+      </div>`,
+    )
+    .join("");
+}
+
+function renderDiscoveryKit(kit) {
+  return (kit || [])
+    .map(
+      (item, i) => `<div class="prep-kit-item">
+        <div class="prep-kit-num">${i + 1}</div>
+        <div>
+          <div class="prep-kit-ask">${dash(item.question)}</div>
+          <div class="prep-kit-because muted">because ${dash(item.because)}</div>
+        </div>
+      </div>`,
+    )
+    .join("");
+}
+
+function renderPains(pains) {
+  if (!(pains || []).length) return '<p class="muted">—</p>';
+  return `<ul class="prep-pain-list">${pains
+    .map((p) => `<li><span class="prep-pain-dot"></span>${dash(p)}</li>`)
+    .join("")}</ul>`;
+}
+
+function renderSourcesAccordion(sources, open) {
+  const rows = (sources || [])
+    .map((s) => {
+      const meta = confidenceMeta(s.confidence);
+      const pct = Number.isFinite(meta.pct) ? meta.pct : 50;
+      return `<div class="prep-source-row">
+        <span class="prep-source-label">${esc(s.label)}</span>
+        <span class="prep-source-title">${dash(s.title)}</span>
+        <div class="prep-conf-bar-wrap">
+          <div class="prep-conf-bar" style="width:${pct}%;background:${meta.color}"></div>
+        </div>
+        <span class="prep-conf-word" style="color:${meta.color}">${meta.word} · ${pct}%</span>
+      </div>`;
+    })
+    .join("");
+  return `<details class="prep-sources-card" ${open ? "open" : ""}>
+    <summary class="prep-sources-summary dew-mono-label">Sources &amp; confidence</summary>
+    <div class="prep-sources-body">${rows || '<p class="muted">—</p>'}</div>
+  </details>`;
+}
+
+function renderStoryline(pcv) {
+  const header = `<div class="prep-script-head">
+    <span>Pain</span><span>Feature</span><span>Value</span>
+  </div>`;
+  const rows = (pcv || [])
+    .map((row) => {
+      const valueItems = Array.isArray(row.values)
+        ? row.values
+        : row.value
+          ? [row.value]
+          : [];
+      const valueList =
+        valueItems.length > 0
+          ? `<ul class="prep-script-values">${valueItems.map((v) => `<li>${dash(v)}</li>`).join("")}</ul>`
+          : '<p class="muted">—</p>';
+      return `<div class="prep-script-row">
+        <div>${dash(row.pain)}</div>
+        <div class="prep-script-cap">${dash(row.capability)}</div>
+        <div class="prep-script-val">${valueList}</div>
+      </div>`;
+    })
+    .join("");
+  return header + (rows || '<p class="muted">—</p>');
+}
+
+function renderChecklist(checklist, checks, accountId) {
+  const items = checklist?.length
+    ? checklist
+    : ["Create demo account", "Configure support email", "Add sample tickets", "Enable web widget"];
+  const done = items.filter((_, i) => checks?.[accountId]?.[i]).length;
+  const rows = items
+    .map(
+      (label, i) => `<label class="prep-check-row">
+        <fw-checkbox data-check-idx="${i}" ${checks?.[accountId]?.[i] ? "checked" : ""}></fw-checkbox>
+        <span>${esc(label)}</span>
+      </label>`,
+    )
+    .join("");
+  return `<div class="prep-check-head">
+    <span class="dew-mono-label">Sandbox setup</span>
+    <span class="prep-check-progress">${done} / ${items.length}</span>
+  </div>${rows}`;
+}
+
+function renderAssets(assets) {
+  if (!(assets || []).length) return '<p class="muted">—</p>';
+  return (assets || [])
+    .map((a) => {
+      const extClass = `prep-ext prep-ext-${String(a.ext || "DOC").toLowerCase()}`;
+      const href = a.url && !isUnknown(a.url) ? esc(a.url) : "#";
+      return `<a class="prep-asset-row" href="${href}" target="_blank" rel="noopener noreferrer">
+        <span class="prep-asset-label">${esc(a.label)}</span>
+        <span class="${extClass}">${esc(a.ext || "DOC")}</span>
+      </a>`;
+    })
+    .join("");
+}
+
+export function renderDemoTab(prep, checks, accountId) {
+  return `<div class="prep-tab-body prep-rise">
+    <div class="prep-grid-demo">
+      <fw-card class="prep-card">
+        ${sectionHead("Demo script · pain → feature → value", "var(--dew-primary)")}
+        ${renderStoryline(prep.painCapabilityValue)}
+      </fw-card>
+      <div class="prep-demo-side">
+        <fw-card class="prep-card prep-check-card">
+          ${renderChecklist(prep.checklist, checks, accountId)}
+        </fw-card>
+        <fw-card class="prep-card">
+          ${sectionHead("Deck &amp; assets", "var(--dew-purple)")}
+          ${renderAssets(prep.assets)}
+        </fw-card>
+      </div>
+    </div>
+  </div>`;
+}
+
+export function renderResultHeader(prep, meta) {
+  const company = meta.company || "Account";
+  const domain = meta.domain || "";
+  const mono = companyMono(company);
+  const domainLink = domain && !isUnknown(domain) ? `https://${domain}` : "#";
+
+  return `<div class="prep-result-header-inner">
+    <div class="prep-header-left">
+      <div class="prep-logo" style="background:${logoGradient(company)}">${esc(mono)}</div>
+      <div class="prep-header-text">
+        <div class="prep-header-title-row">
+          <h1 class="prep-company-name">${esc(company)}</h1>
+          ${domain ? `<a class="prep-domain-link" href="${esc(domainLink)}" target="_blank" rel="noopener noreferrer">${esc(domain)} ↗</a>` : ""}
+        </div>
+        <p class="prep-desc muted">${dash(prep.description)}</p>
+      </div>
+    </div>
+    <div class="prep-header-right">
+      <fw-button id="prep-new-search" color="secondary" fill="outline">New search</fw-button>
+    </div>
+  </div>`;
+}
+
+export function renderDiscoveryTab(prep, sourcesOpen) {
+  const sources = prep.sources || [];
+  return `<div class="prep-tab-body prep-rise">
+    <fw-inline-message type="warning" open class="prep-ai-banner">
+      Generated by AI — prone to error. Please validate before customer conversations.
+    </fw-inline-message>
+    <div class="prep-grid-3">
+      <fw-card class="prep-card">
+        ${sectionHead("Account facts", "var(--dew-primary)")}
+        <p class="prep-about muted">${dash(prep.about)}</p>
+        ${renderFactRows(prep.facts, sources)}
+        ${renderIcpFitment(prep.icpFit, sources)}
+      </fw-card>
+      <fw-card class="prep-card">
+        ${sectionHead("Signals", "var(--dew-purple)")}
+        ${renderSignalRows(prep.signals, sources)}
+      </fw-card>
+      <fw-card class="prep-card">
+        ${sectionHead("Prospect information", "var(--dew-amber)")}
+        ${renderProspectColumn(prep.prospects, sources)}
+      </fw-card>
+    </div>
+    ${renderSupportJDBlock(prep.supportJD, sources)}
+    <fw-card class="prep-card prep-fit-card">
+      ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}
+      <div class="prep-fit-grid">${renderFitGrid(prep.fitSnapshot)}</div>
+    </fw-card>
+    <div class="prep-grid-kit">
+      <fw-card class="prep-card">
+        ${sectionHead("Discovery kit · ask this", "var(--dew-primary)")}
+        ${renderDiscoveryKit(prep.discoveryKit)}
+      </fw-card>
+      <fw-card class="prep-card">
+        ${sectionHead("Likely pain points", "var(--dew-red)")}
+        ${renderPains(prep.likelyPains)}
+      </fw-card>
+    </div>
+    ${renderSourcesAccordion(sources, sourcesOpen)}
+  </div>`;
+}
+
+export function renderSourcePopover(source, x, y) {
+  if (!source) return "";
+  const conf = confidenceMeta(source.confidence);
+  const pct = Number.isFinite(conf.pct) ? conf.pct : 50;
+  const url = source.url && !isUnknown(source.url) ? source.url : "";
+  return `<div class="prep-popover" style="left:${x}px;top:${y}px" role="dialog" aria-label="Source details">
+    <div class="prep-popover-head">
+      <span class="dew-mono-label">Source ${esc(source.label)}</span>
+      <span style="color:${conf.color}">${conf.word} · ${pct}%</span>
+    </div>
+    <p class="prep-popover-title">${dash(source.title)}</p>
+    ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>` : '<span class="muted">No URL</span>'}
+    <div class="prep-conf-bar-wrap prep-popover-bar">
+      <div class="prep-conf-bar" style="width:${pct}%;background:${conf.color}"></div>
+    </div>
+    <button type="button" class="prep-popover-backdrop" aria-label="Close"></button>
+  </div>`;
+}
+
+export function renderLegacyFallback() {
+  return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery + Demo brief.</div>`;
+}

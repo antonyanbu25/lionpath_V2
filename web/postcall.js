@@ -1,6 +1,7 @@
 import { firebaseConfig, WORKER_BASE_URL } from "./firebase-config.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
+import { readFieldValue, readFieldValueAsync, setFormFieldsDisabled, wirePrintToolbar, wireToolbarById } from "./crayons-ui.js";
 
 const authEnabled = !!firebaseConfig.projectId;
 const ANALYZE_URL = `${WORKER_BASE_URL}/api/analyze-call`;
@@ -584,9 +585,9 @@ export function renderPostCall(data, meta = {}) {
 
   return `
     <div class="toolbar">
-      <button class="ghost" onclick="window.print()">Print / PDF</button>
-      <button class="ghost" id="copy-postcall-json">Copy JSON</button>
-      <button class="ghost" id="copy-followup">Copy follow-up email</button>
+      <fw-button id="toolbar-print" color="secondary" fill="outline">Print / PDF</fw-button>
+      <fw-button id="copy-postcall-json" color="secondary" fill="outline">Copy JSON</fw-button>
+      <fw-button id="copy-followup" color="secondary" fill="outline">Copy follow-up email</fw-button>
     </div>
     <header class="header-strip">
       <div class="header-main">
@@ -620,18 +621,18 @@ export function displayPostCall(data, meta) {
     console.error("[postcall] render failed:", err);
     result.innerHTML = `<div class="status err">${esc(err.message || "Could not render analysis.")}</div>`;
   }
+  show($("postcall-form-view"), false);
   show(result, true);
   initPostCallAnimations(result);
-  const copyJson = $("copy-postcall-json");
-  if (copyJson) copyJson.onclick = () => navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-  const copyEmail = $("copy-followup");
-  if (copyEmail) {
-    copyEmail.onclick = () => {
+  wirePrintToolbar(result);
+  wireToolbarById(result, {
+    "copy-postcall-json": () => navigator.clipboard.writeText(JSON.stringify(data, null, 2)),
+    "copy-followup": () => {
       const e = data.analysis?.artifacts?.suggestedFollowUpEmail
         || data.analysis?.nextSteps?.suggestedFollowUpEmail;
       if (e) navigator.clipboard.writeText(`Subject: ${e.subject}\n\n${e.body}`);
-    };
-  }
+    },
+  });
   result.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
@@ -643,12 +644,12 @@ export function setOnAnalysisSaved(fn) {
 }
 
 async function analyzeCall(e) {
-  e.preventDefault();
+  e?.preventDefault?.();
   const btn = $("analyze-call");
   const status = $("postcall-status");
   const { recordingUrl, recordingPassword } = parseRecordingInput(
-    $("pc-recording-url").value,
-    $("pc-recording-pwd").value,
+    await readFieldValueAsync($("pc-recording-url")),
+    await readFieldValueAsync($("pc-recording-pwd")),
   );
 
   if (!recordingUrl) {
@@ -667,7 +668,7 @@ async function analyzeCall(e) {
   show(status, true);
   show($("postcall-result"), false);
   const form = $("postcall-form");
-  form?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = true; });
+  setFormFieldsDisabled(form, true);
 
   try {
     const res = await fetch(ANALYZE_URL, {
@@ -708,7 +709,7 @@ async function analyzeCall(e) {
     }
   } finally {
     btn.disabled = false;
-    $("postcall-form")?.querySelectorAll("input, textarea, button").forEach((el) => { el.disabled = false; });
+    setFormFieldsDisabled($("postcall-form"), false);
   }
 }
 
@@ -722,11 +723,13 @@ export function onSessionReady(session, tokenFn) {
 export function onSessionCleared() {
   currentSession = null;
   getAuthToken = null;
+  show($("postcall-form-view"), true);
   show($("postcall-result"), false);
 }
 
 function boot() {
-  $("postcall-form")?.addEventListener("submit", analyzeCall);
+  $("postcall-form")?.addEventListener("submit", (e) => { void analyzeCall(e); });
+  $("analyze-call")?.addEventListener("fwClick", (e) => { void analyzeCall(e); });
 }
 
 boot();

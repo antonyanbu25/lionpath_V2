@@ -1,7 +1,7 @@
 # SE Singha Paathai — VPS stack (Docker Compose + Caddy)
 #
-# Web UI:  lionpath.benjaminsquare.com  → web:8788
-# API:    lionpathapi.benjaminsquare.com → worker:8787
+# Web UI:  portal.benjaminsquare.com  → web:8788
+# API:    portalapi.benjaminsquare.com → worker:8787
 #
 # First-time setup: see docs/VPS_DEPLOY.md and run setup.sh on the VPS.
 

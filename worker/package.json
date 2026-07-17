@@ -8,7 +8,11 @@
     "dev:node": "node scripts/dev-node.mjs",
     "deploy": "wrangler deploy",
     "start:node": "tsx src/node-server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:icp": "node scripts/extract-icp.mjs && node scripts/extract-omni-personas.mjs && node scripts/generate-icp-kb.mjs",
+    "build:icp:kb-only": "node scripts/generate-icp-kb.mjs",
+    "build:benchmark": "node scripts/extract-benchmark.mjs && node scripts/generate-benchmark-kb.mjs",
+    "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs"
   },
   "dependencies": {
     "tsx": "^4.19.0"

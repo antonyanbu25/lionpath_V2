@@ -93,39 +93,11 @@ function companyFromRecord(record) {
   return (parts[0] || title).trim();
 }
 
-/**
- * Normalize post-call nextSteps — API may return an array of rows or a structured object.
- * @param {unknown} nextSteps
- * @returns {{ owner?: string, action: string, due?: string }[]}
- */
-export function stepsFromNextSteps(nextSteps) {
-  if (Array.isArray(nextSteps)) return nextSteps;
-  if (!nextSteps || typeof nextSteps !== "object") return [];
-
-  const items = [];
-  const push = (owner, list) => {
-    for (const step of Array.isArray(list) ? list : []) {
-      const action = step?.action || step?.followUp || step?.thisCall;
-      if (!action) continue;
-      items.push({
-        owner,
-        action: String(action),
-        due: step.due || step.dueHint || "",
-      });
-    }
-  };
-
-  push("SE", nextSteps.seActions);
-  push("AE", nextSteps.aeActions);
-  push("Customer", nextSteps.customerCommitments);
-  return items;
-}
-
 function normalizeSteps(record) {
   const a = record.analysis || {};
   const items = [];
 
-  for (const step of stepsFromNextSteps(a.nextSteps)) {
+  for (const step of a.nextSteps || []) {
     if (!step?.action || UNKNOWN_DUE.has(String(step.action).toLowerCase())) continue;
     items.push({
       owner: step.owner || "SE",
@@ -206,11 +178,11 @@ export function renderFollowUpsSection(followUps, opts = {}) {
     return `
       <section class="dash-section launch-followups" aria-labelledby="followups-heading">
         <h2 id="followups-heading" class="dash-section-title">Follow-ups owed</h2>
-        <div class="dash-empty card launch-empty">
+        <fw-card class="dash-empty launch-empty">
           <div class="dash-empty-icon" aria-hidden="true">✓</div>
           <h3>All caught up</h3>
           <p class="muted">No open SE actions from your analyzed calls.</p>
-        </div>
+        </fw-card>
       </section>`;
   }
 
@@ -224,17 +196,19 @@ export function renderFollowUpsSection(followUps, opts = {}) {
     const statusLabel =
       item.urgency === "overdue" ? "Overdue" : item.urgency === "soon" ? "Due soon" : "Upcoming";
     return `
-      <button type="button" class="launch-followup-row dash-call-link" data-call-id="${esc(item.callId)}">
-        <span class="launch-followup-dot ${dotCls}" title="${esc(statusLabel)}" aria-label="${esc(statusLabel)}"></span>
-        <span class="launch-followup-company">${esc(item.company)}</span>
-        <span class="launch-followup-action muted">${esc(item.action)}</span>
-        <span class="launch-followup-due">${esc(item.due)}</span>
-      </button>`;
+      <fw-button class="launch-followup-row dash-call-link" color="secondary" fill="clear" data-call-id="${esc(item.callId)}">
+        <span class="launch-followup-inner">
+          <span class="launch-followup-dot ${dotCls}" title="${esc(statusLabel)}" aria-label="${esc(statusLabel)}"></span>
+          <span class="launch-followup-company">${esc(item.company)}</span>
+          <span class="launch-followup-action muted">${esc(item.action)}</span>
+          <span class="launch-followup-due">${esc(item.due)}</span>
+        </span>
+      </fw-button>`;
   }).join("");
 
   return `
     <section class="dash-section launch-followups" aria-labelledby="followups-heading">
       <h2 id="followups-heading" class="dash-section-title">${esc(headlineParts.join(" · "))}</h2>
-      <div class="launch-followup-list card">${rows}</div>
+      <fw-card class="launch-followup-list">${rows}</fw-card>
     </section>`;
 }
