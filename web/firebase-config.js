@@ -24,22 +24,31 @@ function isProductionHost(host) {
   return host === "portal.benjaminsquare.com" || host.endsWith(".run.app");
 }
 
+function mergeFirebaseOverrides(overrides) {
+  if (!overrides || typeof overrides !== "object") return;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value) firebaseConfig[key] = value;
+  }
+}
+
 /**
  * Merge optional local overrides from firebase-config.local.js (gitignored).
  * Call once before boot when Firebase SSO should be enabled locally or on VPS.
  */
 export async function loadFirebaseConfig() {
   const host = typeof location !== "undefined" ? location.hostname : "";
-  if (isProductionHost(host)) {
+  const production = isProductionHost(host);
+  if (production) {
     Object.assign(firebaseConfig, PRODUCTION_FIREBASE);
   }
   try {
     const mod = await import("./firebase-config.local.js");
-    if (mod?.firebaseConfig && typeof mod.firebaseConfig === "object") {
-      Object.assign(firebaseConfig, mod.firebaseConfig);
-    }
+    mergeFirebaseOverrides(mod?.firebaseConfig);
   } catch {
     // Local file missing — dummy login mode on localhost only.
+  }
+  if (production) {
+    Object.assign(firebaseConfig, PRODUCTION_FIREBASE);
   }
   return firebaseConfig;
 }
