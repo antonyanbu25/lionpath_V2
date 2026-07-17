@@ -24,12 +24,16 @@ body.splash-lock { overflow: hidden; }
 /* Theme toggle */
 .theme-toggle {
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
   background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px 10px;
   font-size: 16px;
   line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
   transition: background var(--transition), border-color var(--transition), transform var(--transition);
 }
 .theme-toggle:hover {
@@ -636,6 +640,7 @@ fw-button.sidebar-history-item.active {
   font-size: 15px;
   flex: 1;
   min-width: 0;
+  pointer-events: none;
 }
 .sidebar-toggle {
   display: none;
@@ -2925,6 +2930,15 @@ fw-button.theme-toggle,
 fw-button.sidebar-toggle,
 fw-button.sidebar-close {
   --fw-button-min-width: auto;
+}
+fw-button.theme-toggle {
+  --fw-button-min-width: 40px;
+  --fw-button-min-height: 40px;
+  --fw-button-padding-start: 10px;
+  --fw-button-padding-end: 10px;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 fw-button.nav-item,
 fw-button.sidebar-logout {
