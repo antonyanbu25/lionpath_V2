@@ -1,4 +1,23 @@
 /* Layout tokens only — colors live in dew-theme.css */
+html {
+  color-scheme: light;
+  background: #eef0f4;
+  color: #12344d;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+#lion-splash,
+.lion-splash,
+.lion-splash-active {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+body.splash-lock {
+  overflow: auto !important;
+}
 :root,
 [data-theme="light"],
 [data-theme="dark"] {

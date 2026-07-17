@@ -1,5 +1,4 @@
 import { readFieldValue, readFieldValueAsync } from "./crayons-ui.js";
-import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
 import {
@@ -456,10 +455,6 @@ async function showApp(session, opts = {}) {
   show($("app-shell"), true);
   updateSidebarUser();
 
-  if (opts.freshLogin) {
-    triggerSignInPulse();
-  }
-
   const tokenFn = authEnabled && fb?.auth?.currentUser
     ? () => fb.auth.currentUser.getIdToken()
     : null;
@@ -585,7 +580,6 @@ async function initFirebase() {
     show($("signin-error"), false);
     try {
       await fb.signInWithPopup(auth, provider);
-      triggerSignInPulse();
     }
     catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
   });

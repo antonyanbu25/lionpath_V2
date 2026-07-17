@@ -30,9 +30,9 @@ function bindThemeToggles() {
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     if (btn.dataset.themeBound) return;
     btn.dataset.themeBound = "1";
-    // fw-button emits fwClick; a native click listener double-toggles and breaks the control.
     btn.addEventListener("fwClick", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       toggleTheme();
     });
   });
@@ -44,6 +44,7 @@ export function initTheme() {
   if (typeof customElements !== "undefined") {
     customElements.whenDefined("fw-button").then(bindThemeToggles);
   }
+  document.addEventListener("DOMContentLoaded", bindThemeToggles);
 }
 
 initTheme();

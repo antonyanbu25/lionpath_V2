@@ -1,17 +1,28 @@
 <!doctype html>
 <html lang="en" data-theme="light">
   <head>
+    <script>document.documentElement.setAttribute('data-theme','light');localStorage.setItem('lionpath_theme','light');</script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html { color-scheme: light !important; background: #eef0f4; color: #12344d; }
+      body { background: #eef0f4; color: #12344d; }
+      #lion-splash, .lion-splash, .lion-splash-active { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+      body.splash-lock { overflow: auto !important; }
+    </style>
     <script>
       (function () {
-        var KEY = "lionpath_theme";
-        var theme = localStorage.getItem(KEY);
-        if (theme !== "light" && theme !== "dark") theme = "light";
-        var root = document.documentElement;
-        root.setAttribute("data-theme", theme);
-        root.style.colorScheme = theme;
-        root.classList.toggle("fw-dark-theme", theme === "dark");
+        document.documentElement.setAttribute("data-theme", "light");
+        document.documentElement.style.colorScheme = "light";
+        document.documentElement.classList.remove("fw-dark-theme");
+        localStorage.setItem("lionpath_theme", "light");
+        document.cookie = "lionpath_splash_seen=1; Max-Age=31536000; Path=/; SameSite=Lax";
+        function killSplash() {
+          document.querySelectorAll("#lion-splash, .lion-splash").forEach(function (el) { el.remove(); });
+          document.body && document.body.classList.remove("splash-lock");
+        }
+        killSplash();
+        document.addEventListener("DOMContentLoaded", killSplash);
       })();
     </script>
     <title>SE Singha Paathai — Freshworks</title>
@@ -156,7 +167,6 @@
       <div class="app-main">
         <header class="main-topbar">
           <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
-          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
           <span id="main-view-title" class="main-view-title">My dashboard</span>
           <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </header>
@@ -306,7 +316,8 @@
       <a href="./about.html#discovery-wireframe" target="_blank" rel="noopener noreferrer" style="margin-left:1rem">Discovery wireframe</a>
     </footer>
 
-    <script type="module" src="./theme.js?v=20260717"></script>
+    <script type="module" src="./theme.js?v=20260717b"></script>
+    <script type="module" src="./splash.js?v=20260717b"></script>
     <script type="module" src="./app.js"></script>
     <script type="module" src="./postcall.js"></script>
   </body>
