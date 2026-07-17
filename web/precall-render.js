@@ -8,6 +8,24 @@ function esc(v) {
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
 const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
 
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Highlight evaluator JD tool names when they appear in support-agent JD text. */
+function highlightTools(text, tools) {
+  if (isUnknown(text)) return dash(text);
+  const list = (tools || []).filter((t) => !isUnknown(t));
+  if (!list.length) return esc(text);
+  let out = esc(text);
+  const sorted = [...list].sort((a, b) => b.length - a.length);
+  for (const tool of sorted) {
+    const re = new RegExp(`(${escapeRegExp(tool)})`, "gi");
+    out = out.replace(re, '<mark class="prep-jd-tool-highlight">$1</mark>');
+  }
+  return out;
+}
+
 export const SIGNAL_TOOLTIPS = {
   "Incumbent tool":
     "Current helpdesk or CX platform inferred from help center URLs, job posts, or public stack mentions.",
@@ -199,6 +217,7 @@ function renderProspectColumn(prospects, sources) {
           ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
         </div>
         <div class="prep-kv-row"><span class="prep-kv-key">Experience</span><span class="prep-kv-val">${dash(p.totalExperience)}</span></div>
+        <div class="prep-kv-row"><span class="prep-kv-key">Work experience</span><span class="prep-kv-val">${dash(p.experienceSummary)}</span></div>
         <div class="prep-kv-row"><span class="prep-kv-key">Prior employers</span><span class="prep-kv-val">${employers.length ? esc(employers.join(", ")) : dash("")}</span></div>
         <div class="prep-kv-row"><span class="prep-kv-key">Competitor touchpoints</span><span class="prep-kv-val">${touchpoints.length ? esc(touchpoints.join(", ")) : dash("")}</span></div>
       </div>`;
@@ -206,17 +225,18 @@ function renderProspectColumn(prospects, sources) {
     .join("");
 }
 
-function renderSupportJDBlock(supportJD, sources) {
+function renderSupportJDBlock(supportJD, sources, evaluatorTools) {
   const src = sources.find((s) => s.label === supportJD?.sourceLabel) || sources[1] || sources[0];
   const conf = src?.confidence ?? 55;
+  const tools = evaluatorTools || [];
   return `<div class="prep-jd-block prep-jd-full">
     <div class="prep-jd-head">
       <span class="prep-jd-title">Support agent JD · LinkedIn</span>
       ${sourceBadge(supportJD?.sourceLabel || src?.label || "S2", conf, sources.indexOf(src))}
     </div>
-    <p class="muted prep-jd-role">${dash(supportJD?.title)}</p>
+    <p class="muted prep-jd-role">${highlightTools(supportJD?.title, tools)}</p>
     <ul class="prep-jd-bullets">${(supportJD?.bullets || [])
-      .map((b) => `<li>${dash(b)}</li>`)
+      .map((b) => `<li>${highlightTools(b, tools)}</li>`)
       .join("") || '<li class="muted">—</li>'}</ul>
   </div>`;
 }
@@ -405,7 +425,7 @@ export function renderDiscoveryTab(prep, sourcesOpen) {
         ${renderProspectColumn(prep.prospects, sources)}
       </fw-card>
     </div>
-    ${renderSupportJDBlock(prep.supportJD, sources)}
+    ${renderSupportJDBlock(prep.supportJD, sources, prep.evaluatorJD?.tools)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}
       <div class="prep-fit-grid">${renderFitGrid(prep.fitSnapshot)}</div>

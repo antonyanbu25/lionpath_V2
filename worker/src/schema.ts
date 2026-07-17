@@ -82,11 +82,23 @@ const signalRow = {
 const prospectRow = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "role", "totalExperience", "priorEmployers", "competitorTouchpoints", "sourceLabel"],
+  required: [
+    "name",
+    "role",
+    "totalExperience",
+    "experienceSummary",
+    "priorEmployers",
+    "competitorTouchpoints",
+    "sourceLabel",
+  ],
   properties: {
     name: { type: "string", description: "Prospect full name, max 6 words." },
     role: { type: "string", description: "Job title, max 8 words." },
     totalExperience: { type: "string", description: "Years experience e.g. 12 years, max 6 words." },
+    experienceSummary: {
+      type: "string",
+      description: "Overall work experience summary e.g. 12 years B2B SaaS support leadership, max 20 words.",
+    },
     priorEmployers: {
       type: "array",
       maxItems: 4,
@@ -162,6 +174,7 @@ export const PREP_SCHEMA = {
     "facts",
     "signals",
     "supportJD",
+    "evaluatorJD",
     "likelyPains",
     "industryUseCases",
     "checklist",
@@ -225,6 +238,24 @@ export const PREP_SCHEMA = {
           items: { type: "string", description: "JD responsibility bullet, max 14 words." },
         },
       },
+    },
+    evaluatorJD: {
+      type: "object",
+      additionalProperties: false,
+      required: ["tools"],
+      properties: {
+        tools: {
+          type: "array",
+          maxItems: 8,
+          items: {
+            type: "string",
+            description:
+              "Support/CX tool or platform from evaluator prospect's LinkedIn JD or profile, max 4 words.",
+          },
+        },
+      },
+      description:
+        "Tools mentioned in the meeting evaluator's job description — used to highlight overlaps in supportJD.",
     },
     likelyPains: {
       type: "array",
@@ -364,9 +395,14 @@ export interface ProspectProfile {
   name: string;
   role: string;
   totalExperience: string;
+  experienceSummary: string;
   priorEmployers: string[];
   competitorTouchpoints: string[];
   sourceLabel: string;
+}
+
+export interface EvaluatorJD {
+  tools: string[];
 }
 
 export interface IcpFit {
@@ -413,6 +449,7 @@ export interface Prep {
   facts: SourcedFact[];
   signals: SignalRow[];
   supportJD: SupportJD;
+  evaluatorJD: EvaluatorJD;
   likelyPains: string[];
   industryUseCases: IndustryUseCase[];
   checklist: string[];

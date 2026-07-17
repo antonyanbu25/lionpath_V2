@@ -84,6 +84,8 @@ WORD CAPS (strict):
 - facts[].value: max 12 words; facts[].key from standard list below.
 - signals[].value: max 12 words; signals[].label MUST be exactly one of the six fixed labels.
 - supportJD bullets: max 14 words each; title max 12 words.
+- evaluatorJD.tools[]: max 4 words each, max 8 tools from evaluator prospect's LinkedIn JD/profile.
+- prospects[].experienceSummary: max 20 words — overall career/work experience summary.
 - likelyPains: max 12 words each, max 5 items.
 - discoveryKit question/because: max 12 words each.
 - industryUseCases: return empty array [] (deprecated).
@@ -106,11 +108,14 @@ Incumbent tool | Integrations | Web chat widget | AI in their current tech stack
 Each: label, value, sourceLabel.
 
 PROSPECTS[] — one entry per prospect email provided; research each on LinkedIn/web:
-{ name, role, totalExperience, priorEmployers[], competitorTouchpoints[], sourceLabel }
-Research LinkedIn/careers for role, years experience, prior employers, known Zendesk/Intercom/Zoho use.
+{ name, role, totalExperience, experienceSummary, priorEmployers[], competitorTouchpoints[], sourceLabel }
+Research LinkedIn/careers for role, years experience, overall career summary, prior employers, known Zendesk/Intercom/Zoho use.
 Map attendees[] when sparse; never leave prospects empty.
 
-ICP FIT — icpFit: { product, verdict, score?, highlights[], gaps[], frameworkRefs[] }
+EVALUATOR JD — evaluatorJD: { tools[] } from the primary prospect's LinkedIn job description or profile.
+List support/CX platforms and tools they mention (e.g. Zendesk, Salesforce, Intercom, Freshdesk). Empty [] if none found.
+
+SUPPORT JD — supportJD: { title, sourceLabel, bullets[] up to 4 } from company's support-agent LinkedIn/careers posting if found.
 - product: "Freshdesk Omni" OR "Freshdesk" — choose ONE using AUTHORITATIVE ICP docs below ONLY
 - Score against the SELECTED product ICP doc only
 - verdict: Strong | Moderate | Weak | Unknown — use Unknown if account data insufficient
@@ -119,9 +124,7 @@ ICP FIT — icpFit: { product, verdict, score?, highlights[], gaps[], frameworkR
 - Never invent ICP criteria outside the AUTHORITATIVE framework blocks below
 - When prospect role matches OMNI PERSONAS KB, align discovery hooks to persona pains (web sources for facts)
 
-SUPPORT JD — supportJD: { title, sourceLabel, bullets[] up to 4 } from LinkedIn/careers if found.
-
-FIT — exactly 3 rows: Support channels | Self Serve | Agent Assist
+ICP FIT — icpFit: { product, verdict, score?, highlights[], gaps[], frameworkRefs[] }
 Each: label, thisCompany, industryNorm, gap (large|partial|parity), gapVerdict (one word).
 
 Also fill businessContext + companySizeAgents + incumbent for downstream use.

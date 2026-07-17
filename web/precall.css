@@ -515,6 +515,14 @@
   flex: none;
 }
 
+.prep-jd-tool-highlight {
+  background: color-mix(in srgb, var(--dew-amber) 35%, transparent);
+  color: var(--dew-text);
+  font-weight: 600;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 .prep-fit-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
