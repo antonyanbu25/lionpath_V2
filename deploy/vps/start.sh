@@ -11,6 +11,12 @@ fi
 
 chmod 600 .env 2>/dev/null || true
 
+# Warn when CORS still points at pre-migration lionpath hostnames.
+if grep -qE 'ALLOWED_ORIGINS=.*lionpath' .env 2>/dev/null; then
+  echo "WARNING: .env ALLOWED_ORIGINS still references lionpath.* — update to https://portal.benjaminsquare.com" >&2
+  echo "         Browsers on portal.benjaminsquare.com will block API calls until you fix this." >&2
+fi
+
 docker compose pull --ignore-pull-failures 2>/dev/null || true
 docker compose build --pull
 docker compose up -d

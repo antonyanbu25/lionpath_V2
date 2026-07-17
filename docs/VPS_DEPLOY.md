@@ -203,8 +203,38 @@ ufw status
 | `nslookup` shows Cloudflare IPs for API | Set `portalapi` A record to **DNS only** (grey cloud), not proxied |
 | `Failed to fetch` in browser | Worker down — `docker compose logs worker` |
 | CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://portal.benjaminsquare.com` |
+| **"Cannot reach the API server at portalapi…"** banner after domain migration | API is up but CORS is wrong — see [Domain migration](#domain-migration-lionpath--portal) below |
 | History empty after reload | Check `HISTORY_FILE_DIR` and volume mount; `ls -la /var/lib/se-paathai/history` |
 | 502 from Caddy | `docker compose ps` — ensure worker and web are healthy |
+
+---
+
+## Domain migration (lionpath → portal)
+
+After renaming `lionpath.benjaminsquare.com` / `lionpathapi.*` to `portal.*` / `portalapi.*`:
+
+1. **DNS** — A records for `portal` and `portalapi` → VPS IP, **DNS only** (grey cloud).
+2. **Caddyfile** — must list `portal.benjaminsquare.com` and `portalapi.benjaminsquare.com` (see `deploy/vps/Caddyfile`).
+3. **`.env` on the VPS** — `setup.sh` does **not** overwrite an existing `.env`. Update CORS manually:
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+grep ALLOWED_ORIGINS .env
+# Must be: ALLOWED_ORIGINS=https://portal.benjaminsquare.com
+nano .env   # fix if it still says lionpath.benjaminsquare.com
+docker compose up -d --force-recreate worker
+```
+
+Verify CORS from your laptop (should echo `portal`, not `lionpath`):
+
+```bash
+curl -sI -H "Origin: https://portal.benjaminsquare.com" \
+  https://portalapi.benjaminsquare.com/api/config | grep -i access-control-allow-origin
+```
+
+Expected: `access-control-allow-origin: https://portal.benjaminsquare.com`
+
+`curl` alone can return HTTP 200 even when browsers fail — always check the `Access-Control-Allow-Origin` header matches the web origin.
 
 ---
 
