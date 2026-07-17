@@ -21,7 +21,11 @@ export const firebaseConfig = {
 };
 
 function isProductionHost(host) {
-  return host === "portal.benjaminsquare.com" || host.endsWith(".run.app");
+  return (
+    host === "portal.benjaminsquare.com" ||
+    host === "yonus.benjaminsquare.com" ||
+    host.endsWith(".run.app")
+  );
 }
 
 function mergeFirebaseOverrides(overrides) {
@@ -57,9 +61,13 @@ export async function loadFirebaseConfig() {
 function workerBaseUrl() {
   if (typeof location !== "undefined" && location.hostname) {
     const host = location.hostname;
-    // Production VPS: web on portal.*, API on portalapi.*
+    // VPS production: web on portal.*, API on portalapi.*
     if (host === "portal.benjaminsquare.com") {
       return "https://portalapi.benjaminsquare.com";
+    }
+    // GCP Cloud Run custom domain (parallel to VPS)
+    if (host === "yonus.benjaminsquare.com") {
+      return "https://yonus-api.benjaminsquare.com";
     }
     if (host.endsWith(".run.app")) {
       return "https://prep-portal-api-781846715448.us-central1.run.app";
