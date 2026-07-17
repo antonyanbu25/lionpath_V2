@@ -1,0 +1,218 @@
+# Cloud Run deploy — SE Singha Paathai (everything on GCP)
+
+| Service | Cloud Run name | Public domain |
+|---------|----------------|---------------|
+| API (Node worker) | **prep-portal-api** | `portalapi.benjaminsquare.com` |
+| Web (nginx static) | **prep-portal-web** | `portal.benjaminsquare.com` |
+
+**Project:** `se-singha-paathi` · **Region:** `us-central1`
+
+---
+
+## Fast path (boss checklist — ~15 min)
+
+Run these in order from a machine with `gcloud` and repo cloned.
+
+### 0. One-time GCP setup
+
+```bash
+gcloud auth login
+gcloud config set project se-singha-paathi
+
+gcloud services enable \
+  run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com \
+  secretmanager.googleapis.com storage.googleapis.com
+
+gcloud artifacts repositories create prep-portal \
+  --repository-format=docker --location=us-central1 \
+  --description="Prep portal API + web" 2>/dev/null || true
+
+gsutil mb -l us-central1 gs://se-singha-paathi-prep-history 2>/dev/null || true
+
+echo -n "PASTE_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
+  --data-file=- --replication-policy=automatic 2>/dev/null \
+  || echo -n "PASTE_GEMINI_API_KEY" | gcloud secrets versions add gemini-api-key --data-file=-
+```
+
+Grant Cloud Run access to the secret and GCS bucket (replace `PROJECT_NUMBER`):
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe se-singha-paathi --format='value(projectNumber)')
+
+gcloud secrets add-iam-policy-binding gemini-api-key \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+
+gsutil iam ch \
+  serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com:objectAdmin \
+  gs://se-singha-paathi-prep-history
+```
+
+### 1. Firebase config (before web build)
+
+`web/firebase-config.local.js` is **gitignored**. Create it locally so Cloud Build bakes Google SSO into the image:
+
+```bash
+cp web/firebase-config.local.example.js web/firebase-config.local.js
+# Edit — values from Firebase Console → Project settings → Your apps → Web app
+```
+
+The web Dockerfile copies the entire `web/` folder (`COPY web/ …`), so this file is included automatically when present. Without it, the portal runs in demo/no-auth mode.
+
+### 2. Build both images (Cloud Build)
+
+From **repo root**:
+
+```bash
+gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+```
+
+Builds and pushes:
+
+- `us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-api:latest`
+- `us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-web:latest`
+
+### 3. Deploy API — `prep-portal-api`
+
+Cloud Run sets `PORT=8080` automatically; the Node server reads `process.env.PORT`.
+
+```bash
+gcloud run deploy prep-portal-api \
+  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-api:latest \
+  --region us-central1 \
+  --project se-singha-paathi \
+  --platform managed \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 1Gi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 10 \
+  --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
+  --set-env-vars "\
+LLM_PROVIDER=gemini,\
+MODEL=gemini-3.1-flash-lite,\
+EFFORT=medium,\
+POSTCALL_LLM_PROVIDER=gemini,\
+POSTCALL_MODEL=gemini-3.1-flash-lite,\
+POSTCALL_EFFORT=low,\
+ALLOWED_ORIGINS=https://portal.benjaminsquare.com,\
+ALLOWED_EMAIL_DOMAIN=freshworks.com,\
+FIREBASE_PROJECT_ID=se-singha-paathi,\
+HISTORY_FILE_DIR=/data/history" \
+  --add-volume name=history,type=cloud-storage,bucket=se-singha-paathi-prep-history \
+  --add-volume-mount volume=history,mount-path=/data/history
+```
+
+Optional env vars (add to `--set-env-vars` or Secret Manager):
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | Anthropic fallback |
+| `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` / `ZOOM_REDIRECT_URI` | Zoom OAuth (phase 2) |
+| `ZOOMINFO_API_KEY` | ZoomInfo research |
+
+### 4. Deploy web — `prep-portal-web`
+
+```bash
+gcloud run deploy prep-portal-web \
+  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-web:latest \
+  --region us-central1 \
+  --project se-singha-paathi \
+  --platform managed \
+  --allow-unauthenticated \
+  --port 8080 \
+  --memory 256Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 5
+```
+
+### 5. Custom domains
+
+```bash
+gcloud beta run domain-mappings create \
+  --service prep-portal-web \
+  --domain portal.benjaminsquare.com \
+  --region us-central1 \
+  --project se-singha-paathi
+
+gcloud beta run domain-mappings create \
+  --service prep-portal-api \
+  --domain portalapi.benjaminsquare.com \
+  --region us-central1 \
+  --project se-singha-paathi
+```
+
+Each command prints DNS records. In your DNS provider (Cloudflare etc.), add the **CNAME** records Cloud Run shows. Use **DNS only** (grey cloud) — not proxied — for Let's Encrypt / Google-managed certs.
+
+Verify:
+
+```bash
+curl -sI https://portal.benjaminsquare.com | head -3
+curl -sI https://portalapi.benjaminsquare.com/api/health | head -3
+```
+
+(`web/firebase-config.js` already routes `portal.benjaminsquare.com` → `https://portalapi.benjaminsquare.com` — no code change needed.)
+
+### 6. Firebase authorized domains
+
+In [Firebase Console](https://console.firebase.google.com/) → **se-singha-paathi** → Authentication → Settings → **Authorized domains**, ensure:
+
+- `portal.benjaminsquare.com` (production web)
+- `localhost` (local dev)
+
+Cloud Run default URLs (`*.run.app`) are only needed if you test SSO on the raw Cloud Run URL before custom domain is live.
+
+---
+
+## Redeploy after code changes
+
+```bash
+# 1. Ensure firebase-config.local.js exists if SSO is required
+# 2. Rebuild
+gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+
+# 3. Roll out new revisions
+gcloud run deploy prep-portal-api \
+  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-api:latest \
+  --region us-central1 --project se-singha-paathi
+
+gcloud run deploy prep-portal-web \
+  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-web:latest \
+  --region us-central1 --project se-singha-paathi
+```
+
+---
+
+## Files in this folder
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile.api` | Node worker (`worker/`) — same stack as VPS `Dockerfile.worker`, listens on Cloud Run `PORT` |
+| `Dockerfile.web` | nginx 1.27 serving `web/` on port 8080 |
+| `nginx-cloudrun.conf` | nginx config (from `deploy/vps/nginx.conf`, port 8788 → 8080) |
+| `cloudbuild.yaml` | Builds and pushes both images to Artifact Registry |
+
+---
+
+## Migrating off VPS
+
+1. Deploy Cloud Run (steps above) and confirm both domains work.
+2. Point DNS `portal` and `portalapi` A records → Cloud Run CNAME targets (remove VPS A records).
+3. Copy history from VPS if needed: `rsync` `/var/lib/se-paathai/history/` → `gs://se-singha-paathi-prep-history/`.
+4. Decommission VPS stack when satisfied.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| CORS errors | `ALLOWED_ORIGINS` must include `https://portal.benjaminsquare.com` on API |
+| 401 on API | Set `FIREBASE_PROJECT_ID=se-singha-paathi`; ensure user token is valid |
+| No Google sign-in button | Rebuild web with `web/firebase-config.local.js` present |
+| History not persisting | Check GCS volume mount and bucket IAM on compute SA |
+| Domain mapping stuck | Verify domain ownership in GCP; DNS CNAME propagated |
+
+See also: [`docs/FIREBASE_SETUP.md`](../../docs/FIREBASE_SETUP.md), [`docs/VPS_DEPLOY.md`](../../docs/VPS_DEPLOY.md).
