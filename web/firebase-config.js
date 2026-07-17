@@ -2,8 +2,8 @@
 // Firebase Auth + Firestore rules + the Worker's token check), so it's safe to ship.
 //
 // Leave `firebaseConfig.projectId` EMPTY to run the portal in no-auth preview mode
-// (form works against the Worker, no sign-in, no history). Fill it in to turn on
-// Google sign-in and Firestore history.
+// (form works against the Worker, no sign-in, no history). Fill it in via
+// firebase-config.local.js to turn on Google sign-in and Firestore history.
 
 export const firebaseConfig = {
   apiKey: "",
@@ -11,6 +11,22 @@ export const firebaseConfig = {
   projectId: "",
   appId: "",
 };
+
+/**
+ * Merge optional local overrides from firebase-config.local.js (gitignored).
+ * Call once before boot when Firebase SSO should be enabled locally or on VPS.
+ */
+export async function loadFirebaseConfig() {
+  try {
+    const mod = await import("./firebase-config.local.js");
+    if (mod?.firebaseConfig && typeof mod.firebaseConfig === "object") {
+      Object.assign(firebaseConfig, mod.firebaseConfig);
+    }
+  } catch {
+    // Local file missing — dummy login mode (empty projectId).
+  }
+  return firebaseConfig;
+}
 
 // Worker base URL — auto-detect local dev vs VPS production (portal.benjaminsquare.com).
 function workerBaseUrl() {

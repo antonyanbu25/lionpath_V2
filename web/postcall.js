@@ -1,9 +1,9 @@
-import { firebaseConfig, WORKER_BASE_URL } from "./firebase-config.js";
+import { WORKER_BASE_URL } from "./firebase-config.js";
+import { authMode } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { readFieldValue, readFieldValueAsync, setFormFieldsDisabled, wirePrintToolbar, wireToolbarById } from "./crayons-ui.js";
 
-const authEnabled = !!firebaseConfig.projectId;
 const ANALYZE_URL = `${WORKER_BASE_URL}/api/analyze-call`;
 
 let currentSession = null;
@@ -28,7 +28,7 @@ function truncateWords(text, max) {
 
 async function authHeaders() {
   const headers = { "content-type": "application/json" };
-  if (authEnabled && getAuthToken) {
+  if (authMode() === "firebase" && getAuthToken) {
     const token = await getAuthToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }

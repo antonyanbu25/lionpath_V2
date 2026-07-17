@@ -10,3 +10,4 @@ credentials.json
 .tunnel-token
 scripts/mac/.tunnel-token
 deploy/vps/.env
+web/firebase-config.local.js

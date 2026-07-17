@@ -20,7 +20,7 @@ import {
 import { normalizeQualityCoach } from "./quality-score.js";
 import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
-import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN } from "./firebase-config.js";
+import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
 import {
   initPrecall,
   loadLocalBriefs,
@@ -34,7 +34,10 @@ import {
   setOnAnalysisSaved,
 } from "./postcall.js";
 
-const authEnabled = !!firebaseConfig.projectId;
+function isAuthEnabled() {
+  return authMode() === "firebase";
+}
+
 const PREP_URL = `${WORKER_BASE_URL}/api/generate-prep`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
@@ -149,7 +152,7 @@ function switchDashboardTab(tab) {
 }
 
 function buildFetchRemotePreps() {
-  if (!authEnabled || !fb?.auth?.currentUser || !fb?.db) return undefined;
+  if (!isAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
   return async () => {
     const user = fb.auth.currentUser;
     const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
@@ -455,7 +458,7 @@ async function showApp(session, opts = {}) {
   show($("app-shell"), true);
   updateSidebarUser();
 
-  const tokenFn = authEnabled && fb?.auth?.currentUser
+  const tokenFn = isAuthEnabled() && fb?.auth?.currentUser
     ? () => fb.auth.currentUser.getIdToken()
     : null;
   setHistoryAuthGetter(tokenFn);
@@ -555,6 +558,26 @@ function initDummyAuth() {
 
 // ---------- Firebase auth (optional) ----------
 
+async function bootstrapUserDoc(user) {
+  if (!fb?.db || !user?.uid) return;
+  try {
+    const email = String(user.email || "").trim().toLowerCase();
+    const role = email.startsWith("manager@") ? "manager" : "se";
+    await fb.setDoc(
+      fb.doc(fb.db, "users", user.uid),
+      {
+        email,
+        name: user.displayName || email.split("@")[0],
+        role,
+        lastLoginAt: fb.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (err) {
+    console.warn("[auth] could not bootstrap users doc:", err);
+  }
+}
+
 async function initFirebase() {
   const [{ initializeApp }, authMod, fsMod] = await Promise.all([
     import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
@@ -570,19 +593,30 @@ async function initFirebase() {
     auth, provider,
     signInWithPopup: authMod.signInWithPopup, signOut: authMod.signOut,
     db: fsMod.getFirestore(app),
-    collection: fsMod.collection, addDoc: fsMod.addDoc, query: fsMod.query,
-    where: fsMod.where, getDocs: fsMod.getDocs, serverTimestamp: fsMod.serverTimestamp,
+    collection: fsMod.collection, addDoc: fsMod.addDoc, doc: fsMod.doc, setDoc: fsMod.setDoc,
+    query: fsMod.query, where: fsMod.where, getDocs: fsMod.getDocs, serverTimestamp: fsMod.serverTimestamp,
   };
 
-  show($("firebase-signin-block"), true);
+  show($("login-form"), false);
+  const hint = document.querySelector(".login-hint");
+  if (hint) hint.hidden = true;
+  const block = $("firebase-signin-block");
+  show(block, true);
+  const divider = block?.querySelector(".or-divider");
+  if (divider) divider.hidden = true;
 
-  $("signin-google")?.addEventListener("fwClick", async () => {
+  const signIn = async () => {
     show($("signin-error"), false);
     try {
       await fb.signInWithPopup(auth, provider);
+    } catch (err) {
+      const e = $("signin-error");
+      e.textContent = err.message;
+      show(e, true);
     }
-    catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
-  });
+  };
+
+  $("signin-google")?.addEventListener("fwClick", () => { void signIn(); });
 
   $("logout-btn")?.addEventListener("fwClick", async () => {
     await fb.signOut(auth);
@@ -592,6 +626,7 @@ async function initFirebase() {
   authMod.onAuthStateChanged(auth, (user) => {
     if (user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`))) {
       persistFirebaseSession(user);
+      void bootstrapUserDoc(user);
       handleSession(getSession());
     } else {
       if (user) fb.signOut(auth);
@@ -601,6 +636,7 @@ async function initFirebase() {
 
   const existing = getSession();
   if (existing) handleSession(existing);
+  else showLogin();
   onSessionChange(handleSession);
 }
 
@@ -626,7 +662,7 @@ function boot() {
   });
   initPrecall({
     prepUrl: PREP_URL,
-    authEnabled,
+    authEnabled: isAuthEnabled(),
     workerDownMsg: WORKER_DOWN_MSG,
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
     switchView,
@@ -640,7 +676,7 @@ function boot() {
           if (currentView === "dashboard") refreshDashboardFromStorage();
         });
       }
-      if (authEnabled && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
+      if (isAuthEnabled() && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
       if (currentView === "dashboard") refreshDashboardFromStorage();
       refreshSidebarRecentWork();
     },
@@ -689,4 +725,4 @@ function boot() {
   void warnIfWorkerDown();
 }
 
-boot();
+loadFirebaseConfig().then(() => boot());

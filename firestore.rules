@@ -16,5 +16,9 @@ service cloud.firestore {
                     && request.auth.token.email_verified == true;
       allow update, delete: if false;
     }
+    match /users/{uid} {
+      allow read, create, update: if request.auth != null && request.auth.uid == uid;
+      allow delete: if false;
+    }
   }
 }
