@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>SE Singha Paathai — Freshworks</title>
+    <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,8 +21,19 @@
     />
     <link rel="stylesheet" href="./dew-theme.css" />
     <link rel="stylesheet" href="./styles.css" />
-    <link rel="stylesheet" href="./precall.css" />
+    <link rel="stylesheet" href="./precall.css?v=dispute-static-v11" />
     <link rel="stylesheet" href="./postcall.css" />
+    <link rel="stylesheet" href="./lifecycle.css" />
+    <style id="prep-dispute-critical-css">
+      #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
+      #prep-dispute-modal.prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+      #prep-dispute-modal .prep-dispute-dialog { width: min(480px,100%); background: #fff; color: #111; border: 1px solid #ccc; border-radius: 12px; padding: 0; max-height: 90vh; overflow: auto; }
+      #prep-dispute-modal .prep-dispute-form { display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 18px; }
+      #prep-dispute-modal .prep-dispute-field { display: flex; flex-direction: column; gap: 6px; }
+      #prep-dispute-modal .prep-dispute-select,
+      #prep-dispute-modal .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; }
+      #prep-dispute-modal .prep-dispute-textarea { min-height: 96px !important; }
+    </style>
     <script
       type="module"
       src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
@@ -28,13 +43,20 @@
     <!-- Lion splash (index only — see splash.js) -->
     <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
       <div class="lion-splash-inner">
-        <div class="lion-mascot" aria-hidden="true">
-          <span class="lion-face">🦁</span>
-          <span class="lion-ring"></span>
+        <div class="lion-loader" aria-hidden="true">
+          <span class="sidebar-brand-icon lion-loader-mark">SW</span>
+          <fw-spinner size="large"></fw-spinner>
         </div>
         <h1 class="lion-title">SE Singha Paathai</h1>
-        <p class="lion-tagline muted">Freshworks Solution Engineering</p>
+        <p class="lion-tagline">Freshworks Solution Engineering</p>
       </div>
+    </div>
+
+    <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
+      <fw-card class="app-loading-card">
+        <fw-spinner size="medium"></fw-spinner>
+        <span>Loading your workspace…</span>
+      </fw-card>
     </div>
 
     <!-- Login -->
@@ -43,11 +65,11 @@
         <div class="login-card-head">
           <div>
             <h1>SE Singha Paathai</h1>
-            <p class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+            <p id="login-subtitle" class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
           </div>
           <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </div>
-        <form id="login-form" class="login-form">
+        <form id="login-form" class="login-form" action="javascript:void(0)" novalidate>
           <fw-input
             id="login-email"
             label="Email"
@@ -66,20 +88,22 @@
             required
             clear-input
           ></fw-input>
-          <fw-button id="login-submit" color="primary" type="submit">Sign in</fw-button>
+          <fw-button id="login-submit" color="primary" type="button">Sign in</fw-button>
         </form>
-        <p id="login-error" class="error" hidden></p>
-        <details class="login-hint">
+        <fw-inline-message id="login-error" type="error" closable="false" hidden></fw-inline-message>
+        <details id="login-hint" class="login-hint">
           <summary>Demo credentials</summary>
           <ul class="muted">
+            <li>Director: <code>vipin.thomas@freshworks.com</code> / <code>vipin123</code></li>
+            <li>Senior manager: <code>antony.sagayaraj@freshworks.com</code> / <code>leader123</code></li>
+            <li>Squad manager: <code>ajay.raghavan@freshworks.com</code> / <code>mgr123</code></li>
             <li>SE: <code>se@freshworks.com</code> / <code>se123</code></li>
-            <li>Manager: <code>manager@freshworks.com</code> / <code>mgr123</code></li>
           </ul>
         </details>
         <div id="firebase-signin-block" hidden>
           <p class="muted or-divider">or</p>
           <fw-button id="signin-google" color="secondary" fill="outline">Sign in with Google</fw-button>
-          <p id="signin-error" class="error" hidden></p>
+          <fw-inline-message id="signin-error" type="error" closable="false" hidden></fw-inline-message>
         </div>
       </fw-card>
     </div>
@@ -87,24 +111,17 @@
     <!-- App shell -->
     <div id="app-shell" class="app-shell" hidden>
       <aside id="sidebar" class="sidebar">
-        <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
-          <fw-icon class="sidebar-collapse-icon" name="chevron-left" size="12" aria-hidden="true"></fw-icon>
-        </fw-button>
         <div class="sidebar-inner">
           <div class="sidebar-head">
-          <div class="sidebar-brand">
-            <span class="sidebar-brand-icon" aria-hidden="true">SP</span>
-            <span class="sidebar-brand-text">SE Singha Paathai</span>
+            <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
+              <span slot="before-label" class="sidebar-collapse-glyph" aria-hidden="true">‹</span>
+            </fw-button>
+            <div class="sidebar-brand">
+              <span class="sidebar-brand-icon" aria-hidden="true">SW</span>
+              <span class="sidebar-brand-text">SE Workbench</span>
+            </div>
+            <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
           </div>
-          <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
-          </div>
-          <div class="sidebar-user">
-          <span id="sidebar-user-avatar" class="sidebar-user-avatar" aria-hidden="true"></span>
-          <div class="sidebar-user-text">
-            <span id="sidebar-user-name" class="sidebar-user-name"></span>
-            <span id="sidebar-user-role" class="sidebar-user-role muted"></span>
-          </div>
-        </div>
         <nav class="sidebar-nav" role="navigation">
           <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="My dashboard">
             <fw-icon slot="before-label" class="nav-icon" name="nav-dashboard" size="16"></fw-icon>
@@ -117,6 +134,10 @@
           <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call">
             <fw-icon slot="before-label" class="nav-icon" name="phone" size="16"></fw-icon>
             <span class="nav-label">Post-call</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
+            <span class="nav-label">Accounts</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Manager dashboard" hidden>
             <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
@@ -145,10 +166,6 @@
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
             <span class="nav-label">Feedback</span>
           </fw-button>
-          <fw-button id="logout-btn" class="sidebar-logout" color="secondary" fill="clear" title="Log out">
-            <fw-icon slot="before-label" class="nav-icon" name="arrow-left" size="16"></fw-icon>
-            <span class="nav-label">Log out</span>
-          </fw-button>
         </div>
         </div>
       </aside>
@@ -159,8 +176,50 @@
           <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
           <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
           <span id="main-view-title" class="main-view-title">My dashboard</span>
-          <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
+          <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
+          <div class="topbar-actions">
+            <div class="user-menu" id="user-menu">
+              <button type="button" id="user-menu-trigger" class="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
+                <span id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true">U</span>
+              </button>
+              <div id="user-menu-panel" class="user-menu-panel" hidden role="menu" aria-labelledby="user-menu-trigger">
+                <div class="user-menu-header">
+                  <span id="user-menu-name" class="user-menu-name"></span>
+                  <span id="user-menu-email" class="user-menu-email muted"></span>
+                </div>
+                <div class="user-menu-divider" role="separator"></div>
+                <button type="button" class="user-menu-item" id="user-menu-profile" role="menuitem">
+                  <span class="user-menu-item-icon" aria-hidden="true">⚙</span>
+                  <span class="user-menu-item-label">Profile settings</span>
+                </button>
+                <div class="user-menu-theme">
+                  <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
+                    <span class="user-menu-item-icon" aria-hidden="true">◐</span>
+                    <span class="user-menu-item-label">Theme</span>
+                    <span class="user-menu-chevron" aria-hidden="true">›</span>
+                  </button>
+                  <div id="user-menu-theme-submenu" class="user-menu-theme-submenu" hidden>
+                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="light" role="menuitemradio">Light</button>
+                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="dark" role="menuitemradio">Dark</button>
+                  </div>
+                </div>
+                <div class="user-menu-divider" role="separator"></div>
+                <button type="button" class="user-menu-item user-menu-signout" id="user-menu-signout" role="menuitem">
+                  <span class="user-menu-item-icon" aria-hidden="true">↪</span>
+                  <span class="user-menu-item-label">Sign out</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </header>
+
+        <div id="global-search-backdrop" class="global-search-backdrop" hidden></div>
+        <div id="global-search-modal" class="global-search-modal" hidden role="dialog" aria-label="Search">
+          <div class="global-search-modal-inner">
+            <fw-input id="global-search-palette-input" class="global-search-palette-input" placeholder="Search accounts, briefs, calls… (⌘K)" clear-input></fw-input>
+            <div id="global-search-results" class="global-search-results"></div>
+          </div>
+        </div>
 
         <fw-inline-message id="worker-warning" class="wrap-banner worker-banner" type="error" closable="false" hidden></fw-inline-message>
 
@@ -182,18 +241,29 @@
           <!-- Manager dashboard -->
           <section id="view-manager" class="view-panel" hidden></section>
 
+          <!-- Profile settings -->
+          <section id="view-profile" class="view-panel" hidden>
+            <div id="profile-settings-root"></div>
+          </section>
+
+          <!-- Accounts -->
+          <section id="view-accounts" class="view-panel" hidden>
+            <div id="account-panel" class="lifecycle-panel account-panel"></div>
+          </section>
+
           <!-- Pre-call -->
           <section id="view-precall" class="view-panel" hidden>
             <div id="prep-form-view" class="prep-form-wrap">
               <div class="prep-form-center">
                 <div class="prep-form-heading">
                   <h1>Prep for your next call</h1>
-                  <p class="muted">Drop in a company and a prospect email — we'll research the account and draft your discovery + demo brief.</p>
+                  <p class="muted">Drop in a company, its website domain, and prospect emails — we'll research the account and draft your discovery + demo brief.</p>
                 </div>
                 <fw-card class="prep-form-card">
                   <form id="prep-form">
                     <div class="prep-form-grid">
-                      <fw-input id="companyName" label="Company" type="text" placeholder="endurancedoors" required clear-input></fw-input>
+                      <fw-input id="companyName" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
+                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Official website domain — not bare company name" required clear-input></fw-input>
                       <div class="prep-email-field">
                         <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Separate multiple emails with commas — we research each contact" required clear-input></fw-input>
                         <fw-tooltip content="Add everyone on the call, e.g. alex@acme.com, sam@acme.com. Each person appears in the Prospect information column.">
@@ -205,17 +275,22 @@
                     <fw-textarea
                       id="additionalContext"
                       label="Additional context"
-                      hint-text="Optional · AE notes, Roundhouse answers"
+                      hint-text="Optional · AE notes, meeting context"
                       rows="4"
-                      placeholder="Paste AE notes, Roundhouse answers, or meeting type…"
+                      placeholder="Paste AE notes or meeting type…"
                     ></fw-textarea>
-                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Generate brief</fw-button>
+                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Research &amp; generate brief</fw-button>
                   </form>
                 </fw-card>
                 <p class="prep-form-footnote">Signals pulled from website, LinkedIn, funding records &amp; traffic estimates.</p>
               </div>
             </div>
-            <div id="prep-status" class="status" hidden></div>
+            <div id="prep-status" class="dew-status-host" hidden></div>
+            <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
+              <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="rect" height="120px" effect="sheen"></fw-skeleton>
+            </fw-card>
             <div id="prep-legacy-fallback" hidden></div>
             <div id="prep-result-view" hidden>
               <div id="prep-result-header" class="prep-result-header"></div>
@@ -235,6 +310,21 @@
               </fw-tabs>
             </div>
             <div id="prep-source-popover" hidden></div>
+            <fw-modal id="prep-confirm-modal" title-text="Confirm company" submit-color="primary" submit-text="Start research" is-open="false">
+              <div slot="content">
+                <p id="prep-confirm-text" class="muted"></p>
+                <p class="muted" style="margin-top:8px;font-size:13px">We will research this domain and cache results for 30 days.</p>
+              </div>
+            </fw-modal>
+            <fw-modal id="prep-facts-modal" title-text="Review research facts" submit-color="primary" submit-text="Generate brief" is-open="false">
+              <div slot="content">
+                <p id="prep-facts-intro" class="muted"></p>
+                <p id="prep-facts-error" class="field-hint warn" hidden></p>
+                <div id="prep-facts-list" class="prep-facts-list"></div>
+                <p id="prep-facts-empty" class="muted" hidden>No facts extracted — adjust inputs and try again.</p>
+                <p class="prep-facts-dispute-hint muted">Something wrong? Use <strong>Report</strong> on any row to flag it for review.</p>
+              </div>
+            </fw-modal>
           </section>
 
           <!-- Post-call -->
@@ -271,10 +361,47 @@
                 <p class="prep-form-footnote">Transcript pulled from Zoom — analysis usually takes 10–25 seconds.</p>
               </div>
             </div>
-            <div id="postcall-status" class="status" hidden></div>
+            <div id="postcall-status" class="dew-status-host" hidden></div>
+            <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Analyzing call">
+              <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="rect" height="150px" effect="sheen"></fw-skeleton>
+            </fw-card>
             <fw-card id="postcall-result" class="result one-pager postcall-result-card" hidden></fw-card>
           </section>
         </main>
+      </div>
+    </div>
+
+    <div id="prep-dispute-backdrop" class="prep-dispute-backdrop" hidden></div>
+    <div id="prep-dispute-modal" class="prep-dispute-overlay" hidden role="dialog" aria-labelledby="prep-dispute-title">
+      <div class="prep-dispute-dialog">
+        <header class="prep-dispute-header">
+          <h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2>
+          <button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">×</button>
+        </header>
+        <form id="prep-dispute-form" class="prep-dispute-form">
+          <p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p>
+          <div id="prep-dispute-target" class="prep-dispute-target" hidden></div>
+          <label class="prep-dispute-field" for="prep-dispute-category">
+            <span class="prep-dispute-label">Issue type</span>
+            <select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;">
+              <option value="wrong_data">Wrong data</option>
+              <option value="partial_missing">Partial / missing</option>
+              <option value="outdated">Outdated</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="prep-dispute-field" for="prep-dispute-note">
+            <span class="prep-dispute-label">What is wrong? (required for review)</span>
+            <textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what's missing…" required style="display:block;width:100%;min-height:96px;"></textarea>
+          </label>
+          <div class="prep-dispute-actions">
+            <button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button>
+            <button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button>
+          </div>
+          <div id="prep-dispute-status" class="dew-status-host" hidden></div>
+        </form>
       </div>
     </div>
 
@@ -297,19 +424,239 @@
             <fw-button id="feedback-close" type="button" color="secondary" fill="outline">Cancel</fw-button>
             <fw-button id="feedback-submit" type="submit" color="primary">Submit</fw-button>
           </div>
-          <p id="feedback-status" class="status" hidden></p>
+          <div id="feedback-status" class="dew-status-host" hidden></div>
         </form>
       </fw-modal-content>
     </fw-modal>
 
-    <footer class="site-footer">
-      <a href="./about.html" target="_blank" rel="noopener noreferrer">Read about the project</a>
-      <a href="./about.html#discovery-wireframe" target="_blank" rel="noopener noreferrer" style="margin-left:1rem">Discovery wireframe</a>
-    </footer>
-
     <script type="module" src="./theme.js"></script>
     <script type="module" src="./splash.js"></script>
-    <script type="module" src="./app.js"></script>
+    <script>
+      document.getElementById("login-form")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      window.purgeLegacyDisputeModal = function purgeLegacyDisputeModal() {
+        document.querySelectorAll("fw-modal").forEach(function (el) {
+          var id = el.id || "";
+          var title = (el.getAttribute("title-text") || el.titleText || "").trim();
+          if (id === "prep-dispute-modal" || /report research/i.test(title)) {
+            try { if (el.isOpen) el.isOpen = false; } catch (e) {}
+            el.remove();
+          }
+        });
+        var stale = document.getElementById("prep-dispute-modal");
+        if (stale && stale.tagName !== "DIV") stale.remove();
+      };
+      window.ensureStaticDisputeShell = function ensureStaticDisputeShell() {
+        window.purgeLegacyDisputeModal();
+        var modal = document.getElementById("prep-dispute-modal");
+        var backdrop = document.getElementById("prep-dispute-backdrop");
+        if (modal?.tagName === "DIV" && backdrop) return;
+        if (!backdrop) {
+          backdrop = document.createElement("div");
+          backdrop.id = "prep-dispute-backdrop";
+          backdrop.className = "prep-dispute-backdrop";
+          backdrop.hidden = true;
+          document.body.appendChild(backdrop);
+        }
+        if (!modal || modal.tagName !== "DIV") {
+          modal?.remove?.();
+          modal = document.createElement("div");
+          modal.id = "prep-dispute-modal";
+          modal.className = "prep-dispute-overlay";
+          modal.hidden = true;
+          modal.setAttribute("role", "dialog");
+          modal.setAttribute("aria-labelledby", "prep-dispute-title");
+          modal.setAttribute("aria-labelledby", "prep-dispute-title");
+          modal.innerHTML = document.getElementById("prep-dispute-modal-template")?.innerHTML || "";
+          if (!modal.innerHTML.trim()) {
+            modal.innerHTML = '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">×</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
+          }
+          document.body.appendChild(modal);
+        }
+      };
+      window.purgeLegacyDisputeModal();
+      window.ensureStaticDisputeShell();
+      (function watchLegacyDisputeModalOpen() {
+        function blockLegacy() {
+          document.querySelectorAll("fw-modal").forEach(function (m) {
+            var id = m.id || "";
+            var title = (m.getAttribute("title-text") || m.titleText || "").trim();
+            if ((id === "prep-dispute-modal" || /report research/i.test(title)) && m.isOpen) {
+              try { m.isOpen = false; } catch (e) {}
+              m.remove();
+              window.ensureStaticDisputeShell && window.ensureStaticDisputeShell();
+            }
+          });
+        }
+        blockLegacy();
+        if (typeof MutationObserver !== "undefined") {
+          new MutationObserver(blockLegacy).observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["is-open", "title-text"],
+          });
+        }
+      })();
+      (function seDisputeInlineBoot() {
+        function findDisputeTrigger(ev) {
+          var path = typeof ev.composedPath === "function" ? ev.composedPath() : null;
+          if (path) {
+            for (var i = 0; i < path.length; i++) {
+              var node = path[i];
+              if (node && node.classList && node.classList.contains("prep-dispute-trigger")) return node;
+            }
+          }
+          return ev.target && ev.target.closest ? ev.target.closest(".prep-dispute-trigger") : null;
+        }
+        function ensureDisputeFieldsVisibleInline() {
+          var form = document.getElementById("prep-dispute-form");
+          var cat = document.getElementById("prep-dispute-category");
+          var note = document.getElementById("prep-dispute-note");
+          var healed = false;
+          var rebuilt = false;
+          var catBroken = !cat || cat.tagName !== "SELECT";
+          var noteBroken = !note || note.tagName !== "TEXTAREA";
+          if (form && (catBroken || noteBroken)) {
+            var actions = form.querySelector(".prep-dispute-actions");
+            if (actions) {
+              if (cat && cat.tagName !== "SELECT") cat.closest(".prep-dispute-field")?.remove();
+              if (note && note.tagName !== "TEXTAREA") note.closest(".prep-dispute-field")?.remove();
+              var catLabel = document.createElement("label");
+              catLabel.className = "prep-dispute-field";
+              catLabel.setAttribute("for", "prep-dispute-category");
+              catLabel.innerHTML = '<span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select>';
+              var noteLabel = document.createElement("label");
+              noteLabel.className = "prep-dispute-field";
+              noteLabel.setAttribute("for", "prep-dispute-note");
+              noteLabel.innerHTML = '<span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required></textarea>';
+              form.insertBefore(noteLabel, actions);
+              form.insertBefore(catLabel, actions);
+              cat = document.getElementById("prep-dispute-category");
+              note = document.getElementById("prep-dispute-note");
+              rebuilt = true;
+              healed = true;
+            }
+          }
+          function force(el, minH) {
+            if (!el) return;
+            el.style.display = "block";
+            el.style.width = "100%";
+            el.style.boxSizing = "border-box";
+            el.style.opacity = "1";
+            el.style.visibility = "visible";
+            el.style.height = "auto";
+            el.style.overflow = "visible";
+            el.style.minHeight = minH + "px";
+          }
+          force(cat, 42);
+          force(note, 96);
+          if (form) {
+            form.style.display = "flex";
+            form.style.flexDirection = "column";
+            form.style.gap = "12px";
+          }
+          form?.querySelectorAll(".prep-dispute-field").forEach(function (field) {
+            field.style.display = "flex";
+            field.style.flexDirection = "column";
+            field.style.gap = "6px";
+            field.style.opacity = "1";
+            field.style.visibility = "visible";
+          });
+          var catH = cat ? cat.offsetHeight : 0;
+          var noteH = note ? note.offsetHeight : 0;
+          if (catH === 0 || noteH === 0) {
+            if (cat) cat.style.height = "42px";
+            if (note) note.style.height = "96px";
+            healed = true;
+            catH = cat ? cat.offsetHeight : 0;
+            noteH = note ? note.offsetHeight : 0;
+          }
+          return {
+            categoryHeight: catH,
+            noteHeight: noteH,
+            categoryTag: cat ? cat.tagName : "missing",
+            noteTag: note ? note.tagName : "missing",
+            categoryDisplay: cat ? getComputedStyle(cat).display : "",
+            noteDisplay: note ? getComputedStyle(note).display : "",
+            healed: healed,
+            rebuilt: rebuilt,
+          };
+        }
+        window.ensureDisputeFieldsVisible = window.ensureDisputeFieldsVisible || ensureDisputeFieldsVisibleInline;
+        function ctxFromBtn(btn) {
+          var key = btn.getAttribute("data-dispute-key") || "";
+          var company = (document.querySelector(".prep-company-name") || {}).textContent || "";
+          company = company.trim();
+          return {
+            step: btn.getAttribute("data-dispute-step") || "brief_result",
+            section: btn.getAttribute("data-dispute-section") || "general",
+            factKeys: key ? [key] : [],
+            companyName: company,
+          };
+        }
+        function inlineOpen(ctx) {
+          window.purgeLegacyDisputeModal();
+          window.ensureStaticDisputeShell();
+          var modal = document.getElementById("prep-dispute-modal");
+          var backdrop = document.getElementById("prep-dispute-backdrop");
+          var intro = document.getElementById("prep-dispute-context");
+          var note = document.getElementById("prep-dispute-note");
+          var cat = document.getElementById("prep-dispute-category");
+          if (!modal || !backdrop || modal.tagName !== "DIV") return;
+          document.querySelectorAll("fw-modal").forEach(function (m) {
+            if (m.isOpen) m.isOpen = false;
+          });
+          if (intro) {
+            intro.textContent = ctx.factKeys && ctx.factKeys[0]
+              ? 'Reporting issue with "' + ctx.factKeys[0] + '" for ' + (ctx.companyName || "this account") + "."
+              : "Report incorrect or incomplete research for " + (ctx.companyName || "this account") + ".";
+          }
+          if (note) note.value = "";
+          if (cat) cat.value = "wrong_data";
+          ensureDisputeFieldsVisibleInline();
+          modal.removeAttribute("hidden");
+          backdrop.removeAttribute("hidden");
+          modal.hidden = false;
+          backdrop.hidden = false;
+          requestAnimationFrame(function () {
+            ensureDisputeFieldsVisibleInline();
+          });
+        }
+        window.openSeDisputeModal = window.openSeDisputeModal || inlineOpen;
+        document.addEventListener("click", function (ev) {
+          var btn = findDisputeTrigger(ev);
+          if (!btn) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          window.purgeLegacyDisputeModal();
+          window.ensureStaticDisputeShell();
+          window.openSeDisputeModal(ctxFromBtn(btn));
+        }, true);
+        document.getElementById("prep-dispute-cancel")?.addEventListener("click", function () {
+          var modal = document.getElementById("prep-dispute-modal");
+          var backdrop = document.getElementById("prep-dispute-backdrop");
+          if (modal) modal.hidden = true;
+          if (backdrop) backdrop.hidden = true;
+        });
+        document.getElementById("prep-dispute-close-x")?.addEventListener("click", function () {
+          var modal = document.getElementById("prep-dispute-modal");
+          var backdrop = document.getElementById("prep-dispute-backdrop");
+          if (modal) modal.hidden = true;
+          if (backdrop) backdrop.hidden = true;
+        });
+        document.getElementById("prep-dispute-backdrop")?.addEventListener("click", function () {
+          var modal = document.getElementById("prep-dispute-modal");
+          var backdrop = document.getElementById("prep-dispute-backdrop");
+          if (modal) modal.hidden = true;
+          if (backdrop) backdrop.hidden = true;
+        });
+      })();
+    </script>
+    <script type="module" src="./prep-disputes-boot.mjs?v=dispute-static-v11"></script>
+    <script type="module" src="./app.js?v=dispute-static-v11"></script>
     <script type="module" src="./postcall.js"></script>
   </body>
 </html>

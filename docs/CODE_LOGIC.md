@@ -36,6 +36,11 @@
 | The trimmer | `worker/src/word-limits.ts` | Cuts text to word caps and normalizes shape after generation. |
 | The scorer | `worker/src/quality-score.ts` | Computes the overall Quality Coach score from six dimensions. |
 | The memory (server) | `worker/src/history.ts`, `worker/src/history-file.ts` | Stores history per email — Cloudflare KV in dev, file volume on VPS. |
+| The lifecycle spine | `web/domain/lifecycle-service.js`, `web/domain/store.js` | Account-centric engagement threads linking preps, post-calls, and tasks. |
+| Domain types | `worker/src/domain-model/`, `web/domain/types.js` | User, Team, Account, Contact, Lifecycle, artifacts. |
+| Lifecycle UI | `web/lifecycle-view.js` | List + detail/timeline for account lifecycles. |
+
+See **`docs/DOMAIN_MODEL.md`** for entity definitions, RBAC, Firestore schema, and migration runbook.
 
 ---
 
@@ -45,10 +50,15 @@
 
 ```
 Browser (web/)  →  Worker API (worker/)  →  Gemini (structured JSON)
-                      ↓
-              History storage (KV or file)
+       ↓                    ↓
+  Domain store         History storage (KV or file)
+  (Firestore or              +
+   localStorage)        Legacy localStorage
+       ↓
+  Lifecycle spine — Account → Lifecycle → Prep / Post-call / Tasks
 ```
 
+- **`web/domain/`** — Lifecycle-centric domain layer. Dual-writes artifacts to Firestore (or localStorage shim in dummy mode) while legacy storage continues during migration.
 - **`web/`** — Static HTML/JS/CSS. No build step. nginx serves files in production.
 - **`worker/`** — TypeScript API on Cloudflare Workers (dev) or Node on the VPS. Handles LLM calls, Zoom transcript fetch, and history sync.
 - **Gemini** — Returns JSON matching strict schemas. Prompts enforce word caps; **the trimmer** trims after parse.
@@ -64,6 +74,7 @@ Server setup: see `docs/VPS_DEPLOY.md`.
 4. **The researcher** builds a prompt using **the rulebook** (`worker/src/schema.ts`), calls Gemini with web-search grounding, parses JSON.
 5. **The trimmer** (`worker/src/word-limits.ts`) cuts fields to caps and enforces shape.
 6. **The page logic** `renderPrep` builds the HTML one-pager (must-see strip, good-to-see sections, sources).
+7. **The lifecycle spine** (`web/domain/dual-write.js`) upserts Account + Contacts, get-or-creates Lifecycle, saves PrepBrief + event (dual-write alongside localStorage briefs).
 
 **Typical wait:** 15–45 seconds.
 
@@ -74,6 +85,7 @@ Server setup: see `docs/VPS_DEPLOY.md`.
 3. **The debriefer** (`worker/src/postcall.ts`) sends transcript to Gemini with **the post-call rulebook** (`worker/src/postcall-schema.ts`).
 4. **The scorer** (`worker/src/quality-score.ts`) computes overall score from six dimension scores (the AI does not set overall directly).
 5. **The trimmer** normalizes output; **the post-call UI** `renderPostCall` renders summary, momentum hero, follow-up table, coaching card.
+6. **The lifecycle spine** links the analysis to Account/Lifecycle, upserts PostCall by `callIdentityKey`, and auto-advances stage to `discovery` on first post-call.
 
 **Typical wait:** 10–25 seconds.
 
@@ -133,5 +145,7 @@ Both flows use **tables and bullets only** — no paragraphs. Prompts define str
 | Post-call form + result HTML | `web/postcall.js` |
 | Colors, layout, print | `web/styles.css` |
 | API routes / auth / CORS | `worker/src/index.ts` |
-| Demo credentials | `web/auth.js` |
+| Demo credentials | `web/dummy-users.js`, `web/auth.js` |
+| Domain model / lifecycle | `web/domain/`, `docs/DOMAIN_MODEL.md` |
+| Migration script | `worker/scripts/migrate-to-lifecycle.mjs` |
 | Worker URL | `web/firebase-config.js` (`WORKER_BASE_URL`) |

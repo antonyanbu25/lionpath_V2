@@ -4,7 +4,8 @@
 //   GET  /api/zoom/status     — whether Zoom OAuth is configured
 //   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
 
-import { generatePrep, resolveProspectEmails, type Env as PrepEnv, type PrepInput } from "./prep";
+import { generatePrep, runPrepResearch, runPrepSynthesize, resolveProspectEmails, type Env as PrepEnv, type PrepInput } from "./prep";
+import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
@@ -33,6 +34,7 @@ interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
+  APOLLO_API_KEY?: string;
 }
 
 function corsHeaders(origin: string, allowed: string[]): Record<string, string> {
@@ -219,20 +221,115 @@ export default {
 
       if (request.method === "POST" && path === "/api/generate-prep") {
         await requireUser(request, env);
-        const input = (await request.json()) as Partial<PrepInput>;
+        const input = (await request.json()) as Partial<PrepInput> & {
+          lifecycleId?: string;
+          cachedResearch?: unknown;
+        };
         if (!input.companyName) {
           return json({ error: "companyName is required." }, 400, cors);
+        }
+        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
+        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
+          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
+        }
+        if (input.prepType === "expansion") {
+          return json({ error: "Expansion prep is not yet available." }, 501, cors);
+        }
+        if (input.lifecycleId) {
+          console.log("generate-prep lifecycleId:", input.lifecycleId);
         }
         const emails = resolveProspectEmails(input as PrepInput);
         if (!emails.length && !input.prospectEmail?.trim()) {
           return json({ error: "At least one valid prospect email is required." }, 400, cors);
         }
-        const prep = await generatePrep(env, {
+        try {
+          const result = await generatePrep(env, {
+            ...(input as PrepInput),
+            companyDomain,
+            prospectEmail: emails[0] || String(input.prospectEmail).trim(),
+            prospectEmails: emails.length ? emails : undefined,
+            prepType: input.prepType || "new_business",
+          });
+          return json(
+            {
+              prep: result.prep,
+              researchMeta: result.researchMeta,
+              researchBundle: result.researchBundle,
+              contactDrafts: result.contactDrafts,
+            },
+            200,
+            cors,
+          );
+        } catch (err) {
+          const status = (err as { status?: number }).status;
+          if (status) {
+            return json({ error: (err as Error).message }, status, cors);
+          }
+          throw err;
+        }
+      }
+
+      if (request.method === "POST" && path === "/api/prep/research") {
+        await requireUser(request, env);
+        const input = (await request.json()) as Partial<PrepInput>;
+        if (!input.companyName) {
+          return json({ error: "companyName is required." }, 400, cors);
+        }
+        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
+        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
+          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
+        }
+        if (input.prepType === "expansion") {
+          return json({ error: "Expansion prep is not yet available." }, 501, cors);
+        }
+        const emails = resolveProspectEmails(input as PrepInput);
+        if (!emails.length) {
+          return json({ error: "At least one valid prospect email is required." }, 400, cors);
+        }
+        const result = await runPrepResearch(env, {
           ...(input as PrepInput),
-          prospectEmail: emails[0] || String(input.prospectEmail).trim(),
-          prospectEmails: emails.length ? emails : undefined,
+          companyDomain,
+          prospectEmail: emails[0],
+          prospectEmails: emails,
+          prepType: input.prepType || "new_business",
         });
-        return json({ prep }, 200, cors);
+        return json(result, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/prep/synthesize") {
+        await requireUser(request, env);
+        const input = (await request.json()) as Partial<PrepInput> & {
+          confirmedFacts?: unknown[];
+          researchBundle?: unknown;
+        };
+        if (!input.companyName || !input.confirmedFacts?.length) {
+          return json({ error: "companyName and confirmedFacts are required." }, 400, cors);
+        }
+        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
+        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
+          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
+        }
+        const emails = resolveProspectEmails(input as PrepInput);
+        if (!emails.length) {
+          return json({ error: "At least one valid prospect email is required." }, 400, cors);
+        }
+        const result = await runPrepSynthesize(env, {
+          ...(input as PrepInput),
+          companyDomain,
+          prospectEmail: emails[0],
+          prospectEmails: emails,
+          confirmedFacts: input.confirmedFacts as import("./prep/types").ResearchFact[],
+          researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
+        });
+        return json(
+          {
+            prep: result.prep,
+            researchMeta: result.researchMeta,
+            researchBundle: result.researchBundle,
+          },
+          200,
+          cors,
+        );
       }
 
       if (request.method === "POST" && path === "/api/fetch-transcript") {
@@ -250,9 +347,12 @@ export default {
 
       if (request.method === "POST" && path === "/api/analyze-call") {
         await requireUser(request, env);
-        const input = (await request.json()) as Partial<PostCallInput>;
+        const input = (await request.json()) as Partial<PostCallInput> & { lifecycleId?: string };
         if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
           return json({ error: "Paste a transcript or a Zoom recording link (with passcode if needed)." }, 400, cors);
+        }
+        if (input.lifecycleId) {
+          console.log("analyze-call lifecycleId:", input.lifecycleId);
         }
         const result = await analyzePostCall(env, input as PostCallInput);
         return json(result, 200, cors);

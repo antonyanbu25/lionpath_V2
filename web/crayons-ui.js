@@ -36,6 +36,53 @@ export function setFormFieldsDisabled(form, disabled) {
   });
 }
 
+/** @param {HTMLElement | null | undefined} host */
+export function showInlineStatus(host, options = {}) {
+  if (!host) return;
+  const { type = "info", message = "", open = true, loading = false } = options;
+  host.replaceChildren();
+  host.hidden = !open || !message;
+  if (host.hidden) return;
+
+  const notice = document.createElement("fw-inline-message");
+  notice.type = type;
+  notice.open = true;
+  notice.closable = false;
+
+  if (loading) {
+    const spinner = document.createElement("fw-spinner");
+    spinner.size = "small";
+    spinner.setAttribute("aria-hidden", "true");
+    notice.append(spinner);
+  }
+  notice.append(document.createTextNode(message));
+  host.append(notice);
+}
+
+/** @param {HTMLElement | null | undefined} button @param {boolean} loading */
+export function setButtonLoading(button, loading) {
+  if (!button) return;
+  button.loading = loading;
+  button.disabled = loading;
+}
+
+/** @param {HTMLElement | null | undefined} field @param {string} message */
+export function setFieldError(field, message = "") {
+  if (!field) return;
+  field.state = message ? "error" : "normal";
+  field.errorText = message;
+}
+
+/** @param {string} message */
+export function renderLoadingPanel(message = "Loading…") {
+  const safe = String(message).replace(/[&<>"']/g, (char) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  return `<div class="dew-loading-panel" role="status" aria-live="polite">
+    <fw-spinner size="medium"></fw-spinner>
+    <span class="muted">${safe}</span>
+  </div>`;
+}
+
 /**
  * @param {ParentNode} root
  * @param {(id: string) => void} onOpen

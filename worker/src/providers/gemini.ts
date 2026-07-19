@@ -83,7 +83,7 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
 
         maxOutputTokens: req.maxTokens,
 
-        temperature: req.research ? 0.4 : 0.2,
+        temperature: req.temperature ?? (req.research ? 0 : 0.2),
 
       };
 

@@ -23,6 +23,8 @@ export interface LlmRequest {
   jsonSchema?: Record<string, unknown>;
   /** Gemini 2.5+ — set 0 to disable thinking for lower latency on long transcripts. */
   thinkingBudget?: number;
+  /** Override generation temperature (0 = deterministic). */
+  temperature?: number;
 }
 
 export interface LlmResult {

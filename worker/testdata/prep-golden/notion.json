@@ -1,0 +1,11 @@
+{
+  "id": "notion",
+  "input": {
+    "companyName": "Notion",
+    "companyDomain": "notion.so",
+    "prospectEmail": "team@notion.so",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

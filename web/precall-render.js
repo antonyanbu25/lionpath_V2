@@ -6,7 +6,19 @@ function esc(v) {
 }
 
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
-const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+const dash = (v, unverified = false) => {
+  if (isUnknown(v)) return '<span class="muted">—</span>';
+  if (unverified) return `<span class="prep-unverified">${esc(v)} <span class="prep-unverified-tag">Unverified</span></span>`;
+  return esc(v);
+};
+
+function isUnverifiedSource(sources, sourceLabel) {
+  const src = sources?.find((s) => s.label === sourceLabel);
+  if (!src) return true;
+  const url = String(src.url || "").trim().toLowerCase();
+  if (!url || url === "unknown") return true;
+  return Number(src.confidence) < 55;
+}
 
 export const SIGNAL_TOOLTIPS = {
   "Incumbent tool":
@@ -45,9 +57,9 @@ export function isV6Prep(p) {
 
 export function confidenceMeta(conf) {
   const n = Number(conf);
-  if (n >= 80) return { word: "High", color: "var(--dew-green)", pct: n };
-  if (n >= 55) return { word: "Medium", color: "var(--dew-amber)", pct: n };
-  return { word: "Low", color: "var(--dew-red)", pct: n };
+  if (n >= 80) return { word: "High", color: "var(--dew-green)", tier: "high", pct: n };
+  if (n >= 55) return { word: "Medium", color: "var(--dew-amber)", tier: "medium", pct: n };
+  return { word: "Low", color: "var(--dew-red)", tier: "low", pct: n };
 }
 
 export function companyMono(name) {
@@ -60,15 +72,26 @@ export function companyMono(name) {
   return w.slice(0, 2).toUpperCase();
 }
 
+function dewCssVar(name, fallback) {
+  if (typeof document === "undefined") return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 export function logoGradient(name) {
   const hash = String(name || "")
     .split("")
     .reduce((a, c) => a + c.charCodeAt(0), 0);
+  const primary = dewCssVar("--dew-primary", "#1266f1");
+  const brand = dewCssVar("--dew-brand", "#6747d4");
+  const green = dewCssVar("--dew-green", "#0aa06e");
+  const amber = dewCssVar("--dew-amber", "#f79009");
+  const red = dewCssVar("--dew-red", "#e5484d");
   const hues = [
-    "linear-gradient(135deg,#2c5cc5,#7c5cfc)",
-    "linear-gradient(135deg,#0aa06e,#2c5cc5)",
-    "linear-gradient(135deg,#f79009,#e5484d)",
-    "linear-gradient(135deg,#7c5cfc,#2c5cc5)",
+    `linear-gradient(135deg,${primary},${brand})`,
+    `linear-gradient(135deg,${green},${primary})`,
+    `linear-gradient(135deg,${amber},${red})`,
+    `linear-gradient(135deg,${brand},${primary})`,
   ];
   return hues[hash % hues.length];
 }
@@ -153,9 +176,12 @@ function renderFactRows(facts, sources) {
     .map((f, i) => {
       const src = sources.find((s) => s.label === f.sourceLabel) || sources[i % sources.length];
       const conf = src?.confidence ?? 50;
-      return `<div class="prep-kv-row">
+      const unverified = isUnverifiedSource(sources, f.sourceLabel) || isUnknown(f.value);
+      return `<div class="prep-kv-row${unverified && !isUnknown(f.value) ? " prep-kv-unverified" : ""}">
         <span class="prep-kv-key">${esc(f.key)}</span>
-        <span class="prep-kv-val">${dash(f.value)} ${sourceBadge(f.sourceLabel, conf, sources.indexOf(src))}</span>
+        <span class="prep-kv-val">${dash(f.value, unverified && !isUnknown(f.value))} ${sourceBadge(f.sourceLabel, conf, sources.indexOf(src))}
+          <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="facts" data-dispute-idx="${i}" data-dispute-key="${esc(f.key)}">Report</button>
+        </span>
       </div>`;
     })
     .join("");
@@ -166,12 +192,16 @@ function renderSignalRows(signals, sources) {
     .map((s, i) => {
       const src = sources.find((x) => x.label === s.sourceLabel) || sources[i % sources.length];
       const conf = src?.confidence ?? 50;
-      return `<div class="prep-signal-row">
+      const unverified = isUnverifiedSource(sources, s.sourceLabel) || isUnknown(s.value);
+      return `<div class="prep-signal-row${unverified && !isUnknown(s.value) ? " prep-kv-unverified" : ""}">
         <div class="prep-signal-top">
           <span class="prep-kv-key prep-signal-label">${signalLabelWithTooltip(s.label)}</span>
-          ${sourceBadge(s.sourceLabel, conf, sources.indexOf(src))}
+          <span class="prep-signal-actions">
+            ${sourceBadge(s.sourceLabel, conf, sources.indexOf(src))}
+            <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="signals" data-dispute-idx="${i}" data-dispute-key="${esc(s.label)}">Report</button>
+          </span>
         </div>
-        <div class="prep-signal-val">${dash(s.value)}</div>
+        <div class="prep-signal-val">${dash(s.value, unverified && !isUnknown(s.value))}</div>
       </div>`;
     })
     .join("");
@@ -189,12 +219,13 @@ function renderProspectColumn(prospects, sources) {
       const conf = src?.confidence ?? 50;
       const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
       const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
-      return `<div class="prep-prospect-card">
+      const unverified = isUnverifiedSource(sources, p.sourceLabel);
+      return `<div class="prep-prospect-card${unverified ? " prep-kv-unverified" : ""}">
         <div class="prep-prospect-head">
           <span class="prep-prospect-avatar">${esc(mono)}</span>
           <div>
-            <div class="prep-prospect-name">${dash(p.name)}</div>
-            <div class="prep-prospect-role muted">${dash(p.role)}</div>
+            <div class="prep-prospect-name">${dash(p.name, unverified && !isUnknown(p.name))}</div>
+            <div class="prep-prospect-role muted">${dash(p.role, unverified && !isUnknown(p.role))}</div>
           </div>
           ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
         </div>
@@ -270,9 +301,9 @@ function renderSourcesAccordion(sources, open) {
         <span class="prep-source-label">${esc(s.label)}</span>
         <span class="prep-source-title">${dash(s.title)}</span>
         <div class="prep-conf-bar-wrap">
-          <div class="prep-conf-bar" style="width:${pct}%;background:${meta.color}"></div>
+          <div class="prep-conf-bar prep-conf-${meta.tier}" style="width:${pct}%"></div>
         </div>
-        <span class="prep-conf-word" style="color:${meta.color}">${meta.word} · ${pct}%</span>
+        <span class="prep-conf-word prep-conf-text-${meta.tier}">${meta.word} · ${pct}%</span>
       </div>`;
     })
     .join("");
@@ -378,6 +409,7 @@ export function renderResultHeader(prep, meta) {
       </div>
     </div>
     <div class="prep-header-right">
+      <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline prep-dispute-btn-outline" data-dispute-step="brief_result" data-dispute-section="general">Report issue</button>
       <fw-button id="prep-new-search" color="secondary" fill="outline">New search</fw-button>
     </div>
   </div>`;
@@ -432,17 +464,17 @@ export function renderSourcePopover(source, x, y) {
   return `<div class="prep-popover" style="left:${x}px;top:${y}px" role="dialog" aria-label="Source details">
     <div class="prep-popover-head">
       <span class="dew-mono-label">Source ${esc(source.label)}</span>
-      <span style="color:${conf.color}">${conf.word} · ${pct}%</span>
+      <span class="prep-conf-text-${conf.tier}">${conf.word} · ${pct}%</span>
     </div>
     <p class="prep-popover-title">${dash(source.title)}</p>
     ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>` : '<span class="muted">No URL</span>'}
     <div class="prep-conf-bar-wrap prep-popover-bar">
-      <div class="prep-conf-bar" style="width:${pct}%;background:${conf.color}"></div>
+      <div class="prep-conf-bar prep-conf-${conf.tier}" style="width:${pct}%"></div>
     </div>
     <button type="button" class="prep-popover-backdrop" aria-label="Close"></button>
   </div>`;
 }
 
 export function renderLegacyFallback() {
-  return `<div class="status err">This prep uses an older format. Regenerate to get the Discovery + Demo brief.</div>`;
+  return `<fw-inline-message type="warning" open closable="false">This prep uses an older format. Regenerate to get the Discovery + Demo brief.</fw-inline-message>`;
 }

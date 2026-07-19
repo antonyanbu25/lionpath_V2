@@ -1,0 +1,11 @@
+{
+  "id": "multi-prospect",
+  "input": {
+    "companyName": "Atlassian",
+    "companyDomain": "atlassian.com",
+    "prospectEmail": "a@atlassian.com, b@atlassian.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

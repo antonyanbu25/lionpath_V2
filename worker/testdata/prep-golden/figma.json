@@ -1,0 +1,11 @@
+{
+  "id": "figma",
+  "input": {
+    "companyName": "Figma",
+    "companyDomain": "figma.com",
+    "prospectEmail": "hello@figma.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

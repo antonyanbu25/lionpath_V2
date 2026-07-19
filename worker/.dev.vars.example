@@ -1,11 +1,9 @@
-# Copy to .dev.vars (gitignored) and fill in your keys.
-# Required for pre-call + post-call (both use Gemini by default).
-GEMINI_API_KEY = "AIza..."
+# Copy to worker/.dev.vars (gitignored) for local wrangler dev.
+# Must match web/firebase-config.local.js projectId when Firebase auth is enabled.
 
-# Optional — only if LLM_PROVIDER = "anthropic"
-# ANTHROPIC_API_KEY = "sk-ant-..."
+FIREBASE_PROJECT_ID=your-firebase-project-id
 
-# Optional — Zoom OAuth (phase 2)
-# ZOOM_CLIENT_ID = "your_zoom_client_id"
-# ZOOM_CLIENT_SECRET = "your_zoom_client_secret"
-# ZOOM_REDIRECT_URI = "http://localhost:8787/api/zoom/callback"
+# Optional — Apollo enrichment (Phase 2). Never commit real keys.
+# APOLLO_API_KEY=your-apollo-api-key
+
+# wrangler secret put APOLLO_API_KEY

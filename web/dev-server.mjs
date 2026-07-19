@@ -58,6 +58,23 @@ createServer(async (req, res) => {
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Server error");
   }
-}).listen(PORT, HOST, () => {
-  console.log(`Web dev server ready on http://${HOST}:${PORT}`);
+}).listen(PORT, HOST, async () => {
+  const url = `http://${HOST}:${PORT}`;
+  console.log(`Web dev server ready on ${url}`);
+  const workerPort = Number(process.env.WORKER_PORT || 8787);
+  const workerUrl = `http://${HOST}:${workerPort}/api/config`;
+  try {
+    const res = await fetch(workerUrl, { signal: AbortSignal.timeout(2500) });
+    if (res.ok) {
+      console.log(`Worker API reachable at http://${HOST}:${workerPort}`);
+    } else {
+      console.warn(`Worker API returned HTTP ${res.status} — run: cd ../worker && npm run dev`);
+    }
+  } catch {
+    console.warn(
+      `Worker API not running on port ${workerPort}.\n` +
+      `  → Second terminal: cd ../worker && npm run dev\n` +
+      `  → Or one command: npm run dev:all`,
+    );
+  }
 });

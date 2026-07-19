@@ -1,0 +1,146 @@
+.lifecycle-list-view h2,
+.lifecycle-empty h2 {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+}
+
+.lifecycle-list-sub {
+  margin: 0 0 16px;
+}
+
+.lifecycle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lifecycle-list-item {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px !important;
+  border: 1px solid var(--dew-border);
+  border-radius: 8px;
+}
+
+.lifecycle-list-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lifecycle-list-title {
+  font-weight: 600;
+}
+
+.lifecycle-list-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.lifecycle-stage-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--dew-surface-subtle);
+}
+
+.lifecycle-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.lifecycle-detail-head h2 {
+  margin: 0;
+  flex: 1;
+}
+
+.lifecycle-section {
+  margin-top: 20px;
+}
+
+.lifecycle-section h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.lifecycle-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.lifecycle-timeline-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.lifecycle-artifact-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.lifecycle-artifact-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.lifecycle-detail-controls {
+  max-width: 240px;
+  margin-bottom: 8px;
+}
+
+.account-list-domain {
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.account-detail-sub {
+  margin: -8px 0 12px;
+}
+
+.account-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.account-detail-contacts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.account-detail-contacts li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.account-detail-contact-name {
+  font-weight: 500;
+}
+
+.sidebar-lifecycle-section {
+  margin-top: 12px;
+}
+
+.sidebar-lifecycle-list .sidebar-history-item {
+  font-size: 0.85rem;
+}

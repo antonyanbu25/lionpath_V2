@@ -15,10 +15,26 @@ const WELL_KNOWN_DOMAINS: Record<string, string> = {
   "khan academey": "khanacademy.org",
 };
 
-const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/;
+export const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/;
 
 function normalizeSlug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Normalize user-entered company domain (strip protocol/www/path). */
+export function normalizeCompanyDomain(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .split("?")[0];
+}
+
+export function isValidCompanyDomain(raw: string): boolean {
+  const d = normalizeCompanyDomain(raw);
+  return !!d && DOMAIN_RE.test(d);
 }
 
 function levenshtein(a: string, b: string): number {

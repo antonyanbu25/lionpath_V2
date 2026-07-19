@@ -9,10 +9,14 @@
     "deploy": "wrangler deploy",
     "start:node": "tsx src/node-server.ts",
     "typecheck": "tsc --noEmit",
+    "seed:firestore": "node scripts/seed-firestore-users.mjs",
+    "migrate:user-ids": "node scripts/migrate-user-ids.mjs",
+    "test:firebase-auth": "node scripts/test-firebase-auth.mjs",
     "build:icp": "node scripts/extract-icp.mjs && node scripts/extract-omni-personas.mjs && node scripts/generate-icp-kb.mjs",
     "build:icp:kb-only": "node scripts/generate-icp-kb.mjs",
     "build:benchmark": "node scripts/extract-benchmark.mjs && node scripts/generate-benchmark-kb.mjs",
-    "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs"
+    "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs",
+    "eval:prep-golden": "node scripts/eval-prep-golden.mjs"
   },
   "dependencies": {
     "tsx": "^4.19.0"
@@ -20,6 +24,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240605.0",
     "@types/node": "^22.0.0",
+    "firebase-admin": "^13.10.0",
     "typescript": "^5.4.0",
     "wrangler": "^3.60.0"
   }

@@ -5,17 +5,19 @@
  */
 
 import { firebaseConfig } from "./firebase-config.js";
+import { DUMMY_USERS } from "./dummy-users.js";
+import { DEMO_TEAM_ID } from "./domain/constants.js";
+import { stableUserIdForEmail } from "./domain/id.js";
+import { enrichSessionFromStore, listTeamMemberEmails, upsertFirebaseUser } from "./domain/seed-dev.js";
+import { listVisibleSeEmails } from "./domain/org-service.js";
+
+export { DUMMY_USERS };
 
 const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
 
-/** Dummy accounts for development until Firebase SSO is wired. */
-export const DUMMY_USERS = {
-  "se@freshworks.com": { password: "se123", role: "se", name: "Alex SE" },
-  "se1@freshworks.com": { password: "se123", role: "se", name: "SE One" },
-  "se2@freshworks.com": { password: "se123", role: "se", name: "SE Two" },
-  "manager@freshworks.com": { password: "mgr123", role: "manager", name: "Team Manager" },
-};
+/** Domain user id from session (internal usr_* — not Firebase auth uid). */
+export { sessionUserId } from "./domain/session.js";
 
 export function authMode() {
   return firebaseConfig.projectId ? "firebase" : "dummy";
@@ -62,7 +64,7 @@ export function getSession() {
   return session;
 }
 
-function setSession(session) {
+export function setSession(session, opts = {}) {
   const normalized = normalizeSession(session);
   if (!normalized) return;
   const json = JSON.stringify(normalized);
@@ -72,12 +74,13 @@ function setSession(session) {
   } catch (err) {
     console.warn("Could not persist auth session:", err);
   }
-  listeners.forEach((fn) => fn(normalized));
+  if (opts.notify === false) return;
+  listeners.forEach((fn) => fn(normalized, opts));
 }
 
 const listeners = new Set();
 
-/** @param {(session: object | null) => void} fn */
+/** @param {(session: object | null, opts?: object) => void} fn */
 export function onSessionChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -88,13 +91,22 @@ export function onSessionChange(fn) {
  * @param {string} password
  * @returns {{ ok: true, session: object } | { ok: false, error: string }}
  */
-export function loginDummy(email, password) {
+export function loginDummy(email, password, opts = {}) {
   const key = String(email || "").trim().toLowerCase();
   const user = DUMMY_USERS[key];
   if (!user) return { ok: false, error: "Unknown account. Use a @freshworks.com SE or manager login." };
   if (user.password !== password) return { ok: false, error: "Incorrect password." };
-  const session = { role: user.role, email: key, name: user.name, uid: `dummy-${key}` };
-  setSession(session);
+  const userId = stableUserIdForEmail(key);
+  const session = {
+    userId,
+    uid: userId,
+    authUid: null,
+    role: user.role,
+    email: key,
+    name: user.name,
+    teamId: user.teamId || DEMO_TEAM_ID,
+  };
+  if (opts.persist !== false) setSession(session);
   return { ok: true, session };
 }
 
@@ -109,7 +121,7 @@ export function logout() {
   listeners.forEach((fn) => fn(null));
 }
 
-/** Firebase user object → session shape (for future SSO). */
+/** Firebase user object → session shape (for SSO). */
 export function sessionFromFirebaseUser(user) {
   if (!user?.email) return null;
   const role = user.email.startsWith("manager@") ? "manager" : "se";
@@ -117,13 +129,45 @@ export function sessionFromFirebaseUser(user) {
     role,
     email: String(user.email).trim().toLowerCase(),
     name: user.displayName || user.email.split("@")[0],
-    uid: user.uid,
+    authUid: user.uid,
+    teamId: DEMO_TEAM_ID,
   };
 }
 
-export function persistFirebaseSession(user) {
-  const session = sessionFromFirebaseUser(user);
-  if (session) setSession(session);
+export async function persistFirebaseSession(user, opts = {}) {
+  const base = sessionFromFirebaseUser(user);
+  if (!base) return null;
+  let session = base;
+  try {
+    const profile = await upsertFirebaseUser(user, base.role);
+    session = {
+      ...base,
+      userId: profile.id,
+      uid: profile.id,
+      role: profile.role,
+      teamId: profile.teamId,
+      name: profile.displayName,
+    };
+  } catch (err) {
+    console.warn("Could not sync Firebase user to domain store:", err);
+  }
+  if (opts.persist !== false) {
+    setSession(session, opts);
+  }
+  return session;
+}
+
+/** Enrich session with role/teamId from domain store (dummy or Firestore). */
+export async function syncSessionWithDomainStore(session) {
+  if (!session) return null;
+  try {
+    const enriched = await enrichSessionFromStore(session);
+    setSession(enriched, { notify: false });
+    return enriched;
+  } catch (err) {
+    console.warn("Could not enrich session from domain store:", err);
+    return session;
+  }
 }
 
 /** @param {{ role?: string, email?: string } | null | undefined} session */
@@ -138,7 +182,7 @@ export function isSeRole(session) {
   return !!session && !isManagerRole(session);
 }
 
-/** All SE emails for manager team views (dummy accounts + any with stored history). */
+/** Sync fallback: dummy accounts + localStorage history scan. */
 export function listTeamSeEmails() {
   const fromAccounts = Object.entries(DUMMY_USERS)
     .filter(([, u]) => u.role === "se")
@@ -159,6 +203,27 @@ export function listTeamSeEmails() {
     // ignore private-mode errors
   }
   return fromAccounts;
+}
+
+/** Preferred: team member emails from domain store (Firestore or local shim). */
+export async function listTeamSeEmailsAsync(session) {
+  if (session?.isOrgDirector) {
+    try {
+      const emails = await listVisibleSeEmails(session);
+      if (emails.length) return emails;
+    } catch (err) {
+      console.warn("Could not load org-visible SEs from domain store:", err);
+    }
+  }
+
+  const teamId = session?.teamId || DEMO_TEAM_ID;
+  try {
+    const emails = await listTeamMemberEmails(teamId);
+    if (emails.length) return emails;
+  } catch (err) {
+    console.warn("Could not load team members from domain store:", err);
+  }
+  return listTeamSeEmails();
 }
 
 /** @param {string} email */

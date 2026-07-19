@@ -74,7 +74,7 @@ A 5-second branded animation with a lion roar plays on the **first visit to the 
 | **SE (alt)** | `se1@freshworks.com` / `se2@freshworks.com` | `se123` |
 | **Manager** | `manager@freshworks.com` | `mgr123` |
 
-Production will move to **Firebase Google SSO** with `@freshworks.com` domain restriction. Config is ready; enable when the Firebase project ID is set.
+Production uses **Firebase Google SSO** with `@freshworks.com` domain restriction. See **[docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md)** to enable real login (dummy mode remains when `projectId` is empty).
 
 ---
 

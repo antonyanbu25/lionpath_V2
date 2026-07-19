@@ -1,0 +1,33 @@
+email,role,teamId,displayName,orgId,managerEmail
+vipin.thomas@freshworks.com,manager,-,Vipin Thomas,org_freshworks_se,
+antony.sagayaraj@freshworks.com,manager,-,Antony Sagayaraj,org_freshworks_se,vipin.thomas@freshworks.com
+preethi.sri@freshworks.com,manager,-,Preethi Sri,org_freshworks_se,vipin.thomas@freshworks.com
+preethi.sriram@freshworks.com,manager,-,Preethi Sriram,org_freshworks_se,vipin.thomas@freshworks.com
+ajay.raghavan@freshworks.com,manager,team_ajay,Ajay Simhan,org_freshworks_se,antony.sagayaraj@freshworks.com
+nikil.ravi@freshworks.com,manager,team_nikil,Nikil Ravi,org_freshworks_se,antony.sagayaraj@freshworks.com
+manager.preethi.sri@freshworks.com,manager,team_preethi_sri,Anita Desai,org_freshworks_se,preethi.sri@freshworks.com
+manager.preethi.sriram@freshworks.com,manager,team_preethi_sriram,Karthik Menon,org_freshworks_se,preethi.sriram@freshworks.com
+saketh.poruri@freshworks.com,se,team_ajay,Saketh Poruri,org_freshworks_se,ajay.raghavan@freshworks.com
+balaji.ramkumar@freshworks.com,se,team_ajay,Balaji R,org_freshworks_se,ajay.raghavan@freshworks.com
+shaun.rozario@freshworks.com,se,team_ajay,Shaun Rozario,org_freshworks_se,ajay.raghavan@freshworks.com
+jishnu.sadanandan@freshworks.com,se,team_ajay,Jishnu S,org_freshworks_se,ajay.raghavan@freshworks.com
+vivehanandan.agoram@freshworks.com,se,team_nikil,Vivehanandan Agoram,org_freshworks_se,nikil.ravi@freshworks.com
+mohamed.husaam@freshworks.com,se,team_nikil,Mohamed Husaam,org_freshworks_se,nikil.ravi@freshworks.com
+sathish.kuttan@freshworks.com,se,team_nikil,Sathish kuttan,org_freshworks_se,nikil.ravi@freshworks.com
+shamron.mariyas@freshworks.com,se,team_nikil,Shamron Mariya S,org_freshworks_se,nikil.ravi@freshworks.com
+karthik.muthiah@freshworks.com,se,team_nikil,Karthik Muthiah,org_freshworks_se,nikil.ravi@freshworks.com
+nivedha.natarajan@freshworks.com,se,team_nikil,Nivedha Natarajan,org_freshworks_se,nikil.ravi@freshworks.com
+aakash.poraith1@freshworks.com,se,team_nikil,Aakash P,org_freshworks_se,nikil.ravi@freshworks.com
+nitish.radha@freshworks.com,se,team_nikil,Nitish Radha,org_freshworks_se,nikil.ravi@freshworks.com
+kritika.saxena@freshworks.com,se,team_nikil,Kritika Saxena,org_freshworks_se,nikil.ravi@freshworks.com
+khader.hussain@freshworks.com,se,team_nikil,Khader Sha,org_freshworks_se,nikil.ravi@freshworks.com
+thajudeen.shaheen@freshworks.com,se,team_nikil,Thajudeen Shaheen,org_freshworks_se,nikil.ravi@freshworks.com
+sowrav.sunil@freshworks.com,se,team_nikil,Sowrav Sunil,org_freshworks_se,nikil.ravi@freshworks.com
+swetha.suresh@freshworks.com,se,team_nikil,Swetha Suresh,org_freshworks_se,nikil.ravi@freshworks.com
+gayathri.ravikumar@freshworks.com,se,team_nikil,Gayathri T R,org_freshworks_se,nikil.ravi@freshworks.com
+pavithra.velkannan@freshworks.com,se,team_nikil,Pavithra Velkannan,org_freshworks_se,nikil.ravi@freshworks.com
+se.preethi.sri.1@freshworks.com,se,team_preethi_sri,Meera Iyer,org_freshworks_se,manager.preethi.sri@freshworks.com
+se.preethi.sri.2@freshworks.com,se,team_preethi_sri,Vikram Singh,org_freshworks_se,manager.preethi.sri@freshworks.com
+se.preethi.sriram.1@freshworks.com,se,team_preethi_sriram,Divya Nair,org_freshworks_se,manager.preethi.sriram@freshworks.com
+se.preethi.sriram.2@freshworks.com,se,team_preethi_sriram,Rohan Das,org_freshworks_se,manager.preethi.sriram@freshworks.com
+se@freshworks.com,se,team_ajay,Alex SE,org_freshworks_se,ajay.raghavan@freshworks.com

@@ -20,6 +20,7 @@ ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.
 # Restrict sign-in to this email domain. Empty = allow any verified Google account.
 ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Firebase project id — used to verify ID tokens (audience/issuer check).
+# Must match web/firebase-config.local.js projectId. See docs/FIREBASE_SETUP.md.
 FIREBASE_PROJECT_ID = ""
 
 # Post-call history per SE email (survives incognito — reload on sign-in).

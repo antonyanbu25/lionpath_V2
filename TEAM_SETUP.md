@@ -60,7 +60,7 @@ You need **both** servers running at the same time.
 ### Step 4 — Open the app and log in
 
 1. Go to **http://localhost:8788** in Chrome or Edge.
-2. Log in with the dummy credentials below (local testing only — no Firebase required).
+For real Google SSO (production), follow **[docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md)**. Dummy credentials below remain for local dev without Firebase.
 
 ### Dummy credentials (local / no Firebase)
 
@@ -327,7 +327,7 @@ For the full 680-SE rollout (Workers + Pages + optional Firebase auth), follow *
 - [Prerequisites](./README.md#prerequisites)
 - [Worker deploy](./README.md#1-worker--local-dev) and `wrangler deploy`
 - [Web / Pages deploy](./README.md#2-web--local-dev)
-- [Firebase (optional)](./README.md#3-firebase-optional--enables-sign-in--history)
+- [Firebase Google SSO](./docs/FIREBASE_SETUP.md) (optional — enables real login + Firestore)
 - [Deploy section](./README.md#4-deploy)
 
 Production SEs only need the Pages URL in a browser — no tunnels, no local dev, no API keys on their machines.

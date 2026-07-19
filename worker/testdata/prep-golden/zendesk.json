@@ -1,0 +1,11 @@
+{
+  "id": "zendesk-customer",
+  "input": {
+    "companyName": "Zendesk",
+    "companyDomain": "zendesk.com",
+    "prospectEmail": "demo@zendesk.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}
