@@ -11,6 +11,11 @@ export interface ProviderEnv {
   POSTCALL_EFFORT?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  GOOGLE_CLOUD_PROJECT?: string;
+  VERTEX_PROJECT?: string;
+  VERTEX_LOCATION?: string;
+  GOOGLE_CLOUD_LOCATION?: string;
+  ZOOMINFO_API_KEY?: string;
 }
 
 export interface LlmRequest {
