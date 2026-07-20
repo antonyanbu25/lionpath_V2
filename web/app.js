@@ -13,6 +13,7 @@ import {
   isManagerRole,
   syncSessionWithDomainStore,
   setSession,
+  isFirebaseAuthEnabled,
 } from "./auth.js";
 import { initDomainStore, getStore } from "./domain/store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
@@ -31,7 +32,7 @@ import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { renderProfileSettings } from "./profile-settings.js";
-import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig, isFirebaseAuthEnabled } from "./firebase-config.js";
+import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
 import {
   initPrecall,
   loadLocalBriefs,

@@ -23,6 +23,11 @@ export function authMode() {
   return firebaseConfig.projectId ? "firebase" : "dummy";
 }
 
+/** Canonical auth flag — import from auth.js so stale firebase-config.js cannot break app boot. */
+export function isFirebaseAuthEnabled() {
+  return !!firebaseConfig.projectId;
+}
+
 export function isDummyAuth() {
   return authMode() === "dummy";
 }

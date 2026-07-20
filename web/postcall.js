@@ -1,4 +1,5 @@
-import { isFirebaseAuthEnabled, WORKER_BASE_URL } from "./firebase-config.js";
+import { WORKER_BASE_URL } from "./firebase-config.js";
+import { isFirebaseAuthEnabled } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import {

@@ -20,6 +20,9 @@ export const firebaseConfig = {
   appId: "",
 };
 
+/** Bump when auth/bootstrap JS changes (cache-bust query on index.html module tags). */
+export const AUTH_BUILD_ID = "auth-fix-v3";
+
 function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
@@ -61,6 +64,36 @@ export async function loadFirebaseConfig() {
 export function isFirebaseAuthEnabled() {
   return !!firebaseConfig.projectId;
 }
+
+/** Hide dummy login on production before app.js boot (safe if app.js import fails). */
+export function applyProductionLoginShell() {
+  if (typeof document === "undefined" || typeof location === "undefined") return;
+  if (!isProductionHost(location.hostname)) return;
+  Object.assign(firebaseConfig, PRODUCTION_FIREBASE);
+  const $ = (id) => document.getElementById(id);
+  const show = (el, on = true) => { if (el) el.hidden = !on; };
+  show($("login-form"), false);
+  show($("login-hint"), false);
+  const block = $("firebase-signin-block");
+  const divider = block?.querySelector(".or-divider");
+  if (divider) divider.hidden = true;
+  show(block, true);
+  const subtitle = $("login-subtitle");
+  if (subtitle) subtitle.textContent = "Sign in with your @freshworks.com Google account.";
+}
+
+function bootstrapProductionFirebase() {
+  if (typeof location === "undefined" || !isProductionHost(location.hostname)) return;
+  Object.assign(firebaseConfig, PRODUCTION_FIREBASE);
+  if (typeof document === "undefined") return;
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", applyProductionLoginShell);
+  } else {
+    applyProductionLoginShell();
+  }
+}
+
+bootstrapProductionFirebase();
 
 // Worker base URL — auto-detect local dev vs VPS production (portal.benjaminsquare.com).
 function workerBaseUrl() {

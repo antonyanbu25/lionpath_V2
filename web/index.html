@@ -656,7 +656,57 @@
       })();
     </script>
     <script type="module" src="./prep-disputes-boot.mjs?v=dispute-static-v11"></script>
-    <script type="module" src="./app.js?v=auth-fix-v2"></script>
-    <script type="module" src="./postcall.js?v=auth-fix-v2"></script>
+    <script>
+      (function applyProductionLoginShellInline() {
+        var h = location.hostname;
+        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
+        function apply() {
+          var form = document.getElementById("login-form");
+          var hint = document.getElementById("login-hint");
+          var block = document.getElementById("firebase-signin-block");
+          var sub = document.getElementById("login-subtitle");
+          if (form) form.hidden = true;
+          if (hint) hint.hidden = true;
+          if (block) block.hidden = false;
+          if (sub) sub.textContent = "Sign in with your @freshworks.com Google account.";
+          var div = block && block.querySelector(".or-divider");
+          if (div) div.hidden = true;
+        }
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+        else apply();
+      })();
+      window.addEventListener("error", function (ev) {
+        var msg = String(ev.message || "");
+        if (!/module|import|export|SyntaxError/i.test(msg)) return;
+        var el = document.getElementById("login-error");
+        if (!el) return;
+        el.textContent = "App failed to start: " + msg + ". Hard-refresh (Ctrl+Shift+R) and try again.";
+        el.hidden = false;
+        try {
+          var key = "se-sp-boot-debug";
+          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
+          arr.push({ message: "module load error", error: msg, timestamp: Date.now() });
+          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+        } catch (e) {}
+      }, true);
+    </script>
+    <script type="module">
+      import "./firebase-config.js?v=auth-fix-v3";
+      import("./app.js?v=auth-fix-v3").catch(function (err) {
+        console.error("App boot failed:", err);
+        var el = document.getElementById("login-error");
+        if (el) {
+          el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";
+          el.hidden = false;
+        }
+        try {
+          var key = "se-sp-boot-debug";
+          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
+          arr.push({ message: "app.js import failed", error: String(err.message || err), timestamp: Date.now() });
+          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+        } catch (e) {}
+      });
+    </script>
+    <script type="module" src="./postcall.js?v=auth-fix-v3"></script>
   </body>
 </html>
