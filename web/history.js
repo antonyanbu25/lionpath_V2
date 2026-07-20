@@ -4,6 +4,7 @@
  */
 
 import { WORKER_BASE_URL } from "./firebase-config.js";
+import { newId } from "./domain/types.js";
 
 export const STORAGE_PREFIX = "se-singha-history:";
 const LEGACY_PREFIX = "se-sp-postcalls:";
@@ -229,7 +230,7 @@ export async function savePostCallAnalysis(email, input, result) {
 
   const analysis = result?.analysis;
   const record = {
-    id: crypto.randomUUID(),
+    id: newId("postCall"),
     timestamp: Date.now(),
     zoomLink: input?.recordingUrl || "",
     title: analysis?.callHeader?.title || analysis?.callSummary?.headline || "Call analysis",

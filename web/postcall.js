@@ -1,8 +1,17 @@
-import { WORKER_BASE_URL } from "./firebase-config.js";
-import { authMode } from "./auth.js";
+import { isFirebaseAuthEnabled, WORKER_BASE_URL } from "./firebase-config.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach } from "./quality-score.js";
-import { readFieldValue, readFieldValueAsync, setFormFieldsDisabled, wirePrintToolbar, wireToolbarById } from "./crayons-ui.js";
+import {
+  readFieldValue,
+  readFieldValueAsync,
+  setButtonLoading,
+  setFieldError,
+  setFormFieldsDisabled,
+  showInlineStatus,
+  wirePrintToolbar,
+  wireToolbarById,
+} from "./crayons-ui.js";
+
 
 const ANALYZE_URL = `${WORKER_BASE_URL}/api/analyze-call`;
 
@@ -28,7 +37,7 @@ function truncateWords(text, max) {
 
 async function authHeaders() {
   const headers = { "content-type": "application/json" };
-  if (authMode() === "firebase" && getAuthToken) {
+  if (isFirebaseAuthEnabled() && getAuthToken) {
     const token = await getAuthToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
@@ -276,7 +285,7 @@ function renderLegacyPostCall(data, meta) {
   const a = data.analysis;
   const cs = a.callSummary || {};
   return `
-    <div class="status err">This analysis uses an older format. Re-run analysis for the new post-call one-pager.</div>
+    <fw-inline-message type="warning" open closable="false">This analysis uses an older format. Re-run analysis for the new post-call one-pager.</fw-inline-message>
     <div class="head"><h2 class="one-pager-title">${esc(cs.headline || meta.title || "Call analysis")}</h2></div>`;
 }
 
@@ -473,7 +482,7 @@ function normalizeAnalysisForRender(raw) {
 export function renderPostCall(data, meta = {}) {
   const raw = data?.analysis;
   if (!raw) {
-    return `<div class="status err">No analysis data returned. Try running analysis again.</div>`;
+    return `<fw-inline-message type="error" open closable="false">No analysis data returned. Try running analysis again.</fw-inline-message>`;
   }
   if (!raw?.callHeader && raw?.callSummary && !raw?.momentum?.status) {
     return renderLegacyPostCall(data, meta);
@@ -619,7 +628,7 @@ export function displayPostCall(data, meta) {
     result.innerHTML = renderPostCall(data, meta);
   } catch (err) {
     console.error("[postcall] render failed:", err);
-    result.innerHTML = `<div class="status err">${esc(err.message || "Could not render analysis.")}</div>`;
+    result.innerHTML = `<fw-inline-message type="error" open closable="false">${esc(err.message || "Could not render analysis.")}</fw-inline-message>`;
   }
   show($("postcall-form-view"), false);
   show(result, true);
@@ -647,25 +656,30 @@ async function analyzeCall(e) {
   e?.preventDefault?.();
   const btn = $("analyze-call");
   const status = $("postcall-status");
+  const recordingField = $("pc-recording-url");
   const { recordingUrl, recordingPassword } = parseRecordingInput(
     await readFieldValueAsync($("pc-recording-url")),
     await readFieldValueAsync($("pc-recording-pwd")),
   );
 
   if (!recordingUrl) {
-    status.className = "status err";
-    status.textContent = "Paste a Zoom recording link.";
-    show(status, true);
+    const message = "Paste a Zoom recording link.";
+    setFieldError(recordingField, message);
+    showInlineStatus(status, { type: "error", message });
     return;
   }
+  setFieldError(recordingField);
 
   const payload = { recordingUrl, recordingPassword };
   const meta = { title: "" };
 
-  btn.disabled = true;
-  status.className = "status";
-  status.textContent = "Fetching transcript from Zoom, then analyzing… usually 10–25 seconds. Please wait.";
-  show(status, true);
+  setButtonLoading(btn, true);
+  showInlineStatus(status, {
+    type: "info",
+    message: "Fetching the Zoom transcript, then analyzing it… usually 10–25 seconds.",
+    loading: true,
+  });
+  show($("postcall-loading"), true);
   show($("postcall-result"), false);
   const form = $("postcall-form");
   setFormFieldsDisabled(form, true);
@@ -687,28 +701,30 @@ async function analyzeCall(e) {
 
     meta.title = getCallTitle(data.analysis, meta);
     displayPostCall(data, meta);
-    show(status, false);
+    showInlineStatus(status, { open: false });
 
     if (currentSession?.email) {
       const email = normalizeUserEmail(currentSession.email);
       const record = await savePostCallHistory(email, payload, data);
-      if (record) onAnalysisSaved?.(record);
+      if (record) onAnalysisSaved?.(record, payload, data);
     } else {
       console.warn("[postcall] analysis not saved — no logged-in SE session");
     }
   } catch (err) {
-    status.className = "status err";
     const msg = err.message || "Something went wrong.";
     if (msg === "Failed to fetch" || /network|fetch/i.test(msg)) {
-      status.textContent =
-        `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
-        "Start the worker in another terminal: cd worker → npm.cmd run dev (look for Ready on port 8787). " +
-        "Use the same hostname for web and worker (both localhost or both 127.0.0.1), then refresh.";
+      showInlineStatus(status, {
+        type: "error",
+        message:
+          `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
+          "Start the worker in another terminal and refresh.",
+      });
     } else {
-      status.textContent = msg;
+      showInlineStatus(status, { type: "error", message: msg });
     }
   } finally {
-    btn.disabled = false;
+    show($("postcall-loading"), false);
+    setButtonLoading(btn, false);
     setFormFieldsDisabled($("postcall-form"), false);
   }
 }

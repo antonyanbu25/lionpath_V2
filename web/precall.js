@@ -1,6 +1,12 @@
 /** Pre-call wireframe — state, generate flow, interactions. */
 
-import { readFieldValueAsync, setFieldValueAsync, setFormFieldsDisabled } from "./crayons-ui.js";
+import {
+  readFieldValueAsync,
+  setButtonLoading,
+  setFieldError,
+  setFormFieldsDisabled,
+  showInlineStatus,
+} from "./crayons-ui.js";
 import {
   isV8Prep,
   isV7Prep,
@@ -12,12 +18,14 @@ import {
   renderLegacyFallback,
   companyMono,
 } from "./precall-render.js";
+import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
+import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js?v=dispute-static-v11";
 
 const CHECKS_KEY = "lionpath_prep_checks";
-const PREP_BRIEFS_PREFIX = "se-singha-prep-history:";
-const LEGACY_BRIEFS_KEY = "lionpath_briefs";
+const BRIEFS_KEY = "lionpath_briefs";
 const MAX_BRIEFS = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
 
 /** Parse comma/semicolon-separated prospect emails; dedupe; max 5. */
 export function parseProspectEmails(raw) {
@@ -37,53 +45,37 @@ export function parseProspectEmails(raw) {
   return out;
 }
 
-export function normalizeUserEmail(email) {
-  return String(email || "").trim().toLowerCase();
+function normalizeCompanyDomain(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
 }
 
-function briefsStorageKey(email) {
-  return `${PREP_BRIEFS_PREFIX}${normalizeUserEmail(email)}`;
+export function getBriefById(id) {
+  return loadLocalBriefs().find((b) => b.id === id) || null;
 }
 
-function migrateLegacyBriefs(email) {
-  const key = briefsStorageKey(email);
-  try {
-    if (localStorage.getItem(key)) return;
-    const legacy = localStorage.getItem(LEGACY_BRIEFS_KEY);
-    if (!legacy) return;
-    localStorage.setItem(key, legacy);
-    localStorage.removeItem(LEGACY_BRIEFS_KEY);
-  } catch {
-    // ignore quota / private-mode errors during migration
-  }
+export function openPrepBrief(id) {
+  const record = getBriefById(id);
+  if (!record?.prep) return false;
+  state.activeBriefId = id;
+  displayPrepResult(record.prep, record.meta || { company: record.company });
+  return true;
 }
 
-export function briefKey(input, meta) {
-  const company = String(meta?.company || input?.companyName || "").trim().toLowerCase();
-  const email = String(input?.prospectEmail || input?.prospectEmails?.[0] || "").trim().toLowerCase();
-  return `${company}|${email}`;
-}
-
-function recordTimestamp(record) {
-  if (record?.savedAt) return Number(record.savedAt) || 0;
-  if (record?.when) {
-    const parsed = Date.parse(record.when);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  return 0;
-}
-
-export function dedupeBriefs(list) {
-  const byKey = new Map();
-  for (const record of list || []) {
-    if (!record?.prep) continue;
-    const key = record.briefKey || briefKey(record.input || {}, record.meta || { company: record.company });
-    const existing = byKey.get(key);
-    if (!existing || recordTimestamp(record) >= recordTimestamp(existing)) {
-      byKey.set(key, { ...record, briefKey: key });
-    }
-  }
-  return [...byKey.values()].sort((a, b) => recordTimestamp(b) - recordTimestamp(a));
+/** Active prep brief context for sidebar account panel. */
+export function getActivePrepContext() {
+  if (!state.activeBriefId) return null;
+  const brief = getBriefById(state.activeBriefId);
+  if (!brief) return null;
+  return {
+    lifecycleId: brief.lifecycleId || null,
+    company: brief.company || brief.meta?.company || null,
+    domain: brief.meta?.domain || brief.meta?.companyDomain || null,
+  };
 }
 
 let deps = {};
@@ -97,6 +89,7 @@ let state = {
   currentPrep: null,
   currentMeta: null,
   activeBriefId: null,
+  pendingResearch: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -116,10 +109,6 @@ function accountId(meta) {
     .slice(0, 48);
 }
 
-function getBriefsEmail() {
-  return normalizeUserEmail(deps.getEmail?.() || "");
-}
-
 function loadChecks() {
   try {
     state.checks = JSON.parse(localStorage.getItem(CHECKS_KEY) || "{}");
@@ -132,95 +121,38 @@ function saveChecks() {
   localStorage.setItem(CHECKS_KEY, JSON.stringify(state.checks));
 }
 
-export function loadLocalBriefs(email) {
-  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
-  if (!normalized) return [];
-  migrateLegacyBriefs(normalized);
+export function loadLocalBriefs() {
   try {
-    const raw = localStorage.getItem(briefsStorageKey(normalized));
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    return Array.isArray(list) ? list : [];
+    return JSON.parse(localStorage.getItem(BRIEFS_KEY) || "[]");
   } catch {
     return [];
   }
 }
 
-function saveLocalBriefs(email, list) {
-  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
-  if (!normalized) return;
-  const deduped = dedupeBriefs(list);
-  localStorage.setItem(briefsStorageKey(normalized), JSON.stringify(deduped.slice(0, MAX_BRIEFS)));
-}
-
-export function listSidebarBriefs(email) {
-  return dedupeBriefs(loadLocalBriefs(email)).slice(0, 5);
-}
-
-export function getBriefById(id, email) {
-  return loadLocalBriefs(email).find((b) => b.id === id) || null;
-}
-
-function remoteToBriefRecord(r) {
-  const input = {
-    companyName: r.company,
-    prospectEmail: r.prospectEmail || r.input?.prospectEmail,
-    prospectEmails: r.input?.prospectEmails || (r.prospectEmail ? [r.prospectEmail] : []),
-    additionalContext: r.input?.additionalContext || r.additionalContext,
-  };
-  const meta = {
-    company: r.company,
-    domain: emailDomain(input.prospectEmail),
-    additionalContext: input.additionalContext,
-  };
-  const key = briefKey(input, meta);
-  return {
-    id: r.id || accountId(meta),
-    briefKey: key,
-    company: r.company,
-    kind: "Discovery",
-    when: r.when || new Date().toLocaleDateString(),
-    savedAt: r.savedAt || Date.now(),
-    prep: r.prep,
-    meta,
-    input,
-  };
-}
-
-export async function syncPrepBriefsOnLogin(email, fetchRemotePreps) {
-  const normalized = normalizeUserEmail(email);
-  if (!normalized) return [];
-  migrateLegacyBriefs(normalized);
-  let local = dedupeBriefs(loadLocalBriefs(normalized));
+/** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
+export async function countPrepsGenerated(fetchRemotePreps) {
+  const local = loadLocalBriefs();
+  const seen = new Set(local.map((b) => `${b.company || ""}|${b.when || ""}|${b.id || ""}`));
+  let count = local.length;
   if (typeof fetchRemotePreps === "function") {
     try {
       const remote = await fetchRemotePreps();
-      const remoteRecords = (remote || []).filter((r) => r?.prep).map(remoteToBriefRecord);
-      local = dedupeBriefs([...local, ...remoteRecords]);
-    } catch (err) {
-      console.warn("[precall] prep sync failed:", err);
-    }
-  }
-  saveLocalBriefs(normalized, local);
-  return local;
-}
-
-/** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
-export async function countPrepsGenerated(fetchRemotePreps, email) {
-  let list = dedupeBriefs(loadLocalBriefs(email));
-  if (typeof fetchRemotePreps === "function") {
-    try {
-      const remote = (await fetchRemotePreps()).filter((r) => r?.prep).map(remoteToBriefRecord);
-      list = dedupeBriefs([...list, ...remote]);
+      for (const r of remote || []) {
+        const key = `${r.company || ""}|${r.when || ""}|${r.id || ""}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          count++;
+        }
+      }
     } catch {
       // demo / offline — local count only
     }
   }
-  return list.length;
+  return count;
 }
 
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function saveLocalBriefs(list) {
+  localStorage.setItem(BRIEFS_KEY, JSON.stringify(list.slice(0, MAX_BRIEFS)));
 }
 
 function closePopover() {
@@ -290,23 +222,6 @@ export function displayPrepResult(prep, meta = {}) {
   showResultView(prep, meta);
 }
 
-async function restorePrepForm(input) {
-  if (!input) return;
-  const emails = input.prospectEmails?.length ? input.prospectEmails.join(", ") : input.prospectEmail || "";
-  await setFieldValueAsync($("companyName"), input.companyName || "");
-  await setFieldValueAsync($("prospectEmail"), emails);
-  await setFieldValueAsync($("additionalContext"), input.additionalContext || "");
-}
-
-export function openPrepBrief(id, email) {
-  const record = getBriefById(id, email);
-  if (!record?.prep) return { ok: false, error: "Brief not found." };
-  state.activeBriefId = id;
-  void restorePrepForm(record.input);
-  displayPrepResult(record.prep, record.meta || { company: record.company });
-  return { ok: true };
-}
-
 function openSourcePopover(label, ev) {
   const prep = state.currentPrep;
   if (!prep?.sources) return;
@@ -328,6 +243,35 @@ function openSourcePopover(label, ev) {
 
   pop.querySelector(".prep-popover-backdrop")?.addEventListener("click", closePopover);
   state.srcPop = source;
+}
+
+function resolveDisputeContextFromButton(btn) {
+  const section = btn.dataset.disputeSection || "general";
+  const idxRaw = btn.dataset.disputeIdx ?? btn.dataset.factIdx;
+  const idx = idxRaw != null && idxRaw !== "" ? Number(idxRaw) : NaN;
+  const factKey = btn.dataset.disputeKey || "";
+  const ctx = buildDisputeContext({
+    step: btn.dataset.disputeStep || "brief_result",
+    section,
+  });
+
+  if (section === "facts" && Number.isFinite(idx)) {
+    const fact = state.pendingResearch?.research?.facts?.[idx] || state.currentPrep?.facts?.[idx];
+    ctx.factIndices = [idx];
+    ctx.factKeys = [fact?.key || factKey].filter(Boolean);
+  } else if (section === "signals" && Number.isFinite(idx)) {
+    const signal = state.currentPrep?.signals?.[idx];
+    ctx.factKeys = [signal?.label || factKey].filter(Boolean);
+    ctx.factIndices = [];
+  } else if (section === "prospect" && Number.isFinite(idx)) {
+    const prospect = state.currentPrep?.prospects?.[idx];
+    ctx.factKeys = [prospect?.name || factKey].filter(Boolean);
+    ctx.factIndices = [];
+  } else if (factKey) {
+    ctx.factKeys = [factKey];
+  }
+
+  return ctx;
 }
 
 function wireTabInteractions() {
@@ -357,109 +301,370 @@ function wireTabInteractions() {
   root.querySelector(".prep-sources-card")?.addEventListener("toggle", (ev) => {
     state.srcOpen = ev.target.open;
   });
+
+  wireDisputeTriggers(root);
 }
 
-export function saveBriefToSidebar(input, prep, meta, email) {
+function pushBriefRecord(record) {
+  const list = loadLocalBriefs().filter((b) => b.id !== record.id);
+  list.unshift(record);
+  saveLocalBriefs(list);
+}
+
+export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
   if (!isV8Prep(prep)) return;
-  const normalized = normalizeUserEmail(email ?? getBriefsEmail());
-  if (!normalized) return;
-  const key = briefKey(input, meta);
-  const existing = loadLocalBriefs(normalized).find(
-    (b) => (b.briefKey || briefKey(b.input || {}, b.meta || { company: b.company })) === key,
-  );
-  const id = existing?.id || accountId(meta);
-  const record = {
+  const id = `${accountId(meta)}-${Date.now()}`;
+  pushBriefRecord({
     id,
-    briefKey: key,
     company: meta.company || input.companyName,
     kind: "Discovery",
     when: new Date().toLocaleDateString(),
-    savedAt: Date.now(),
     prep,
     meta,
     input,
-  };
-  const list = loadLocalBriefs(normalized).filter(
-    (b) => b.id !== id && (b.briefKey || briefKey(b.input || {}, b.meta || { company: b.company })) !== key,
-  );
-  list.unshift(record);
-  saveLocalBriefs(normalized, list);
+    lifecycleId: lifecycleId || null,
+  });
   state.activeBriefId = id;
+}
+
+async function buildPayload() {
+  const prospectField = $("prospectEmail");
+  const domainField = $("companyDomain");
+  const rawEmails = await readFieldValueAsync($("prospectEmail"));
+  const emails = parseProspectEmails(rawEmails);
+  if (!emails.length) {
+    const message = "Enter at least one valid prospect email (comma-separated for multiple).";
+    setFieldError(prospectField, message);
+    throw new Error(message);
+  }
+  setFieldError(prospectField);
+
+  const companyDomain = normalizeCompanyDomain(await readFieldValueAsync($("companyDomain")));
+  if (!companyDomain || !DOMAIN_RE.test(companyDomain)) {
+    const message = "Enter a valid company domain (e.g. acme.com).";
+    setFieldError(domainField, message);
+    throw new Error(message);
+  }
+  setFieldError(domainField);
+
+  const companyName = await readFieldValueAsync($("companyName"));
+  if (!String(companyName || "").trim()) {
+    throw new Error("Company name is required.");
+  }
+
+  const inputHash = computePrepInputHash(companyName, companyDomain, emails);
+  let cachedResearch = null;
+  try {
+    cachedResearch = await loadCachedResearch(companyName, companyDomain, inputHash);
+  } catch {
+    cachedResearch = null;
+  }
+
+  return {
+    payload: {
+      companyName,
+      companyDomain,
+      prospectEmail: emails[0],
+      prospectEmails: emails,
+      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
+      prepType: "new_business",
+      cachedResearch: cachedResearch || undefined,
+    },
+    meta: {
+      company: companyName,
+      companyDomain,
+      domain: companyDomain,
+      emailDomain: emailDomain(emails[0]),
+      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
+    },
+    emails,
+  };
+}
+
+async function postJson(url, body) {
+  const headers = { "content-type": "application/json" };
+  if (deps.authEnabled && deps.getToken) {
+    headers.Authorization = `Bearer ${await deps.getToken()}`;
+  }
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(raw.slice(0, 300) || `Request failed (${res.status}).`);
+  }
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
+  return data;
+}
+
+function setLoading(on, message) {
+  const btn = $("generate");
+  const status = $("prep-status");
+  state.loading = on;
+  setButtonLoading(btn, on);
+  setFormFieldsDisabled($("prep-form"), on);
+  show($("prep-loading"), on);
+  if (on) {
+    showInlineStatus(status, { type: "info", message, loading: true });
+    show($("prep-result-view"), false);
+  }
+}
+
+function clearLoading() {
+  const btn = $("generate");
+  state.loading = false;
+  setButtonLoading(btn, false);
+  setFormFieldsDisabled($("prep-form"), false);
+  show($("prep-loading"), false);
+}
+
+function isUnknownValue(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return !s || s === "unknown" || s === "-";
+}
+
+function sourceForFact(fact, sources) {
+  return (sources || []).find((s) => s.label === fact.sourceLabel);
+}
+
+function factIsUnverified(fact, sources, lowConfidenceSet) {
+  if (isUnknownValue(fact.value)) return true;
+  if (lowConfidenceSet.has(fact.key)) return true;
+  const src = sourceForFact(fact, sources);
+  const conf = fact.confidence ?? src?.confidence ?? 0;
+  if (conf < 55) return true;
+  const url = String(fact.sourceUrl || src?.url || "").trim().toLowerCase();
+  if (!url || url === "unknown") return true;
+  return false;
+}
+
+function factCheckedByDefault(fact, sources, lowConfidenceSet) {
+  return !factIsUnverified(fact, sources, lowConfidenceSet);
+}
+
+function buildDisputeContext(overrides = {}) {
+  const pending = state.pendingResearch;
+  const meta = pending?.meta || state.currentMeta || {};
+  const payload = pending?.payload || {};
+  const facts = pending?.research?.facts || state.currentPrep?.facts || [];
+  const emails = payload.prospectEmails || (payload.prospectEmail ? [payload.prospectEmail] : []);
+  const inputHash = payload.companyName
+    ? computePrepInputHash(payload.companyName, payload.companyDomain || meta.companyDomain, emails)
+    : null;
+
+  return {
+    companyName: meta.company || payload.companyName || "",
+    companyDomain: meta.companyDomain || meta.domain || payload.companyDomain || "",
+    researchInputHash: inputHash,
+    facts,
+    briefId: state.activeBriefId,
+    ...overrides,
+  };
+}
+
+function renderFactRow(fact, idx, sources, lowConfidenceSet) {
+  const src = sourceForFact(fact, sources);
+  const conf = fact.confidence ?? src?.confidence ?? 50;
+  const unverified = factIsUnverified(fact, sources, lowConfidenceSet);
+  const checked = factCheckedByDefault(fact, sources, lowConfidenceSet);
+  const valueHtml = unverified
+    ? `<span class="prep-unverified">${esc(fact.value)} <span class="prep-unverified-tag">Unverified</span></span>`
+    : esc(fact.value);
+
+  return `<div class="prep-facts-row${unverified ? " prep-kv-unverified" : ""}" data-fact-idx="${idx}">
+    <fw-checkbox class="prep-facts-check" data-fact-idx="${idx}" ${checked ? "checked" : ""}></fw-checkbox>
+    <span class="prep-facts-key">${esc(fact.key)}</span>
+    <span class="prep-facts-val">${valueHtml}</span>
+    <span class="prep-facts-src muted">${esc(fact.sourceLabel || src?.label || "—")} · ${conf}%</span>
+    <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline prep-facts-report" data-fact-idx="${idx}" data-dispute-step="facts_review" data-dispute-section="facts">Report</button>
+  </div>`;
+}
+
+function showFactsReviewModal(researchData, payload) {
+  const modal = $("prep-facts-modal");
+  const intro = $("prep-facts-intro");
+  const list = $("prep-facts-list");
+  const empty = $("prep-facts-empty");
+  const errEl = $("prep-facts-error");
+  if (!modal || !list) return;
+
+  if (errEl) {
+    errEl.textContent = "";
+    errEl.hidden = true;
+  }
+
+  const facts = researchData.facts || [];
+  const sources = researchData.sources || [];
+  const lowSet = new Set(researchData.lowConfidence || []);
+
+  if (intro) {
+    intro.textContent = `Review facts found for ${payload.companyName} (${payload.companyDomain}). Uncheck anything you don't trust.`;
+  }
+
+  const hasFacts = facts.length > 0;
+  show(empty, !hasFacts);
+  list.innerHTML = hasFacts
+    ? facts.map((f, i) => renderFactRow(f, i, sources, lowSet)).join("")
+    : "";
+
+  wireDisputeTriggers(list);
+
+  modal.hideFooterButton = !hasFacts;
+  modal.isOpen = true;
+}
+
+function closeFactsModal() {
+  const modal = $("prep-facts-modal");
+  if (modal) modal.isOpen = false;
+  state.pendingResearch = null;
+}
+
+function collectConfirmedFacts() {
+  const pending = state.pendingResearch;
+  if (!pending?.research?.facts?.length) return [];
+
+  const list = $("prep-facts-list");
+  if (!list) return [];
+
+  const checked = new Set();
+  list.querySelectorAll("fw-checkbox.prep-facts-check").forEach((cb) => {
+    const idx = Number(cb.dataset.factIdx);
+    if (cb.checked) checked.add(idx);
+  });
+
+  return pending.research.facts.filter((_, i) => checked.has(i));
+}
+
+async function executeResearch(payload, meta) {
+  const status = $("prep-status");
+  const cacheHit = payload.cachedResearch || meta.researchMeta?.cacheHit;
+  setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
+
+  try {
+    const data = await postJson(deps.researchUrl, payload);
+    state.pendingResearch = { payload, meta, research: data };
+    showInlineStatus(status, { open: false });
+    clearLoading();
+    showFactsReviewModal(data, payload);
+  } catch (err) {
+    const msg = err.message || "Something went wrong.";
+    showInlineStatus(status, {
+      type: "error",
+      message: msg === "Failed to fetch" || /network|fetch/i.test(msg) ? deps.workerDownMsg : msg,
+    });
+    clearLoading();
+  }
+}
+
+async function executeSynthesize(confirmedFacts) {
+  const pending = state.pendingResearch;
+  if (!pending) return;
+
+  const { payload, meta, research } = pending;
+  const status = $("prep-status");
+  const factsModal = $("prep-facts-modal");
+  if (factsModal) factsModal.isOpen = false;
+
+  setLoading(true, "Generating brief from confirmed facts…");
+
+  try {
+    const data = await postJson(deps.synthesizeUrl, {
+      ...payload,
+      confirmedFacts,
+      researchBundle: research.researchBundle,
+    });
+
+    const enrichedMeta = {
+      ...meta,
+      researchMeta: data.researchMeta,
+      researchBundle: data.researchBundle,
+    };
+
+    displayPrepResult(data.prep, enrichedMeta);
+    showInlineStatus(status, { open: false });
+    const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
+    saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
+    state.pendingResearch = null;
+  } catch (err) {
+    const msg = err.message || "Something went wrong.";
+    showInlineStatus(status, {
+      type: "error",
+      message: msg === "Failed to fetch" || /network|fetch/i.test(msg) ? deps.workerDownMsg : msg,
+    });
+  } finally {
+    clearLoading();
+  }
+}
+
+
+function showConfirmModal(companyName, companyDomain) {
+  return new Promise((resolve) => {
+    const modal = $("prep-confirm-modal");
+    const text = $("prep-confirm-text");
+    if (!modal) {
+      resolve(true);
+      return;
+    }
+    if (text) {
+      text.textContent = `Research ${companyName} (${companyDomain})?`;
+    }
+
+    let settled = false;
+    const finish = (confirmed) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      modal.isOpen = false;
+      resolve(confirmed);
+    };
+
+    const onSubmit = () => finish(true);
+    const onClose = () => finish(false);
+
+    const cleanup = () => {
+      modal.removeEventListener("fwSubmit", onSubmit);
+      modal.removeEventListener("fwClose", onClose);
+    };
+
+    modal.isOpen = true;
+    modal.addEventListener("fwSubmit", onSubmit);
+    modal.addEventListener("fwClose", onClose);
+  });
+}
+
+function onFactsModalSubmit(ev) {
+  const facts = collectConfirmedFacts();
+  const errEl = $("prep-facts-error");
+  if (!facts.length) {
+    if (errEl) {
+      errEl.textContent = "Select at least one fact to include in the brief.";
+      errEl.hidden = false;
+    }
+    ev?.preventDefault?.();
+    ev?.stopPropagation?.();
+    return;
+  }
+  if (errEl) errEl.hidden = true;
+  void executeSynthesize(facts);
+}
+
+function onFactsModalClose() {
+  closeFactsModal();
 }
 
 export async function generatePrep(e) {
   e?.preventDefault?.();
   if (state.loading) return;
-  state.loading = true;
 
-  const btn = $("generate");
   const status = $("prep-status");
-  if (btn) btn.disabled = true;
-  if (btn) btn.loading = true;
-
   try {
-    const rawEmails = await readFieldValueAsync($("prospectEmail"));
-    const emails = parseProspectEmails(rawEmails);
-    if (!emails.length) {
-      if (status) {
-        status.className = "status err";
-        status.textContent = "Enter at least one valid prospect email (comma-separated for multiple).";
-        show(status, true);
-      }
-      return;
-    }
-
-    const payload = {
-      companyName: await readFieldValueAsync($("companyName")),
-      prospectEmail: emails[0],
-      prospectEmails: emails,
-      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
-    };
-    const meta = {
-      company: payload.companyName,
-      domain: emailDomain(emails[0]),
-      additionalContext: payload.additionalContext,
-    };
-
-    if (status) {
-      status.className = "status";
-      status.textContent = "Researching account…";
-      show(status, true);
-    }
-    show($("prep-result-view"), false);
-    setFormFieldsDisabled($("prep-form"), true);
-
-    const headers = { "content-type": "application/json" };
-    if (deps.authEnabled && deps.getToken) {
-      headers.Authorization = `Bearer ${await deps.getToken()}`;
-    }
-    const res = await fetch(deps.prepUrl, { method: "POST", headers, body: JSON.stringify(payload) });
-    const raw = await res.text();
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      throw new Error(raw.slice(0, 300) || `Request failed (${res.status}).`);
-    }
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
-
-    displayPrepResult(data.prep, meta);
-    show(status, false);
-    saveBriefToSidebar(payload, data.prep, meta);
-    await deps.onGenerated?.(payload, data.prep, meta);
+    const { payload, meta } = await buildPayload();
+    const confirmed = await showConfirmModal(payload.companyName, payload.companyDomain);
+    if (!confirmed) return;
+    await executeResearch(payload, meta);
   } catch (err) {
-    if (status) {
-      status.className = "status err";
-      const msg = err.message || "Something went wrong.";
-      status.textContent =
-        msg === "Failed to fetch" || /network|fetch/i.test(msg) ? deps.workerDownMsg : msg;
-      show(status, true);
-    }
-  } finally {
-    state.loading = false;
-    if (btn) btn.disabled = false;
-    if (btn) btn.loading = false;
-    setFormFieldsDisabled($("prep-form"), false);
+    showInlineStatus(status, { type: "error", message: err.message || "Validation failed." });
   }
 }
 
@@ -471,6 +676,7 @@ function emailDomain(email) {
 export function initPrecall(options) {
   deps = options;
   loadChecks();
+  registerDisputeContextResolver(resolveDisputeContextFromButton);
 
   $("prep-tabs")?.addEventListener("fwChange", (ev) => {
     const tab = ev.detail?.activeTabName || "discovery";
@@ -482,6 +688,13 @@ export function initPrecall(options) {
   $("prep-form")?.addEventListener("submit", (e) => {
     void generatePrep(e);
   });
+  $("generate")?.addEventListener("fwClick", (e) => {
+    void generatePrep(e);
+  });
+
+  const factsModal = $("prep-facts-modal");
+  factsModal?.addEventListener("fwSubmit", onFactsModalSubmit);
+  factsModal?.addEventListener("fwClose", onFactsModalClose);
 }
 
 export function resetPrecallOnView() {

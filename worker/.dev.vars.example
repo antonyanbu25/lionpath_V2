@@ -1,25 +1,9 @@
-# Copy to .dev.vars (gitignored) and fill in your keys.
-# Required for pre-call + post-call (both use Gemini by default).
-GEMINI_API_KEY = "AIza..."
+# Copy to worker/.dev.vars (gitignored) for local wrangler dev.
+# Must match web/firebase-config.local.js projectId when Firebase auth is enabled.
 
-# Firebase Auth — set to enable Google SSO locally (requires firebase-config.local.js in web/)
-FIREBASE_PROJECT_ID = "se-singha-paathi"
+FIREBASE_PROJECT_ID=your-firebase-project-id
 
-# CORS for local web dev (wrangler pages dev on 8788)
-ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788"
-ALLOWED_EMAIL_DOMAIN = "freshworks.com"
+# Optional — Apollo enrichment (Phase 2). Never commit real keys.
+# APOLLO_API_KEY=your-apollo-api-key
 
-# Optional — only if LLM_PROVIDER = "anthropic"
-# ANTHROPIC_API_KEY = "sk-ant-..."
-
-# Vertex AI on GCP (Cloud Run) — omit GEMINI_API_KEY; uses service account ADC instead.
-# GOOGLE_CLOUD_PROJECT = "se-singha-paathi"
-# VERTEX_LOCATION = "us-central1"
-
-# Optional — ZoomInfo person enrich fallback when LinkedIn/web search finds no experience data
-# ZOOMINFO_API_KEY = "your_zoominfo_bearer_token"
-
-# Optional — Zoom OAuth (phase 2)
-# ZOOM_CLIENT_ID = "your_zoom_client_id"
-# ZOOM_CLIENT_SECRET = "your_zoom_client_secret"
-# ZOOM_REDIRECT_URI = "http://localhost:8787/api/zoom/callback"
+# wrangler secret put APOLLO_API_KEY

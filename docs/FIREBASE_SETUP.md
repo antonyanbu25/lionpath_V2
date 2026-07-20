@@ -1,142 +1,92 @@
-# Firebase Google SSO — SE Singha Paathai
+# Firebase Google SSO setup
 
-Enable real Google login for `@freshworks.com` accounts on the portal.
+Enable real login for SE Singha Paathai. When `firebaseConfig.projectId` is empty the portal stays in **dummy auth** mode (`se@freshworks.com` / `se123`).
 
-## Prerequisites
+## 1. Firebase Console
 
-- Firebase project **`se-singha-paathi`** with Firestore enabled
-- Authentication → Sign-in method → **Google** enabled
-- Authorized domains: `portal.benjaminsquare.com` and **`localhost`** (for local testing)
-- Worker API env: `FIREBASE_PROJECT_ID=se-singha-paathi`
+1. Open [Firebase Console](https://console.firebase.google.com/) and create a project (or select an existing one).
+2. **Build → Authentication → Sign-in method → Google** — Enable.
+3. **Authentication → Settings → Authorized domains** — Add:
+   - `localhost` (local dev, port 8788)
+   - Your production web host (e.g. `lionpath.benjaminsquare.com`)
+4. **Build → Firestore Database** — Create database (production mode; rules deployed from this repo).
+5. **Project settings → Your apps → Web** — Register app and copy:
+   - `apiKey`, `authDomain`, `projectId`, `appId`
 
-## 1. Web app — local Firebase config
+Optional: In Google Cloud Console, restrict the OAuth consent screen to your `@freshworks.com` workspace. The app also enforces `@freshworks.com` in code.
 
-Copy the example and fill values from Firebase Console → Project settings → Your apps → Web app:
+## 2. Local config (gitignored)
 
 ```bash
 cp web/firebase-config.local.example.js web/firebase-config.local.js
+# Edit web/firebase-config.local.js — paste Firebase web config
+
+cp worker/.dev.vars.example worker/.dev.vars
+# Set FIREBASE_PROJECT_ID to the same project id
 ```
 
-Edit `web/firebase-config.local.js`:
-
-```js
-export const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "se-singha-paathi.firebaseapp.com",
-  projectId: "se-singha-paathi",
-  appId: "...",
-};
-```
-
-This file is **gitignored**. Copy it to the VPS `web/` folder when deploying (not in git).
-
-When `projectId` is set, the app shows **Sign in with Google** only (dummy email/password hidden).
-
-## 2. Worker env (local)
-
-Copy and edit `worker/.dev.vars`:
-
-```
-GEMINI_API_KEY=...
-FIREBASE_PROJECT_ID=se-singha-paathi
-ALLOWED_ORIGINS=http://localhost:8788,http://127.0.0.1:8788
-ALLOWED_EMAIL_DOMAIN=freshworks.com
-```
-
-When `FIREBASE_PROJECT_ID` is set, API routes require a Firebase **Bearer** token (no demo email in query).
-
-## 3. Worker env (VPS production)
-
-In `deploy/vps/.env`:
-
-```
-FIREBASE_PROJECT_ID=se-singha-paathi
-ALLOWED_ORIGINS=https://portal.benjaminsquare.com
-ALLOWED_EMAIL_DOMAIN=freshworks.com
-GEMINI_API_KEY=...
-```
-
-Recreate worker after editing:
+Restart dev servers after changing config:
 
 ```bash
-cd deploy/vps && docker compose up -d --force-recreate worker
+cd worker && npm run dev    # port 8787
+cd web && npm run dev       # port 8788
 ```
 
-## 4. API URL (automatic)
-
-| Web host | Worker API |
-|----------|------------|
-| `portal.benjaminsquare.com` | `https://portalapi.benjaminsquare.com` |
-| `localhost:8788` | `http://localhost:8787` |
-
-Configured in [`web/firebase-config.js`](../web/firebase-config.js) — no manual override needed for portal production.
-
-## 5. Deploy Firestore rules (one-time)
-
-From repo root:
+## 3. Deploy Firestore rules and indexes
 
 ```bash
 cp .firebaserc.example .firebaserc
+# Edit .firebaserc — set your Firebase project id
+
 firebase login
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-Rules include `preps`, `postcalls`, and `users/{uid}` (user profile bootstrap on first login).
-
-## 6. Local test
-
-**Terminal 1 — worker:**
+Or from repo root:
 
 ```bash
-cd worker && npm run dev:node
+npm run firebase:deploy
 ```
 
-**Terminal 2 — web:**
+## 4. Bootstrap teams and roles
+
+Firestore rules allow only **admin** to create/update `teams/*`. Bootstrap once with the Admin SDK:
 
 ```bash
-cd web && npx wrangler pages dev . --port 8788
+# Service account JSON from Firebase Console → Project settings → Service accounts
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# Create default demo team
+node worker/scripts/seed-firestore-users.mjs --bootstrap-team
+
+# Assign roles (users must exist in Firebase Auth — sign in once with Google first)
+node worker/scripts/seed-firestore-users.mjs --csv worker/scripts/seed-users.example.csv
 ```
 
-Open http://localhost:8788 → Sign in with Google using a `@freshworks.com` account.
+CSV columns: `email,role,teamId,displayName` (displayName optional).
 
-**Verify:**
+Roles: `se`, `manager`, `admin`.
 
-1. App loads after sign-in
-2. DevTools → Network → `/api/config` returns 200 (with Bearer token on authenticated calls)
-3. Firebase Console → Firestore → `users/{uid}` document created
-4. Prep / post-call flows work without CORS errors
+## 5. Verify
 
-**Regression:** Remove or rename `firebase-config.local.js` → dummy login (`se@freshworks.com` / `se123`) still works.
+| Check | Expected |
+|-------|----------|
+| Login page | Email/password hidden; **Sign in with Google** visible |
+| `@freshworks.com` Google account | App loads; `users/{uid}` in Firestore |
+| Other domains | Rejected |
+| Prep / post-call / history | Worker accepts `Authorization: Bearer` token |
+| Manager (role set in Firestore) | Manager dashboard shows team SEs |
 
-## 7. VPS deploy checklist
+## 6. Production (VPS)
 
-```bash
-cd /opt/se-singha-paathai
-git checkout -- deploy/vps/start.sh deploy/vps/setup.sh 2>/dev/null
-git pull origin main
-# Create web/firebase-config.local.js on server (same as local)
-cd deploy/vps
-# Ensure .env has FIREBASE_PROJECT_ID and ALLOWED_ORIGINS
-docker compose up -d --force-recreate web worker caddy
+Set in `deploy/vps/.env`:
+
+```
+FIREBASE_PROJECT_ID=your-project-id
 ```
 
-Hard-refresh https://portal.benjaminsquare.com (incognito recommended).
+Deploy web with `web/firebase-config.local.js` merged at build time, or inline config in `web/firebase-config.js` for production Pages deploy.
 
-## Roles
+## Dummy mode (local dev without Firebase)
 
-After Google sign-in, role is inferred from email prefix:
-
-- `manager@*` → manager dashboard
-- All other `@freshworks.com` → SE
-
-Optional future: seed roles via Firestore `users` documents.
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| "Cannot reach API server" banner | Check CORS: `ALLOWED_ORIGINS` must match web origin exactly |
-| Google popup blocked | Add `localhost` to Firebase authorized domains |
-| 401 on API calls | Set `FIREBASE_PROJECT_ID` on worker; sign in again |
-| Still shows dummy login | `firebase-config.local.js` missing or empty `projectId` |
-| Old splash/theme | Pull latest + recreate `web` container + hard refresh |
+Leave `web/firebase-config.local.js` absent or with empty `projectId`. Dummy logins and localStorage domain store continue to work.

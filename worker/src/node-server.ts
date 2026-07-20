@@ -29,16 +29,11 @@ function buildEnv(): NodeEnv {
     POSTCALL_EFFORT: process.env.POSTCALL_EFFORT || "low",
     ALLOWED_ORIGINS:
       process.env.ALLOWED_ORIGINS ||
-      "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com",
+      "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com",
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-    GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT,
-    VERTEX_PROJECT: process.env.VERTEX_PROJECT,
-    VERTEX_LOCATION: process.env.VERTEX_LOCATION,
-    GOOGLE_CLOUD_LOCATION: process.env.GOOGLE_CLOUD_LOCATION,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-    ZOOMINFO_API_KEY: process.env.ZOOMINFO_API_KEY,
     ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID,
     ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET,
     ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI,

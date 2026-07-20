@@ -29,32 +29,58 @@ export async function readFieldValueAsync(el) {
   return readFieldValue(el);
 }
 
-/** @param {HTMLElement | null | undefined} el @param {string} value */
-export function setFieldValue(el, value) {
-  if (!el) return;
-  const v = String(value ?? "");
-  if ("value" in el) el.value = v;
-  const inner = el.shadowRoot?.querySelector("input, textarea");
-  if (inner) inner.value = v;
-}
-
-/** @param {HTMLElement | null | undefined} el @param {string} value */
-export async function setFieldValueAsync(el, value) {
-  setFieldValue(el, value);
-  if (typeof el?.setValue === "function") {
-    try {
-      await el.setValue(String(value ?? ""));
-    } catch {
-      // fall back to property set above
-    }
-  }
-}
-
 /** @param {ParentNode | null | undefined} form @param {boolean} disabled */
 export function setFormFieldsDisabled(form, disabled) {
   form?.querySelectorAll("fw-input, fw-textarea, fw-button, fw-select").forEach((el) => {
     el.disabled = disabled;
   });
+}
+
+/** @param {HTMLElement | null | undefined} host */
+export function showInlineStatus(host, options = {}) {
+  if (!host) return;
+  const { type = "info", message = "", open = true, loading = false } = options;
+  host.replaceChildren();
+  host.hidden = !open || !message;
+  if (host.hidden) return;
+
+  const notice = document.createElement("fw-inline-message");
+  notice.type = type;
+  notice.open = true;
+  notice.closable = false;
+
+  if (loading) {
+    const spinner = document.createElement("fw-spinner");
+    spinner.size = "small";
+    spinner.setAttribute("aria-hidden", "true");
+    notice.append(spinner);
+  }
+  notice.append(document.createTextNode(message));
+  host.append(notice);
+}
+
+/** @param {HTMLElement | null | undefined} button @param {boolean} loading */
+export function setButtonLoading(button, loading) {
+  if (!button) return;
+  button.loading = loading;
+  button.disabled = loading;
+}
+
+/** @param {HTMLElement | null | undefined} field @param {string} message */
+export function setFieldError(field, message = "") {
+  if (!field) return;
+  field.state = message ? "error" : "normal";
+  field.errorText = message;
+}
+
+/** @param {string} message */
+export function renderLoadingPanel(message = "Loading…") {
+  const safe = String(message).replace(/[&<>"']/g, (char) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  return `<div class="dew-loading-panel" role="status" aria-live="polite">
+    <fw-spinner size="medium"></fw-spinner>
+    <span class="muted">${safe}</span>
+  </div>`;
 }
 
 /**

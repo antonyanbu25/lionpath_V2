@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>About — SE Work Bench</title>
+    <title>About — SE Singha Paathai</title>
+    <!-- Dew head — see web/partials/head-dew.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
@@ -15,11 +22,15 @@
       type="module"
       src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
     ></script>
+    <script type="module" src="./theme.js"></script>
   </head>
   <body class="about-page">
     <header class="about-header">
-      <a href="./index.html" class="about-back">← Back to app</a>
-      <p class="about-kicker muted">SE Work Bench · Freshworks Solution Engineering</p>
+      <div class="about-header-top">
+        <a href="./index.html" class="about-back">← Back to app</a>
+        <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
+      </div>
+      <p class="about-kicker muted">SE Singha Paathai · Freshworks Solution Engineering</p>
       <h1>About this project</h1>
       <p class="about-lead muted">
         A coaching portal that turns recorded customer demos into summaries, next steps, and quality feedback — in under a minute.
@@ -30,7 +41,7 @@
       <fw-card class="about-section">
         <h2>What is it?</h2>
         <p>
-          <strong>SE Work Bench</strong> helps Solution Engineers debrief after customer calls without the manual write-up.
+          <strong>SE Singha Paathai</strong> helps Solution Engineers debrief after customer calls without the manual write-up.
           Paste a Zoom recording link and the system reads what was actually said on the call, then returns three things:
         </p>
         <ul class="about-list">
@@ -230,7 +241,7 @@
         </div>
         <p class="about-note"><strong>Paste <code>docs/CODE_LOGIC.md</code> to your AI coding assistant before starting a task on this repo.</strong></p>
 
-        <h3 class="about-subhead">What SE Work Bench is</h3>
+        <h3 class="about-subhead">What Lionpath is</h3>
         <div class="about-table-wrap">
           <table class="about-table about-table-compact">
             <thead><tr><th>Flow</th><th>When</th><th>Output</th></tr></thead>
@@ -385,7 +396,7 @@ REMOVED: Support Maturity block · Signals block · separate card stacks · head
       <fw-card class="about-section about-demo">
         <h2>Demo login</h2>
         <p class="muted">For local demos and shared environments — dummy auth, not production SSO.</p>
-        <p class="muted">Team portal: <a href="https://portal.benjaminsquare.com">https://portal.benjaminsquare.com</a></p>
+        <p class="muted">Team portal: <a href="https://lionpath.benjaminsquare.com">https://lionpath.benjaminsquare.com</a></p>
         <div class="about-table-wrap">
           <table class="about-table about-table-compact">
             <thead>
@@ -418,6 +429,15 @@ REMOVED: Support Maturity block · Signals block · separate card stacks · head
       </fw-card>
     </main>
 
+    <footer class="site-footer">
+      <span class="muted">SE Singha Paathai · Freshworks</span>
+      <a href="#discovery-wireframe" class="muted" style="margin-left:1rem">Discovery wireframe</a>
+      <a href="#code-logic" class="muted" style="margin-left:1rem">How the code works</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md" class="muted" style="margin-left:1rem">DISCOVERY_WIREFRAME.md</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/CODE_LOGIC.md" class="muted" style="margin-left:1rem">CODE_LOGIC.md</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/README.md" class="muted" style="margin-left:1rem">README</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md" class="muted" style="margin-left:1rem">VPS deploy guide</a>
+    </footer>
     <script>
       function printCodeGuide() {
         document.body.classList.add("print-code-guide");

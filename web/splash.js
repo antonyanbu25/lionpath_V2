@@ -1,27 +1,59 @@
 /**
- * Lion splash — permanently disabled.
- * Neutralizes cached legacy splash.js and removes any splash DOM.
+ * Lion splash — index.html only, once per browser (cookie lionpath_splash_seen=1).
+ *
+ * Reset splash: open DevTools → Application → Cookies → delete lionpath_splash_seen,
+ * or visit index.html?splash=reset then reload, or run:
+ *   document.cookie = "lionpath_splash_seen=; Max-Age=0; path=/"
+ * Force replay without clearing cookie: index.html?splash=1
  */
 
-const SPLASH_COOKIE = "lionpath_splash_seen=1; Max-Age=31536000; Path=/; SameSite=Lax";
+const COOKIE_NAME = "lionpath_splash_seen";
+const SPLASH_MS = 2000;
 
-function killSplash() {
-  document.documentElement.setAttribute("data-theme", "light");
-  document.documentElement.style.colorScheme = "light";
-  document.documentElement.classList.remove("fw-dark-theme");
-  localStorage.setItem("lionpath_theme", "light");
-  document.cookie = SPLASH_COOKIE;
-  document.querySelectorAll("#lion-splash, .lion-splash").forEach((el) => el.remove());
-  document.body?.classList.remove("splash-lock");
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
-killSplash();
+function setCookie(name, value, days = 365) {
+  const maxAge = days * 86400;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax`;
+}
+
+function shouldShowSplash() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("splash") === "reset") {
+    document.cookie = `${COOKIE_NAME}=; Max-Age=0; Path=/`;
+    params.delete("splash");
+    const qs = params.toString();
+    history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : "") + location.hash);
+    return true;
+  }
+  if (params.get("splash") === "1") return true;
+  return getCookie(COOKIE_NAME) !== "1";
+}
+
+function runSplash() {
+  const el = document.getElementById("lion-splash");
+  if (!el || !shouldShowSplash()) return;
+
+  el.hidden = false;
+  el.classList.add("lion-splash-active");
+  document.body.classList.add("splash-lock");
+
+  window.setTimeout(() => {
+    el.classList.add("lion-splash-fade");
+    window.setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove("lion-splash-active", "lion-splash-fade");
+      document.body.classList.remove("splash-lock");
+      setCookie(COOKIE_NAME, "1");
+    }, 700);
+  }, SPLASH_MS);
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", killSplash);
+  document.addEventListener("DOMContentLoaded", runSplash);
 } else {
-  killSplash();
+  runSplash();
 }
-
-// Block legacy cached modules that define runSplash/show logic.
-window.runSplash = killSplash;
-window.shouldShowSplash = () => false;

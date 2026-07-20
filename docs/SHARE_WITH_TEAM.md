@@ -69,7 +69,7 @@ SEs do **not** need Node.js, terminals, API keys, or git. They only need a brows
 
 ### Portal URL (team demo / VPS)
 
-**https://portal.benjaminsquare.com**
+**https://lionpath.benjaminsquare.com**
 
 Hosted on a Netcup VPS via Docker — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** for setup.
 
@@ -169,7 +169,7 @@ Wait for: `Ready on http://localhost:8788`
 | Port already in use | Old process on 8787/8788 | Close old terminals (Ctrl+C) or stop the process using that port |
 | Changes not picked up | Dev server cached | Stop both terminals (Ctrl+C) and restart |
 | **Incognito / private window** | History not saved | Use a **normal browser window** for saved history. Incognito clears site data when closed. The login page shows this reminder. |
-| Tunnel URL down (portal.benjaminsquare.com) | VPS offline or DNS issue | Check `docker compose ps` on VPS — see docs/VPS_DEPLOY.md |
+| Tunnel URL down (lionpath.benjaminsquare.com) | VPS offline or DNS issue | Check `docker compose ps` on VPS — see docs/VPS_DEPLOY.md |
 
 ---
 
@@ -211,7 +211,7 @@ Nothing once deployed. SEs open the portal URL in a browser — no npm, no API k
 
 | What | Value |
 |------|-------|
-| Team portal URL | https://portal.benjaminsquare.com |
+| Team portal URL | https://lionpath.benjaminsquare.com |
 | SE login | se@freshworks.com / se123 |
 | Local dev URL (developers) | http://localhost:8788 |
 | Local API (background) | http://localhost:8787 |

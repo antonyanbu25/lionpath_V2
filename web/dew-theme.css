@@ -213,6 +213,43 @@ fw-button[color="link"] {
   --fw-button-hover-background-color: transparent;
 }
 
+/* Crayons form surfaces */
+fw-input,
+fw-textarea,
+fw-select {
+  --fw-label-color: var(--dew-text);
+  --fw-hint-color: var(--dew-text-muted);
+  --fw-error-color: var(--dew-red);
+  --fw-warning-color: var(--dew-amber);
+  --fw-input-border-radius: var(--dew-btn-radius);
+}
+
+/* Crayons loading and feedback */
+fw-spinner {
+  --fw-spinner-color: var(--dew-primary);
+}
+
+fw-skeleton {
+  --fw-skeleton-background: var(--dew-hairline);
+  --fw-skeleton-sheen-color: var(--dew-border);
+  --fw-skeleton-border-radius: var(--dew-btn-radius);
+}
+
+fw-inline-message {
+  --fw-inline-message-border-radius: var(--dew-btn-radius);
+}
+
+/* Crayons overlays and navigation surfaces */
+fw-tabs,
+fw-modal,
+fw-tooltip {
+  --fw-tabs-border-color: var(--dew-border);
+  --fw-modal-background-color: var(--dew-surface);
+  --fw-modal-border-color: var(--dew-border);
+  --fw-tooltip-background-color: var(--dew-text);
+  --fw-tooltip-color: var(--dew-surface);
+}
+
 /* Sidebar rail collapse pill — neutral surface, no primary blue outline */
 fw-button.sidebar-collapse[color="secondary"][fill="clear"] {
   --color-fill-surface: var(--dew-surface);

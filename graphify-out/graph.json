@@ -6392,7 +6392,7 @@
       "norm_label": "vps deployment guide"
     },
     {
-      "label": "portal.benjaminsquare.com production URLs",
+      "label": "lionpath.benjaminsquare.com production URLs",
       "file_type": "concept",
       "source_file": "docs/VPS_DEPLOY.md",
       "source_location": null,
@@ -6402,7 +6402,7 @@
       "contributor": null,
       "id": "docs_vps_deploy_lionpath_urls",
       "community": 2,
-      "norm_label": "portal.benjaminsquare.com production urls"
+      "norm_label": "lionpath.benjaminsquare.com production urls"
     },
     {
       "label": "About page (web/about.html)",

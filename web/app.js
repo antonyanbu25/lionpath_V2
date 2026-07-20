@@ -1,6 +1,8 @@
-import { readFieldValue, readFieldValueAsync } from "./crayons-ui.js";
+import { readFieldValue, readFieldValueAsync, setFieldError } from "./crayons-ui.js";
+import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
+import { initPrepDisputes } from "./prep-disputes.js?v=dispute-static-v11";
 import {
   authMode,
   getSession,
@@ -9,7 +11,14 @@ import {
   onSessionChange,
   persistFirebaseSession,
   isManagerRole,
+  syncSessionWithDomainStore,
+  setSession,
 } from "./auth.js";
+import { initDomainStore, getStore } from "./domain/store.js";
+import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
+import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
+import { renderAccountView } from "./account-view.js";
+import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
   syncTasksOnLogin,
@@ -18,17 +27,17 @@ import {
   clearTasksAuthGetter,
 } from "./tasks.js";
 import { normalizeQualityCoach } from "./quality-score.js";
-import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
-import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
+import { initUserMenu, refreshUserMenu } from "./user-menu.js";
+import { renderProfileSettings } from "./profile-settings.js";
+import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig, isFirebaseAuthEnabled } from "./firebase-config.js";
 import {
   initPrecall,
-  listSidebarBriefs,
+  loadLocalBriefs,
   openPrepBrief,
   parseProspectEmails,
-  syncPrepBriefsOnLogin,
-} from "./precall.js";
+} from "./precall.js?v=dispute-static-v11";
 import {
   displayPostCall,
   onSessionReady,
@@ -36,16 +45,15 @@ import {
   setOnAnalysisSaved,
 } from "./postcall.js";
 
-function isAuthEnabled() {
-  return authMode() === "firebase";
-}
 
-const PREP_URL = `${WORKER_BASE_URL}/api/generate-prep`;
+const PREP_RESEARCH_URL = `${WORKER_BASE_URL}/api/prep/research`;
+const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
-  "Start the worker in another terminal: cd worker → npm.cmd run dev (look for Ready on port 8787). " +
-  "Use the same hostname for web and worker (both localhost or both 127.0.0.1), then refresh.";
+  "Start the worker: open a second terminal, run `cd worker && npm run dev` (wait for Ready on port 8787), then refresh. " +
+  "Or run `npm run dev:all` from the web folder to start web + worker together. " +
+  "Use the same hostname for both (localhost or 127.0.0.1 — not mixed).";
 
 let fb = null;
 let currentSession = null;
@@ -59,17 +67,26 @@ const VIEW_TITLES = {
   dashboard: "My dashboard",
   precall: "Pre-call",
   postcall: "Post-call",
+  accounts: "Accounts",
   manager: "Manager dashboard",
+  profile: "Profile settings",
 };
+
+let selectedAccountId = null;
+let accountListSearchQuery = "";
+let accountDetailSearchQuery = "";
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-const emailDomain = (email) => {
-  const at = String(email || "").lastIndexOf("@");
+
+function emailDomain(emailRaw) {
+  const emails = parseProspectEmails(emailRaw);
+  const email = emails[0] || String(emailRaw || "").trim();
+  const at = email.lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
-};
+}
 
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
 const DOMAIN_TYPO_MARKERS = [/acadmey/i, /academey/i, /acadamy/i];
@@ -113,14 +130,34 @@ function validateProspectDomain(emailRaw, companyName) {
 function updateDomainHint() {
   const hint = $("domain-hint");
   if (!hint) return;
-  const msg = validateProspectDomain(readFieldValue($("prospectEmail")), readFieldValue($("companyName")));
-  if (msg) {
-    hint.textContent = msg;
+  const companyName = readFieldValue($("companyName"));
+  const companyDomain = normalizeCompanyDomainField(readFieldValue($("companyDomain")));
+  const emailMsg = validateProspectDomain(readFieldValue($("prospectEmail")), companyName);
+  const hints = [];
+  if (emailMsg) hints.push(emailMsg);
+  if (companyDomain && !DOMAIN_RE.test(companyDomain)) {
+    hints.push("Company domain format looks invalid (use acme.com).");
+  }
+  const emailDomainVal = emailDomain(readFieldValue($("prospectEmail")));
+  if (companyDomain && emailDomainVal && companyDomain !== emailDomainVal) {
+    hints.push(`Prospect email domain (${emailDomainVal}) differs from company domain (${companyDomain}).`);
+  }
+  if (hints.length) {
+    hint.textContent = hints.join(" ");
     hint.className = "field-hint warn";
     hint.hidden = false;
   } else {
     hint.hidden = true;
   }
+}
+
+function normalizeCompanyDomainField(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
 }
 
 function getStoredDashTab() {
@@ -154,7 +191,7 @@ function switchDashboardTab(tab) {
 }
 
 function buildFetchRemotePreps() {
-  if (!isAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
+  if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
   return async () => {
     const user = fb.auth.currentUser;
     const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
@@ -162,22 +199,7 @@ function buildFetchRemotePreps() {
     return snap.docs.map((d) => {
       const data = d.data();
       const when = data.createdAt?.toDate?.()?.toLocaleDateString?.() || "";
-      const savedAt = data.createdAt?.toDate?.()?.getTime?.() || 0;
-      return {
-        id: d.id,
-        company: data.company,
-        when,
-        savedAt,
-        prep: data.prep,
-        prospectEmail: data.prospectEmail,
-        additionalContext: data.additionalContext || "",
-        input: {
-          companyName: data.company,
-          prospectEmail: data.prospectEmail,
-          prospectEmails: data.prospectEmails || (data.prospectEmail ? [data.prospectEmail] : []),
-          additionalContext: data.additionalContext || "",
-        },
-      };
+      return { id: d.id, company: data.company, when };
     });
   };
 }
@@ -213,13 +235,15 @@ function updateNavForRole() {
     const showBtn = role === "manager" ? isManager : !isManager;
     btn.hidden = !showBtn;
   });
+  const globalSearch = $("global-search-input");
+  if (globalSearch) globalSearch.hidden = isManager;
 }
 
 function refreshActiveDashboard() {
   if (!currentSession?.email) return;
   if (isManagerRole(currentSession)) {
     if (currentView === "manager") {
-      renderManagerDashboard($("view-manager"));
+      void renderManagerDashboard($("view-manager"), currentSession);
     }
     return;
   }
@@ -232,6 +256,7 @@ function refreshActiveDashboard() {
 
 function normalizeViewName(name) {
   if (name === "analysis" || name === "workspace") return "postcall";
+  if (name === "lifecycles") return "accounts";
   return name;
 }
 
@@ -247,8 +272,23 @@ function switchView(name, opts = {}) {
     dashboard: $("view-dashboard"),
     precall: $("view-precall"),
     postcall: $("view-postcall"),
+    accounts: $("view-accounts"),
     manager: $("view-manager"),
+    profile: $("view-profile"),
   };
+
+  if (name === "profile") {
+    Object.entries(panels).forEach(([key, el]) => show(el, key === "profile"));
+    $("main-view-title").textContent = VIEW_TITLES.profile;
+    document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.remove("active"));
+    renderProfileSettings($("profile-settings-root"), currentSession, {
+      onSaved: (next) => {
+        currentSession = next;
+      },
+    });
+    location.hash = "profile";
+    return;
+  }
 
   if (isManager) {
     if (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall") {
@@ -269,15 +309,47 @@ function switchView(name, opts = {}) {
     const dashTab = opts.dashTab || currentDashTab || getStoredDashTab();
     switchDashboardTab(dashTab);
   } else if (name === "manager" && isManager) {
-    renderManagerDashboard($("view-manager"));
+    void renderManagerDashboard($("view-manager"), currentSession);
+  } else if (name === "accounts" && !isManager) {
+    if (opts.accountId) selectedAccountId = opts.accountId;
+    void renderAccountPanel();
   }
 
   const hash =
     name === "dashboard" && currentDashTab === "coaching"
       ? "dashboard/coaching"
-      : name;
+      : name === "accounts" && selectedAccountId
+        ? `accounts/${selectedAccountId}`
+        : name;
   history.replaceState(null, "", `#${hash}`);
   closeSidebar();
+}
+
+async function renderAccountPanel() {
+  const panel = $("account-panel");
+  if (!panel || !currentSession) return;
+  await renderAccountView(panel, currentSession, {
+    accountId: selectedAccountId || undefined,
+    listSearchQuery: accountListSearchQuery,
+    detailSearchQuery: accountDetailSearchQuery,
+    onListSearchQueryChange: (q) => {
+      accountListSearchQuery = q;
+    },
+    onDetailSearchQueryChange: (q) => {
+      accountDetailSearchQuery = q;
+    },
+    onSelectAccount: (id) => {
+      selectedAccountId = id;
+      switchView("accounts", { accountId: id });
+    },
+    onBack: () => {
+      selectedAccountId = null;
+      accountDetailSearchQuery = "";
+      switchView("accounts");
+    },
+    onPrep: () => switchView("precall"),
+    onPostcall: () => switchView("postcall"),
+  });
 }
 
 function openHistoryItem(id) {
@@ -311,7 +383,6 @@ async function loadPersistedHistory() {
   setSidebarHistorySyncing(true);
   try {
     const list = await syncHistoryOnLogin(currentSession.email);
-    await syncPrepBriefsOnLogin(currentSession.email, buildFetchRemotePreps());
     await syncTasksOnLogin(currentSession.email);
     await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
     refreshSidebarHistory();
@@ -328,11 +399,7 @@ async function loadPersistedHistory() {
 }
 
 function openPrepBriefItem(id) {
-  const result = openPrepBrief(id, currentSession?.email);
-  if (!result.ok) {
-    console.warn("[app]", result.error || "Could not open brief.");
-    return;
-  }
+  if (!openPrepBrief(id)) return;
   switchView("precall");
   document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
@@ -350,14 +417,14 @@ function clearSidebarRecentWork() {
   if (callEmpty) show(callEmpty, true);
 }
 
-function refreshSidebarRecentWork() {
+async function refreshSidebarRecentWork() {
   if (!currentSession?.email) {
     clearSidebarRecentWork();
     return;
   }
 
-  const briefs = listSidebarBriefs(currentSession.email);
-  const calls = dedupeAnalysesByCallIdentity(listPostCallAnalyses(currentSession.email)).slice(0, 5);
+  const briefs = loadLocalBriefs().slice(0, 5);
+  const calls = listPostCallAnalyses(currentSession.email).slice(0, 5);
 
   const prepList = $("sidebar-prep-list");
   const callList = $("sidebar-call-list");
@@ -417,16 +484,27 @@ function refreshSidebarHistory() {
   refreshSidebarRecentWork();
 }
 
-function updateSidebarUser() {
-  const name = currentSession?.name || "";
-  $("sidebar-user-name").textContent = name;
-  $("sidebar-user-role").textContent =
-    isManagerRole(currentSession) ? "Manager" : "Solution Engineer";
-  const avatar = $("sidebar-user-avatar");
-  if (avatar) {
-    avatar.textContent = name ? name.charAt(0).toUpperCase() : "🦁";
-    avatar.title = name;
+function refreshUserMenuFromSession() {
+  refreshUserMenu(currentSession);
+}
+
+function wireUserMenu() {
+  initUserMenu({
+    getSession: () => currentSession,
+    onProfileSettings: () => switchView("profile"),
+    onSignOut: () => void handleSignOut(),
+  });
+}
+
+async function handleSignOut() {
+  if (fb?.auth && fb?.signOut) {
+    try {
+      await fb.signOut(fb.auth);
+    } catch {
+      // ignore sign-out errors
+    }
   }
+  logout();
 }
 
 // ---------- Sidebar mobile ----------
@@ -462,34 +540,8 @@ async function savePrep(input, prep, meta) {
 
 // ---------- Auth UI ----------
 
-function setAuthLoading(loading) {
-  const el = $("auth-loading");
-  if (el) {
-    el.hidden = !loading;
-    el.setAttribute("aria-busy", loading ? "true" : "false");
-  }
-}
-
-function showDummyLoginUI() {
-  setAuthLoading(false);
-  show($("login-form"), true);
-  const hint = document.querySelector(".login-hint");
-  if (hint) hint.hidden = false;
-  show($("firebase-signin-block"), false);
-}
-
-function showFirebaseLoginUI() {
-  setAuthLoading(false);
-  show($("login-form"), false);
-  const hint = document.querySelector(".login-hint");
-  if (hint) hint.hidden = true;
-  const block = $("firebase-signin-block");
-  show(block, true);
-  const divider = block?.querySelector(".or-divider");
-  if (divider) divider.hidden = true;
-}
-
 function showLogin() {
+  show($("app-loading"), false);
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
@@ -497,45 +549,84 @@ function showLogin() {
   clearTasksAuthGetter();
   clearSidebarHistory();
   onSessionCleared();
-  if (authMode() === "firebase") showFirebaseLoginUI();
-  else showDummyLoginUI();
 }
 
+let showAppInFlight = false;
+
 async function showApp(session, opts = {}) {
-  currentSession = session?.email
-    ? { ...session, email: String(session.email).trim().toLowerCase() }
-    : session;
-  show($("login-view"), false);
-  show($("app-shell"), true);
-  updateSidebarUser();
+  if (showAppInFlight) return;
+  showAppInFlight = true;
+  show($("app-loading"), true);
+  try {
+    let enriched = session;
+    try {
+      await seedDevDomainIfNeeded();
+      enriched = (await syncSessionWithDomainStore(session)) || session;
+    } catch (err) {
+      console.warn("Domain store session sync failed:", err);
+    }
 
-  const tokenFn = isAuthEnabled() && fb?.auth?.currentUser
-    ? () => fb.auth.currentUser.getIdToken()
-    : null;
-  setHistoryAuthGetter(tokenFn);
-  setTasksAuthGetter(tokenFn);
-  onSessionReady(currentSession, tokenFn);
+    currentSession = enriched?.email
+      ? { ...enriched, email: String(enriched.email).trim().toLowerCase() }
+      : enriched;
+    show($("login-view"), false);
+    show($("app-shell"), true);
+    refreshUserMenuFromSession();
 
-  updateNavForRole();
+    if (opts.freshLogin) {
+      triggerSignInPulse();
+    }
 
-  const defaultView = isManagerRole(session) ? "manager" : "dashboard";
-  const hash = location.hash.replace("#", "");
-  const hashAliases = {
-    coaching: { view: "dashboard", dashTab: "coaching" },
-    "dashboard/coaching": { view: "dashboard", dashTab: "coaching" },
-    analysis: { view: "postcall" },
-    workspace: { view: "postcall" },
-  };
-  const alias = hashAliases[hash];
-  if (alias) {
-    switchView(alias.view, { dashTab: alias.dashTab });
-  } else {
-    const valid = ["dashboard", "precall", "postcall", "manager"];
-    switchView(valid.includes(hash) ? hash : defaultView, {
-      dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
-    });
+    const tokenFn = isFirebaseAuthEnabled() && fb?.auth?.currentUser
+      ? () => fb.auth.currentUser.getIdToken()
+      : null;
+    setHistoryAuthGetter(tokenFn);
+    setTasksAuthGetter(tokenFn);
+    onSessionReady(currentSession, tokenFn);
+
+    updateNavForRole();
+
+    const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
+    const hash = location.hash.replace("#", "");
+    const hashAliases = {
+      lifecycles: { view: "accounts" },
+      coaching: { view: "dashboard", dashTab: "coaching" },
+      "dashboard/coaching": { view: "dashboard", dashTab: "coaching" },
+      analysis: { view: "postcall" },
+      workspace: { view: "postcall" },
+    };
+    const alias = hashAliases[hash];
+    if (alias) {
+      switchView(alias.view, { dashTab: alias.dashTab });
+    } else {
+      const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
+      if (lifecycleMatch) {
+        const store = getStore();
+        const lc = await store.getLifecycle(lifecycleMatch[1]);
+        if (lc?.accountId) {
+          selectedAccountId = lc.accountId;
+          switchView("accounts", { accountId: lc.accountId });
+        } else {
+          switchView("accounts");
+        }
+      } else {
+        const accountMatch = /^accounts\/(.+)$/.exec(hash);
+        if (accountMatch) {
+          selectedAccountId = accountMatch[1];
+          switchView("accounts", { accountId: selectedAccountId });
+        } else {
+          const valid = ["dashboard", "precall", "postcall", "accounts", "manager", "profile"];
+          switchView(valid.includes(hash) ? hash : defaultView, {
+            dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
+          });
+        }
+      }
+    }
+    await loadPersistedHistory();
+  } finally {
+    show($("app-loading"), false);
+    showAppInFlight = false;
   }
-  void loadPersistedHistory();
 }
 
 function handleSession(session, opts = {}) {
@@ -543,16 +634,14 @@ function handleSession(session, opts = {}) {
   else showLogin();
 }
 
-// ---------- Dummy login ----------
-
 let loginInFlight = false;
 
 async function submitLogin(e) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
   if (loginInFlight) return;
   loginInFlight = true;
   try {
-    e?.preventDefault?.();
-    e?.stopPropagation?.();
     const errEl = $("login-error");
     show(errEl, false);
 
@@ -560,35 +649,62 @@ async function submitLogin(e) {
     const password = await readFieldValueAsync($("login-password"));
 
     if (!email || !password) {
+      setFieldError($("login-email"), email ? "" : "Enter your email.");
+      setFieldError($("login-password"), password ? "" : "Enter your password.");
       errEl.textContent = "Enter email and password.";
       show(errEl, true);
       return;
     }
+    setFieldError($("login-email"));
+    setFieldError($("login-password"));
 
-    const result = loginDummy(email, password);
+    const result = loginDummy(email, password, { persist: false });
     if (!result.ok) {
+      setFieldError($("login-password"), result.error);
       errEl.textContent = result.error;
       show(errEl, true);
       return;
     }
-    handleSession(result.session, { freshLogin: true });
+
+    setSession(result.session, { freshLogin: true });
+
+    void syncSessionWithDomainStore(result.session)
+      .then((enriched) => {
+        if (enriched) setSession(enriched, { notify: false });
+      })
+      .catch((err) => {
+        console.warn("Domain store session sync failed after login:", err);
+      });
+  } catch (err) {
+    const errEl = $("login-error");
+    if (errEl) {
+      errEl.textContent = err?.message || "Sign-in failed.";
+      show(errEl, true);
+    }
+    throw err;
   } finally {
     loginInFlight = false;
   }
 }
 
+let loginHandlersWired = false;
+
 function wireLoginHandlers() {
+  if (loginHandlersWired) return;
+  loginHandlersWired = true;
+
   $("login-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     void submitLogin(e);
   });
   $("login-submit")?.addEventListener("fwClick", (e) => {
+    e?.preventDefault?.();
     void submitLogin(e);
   });
-  $("login-submit")?.addEventListener("click", (e) => {
+  $("login-password")?.addEventListener("fwInputEnter", (e) => {
+    e?.preventDefault?.();
     void submitLogin(e);
-  });
-  $("login-password")?.addEventListener("fwInputEnter", () => {
-    void submitLogin();
   });
 }
 
@@ -599,8 +715,6 @@ function initDummyAuth() {
     customElements.whenDefined("fw-button").then(wireLoginHandlers);
   }
 
-  $("logout-btn")?.addEventListener("fwClick", () => logout());
-
   const existing = getSession();
   if (existing) handleSession(existing);
 
@@ -609,23 +723,31 @@ function initDummyAuth() {
 
 // ---------- Firebase auth (optional) ----------
 
-async function bootstrapUserDoc(user) {
-  if (!fb?.db || !user?.uid) return;
+let firebaseLoginInFlight = false;
+
+async function completeFirebaseLogin(user, opts = {}) {
+  if (firebaseLoginInFlight) return;
+  firebaseLoginInFlight = true;
   try {
-    const email = String(user.email || "").trim().toLowerCase();
-    const role = email.startsWith("manager@") ? "manager" : "se";
-    await fb.setDoc(
-      fb.doc(fb.db, "users", user.uid),
-      {
-        email,
-        name: user.displayName || email.split("@")[0],
-        role,
-        lastLoginAt: fb.serverTimestamp(),
-      },
-      { merge: true },
-    );
-  } catch (err) {
-    console.warn("[auth] could not bootstrap users doc:", err);
+    const hadSession = !!getSession();
+    const session = await persistFirebaseSession(user, { persist: false });
+    if (!session) return;
+    const enriched = await syncSessionWithDomainStore(session);
+    setSession(enriched || session, { freshLogin: opts.freshLogin ?? !hadSession });
+  } finally {
+    firebaseLoginInFlight = false;
+  }
+}
+
+function configureFirebaseLoginUi() {
+  show($("login-form"), false);
+  show($("login-hint"), false);
+  const divider = $("firebase-signin-block")?.querySelector(".or-divider");
+  if (divider) divider.hidden = true;
+  show($("firebase-signin-block"), true);
+  const subtitle = $("login-subtitle");
+  if (subtitle) {
+    subtitle.textContent = "Sign in with your @freshworks.com Google account.";
   }
 }
 
@@ -644,46 +766,33 @@ async function initFirebase() {
     auth, provider,
     signInWithPopup: authMod.signInWithPopup, signOut: authMod.signOut,
     db: fsMod.getFirestore(app),
-    collection: fsMod.collection, addDoc: fsMod.addDoc, doc: fsMod.doc, setDoc: fsMod.setDoc,
-    query: fsMod.query, where: fsMod.where, getDocs: fsMod.getDocs, serverTimestamp: fsMod.serverTimestamp,
+    collection: fsMod.collection, addDoc: fsMod.addDoc, doc: fsMod.doc,
+    getDoc: fsMod.getDoc, getDocs: fsMod.getDocs, setDoc: fsMod.setDoc,
+    updateDoc: fsMod.updateDoc, query: fsMod.query,
+    where: fsMod.where, orderBy: fsMod.orderBy, limit: fsMod.limit,
+    serverTimestamp: fsMod.serverTimestamp,
   };
 
-  const signIn = async () => {
+  initDomainStore(fb);
+  configureFirebaseLoginUi();
+
+  $("signin-google")?.addEventListener("fwClick", async () => {
     show($("signin-error"), false);
     try {
       await fb.signInWithPopup(auth, provider);
-    } catch (err) {
-      const e = $("signin-error");
-      e.textContent = err.message;
-      show(e, true);
     }
-  };
-
-  $("signin-google")?.addEventListener("fwClick", () => { void signIn(); });
-
-  $("logout-btn")?.addEventListener("fwClick", async () => {
-    await fb.signOut(auth);
-    logout();
+    catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
   });
 
   authMod.onAuthStateChanged(auth, (user) => {
     if (user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`))) {
-      persistFirebaseSession(user);
-      void bootstrapUserDoc(user);
-      handleSession(getSession());
+      void completeFirebaseLogin(user);
     } else {
       if (user) fb.signOut(auth);
       logout();
     }
   });
 
-  const existing = getSession();
-  if (existing) {
-    setAuthLoading(false);
-    handleSession(existing);
-  } else {
-    showLogin();
-  }
   onSessionChange(handleSession);
 }
 
@@ -700,33 +809,61 @@ async function warnIfWorkerDown() {
   }
 }
 
-function boot() {
+async function boot() {
+  await loadFirebaseConfig();
+
   initSidebar();
+  wireUserMenu();
+  initGlobalSearch({
+    getSession: () => currentSession,
+    switchView,
+    openPrepBriefItem,
+    openHistoryItem,
+  });
   initFeedback({
     workerUrl: WORKER_BASE_URL,
     getEmail: () => currentSession?.email || "",
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
   });
-  initPrecall({
-    prepUrl: PREP_URL,
-    authEnabled: isAuthEnabled(),
-    workerDownMsg: WORKER_DOWN_MSG,
+  initPrepDisputes({
+    workerUrl: WORKER_BASE_URL,
     getEmail: () => currentSession?.email || "",
+    getToken: async () => fb?.auth?.currentUser?.getIdToken(),
+  });
+  initPrecall({
+    researchUrl: PREP_RESEARCH_URL,
+    synthesizeUrl: PREP_SYNTHESIZE_URL,
+    authEnabled: isFirebaseAuthEnabled(),
+    workerDownMsg: WORKER_DOWN_MSG,
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
     switchView,
     onGenerated: async (payload, prep, meta) => {
+      let lifecycleId = null;
+      if (currentSession?.uid && currentSession?.teamId) {
+        try {
+          const linked = await linkPrepToLifecycle(currentSession, payload, prep, meta);
+          lifecycleId = linked?.lifecycle?.id || null;
+        } catch (err) {
+          console.warn("Lifecycle dual-write (prep) failed:", err);
+        }
+      }
       if (currentSession?.email) {
         void syncTasksAfterActivity(currentSession.email, {
           seName: currentSession.name,
           prepResult: prep,
           company: payload.companyName,
+          lifecycleId,
+          session: currentSession,
         }).then(() => {
           if (currentView === "dashboard") refreshDashboardFromStorage();
         });
       }
-      if (isAuthEnabled() && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
+      if (isFirebaseAuthEnabled() && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
       if (currentView === "dashboard") refreshDashboardFromStorage();
-      refreshSidebarRecentWork();
+      if (currentView === "accounts") void renderAccountPanel();
+      invalidateSearchIndex();
+      await refreshSidebarRecentWork();
+      return lifecycleId;
     },
   });
 
@@ -734,6 +871,8 @@ function boot() {
   $("prospectEmail")?.addEventListener("input", updateDomainHint);
   $("companyName")?.addEventListener("fwInput", updateDomainHint);
   $("companyName")?.addEventListener("input", updateDomainHint);
+  $("companyDomain")?.addEventListener("fwInput", updateDomainHint);
+  $("companyDomain")?.addEventListener("input", updateDomainHint);
 
   const dashTabs = $("dash-tabs");
   if (dashTabs) {
@@ -751,26 +890,39 @@ function boot() {
   $("sidebar-close")?.addEventListener("fwClick", closeSidebar);
   $("sidebar-backdrop").onclick = closeSidebar;
 
-  setOnAnalysisSaved(() => {
+  setOnAnalysisSaved(async (record, payload, data) => {
+    if (currentSession?.uid && currentSession?.teamId) {
+      try {
+        await linkPostCallToLifecycle(currentSession, payload, data, record);
+      } catch (err) {
+        console.warn("Lifecycle dual-write (post-call) failed:", err);
+      }
+    }
     void loadPersistedHistory().then(async () => {
       if (currentSession?.email) {
         await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
       }
-      if (currentView === "dashboard" || currentView === "manager") {
+      if (currentView === "dashboard" || currentView === "manager" || currentView === "accounts") {
         refreshDashboardFromStorage();
       }
+      if (currentView === "accounts") void renderAccountPanel();
+      invalidateSearchIndex();
+      refreshSidebarRecentWork();
     });
   });
 
+  initDomainStore(null);
+
   if (authMode() === "firebase") {
-    void initFirebase();
+    await initFirebase();
+    if (!getSession()) showLogin();
   } else {
     initDummyAuth();
-    if (getSession()) setAuthLoading(false);
-    else showLogin();
+    const existing = getSession();
+    if (!existing) showLogin();
   }
 
   void warnIfWorkerDown();
 }
 
-loadFirebaseConfig().then(() => boot());
+void boot();

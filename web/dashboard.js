@@ -7,7 +7,9 @@ import { listAnalysesWithQuality, listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { normalizeQualityCoach, scoreBand } from "./quality-score.js";
 import { aggregateFollowUps } from "./follow-ups.js";
-import { listTeamSeEmails, displayNameForEmail } from "./auth.js";
+import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./auth.js";
+import { getStore } from "./domain/store.js";
+import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated } from "./precall.js";
 import { wireCallLinks } from "./crayons-ui.js";
@@ -486,7 +488,7 @@ export function renderCoachingCharts(metrics) {
   if (!metrics.totalCalls) {
     return `
       <fw-card class="dash-empty">
-        <div class="dash-empty-icon" aria-hidden="true">📈</div>
+        <fw-icon class="dash-empty-icon" name="nav-dashboard" size="24" aria-hidden="true"></fw-icon>
         <h2>No coaching data yet</h2>
         <p class="muted">Analyze a few calls to see quality trends, dimension averages, and score distribution.</p>
       </fw-card>`;
@@ -531,7 +533,7 @@ export function renderCoachingCharts(metrics) {
 function renderOverviewEmptyState() {
   return `
     <fw-card class="dash-empty launch-empty">
-      <div class="dash-empty-icon" aria-hidden="true">🚀</div>
+      <fw-icon class="dash-empty-icon" name="add-note" size="24" aria-hidden="true"></fw-icon>
       <h3>Get started</h3>
       <p class="muted">Run pre-call prep or analyze a recording to populate your task list.</p>
       <p class="task-empty-links">
@@ -625,7 +627,7 @@ async function updateSideStats(container, email, fetchRemotePreps) {
   const preps = container.querySelector('[data-stat="preps"]');
   const doneWeek = container.querySelector('[data-stat="done-week"]');
   if (open) open.textContent = String(m.openTotal);
-  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps, email));
+  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps));
   if (doneWeek) doneWeek.textContent = String(m.completedThisWeek);
 }
 
@@ -677,7 +679,7 @@ function mountDashboardTasks(container, email, opts = {}) {
 export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps, email);
+  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">
@@ -709,13 +711,61 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   });
 }
 
-function buildTeamMetrics() {
-  const seEmails = listTeamSeEmails();
+function postCallRecordsToAnalyses(records) {
+  return (records || []).map((r) => ({
+    id: r.id,
+    timestamp: r.createdAt,
+    title: r.title,
+    zoomLink: r.zoomLink,
+    analysis: r.analysis,
+    result: { analysis: r.analysis, transcriptMeta: r.transcriptMeta },
+  }));
+}
+
+async function loadTeamPostCallsFromStore(session) {
+  try {
+    const store = getStore();
+    if (session?.isOrgDirector && session?.orgId && store.listPostCallsByOrg) {
+      const records = await store.listPostCallsByOrg(session.orgId);
+      if (records?.length) return postCallRecordsToAnalyses(records);
+    }
+    if (session?.teamId) {
+      const records = await store.listPostCallsByTeam(session.teamId);
+      if (records?.length) return postCallRecordsToAnalyses(records);
+    }
+  } catch (err) {
+    console.warn("Could not load team postCalls from domain store:", err);
+  }
+  return [];
+}
+
+async function buildTeamMetrics(session) {
+  const isOrgView = session?.isOrgDirector === true;
+  const seEmails = session
+    ? await listTeamSeEmailsAsync(session)
+    : listTeamSeEmails();
+
+  const storePostCalls = await loadTeamPostCallsFromStore(session);
+  const store = getStore();
+  const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
+  const emailToUid = new Map();
+  for (const email of seEmails) {
+    const user = await store.getUserByEmail(email);
+    emailToUid.set(email, user?.id || (await import("./domain/seed-dev.js")).dummyUidForEmail(email));
+  }
+
   const allAnalyses = [];
   const seRows = [];
 
   for (const email of seEmails) {
-    const analyses = listAnalysesWithQuality(email);
+    let analyses = listAnalysesWithQuality(email);
+    const uid = emailToUid.get(email);
+
+    if (!analyses.length && storePostCalls.length && uid) {
+      const fromStore = storePostCalls.filter((r) => r.ownerId === uid);
+      analyses = postCallRecordsToAnalyses(fromStore).filter((r) => r.analysis?.qualityCoach);
+    }
+
     const deduped = dedupeAnalysesByCallIdentity(analyses);
     allAnalyses.push(...deduped);
     const metrics = aggregateQualityMetrics(analyses);
@@ -723,6 +773,7 @@ function buildTeamMetrics() {
     seRows.push({
       email,
       name: displayNameForEmail(email),
+      teamName: teamNameByEmail.get(email) || null,
       calls: metrics.totalCalls,
       avgScore: metrics.avgOverall,
       focusArea: metrics.worstDimension ? radarDimensionLabel(metrics.worstDimension.name) : "—",
@@ -730,11 +781,18 @@ function buildTeamMetrics() {
     });
   }
 
+  if (!allAnalyses.length && storePostCalls.length) {
+    const dedupedStore = dedupeAnalysesByCallIdentity(
+      postCallRecordsToAnalyses(storePostCalls).filter((r) => r.analysis?.qualityCoach)
+    );
+    allAnalyses.push(...dedupedStore);
+  }
+
   const teamMetrics = aggregateQualityMetrics(allAnalyses);
-  return { teamMetrics, seRows };
+  return { teamMetrics, seRows, isOrgView };
 }
 
-function renderManagerSeTable(seRows) {
+function renderManagerSeTable(seRows, isOrgView = false) {
   if (!seRows.length) {
     return `<p class="muted">No SE accounts configured.</p>`;
   }
@@ -745,6 +803,7 @@ function renderManagerSeTable(seRows) {
     return `
       <tr>
         <td>${esc(se.name)}</td>
+        ${isOrgView ? `<td>${esc(se.teamName || "—")}</td>` : ""}
         <td>${se.calls}</td>
         <td><span class="qc-dim-score ${avgCls}">${esc(avg)}</span></td>
         <td>${esc(se.focusArea)}</td>
@@ -761,6 +820,7 @@ function renderManagerSeTable(seRows) {
             <thead>
               <tr>
                 <th scope="col">SE</th>
+                ${isOrgView ? `<th scope="col">Team</th>` : ""}
                 <th scope="col">Calls</th>
                 <th scope="col">Avg score</th>
                 <th scope="col">Focus area</th>
@@ -777,16 +837,21 @@ function renderManagerSeTable(seRows) {
 /**
  * Manager team dashboard.
  * @param {HTMLElement} container
+ * @param {object} [session]
  */
-export function renderManagerDashboard(container) {
-  const { teamMetrics, seRows } = buildTeamMetrics();
+export async function renderManagerDashboard(container, session) {
+  const { teamMetrics, seRows, isOrgView } = await buildTeamMetrics(session);
   const hasData = teamMetrics.totalCalls > 0;
+  const title = isOrgView ? "Org dashboard" : "Manager dashboard";
+  const subtitle = isOrgView
+    ? "Org-wide call quality — all teams under your org."
+    : "Team-wide call quality — deduped by recording, scoped across all SEs.";
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager manager-view">
       <div class="head dash-head">
-        <h1 class="one-pager-title">Manager dashboard</h1>
-        <span class="sub muted">Team-wide call quality — deduped by recording, scoped across all SEs.</span>
+        <h1 class="one-pager-title">${esc(title)}</h1>
+        <span class="sub muted">${esc(subtitle)}</span>
       </div>
       ${hasData ? `
         <div class="dash-stats prep-action-grid manager-stats">
@@ -821,12 +886,12 @@ export function renderManagerDashboard(container) {
         </div>
       ` : `
         <fw-card class="dash-empty">
-          <div class="dash-empty-icon" aria-hidden="true">👥</div>
+          <fw-icon class="dash-empty-icon" name="agent" size="24" aria-hidden="true"></fw-icon>
           <h2>No team data yet</h2>
           <p class="muted">SEs need to analyze calls before team metrics appear here.</p>
         </fw-card>
       `}
-      ${renderManagerSeTable(seRows)}
+      ${renderManagerSeTable(seRows, isOrgView)}
     </div>`;
 }
 

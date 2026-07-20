@@ -1,6 +1,12 @@
 /** Sidebar feedback — local queue + worker POST /api/feedback. */
 
-import { readFieldValueAsync } from "./crayons-ui.js";
+import {
+  readFieldValueAsync,
+  setButtonLoading,
+  setFieldError,
+  showInlineStatus,
+} from "./crayons-ui.js";
+import { newId } from "./domain/types.js";
 
 const STORAGE_KEY = "lionpath_feedback";
 
@@ -36,10 +42,11 @@ export function initFeedback(deps = {}) {
   if (!btn || !modal || !form) return;
 
   const showMsg = (text, ok = true) => {
-    if (!msg) return;
-    msg.textContent = text;
-    msg.className = ok ? "status ok" : "status err";
-    msg.hidden = !text;
+    showInlineStatus(msg, {
+      type: ok ? "success" : "error",
+      message: text,
+      open: !!text,
+    });
   };
 
   const open = () => {
@@ -69,13 +76,16 @@ export function initFeedback(deps = {}) {
     const category = CATEGORY_MAP[categoryKey] || "Idea";
 
     if (!message) {
+      setFieldError(textEl, "Please enter your feedback.");
       showMsg("Please enter your feedback.", false);
       return;
     }
+    setFieldError(textEl);
+    setButtonLoading(submitBtn, true);
 
     const email = getEmail() || "anonymous";
     const entry = {
-      id: crypto.randomUUID(),
+      id: newId("event"),
       category,
       message: message.slice(0, 4000),
       page: location.hash || location.pathname,
@@ -104,11 +114,13 @@ export function initFeedback(deps = {}) {
           false,
         );
         setTimeout(close, 2500);
+        setButtonLoading(submitBtn, false);
         return;
       }
     }
 
     showMsg("Thanks — your feedback was saved.");
+    setButtonLoading(submitBtn, false);
     setTimeout(close, 1200);
   };
 

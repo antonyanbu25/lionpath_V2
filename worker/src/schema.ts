@@ -82,24 +82,11 @@ const signalRow = {
 const prospectRow = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "name",
-    "role",
-    "totalExperience",
-    "experienceSummary",
-    "priorEmployers",
-    "competitorTouchpoints",
-    "sourceLabel",
-  ],
+  required: ["name", "role", "totalExperience", "priorEmployers", "competitorTouchpoints", "sourceLabel"],
   properties: {
     name: { type: "string", description: "Prospect full name, max 6 words." },
     role: { type: "string", description: "Job title, max 8 words." },
     totalExperience: { type: "string", description: "Years experience e.g. 12 years, max 6 words." },
-    experienceSummary: {
-      type: "string",
-      description:
-        "Overall work experience summary e.g. 12 years B2B SaaS support leadership, max 20 words. Required when role, years, or prior employers are known.",
-    },
     priorEmployers: {
       type: "array",
       maxItems: 4,
@@ -114,7 +101,44 @@ const prospectRow = {
       },
     },
     sourceLabel: { type: "string", description: "Must match sources[].label." },
+    discHint: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        primary: { type: "string", enum: ["D", "I", "S", "C", "unknown"] },
+        secondary: { type: "string" },
+        confidence: { type: "string", enum: ["low", "medium", "high"] },
+        evidence: { type: "array", items: { type: "string" }, maxItems: 4 },
+      },
+      description: "Optional DISC hint when evidence exists in research.",
+    },
   },
+} as const;
+
+const meddpiccFieldSlot = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    value: { type: "string" },
+    status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+    contactId: { type: "string" },
+  },
+} as const;
+
+const meddpiccHintsBlock = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    metrics: meddpiccFieldSlot,
+    economicBuyer: meddpiccFieldSlot,
+    decisionCriteria: meddpiccFieldSlot,
+    decisionProcess: meddpiccFieldSlot,
+    paperProcess: meddpiccFieldSlot,
+    identifyPain: meddpiccFieldSlot,
+    champion: meddpiccFieldSlot,
+    competition: meddpiccFieldSlot,
+  },
+  description: "Optional MEDDPICC hints populated only when prep evidence supports them.",
 } as const;
 
 const icpFitBlock = {
@@ -175,7 +199,6 @@ export const PREP_SCHEMA = {
     "facts",
     "signals",
     "supportJD",
-    "evaluatorJD",
     "likelyPains",
     "industryUseCases",
     "checklist",
@@ -239,24 +262,6 @@ export const PREP_SCHEMA = {
           items: { type: "string", description: "JD responsibility bullet, max 14 words." },
         },
       },
-    },
-    evaluatorJD: {
-      type: "object",
-      additionalProperties: false,
-      required: ["tools"],
-      properties: {
-        tools: {
-          type: "array",
-          maxItems: 8,
-          items: {
-            type: "string",
-            description:
-              "Support/CX tool or platform from evaluator prospect's LinkedIn JD or profile, max 4 words.",
-          },
-        },
-      },
-      description:
-        "Tools mentioned in the meeting evaluator's job description — used to highlight overlaps in supportJD.",
     },
     likelyPains: {
       type: "array",
@@ -339,6 +344,7 @@ export const PREP_SCHEMA = {
         "One entry per meeting attendee/prospect — role, experience, prior employers, competitor touchpoints.",
     },
     icpFit: icpFitBlock,
+    meddpiccHints: meddpiccHintsBlock,
     sources: {
       type: "array",
       minItems: 3,
@@ -396,14 +402,9 @@ export interface ProspectProfile {
   name: string;
   role: string;
   totalExperience: string;
-  experienceSummary: string;
   priorEmployers: string[];
   competitorTouchpoints: string[];
   sourceLabel: string;
-}
-
-export interface EvaluatorJD {
-  tools: string[];
 }
 
 export interface IcpFit {
@@ -450,7 +451,6 @@ export interface Prep {
   facts: SourcedFact[];
   signals: SignalRow[];
   supportJD: SupportJD;
-  evaluatorJD: EvaluatorJD;
   likelyPains: string[];
   industryUseCases: IndustryUseCase[];
   checklist: string[];

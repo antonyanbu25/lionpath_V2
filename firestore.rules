@@ -1,24 +1,196 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Prep history: a signed-in user can create and read only their own documents.
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function authIndexDoc() {
+      return get(/databases/$(database)/documents/authIndex/$(request.auth.uid)).data;
+    }
+
+    function currentUserId() {
+      return authIndexDoc().userId;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(currentUserId())).data;
+    }
+
+    function userRole() {
+      return userDoc().role;
+    }
+
+    function userTeamId() {
+      return userDoc().teamId;
+    }
+
+    function userOrgId() {
+      return userDoc().orgId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function isManager() {
+      return isSignedIn() && (userRole() == 'manager' || userRole() == 'admin');
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && currentUserId() == ownerId;
+    }
+
+    function sameTeam(teamId) {
+      return isSignedIn() && userTeamId() == teamId;
+    }
+
+    function sameOrg(orgId) {
+      return isSignedIn() && userOrgId() != null && userOrgId() == orgId;
+    }
+
+    function isOrgLeader() {
+      let orgData = get(/databases/$(database)/documents/orgs/$(userOrgId())).data;
+      return isManager()
+        && userOrgId() != null
+        && (
+          orgData.directorId == currentUserId()
+          || (orgData.keys().hasAny(['seniorLeaderIds']) && currentUserId() in orgData.seniorLeaderIds)
+        );
+    }
+
+    function canReadTeamResource(ownerId, teamId, orgId) {
+      return isOwner(ownerId)
+        || (isManager() && sameTeam(teamId))
+        || (isManager() && isOrgLeader() && sameOrg(orgId));
+    }
+
+    function canWriteOwnResource(ownerId) {
+      return isSignedIn() && currentUserId() == ownerId;
+    }
+
+    // --- Auth index (Firebase uid → internal User.id) ---
+    match /authIndex/{authUid} {
+      allow read: if isSignedIn() && request.auth.uid == authUid;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == authUid
+        && request.resource.data.userId is string;
+      allow delete: if isAdmin();
+    }
+
+    // --- Users (document id = internal User.id) ---
+    match /users/{userId} {
+      allow read: if isSignedIn() && (currentUserId() == userId || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.authUid == request.auth.uid
+        && request.resource.data.id == userId;
+      allow update: if isSignedIn() && (currentUserId() == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // --- Orgs ---
+    match /orgs/{orgId} {
+      allow read: if isSignedIn() && (sameOrg(orgId) || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // --- Teams ---
+    match /teams/{teamId} {
+      allow read: if isSignedIn() && (sameTeam(teamId) || isAdmin() || (isOrgLeader() && resource.data.orgId == userOrgId()));
+      allow create, update, delete: if isAdmin();
+    }
+
+    // --- Accounts (shared across SEs) ---
+    match /accounts/{accountId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // --- Contacts ---
+    match /contacts/{contactId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+
+      match /events/{eventId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update, delete: if false;
+      }
+    }
+
+    // --- Lifecycles ---
+    match /lifecycles/{lifecycleId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+
+      match /events/{eventId} {
+        allow read: if canReadTeamResource(
+          get(/databases/$(database)/documents/lifecycles/$(lifecycleId)).data.ownerId,
+          get(/databases/$(database)/documents/lifecycles/$(lifecycleId)).data.teamId,
+          get(/databases/$(database)/documents/lifecycles/$(lifecycleId)).data.orgId
+        );
+        allow create: if canWriteOwnResource(
+          get(/databases/$(database)/documents/lifecycles/$(lifecycleId)).data.ownerId
+        );
+        allow update, delete: if false;
+      }
+    }
+
+    // --- Artifacts ---
+    match /prepBriefs/{docId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /postCalls/{docId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{docId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if canAdmin() || canWriteOwnResource(resource.data.ownerId);
+    }
+
+    function canAdmin() {
+      return isAdmin();
+    }
+
+    // --- Legacy collections (read-only during migration) ---
     match /preps/{doc} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
-      allow create: if request.auth != null
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn()
                     && request.resource.data.uid == request.auth.uid
                     && request.auth.token.email_verified == true;
       allow update, delete: if false;
     }
+
     match /postcalls/{doc} {
-      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
-      allow create: if request.auth != null
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn()
                     && request.resource.data.uid == request.auth.uid
                     && request.auth.token.email_verified == true;
       allow update, delete: if false;
-    }
-    match /users/{uid} {
-      allow read, create, update: if request.auth != null && request.auth.uid == uid;
-      allow delete: if false;
     }
   }
 }

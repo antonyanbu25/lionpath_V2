@@ -1,0 +1,15 @@
+{
+  "id": "khan-academy",
+  "description": "Well-known edtech — domain must match khanacademy.org",
+  "input": {
+    "companyName": "Khan Academy",
+    "companyDomain": "khanacademy.org",
+    "prospectEmail": "contact@khanacademy.org",
+    "prepType": "new_business"
+  },
+  "expectedFacts": {
+    "minWithSource": 3,
+    "requiredKeys": ["Industry"]
+  },
+  "minAccuracy": 0.5
+}

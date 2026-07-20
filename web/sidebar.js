@@ -37,10 +37,8 @@ export function initSidebar() {
     appShell?.classList.toggle("sidebar-is-collapsed", collapsed);
     collapseBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
     collapseBtn.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-    const icon = collapseBtn.querySelector(".sidebar-collapse-icon");
-    if (icon) {
-      icon.setAttribute("name", collapsed ? "chevron-right" : "chevron-left");
-    }
+    const glyph = collapseBtn.querySelector(".sidebar-collapse-glyph");
+    if (glyph) glyph.textContent = collapsed ? "›" : "‹";
   }
 
   function setCollapsed(collapsed) {

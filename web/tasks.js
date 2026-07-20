@@ -5,6 +5,7 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
 import { aggregateFollowUps, dueUrgency, parseDueDate } from "./follow-ups.js";
 import { listPostCallAnalyses } from "./history.js";
+import { newId } from "./domain/types.js";
 
 export const TASKS_STORAGE_PREFIX = "se-singha-tasks:";
 const MAX_TASKS = 200;
@@ -198,7 +199,7 @@ async function persistTasks(email, tasks) {
 
 /**
  * @param {string} email
- * @param {{ seName?: string, prepResult?: object, company?: string }} [opts]
+ * @param {{ seName?: string, prepResult?: object, company?: string, lifecycleId?: string, session?: object }} [opts]
  */
 export function importRecommendedTasks(email, opts = {}) {
   const existing = readLocal(email);
@@ -215,7 +216,7 @@ export function importRecommendedTasks(email, opts = {}) {
     if (existingKeys.has(sourceKey)) continue;
     existingKeys.add(sourceKey);
     newTasks.push({
-      id: crypto.randomUUID(),
+      id: newId("task"),
       title: item.action,
       status: "recommended",
       source: "postcall",
@@ -234,7 +235,7 @@ export function importRecommendedTasks(email, opts = {}) {
       if (existingKeys.has(rec.sourceKey)) continue;
       existingKeys.add(rec.sourceKey);
       newTasks.push({
-        id: crypto.randomUUID(),
+        id: newId("task"),
         title: rec.title,
         status: "recommended",
         source: "prep",
@@ -251,7 +252,24 @@ export function importRecommendedTasks(email, opts = {}) {
     .slice(0, MAX_TASKS);
 
   writeLocal(email, all);
+
+  if (opts.lifecycleId && newTasks.length) {
+    void dualWriteTasks(opts, newTasks);
+  }
+
   return { added: newTasks.length, tasks: all };
+}
+
+async function dualWriteTasks(opts, newTasks) {
+  try {
+    const { linkTaskToLifecycle } = await import("./domain/dual-write.js");
+    const session = opts.session || { uid: opts.ownerId, teamId: opts.teamId };
+    for (const task of newTasks) {
+      await linkTaskToLifecycle(session, { ...task, accountId: opts.accountId }, opts.lifecycleId);
+    }
+  } catch (err) {
+    console.warn("[tasks] lifecycle dual-write failed:", err);
+  }
 }
 
 /** @param {object} prep @param {string} company */
@@ -288,7 +306,7 @@ export async function createManualTask(email, input) {
 
   const dueDate = input.due ? parseDueDate(input.due) : null;
   const task = {
-    id: crypto.randomUUID(),
+    id: newId("task"),
     title,
     status: "pending",
     source: "manual",
@@ -398,10 +416,6 @@ function renderTaskRow(task, opts = {}) {
   const isRecommended = task.status === "recommended";
   const isDone = task.status === "completed";
 
-  const checkbox = isActive
-    ? `<fw-checkbox class="task-row-check" data-task-check="${esc(task.id)}" aria-label="Mark complete"></fw-checkbox>`
-    : `<span class="task-row-check-spacer" aria-hidden="true"></span>`;
-
   const metaParts = [
     task.company,
     formatDueLabel(task),
@@ -424,7 +438,6 @@ function renderTaskRow(task, opts = {}) {
 
   return `
     <div class="${rowCls}" data-task-id="${esc(task.id)}">
-      ${checkbox}
       ${urgencyDot(task)}
       <div class="task-row-body">
         <div class="task-row-title-row">
@@ -446,7 +459,7 @@ function renderRecommendedSection(recommended, opts, expanded) {
     ? recommended.slice(0, MAX_RECOMMENDED_VISIBLE)
     : recommended;
   const rowsHtml = visible.map((t) => renderTaskRow(t, opts)).join("");
-  const body = rowsHtml || `<p class="task-empty muted">No recommendations — analyze a call or run prep.</p>`;
+  const body = rowsHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations — analyze a call or run prep.</span></div>`;
   const toggle = showToggle
     ? `<div class="task-show-more-wrap">
          <fw-button class="task-show-more" color="link" size="small" data-toggle-recommended>
@@ -464,7 +477,7 @@ function renderRecommendedSection(recommended, opts, expanded) {
 }
 
 function renderSection(title, count, rowsHtml, emptyMessage) {
-  const body = rowsHtml || `<p class="task-empty muted">${esc(emptyMessage)}</p>`;
+  const body = rowsHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>${esc(emptyMessage)}</span></div>`;
   return `
     <div class="task-section">
       <h3 class="task-section-header">${esc(title)} <span class="task-section-count">(${count})</span></h3>
@@ -508,7 +521,7 @@ function renderQuickAddRow(calls) {
 }
 
 function renderEmptyBoard() {
-  return `<p class="task-empty muted task-board-empty">No tasks yet — add one above or analyze a call for recommendations.</p>`;
+  return `<div class="task-empty muted task-board-empty dew-empty-copy"><fw-icon name="add-note" size="18" aria-hidden="true"></fw-icon><span>No tasks yet — add one above or analyze a call for recommendations.</span></div>`;
 }
 
 async function readSelectValue(el) {
@@ -684,17 +697,6 @@ function wireTaskBoardEvents(container, email, tasks, calls, opts) {
     });
   });
 
-  container.querySelectorAll("[data-task-check]").forEach((box) => {
-    box.addEventListener("fwChange", async (ev) => {
-      const checked = box.checked ?? ev.detail?.checked ?? ev.detail?.meta?.checked;
-      if (!checked) return;
-      const id = box.getAttribute("data-task-check");
-      if (!id) return;
-      await updateTaskStatus(email, id, "completed");
-      refreshAfterTaskChange(container, email, listTasks(email), calls, opts);
-    });
-  });
-
   container.querySelector("[data-toggle-recommended]")?.addEventListener("fwClick", () => {
     container.dataset.recommendedExpanded = container.dataset.recommendedExpanded === "1" ? "" : "1";
     renderTaskBoard(container, email, opts);
@@ -755,7 +757,7 @@ export function renderTaskBoard(container, email, opts = {}) {
   wireTaskBoardEvents(container, email, tasks, calls, opts);
 }
 
-/** @param {string} email @param {{ seName?: string, prepResult?: object, company?: string }} [opts] */
+/** @param {string} email @param {{ seName?: string, prepResult?: object, company?: string, lifecycleId?: string, session?: object, accountId?: string }} [opts] */
 export async function syncTasksAfterActivity(email, opts = {}) {
   const { added, tasks } = importRecommendedTasks(email, opts);
   if (added > 0) {

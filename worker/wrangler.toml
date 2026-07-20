@@ -16,10 +16,11 @@ POSTCALL_LLM_PROVIDER = "gemini"
 POSTCALL_MODEL = "gemini-3.1-flash-lite"
 POSTCALL_EFFORT = "low"
 # Comma-separated allowed origins for CORS. Include both localhost and 127.0.0.1 for local dev.
-ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com"
+ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com"
 # Restrict sign-in to this email domain. Empty = allow any verified Google account.
 ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Firebase project id — used to verify ID tokens (audience/issuer check).
+# Must match web/firebase-config.local.js projectId. See docs/FIREBASE_SETUP.md.
 FIREBASE_PROJECT_ID = ""
 
 # Post-call history per SE email (survives incognito — reload on sign-in).
@@ -32,10 +33,8 @@ preview_id = "00000000000000000000000000000002"
 
 # Secrets (set via CLI, never committed):
 #   wrangler secret put ANTHROPIC_API_KEY
-#   wrangler secret put GEMINI_API_KEY          # Google AI Studio — required for wrangler/Workers
-#   wrangler secret put ZOOMINFO_API_KEY   # optional — person research fallback
+#   wrangler secret put GEMINI_API_KEY
 #   wrangler secret put ZOOM_CLIENT_SECRET
-# Vertex AI on Cloud Run uses GOOGLE_CLOUD_PROJECT + ADC (no GEMINI_API_KEY).
 # Zoom OAuth (optional — phase 2):
 # ZOOM_CLIENT_ID = ""
 # ZOOM_CLIENT_SECRET = ""   # use secret put, not vars

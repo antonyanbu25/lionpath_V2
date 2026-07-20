@@ -1,7 +1,6 @@
 // Server-side word-cap enforcement for prep/post-call JSON (v5).
 
 import { attachPrepAssets } from "./prep-assets";
-import { synthesizeExperienceSummary } from "./research/validate";
 import {
   FACT_KEYS,
   FIT_LABELS,
@@ -239,13 +238,6 @@ function normalizeSupportJD(raw: Prep, sources: PrepSource[]): Prep["supportJD"]
   };
 }
 
-function normalizeEvaluatorJD(raw: Prep): Prep["evaluatorJD"] {
-  const tools = trimBullets(raw.evaluatorJD?.tools, 8)
-    .map((t) => trimWords(t, 4))
-    .filter(Boolean);
-  return { tools };
-}
-
 function normalizeUseCases(_raw: Prep): Prep["industryUseCases"] {
   return [];
 }
@@ -390,13 +382,6 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
     name: trimCell(p.name),
     role: trimCell(p.role),
     totalExperience: trimWords(String(p.totalExperience ?? ""), 6) || "unknown",
-    experienceSummary:
-      synthesizeExperienceSummary({
-        experienceSummary: trimWords(String(p.experienceSummary ?? ""), 20) || undefined,
-        totalExperience: String(p.totalExperience ?? ""),
-        role: trimCell(p.role),
-        priorEmployers: trimBullets(p.priorEmployers, 4).map((e) => trimWords(e, 6)).filter(Boolean),
-      }) || "unknown",
     priorEmployers: trimBullets(p.priorEmployers, 4).map((e) => trimWords(e, 6)).filter(Boolean),
     competitorTouchpoints: trimBullets(p.competitorTouchpoints, 4)
       .map((t) => trimWords(t, 8))
@@ -413,7 +398,6 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
       name: trimCell(a.name),
       role: trimCell(a.role),
       totalExperience: "unknown",
-      experienceSummary: "unknown",
       priorEmployers: [] as string[],
       competitorTouchpoints: [] as string[],
       sourceLabel: pickSourceLabel(sources, undefined, i % sources.length),
@@ -426,7 +410,6 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
       name: "unknown",
       role: "unknown",
       totalExperience: "unknown",
-      experienceSummary: "unknown",
       priorEmployers: [],
       competitorTouchpoints: [],
       sourceLabel: pickSourceLabel(sources, undefined, 0),
@@ -495,7 +478,6 @@ export function normalizePrepOutput(raw: Prep): Prep {
     facts: normalizeFacts(raw, sources),
     signals: normalizeSignals(raw, sources),
     supportJD: normalizeSupportJD(raw, sources),
-    evaluatorJD: normalizeEvaluatorJD(raw),
     likelyPains,
     industryUseCases: normalizeUseCases(raw),
     checklist: trimBullets(raw.checklist, 6).map((c) => trimWords(c, 10)).filter(Boolean),
