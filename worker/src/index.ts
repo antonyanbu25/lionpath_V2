@@ -175,10 +175,10 @@ export default {
       if (request.method === "GET" && path === "/api/config") {
         return json(
           {
-            prep: { provider: env.LLM_PROVIDER || "gemini", model: env.MODEL || "gemini-3.5-flash" },
+            prep: { provider: env.LLM_PROVIDER || "gemini", model: env.MODEL || "gemini-2.5-flash" },
             postcall: {
               provider: env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini",
-              model: env.POSTCALL_MODEL || "gemini-3.5-flash",
+              model: env.POSTCALL_MODEL || "gemini-2.5-flash",
             },
             zoom: { configured: zoomConfigured(env) },
             keys: {

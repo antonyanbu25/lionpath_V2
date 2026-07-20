@@ -3,7 +3,7 @@
 import { toGeminiResponseSchema } from "../gemini-schema";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 
-const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
 interface GeminiPart {
   text?: string;
@@ -49,7 +49,11 @@ function resolveGeminiBackend(env: ProviderEnv): GeminiBackend {
   );
 }
 
-function buildGenerationConfig(req: LlmRequest): Record<string, unknown> {
+function isGemini3Model(model: string): boolean {
+  return /^gemini-3/i.test(model);
+}
+
+function buildGenerationConfig(req: LlmRequest, model: string): Record<string, unknown> {
   const generationConfig: Record<string, unknown> = {
     maxOutputTokens: req.maxTokens,
     temperature: req.research ? 0.4 : 0.2,
@@ -62,17 +66,20 @@ function buildGenerationConfig(req: LlmRequest): Record<string, unknown> {
 
   // Disable thinking for post-call speed on long transcripts, or when structured JSON is requested.
   if (req.thinkingBudget === 0 || req.jsonSchema || (!req.research && req.effort === "low")) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    // Gemini 3.x rejects thinkingBudget — use thinkingLevel instead (AI Studio + Vertex).
+    generationConfig.thinkingConfig = isGemini3Model(model)
+      ? { thinkingLevel: "minimal" }
+      : { thinkingBudget: 0 };
   }
 
   return generationConfig;
 }
 
-function buildRequestBody(req: LlmRequest): Record<string, unknown> {
+function buildRequestBody(req: LlmRequest, model: string): Record<string, unknown> {
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: req.system }] },
     contents: [{ role: "user", parts: [{ text: req.user }] }],
-    generationConfig: buildGenerationConfig(req),
+    generationConfig: buildGenerationConfig(req, model),
   };
 
   if (req.research) {
@@ -125,7 +132,7 @@ async function generateViaAiStudio(apiKey: string, model: string, req: LlmReques
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(buildRequestBody(req)),
+    body: JSON.stringify(buildRequestBody(req, model)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -152,7 +159,7 @@ async function generateViaVertex(
       "content-type": "application/json",
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(buildRequestBody(req)),
+    body: JSON.stringify(buildRequestBody(req, model)),
   });
   if (!res.ok) {
     const errBody = await res.text();
