@@ -95,14 +95,16 @@ function shouldReduceThinking(req: LlmRequest): boolean {
 }
 
 function buildThinkingConfig(req: LlmRequest, model: string): Record<string, unknown> | undefined {
-  if (!shouldReduceThinking(req)) return undefined;
-
-  // Gemini 3.x rejects thinkingBudget — use thinkingLevel instead (never send budget:0).
+  // Gemini 3.x requires an explicit thinkingLevel on every request — especially with
+  // built-in tools (google_search). Omitting it 400s on AI Studio; post-call worked
+  // because thinkingBudget:0 / jsonSchema already triggered minimal here.
   if (isGemini3Model(model)) {
-    return { thinkingLevel: "minimal" };
+    if (shouldReduceThinking(req)) return { thinkingLevel: "minimal" };
+    // Prep research (google_search): low keeps search quality without max latency.
+    return { thinkingLevel: req.research ? "low" : "minimal" };
   }
 
-  // Gemini 2.x
+  if (!shouldReduceThinking(req)) return undefined;
   return { thinkingBudget: 0 };
 }
 
