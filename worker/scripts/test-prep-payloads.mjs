@@ -1,11 +1,13 @@
 /**
  * Validate prep vs post-call Gemini payloads against the live API.
- * Usage: GEMINI_API_KEY=... node scripts/test-prep-payloads.mjs
+ * Usage: GEMINI_API_KEY=... npx tsx scripts/test-prep-payloads.mjs
  *    or: key in worker/.dev.vars
  */
 import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { toGeminiResponseSchema, toPrepGeminiResponseSchema } from "../src/gemini-schema.ts";
+import { POSTCALL_SCHEMA } from "../src/postcall-schema.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MODEL = "gemini-3.1-flash-lite";
@@ -20,9 +22,9 @@ function loadKey() {
   return null;
 }
 
-function buildBody({ research, jsonSchema, thinkingLevel }) {
+function buildBody({ research, jsonSchema, thinkingLevel, maxOutputTokens = 600 }) {
   const generationConfig = {
-    maxOutputTokens: research ? 800 : 600,
+    maxOutputTokens,
     temperature: research ? 0 : 0.2,
     thinkingConfig: { thinkingLevel },
   };
@@ -39,7 +41,7 @@ function buildBody({ research, jsonSchema, thinkingLevel }) {
   return body;
 }
 
-const FACTS_SCHEMA_MIN = {
+const FACTS_SCHEMA_MIN = toGeminiResponseSchema({
   type: "object",
   required: ["facts"],
   properties: {
@@ -56,7 +58,7 @@ const FACTS_SCHEMA_MIN = {
       },
     },
   },
-};
+});
 
 async function probe(label, body) {
   const key = loadKey();
@@ -77,14 +79,43 @@ async function probe(label, body) {
 }
 
 const cases = [
-  ["postcall (minimal + schema)", buildBody({ research: false, jsonSchema: FACTS_SCHEMA_MIN, thinkingLevel: "minimal" })],
-  ["research (minimal + google_search)", buildBody({ research: true, jsonSchema: null, thinkingLevel: "minimal" })],
-  ["research (low + google_search)", buildBody({ research: true, jsonSchema: null, thinkingLevel: "low" })],
-  ["research (no thinkingConfig)", (() => {
-    const b = buildBody({ research: true, jsonSchema: null, thinkingLevel: "minimal" });
-    delete b.generationConfig.thinkingConfig;
-    return b;
-  })()],
+  [
+    "postcall (minimal + schema)",
+    buildBody({
+      research: false,
+      jsonSchema: toGeminiResponseSchema(POSTCALL_SCHEMA),
+      thinkingLevel: "minimal",
+    }),
+  ],
+  [
+    "synthesize (minimal + prep schema)",
+    buildBody({
+      research: false,
+      jsonSchema: toPrepGeminiResponseSchema(),
+      thinkingLevel: "minimal",
+      maxOutputTokens: 256,
+    }),
+  ],
+  [
+    "research (minimal + google_search)",
+    buildBody({ research: true, jsonSchema: null, thinkingLevel: "minimal" }),
+  ],
+  [
+    "research (low + google_search)",
+    buildBody({ research: true, jsonSchema: null, thinkingLevel: "low" }),
+  ],
+  [
+    "research (no thinkingConfig)",
+    (() => {
+      const b = buildBody({ research: true, jsonSchema: null, thinkingLevel: "minimal" });
+      delete b.generationConfig.thinkingConfig;
+      return b;
+    })(),
+  ],
+  [
+    "extract-facts (minimal + schema)",
+    buildBody({ research: false, jsonSchema: FACTS_SCHEMA_MIN, thinkingLevel: "minimal" }),
+  ],
 ];
 
 let failed = 0;

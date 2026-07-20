@@ -1,8 +1,11 @@
 import { CUSTOMER_SERVICE_BENCHMARK_KB } from "../benchmark-kb";
+import { toPrepGeminiResponseSchema } from "../gemini-schema";
 import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } from "../icp-kb";
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
 import { PREP_SCHEMA, type Prep } from "../schema";
+
+const PREP_GEMINI_SCHEMA = toPrepGeminiResponseSchema();
 import { normalizePrepOutput } from "../word-limits";
 import { kbContextBlock } from "./extract-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
@@ -88,7 +91,7 @@ export async function synthesizePrep(
     temperature: 0,
     research: false,
     effort,
-    jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
+    jsonSchema: PREP_GEMINI_SCHEMA,
     step: "prep/synthesize",
   });
 
@@ -102,7 +105,7 @@ export async function synthesizePrep(
       temperature: 0,
       research: false,
       effort: "low",
-      jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
+      jsonSchema: PREP_GEMINI_SCHEMA,
       step: "prep/synthesize-repair",
     });
     return normalizePrepOutput(extractJson<Prep>(repaired.text));
