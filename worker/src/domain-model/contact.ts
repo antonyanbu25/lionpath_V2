@@ -1,5 +1,32 @@
 /** Person at an account — always belongs to exactly one account. */
 
+export type DiscPrimary = "D" | "I" | "S" | "C" | "unknown";
+export type ConfidenceLevel = "low" | "medium" | "high";
+export type InfluenceLevel = "high" | "medium" | "low" | "unknown";
+export type DecisionRole =
+  | "economic_buyer"
+  | "champion"
+  | "influencer"
+  | "blocker"
+  | "unknown";
+export type ContactFieldSource = "prep" | "postcall" | "manual";
+
+export interface ContactDiscMetadata {
+  primary?: DiscPrimary;
+  secondary?: string;
+  confidence?: ConfidenceLevel;
+  evidence?: string[];
+  assessedAt?: number;
+  source?: ContactFieldSource;
+}
+
+export interface ContactInfluenceMetadata {
+  level?: InfluenceLevel;
+  decisionRole?: DecisionRole;
+  source?: ContactFieldSource;
+  updatedAt?: number;
+}
+
 export interface ContactResearchMetadata {
   research?: {
     lastResearchedAt: number;
@@ -8,10 +35,8 @@ export interface ContactResearchMetadata {
     competitorTouchpoints?: string[];
     sourceUrls?: string[];
   };
-  disc?: {
-    profile?: string;
-    assessedAt?: number;
-  };
+  disc?: ContactDiscMetadata;
+  influence?: ContactInfluenceMetadata;
 }
 
 export interface ContactMetadata extends ContactResearchMetadata {

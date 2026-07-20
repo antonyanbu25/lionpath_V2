@@ -101,7 +101,44 @@ const prospectRow = {
       },
     },
     sourceLabel: { type: "string", description: "Must match sources[].label." },
+    discHint: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        primary: { type: "string", enum: ["D", "I", "S", "C", "unknown"] },
+        secondary: { type: "string" },
+        confidence: { type: "string", enum: ["low", "medium", "high"] },
+        evidence: { type: "array", items: { type: "string" }, maxItems: 4 },
+      },
+      description: "Optional DISC hint when evidence exists in research.",
+    },
   },
+} as const;
+
+const meddpiccFieldSlot = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    value: { type: "string" },
+    status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+    contactId: { type: "string" },
+  },
+} as const;
+
+const meddpiccHintsBlock = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    metrics: meddpiccFieldSlot,
+    economicBuyer: meddpiccFieldSlot,
+    decisionCriteria: meddpiccFieldSlot,
+    decisionProcess: meddpiccFieldSlot,
+    paperProcess: meddpiccFieldSlot,
+    identifyPain: meddpiccFieldSlot,
+    champion: meddpiccFieldSlot,
+    competition: meddpiccFieldSlot,
+  },
+  description: "Optional MEDDPICC hints populated only when prep evidence supports them.",
 } as const;
 
 const icpFitBlock = {
@@ -307,6 +344,7 @@ export const PREP_SCHEMA = {
         "One entry per meeting attendee/prospect — role, experience, prior employers, competitor touchpoints.",
     },
     icpFit: icpFitBlock,
+    meddpiccHints: meddpiccHintsBlock,
     sources: {
       type: "array",
       minItems: 3,

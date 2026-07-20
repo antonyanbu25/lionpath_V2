@@ -1,5 +1,7 @@
 /** Company being sold to — stable identity shared across SE lifecycles. */
 
+import type { AccountMeddpicc } from "./meddpicc";
+
 export interface AccountResearchMetadata {
   research?: {
     lastResearchedAt: number;
@@ -25,6 +27,7 @@ export interface AccountResearchMetadata {
   };
   sfAccountId?: string;
   bikalAccountId?: string;
+  meddpicc?: AccountMeddpicc;
 }
 
 export interface AccountMetadata extends AccountResearchMetadata {

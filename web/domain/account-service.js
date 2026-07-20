@@ -6,12 +6,18 @@ import { getStore } from "./store.js";
 import { normalizeAccountSlug, domainFromEmail, newId, now } from "./types.js";
 import { listLifecyclesForUser, getLifecycleDetail } from "./lifecycle-service.js";
 import { sessionUserId } from "./session.js";
+import {
+  mergeAccountMeddpicc,
+  meddpiccSignalsFromPrep,
+  loadContactEventsForAccount,
+  recordContactEvent,
+} from "./contact-service.js";
 
 export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Upsert Account + Contacts from prep form / generated prep.
- * @param {{ companyName: string, companyDomain?: string, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[] }} input
+ * @param {{ companyName: string, companyDomain?: string, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[], lifecycleId?: string, actorId?: string, prepBriefId?: string }} input
  * @returns {Promise<{ accountId: string, contactIds: string[], primaryContactId: string|null, account: object }>}
  */
 export async function upsertAccountFromPrep(input) {
@@ -25,9 +31,13 @@ export async function upsertAccountFromPrep(input) {
   const slug = normalizeAccountSlug(companyName, primaryDomain);
 
   let account = await store.findAccountBySlug(slug);
-  const metadataPatch = input.researchBundle
+  let metadataPatch = input.researchBundle
     ? mergeAccountResearch(account?.metadata, input.researchBundle, input.prep)
-    : undefined;
+    : account?.metadata ? { ...account.metadata } : undefined;
+  if (input.prep) {
+    metadataPatch = mergeAccountMeddpicc(metadataPatch, meddpiccSignalsFromPrep(input.prep), "prep");
+  }
+  if (metadataPatch && !Object.keys(metadataPatch).length) metadataPatch = undefined;
 
   if (!account) {
     account = await store.createAccount({
@@ -77,6 +87,12 @@ export async function upsertAccountFromPrep(input) {
         createdAt: ts,
         updatedAt: ts,
       });
+      if (input.actorId) {
+        await recordContactEvent(contact.id, "contact_created", input.actorId, {
+          source: "prep",
+          lifecycleId: input.lifecycleId,
+        });
+      }
     } else {
       const patch = { updatedAt: ts, ...contactPatch };
       if (researchMeta) {
@@ -147,6 +163,8 @@ function collectEmails(input) {
   return [...set];
 }
 
+export { collectEmails as collectProspectEmails };
+
 /** Accounts the current user has engaged with (via lifecycles). */
 export async function listAccountsForUser(session) {
   const lifecycles = await listLifecyclesForUser(session);
@@ -175,7 +193,8 @@ export async function getAccountEngagementDetail(session, accountId) {
   if (!detail) return null;
 
   const contacts = await store.listContactsByAccount(accountId);
-  return { ...detail, contacts };
+  const contactEventsByContactId = await loadContactEventsForAccount(contacts, 10);
+  return { ...detail, contacts, contactEventsByContactId };
 }
 
 /** Find account by company name + domain. */

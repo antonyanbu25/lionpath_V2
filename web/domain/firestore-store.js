@@ -148,6 +148,26 @@ export function createFirestoreStore(fb) {
         .sort((a, b) => String(a.email).localeCompare(String(b.email)));
     },
 
+    async addContactEvent(event) {
+      const eventRef = doc(
+        collection(db, "contacts", event.contactId, "events"),
+        event.id || newId("contactEvent")
+      );
+      const data = { ...event, id: eventRef.id };
+      await setDoc(eventRef, data);
+      return data;
+    },
+
+    async listContactEvents(contactId, limitCount = 10) {
+      const q = query(
+        collection(db, "contacts", contactId, "events"),
+        orderBy("timestamp", "desc"),
+        limit(limitCount)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
     async findActiveLifecycle(ownerId, accountId) {
       const q = query(
         collection(db, "lifecycles"),

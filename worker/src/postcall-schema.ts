@@ -171,6 +171,79 @@ export const POSTCALL_SCHEMA = {
         crmNotes: { type: "string" },
       },
     },
+    dealQualification: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        metrics: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+        economicBuyer: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+            contactId: { type: "string" },
+          },
+        },
+        decisionCriteria: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+        decisionProcess: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+        paperProcess: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+        identifyPain: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+        champion: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+            contactId: { type: "string" },
+          },
+        },
+        competition: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            value: { type: "string" },
+            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
+          },
+        },
+      },
+      description: "Optional MEDDPICC qualification extracted from the call when evidence exists.",
+    },
   },
 } as const;
 

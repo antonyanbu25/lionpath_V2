@@ -3,7 +3,7 @@
  * See docs/ID_STANDARDS.md
  */
 
-/** @typedef {"user"|"team"|"org"|"account"|"contact"|"lifecycle"|"prep"|"postCall"|"task"|"event"} EntityIdType */
+/** @typedef {"user"|"team"|"org"|"account"|"contact"|"lifecycle"|"prep"|"postCall"|"task"|"event"|"contactEvent"} EntityIdType */
 
 export const ID_PREFIXES = {
   user: "usr_",
@@ -16,6 +16,7 @@ export const ID_PREFIXES = {
   postCall: "call_",
   task: "task_",
   event: "evt_",
+  contactEvent: "cevt_",
 };
 
 /**

@@ -91,6 +91,15 @@ erDiagram
 | `orgId` | `Org.id` | Yes (denormalized) |
 | `accountId` | `Account.id` | Yes (denormalized) |
 
+### ContactEvent
+
+| FK field | Target | Required |
+|----------|--------|----------|
+| `contactId` | `Contact.id` | Yes (implicit via path) |
+| `actorId` | `User.id` | Yes |
+
+MEDDPICC lives on **Account.metadata.meddpicc** (deal-level). Contacts hold **DISC** and **influence** in `Contact.metadata`. Both merge incrementally from prep and post-call via `contact-service.js`.
+
 ### LifecycleEvent
 
 | FK field | Target | Required |

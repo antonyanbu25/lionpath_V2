@@ -6,9 +6,24 @@ import { listAccountsForUser, getAccountEngagementDetail } from "./domain/accoun
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
-import { STAGE_LABELS, EVENT_LABELS, LIFECYCLE_STAGES } from "./domain/types.js";
+import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS } from "./domain/types.js";
+import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { filterAccountRows } from "./search-service.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
+
+const OPEN_PIPELINE_STAGES = ["research", "discovery", "demo", "evaluation", "business_case"];
+const TERMINAL_STAGES = ["closed_won", "closed_lost", "nurture"];
+
+const MEDDPICC_LETTERS = {
+  metrics: "M",
+  economicBuyer: "E",
+  decisionCriteria: "D",
+  decisionProcess: "D",
+  paperProcess: "P",
+  identifyPain: "I",
+  champion: "C",
+  competition: "C",
+};
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -25,33 +40,112 @@ function stageBadge(stage) {
   return `<span class="lifecycle-stage-badge stage-${esc(stage)}">${esc(label)}</span>`;
 }
 
-function renderAccountListItem({ account, lifecycle }) {
-  const score = lifecycle.latestQualityScore != null ? `${lifecycle.latestQualityScore}/10` : "—";
-  const title = account.name || lifecycle.title || "Account";
-  const domain = account.domain ? `<span class="account-list-domain muted">${esc(account.domain)}</span>` : "";
+function isTerminalStage(stage) {
+  return TERMINAL_STAGES.includes(stage);
+}
+
+function openPipelineIndex(stage) {
+  return OPEN_PIPELINE_STAGES.indexOf(stage);
+}
+
+function pipelineOpenStepState(currentStage, stepStage) {
+  const curIdx = openPipelineIndex(currentStage);
+  const stepIdx = openPipelineIndex(stepStage);
+  if (isTerminalStage(currentStage)) return "completed";
+  if (curIdx < 0) return "upcoming";
+  if (stepIdx < curIdx) return "completed";
+  if (stepIdx === curIdx) return "current";
+  return "upcoming";
+}
+
+function renderOpenPipelineStep(stage, currentStage) {
+  const state = pipelineOpenStepState(currentStage, stage);
+  const label = STAGE_LABELS[stage] || stage;
+  const isCurrent = state === "current";
+  const isCompleted = state === "completed";
   return `
-    <fw-button class="lifecycle-list-item account-list-item" color="secondary" fill="clear" data-account-id="${esc(account.id)}">
-      <div class="lifecycle-list-main">
-        <span class="lifecycle-list-title">${esc(title)}</span>
-        ${stageBadge(lifecycle.stage)}
+    <div class="lifecycle-pipeline-step lifecycle-pipeline-step--${esc(state)}" data-search-text="${esc(label.toLowerCase())}">
+      <fw-button
+        class="lifecycle-pipeline-stage"
+        data-lifecycle-stage="${esc(stage)}"
+        color="${isCurrent ? "primary" : "secondary"}"
+        fill="${isCurrent ? "solid" : "outline"}"
+        size="small"
+      >
+        ${isCompleted ? `<fw-icon slot="before-label" name="check" size="12"></fw-icon>` : ""}
+        ${esc(label)}
+      </fw-button>
+    </div>`;
+}
+
+function renderTerminalStep(stage, currentStage) {
+  const isCurrent = currentStage === stage;
+  const color =
+    stage === "closed_won" ? "success" : stage === "closed_lost" ? "danger" : "warning";
+  const label = STAGE_LABELS[stage] || stage;
+  return `
+    <fw-button
+      class="lifecycle-terminal-stage"
+      data-lifecycle-stage="${esc(stage)}"
+      color="${isCurrent ? color : "secondary"}"
+      fill="${isCurrent ? "solid" : "outline"}"
+      size="small"
+    >${esc(label)}</fw-button>`;
+}
+
+function renderLifecyclePipeline(currentStage) {
+  const openSteps = OPEN_PIPELINE_STAGES.map((s) => renderOpenPipelineStep(s, currentStage)).join(
+    `<span class="lifecycle-pipeline-connector" aria-hidden="true"></span>`
+  );
+  const terminalSteps = TERMINAL_STAGES.map((s) => renderTerminalStep(s, currentStage)).join("");
+
+  return `
+    <fw-card class="account-lifecycle-card account-detail-card">
+      <div class="account-card-header">
+        <h3 class="account-card-title">Lifecycle</h3>
+        ${stageBadge(currentStage)}
       </div>
-      ${domain}
-      <div class="lifecycle-list-meta muted">
-        <span>${esc(formatDate(lifecycle.lastActivityAt))}</span>
-        <span>${lifecycle.prepCount || 0} preps · ${lifecycle.postCallCount || 0} calls · ${lifecycle.openTaskCount || 0} tasks</span>
-        <span>Score: ${esc(score)}</span>
+      <div class="lifecycle-pipeline-open" role="list" aria-label="Open pipeline stages">
+        ${openSteps}
       </div>
-    </fw-button>`;
+      <div class="lifecycle-pipeline-terminal">
+        <span class="lifecycle-terminal-label muted">Outcome</span>
+        <div class="lifecycle-pipeline-terminal-steps">${terminalSteps}</div>
+      </div>
+    </fw-card>`;
+}
+
+function eventIcon(type) {
+  switch (type) {
+    case "prep_generated":
+      return "add-note";
+    case "postcall_analyzed":
+      return "phone";
+    case "contact_updated":
+      return "agent";
+    case "task_created":
+    case "task_completed":
+      return "tasks";
+    case "stage_changed":
+      return "arrow-right";
+    default:
+      return "calendar-time";
+  }
 }
 
 function renderTimeline(events) {
   if (!events?.length) return `<p class="muted account-detail-empty-timeline">No activity yet.</p>`;
   return `<ul class="lifecycle-timeline">
     ${events.map((ev) => {
-      const typeLabel = EVENT_LABELS[ev.type] || ev.type;
+      let typeLabel = EVENT_LABELS[ev.type] || ev.type;
+      if (ev.type === "contact_updated" && ev.payload?.contactName) {
+        const fields = (ev.payload.fields || []).join(", ");
+        typeLabel = `Contact updated — ${ev.payload.contactName}${fields ? `: ${fields}` : ""}`;
+      }
       const searchText = `${typeLabel} ${formatDate(ev.timestamp)}`;
       return `
       <li class="lifecycle-timeline-item" data-search-text="${esc(searchText.toLowerCase())}">
+        <fw-icon class="lifecycle-timeline-icon" name="${esc(eventIcon(ev.type))}" size="16" aria-hidden="true"></fw-icon>
         <span class="lifecycle-timeline-type">${esc(typeLabel)}</span>
         <span class="lifecycle-timeline-when muted">${esc(formatDate(ev.timestamp))}</span>
       </li>`;
@@ -59,20 +153,188 @@ function renderTimeline(events) {
   </ul>`;
 }
 
-function renderContacts(contacts) {
-  if (!contacts?.length) {
-    return `<p class="muted account-detail-empty-contacts">No contacts yet — add prospect emails in prep.</p>`;
+function contactInitials(contact) {
+  const n = String(contact?.name || contact?.email || "").trim();
+  if (!n) return "?";
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return n.slice(0, 2).toUpperCase();
+}
+
+function discTag(contact) {
+  const primary = contact?.metadata?.disc?.primary;
+  if (primary && primary !== "unknown") {
+    return `<fw-tag text="DISC ${esc(primary)}" color="blue"></fw-tag>`;
   }
-  return `<ul class="account-detail-contacts">
-    ${contacts.map((c) => {
-      const searchText = [c.name, c.email, c.title].filter(Boolean).join(" ");
-      return `<li data-search-text="${esc(searchText.toLowerCase())}">
-        <span class="account-detail-contact-name">${esc(c.name || c.email)}</span>
-        ${c.title ? `<span class="muted">${esc(c.title)}</span>` : ""}
-        ${c.email && c.name ? `<span class="muted account-detail-contact-email">${esc(c.email)}</span>` : ""}
-      </li>`;
-    }).join("")}
-  </ul>`;
+  return `<fw-tag text="DISC not assessed" color="grey"></fw-tag>`;
+}
+
+function influenceTag(contact) {
+  const level = contact?.metadata?.influence?.level;
+  if (level && level !== "unknown") {
+    const label = level.charAt(0).toUpperCase() + level.slice(1);
+    return `<fw-tag text="${esc(label)} influence" color="blue"></fw-tag>`;
+  }
+  return `<fw-tag text="Influence not assessed" color="grey"></fw-tag>`;
+}
+
+function meddpiccStatusTag(status) {
+  const s = status || "unknown";
+  if (s === "confirmed") return `<fw-tag text="Confirmed" color="green"></fw-tag>`;
+  if (s === "partial") return `<fw-tag text="Partial" color="yellow"></fw-tag>`;
+  return `<fw-tag text="Not captured" color="grey"></fw-tag>`;
+}
+
+function formatContactEvent(ev) {
+  const label = CONTACT_EVENT_LABELS[ev.type] || ev.type;
+  const source = ev.payload?.source ? ` · ${ev.payload.source}` : "";
+  return `${label}${source}`;
+}
+
+function renderLabelValue(label, value) {
+  return `
+    <div class="account-label-value">
+      <span class="account-label-value-label">${esc(label)}</span>
+      <span class="account-label-value-text">${value}</span>
+    </div>`;
+}
+
+function renderContactAccordionBody(contact, events) {
+  const disc = contact.metadata?.disc;
+  const influence = contact.metadata?.influence;
+  const evidence = disc?.evidence || [];
+  const activity = (events || []).slice(0, 10);
+
+  const discValue =
+    disc?.primary && disc.primary !== "unknown"
+      ? `<strong>${esc(disc.primary)}</strong>${disc.secondary ? ` / ${esc(disc.secondary)}` : ""}
+         <span class="muted"> · ${esc(disc.confidence || "low")} confidence</span>`
+      : `<span class="muted">Not assessed yet</span>`;
+
+  const influenceValue =
+    influence?.level && influence.level !== "unknown"
+      ? `<strong>${esc(influence.level)}</strong>${influence.decisionRole && influence.decisionRole !== "unknown" ? ` · ${esc(influence.decisionRole.replace(/_/g, " "))}` : ""}`
+      : `<span class="muted">Not assessed yet</span>`;
+
+  return `
+    <div class="account-contact-body">
+      ${renderLabelValue("DISC", discValue)}
+      ${disc?.assessedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(disc.assessedAt))}${disc.source ? ` · ${esc(disc.source)}` : ""}</p>` : ""}
+      ${evidence.length ? `<ul class="account-contact-evidence">${evidence.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+      ${renderLabelValue("Influence", influenceValue)}
+      ${influence?.updatedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(influence.updatedAt))}${influence.source ? ` · ${esc(influence.source)}` : ""}</p>` : ""}
+      ${!disc?.primary && !influence?.level
+        ? `<fw-inline-message type="info" closable="false">Will populate from prep or post-call when evidence is available.</fw-inline-message>`
+        : ""}
+      <h4 class="account-contact-activity-heading">Contact activity</h4>
+      ${activity.length
+        ? `<ul class="account-contact-activity">${activity.map((ev) => `
+            <li><span>${esc(formatContactEvent(ev))}</span><span class="muted">${esc(formatDate(ev.timestamp))}</span></li>`).join("")}</ul>`
+        : `<p class="muted">No contact activity yet.</p>`}
+    </div>`;
+}
+
+function renderContactsCard(contacts, primaryContactId, contactEventsByContactId = {}) {
+  if (!contacts?.length) {
+    return `
+      <fw-card class="account-contacts-card account-detail-card">
+        <div class="account-card-header">
+          <h3 class="account-card-title">Contacts</h3>
+        </div>
+        <p class="muted account-detail-empty-contacts">No contacts yet — add prospect emails in prep.</p>
+      </fw-card>`;
+  }
+
+  const accordions = contacts
+    .map((c) => {
+      const searchText = [c.name, c.email, c.title, c.metadata?.disc?.primary, c.metadata?.influence?.level]
+        .filter(Boolean)
+        .join(" ");
+      const isPrimary = primaryContactId && c.id === primaryContactId;
+      const events = contactEventsByContactId[c.id] || [];
+      return `
+        <fw-accordion
+          class="account-contact-accordion"
+          data-search-text="${esc(searchText.toLowerCase())}"
+          ${isPrimary ? "expanded" : ""}
+          type="no_bounding_box"
+        >
+          <fw-accordion-title>
+            <div class="account-accordion-title-inner">
+              <span class="account-contact-avatar" aria-hidden="true">${esc(contactInitials(c))}</span>
+              <span class="account-accordion-title-text">
+                <span class="account-detail-contact-name">${esc(c.name || c.email)}</span>
+                ${c.title ? `<span class="muted account-contact-title">${esc(c.title)}</span>` : ""}
+                ${c.email && c.name ? `<span class="muted account-detail-contact-email">${esc(c.email)}</span>` : ""}
+              </span>
+              <span class="account-accordion-tags">
+                ${isPrimary ? `<fw-tag text="Primary" color="blue"></fw-tag>` : ""}
+                ${discTag(c)}
+                ${influenceTag(c)}
+              </span>
+            </div>
+          </fw-accordion-title>
+          <fw-accordion-body>
+            ${renderContactAccordionBody(c, events)}
+          </fw-accordion-body>
+        </fw-accordion>`;
+    })
+    .join("");
+
+  return `
+    <fw-card class="account-contacts-card account-detail-card">
+      <div class="account-card-header">
+        <h3 class="account-card-title">Contacts</h3>
+        <fw-tag text="${contacts.length}" color="grey"></fw-tag>
+      </div>
+      <div class="account-contacts-accordions">${accordions}</div>
+    </fw-card>`;
+}
+
+function renderMeddpiccCard(account, contacts) {
+  const med = account?.metadata?.meddpicc;
+  const score = med?.completionScore ?? 0;
+  const contactById = new Map((contacts || []).map((c) => [c.id, c]));
+
+  const fields = MEDDPICC_FIELD_KEYS.map((key) => {
+    const slot = med?.[key];
+    const label = MEDDPICC_FIELD_LABELS[key] || key;
+    const letter = MEDDPICC_LETTERS[key] || label.charAt(0);
+    let valueHtml = `<span class="muted">—</span>`;
+    if (slot?.value) {
+      let text = slot.value;
+      if (slot.contactId && contactById.has(slot.contactId)) {
+        const linked = contactById.get(slot.contactId);
+        text = `${slot.value} (${linked.name || linked.email})`;
+      }
+      valueHtml = `<span>${esc(text)}</span>`;
+    }
+    return `
+      <div class="meddpicc-field" data-search-text="${esc(label.toLowerCase())} ${esc(String(slot?.value || "").toLowerCase())}">
+        <span class="meddpicc-letter" aria-hidden="true">${esc(letter)}</span>
+        <div class="meddpicc-field-body">
+          <span class="meddpicc-field-label">${esc(label)}</span>
+          <span class="meddpicc-field-value">${valueHtml}</span>
+        </div>
+        ${meddpiccStatusTag(slot?.status)}
+      </div>`;
+  }).join("");
+
+  return `
+    <fw-card class="account-meddpicc-card account-detail-card">
+      <div class="account-card-header">
+        <h3 class="account-card-title">Deal qualification (MEDDPICC)</h3>
+        <fw-tag text="${score}% complete" color="grey"></fw-tag>
+      </div>
+      <div class="meddpicc-progress" role="progressbar" aria-valuenow="${score}" aria-valuemin="0" aria-valuemax="100">
+        <div class="meddpicc-progress-bar" style="width: ${Math.max(0, Math.min(100, score))}%"></div>
+      </div>
+      <div class="meddpicc-field-grid">${fields}</div>
+      <fw-inline-message type="info" closable="false">
+        Populated incrementally from prep and post-call.
+      </fw-inline-message>
+      ${med?.lastUpdatedAt ? `<p class="muted meddpicc-updated">Last updated ${esc(formatDate(med.lastUpdatedAt))}</p>` : ""}
+    </fw-card>`;
 }
 
 function artifactRow(label, display) {
@@ -110,45 +372,51 @@ function renderArtifactTabs(detail) {
 }
 
 function renderAccountDetail(detail, detailSearchQuery = "") {
-  const { lifecycle, account, events, contacts } = detail;
-  const stageOptions = LIFECYCLE_STAGES.map(
-    (s) => `<fw-select-option value="${esc(s)}" ${s === lifecycle.stage ? "selected" : ""}>${esc(STAGE_LABELS[s])}</fw-select-option>`
-  ).join("");
-
+  const { lifecycle, account, events, contacts, contactEventsByContactId } = detail;
   const firmo = account?.metadata?.firmographics?.suggestedProduct;
-  const subtitle = [account?.domain, firmo ? `${firmo} ICP fit` : null].filter(Boolean).join(" · ");
 
   return `
     <div class="lifecycle-detail account-detail">
-      <div class="lifecycle-detail-head">
-        <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back">← All accounts</fw-button>
-        <h2>${esc(account?.name || lifecycle.title || "Account")}</h2>
-        ${stageBadge(lifecycle.stage)}
-      </div>
-      ${subtitle ? `<p class="muted account-detail-sub">${esc(subtitle)}</p>` : ""}
-      <div class="account-detail-actions">
-        <fw-button color="secondary" fill="outline" data-action="prep">New prep</fw-button>
-        <fw-button color="secondary" fill="outline" data-action="postcall">Post-call</fw-button>
-      </div>
-      <div class="lifecycle-detail-controls">
-        <fw-select id="account-stage-select" label="Stage" value="${esc(lifecycle.stage)}">
-          ${stageOptions}
-        </fw-select>
-      </div>
+      <fw-card class="account-header-card account-detail-card">
+        <div class="lifecycle-detail-head">
+          <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back">← All accounts</fw-button>
+          <div class="account-header-main">
+            <h2>${esc(account?.name || lifecycle.title || "Account")}</h2>
+            <div class="account-header-tags">
+              ${account?.domain ? `<fw-tag text="${esc(account.domain)}" color="grey"></fw-tag>` : ""}
+              ${firmo ? `<fw-tag text="${esc(firmo)} ICP fit" color="blue"></fw-tag>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="account-detail-actions">
+          <fw-button color="secondary" fill="outline" data-action="prep">New prep</fw-button>
+          <fw-button color="secondary" fill="outline" data-action="postcall">Post-call</fw-button>
+        </div>
+      </fw-card>
+
+      ${renderLifecyclePipeline(lifecycle.stage)}
+
       <fw-input id="account-detail-search" class="account-detail-search" placeholder="Filter contacts, activity, artifacts…" value="${esc(detailSearchQuery)}" clear-input></fw-input>
       <p id="account-detail-no-matches" class="muted account-detail-no-matches" hidden>No matches for this filter.</p>
-      <section class="lifecycle-section account-detail-section-contacts">
-        <h3>Contacts</h3>
-        ${renderContacts(contacts)}
-      </section>
-      <section class="lifecycle-section account-detail-section-activity">
-        <h3>Activity</h3>
+
+      <div class="account-detail-grid">
+        ${renderContactsCard(contacts, lifecycle.primaryContactId, contactEventsByContactId || {})}
+        ${renderMeddpiccCard(account, contacts)}
+      </div>
+
+      <fw-card class="account-activity-card account-detail-card">
+        <div class="account-card-header">
+          <h3 class="account-card-title">Activity</h3>
+        </div>
         ${renderTimeline(events)}
-      </section>
-      <section class="lifecycle-section account-detail-section-artifacts">
-        <h3>Artifacts</h3>
+      </fw-card>
+
+      <fw-card class="account-artifacts-card account-detail-card">
+        <div class="account-card-header">
+          <h3 class="account-card-title">Artifacts</h3>
+        </div>
         ${renderArtifactTabs(detail)}
-      </section>
+      </fw-card>
     </div>`;
 }
 
@@ -161,7 +429,7 @@ function applyDetailFilter(container, query) {
     const text = el.getAttribute("data-search-text") || "";
     const show = !q || text.includes(q);
     el.hidden = !show;
-    if (show && el.matches("li")) visibleCount++;
+    if (show) visibleCount++;
   });
 
   if (noMatches) {
@@ -169,7 +437,7 @@ function applyDetailFilter(container, query) {
   }
 }
 
-function wireDetailSearch(container) {
+function wireDetailSearch(container, opts) {
   const input = container.querySelector("#account-detail-search");
   if (!input) return;
 
@@ -233,16 +501,36 @@ function wireDetailEvents(container, session, opts) {
     opts.onPostcall?.();
   });
 
-  const stageSelect = container.querySelector("#account-stage-select");
-  stageSelect?.addEventListener("fwChange", async (ev) => {
-    const toStage = ev.detail?.value || stageSelect.value;
-    const lifecycleId = opts.lifecycleId;
-    if (!lifecycleId || !toStage) return;
-    await advanceStage(lifecycleId, toStage, sessionUserId(session));
-    await renderAccountView(container, session, opts);
+  container.querySelectorAll("[data-lifecycle-stage]").forEach((btn) => {
+    btn.addEventListener("fwClick", async () => {
+      const toStage = btn.getAttribute("data-lifecycle-stage");
+      const lifecycleId = opts.lifecycleId;
+      if (!lifecycleId || !toStage) return;
+      await advanceStage(lifecycleId, toStage, sessionUserId(session));
+      await renderAccountView(container, session, opts);
+    });
   });
 
-  wireDetailSearch(container);
+  wireDetailSearch(container, opts);
+}
+
+function renderAccountListItem({ account, lifecycle }) {
+  const score = lifecycle.latestQualityScore != null ? `${lifecycle.latestQualityScore}/10` : "—";
+  const title = account.name || lifecycle.title || "Account";
+  const domain = account.domain ? `<span class="account-list-domain muted">${esc(account.domain)}</span>` : "";
+  return `
+    <fw-button class="lifecycle-list-item account-list-item" color="secondary" fill="clear" data-account-id="${esc(account.id)}">
+      <div class="lifecycle-list-main">
+        <span class="lifecycle-list-title">${esc(title)}</span>
+        ${stageBadge(lifecycle.stage)}
+      </div>
+      ${domain}
+      <div class="lifecycle-list-meta muted">
+        <span>${esc(formatDate(lifecycle.lastActivityAt))}</span>
+        <span>${lifecycle.prepCount || 0} preps · ${lifecycle.postCallCount || 0} calls · ${lifecycle.openTaskCount || 0} tasks</span>
+        <span>Score: ${esc(score)}</span>
+      </div>
+    </fw-button>`;
 }
 
 async function enrichRowsWithContacts(rows) {

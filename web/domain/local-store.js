@@ -143,6 +143,18 @@ export function createLocalStore() {
       return findMany("contacts", (c) => c.accountId === accountId, (a, b) => a.email.localeCompare(b.email));
     },
 
+    async addContactEvent(event) {
+      return upsertById("contactEvents", event);
+    },
+
+    async listContactEvents(contactId, limitCount = 10) {
+      return findMany(
+        "contactEvents",
+        (e) => e.contactId === contactId,
+        (a, b) => b.timestamp - a.timestamp
+      ).slice(0, limitCount);
+    },
+
     async findActiveLifecycle(ownerId, accountId) {
       return findOne(
         "lifecycles",
@@ -227,7 +239,7 @@ export function createLocalStore() {
 
     /** Clear all domain data (dev/testing). */
     clearAll() {
-      for (const name of ["users", "teams", "orgs", "accounts", "contacts", "lifecycles", "prepBriefs", "postCalls", "tasks", "events"]) {
+      for (const name of ["users", "teams", "orgs", "accounts", "contacts", "lifecycles", "prepBriefs", "postCalls", "tasks", "events", "contactEvents"]) {
         localStorage.removeItem(`${PREFIX}${name}`);
       }
     },
@@ -237,7 +249,7 @@ export function createLocalStore() {
 /** Export for tests and migration scripts reading browser export. */
 export function exportLocalDomainData() {
   const data = {};
-  for (const name of ["users", "teams", "accounts", "contacts", "lifecycles", "prepBriefs", "postCalls", "tasks", "events"]) {
+  for (const name of ["users", "teams", "accounts", "contacts", "lifecycles", "prepBriefs", "postCalls", "tasks", "events", "contactEvents"]) {
     data[name] = loadCollection(name);
   }
   return data;

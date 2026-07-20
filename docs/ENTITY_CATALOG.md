@@ -34,6 +34,7 @@ If data is **only nested inside a parent** and never referenced elsewhere → **
 | **PostCall** | `postCalls/{id}` | `call_` | `(ownerId, callIdentityKey)` |
 | **Task** | `tasks/{id}` | `task_` | — |
 | **LifecycleEvent** | `lifecycles/{lcId}/events/{id}` | `evt_` | — |
+| **ContactEvent** | `contacts/{contactId}/events/{id}` | `cevt_` | — |
 
 **Auth index (not a domain entity):** `authIndex/{firebaseUid}` → `{ userId: "usr_..." }` — maps Firebase auth to internal User.id for Firestore rules.
 
@@ -112,10 +113,26 @@ These are stored **inside** a parent document. They are never queried or secured
   domain: string | null;
   slug: string;
   industry?: string;
-  metadata?: object;
+  metadata?: {
+    research?: object;
+    firmographics?: object;
+    meddpicc?: {
+      metrics?: FieldSlot;
+      economicBuyer?: FieldSlot;
+      decisionCriteria?: FieldSlot;
+      decisionProcess?: FieldSlot;
+      paperProcess?: FieldSlot;
+      identifyPain?: FieldSlot;
+      champion?: FieldSlot;
+      competition?: FieldSlot;
+      lastUpdatedAt?: number;
+      completionScore?: number;
+    };
+  };
   createdAt: number;
   updatedAt: number;
 }
+// FieldSlot = { value?, status: "unknown"|"partial"|"confirmed", source?, updatedAt?, contactId? }
 ```
 
 ### Contact
@@ -128,8 +145,26 @@ These are stored **inside** a parent document. They are never queried or secured
   name?: string;
   title?: string;
   role?: string;
+  metadata?: {
+    research?: object;
+    disc?: { primary?, secondary?, confidence?, evidence?, assessedAt?, source? };
+    influence?: { level?, decisionRole?, source?, updatedAt? };
+  };
   createdAt: number;
   updatedAt: number;
+}
+```
+
+### ContactEvent (append-only)
+
+```typescript
+{
+  id: string;              // cevt_*
+  contactId: string;
+  type: "contact_created" | "field_updated" | "disc_updated" | "influence_updated" | "linked_from_prep" | "linked_from_postcall";
+  actorId: string;
+  timestamp: number;
+  payload: object;         // { field?, fields?, source?, lifecycleId?, artifactId? }
 }
 ```
 

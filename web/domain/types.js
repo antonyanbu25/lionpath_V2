@@ -7,7 +7,9 @@ export { newId, stableUserIdForEmail, dummyUidForEmail, normalizeLegacyUserId, I
  * @typedef {{ id: string, name: string, orgId: string|null, managerId: string, memberIds: string[], createdAt: number, updatedAt: number }} Team
  * @typedef {{ id: string, name: string, directorId: string, seniorLeaderIds: string[], teamIds: string[], createdAt: number, updatedAt: number }} Org
  * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, metadata?: object, createdAt: number, updatedAt: number }} Account
- * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, createdAt: number, updatedAt: number }} Contact
+ * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
+ * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
+ * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
  * @typedef {"active"|"paused"|"archived"} LifecycleStatus
  * @typedef {{ id: string, ownerId: string, teamId: string, orgId: string, accountId: string, primaryContactId: string|null, stage: LifecycleStage, status: LifecycleStatus, title: string, createdAt: number, updatedAt: number, lastActivityAt: number, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore: number|null }} Lifecycle
@@ -53,6 +55,16 @@ export const EVENT_LABELS = {
   contact_updated: "Contact updated",
   lifecycle_archived: "Lifecycle archived",
   artifact_imported: "Artifact imported",
+};
+
+/** @type {Record<ContactEventType, string>} */
+export const CONTACT_EVENT_LABELS = {
+  contact_created: "Contact created",
+  field_updated: "Field updated",
+  disc_updated: "DISC updated",
+  influence_updated: "Influence updated",
+  linked_from_prep: "Linked from prep",
+  linked_from_postcall: "Linked from post-call",
 };
 
 /** Normalize company name to lookup slug — prefers explicit company domain. */

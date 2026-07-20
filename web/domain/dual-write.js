@@ -2,8 +2,9 @@
  * Bridge prep/post-call flows to the lifecycle domain layer (dual-write).
  */
 
-import { upsertAccountFromPrep, findAccountByCompanyName } from "./account-service.js";
+import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails } from "./account-service.js";
 import { getOrCreateLifecycle, attachPrep, attachPostCall, attachTask } from "./lifecycle-service.js";
+import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./contact-service.js";
 import { newId, now } from "./types.js";
 import { callIdentityKey } from "../call-identity.js";
 import { sessionUserId } from "./session.js";
@@ -28,6 +29,7 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     prep,
     researchBundle: meta?.researchBundle,
     contactDrafts: meta?.contactDrafts,
+    actorId: ownerId,
   });
 
   const lifecycle = await getOrCreateLifecycle(ownerId, accountId, session.teamId, {
@@ -52,6 +54,18 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     },
     ownerId
   );
+
+  const emails = collectProspectEmails({
+    prospectEmail: payload.prospectEmail,
+    prospectEmails: payload.prospectEmails,
+  });
+  if (prep && emails.length) {
+    await applyPrepContactFrameworks(accountId, prep, emails, {
+      lifecycleId: lifecycle.id,
+      actorId: ownerId,
+      prepBriefId: prepBrief.id,
+    });
+  }
 
   return { lifecycle, prepBrief, accountId };
 }
@@ -108,6 +122,12 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     },
     ownerId
   );
+
+  await applyPostCallContactFrameworks(account.id, analysis, {
+    lifecycleId: lifecycle.id,
+    actorId: ownerId,
+    postCallId: postCall.id,
+  });
 
   return { lifecycle, postCall, accountId: account.id };
 }

@@ -4,6 +4,8 @@ export * from "./org";
 export * from "./team";
 export * from "./account";
 export * from "./contact";
+export * from "./contact-event";
+export * from "./meddpicc";
 export * from "./lifecycle";
 export * from "./lifecycle-event";
 export * from "./artifacts";
