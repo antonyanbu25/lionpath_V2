@@ -101,8 +101,8 @@ export function createLocalStore() {
       return findMany("users", (u) => u.orgId === orgId);
     },
 
-    async listPostCallsByOrg(orgId) {
-      return findMany("postCalls", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt);
+    async listPostCallsByOrg(orgId, limitCount = 200) {
+      return findMany("postCalls", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
     async findAccountBySlug(slug) {
@@ -176,12 +176,12 @@ export function createLocalStore() {
       return findById("lifecycles", id);
     },
 
-    async listLifecyclesByOwner(ownerId) {
-      return findMany("lifecycles", (l) => l.ownerId === ownerId, (a, b) => b.lastActivityAt - a.lastActivityAt);
+    async listLifecyclesByOwner(ownerId, limitCount = 200) {
+      return findMany("lifecycles", (l) => l.ownerId === ownerId, (a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, limitCount);
     },
 
-    async listLifecyclesByTeam(teamId) {
-      return findMany("lifecycles", (l) => l.teamId === teamId, (a, b) => b.lastActivityAt - a.lastActivityAt);
+    async listLifecyclesByTeam(teamId, limitCount = 200) {
+      return findMany("lifecycles", (l) => l.teamId === teamId, (a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, limitCount);
     },
 
     async createPrepBrief(doc) {
@@ -203,16 +203,16 @@ export function createLocalStore() {
       return upsertById("postCalls", doc);
     },
 
-    async listPostCallsByLifecycle(lifecycleId) {
-      return findMany("postCalls", (p) => p.lifecycleId === lifecycleId, (a, b) => b.createdAt - a.createdAt);
+    async listPostCallsByLifecycle(lifecycleId, limitCount = 200) {
+      return findMany("postCalls", (p) => p.lifecycleId === lifecycleId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
-    async listPostCallsByTeam(teamId) {
-      return findMany("postCalls", (p) => p.teamId === teamId, (a, b) => b.createdAt - a.createdAt);
+    async listPostCallsByTeam(teamId, limitCount = 200) {
+      return findMany("postCalls", (p) => p.teamId === teamId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
-    async listPostCallsByOwner(ownerId) {
-      return findMany("postCalls", (p) => p.ownerId === ownerId, (a, b) => b.createdAt - a.createdAt);
+    async listPostCallsByOwner(ownerId, limitCount = 200) {
+      return findMany("postCalls", (p) => p.ownerId === ownerId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
     async createTask(doc) {

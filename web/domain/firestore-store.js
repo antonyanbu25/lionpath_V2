@@ -198,21 +198,23 @@ export function createFirestoreStore(fb) {
       return getById("lifecycles", id);
     },
 
-    async listLifecyclesByOwner(ownerId) {
+    async listLifecyclesByOwner(ownerId, limitCount = 200) {
       const q = query(
         collection(db, "lifecycles"),
         where("ownerId", "==", ownerId),
-        orderBy("lastActivityAt", "desc")
+        orderBy("lastActivityAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
-    async listLifecyclesByTeam(teamId) {
+    async listLifecyclesByTeam(teamId, limitCount = 200) {
       const q = query(
         collection(db, "lifecycles"),
         where("teamId", "==", teamId),
-        orderBy("lastActivityAt", "desc")
+        orderBy("lastActivityAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -255,41 +257,45 @@ export function createFirestoreStore(fb) {
       return data;
     },
 
-    async listPostCallsByLifecycle(lifecycleId) {
+    async listPostCallsByLifecycle(lifecycleId, limitCount = 200) {
       const q = query(
         collection(db, "postCalls"),
         where("lifecycleId", "==", lifecycleId),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
-    async listPostCallsByTeam(teamId) {
+    async listPostCallsByTeam(teamId, limitCount = 200) {
       const q = query(
         collection(db, "postCalls"),
         where("teamId", "==", teamId),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
-    async listPostCallsByOrg(orgId) {
+    async listPostCallsByOrg(orgId, limitCount = 200) {
       const q = query(
         collection(db, "postCalls"),
         where("orgId", "==", orgId),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
-    async listPostCallsByOwner(ownerId) {
+    async listPostCallsByOwner(ownerId, limitCount = 200) {
       const q = query(
         collection(db, "postCalls"),
         where("ownerId", "==", ownerId),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
