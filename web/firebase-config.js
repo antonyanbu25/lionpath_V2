@@ -57,6 +57,11 @@ export async function loadFirebaseConfig() {
   return firebaseConfig;
 }
 
+/** True when Firebase projectId is configured (production host or firebase-config.local.js). */
+export function isFirebaseAuthEnabled() {
+  return !!firebaseConfig.projectId;
+}
+
 // Worker base URL — auto-detect local dev vs VPS production (portal.benjaminsquare.com).
 function workerBaseUrl() {
   if (typeof location !== "undefined" && location.hostname) {

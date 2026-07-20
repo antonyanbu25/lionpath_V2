@@ -811,6 +811,26 @@ async function warnIfWorkerDown() {
 
 async function boot() {
   await loadFirebaseConfig();
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+    body: JSON.stringify({
+      sessionId: "72b8a2",
+      runId: "post-fix",
+      hypothesisId: "A",
+      location: "app.js:boot:afterLoadFirebaseConfig",
+      message: "boot after loadFirebaseConfig",
+      data: {
+        host: typeof location !== "undefined" ? location.hostname : "",
+        projectId: firebaseConfig.projectId || "",
+        authMode: authMode(),
+        firebaseAuthEnabled: isFirebaseAuthEnabled(),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   initSidebar();
   wireUserMenu();
@@ -915,9 +935,43 @@ async function boot() {
 
   if (authMode() === "firebase") {
     await initFirebase();
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+      body: JSON.stringify({
+        sessionId: "72b8a2",
+        runId: "post-fix",
+        hypothesisId: "B",
+        location: "app.js:boot:afterInitFirebase",
+        message: "firebase auth init complete",
+        data: {
+          hasSession: !!getSession(),
+          googleBlockHidden: !!$("firebase-signin-block")?.hidden,
+          loginFormHidden: !!$("login-form")?.hidden,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     if (!getSession()) showLogin();
   } else {
     initDummyAuth();
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+      body: JSON.stringify({
+        sessionId: "72b8a2",
+        runId: "post-fix",
+        hypothesisId: "C",
+        location: "app.js:boot:dummyAuth",
+        message: "dummy auth path",
+        data: { handlersWired: loginHandlersWired },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     const existing = getSession();
     if (!existing) showLogin();
   }
