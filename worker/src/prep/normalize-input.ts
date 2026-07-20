@@ -1,5 +1,6 @@
 import { isValidCompanyDomain, normalizeCompanyDomain } from "../domain";
 import type { PrepInput } from "./types";
+import { linkedInFingerprint, normalizeLinkedInExports } from "./linkedin-pdf";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -51,15 +52,18 @@ export function normalizePrepInput(input: PrepInput): PrepInput {
     prospectEmails: emails,
     prepType: input.prepType || "new_business",
     forceRefresh: !!input.forceRefresh,
+    linkedinProfileExports: normalizeLinkedInExports(input.linkedinProfileExports),
   };
 }
 
 export function computeInputHash(input: PrepInput, emails: string[]): string {
+  const exports = normalizeLinkedInExports(input.linkedinProfileExports);
   const payload = {
     companyDomain: input.companyDomain,
     companyName: input.companyName.toLowerCase(),
     emails: [...emails].sort(),
     playbookVersion: "1",
+    linkedin: exports.length ? linkedInFingerprint(exports) : "",
   };
   let h = 0;
   const s = JSON.stringify(payload);

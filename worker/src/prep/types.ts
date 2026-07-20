@@ -79,6 +79,11 @@ export interface PrepInput {
   forceRefresh?: boolean;
   cachedResearch?: ResearchBundle | null;
   confirmedFacts?: ResearchFact[];
+  linkedinProfileExports?: Array<{ fileName: string; text: string }>;
+  confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
+  meetingZoomUrl?: string;
+  meetingZoomPasscode?: string;
+  kaiaMeetingUrl?: string;
 }
 
 export interface ResearchMeta {
@@ -91,6 +96,7 @@ export interface ResearchMeta {
     llmCalls: number;
     apolloCredits: number;
   };
+  linkedinMatchedEmails?: string[];
 }
 
 export interface PrepResult {

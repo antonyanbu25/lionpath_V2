@@ -21,6 +21,8 @@ export interface LlmRequest {
   research?: boolean;
   /** JSON Schema for structured output (Gemini responseSchema). */
   jsonSchema?: Record<string, unknown>;
+  /** JSON response without responseSchema (Gemini responseMimeType only). */
+  jsonMimeOnly?: boolean;
   /** Gemini 2.5+ — set 0 to disable thinking for lower latency on long transcripts. */
   thinkingBudget?: number;
   /** Override generation temperature (0 = deterministic). */

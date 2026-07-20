@@ -376,17 +376,45 @@ function normalizePainCapabilityValue(
   ];
 }
 
+function normalizeDiscHint(raw: ProspectProfile["discHint"]): ProspectProfile["discHint"] | undefined {
+  if (!raw?.primary && !raw?.secondary && !raw?.evidence?.length) return undefined;
+  const confidence =
+    raw.confidence === "high" || raw.confidence === "medium" || raw.confidence === "low"
+      ? raw.confidence
+      : "low";
+  return {
+    primary: raw.primary || "unknown",
+    secondary: raw.secondary,
+    confidence,
+    evidence: trimBullets(raw.evidence, 4).map((e) => trimWords(e, 20)).filter(Boolean),
+    inferred: raw.inferred,
+    source: raw.source,
+  };
+}
+
 function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[] {
   const incoming = Array.isArray(raw.prospects) ? raw.prospects : [];
   const normalized = incoming.slice(0, 5).map((p, i) => ({
     name: trimCell(p.name),
     role: trimCell(p.role),
     totalExperience: trimWords(String(p.totalExperience ?? ""), 6) || "unknown",
-    priorEmployers: trimBullets(p.priorEmployers, 4).map((e) => trimWords(e, 6)).filter(Boolean),
+    priorEmployers: trimBullets(p.priorEmployers, 6).map((e) => trimWords(e, 6)).filter(Boolean),
+    summary: trimWords(String(p.summary ?? ""), 80) || undefined,
+    skills: trimBullets(p.skills, 8)
+      .map((s) => trimWords(s, 4))
+      .filter(Boolean),
+    languages: trimBullets(p.languages, 6)
+      .map((l) => trimWords(l, 4))
+      .filter(Boolean),
+    education: trimBullets(p.education, 4)
+      .map((e) => trimWords(e, 12))
+      .filter(Boolean),
     competitorTouchpoints: trimBullets(p.competitorTouchpoints, 4)
       .map((t) => trimWords(t, 8))
       .filter(Boolean),
     sourceLabel: pickSourceLabel(sources, p.sourceLabel, i % sources.length),
+    discHint: normalizeDiscHint(p.discHint),
+    influence: p.influence,
   }));
 
   if (normalized.length >= 1) return normalized;

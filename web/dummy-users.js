@@ -219,7 +219,7 @@ export const DUMMY_USERS = {
   },
   "sowrav.sunil@freshworks.com": {
     password: "se123",
-    role: "se",
+    role: "admin",
     name: "Sowrav Sunil",
     jobTitle: "Lead - Solution Engineer",
     teamId: TEAM_NIKIL_ID,

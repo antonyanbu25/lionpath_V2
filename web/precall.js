@@ -20,6 +20,15 @@ import {
 } from "./precall-render.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js?v=dispute-static-v11";
+import { resolveCompanyDomainForSubmit } from "./prep-domain.js";
+import {
+  linkedinProfileExportsForPayload,
+  linkedinProfileExportsForStorage,
+  initLinkedInPdfUpload,
+  clearLinkedInAttachments,
+  linkedinFingerprintForHash,
+} from "./prep-linkedin-pdf.js";
+import { enrichProspectsParallel, toConfirmedProspectProfiles } from "./prep-contact-enrich.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
 const BRIEFS_KEY = "lionpath_briefs";
@@ -90,6 +99,9 @@ let state = {
   currentMeta: null,
   activeBriefId: null,
   pendingResearch: null,
+  contactEnrichmentsByEmail: null,
+  peopleProspectTab: "prospect-0",
+  linkedinParsing: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -171,7 +183,12 @@ function renderActiveTab() {
 
   const disc = $("prep-tab-discovery");
   const demo = $("prep-tab-demo");
-  if (disc) disc.innerHTML = renderDiscoveryTab(prep, state.srcOpen);
+  if (disc) {
+    disc.innerHTML = renderDiscoveryTab(prep, state.srcOpen, {
+      linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
+      peopleProspectTab: state.peopleProspectTab,
+    });
+  }
   if (demo) demo.innerHTML = renderDemoTab(prep, state.checks, accountId(meta));
 
   wireTabInteractions();
@@ -302,6 +319,16 @@ function wireTabInteractions() {
     state.srcOpen = ev.target.open;
   });
 
+  const peopleTabs = root.querySelector("#prep-people-tabs");
+  if (peopleTabs) {
+    peopleTabs.addEventListener("fwChange", (ev) => {
+      if (ev.target?.id !== "prep-people-tabs") return;
+      ev.stopPropagation();
+      const name = ev.detail?.activeTabName;
+      if (name) state.peopleProspectTab = name;
+    });
+  }
+
   wireDisputeTriggers(root);
 }
 
@@ -314,6 +341,10 @@ function pushBriefRecord(record) {
 export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
   if (!isV8Prep(prep)) return;
   const id = `${accountId(meta)}-${Date.now()}`;
+  const storedInput = {
+    ...input,
+    linkedinProfileExports: linkedinProfileExportsForStorage() || input.linkedinProfileExports,
+  };
   pushBriefRecord({
     id,
     company: meta.company || input.companyName,
@@ -321,7 +352,7 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
     when: new Date().toLocaleDateString(),
     prep,
     meta,
-    input,
+    input: storedInput,
     lifecycleId: lifecycleId || null,
   });
   state.activeBriefId = id;
@@ -339,26 +370,42 @@ async function buildPayload() {
   }
   setFieldError(prospectField);
 
-  const companyDomain = normalizeCompanyDomain(await readFieldValueAsync($("companyDomain")));
+  const companyDomain = resolveCompanyDomainForSubmit(
+    await readFieldValueAsync($("companyDomain")),
+    rawEmails
+  );
   if (!companyDomain || !DOMAIN_RE.test(companyDomain)) {
-    const message = "Enter a valid company domain (e.g. acme.com).";
+    const message =
+      "Enter a valid company domain (e.g. acme.com). We auto-fill from corporate prospect emails — not from Gmail or Outlook.";
     setFieldError(domainField, message);
     throw new Error(message);
   }
   setFieldError(domainField);
+  if (normalizeCompanyDomain(await readFieldValueAsync($("companyDomain"))) !== companyDomain) {
+    const field = $("companyDomain");
+    if (field) {
+      field.value = companyDomain;
+      field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value: companyDomain } }));
+    }
+  }
 
   const companyName = await readFieldValueAsync($("companyName"));
   if (!String(companyName || "").trim()) {
     throw new Error("Company name is required.");
   }
 
-  const inputHash = computePrepInputHash(companyName, companyDomain, emails);
+  const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash());
   let cachedResearch = null;
   try {
     cachedResearch = await loadCachedResearch(companyName, companyDomain, inputHash);
   } catch {
     cachedResearch = null;
   }
+
+  const linkedinProfileExports = linkedinProfileExportsForPayload();
+  const meetingZoomUrl = (await readFieldValueAsync($("meetingZoomUrl")))?.trim() || undefined;
+  const meetingZoomPasscode = (await readFieldValueAsync($("meetingZoomPasscode")))?.trim() || undefined;
+  const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
 
   return {
     payload: {
@@ -369,6 +416,10 @@ async function buildPayload() {
       additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
       prepType: "new_business",
       cachedResearch: cachedResearch || undefined,
+      linkedinProfileExports,
+      meetingZoomUrl,
+      meetingZoomPasscode,
+      kaiaMeetingUrl,
     },
     meta: {
       company: companyName,
@@ -404,6 +455,8 @@ function setLoading(on, message) {
   state.loading = on;
   setButtonLoading(btn, on);
   setFormFieldsDisabled($("prep-form"), on);
+  const addPdfBtn = $("prep-linkedin-add-btn");
+  if (addPdfBtn) addPdfBtn.disabled = on || state.linkedinParsing;
   show($("prep-loading"), on);
   if (on) {
     showInlineStatus(status, { type: "info", message, loading: true });
@@ -463,90 +516,59 @@ function buildDisputeContext(overrides = {}) {
   };
 }
 
-function renderFactRow(fact, idx, sources, lowConfidenceSet) {
-  const src = sourceForFact(fact, sources);
-  const conf = fact.confidence ?? src?.confidence ?? 50;
-  const unverified = factIsUnverified(fact, sources, lowConfidenceSet);
-  const checked = factCheckedByDefault(fact, sources, lowConfidenceSet);
-  const valueHtml = unverified
-    ? `<span class="prep-unverified">${esc(fact.value)} <span class="prep-unverified-tag">Unverified</span></span>`
-    : esc(fact.value);
-
-  return `<div class="prep-facts-row${unverified ? " prep-kv-unverified" : ""}" data-fact-idx="${idx}">
-    <fw-checkbox class="prep-facts-check" data-fact-idx="${idx}" ${checked ? "checked" : ""}></fw-checkbox>
-    <span class="prep-facts-key">${esc(fact.key)}</span>
-    <span class="prep-facts-val">${valueHtml}</span>
-    <span class="prep-facts-src muted">${esc(fact.sourceLabel || src?.label || "—")} · ${conf}%</span>
-    <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline prep-facts-report" data-fact-idx="${idx}" data-dispute-step="facts_review" data-dispute-section="facts">Report</button>
-  </div>`;
+function selectDefaultConfirmedFacts(researchData) {
+  const facts = researchData?.facts || [];
+  const sources = researchData?.sources || [];
+  const lowSet = new Set(researchData?.lowConfidence || []);
+  return facts.filter((f) => factCheckedByDefault(f, sources, lowSet));
 }
 
-function showFactsReviewModal(researchData, payload) {
-  const modal = $("prep-facts-modal");
-  const intro = $("prep-facts-intro");
-  const list = $("prep-facts-list");
-  const empty = $("prep-facts-empty");
-  const errEl = $("prep-facts-error");
-  if (!modal || !list) return;
-
-  if (errEl) {
-    errEl.textContent = "";
-    errEl.hidden = true;
-  }
-
-  const facts = researchData.facts || [];
-  const sources = researchData.sources || [];
-  const lowSet = new Set(researchData.lowConfidence || []);
-
-  if (intro) {
-    intro.textContent = `Review facts found for ${payload.companyName} (${payload.companyDomain}). Uncheck anything you don't trust.`;
-  }
-
-  const hasFacts = facts.length > 0;
-  show(empty, !hasFacts);
-  list.innerHTML = hasFacts
-    ? facts.map((f, i) => renderFactRow(f, i, sources, lowSet)).join("")
-    : "";
-
-  wireDisputeTriggers(list);
-
-  modal.hideFooterButton = !hasFacts;
-  modal.isOpen = true;
-}
-
-function closeFactsModal() {
-  const modal = $("prep-facts-modal");
-  if (modal) modal.isOpen = false;
-  state.pendingResearch = null;
-}
-
-function collectConfirmedFacts() {
-  const pending = state.pendingResearch;
-  if (!pending?.research?.facts?.length) return [];
-
-  const list = $("prep-facts-list");
-  if (!list) return [];
-
-  const checked = new Set();
-  list.querySelectorAll("fw-checkbox.prep-facts-check").forEach((cb) => {
-    const idx = Number(cb.dataset.factIdx);
-    if (cb.checked) checked.add(idx);
-  });
-
-  return pending.research.facts.filter((_, i) => checked.has(i));
-}
-
-async function executeResearch(payload, meta) {
+async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
+  const pdfs = payload.linkedinProfileExports || [];
+  let confirmedProspectProfiles = [];
+
+  if (deps.enrichUrl && (pdfs.length || payload.additionalContext)) {
+    setLoading(true, "Enriching prospects…");
+    try {
+      const enrichResponses = await enrichProspectsParallel(
+        {
+          enrichUrl: deps.enrichUrl,
+          authEnabled: deps.authEnabled,
+          getToken: deps.getToken,
+        },
+        {
+          emails,
+          pdfs,
+          payload,
+          onProgress: (n, total) => {
+            setLoading(true, `Enriching prospects (${n}/${total})…`);
+          },
+        },
+      );
+      confirmedProspectProfiles = toConfirmedProspectProfiles(enrichResponses);
+      state.contactEnrichmentsByEmail = Object.fromEntries(
+        enrichResponses.map((r) => [r.email.toLowerCase(), r]),
+      );
+    } catch (err) {
+      showInlineStatus(status, {
+        type: "warn",
+        message: `Prospect enrichment skipped: ${err.message || "error"}. Continuing with research…`,
+      });
+    }
+  }
+
+  const enrichPayload = {
+    ...payload,
+    confirmedProspectProfiles: confirmedProspectProfiles.length ? confirmedProspectProfiles : undefined,
+  };
+
   const cacheHit = payload.cachedResearch || meta.researchMeta?.cacheHit;
   setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
 
+  let research;
   try {
-    const data = await postJson(deps.researchUrl, payload);
-    state.pendingResearch = { payload, meta, research: data };
-    showInlineStatus(status, { open: false });
-    clearLoading();
-    showFactsReviewModal(data, payload);
+    research = await postJson(deps.researchUrl, enrichPayload);
   } catch (err) {
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {
@@ -554,23 +576,25 @@ async function executeResearch(payload, meta) {
       message: msg === "Failed to fetch" || /network|fetch/i.test(msg) ? deps.workerDownMsg : msg,
     });
     clearLoading();
+    return;
   }
-}
 
-async function executeSynthesize(confirmedFacts) {
-  const pending = state.pendingResearch;
-  if (!pending) return;
+  const confirmedFacts = selectDefaultConfirmedFacts(research);
+  if (!confirmedFacts.length) {
+    showInlineStatus(status, {
+      type: "error",
+      message: "No verified research facts found — check company domain and emails, then try again.",
+    });
+    clearLoading();
+    return;
+  }
 
-  const { payload, meta, research } = pending;
-  const status = $("prep-status");
-  const factsModal = $("prep-facts-modal");
-  if (factsModal) factsModal.isOpen = false;
-
-  setLoading(true, "Generating brief from confirmed facts…");
+  state.pendingResearch = { payload, meta, research };
+  setLoading(true, "Generating brief from research…");
 
   try {
     const data = await postJson(deps.synthesizeUrl, {
-      ...payload,
+      ...enrichPayload,
       confirmedFacts,
       researchBundle: research.researchBundle,
     });
@@ -579,6 +603,8 @@ async function executeSynthesize(confirmedFacts) {
       ...meta,
       researchMeta: data.researchMeta,
       researchBundle: data.researchBundle,
+      linkedinMatchedEmails: data.researchMeta?.linkedinMatchedEmails,
+      contactEnrichmentsByEmail: state.contactEnrichmentsByEmail,
     };
 
     displayPrepResult(data.prep, enrichedMeta);
@@ -586,6 +612,9 @@ async function executeSynthesize(confirmedFacts) {
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
     saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
     state.pendingResearch = null;
+    clearLinkedInAttachments();
+    const listEl = $("prep-linkedin-file-list");
+    if (listEl) listEl.innerHTML = "";
   } catch (err) {
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {
@@ -597,72 +626,14 @@ async function executeSynthesize(confirmedFacts) {
   }
 }
 
-
-function showConfirmModal(companyName, companyDomain) {
-  return new Promise((resolve) => {
-    const modal = $("prep-confirm-modal");
-    const text = $("prep-confirm-text");
-    if (!modal) {
-      resolve(true);
-      return;
-    }
-    if (text) {
-      text.textContent = `Research ${companyName} (${companyDomain})?`;
-    }
-
-    let settled = false;
-    const finish = (confirmed) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      modal.isOpen = false;
-      resolve(confirmed);
-    };
-
-    const onSubmit = () => finish(true);
-    const onClose = () => finish(false);
-
-    const cleanup = () => {
-      modal.removeEventListener("fwSubmit", onSubmit);
-      modal.removeEventListener("fwClose", onClose);
-    };
-
-    modal.isOpen = true;
-    modal.addEventListener("fwSubmit", onSubmit);
-    modal.addEventListener("fwClose", onClose);
-  });
-}
-
-function onFactsModalSubmit(ev) {
-  const facts = collectConfirmedFacts();
-  const errEl = $("prep-facts-error");
-  if (!facts.length) {
-    if (errEl) {
-      errEl.textContent = "Select at least one fact to include in the brief.";
-      errEl.hidden = false;
-    }
-    ev?.preventDefault?.();
-    ev?.stopPropagation?.();
-    return;
-  }
-  if (errEl) errEl.hidden = true;
-  void executeSynthesize(facts);
-}
-
-function onFactsModalClose() {
-  closeFactsModal();
-}
-
 export async function generatePrep(e) {
   e?.preventDefault?.();
-  if (state.loading) return;
+  if (state.loading || state.linkedinParsing) return;
 
   const status = $("prep-status");
   try {
-    const { payload, meta } = await buildPayload();
-    const confirmed = await showConfirmModal(payload.companyName, payload.companyDomain);
-    if (!confirmed) return;
-    await executeResearch(payload, meta);
+    const { payload, meta, emails } = await buildPayload();
+    await runPrepEndToEnd(payload, meta, emails);
   } catch (err) {
     showInlineStatus(status, { type: "error", message: err.message || "Validation failed." });
   }
@@ -679,6 +650,8 @@ export function initPrecall(options) {
   registerDisputeContextResolver(resolveDisputeContextFromButton);
 
   $("prep-tabs")?.addEventListener("fwChange", (ev) => {
+    const outer = $("prep-tabs");
+    if (ev.target !== outer && ev.target?.id !== "prep-tabs") return;
     const tab = ev.detail?.activeTabName || "discovery";
     state.tab = tab === "demo" ? "demo" : "discovery";
     closePopover();
@@ -692,9 +665,15 @@ export function initPrecall(options) {
     void generatePrep(e);
   });
 
-  const factsModal = $("prep-facts-modal");
-  factsModal?.addEventListener("fwSubmit", onFactsModalSubmit);
-  factsModal?.addEventListener("fwClose", onFactsModalClose);
+  initLinkedInPdfUpload({
+    setParsing: (on) => {
+      state.linkedinParsing = on;
+      const btn = $("generate");
+      if (btn) btn.disabled = on || state.loading;
+      const addBtn = $("prep-linkedin-add-btn");
+      if (addBtn) addBtn.disabled = on || state.loading;
+    },
+  });
 }
 
 export function resetPrecallOnView() {

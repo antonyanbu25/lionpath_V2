@@ -51,6 +51,73 @@
   margin-bottom: 14px;
 }
 
+.prep-form-full {
+  grid-column: 1 / -1;
+}
+
+.prep-linkedin-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.prep-linkedin-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dew-text);
+}
+
+.prep-linkedin-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.prep-linkedin-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prep-linkedin-parsing {
+  font-size: 12px;
+}
+
+.prep-linkedin-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prep-linkedin-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dew-surface-muted, rgba(0, 0, 0, 0.04));
+  font-size: 13px;
+}
+
+.prep-linkedin-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prep-linkedin-file-meta {
+  font-size: 11px;
+}
+
+.prep-linkedin-result-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
 .prep-email-field {
   display: flex;
   flex-direction: column;
@@ -319,17 +386,127 @@
   color: var(--dew-text-muted);
 }
 
-.prep-prospect-card {
-  border: 1px solid var(--dew-border);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 10px;
-  background: var(--dew-surface);
-  box-shadow: var(--dew-shadow-island);
+.prep-grid-account {
+  margin-bottom: 16px;
 }
 
-.prep-prospect-card:last-child {
+.prep-people-section {
+  margin-bottom: 16px;
+}
+
+.prep-people-tabs {
+  margin-top: 8px;
+}
+
+.prep-prospect-hero {
+  padding-bottom: 4px;
+}
+
+.prep-prospect-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.prep-prospect-disc-row {
+  margin: 10px 0 8px;
+}
+
+.prep-disc-chip {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--dew-amber-tint, rgba(247, 144, 9, 0.14));
+  color: var(--dew-text, inherit);
+  border: 1px solid var(--dew-amber, #f79009);
+}
+
+.prep-disc-chip-sec,
+.prep-disc-chip-conf {
+  font-weight: 600;
+}
+
+.prep-prospect-exp-line {
+  font-size: 13px;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.prep-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.prep-skill-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--dew-hairline);
+  color: var(--dew-text-muted);
+  border: 1px solid var(--dew-border);
+}
+
+.prep-skill-more {
+  font-weight: 600;
+  background: transparent;
+}
+
+.prep-line-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.prep-prospect-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dew-border);
+  font-size: 13px;
+}
+
+.prep-prospect-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--dew-primary);
+  margin-bottom: 8px;
+}
+
+.prep-prospect-details-body {
+  padding-top: 4px;
+}
+
+.prep-detail-block {
+  margin-bottom: 12px;
+}
+
+.prep-detail-block .prep-kv-key {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  color: var(--dew-text-muted);
+}
+
+.prep-detail-block p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.prep-prospect-card {
+  border: none;
+  box-shadow: none;
+  padding: 0;
   margin-bottom: 0;
+  background: transparent;
+}
+
+.prep-people-section .prep-prospect-card {
+  padding: 4px 0 0;
 }
 
 .prep-prospect-head {
@@ -360,6 +537,48 @@
 
 .prep-prospect-role {
   font-size: 12px;
+}
+
+.prep-prospect-summary {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 8px 0 10px;
+  color: var(--prep-text, inherit);
+}
+
+.prep-disc-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--prep-border, rgba(0, 0, 0, 0.08));
+}
+
+.prep-disc-primary {
+  font-weight: 600;
+}
+
+.prep-disc-inferred {
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+.prep-disc-why {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.prep-disc-evidence {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.prep-enrich-advanced {
+  margin-top: 12px;
+}
+
+.prep-enrich-advanced summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted, #666);
 }
 
 .prep-jd-full {

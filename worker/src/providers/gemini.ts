@@ -90,29 +90,15 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
 
 
       if (req.jsonSchema) {
-
         generationConfig.responseMimeType = "application/json";
-
         generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);
-
+      } else if (req.jsonMimeOnly) {
+        generationConfig.responseMimeType = "application/json";
       }
 
-
-
-      // Disable thinking for post-call speed on long transcripts, or when structured JSON is requested.
-
-      if (
-
-        req.thinkingBudget === 0 ||
-
-        req.jsonSchema ||
-
-        (!req.research && req.effort === "low")
-
-      ) {
-
+      // Disable thinking only when explicitly requested (not with every jsonSchema call).
+      if (req.thinkingBudget === 0 || (!req.research && req.effort === "low" && !req.jsonSchema)) {
         generationConfig.thinkingConfig = { thinkingBudget: 0 };
-
       }
 
 

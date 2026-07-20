@@ -3,8 +3,15 @@
  */
 
 import { getStore } from "./store.js";
-import { normalizeAccountSlug, domainFromEmail, newId, now } from "./types.js";
-import { listLifecyclesForUser, getLifecycleDetail } from "./lifecycle-service.js";
+import { normalizeAccountSlug, domainFromEmail, newId, now, can, MAX_SE_TEAM_SIZE } from "./types.js";
+import {
+  listLifecyclesForSession,
+  listActiveLifecyclesForAccount,
+  getOrCreateLifecycle,
+  getLifecycleDetail,
+  archiveLifecycle,
+  logSeTeamEvent,
+} from "./lifecycle-service.js";
 import { sessionUserId } from "./session.js";
 import {
   mergeAccountMeddpicc,
@@ -12,6 +19,14 @@ import {
   loadContactEventsForAccount,
   recordContactEvent,
 } from "./contact-service.js";
+import {
+  backfillAccountSeTeam,
+  ensureSeTeamForPrepActor,
+  resolveSeTeamDisplay,
+  seTeamUserIds,
+  userDisplayFields,
+} from "./account-se-team.js";
+import { getOrg, getVisibleScope, resolveOrgForUser, userWithDirectorFlag } from "./org-service.js";
 
 export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -165,36 +180,347 @@ function collectEmails(input) {
 
 export { collectEmails as collectProspectEmails };
 
-/** Accounts the current user has engaged with (via lifecycles). */
-export async function listAccountsForUser(session) {
-  const lifecycles = await listLifecyclesForUser(session);
+export { ensureSeTeamForPrepActor, backfillAccountSeTeam } from "./account-se-team.js";
+
+async function sessionUser(session) {
   const store = getStore();
-  const rows = await Promise.all(
-    lifecycles.map(async (lifecycle) => {
-      const account = await store.getAccount(lifecycle.accountId);
-      return account ? { account, lifecycle } : null;
-    }),
-  );
-  return rows
-    .filter(Boolean)
-    .sort((a, b) => (b.lifecycle.lastActivityAt || 0) - (a.lifecycle.lastActivityAt || 0));
+  const userId = sessionUserId(session);
+  if (!userId) return null;
+  const user = await store.getUser(userId);
+  if (!user) return { id: userId, role: "se", teamId: session.teamId || null, orgId: session.orgId || null };
+  const org = user.orgId ? await getOrg(user.orgId) : null;
+  return userWithDirectorFlag(user, org);
 }
 
-/** Account detail for the current user: lifecycle spine + contacts. */
-export async function getAccountEngagementDetail(session, accountId) {
-  const ownerId = sessionUserId(session);
-  if (!ownerId || !accountId) return null;
+function pickRowLifecycle(account, lifecyclesForAccount) {
+  if (!lifecyclesForAccount.length) return null;
+  const primaryId = account.primarySeUserId;
+  if (primaryId) {
+    const primaryLc = lifecyclesForAccount.find((l) => l.ownerId === primaryId);
+    if (primaryLc) return primaryLc;
+  }
+  return [...lifecyclesForAccount].sort(
+    (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
+  )[0];
+}
+
+function maxLastActivity(lifecyclesForAccount) {
+  return lifecyclesForAccount.reduce((max, l) => Math.max(max, l.lastActivityAt || 0), 0);
+}
+
+/** Accounts visible to session (scoped list, deduped by accountId). */
+export async function listAccountsForSession(session) {
+  const store = getStore();
+  const lifecycles = await listLifecyclesForSession(session);
+  const byAccount = new Map();
+
+  for (const lifecycle of lifecycles) {
+    const list = byAccount.get(lifecycle.accountId) || [];
+    list.push(lifecycle);
+    byAccount.set(lifecycle.accountId, list);
+  }
+
+  const rows = await Promise.all(
+    [...byAccount.entries()].map(async ([accountId, lcs]) => {
+      let account = await store.getAccount(accountId);
+      if (!account) return null;
+      account = await backfillAccountSeTeam(accountId);
+      const lifecycle = pickRowLifecycle(account, lcs);
+      if (!lifecycle) return null;
+      const seTeamDisplay = await resolveSeTeamDisplay(account);
+      const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
+      return {
+        account,
+        lifecycle,
+        seTeamDisplay,
+        secondaryCount,
+        lastActivityAt: maxLastActivity(lcs),
+      };
+    })
+  );
+
+  return rows
+    .filter(Boolean)
+    .sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+}
+
+/** @deprecated use listAccountsForSession */
+export async function listAccountsForUser(session) {
+  return listAccountsForSession(session);
+}
+
+/** Org/team-visible SE users not already on the deal team (empty when roster is full). */
+async function listAssignableSeOptions(user, currentMemberIds) {
+  if (!user || currentMemberIds.length >= MAX_SE_TEAM_SIZE) return [];
 
   const store = getStore();
-  const lifecycle = await store.findActiveLifecycle(ownerId, accountId);
-  if (!lifecycle) return null;
+  const scope = await getVisibleScope(user);
+  const onTeam = new Set(currentMemberIds);
+  const seen = new Set();
+  /** @type {import("./types.js").User[]} */
+  const visible = [];
 
-  const detail = await getLifecycleDetail(lifecycle.id);
-  if (!detail) return null;
+  async function consider(member) {
+    if (!member?.id || seen.has(member.id) || onTeam.has(member.id)) return;
+    if (member.role !== "se") return;
+    if (member.status && member.status !== "active") return;
+    seen.add(member.id);
+    visible.push(member);
+  }
+
+  const teamIds =
+    scope.teamIds?.length > 0 ? scope.teamIds : user.teamId ? [user.teamId] : [];
+
+  for (const teamId of teamIds) {
+    const team = await store.getTeam(teamId);
+    for (const memberId of team?.memberIds || []) {
+      await consider(await store.getUser(memberId));
+    }
+  }
+
+  if (scope.orgId && store.listUsersByOrg) {
+    const orgUsers = await store.listUsersByOrg(scope.orgId);
+    for (const member of orgUsers) {
+      if (member.role !== "se") continue;
+      if (scope.type === "team" && member.teamId !== user.teamId) continue;
+      if (
+        scope.type === "org" &&
+        teamIds.length &&
+        member.teamId &&
+        !teamIds.includes(member.teamId)
+      ) {
+        continue;
+      }
+      await consider(member);
+    }
+  }
+
+  if (!visible.length && user.role === "manager" && store.listUsersByManagerId) {
+    for (const member of await store.listUsersByManagerId(user.id)) {
+      await consider(member);
+    }
+  }
+
+  visible.sort((a, b) =>
+    (a.displayName || a.email || "").localeCompare(b.displayName || b.email || "")
+  );
+
+  return visible.map((member) => ({
+    seUserId: member.id,
+    user: userDisplayFields(member),
+  }));
+}
+
+async function canReadAccountEngagement(user, account, lifecycles) {
+  if (!user || !account) return false;
+  const ids = seTeamUserIds(account);
+  const orgId = lifecycles[0]?.orgId || user.orgId || null;
+  return can(user, "read_account", {
+    ownerId: account.primarySeUserId || lifecycles[0]?.ownerId,
+    seTeamUserIds: ids,
+    accountOrgId: orgId,
+    teamId: user.teamId || undefined,
+    orgId: user.orgId || undefined,
+  });
+}
+
+/**
+ * Account detail: merged activity, deal team, lens lifecycle for pipeline/artifacts.
+ * @param {object} session
+ * @param {string} accountId
+ * @param {{ lifecycleOwnerId?: string }} [options]
+ */
+export async function getAccountEngagementDetail(session, accountId, options = {}) {
+  const user = await sessionUser(session);
+  if (!user || !accountId) return null;
+
+  const store = getStore();
+  let account = await store.getAccount(accountId);
+  if (!account) return null;
+  account = await backfillAccountSeTeam(accountId);
+
+  const teamLifecycles = await listActiveLifecyclesForAccount(accountId);
+  if (!(await canReadAccountEngagement(user, account, teamLifecycles))) {
+    const ownLc = await store.findActiveLifecycle(user.id, accountId);
+    if (!ownLc) return null;
+  }
+
+  const seTeamDisplay = await resolveSeTeamDisplay(account);
+  const memberIds = seTeamUserIds(account);
+  let lensOwnerId = options.lifecycleOwnerId || null;
+  if (!lensOwnerId) {
+    if (memberIds.includes(user.id)) lensOwnerId = user.id;
+    else lensOwnerId = account.primarySeUserId || teamLifecycles[0]?.ownerId || user.id;
+  }
+
+  let lensLifecycle =
+    teamLifecycles.find((l) => l.ownerId === lensOwnerId) ||
+    (await store.findActiveLifecycle(lensOwnerId, accountId));
+  if (!lensLifecycle && teamLifecycles.length) {
+    lensLifecycle = teamLifecycles[0];
+    lensOwnerId = lensLifecycle.ownerId;
+  }
+  if (!lensLifecycle) return null;
+
+  const lensDetail = await getLifecycleDetail(lensLifecycle.id);
+  if (!lensDetail) return null;
+
+  const userNameById = new Map(seTeamDisplay.map((m) => [m.seUserId, m.user.displayName]));
+
+  const mergedEvents = [];
+  for (const lc of teamLifecycles) {
+    const evs = await store.listLifecycleEvents(lc.id);
+    const ownerName = userNameById.get(lc.ownerId) || lc.ownerId;
+    for (const ev of evs) {
+      mergedEvents.push({
+        ...ev,
+        lifecycleOwnerId: lc.ownerId,
+        lifecycleOwnerName: ownerName,
+      });
+    }
+  }
+  mergedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
   const contacts = await store.listContactsByAccount(accountId);
   const contactEventsByContactId = await loadContactEventsForAccount(contacts, 10);
-  return { ...detail, contacts, contactEventsByContactId };
+
+  const canManageTeam = can(user, "manage_account_team", {
+    seTeamUserIds: memberIds,
+    accountOrgId: lensLifecycle.orgId || user.orgId,
+    teamId: user.teamId || undefined,
+  });
+
+  let assignableSeOptions = [];
+  if (canManageTeam && memberIds.length < MAX_SE_TEAM_SIZE) {
+    assignableSeOptions = await listAssignableSeOptions(user, memberIds);
+  }
+
+  return {
+    ...lensDetail,
+    account,
+    events: mergedEvents,
+    contacts,
+    contactEventsByContactId,
+    seTeamDisplay,
+    lifecycleOwnerId: lensOwnerId,
+    teamLifecycles,
+    canManageTeam,
+    assignableSeOptions,
+  };
+}
+
+/**
+ * Update deal team roster.
+ * @param {object} session
+ * @param {string} accountId
+ * @param {"add_secondary"|"remove"|"set_primary"|"transfer_primary"} action
+ * @param {{ seUserId?: string, targetSeUserId?: string }} payload
+ */
+export async function updateAccountSeTeam(session, accountId, action, payload = {}) {
+  const user = await sessionUser(session);
+  if (!user || !accountId) return { success: false, error: "Unauthorized" };
+
+  const store = getStore();
+  let account = await backfillAccountSeTeam(accountId);
+  if (!account) return { success: false, error: "Account not found" };
+
+  const memberIds = seTeamUserIds(account);
+  if (
+    !can(user, "manage_account_team", {
+      seTeamUserIds: memberIds,
+      accountOrgId: user.orgId,
+      teamId: user.teamId || undefined,
+    })
+  ) {
+    if (action === "add_secondary" && payload.seUserId === user.id) {
+      /* self-join allowed for SE */
+    } else {
+      return { success: false, error: "Not allowed" };
+    }
+  }
+
+  const ts = now();
+  let seTeam = [...(account.seTeam || [])];
+  const actorId = user.id;
+  const targetId = payload.seUserId || payload.targetSeUserId;
+
+  if (action === "add_secondary" || action === "transfer_primary") {
+    const addId = payload.seUserId || user.id;
+    if (seTeam.some((m) => m.seUserId === addId)) {
+      return { success: true, account };
+    }
+    if (seTeam.length >= MAX_SE_TEAM_SIZE) {
+      return { success: false, error: "Deal team is full (max 4 SEs)" };
+    }
+    seTeam.push({ seUserId: addId, role: "secondary", addedAt: ts, addedBy: actorId });
+    account = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
+
+    const targetUser = await store.getUser(addId);
+    const lc = await getOrCreateLifecycle(addId, accountId, targetUser?.teamId || user.teamId || "", {
+      title: account.name,
+      actorId,
+      orgId: targetUser?.orgId || user.orgId || null,
+    });
+    await logSeTeamEvent(lc.id, "se_added", actorId, {
+      seUserId: addId,
+      accountId,
+      role: "secondary",
+    });
+    return { success: true, account };
+  }
+
+  if (action === "remove") {
+    if (!targetId) return { success: false, error: "seUserId required" };
+    const member = seTeam.find((m) => m.seUserId === targetId);
+    if (!member) return { success: false, error: "Not on deal team" };
+    if (member.role === "primary" && user.role === "se") {
+      return { success: false, error: "Cannot remove primary SE" };
+    }
+    seTeam = seTeam.filter((m) => m.seUserId !== targetId);
+    let primarySeUserId = account.primarySeUserId;
+    if (targetId === primarySeUserId) {
+      primarySeUserId = seTeam.find((m) => m.role === "primary")?.seUserId || null;
+    }
+    account = await store.updateAccount(accountId, { seTeam, primarySeUserId, updatedAt: ts });
+
+    const lc = await store.findActiveLifecycle(targetId, accountId);
+    if (lc) {
+      await archiveLifecycle(lc.id, actorId, "se_removed");
+      await logSeTeamEvent(lc.id, "se_removed", actorId, { seUserId: targetId, accountId });
+    }
+    return { success: true, account };
+  }
+
+  if (action === "set_primary" || action === "transfer_primary") {
+    const newPrimaryId = payload.seUserId || payload.targetSeUserId;
+    if (!newPrimaryId) return { success: false, error: "seUserId required" };
+    if (!seTeam.some((m) => m.seUserId === newPrimaryId)) {
+      return { success: false, error: "SE not on deal team" };
+    }
+    const oldPrimaryId = account.primarySeUserId;
+    seTeam = seTeam.map((m) => {
+      if (m.seUserId === newPrimaryId) return { ...m, role: "primary" };
+      if (m.role === "primary") return { ...m, role: "secondary" };
+      return m;
+    });
+    account = await store.updateAccount(accountId, {
+      seTeam,
+      primarySeUserId: newPrimaryId,
+      updatedAt: ts,
+    });
+
+    const lc = await store.findActiveLifecycle(newPrimaryId, accountId);
+    if (lc) {
+      await logSeTeamEvent(lc.id, "primary_se_changed", actorId, {
+        fromSeUserId: oldPrimaryId,
+        toSeUserId: newPrimaryId,
+        accountId,
+      });
+    }
+    return { success: true, account };
+  }
+
+  return { success: false, error: "Unknown action" };
 }
 
 /** Find account by company name + domain. */
@@ -214,12 +540,13 @@ export async function loadCachedResearch(companyName, companyDomain, inputHash) 
 }
 
 /** Simple input hash matching worker (must stay in sync). */
-export function computePrepInputHash(companyName, companyDomain, emails) {
+export function computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprint = "") {
   const payload = {
     companyDomain: normalizeDomain(companyDomain),
     companyName: String(companyName || "").toLowerCase(),
     emails: [...emails].sort(),
     playbookVersion: "1",
+    linkedin: linkedinFingerprint || "",
   };
   let h = 0;
   const s = JSON.stringify(payload);

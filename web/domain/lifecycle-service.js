@@ -197,6 +197,110 @@ export async function attachTask(lifecycleId, task, actorId) {
   return saved;
 }
 
+/** List active lifecycles for one account (all SE spines). */
+export async function listActiveLifecyclesForAccount(accountId) {
+  const store = getStore();
+  if (!accountId || !store.listActiveLifecyclesForAccount) return [];
+  return store.listActiveLifecyclesForAccount(accountId);
+}
+
+/** Archive a lifecycle (e.g. when SE leaves deal team). */
+export async function archiveLifecycle(lifecycleId, actorId, reason) {
+  const store = getStore();
+  const lifecycle = await store.getLifecycle(lifecycleId);
+  if (!lifecycle || lifecycle.status === "archived") return lifecycle;
+
+  const ts = now();
+  await store.updateLifecycle(lifecycleId, { status: "archived", lastActivityAt: ts });
+  await store.addLifecycleEvent({
+    id: newId("event"),
+    lifecycleId,
+    type: "lifecycle_archived",
+    actorId: actorId || lifecycle.ownerId,
+    timestamp: ts,
+    payload: { reason: reason || "se_removed" },
+  });
+  return store.getLifecycle(lifecycleId);
+}
+
+/** Log SE roster change on the SE's lifecycle spine. */
+export async function logSeTeamEvent(lifecycleId, type, actorId, payload) {
+  const store = getStore();
+  const ts = now();
+  await store.addLifecycleEvent({
+    id: newId("event"),
+    lifecycleId,
+    type,
+    actorId,
+    timestamp: ts,
+    payload,
+  });
+}
+
+/**
+ * Lifecycles visible to the signed-in user (own / team / org scope).
+ * @param {object} session
+ */
+export async function listLifecyclesForSession(session) {
+  const store = getStore();
+  const ownerId = sessionUserId(session);
+  if (!ownerId) return [];
+
+  const { getVisibleScope, resolveOrgForUser, userWithDirectorFlag, getOrg } = await import(
+    "./org-service.js"
+  );
+  const user = await store.getUser(ownerId);
+  const org = user?.orgId ? await getOrg(user.orgId) : null;
+  const enriched = userWithDirectorFlag(user, org);
+  const scope = await getVisibleScope(enriched);
+
+  /** @type {import("./types.js").Lifecycle[]} */
+  let lifecycles = [];
+
+  if (scope.type === "own") {
+    lifecycles = await store.listLifecyclesByOwner(ownerId);
+    const accounts = store.listAccounts ? await store.listAccounts() : [];
+    const accountIdsOnTeam = new Set(
+      accounts
+        .filter((a) => (a.seTeam || []).some((m) => m.seUserId === ownerId))
+        .map((a) => a.id)
+    );
+    for (const accountId of accountIdsOnTeam) {
+      const lc = await store.findActiveLifecycle(ownerId, accountId);
+      if (lc) lifecycles.push(lc);
+    }
+  } else if (scope.type === "team") {
+    const seen = new Set();
+    for (const teamId of scope.teamIds) {
+      const teamLcs = await store.listLifecyclesByTeam(teamId);
+      for (const lc of teamLcs) {
+        if (!seen.has(lc.id)) {
+          seen.add(lc.id);
+          lifecycles.push(lc);
+        }
+      }
+    }
+  } else if (scope.type === "org" && scope.orgId) {
+    if (store.listLifecyclesByOrg) {
+      lifecycles = await store.listLifecyclesByOrg(scope.orgId);
+    }
+    if (!lifecycles.length && scope.teamIds.length) {
+      const seen = new Set();
+      for (const teamId of scope.teamIds) {
+        const teamLcs = await store.listLifecyclesByTeam(teamId);
+        for (const lc of teamLcs) {
+          if (!seen.has(lc.id)) {
+            seen.add(lc.id);
+            lifecycles.push(lc);
+          }
+        }
+      }
+    }
+  }
+
+  return lifecycles.filter((l) => l.status === "active");
+}
+
 /** List lifecycles for current user or team. */
 export async function listLifecyclesForUser(session) {
   const store = getStore();

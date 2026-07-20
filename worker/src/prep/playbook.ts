@@ -6,8 +6,12 @@ export interface PlaybookInput {
   emails: string[];
 }
 
-export function buildPlaybookQueries(input: PlaybookInput): string[] {
+export function buildPlaybookQueries(
+  input: PlaybookInput,
+  options?: { skipLinkedInForEmails?: Set<string> },
+): string[] {
   const { companyName, companyDomain, emails } = input;
+  const skip = options?.skipLinkedInForEmails;
   const queries = [
     `site:${companyDomain} (about OR company OR "who we are")`,
     `site:${companyDomain} (support OR help OR careers OR jobs)`,
@@ -16,6 +20,7 @@ export function buildPlaybookQueries(input: PlaybookInput): string[] {
   ];
 
   for (const email of emails) {
+    if (skip?.has(email.toLowerCase())) continue;
     const local = email.split("@")[0]?.replace(/[.+]/g, " ").trim();
     if (local) {
       queries.push(`"${local}" "${companyName}" site:linkedin.com/in`);

@@ -5,6 +5,8 @@ import {
   mergeFieldSlot,
   mergeAccountMeddpicc,
   mergeContactFromPrep,
+  mergeContactFromEnrichment,
+  meddpiccSignalsFromProspectInfluence,
   mergeContactFromPostCall,
   computeMeddpiccScore,
   meddpiccSignalsFromPrep,
@@ -87,6 +89,31 @@ const postMerge = mergeContactFromPostCall(
 await recordContactEvent(contactId, "linked_from_prep", "usr_test", { fields: ["disc"] });
 const events = await store.listContactEvents(contactId, 5);
 
+const enrichMerge = mergeContactFromEnrichment(
+  { id: contactId, metadata: {} },
+  {
+    email: "alex@test.co",
+    profile: {
+      name: "Alex Lee",
+      role: "VP Support",
+      totalExperience: "15 years",
+      priorEmployers: ["Globex"],
+      summary: "Support executive.",
+      skills: ["Ops"],
+      languages: [],
+      education: [],
+      competitorTouchpoints: [],
+    },
+    disc: { primary: "C", confidence: "low", evidence: ["Detail-oriented bio"], inferred: true, source: "linkedin_pdf" },
+    influence: { level: "high", decisionRole: "economic_buyer" },
+  }
+);
+
+const influenceSignals = meddpiccSignalsFromProspectInfluence(
+  { name: "Alex Lee", role: "VP", influence: { level: "high", decisionRole: "economic_buyer" } },
+  contactId
+);
+
 const prep = {
   likelyPains: ["High ticket volume", "Agent burnout"],
   meddpiccHints: {
@@ -110,6 +137,9 @@ const checks = [
   ["meddpicc score", computeMeddpiccScore(medMeta.meddpicc) > 0],
   ["prep influence merge", prepMerge.changes.includes("influence")],
   ["prep disc merge", prepMerge.changes.includes("disc")],
+  ["enrich research merge", enrichMerge.changes.includes("research")],
+  ["enrich disc merge", enrichMerge.changes.includes("disc")],
+  ["influence meddpicc hint", !!influenceSignals.economicBuyer?.value],
   ["postcall influence merge", postMerge.changes.includes("influence")],
   ["contact event recorded", events.length >= 1],
   ["apply prep updates account meddpicc", !!accountAfter.metadata?.meddpicc?.champion],

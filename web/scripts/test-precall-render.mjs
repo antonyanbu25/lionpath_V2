@@ -72,6 +72,14 @@ const sampleV8 = {
       priorEmployers: ["Globex", "Initech"],
       competitorTouchpoints: ["Zendesk admin"],
       sourceLabel: "S2",
+      summary: "Seasoned support leader with multi-site operations experience.",
+      skills: ["Leadership", "Zendesk"],
+      discHint: {
+        primary: "D",
+        confidence: "medium",
+        evidence: ["Led regional turnaround"],
+        inferred: true,
+      },
     },
     {
       name: "John Smith",
@@ -101,6 +109,15 @@ const sampleV8 = {
 const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
 
 const discovery = renderDiscoveryTab(sampleV8, false);
+const discoveryMulti = renderDiscoveryTab(
+  { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
+  false,
+);
+const discoveryMultiTab1 = renderDiscoveryTab(
+  { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
+  false,
+  { peopleProspectTab: "prospect-1" },
+);
 const demo = renderDemoTab(sampleV8, {}, "endurance-doors");
 const header = renderResultHeader(sampleV8, meta);
 
@@ -111,8 +128,14 @@ const checks = [
   ["header no prospect chip", !header.includes("prep-contact-chip")],
   ["discovery has Account facts", discovery.includes("Account facts")],
   ["discovery has Signals", discovery.includes("Signals")],
-  ["discovery has Prospect information", discovery.includes("Prospect information")],
-  ["discovery 3-column grid", discovery.includes("prep-grid-3")],
+  ["discovery people section", discovery.includes("People on this call") && discovery.includes("prep-people-section")],
+  ["discovery 2-column account grid", discovery.includes("prep-grid-2") && !discovery.includes("prep-grid-3")],
+  ["discovery DISC in hero before details", (() => {
+    const hero = discovery.indexOf("prep-prospect-hero");
+    const details = discovery.indexOf("prep-prospect-details");
+    const inferred = discovery.indexOf("Inferred from LinkedIn");
+    return hero >= 0 && inferred > hero && (details < 0 || inferred < details);
+  })()],
   ["discovery AI banner", discovery.includes("prep-ai-banner")],
   ["discovery ICP fitment", discovery.includes("ICP fitment")],
   ["discovery ICP collapsed details", discovery.includes("prep-icp-details")],
@@ -120,6 +143,10 @@ const checks = [
   ["discovery new AI signal label", discovery.includes("AI in their current tech stack")],
   ["discovery has source badges", discovery.includes("prep-src-badge")],
   ["discovery has Fit grid", discovery.includes("prep-fit-grid")],
+  ["discovery prospect DISC inferred label", discovery.includes("Inferred from LinkedIn")],
+  ["discovery prospect summary", discovery.includes("Seasoned support leader")],
+  ["discovery people tabs when 2 prospects", discoveryMulti.includes("prep-people-tabs")],
+  ["discovery people tab persists prospect-1", discoveryMultiTab1.includes('active-tab-name="prospect-1"')],
   ["discovery support JD full width", discovery.includes("prep-jd-full")],
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has script", demo.includes("Demo script")],

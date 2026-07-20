@@ -257,20 +257,37 @@
               <div class="prep-form-center">
                 <div class="prep-form-heading">
                   <h1>Prep for your next call</h1>
-                  <p class="muted">Drop in a company, its website domain, and prospect emails — we'll research the account and draft your discovery + demo brief.</p>
+                  <p class="muted">Enter the company and prospect emails — we'll infer the website when we can and draft your discovery + demo brief.</p>
                 </div>
                 <fw-card class="prep-form-card">
                   <form id="prep-form">
                     <div class="prep-form-grid">
-                      <fw-input id="companyName" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
-                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Official website domain — not bare company name" required clear-input></fw-input>
-                      <div class="prep-email-field">
+                      <fw-input id="companyName" class="prep-form-full" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
+                      <div class="prep-email-field prep-form-full">
                         <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Separate multiple emails with commas — we research each contact" required clear-input></fw-input>
                         <fw-tooltip content="Add everyone on the call, e.g. alex@acme.com, sam@acme.com. Each person appears in the Prospect information column.">
                           <span class="prep-email-tip muted">Multiple emails supported</span>
                         </fw-tooltip>
                         <span id="domain-hint" class="field-hint" hidden></span>
                       </div>
+                      <fw-input id="companyDomain" class="prep-form-full" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible — edit if the customer uses a different website" required clear-input></fw-input>
+                      <div class="prep-linkedin-upload prep-form-full">
+                        <span class="prep-linkedin-label">LinkedIn profiles (optional)</span>
+                        <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
+                        <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                        <div class="prep-linkedin-actions">
+                          <fw-button id="prep-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small">Add PDFs</fw-button>
+                          <span id="prep-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
+                        </div>
+                        <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
+                        <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
+                      </div>
+                      <details class="prep-enrich-advanced prep-form-full">
+                        <summary>Meeting links (optional · Zoom / Kaia)</summary>
+                        <fw-input id="meetingZoomUrl" label="Zoom recording URL" placeholder="https://…" clear-input></fw-input>
+                        <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
+                        <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="Future · not fetched yet"></fw-input>
+                      </details>
                     </div>
                     <fw-textarea
                       id="additionalContext"
@@ -279,10 +296,10 @@
                       rows="4"
                       placeholder="Paste AE notes or meeting type…"
                     ></fw-textarea>
-                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Research &amp; generate brief</fw-button>
+                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Generate brief</fw-button>
                   </form>
                 </fw-card>
-                <p class="prep-form-footnote">Signals pulled from website, LinkedIn, funding records &amp; traffic estimates.</p>
+                <p class="prep-form-footnote">Optional LinkedIn PDFs enrich prospect columns. Other signals from website, funding records &amp; traffic estimates.</p>
               </div>
             </div>
             <div id="prep-status" class="dew-status-host" hidden></div>
@@ -310,21 +327,6 @@
               </fw-tabs>
             </div>
             <div id="prep-source-popover" hidden></div>
-            <fw-modal id="prep-confirm-modal" title-text="Confirm company" submit-color="primary" submit-text="Start research" is-open="false">
-              <div slot="content">
-                <p id="prep-confirm-text" class="muted"></p>
-                <p class="muted" style="margin-top:8px;font-size:13px">We will research this domain and cache results for 30 days.</p>
-              </div>
-            </fw-modal>
-            <fw-modal id="prep-facts-modal" title-text="Review research facts" submit-color="primary" submit-text="Generate brief" is-open="false">
-              <div slot="content">
-                <p id="prep-facts-intro" class="muted"></p>
-                <p id="prep-facts-error" class="field-hint warn" hidden></p>
-                <div id="prep-facts-list" class="prep-facts-list"></div>
-                <p id="prep-facts-empty" class="muted" hidden>No facts extracted — adjust inputs and try again.</p>
-                <p class="prep-facts-dispute-hint muted">Something wrong? Use <strong>Report</strong> on any row to flag it for review.</p>
-              </div>
-            </fw-modal>
           </section>
 
           <!-- Post-call -->

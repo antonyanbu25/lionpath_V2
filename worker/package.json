@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy",
     "start:node": "tsx src/node-server.ts",
     "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/test-gemini-prep-schema.ts && tsx scripts/test-prospect-emails.ts && tsx scripts/test-linkedin-pdf-match.ts && tsx scripts/test-contact-enrich-match.ts && tsx scripts/test-contact-enrich-schema.ts",
     "seed:firestore": "node scripts/seed-firestore-users.mjs",
     "migrate:user-ids": "node scripts/migrate-user-ids.mjs",
     "test:firebase-auth": "node scripts/test-firebase-auth.mjs",

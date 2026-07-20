@@ -4,7 +4,6 @@
 const GEMINI_RESPONSE_SCHEMA_KEYS = new Set([
   "type",
   "format",
-  "description",
   "nullable",
   "enum",
   "maxItems",
@@ -23,6 +22,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Recursively remove JSON Schema keywords unsupported by Gemini responseSchema. */
 export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const requiredList = Array.isArray(schema.required) ? (schema.required as string[]) : [];
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(schema)) {
@@ -31,9 +31,11 @@ export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<
     if (key === "properties" && isPlainObject(value)) {
       const props: Record<string, unknown> = {};
       for (const [propName, propSchema] of Object.entries(value)) {
-        props[propName] = isPlainObject(propSchema)
-          ? toGeminiResponseSchema(propSchema)
-          : propSchema;
+        let child = isPlainObject(propSchema) ? toGeminiResponseSchema(propSchema) : propSchema;
+        if (isPlainObject(child) && !requiredList.includes(propName)) {
+          child = { ...child, nullable: true };
+        }
+        props[propName] = child;
       }
       out[key] = props;
       continue;
@@ -50,8 +52,19 @@ export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<
       continue;
     }
 
+    if (key === "maxItems" && typeof value === "number" && value < 1) {
+      continue;
+    }
+
     out[key] = value;
   }
 
   return out;
+}
+
+/** Prep schema trimmed for Gemini responseSchema (strip unsupported JSON Schema keywords only). */
+export function buildPrepSchemaForGemini(
+  prepSchema: Record<string, unknown>,
+): Record<string, unknown> {
+  return toGeminiResponseSchema(structuredClone(prepSchema) as Record<string, unknown>);
 }

@@ -6,14 +6,16 @@ export { newId, stableUserIdForEmail, dummyUidForEmail, normalizeLegacyUserId, I
  * @typedef {{ id: string, email: string, authUid: string|null, displayName: string, role: UserRole, teamId: string|null, orgId: string|null, managerId: string|null, jobTitle: string|null, status: UserStatus, avatarDataUrl?: string|null, createdAt: number, updatedAt: number }} User
  * @typedef {{ id: string, name: string, orgId: string|null, managerId: string, memberIds: string[], createdAt: number, updatedAt: number }} Team
  * @typedef {{ id: string, name: string, directorId: string, seniorLeaderIds: string[], teamIds: string[], createdAt: number, updatedAt: number }} Org
- * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, metadata?: object, createdAt: number, updatedAt: number }} Account
+ * @typedef {"primary"|"secondary"} SeTeamRole
+ * @typedef {{ seUserId: string, role: SeTeamRole, addedAt: number, addedBy?: string }} AccountSeTeamMember
+ * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, createdAt: number, updatedAt: number }} Account
  * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
  * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
  * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
  * @typedef {"active"|"paused"|"archived"} LifecycleStatus
  * @typedef {{ id: string, ownerId: string, teamId: string, orgId: string, accountId: string, primaryContactId: string|null, stage: LifecycleStage, status: LifecycleStatus, title: string, createdAt: number, updatedAt: number, lastActivityAt: number, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore: number|null }} Lifecycle
- * @typedef {"lifecycle_created"|"stage_changed"|"prep_generated"|"postcall_analyzed"|"task_created"|"task_completed"|"contact_updated"|"lifecycle_archived"|"artifact_imported"} LifecycleEventType
+ * @typedef {"lifecycle_created"|"stage_changed"|"prep_generated"|"postcall_analyzed"|"task_created"|"task_completed"|"contact_updated"|"lifecycle_archived"|"artifact_imported"|"se_added"|"se_removed"|"primary_se_changed"} LifecycleEventType
  * @typedef {{ id: string, lifecycleId: string, type: LifecycleEventType, actorId: string, timestamp: number, payload: object }} LifecycleEvent
  * @typedef {{ id: string, lifecycleId: string, ownerId: string, teamId: string, orgId: string, accountId: string, input: object, prep: object, meta: { company: string, domain?: string, additionalContext?: string }, createdAt: number }} PrepBrief
  * @typedef {{ id: string, lifecycleId: string, ownerId: string, teamId: string, orgId: string, accountId: string, zoomLink?: string, title?: string, callIdentityKey: string, analysis: object, transcriptMeta?: unknown, qualityScore?: number|null, createdAt: number, updatedAt: number }} PostCallDoc
@@ -55,7 +57,13 @@ export const EVENT_LABELS = {
   contact_updated: "Contact updated",
   lifecycle_archived: "Lifecycle archived",
   artifact_imported: "Artifact imported",
+  se_added: "SE added to deal team",
+  se_removed: "SE removed from deal team",
+  primary_se_changed: "Primary SE changed",
 };
+
+/** Max SEs on an account deal team (1 primary + up to 3 secondary). */
+export const MAX_SE_TEAM_SIZE = 4;
 
 /** @type {Record<ContactEventType, string>} */
 export const CONTACT_EVENT_LABELS = {
@@ -103,7 +111,7 @@ export function isManagerRole(role) {
   return role === "manager" || role === "admin";
 }
 
-/** @param {User|null} user @param {string} action @param {{ ownerId?: string, teamId?: string, orgId?: string }} [resource] */
+/** @param {User|null} user @param {string} action @param {{ ownerId?: string, teamId?: string, orgId?: string, seTeamUserIds?: string[], accountOrgId?: string|null }} [resource] */
 export function can(user, action, resource = {}) {
   if (!user) return false;
   if (user.role === "admin") return true;
@@ -111,18 +119,33 @@ export function can(user, action, resource = {}) {
   const isOwner = resource.ownerId && user.id === resource.ownerId;
   const sameTeam = user.teamId && user.teamId === resource.teamId;
   const sameOrg = user.orgId && resource.orgId && user.orgId === resource.orgId;
+  const accountSameOrg =
+    user.orgId && resource.accountOrgId && user.orgId === resource.accountOrgId;
   const isManager = user.role === "manager";
   const isOrgDirector = user.isOrgDirector === true;
+  const seTeamIds = resource.seTeamUserIds || [];
+  const onSeTeam = seTeamIds.includes(user.id);
 
   switch (action) {
     case "read":
       if (isOwner) return true;
-      if (isManager && isOrgDirector && sameOrg) return true;
+      if (onSeTeam) return true;
+      if (isManager && isOrgDirector && (sameOrg || accountSameOrg)) return true;
       if (isManager && sameTeam) return true;
+      return false;
+    case "read_account":
+      if (onSeTeam) return true;
+      if (isOwner) return true;
+      if (isManager && isOrgDirector && accountSameOrg) return true;
+      if (isManager && seTeamIds.length) return true;
+      return false;
+    case "manage_account_team":
+      if (isManager && isOrgDirector && accountSameOrg) return true;
+      if (isManager && user.teamId && seTeamIds.length) return true;
       return false;
     case "create":
     case "update":
-      return user.role === "se" && isOwner;
+      return user.role === "se" && (isOwner || onSeTeam);
     case "delete":
       return user.role === "admin";
     case "manage_team":
