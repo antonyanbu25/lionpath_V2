@@ -29,6 +29,7 @@ import {
   type Task,
 } from "./tasks";
 import { appendFeedback, feedbackStorageAvailable, loadGlobalFeedback, loadFeedback, normalizeFeedbackCategory, type FeedbackEntry } from "./feedback";
+import { effectiveGeminiModel } from "./providers/gemini";
 
 interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_ORIGINS?: string;
@@ -173,12 +174,25 @@ export default {
       }
 
       if (request.method === "GET" && path === "/api/config") {
+        const prepProvider = env.LLM_PROVIDER || "gemini";
+        const postcallProvider = env.POSTCALL_LLM_PROVIDER || prepProvider || "gemini";
+        const prepModel = env.MODEL || "gemini-2.5-flash";
+        const postcallModel = env.POSTCALL_MODEL || "gemini-2.5-flash";
         return json(
           {
-            prep: { provider: env.LLM_PROVIDER || "gemini", model: env.MODEL || "gemini-2.5-flash" },
+            prep: {
+              provider: prepProvider,
+              model: prepModel,
+              effectiveModel:
+                prepProvider === "gemini" ? effectiveGeminiModel(env) : prepModel,
+            },
             postcall: {
-              provider: env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini",
-              model: env.POSTCALL_MODEL || "gemini-2.5-flash",
+              provider: postcallProvider,
+              model: postcallModel,
+              effectiveModel:
+                postcallProvider === "gemini"
+                  ? effectiveGeminiModel(env, env.POSTCALL_MODEL)
+                  : postcallModel,
             },
             zoom: { configured: zoomConfigured(env) },
             keys: {

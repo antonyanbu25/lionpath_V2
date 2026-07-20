@@ -4,6 +4,8 @@ import { toGeminiResponseSchema } from "../gemini-schema";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
+/** Stable model for AI Studio keys — gemini-3.x preview ids 400 on generativelanguage.googleapis.com. */
+const AI_STUDIO_STABLE_MODEL = DEFAULT_MODEL;
 
 interface GeminiPart {
   text?: string;
@@ -53,10 +55,63 @@ function isGemini3Model(model: string): boolean {
   return /^gemini-3/i.test(model);
 }
 
-function buildGenerationConfig(req: LlmRequest, model: string): Record<string, unknown> {
+/**
+ * AI Studio (GEMINI_API_KEY) does not accept gemini-3.x preview model ids — they 400.
+ * Vertex keeps the configured id. Returns the model actually sent to the API.
+ */
+export function normalizeGeminiModel(
+  model: string,
+  backend: GeminiBackend,
+): { model: string; remappedFrom?: string } {
+  const trimmed = (model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+
+  if (backend.mode === "vertex") {
+    return { model: trimmed };
+  }
+
+  if (isGemini3Model(trimmed)) {
+    return { model: AI_STUDIO_STABLE_MODEL, remappedFrom: trimmed };
+  }
+
+  return { model: trimmed };
+}
+
+function shouldDisableThinking(req: LlmRequest): boolean {
+  return (
+    req.thinkingBudget === 0 ||
+    !!req.jsonSchema ||
+    (!req.research && req.effort === "low")
+  );
+}
+
+function buildThinkingConfig(
+  req: LlmRequest,
+  model: string,
+  backend: GeminiBackend,
+): Record<string, unknown> | undefined {
+  if (!shouldDisableThinking(req)) return undefined;
+
+  // AI Studio stable models (2.x) use thinkingBudget; never send thinkingLevel there.
+  if (backend.mode === "aistudio") {
+    return { thinkingBudget: 0 };
+  }
+
+  // Vertex gemini-3.x rejects thinkingBudget — use thinkingLevel instead.
+  if (isGemini3Model(model)) {
+    return { thinkingLevel: "minimal" };
+  }
+
+  return { thinkingBudget: 0 };
+}
+
+function buildGenerationConfig(
+  req: LlmRequest,
+  model: string,
+  backend: GeminiBackend,
+): Record<string, unknown> {
   const generationConfig: Record<string, unknown> = {
     maxOutputTokens: req.maxTokens,
-    temperature: req.research ? 0.4 : 0.2,
+    temperature: req.temperature ?? (req.research ? 0.4 : 0.2),
   };
 
   if (req.jsonSchema) {
@@ -64,24 +119,26 @@ function buildGenerationConfig(req: LlmRequest, model: string): Record<string, u
     generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);
   }
 
-  // Disable thinking for post-call speed on long transcripts, or when structured JSON is requested.
-  if (req.thinkingBudget === 0 || req.jsonSchema || (!req.research && req.effort === "low")) {
-    // Gemini 3.x rejects thinkingBudget — use thinkingLevel instead (AI Studio + Vertex).
-    generationConfig.thinkingConfig = isGemini3Model(model)
-      ? { thinkingLevel: "minimal" }
-      : { thinkingBudget: 0 };
+  const thinkingConfig = buildThinkingConfig(req, model, backend);
+  if (thinkingConfig) {
+    generationConfig.thinkingConfig = thinkingConfig;
   }
 
   return generationConfig;
 }
 
-function buildRequestBody(req: LlmRequest, model: string): Record<string, unknown> {
+function buildRequestBody(
+  req: LlmRequest,
+  model: string,
+  backend: GeminiBackend,
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: req.system }] },
     contents: [{ role: "user", parts: [{ text: req.user }] }],
-    generationConfig: buildGenerationConfig(req, model),
+    generationConfig: buildGenerationConfig(req, model, backend),
   };
 
+  // google_search grounding — supported on gemini-2.5-flash+ with AI Studio keys.
   if (req.research) {
     body.tools = [{ google_search: {} }];
   }
@@ -109,6 +166,35 @@ function parseGeminiResponse(data: GeminiResponse): LlmResult {
   return { text };
 }
 
+function geminiApiErrorMessage(
+  status: number,
+  errBody: string,
+  backend: GeminiBackend,
+  requestedModel: string,
+  effectiveModel: string,
+): string {
+  const base = `Gemini API ${status}: ${errBody.slice(0, 500)}`;
+  const hints: string[] = [];
+
+  if (status === 400 && backend.mode === "aistudio") {
+    if (requestedModel !== effectiveModel) {
+      hints.push(
+        `MODEL=${requestedModel} is not valid on AI Studio; remapped to ${effectiveModel} — update deploy/vps/.env.`,
+      );
+    } else if (isGemini3Model(requestedModel)) {
+      hints.push(
+        `MODEL=${requestedModel} requires Vertex AI. Set MODEL=gemini-2.5-flash for GEMINI_API_KEY.`,
+      );
+    } else if (/INVALID_ARGUMENT/i.test(errBody)) {
+      hints.push(
+        "Check MODEL in deploy/vps/.env (use gemini-2.5-flash) and restart: docker compose up -d --build worker.",
+      );
+    }
+  }
+
+  return hints.length ? `${base} ${hints.join(" ")}` : base;
+}
+
 async function getVertexAccessToken(): Promise<string> {
   if (typeof process === "undefined" || !process.versions?.node) {
     throw new Error(
@@ -126,17 +212,23 @@ async function getVertexAccessToken(): Promise<string> {
   return tokenResponse.token;
 }
 
-async function generateViaAiStudio(apiKey: string, model: string, req: LlmRequest): Promise<LlmResult> {
+async function generateViaAiStudio(
+  apiKey: string,
+  model: string,
+  req: LlmRequest,
+  backend: GeminiBackend,
+  requestedModel: string,
+): Promise<LlmResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(buildRequestBody(req, model)),
+    body: JSON.stringify(buildRequestBody(req, model, backend)),
   });
   if (!res.ok) {
     const errBody = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${errBody.slice(0, 500)}`);
+    throw new Error(geminiApiErrorMessage(res.status, errBody, backend, requestedModel, model));
   }
 
   return parseGeminiResponse((await res.json()) as GeminiResponse);
@@ -147,6 +239,7 @@ async function generateViaVertex(
   location: string,
   model: string,
   req: LlmRequest,
+  backend: GeminiBackend,
 ): Promise<LlmResult> {
   const token = await getVertexAccessToken();
   const url =
@@ -159,7 +252,7 @@ async function generateViaVertex(
       "content-type": "application/json",
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(buildRequestBody(req, model)),
+    body: JSON.stringify(buildRequestBody(req, model, backend)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -170,17 +263,36 @@ async function generateViaVertex(
 }
 
 export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmProvider {
-  const model = modelOverride || env.MODEL || DEFAULT_MODEL;
+  const requestedModel = modelOverride || env.MODEL || DEFAULT_MODEL;
   const backend = resolveGeminiBackend(env);
+  const { model, remappedFrom } = normalizeGeminiModel(requestedModel, backend);
+
+  if (remappedFrom) {
+    console.warn(
+      `[gemini] MODEL=${remappedFrom} is not supported on AI Studio; using ${model}. ` +
+        "Update deploy/vps/.env MODEL and POSTCALL_MODEL to gemini-2.5-flash.",
+    );
+  }
 
   return {
     async generate(req: LlmRequest): Promise<LlmResult> {
       if (backend.mode === "aistudio") {
-        return generateViaAiStudio(backend.apiKey, model, req);
+        return generateViaAiStudio(backend.apiKey, model, req, backend, requestedModel);
       }
-      return generateViaVertex(backend.project, backend.location, model, req);
+      return generateViaVertex(backend.project, backend.location, model, req, backend);
     },
   };
+}
+
+/** Model id actually sent to the Gemini API after AI Studio remapping. */
+export function effectiveGeminiModel(env: ProviderEnv, modelOverride?: string): string {
+  const requested = modelOverride || env.MODEL || DEFAULT_MODEL;
+  try {
+    const backend = resolveGeminiBackend(env);
+    return normalizeGeminiModel(requested, backend).model;
+  } catch {
+    return requested;
+  }
 }
 
 /** True when Vertex AI (GCP ADC) is active instead of AI Studio API key. */
