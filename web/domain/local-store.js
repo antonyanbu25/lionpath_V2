@@ -43,8 +43,17 @@ function findMany(collection, predicate, sortFn) {
 }
 
 export function createLocalStore() {
+  const readCacheConfig = { enabled: true };
+
   return {
     mode: "local",
+
+    get readCacheEnabled() {
+      return readCacheConfig.enabled;
+    },
+    set readCacheEnabled(enabled) {
+      readCacheConfig.enabled = !!enabled;
+    },
 
     async getUser(id) {
       return findById("users", id);

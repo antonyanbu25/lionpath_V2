@@ -13,20 +13,73 @@ export function createFirestoreStore(fb) {
     query, where, orderBy, limit,
   } = fb;
 
-  async function getById(col, id) {
+  const READ_CACHE_TTL_MS = 30_000;
+  const READ_CACHE_COLS = new Set(["users", "teams", "orgs", "accounts"]);
+  const readCache = new Map();
+  const readCacheConfig = { enabled: true };
+
+  function readCacheKey(col, id) {
+    return `${col}:${id}`;
+  }
+
+  function peekReadCache(col, id) {
+    if (!readCacheConfig.enabled || !READ_CACHE_COLS.has(col)) return { hit: false };
+    const entry = readCache.get(readCacheKey(col, id));
+    if (!entry) return { hit: false };
+    if (Date.now() > entry.expiresAt) {
+      readCache.delete(readCacheKey(col, id));
+      return { hit: false };
+    }
+    return { hit: true, value: entry.value };
+  }
+
+  function storeReadCache(col, id, value) {
+    if (!readCacheConfig.enabled || !READ_CACHE_COLS.has(col)) return;
+    readCache.set(readCacheKey(col, id), {
+      value,
+      expiresAt: Date.now() + READ_CACHE_TTL_MS,
+    });
+  }
+
+  function invalidateReadCache(col, id) {
+    readCache.delete(readCacheKey(col, id));
+  }
+
+  async function fetchById(col, id) {
     const snap = await getDoc(doc(db, col, id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 
-  return {
+  async function getCachedById(col, id) {
+    const cached = peekReadCache(col, id);
+    if (cached.hit) return cached.value;
+    const result = await fetchById(col, id);
+    storeReadCache(col, id, result);
+    return result;
+  }
+
+  async function getById(col, id) {
+    return fetchById(col, id);
+  }
+
+  const storeApi = {
     mode: "firestore",
 
+    get readCacheEnabled() {
+      return readCacheConfig.enabled;
+    },
+    set readCacheEnabled(enabled) {
+      readCacheConfig.enabled = !!enabled;
+      if (!readCacheConfig.enabled) readCache.clear();
+    },
+
     async getUser(id) {
-      return getById("users", id);
+      return getCachedById("users", id);
     },
 
     async upsertUser(user) {
       await setDoc(doc(db, "users", user.id), user, { merge: true });
+      invalidateReadCache("users", user.id);
       return user;
     },
 
@@ -53,20 +106,22 @@ export function createFirestoreStore(fb) {
     },
 
     async getTeam(id) {
-      return getById("teams", id);
+      return getCachedById("teams", id);
     },
 
     async upsertTeam(team) {
       await setDoc(doc(db, "teams", team.id), team, { merge: true });
+      invalidateReadCache("teams", team.id);
       return team;
     },
 
     async getOrg(id) {
-      return getById("orgs", id);
+      return getCachedById("orgs", id);
     },
 
     async upsertOrg(org) {
       await setDoc(doc(db, "orgs", org.id), org, { merge: true });
+      invalidateReadCache("orgs", org.id);
       return org;
     },
 
@@ -102,16 +157,18 @@ export function createFirestoreStore(fb) {
       const ref = account.id ? doc(db, "accounts", account.id) : doc(collection(db, "accounts"));
       const data = { ...account, id: ref.id };
       await setDoc(ref, data);
+      invalidateReadCache("accounts", data.id);
       return data;
     },
 
     async updateAccount(id, patch) {
       await updateDoc(doc(db, "accounts", id), { ...patch, updatedAt: now() });
-      return getById("accounts", id);
+      invalidateReadCache("accounts", id);
+      return getCachedById("accounts", id);
     },
 
     async getAccount(id) {
-      return getById("accounts", id);
+      return getCachedById("accounts", id);
     },
 
     async findContactByAccountEmail(accountId, email) {
@@ -342,4 +399,6 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
   };
+
+  return storeApi;
 }
