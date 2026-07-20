@@ -1,9 +1,10 @@
 # Lionpath — SE Singha Paathai
 
-**One portal for Freshworks Solution Engineers:** research a prospect **before** the call, then debrief **after** the call — summaries, next steps, and coaching in a single dashboard.
+**One portal for Freshworks Solution Engineers:** research a prospect **before** the call, debrief **after** the call, and track **accounts, contacts, and deal progress** in one place.
 
 | | |
 |---|---|
+| **Branch** | **`2.0.2`** — accounts CRM UI, contact frameworks, MEDDPICC, org hierarchy ([tree/2.0.2](https://github.com/skut264/lionpath/tree/2.0.2)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
 | **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
 | **Repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
@@ -22,9 +23,26 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
+**Branch `2.0.2` adds an account-centric layer:** each company is a CRM-style record with lifecycle stage, contacts (DISC / influence), MEDDPICC qualification, activity, and linked preps / post-calls / tasks.
+
 ---
 
-## Key features (current release)
+## Key features (branch `2.0.2`)
+
+### Accounts — CRM-style detail (Crayons UI)
+
+- **Accounts list** — filter by company, domain, contact, or stage; open any account for full context
+- **Lifecycle pipeline** — open stages (Research → Business case) as a stepper; terminal outcomes (Closed won / lost / Nurture) as separate actions (replaces stage dropdown)
+- **Contacts** — `fw-card` + accordion per person; primary contact expanded by default; DISC and influence shown with designed empty states (**Not assessed**) when prep/post-call has not run yet
+- **MEDDPICC scorecard** — completion %, field grid with **Not captured** / **Partial** / **Confirmed** tags; populated incrementally from prep and post-call merges
+- **Activity & artifacts** — timeline with event icons; preps, post-calls, and tasks in tabs
+
+Domain data lives under `web/domain/` (`account-service`, `contact-service`, `lifecycle-service`). See **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** and **[docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md)**.
+
+### Org hierarchy & access (Freshworks seed)
+
+- Director → senior leaders → squad managers → ICs; scoped visibility for artifacts and coaching views
+- Profile settings (display name, avatar), user menu, theme — see **[docs/RBAC.md](./docs/RBAC.md)** and **[docs/adr/002-org-hierarchy.md](./docs/adr/002-org-hierarchy.md)**
 
 ### Pre-call — v3 one-pager
 
@@ -106,7 +124,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Layer | Role |
 |-------|------|
-| **`web/`** | Static portal — pre-call, post-call, dashboard, history, dark mode |
+| **`web/`** | Static portal — pre-call, post-call, dashboard, **accounts**, history, profile, Crayons (Freshworks Dew) |
 | **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/history`, Zoom transcript fetch |
 | **VPS (production)** | Docker Compose + Caddy HTTPS — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** |
 | **LLM** | Gemini 3.1 Flash Lite (default) — web search for pre-call; structured JSON for post-call |
@@ -119,14 +137,13 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Area | What changed |
 |------|--------------|
-| **Pre-call v3** | New one-pager format — comparison table, bullet sections, SE playbook grid, collapsible sources |
-| **Post-call redesign** | Results now mirror pre-call layout — comparison hero, playbook grid, Quality Coach section |
-| **UI/UX** | Full visual refresh — teal/blue palette, fluid dashboard, dark mode toggle |
-| **Lion splash** | 5s branded animation + roar on first portal visit |
-| **Prep accuracy** | Company name prioritized over email domain; typo detection and validation hints in the form |
-| **Post-call backend** | Gemini analysis, Quality Coach scorecard, Zoom link flow, server-side history on VPS |
-| **Production deploy** | Live on VPS at `lionpath.benjaminsquare.com` + `lionpathapi.benjaminsquare.com` |
-| **Team workflow** | Feature branches → PR to `main` → deploy from `main` |
+| **`2.0.2` — Accounts CRM** | Lifecycle pipeline stepper, Crayons cards/accordions/tags, MEDDPICC scorecard, two-column detail layout |
+| **`2.0.2` — Contact intelligence** | DISC + influence on contacts; MEDDPICC on accounts; merge from prep/post-call; contact events |
+| **`2.0.2` — Org** | Freshworks org seed, hierarchy scopes, profile UX, expanded `npm test` in `web/` |
+| **Pre-call v3** | Comparison table, bullet sections, SE playbook grid, collapsible sources |
+| **Post-call redesign** | Mirror pre-call layout — Quality Coach, playbook grid |
+| **UI/UX** | Dew/Crayons theme, dark mode, responsive dashboard |
+| **Production deploy** | VPS at `lionpath.benjaminsquare.com` + `lionpathapi.benjaminsquare.com` |
 
 ---
 
@@ -157,13 +174,16 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 **Two terminals on your machine:**
 
 1. **Install Node.js** — LTS from [nodejs.org](https://nodejs.org/)
-2. **Clone:** `git clone https://github.com/skut264/lionpath.git` → `cd lionpath`
+2. **Clone (this release):** `git clone -b 2.0.2 https://github.com/skut264/lionpath.git` → `cd lionpath`
 3. **API key:** `cd worker`, copy `.dev.vars.example` to `.dev.vars`, add **GEMINI_API_KEY** from [Google AI Studio](https://aistudio.google.com/apikey). Never commit `.dev.vars`.
 4. **Terminal A (API):** `cd worker && npm install && npm run dev` → **http://localhost:8787**
 5. **Terminal B (UI):** `cd web && npx wrangler pages dev .` → **http://localhost:8788**
 6. **Open** **http://localhost:8788** — log in with `se@freshworks.com` / `se123`
+7. **Tests (web):** `cd web && npm test` — account view, contacts/MEDDPICC, org hierarchy, prep disputes, profile
 
 Set `WORKER_BASE_URL` in `web/firebase-config.js` to `http://localhost:8787` for local dev.
+
+**Push to `2.0.2`:** use SSH remote `git@github.com:skut264/lionpath.git`. If the remote branch already has unrelated history, use `git push lionpath 2.0.2 --force-with-lease` only when you intend to replace that branch tip.
 
 | Terminal | Command | URL |
 |----------|---------|-----|
@@ -188,6 +208,9 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [web/about.html](./web/about.html) | Boss / SEs — what the portal does (browser-friendly) |
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
 | [docs/SHARE_WITH_TEAM.md](./docs/SHARE_WITH_TEAM.md) | SEs & managers — team share pack |
+| [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md) | Developers — domain entities (Account, Contact, Lifecycle, …) |
+| [docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md) | Developers — how entities link |
+| [docs/RBAC.md](./docs/RBAC.md) | Developers — roles and visibility |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers — local setup, tunnel sharing, onboarding |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
 | [deploy/vps/SECURITY.md](./deploy/vps/SECURITY.md) | IT / admin — secrets, SSH, file permissions |
