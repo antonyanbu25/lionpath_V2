@@ -4,7 +4,8 @@
 
 | | |
 |---|---|
-| **Branch** | **`2.0.2`** — accounts CRM UI, contact frameworks, MEDDPICC, org hierarchy ([tree/2.0.2](https://github.com/skut264/lionpath/tree/2.0.2)) |
+| **Current branch** | **`2.0.3`** — contact enrichment, discovery UX, accounts/sidebar polish, activity feed ([tree/2.0.3](https://github.com/skut264/lionpath/tree/2.0.3)) |
+| **Previous release** | **`2.0.2`** — accounts CRM, MEDDPICC, org hierarchy ([tree/2.0.2](https://github.com/skut264/lionpath/tree/2.0.2)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
 | **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
 | **Repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
@@ -23,21 +24,32 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
-**Branch `2.0.2` adds an account-centric layer:** each company is a CRM-style record with lifecycle stage, contacts (DISC / influence), MEDDPICC qualification, activity, and linked preps / post-calls / tasks.
+**Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish.
 
 ---
 
-## Key features (branch `2.0.2`)
+## Key features (branch `2.0.3`)
 
 ### Accounts — CRM-style detail (Crayons UI)
 
 - **Accounts list** — filter by company, domain, contact, or stage; open any account for full context
 - **Lifecycle pipeline** — open stages (Research → Business case) as a stepper; terminal outcomes (Closed won / lost / Nurture) as separate actions (replaces stage dropdown)
-- **Contacts** — `fw-card` + accordion per person; primary contact expanded by default; DISC and influence shown with designed empty states (**Not assessed**) when prep/post-call has not run yet
-- **MEDDPICC scorecard** — completion %, field grid with **Not captured** / **Partial** / **Confirmed** tags; populated incrementally from prep and post-call merges
-- **Activity & artifacts** — timeline with event icons; preps, post-calls, and tasks in tabs
+- **Contacts** — `fw-card` + accordion per person; primary contact expanded by default; DISC and influence tags when assessed (no noisy “not assessed” chips in headers)
+- **MEDDPICC scorecard** — completion %, clamped field values with hover for full text; **Not captured** / **Partial** / **Confirmed** tags
+- **Activity** — merged team timeline grouped **by calendar day**; each event shown individually (no merging); **10 most recent** activities plus **Show all activities**; compact rows with actor-only meta under day headers
+- **Artifacts** — preps deduped by day + company in the list; post-calls and tasks in tabs
+- **Sidebar** — Discovery briefs deduped by company domain/slug (one row per account)
 
 Domain data lives under `web/domain/` (`account-service`, `contact-service`, `lifecycle-service`). See **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** and **[docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md)**.
+
+### Contact enrichment (prep + worker)
+
+- **`POST /api/contact/enrich`** — per-contact research profile, inferred DISC, merge into prep and account contacts
+- Prep UI injects enrichment progress; see **[docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md)**
+
+### Discovery prep layout (`2.0.3`)
+
+- Two-row **Account facts** + **Signals**; full-width **People on this call** with hero DISC and prospect tabs when multiple emails
 
 ### Org hierarchy & access (Freshworks seed)
 
@@ -125,7 +137,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 | Layer | Role |
 |-------|------|
 | **`web/`** | Static portal — pre-call, post-call, dashboard, **accounts**, history, profile, Crayons (Freshworks Dew) |
-| **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/history`, Zoom transcript fetch |
+| **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/contact/enrich`, `/api/history`, Zoom transcript fetch |
 | **VPS (production)** | Docker Compose + Caddy HTTPS — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** |
 | **LLM** | Gemini 3.1 Flash Lite (default) — web search for pre-call; structured JSON for post-call |
 
@@ -137,6 +149,10 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Area | What changed |
 |------|--------------|
+| **`2.0.3` — Contact enrichment** | Worker enrich API, prep merge, DISC/influence on contacts; docs in `CONTACT_ENRICHMENT.md` |
+| **`2.0.3` — Discovery UX** | Account facts + signals grid, people hero/tabs, nested tab fix for multi-prospect preps |
+| **`2.0.3` — Accounts & sidebar** | Accordion layout, MEDDPICC readability, deal team grid, sidebar brief dedupe by domain |
+| **`2.0.3` — Activity feed** | Day sections, show 10 then **Show all** (no event merging) |
 | **`2.0.2` — Accounts CRM** | Lifecycle pipeline stepper, Crayons cards/accordions/tags, MEDDPICC scorecard, two-column detail layout |
 | **`2.0.2` — Contact intelligence** | DISC + influence on contacts; MEDDPICC on accounts; merge from prep/post-call; contact events |
 | **`2.0.2` — Org** | Freshworks org seed, hierarchy scopes, profile UX, expanded `npm test` in `web/` |
@@ -174,7 +190,8 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 **Two terminals on your machine:**
 
 1. **Install Node.js** — LTS from [nodejs.org](https://nodejs.org/)
-2. **Clone (this release):** `git clone -b 2.0.2 https://github.com/skut264/lionpath.git` → `cd lionpath`
+2. **Clone:** `git clone https://github.com/skut264/lionpath.git` → `cd lionpath`
+3. **Checkout release branch:** `git checkout 2.0.3` (or `2.0.2` for the prior stable tree)
 3. **API key:** `cd worker`, copy `.dev.vars.example` to `.dev.vars`, add **GEMINI_API_KEY** from [Google AI Studio](https://aistudio.google.com/apikey). Never commit `.dev.vars`.
 4. **Terminal A (API):** `cd worker && npm install && npm run dev` → **http://localhost:8787**
 5. **Terminal B (UI):** `cd web && npx wrangler pages dev .` → **http://localhost:8788**
@@ -183,7 +200,17 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 Set `WORKER_BASE_URL` in `web/firebase-config.js` to `http://localhost:8787` for local dev.
 
-**Push to `2.0.2`:** use SSH remote `git@github.com:skut264/lionpath.git`. If the remote branch already has unrelated history, use `git push lionpath 2.0.2 --force-with-lease` only when you intend to replace that branch tip.
+**Push to GitHub (lionpath repo):**
+
+```bash
+git remote add lionpath git@github.com:skut264/lionpath.git   # once, if missing
+git checkout 2.0.3
+git push -u lionpath 2.0.3
+```
+
+Open a PR **into `2.0.2`** (or `main` if your team uses it) when ready to release. Production VPS may stay on `2.0.2` until deploy — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**.
+
+If a local **pre-push hook** blocks pushes because it checks `origin` instead of `lionpath`, push explicitly to the `lionpath` remote or use `--no-verify` only when your policy allows it.
 
 | Terminal | Command | URL |
 |----------|---------|-----|
@@ -194,10 +221,10 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 
 ### Team development workflow
 
-1. Create a **feature branch** from `main` (e.g. `feature/fix-prep-typo-domain`)
-2. Develop and test locally (both terminals above)
-3. Open a **pull request to `main`** for review
-4. Deploy production from `main` — see Deploy section below
+1. Branch from **`2.0.3`** (or `2.0.2`) — e.g. `feature/my-change`
+2. Develop and test locally (both terminals above); run `cd web && npm test`
+3. Push to **`lionpath`** and open a **pull request** into `2.0.3` / `2.0.2`
+4. Deploy production from the branch your team tags for release — see Deploy section below
 
 ---
 
@@ -208,6 +235,7 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [web/about.html](./web/about.html) | Boss / SEs — what the portal does (browser-friendly) |
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
 | [docs/SHARE_WITH_TEAM.md](./docs/SHARE_WITH_TEAM.md) | SEs & managers — team share pack |
+| [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | Developers — enrich API, prep merge, DISC inference |
 | [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md) | Developers — domain entities (Account, Contact, Lifecycle, …) |
 | [docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md) | Developers — how entities link |
 | [docs/RBAC.md](./docs/RBAC.md) | Developers — roles and visibility |
