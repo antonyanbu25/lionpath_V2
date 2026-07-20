@@ -6,13 +6,13 @@ compatibility_date = "2024-11-01"
 [vars]
 # LLM provider for pre-call prep. "gemini" | "anthropic" | "ollama" (see src/providers/).
 LLM_PROVIDER = "gemini"
-# Model id (provider-specific). gemini-2.5-flash = stable on AI Studio keys + google_search grounding.
-MODEL = "gemini-2.5-flash"
+# Model id (provider-specific). gemini-3.1-flash-lite = GA on AI Studio keys + google_search grounding.
+MODEL = "gemini-3.1-flash-lite"
 # Reasoning depth: low | medium | high | xhigh | max. medium = balanced prep quality/speed.
 EFFORT = "medium"
 # Post-call: structured JSON scorecard — no web search; lite model is enough and ~2× faster.
 POSTCALL_LLM_PROVIDER = "gemini"
-POSTCALL_MODEL = "gemini-2.5-flash"
+POSTCALL_MODEL = "gemini-3.1-flash-lite"
 POSTCALL_EFFORT = "low"
 # Comma-separated allowed origins for CORS. Include both localhost and 127.0.0.1 for local dev.
 ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com"

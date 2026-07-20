@@ -22,10 +22,10 @@ const HOST = process.env.HOST || "0.0.0.0";
 function buildEnv(): NodeEnv {
   const env: NodeEnv = {
     LLM_PROVIDER: process.env.LLM_PROVIDER || "gemini",
-    MODEL: process.env.MODEL || "gemini-2.5-flash",
+    MODEL: process.env.MODEL || "gemini-3.1-flash-lite",
     EFFORT: process.env.EFFORT || "medium",
     POSTCALL_LLM_PROVIDER: process.env.POSTCALL_LLM_PROVIDER || "gemini",
-    POSTCALL_MODEL: process.env.POSTCALL_MODEL || "gemini-2.5-flash",
+    POSTCALL_MODEL: process.env.POSTCALL_MODEL || "gemini-3.1-flash-lite",
     POSTCALL_EFFORT: process.env.POSTCALL_EFFORT || "low",
     ALLOWED_ORIGINS:
       process.env.ALLOWED_ORIGINS ||

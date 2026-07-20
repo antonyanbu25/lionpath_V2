@@ -3,9 +3,9 @@
 import { toGeminiResponseSchema } from "../gemini-schema";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
-/** Stable model for AI Studio keys — gemini-3.x preview ids 400 on generativelanguage.googleapis.com. */
-const AI_STUDIO_STABLE_MODEL = DEFAULT_MODEL;
+const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+/** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
+const AI_STUDIO_DEFAULT_MODEL = DEFAULT_MODEL;
 
 interface GeminiPart {
   text?: string;
@@ -56,7 +56,17 @@ function isGemini3Model(model: string): boolean {
 }
 
 /**
- * AI Studio (GEMINI_API_KEY) does not accept gemini-3.x preview model ids — they 400.
+ * Legacy 2.x/1.x ids and deprecated preview names that should not be sent to AI Studio.
+ * gemini-3.1-flash-lite-preview was shut down May 2026 — remap to the stable GA id.
+ */
+function isLegacyGeminiModel(model: string): boolean {
+  if (model === "gemini-3.1-flash-lite-preview") return true;
+  if (isGemini3Model(model)) return false;
+  return /^gemini-/i.test(model);
+}
+
+/**
+ * AI Studio (GEMINI_API_KEY): remap legacy 2.x/1.x models to gemini-3.1-flash-lite.
  * Vertex keeps the configured id. Returns the model actually sent to the API.
  */
 export function normalizeGeminiModel(
@@ -69,14 +79,14 @@ export function normalizeGeminiModel(
     return { model: trimmed };
   }
 
-  if (isGemini3Model(trimmed)) {
-    return { model: AI_STUDIO_STABLE_MODEL, remappedFrom: trimmed };
+  if (isLegacyGeminiModel(trimmed)) {
+    return { model: AI_STUDIO_DEFAULT_MODEL, remappedFrom: trimmed };
   }
 
   return { model: trimmed };
 }
 
-function shouldDisableThinking(req: LlmRequest): boolean {
+function shouldReduceThinking(req: LlmRequest): boolean {
   return (
     req.thinkingBudget === 0 ||
     !!req.jsonSchema ||
@@ -84,31 +94,19 @@ function shouldDisableThinking(req: LlmRequest): boolean {
   );
 }
 
-function buildThinkingConfig(
-  req: LlmRequest,
-  model: string,
-  backend: GeminiBackend,
-): Record<string, unknown> | undefined {
-  if (!shouldDisableThinking(req)) return undefined;
+function buildThinkingConfig(req: LlmRequest, model: string): Record<string, unknown> | undefined {
+  if (!shouldReduceThinking(req)) return undefined;
 
-  // AI Studio stable models (2.x) use thinkingBudget; never send thinkingLevel there.
-  if (backend.mode === "aistudio") {
-    return { thinkingBudget: 0 };
-  }
-
-  // Vertex gemini-3.x rejects thinkingBudget — use thinkingLevel instead.
+  // Gemini 3.x rejects thinkingBudget — use thinkingLevel instead (never send budget:0).
   if (isGemini3Model(model)) {
     return { thinkingLevel: "minimal" };
   }
 
+  // Gemini 2.x
   return { thinkingBudget: 0 };
 }
 
-function buildGenerationConfig(
-  req: LlmRequest,
-  model: string,
-  backend: GeminiBackend,
-): Record<string, unknown> {
+function buildGenerationConfig(req: LlmRequest, model: string): Record<string, unknown> {
   const generationConfig: Record<string, unknown> = {
     maxOutputTokens: req.maxTokens,
     temperature: req.temperature ?? (req.research ? 0.4 : 0.2),
@@ -119,7 +117,7 @@ function buildGenerationConfig(
     generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);
   }
 
-  const thinkingConfig = buildThinkingConfig(req, model, backend);
+  const thinkingConfig = buildThinkingConfig(req, model);
   if (thinkingConfig) {
     generationConfig.thinkingConfig = thinkingConfig;
   }
@@ -127,18 +125,14 @@ function buildGenerationConfig(
   return generationConfig;
 }
 
-function buildRequestBody(
-  req: LlmRequest,
-  model: string,
-  backend: GeminiBackend,
-): Record<string, unknown> {
+function buildRequestBody(req: LlmRequest, model: string): Record<string, unknown> {
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: req.system }] },
     contents: [{ role: "user", parts: [{ text: req.user }] }],
-    generationConfig: buildGenerationConfig(req, model, backend),
+    generationConfig: buildGenerationConfig(req, model),
   };
 
-  // google_search grounding — supported on gemini-2.5-flash+ with AI Studio keys.
+  // google_search grounding — supported on gemini-3.x with AI Studio keys.
   if (req.research) {
     body.tools = [{ google_search: {} }];
   }
@@ -176,18 +170,18 @@ function geminiApiErrorMessage(
   const base = `Gemini API ${status}: ${errBody.slice(0, 500)}`;
   const hints: string[] = [];
 
-  if (status === 400 && backend.mode === "aistudio") {
+  if ((status === 400 || status === 404) && backend.mode === "aistudio") {
     if (requestedModel !== effectiveModel) {
       hints.push(
-        `MODEL=${requestedModel} is not valid on AI Studio; remapped to ${effectiveModel} — update deploy/vps/.env.`,
+        `MODEL=${requestedModel} is deprecated on AI Studio; remapped to ${effectiveModel} — update deploy/vps/.env.`,
       );
-    } else if (isGemini3Model(requestedModel)) {
+    } else if (/INVALID_ARGUMENT/i.test(errBody) && /thinking/i.test(errBody)) {
       hints.push(
-        `MODEL=${requestedModel} requires Vertex AI. Set MODEL=gemini-2.5-flash for GEMINI_API_KEY.`,
+        "Gemini 3 requires thinkingLevel (not thinkingBudget). Ensure MODEL=gemini-3.1-flash-lite.",
       );
     } else if (/INVALID_ARGUMENT/i.test(errBody)) {
       hints.push(
-        "Check MODEL in deploy/vps/.env (use gemini-2.5-flash) and restart: docker compose up -d --build worker.",
+        "Check MODEL in deploy/vps/.env (use gemini-3.1-flash-lite) and restart: docker compose up -d --build worker.",
       );
     }
   }
@@ -224,7 +218,7 @@ async function generateViaAiStudio(
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(buildRequestBody(req, model, backend)),
+    body: JSON.stringify(buildRequestBody(req, model)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -239,7 +233,6 @@ async function generateViaVertex(
   location: string,
   model: string,
   req: LlmRequest,
-  backend: GeminiBackend,
 ): Promise<LlmResult> {
   const token = await getVertexAccessToken();
   const url =
@@ -252,7 +245,7 @@ async function generateViaVertex(
       "content-type": "application/json",
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(buildRequestBody(req, model, backend)),
+    body: JSON.stringify(buildRequestBody(req, model)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -269,8 +262,8 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
 
   if (remappedFrom) {
     console.warn(
-      `[gemini] MODEL=${remappedFrom} is not supported on AI Studio; using ${model}. ` +
-        "Update deploy/vps/.env MODEL and POSTCALL_MODEL to gemini-2.5-flash.",
+      `[gemini] MODEL=${remappedFrom} is deprecated on AI Studio; using ${model}. ` +
+        "Update deploy/vps/.env MODEL and POSTCALL_MODEL to gemini-3.1-flash-lite.",
     );
   }
 
@@ -279,7 +272,7 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
       if (backend.mode === "aistudio") {
         return generateViaAiStudio(backend.apiKey, model, req, backend, requestedModel);
       }
-      return generateViaVertex(backend.project, backend.location, model, req, backend);
+      return generateViaVertex(backend.project, backend.location, model, req);
     },
   };
 }

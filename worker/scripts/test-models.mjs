@@ -18,9 +18,13 @@ const models = [
 
 for (const model of models) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const isGemini3 = /^gemini-3/i.test(model);
   const body = {
     contents: [{ role: "user", parts: [{ text: "Say OK" }] }],
-    generationConfig: { maxOutputTokens: 10, thinkingConfig: { thinkingBudget: 0 } },
+    generationConfig: {
+      maxOutputTokens: 10,
+      thinkingConfig: isGemini3 ? { thinkingLevel: "minimal" } : { thinkingBudget: 0 },
+    },
   };
   try {
     const res = await fetch(url, {

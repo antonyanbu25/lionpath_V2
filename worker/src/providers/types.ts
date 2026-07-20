@@ -26,7 +26,7 @@ export interface LlmRequest {
   research?: boolean;
   /** JSON Schema for structured output (Gemini responseSchema). */
   jsonSchema?: Record<string, unknown>;
-  /** Gemini 2.5+ — set 0 to disable thinking for lower latency on long transcripts. */
+  /** Gemini 2.x — set 0 to disable thinking. On Gemini 3 this maps to thinkingLevel minimal. */
   thinkingBudget?: number;
   /** Override generation temperature (0 = deterministic). */
   temperature?: number;

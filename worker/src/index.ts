@@ -176,8 +176,8 @@ export default {
       if (request.method === "GET" && path === "/api/config") {
         const prepProvider = env.LLM_PROVIDER || "gemini";
         const postcallProvider = env.POSTCALL_LLM_PROVIDER || prepProvider || "gemini";
-        const prepModel = env.MODEL || "gemini-2.5-flash";
-        const postcallModel = env.POSTCALL_MODEL || "gemini-2.5-flash";
+        const prepModel = env.MODEL || "gemini-3.1-flash-lite";
+        const postcallModel = env.POSTCALL_MODEL || "gemini-3.1-flash-lite";
         return json(
           {
             prep: {
