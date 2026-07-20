@@ -89,6 +89,7 @@ export async function synthesizePrep(
     research: false,
     effort,
     jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
+    step: "prep/synthesize",
   });
 
   try {
@@ -102,6 +103,7 @@ export async function synthesizePrep(
       research: false,
       effort: "low",
       jsonSchema: PREP_SCHEMA as unknown as Record<string, unknown>,
+      step: "prep/synthesize-repair",
     });
     return normalizePrepOutput(extractJson<Prep>(repaired.text));
   }

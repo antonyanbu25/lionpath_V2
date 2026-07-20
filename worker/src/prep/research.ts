@@ -14,16 +14,24 @@ export async function runPlaybookResearch(
   const fetchedAt = Date.now();
 
   const results = await Promise.all(
-    queries.map(async (query) => {
-      const result = await provider.generate({
-        system: SEARCH_SYSTEM,
-        user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
-        maxTokens: 800,
-        temperature: 0,
-        research: true,
-        effort: "low",
-      });
-      return { query, snippet: result.text.trim(), fetchedAt };
+    queries.map(async (query, index) => {
+      try {
+        const result = await provider.generate({
+          system: SEARCH_SYSTEM,
+          user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
+          maxTokens: 800,
+          temperature: 0,
+          research: true,
+          effort: "low",
+          step: `prep/research query ${index + 1}/${queries.length}`,
+        });
+        return { query, snippet: result.text.trim(), fetchedAt };
+      } catch (err) {
+        const msg = (err as Error).message;
+        throw new Error(
+          `prep/research query ${index + 1}/${queries.length} (${query.slice(0, 80)}): ${msg}`,
+        );
+      }
     }),
   );
 

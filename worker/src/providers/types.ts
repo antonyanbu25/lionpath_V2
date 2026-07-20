@@ -30,6 +30,8 @@ export interface LlmRequest {
   thinkingBudget?: number;
   /** Override generation temperature (0 = deterministic). */
   temperature?: number;
+  /** Prep pipeline step label — included in Gemini error messages for debugging. */
+  step?: string;
 }
 
 export interface LlmResult {

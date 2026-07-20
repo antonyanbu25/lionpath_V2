@@ -90,18 +90,17 @@ function shouldReduceThinking(req: LlmRequest): boolean {
   return (
     req.thinkingBudget === 0 ||
     !!req.jsonSchema ||
+    !!req.research ||
     (!req.research && req.effort === "low")
   );
 }
 
 function buildThinkingConfig(req: LlmRequest, model: string): Record<string, unknown> | undefined {
-  // Gemini 3.x requires an explicit thinkingLevel on every request — especially with
-  // built-in tools (google_search). Omitting it 400s on AI Studio; post-call worked
-  // because thinkingBudget:0 / jsonSchema already triggered minimal here.
+  // Gemini 3.x requires explicit thinkingLevel on every request (especially with tools).
+  // Flash-Lite on AI Studio: always minimal — same as post-call (thinkingBudget:0).
+  // Omitting thinkingLevel 400s with google_search; thinkingLevel "low" also 400s there.
   if (isGemini3Model(model)) {
-    if (shouldReduceThinking(req)) return { thinkingLevel: "minimal" };
-    // Prep research (google_search): low keeps search quality without max latency.
-    return { thinkingLevel: req.research ? "low" : "minimal" };
+    return { thinkingLevel: "minimal" };
   }
 
   if (!shouldReduceThinking(req)) return undefined;
@@ -168,8 +167,10 @@ function geminiApiErrorMessage(
   backend: GeminiBackend,
   requestedModel: string,
   effectiveModel: string,
+  step?: string,
 ): string {
-  const base = `Gemini API ${status}: ${errBody.slice(0, 500)}`;
+  const stepPrefix = step ? `[${step}] ` : "";
+  const base = `${stepPrefix}Gemini API ${status}: ${errBody.slice(0, 500)}`;
   const hints: string[] = [];
 
   if ((status === 400 || status === 404) && backend.mode === "aistudio") {
@@ -179,8 +180,14 @@ function geminiApiErrorMessage(
       );
     } else if (/INVALID_ARGUMENT/i.test(errBody) && /thinking/i.test(errBody)) {
       hints.push(
-        "Gemini 3 requires thinkingLevel (not thinkingBudget). Ensure MODEL=gemini-3.1-flash-lite.",
+        "Gemini 3 requires thinkingLevel minimal (not thinkingBudget). Ensure MODEL=gemini-3.1-flash-lite.",
       );
+    } else if (/INVALID_ARGUMENT/i.test(errBody) && /google.?search|grounding|tool/i.test(errBody)) {
+      hints.push(
+        "Google Search grounding failed — confirm MODEL=gemini-3.1-flash-lite supports google_search on your API key.",
+      );
+    } else if (/INVALID_ARGUMENT/i.test(errBody) && /schema|responseSchema|response_schema/i.test(errBody)) {
+      hints.push("Structured output schema rejected — check prep extract/synthesize JSON schema.");
     } else if (/INVALID_ARGUMENT/i.test(errBody)) {
       hints.push(
         "Check MODEL in deploy/vps/.env (use gemini-3.1-flash-lite) and restart: docker compose up -d --build worker.",
@@ -224,7 +231,9 @@ async function generateViaAiStudio(
   });
   if (!res.ok) {
     const errBody = await res.text();
-    throw new Error(geminiApiErrorMessage(res.status, errBody, backend, requestedModel, model));
+    throw new Error(
+      geminiApiErrorMessage(res.status, errBody, backend, requestedModel, model, req.step),
+    );
   }
 
   return parseGeminiResponse((await res.json()) as GeminiResponse);

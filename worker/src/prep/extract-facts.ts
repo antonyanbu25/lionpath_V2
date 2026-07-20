@@ -19,7 +19,7 @@ const FACTS_SCHEMA = {
           value: { type: "string" },
           sourceLabel: { type: "string" },
           sourceUrl: { type: "string" },
-          confidence: { type: "integer" },
+          confidence: { type: "number" },
           category: {
             type: "string",
             enum: ["account", "signal", "prospect", "support", "news"],
@@ -37,7 +37,7 @@ const FACTS_SCHEMA = {
           label: { type: "string" },
           title: { type: "string" },
           url: { type: "string" },
-          confidence: { type: "integer" },
+          confidence: { type: "number" },
         },
       },
     },
@@ -93,15 +93,21 @@ export async function extractFacts(
   }
 
   const provider = getProvider(env);
-  const result = await provider.generate({
-    system: extractSystemPrompt(),
-    user: extractUserPrompt(snippets, input),
-    maxTokens: 4000,
-    temperature: 0,
-    research: false,
-    effort: "low",
-    jsonSchema: FACTS_SCHEMA as unknown as Record<string, unknown>,
-  });
+  let result;
+  try {
+    result = await provider.generate({
+      system: extractSystemPrompt(),
+      user: extractUserPrompt(snippets, input),
+      maxTokens: 4000,
+      temperature: 0,
+      research: false,
+      effort: "low",
+      jsonSchema: FACTS_SCHEMA as unknown as Record<string, unknown>,
+      step: "prep/extract-facts",
+    });
+  } catch (err) {
+    throw new Error(`prep/extract-facts: ${(err as Error).message}`);
+  }
 
   const parsed = extractJson<{ facts: ResearchFact[]; sources: import("./types").SourceRef[] }>(
     result.text,
