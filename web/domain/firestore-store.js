@@ -3,6 +3,7 @@
  */
 
 import { newId, now } from "./types.js";
+import { collectionCRUD } from "./collection-crud.js";
 
 /** @param {object} fb Firebase helpers from app.js initFirebase */
 export function createFirestoreStore(fb) {
@@ -62,6 +63,23 @@ export function createFirestoreStore(fb) {
     return fetchById(col, id);
   }
 
+  const crudDeps = {
+    db,
+    collection,
+    doc,
+    getDocs,
+    setDoc,
+    updateDoc,
+    query,
+    where,
+    getCachedById,
+    invalidateReadCache,
+    now,
+  };
+  const accountsCrud = collectionCRUD("accounts", crudDeps);
+  const teamsCrud = collectionCRUD("teams", crudDeps);
+  const orgsCrud = collectionCRUD("orgs", crudDeps);
+
   const storeApi = {
     mode: "firestore",
 
@@ -106,31 +124,23 @@ export function createFirestoreStore(fb) {
     },
 
     async getTeam(id) {
-      return getCachedById("teams", id);
+      return teamsCrud.get(id);
     },
 
     async upsertTeam(team) {
-      await setDoc(doc(db, "teams", team.id), team, { merge: true });
-      invalidateReadCache("teams", team.id);
-      return team;
+      return teamsCrud.upsert(team);
     },
 
     async getOrg(id) {
-      return getCachedById("orgs", id);
+      return orgsCrud.get(id);
     },
 
     async upsertOrg(org) {
-      await setDoc(doc(db, "orgs", org.id), org, { merge: true });
-      invalidateReadCache("orgs", org.id);
-      return org;
+      return orgsCrud.upsert(org);
     },
 
     async listTeamsByOrg(orgId) {
-      const q = query(collection(db, "teams"), where("orgId", "==", orgId));
-      const snap = await getDocs(q);
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      return teamsCrud.listBy("orgId", orgId, (a, b) => String(a.name).localeCompare(String(b.name)));
     },
 
     async listUsersByManagerId(managerId) {
@@ -154,21 +164,15 @@ export function createFirestoreStore(fb) {
     },
 
     async createAccount(account) {
-      const ref = account.id ? doc(db, "accounts", account.id) : doc(collection(db, "accounts"));
-      const data = { ...account, id: ref.id };
-      await setDoc(ref, data);
-      invalidateReadCache("accounts", data.id);
-      return data;
+      return accountsCrud.create(account);
     },
 
     async updateAccount(id, patch) {
-      await updateDoc(doc(db, "accounts", id), { ...patch, updatedAt: now() });
-      invalidateReadCache("accounts", id);
-      return getCachedById("accounts", id);
+      return accountsCrud.update(id, patch);
     },
 
     async getAccount(id) {
-      return getCachedById("accounts", id);
+      return accountsCrud.get(id);
     },
 
     async findContactByAccountEmail(accountId, email) {
