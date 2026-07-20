@@ -809,28 +809,31 @@ async function warnIfWorkerDown() {
   }
 }
 
-async function boot() {
-  await loadFirebaseConfig();
+function agentBootLog(location, message, data, hypothesisId = "A") {
+  const entry = { sessionId: "72b8a2", runId: "post-fix", hypothesisId, location, message, data, timestamp: Date.now() };
   // #region agent log
+  try {
+    const key = "se-sp-boot-debug";
+    const arr = JSON.parse(sessionStorage.getItem(key) || "[]");
+    arr.push(entry);
+    sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+  } catch { /* ignore */ }
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-    body: JSON.stringify({
-      sessionId: "72b8a2",
-      runId: "post-fix",
-      hypothesisId: "A",
-      location: "app.js:boot:afterLoadFirebaseConfig",
-      message: "boot after loadFirebaseConfig",
-      data: {
-        host: typeof location !== "undefined" ? location.hostname : "",
-        projectId: firebaseConfig.projectId || "",
-        authMode: authMode(),
-        firebaseAuthEnabled: isFirebaseAuthEnabled(),
-      },
-      timestamp: Date.now(),
-    }),
+    body: JSON.stringify(entry),
   }).catch(() => {});
   // #endregion
+}
+
+async function boot() {
+  await loadFirebaseConfig();
+  agentBootLog("app.js:boot:afterLoadFirebaseConfig", "boot after loadFirebaseConfig", {
+    host: typeof location !== "undefined" ? location.hostname : "",
+    projectId: firebaseConfig.projectId || "",
+    authMode: authMode(),
+    firebaseAuthEnabled: isFirebaseAuthEnabled(),
+  }, "A");
 
   initSidebar();
   wireUserMenu();
@@ -935,43 +938,15 @@ async function boot() {
 
   if (authMode() === "firebase") {
     await initFirebase();
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-      body: JSON.stringify({
-        sessionId: "72b8a2",
-        runId: "post-fix",
-        hypothesisId: "B",
-        location: "app.js:boot:afterInitFirebase",
-        message: "firebase auth init complete",
-        data: {
-          hasSession: !!getSession(),
-          googleBlockHidden: !!$("firebase-signin-block")?.hidden,
-          loginFormHidden: !!$("login-form")?.hidden,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+    agentBootLog("app.js:boot:afterInitFirebase", "firebase auth init complete", {
+      hasSession: !!getSession(),
+      googleBlockVisible: !$("firebase-signin-block")?.hidden,
+      loginFormHidden: !!$("login-form")?.hidden,
+    }, "B");
     if (!getSession()) showLogin();
   } else {
     initDummyAuth();
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-      body: JSON.stringify({
-        sessionId: "72b8a2",
-        runId: "post-fix",
-        hypothesisId: "C",
-        location: "app.js:boot:dummyAuth",
-        message: "dummy auth path",
-        data: { handlersWired: loginHandlersWired },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+    agentBootLog("app.js:boot:dummyAuth", "dummy auth path", { handlersWired: loginHandlersWired }, "C");
     const existing = getSession();
     if (!existing) showLogin();
   }
@@ -979,4 +954,12 @@ async function boot() {
   void warnIfWorkerDown();
 }
 
-void boot();
+void boot().catch((err) => {
+  console.error("App boot failed:", err);
+  agentBootLog("app.js:boot:catch", "boot failed", { error: String(err?.message || err) }, "D");
+  const errEl = $("login-error");
+  if (errEl) {
+    errEl.textContent = `App failed to start: ${err?.message || err}. Hard-refresh (Ctrl+Shift+R) and try again.`;
+    show(errEl, true);
+  }
+});
