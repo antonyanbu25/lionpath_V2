@@ -739,6 +739,42 @@ async function loadTeamPostCallsFromStore(session) {
   return [];
 }
 
+async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
+  const { dummyUidForEmail } = await import("./domain/seed-dev.js");
+  const emailToUid = new Map();
+
+  const canBulkOrg =
+    isOrgView && session?.orgId && typeof store.listUsersByOrg === "function";
+  const canBulkMgr =
+    !isOrgView && session?.userId && typeof store.listUsersByManagerId === "function";
+
+  if (canBulkOrg || canBulkMgr) {
+    const users = canBulkOrg
+      ? await store.listUsersByOrg(session.orgId)
+      : await store.listUsersByManagerId(session.userId);
+    const byEmail = new Map(
+      users.map((u) => [String(u.email || "").trim().toLowerCase(), u])
+    );
+    const unresolved = [];
+    for (const email of seEmails) {
+      const user = byEmail.get(String(email || "").trim().toLowerCase());
+      if (user?.id) emailToUid.set(email, user.id);
+      else unresolved.push(email);
+    }
+    for (const email of unresolved) {
+      const user = await store.getUserByEmail(email);
+      emailToUid.set(email, user?.id || dummyUidForEmail(email));
+    }
+    return emailToUid;
+  }
+
+  for (const email of seEmails) {
+    const user = await store.getUserByEmail(email);
+    emailToUid.set(email, user?.id || dummyUidForEmail(email));
+  }
+  return emailToUid;
+}
+
 async function buildTeamMetrics(session) {
   const isOrgView = session?.isOrgDirector === true;
   const seEmails = session
@@ -748,11 +784,7 @@ async function buildTeamMetrics(session) {
   const storePostCalls = await loadTeamPostCallsFromStore(session);
   const store = getStore();
   const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
-  const emailToUid = new Map();
-  for (const email of seEmails) {
-    const user = await store.getUserByEmail(email);
-    emailToUid.set(email, user?.id || (await import("./domain/seed-dev.js")).dummyUidForEmail(email));
-  }
+  const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 
   const allAnalyses = [];
   const seRows = [];
