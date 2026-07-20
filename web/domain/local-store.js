@@ -133,6 +133,26 @@ export function createLocalStore() {
       return findById("accounts", id);
     },
 
+    async listAccounts() {
+      return findMany("accounts", () => true, (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    },
+
+    async listActiveLifecyclesForAccount(accountId) {
+      return findMany(
+        "lifecycles",
+        (l) => l.accountId === accountId && l.status === "active",
+        (a, b) => b.lastActivityAt - a.lastActivityAt
+      );
+    },
+
+    async listLifecyclesByOrg(orgId) {
+      return findMany(
+        "lifecycles",
+        (l) => l.orgId === orgId,
+        (a, b) => b.lastActivityAt - a.lastActivityAt
+      );
+    },
+
     async findContactByAccountEmail(accountId, email) {
       const key = String(email || "").trim().toLowerCase();
       return findOne("contacts", (c) => c.accountId === accountId && c.email === key);

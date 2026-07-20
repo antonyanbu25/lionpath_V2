@@ -2,7 +2,7 @@
  * Bridge prep/post-call flows to the lifecycle domain layer (dual-write).
  */
 
-import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails } from "./account-service.js";
+import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails, ensureSeTeamForPrepActor } from "./account-service.js";
 import { getOrCreateLifecycle, attachPrep, attachPostCall, attachTask } from "./lifecycle-service.js";
 import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./contact-service.js";
 import { newId, now } from "./types.js";
@@ -31,6 +31,8 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     contactDrafts: meta?.contactDrafts,
     actorId: ownerId,
   });
+
+  await ensureSeTeamForPrepActor(accountId, ownerId);
 
   const lifecycle = await getOrCreateLifecycle(ownerId, accountId, session.teamId, {
     title: account?.name || meta?.company || payload.companyName,
@@ -94,6 +96,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     account = { id: accountId, name: company };
   }
   if (!account) return null;
+
+  await ensureSeTeamForPrepActor(account.id, ownerId);
 
   const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
     title: account.name || company,

@@ -8,9 +8,10 @@ const SEARCH_SYSTEM =
 export async function runPlaybookResearch(
   env: Env,
   input: { companyName: string; companyDomain: string; emails: string[] },
+  options?: { skipLinkedInForEmails?: Set<string> },
 ): Promise<ResearchSnippet[]> {
   const provider = getProvider(env);
-  const queries = buildPlaybookQueries(input);
+  const queries = buildPlaybookQueries(input, options);
   const fetchedAt = Date.now();
 
   const results = await Promise.all(

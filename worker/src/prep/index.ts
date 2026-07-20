@@ -6,6 +6,13 @@ import { extractFacts } from "./extract-facts";
 import { synthesizePrep } from "./synthesize";
 import { validatePrep, findLowConfidenceFacts } from "./validate-prep";
 import { buildResearchBundle, resolveCachedResearch } from "./cache";
+import {
+  assignExportsToProspects,
+  linkedInPdfSnippets,
+  normalizeLinkedInExports,
+} from "./linkedin-pdf";
+import { mergeEnrichmentsIntoPrep } from "./merge-enrichment";
+import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
   Env,
   PrepInput,
@@ -56,7 +63,15 @@ async function gatherResearch(
   cacheHit: boolean;
   playbookSkipped: boolean;
   apolloCredits: number;
+  linkedinMatchedEmails: string[];
 }> {
+  const linkedinExports = normalizeLinkedInExports(input.linkedinProfileExports);
+  const { matchedEmails } = assignExportsToProspects(
+    linkedinExports,
+    emails.map((e) => e.toLowerCase()),
+  );
+  const linkedinMatchedEmails = [...matchedEmails];
+
   const { cacheHit, bundle } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
     return {
@@ -66,6 +81,7 @@ async function gatherResearch(
       cacheHit: true,
       playbookSkipped: true,
       apolloCredits: 0,
+      linkedinMatchedEmails,
     };
   }
 
@@ -83,13 +99,20 @@ async function gatherResearch(
     void firmographics;
   }
 
-  const snippets = await runPlaybookResearch(env, {
-    companyName: input.companyName,
-    companyDomain: input.companyDomain,
-    emails,
-  });
+  const snippets = await runPlaybookResearch(
+    env,
+    {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+    },
+    { skipLinkedInForEmails: matchedEmails },
+  );
 
-  const extracted = await extractFacts(env, snippets, {
+  const pdfSnippets = linkedInPdfSnippets(linkedinExports);
+  const allSnippets = [...snippets, ...pdfSnippets];
+
+  const extracted = await extractFacts(env, allSnippets, {
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     emails,
@@ -100,12 +123,13 @@ async function gatherResearch(
   const sources = mergeSources(apolloSources, extracted.sources);
 
   return {
-    snippets,
+    snippets: allSnippets,
     facts,
     sources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,
+    linkedinMatchedEmails,
   };
 }
 
@@ -126,6 +150,15 @@ function buildResearchMeta(
     meta.costEstimate = { llmCalls, apolloCredits };
   }
   return meta;
+}
+
+function applyConfirmedProfiles(
+  prep: import("../schema").Prep,
+  emails: string[],
+  profiles?: ConfirmedProspectProfile[],
+): import("../schema").Prep {
+  if (!profiles?.length) return prep;
+  return mergeEnrichmentsIntoPrep(prep, emails, profiles);
 }
 
 /** Full pipeline: research → extract → synthesize → validate. */
@@ -157,6 +190,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       meetingType: input.meetingType,
       ae: input.ae,
       effort,
+      confirmedProspectProfiles: input.confirmedProspectProfiles,
     },
     facts,
     research.sources,
@@ -164,7 +198,8 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   timings.synthesize = Date.now() - t1;
 
   const t2 = Date.now();
-  const { prep, lowConfidence } = validatePrep(prepRaw);
+  let { prep, lowConfidence } = validatePrep(prepRaw);
+  prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -180,6 +215,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       cacheHit: research.cacheHit,
       playbookSkipped: research.playbookSkipped,
       steps: timings,
+      linkedinMatchedEmails: research.linkedinMatchedEmails,
     },
     inputHash,
     [...lowConfidence, ...findLowConfidenceFacts(facts)],
@@ -200,6 +236,10 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
           experienceSummary: prospect?.totalExperience,
           priorEmployers: prospect?.priorEmployers,
           competitorTouchpoints: prospect?.competitorTouchpoints,
+          summary: prospect?.summary,
+          skills: prospect?.skills,
+          languages: prospect?.languages,
+          education: prospect?.education,
         },
       },
     };
@@ -246,6 +286,7 @@ export async function runPrepResearch(env: Env, rawInput: PrepInput): Promise<Re
         cacheHit: research.cacheHit,
         playbookSkipped: research.playbookSkipped,
         steps: { research: 0 },
+        linkedinMatchedEmails: research.linkedinMatchedEmails,
       },
       inputHash,
       lowConfidence,
@@ -277,12 +318,14 @@ export async function runPrepSynthesize(
       meetingType: input.meetingType,
       ae: input.ae,
       effort,
+      confirmedProspectProfiles: input.confirmedProspectProfiles,
     },
     facts,
     sources,
   );
 
-  const { prep, lowConfidence } = validatePrep(prepRaw);
+  let { prep, lowConfidence } = validatePrep(prepRaw);
+  prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

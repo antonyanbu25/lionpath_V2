@@ -152,15 +152,18 @@ export function mergeContactFromPrep(contact, ctx = {}) {
   const ts = ctx.ts || now();
   const meta = { ...(contact?.metadata || {}) };
   const changes = [];
+  const pm = ctx.prospectMeta;
 
-  const disc = mergeDisc(meta.disc, ctx.discHint || ctx.prospectMeta?.discHint, "prep", ts);
+  const disc = mergeDisc(meta.disc, ctx.discHint || pm?.discHint, pm?.discHint?.source || "prep", ts);
   if (JSON.stringify(disc) !== JSON.stringify(meta.disc)) {
     meta.disc = disc;
     changes.push("disc");
   }
 
   let influencePatch = null;
-  if (ctx.attendee?.decisionPower) {
+  if (pm?.influence?.level && pm.influence.level !== "unknown") {
+    influencePatch = pm.influence;
+  } else if (ctx.attendee?.decisionPower) {
     influencePatch = mapDecisionPower(ctx.attendee.decisionPower);
   }
   const influence = mergeInfluence(meta.influence, influencePatch, "prep", ts);
@@ -169,7 +172,68 @@ export function mergeContactFromPrep(contact, ctx = {}) {
     changes.push("influence");
   }
 
+  if (pm) {
+    const research = { ...(meta.research || {}) };
+    let researchChanged = false;
+    const fields = [
+      ["experienceSummary", pm.totalExperience],
+      ["priorEmployers", pm.priorEmployers],
+      ["competitorTouchpoints", pm.competitorTouchpoints],
+      ["summary", pm.summary],
+      ["skills", pm.skills],
+      ["languages", pm.languages],
+      ["education", pm.education],
+    ];
+    for (const [key, val] of fields) {
+      if (val === undefined || val === null || val === "" || (Array.isArray(val) && !val.length)) continue;
+      if (JSON.stringify(research[key]) !== JSON.stringify(val)) {
+        research[key] = val;
+        researchChanged = true;
+      }
+    }
+    if (researchChanged) {
+      research.lastResearchedAt = ts;
+      meta.research = research;
+      changes.push("research");
+    }
+  }
+
   return { metadata: meta, changes };
+}
+
+/** Soft MEDDPICC hints from high-influence enriched prospect. */
+export function meddpiccSignalsFromProspectInfluence(prospectMeta, contactId) {
+  if (!prospectMeta?.influence || prospectMeta.influence.level !== "high") return {};
+  const name = prospectMeta.name || "Prospect";
+  const role = prospectMeta.role || prospectMeta.influence.decisionRole || "";
+  const value = role ? `${name} — ${role}` : name;
+  const out = {};
+  const dr = String(prospectMeta.influence.decisionRole || "").toLowerCase();
+  if (dr.includes("economic") || dr.includes("buyer")) {
+    out.economicBuyer = { value, status: "partial", contactId };
+  } else {
+    out.champion = { value, status: "partial", contactId };
+  }
+  return out;
+}
+
+/** @param {object|null|undefined} contact @param {object} enrichment API response */
+export function mergeContactFromEnrichment(contact, enrichment) {
+  const ts = now();
+  const prospectMeta = {
+    name: enrichment.profile?.name,
+    role: enrichment.profile?.role,
+    totalExperience: enrichment.profile?.totalExperience,
+    priorEmployers: enrichment.profile?.priorEmployers,
+    competitorTouchpoints: enrichment.profile?.competitorTouchpoints,
+    summary: enrichment.profile?.summary,
+    skills: enrichment.profile?.skills,
+    languages: enrichment.profile?.languages,
+    education: enrichment.profile?.education,
+    discHint: enrichment.disc,
+    influence: enrichment.influence,
+  };
+  return mergeContactFromPrep(contact, { prospectMeta, discHint: enrichment.disc, ts });
 }
 
 /** @param {object|null|undefined} contact @param {object} attendee */
@@ -286,7 +350,6 @@ export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = 
   const medSignals = meddpiccSignalsFromPrep(prep);
   if (Object.keys(medSignals).length) {
     accountMeta = mergeAccountMeddpicc(accountMeta, medSignals, "prep");
-    await store.updateAccount(accountId, { metadata: accountMeta });
   }
 
   const allChanges = [];
@@ -295,6 +358,11 @@ export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = 
     const prospectMeta = prospects[i] || prospects.find((p) => normalizeName(p?.name) === normalizeName(email));
     const contact = await store.findContactByAccountEmail(accountId, email);
     if (!contact) continue;
+
+    const influenceSignals = meddpiccSignalsFromProspectInfluence(prospectMeta, contact.id);
+    if (Object.keys(influenceSignals).length) {
+      accountMeta = mergeAccountMeddpicc(accountMeta, influenceSignals, "prep");
+    }
 
     const attendee = findAttendeeForProspect(attendees, prospectMeta, email);
     const { metadata, changes } = mergeContactFromPrep(contact, {
@@ -317,6 +385,10 @@ export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = 
       }
       allChanges.push({ contactId: contact.id, fields: changes });
     }
+  }
+
+  if (JSON.stringify(accountMeta) !== JSON.stringify(account?.metadata)) {
+    await store.updateAccount(accountId, { metadata: accountMeta });
   }
 
   return { accountMetadata: accountMeta, contactChanges: allChanges };

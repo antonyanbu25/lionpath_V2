@@ -45,16 +45,22 @@ import {
   onSessionCleared,
   setOnAnalysisSaved,
 } from "./postcall.js";
+import {
+  applyAutoCompanyDomain,
+  domainFromFirstProspectEmail,
+  PERSONAL_EMAIL_DOMAINS,
+  normalizeCompanyDomain as normalizePrepDomain,
+} from "./prep-domain.js";
 
 
 const PREP_RESEARCH_URL = `${WORKER_BASE_URL}/api/prep/research`;
 const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
+const CONTACT_ENRICH_URL = `${WORKER_BASE_URL}/api/contact/enrich`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
-  "Start the worker: open a second terminal, run `cd worker && npm run dev` (wait for Ready on port 8787), then refresh. " +
-  "Or run `npm run dev:all` from the web folder to start web + worker together. " +
-  "Use the same hostname for both (localhost or 127.0.0.1 — not mixed).";
+  "Start the worker: from the web folder run `npm run dev:all` (worker + web), or open a second terminal: `cd worker && npm run dev` (wait for Ready on port 8787). " +
+  "Use the same hostname for both (localhost or 127.0.0.1 — not mixed). The banner clears automatically when the worker comes up.";
 
 let fb = null;
 let currentSession = null;
@@ -76,6 +82,10 @@ const VIEW_TITLES = {
 let selectedAccountId = null;
 let accountListSearchQuery = "";
 let accountDetailSearchQuery = "";
+let accountLifecycleOwnerId = null;
+
+/** Tracks manual edits vs auto-filled company domain on pre-call form. */
+const prepDomainState = { userEdited: false, lastAutoValue: null };
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -128,19 +138,57 @@ function validateProspectDomain(emailRaw, companyName) {
   return hints.length ? hints.join(" ") : null;
 }
 
+function syncAutoCompanyDomain() {
+  const domainField = $("companyDomain");
+  if (!domainField) return;
+  const domainRaw = readFieldValue(domainField);
+  if (!String(domainRaw || "").trim()) {
+    prepDomainState.userEdited = false;
+    prepDomainState.lastAutoValue = null;
+  }
+  const emailsRaw = readFieldValue($("prospectEmail"));
+  const result = applyAutoCompanyDomain(domainField, emailsRaw, prepDomainState);
+  if (result.lastAutoValue != null) prepDomainState.lastAutoValue = result.lastAutoValue;
+}
+
+function onCompanyDomainInput() {
+  const v = readFieldValue($("companyDomain"));
+  const normalized = normalizeCompanyDomainField(v);
+  const lastAuto = prepDomainState.lastAutoValue
+    ? normalizeCompanyDomainField(prepDomainState.lastAutoValue)
+    : null;
+  if (!normalized) {
+    prepDomainState.userEdited = false;
+    prepDomainState.lastAutoValue = null;
+  } else if (lastAuto && normalized === lastAuto) {
+    prepDomainState.userEdited = false;
+  } else {
+    prepDomainState.userEdited = true;
+  }
+  updateDomainHint();
+}
+
 function updateDomainHint() {
   const hint = $("domain-hint");
   if (!hint) return;
   const companyName = readFieldValue($("companyName"));
   const companyDomain = normalizeCompanyDomainField(readFieldValue($("companyDomain")));
-  const emailMsg = validateProspectDomain(readFieldValue($("prospectEmail")), companyName);
+  const emailsRaw = readFieldValue($("prospectEmail"));
+  const emailMsg = validateProspectDomain(emailsRaw, companyName);
   const hints = [];
   if (emailMsg) hints.push(emailMsg);
+  const inferred = domainFromFirstProspectEmail(emailsRaw);
+  const firstDomain = normalizePrepDomain(emailDomain(emailsRaw));
+  if (!companyDomain && firstDomain && PERSONAL_EMAIL_DOMAINS.has(firstDomain)) {
+    hints.push("Enter company website — we can't infer it from a personal email (Gmail, Outlook, etc.).");
+  } else if (!companyDomain && emailsRaw.trim() && !inferred) {
+    hints.push("Enter company website if prospect email doesn't use a corporate domain.");
+  }
   if (companyDomain && !DOMAIN_RE.test(companyDomain)) {
     hints.push("Company domain format looks invalid (use acme.com).");
   }
-  const emailDomainVal = emailDomain(readFieldValue($("prospectEmail")));
-  if (companyDomain && emailDomainVal && companyDomain !== emailDomainVal) {
+  const emailDomainVal = emailDomain(emailsRaw);
+  if (companyDomain && emailDomainVal && companyDomain !== emailDomainVal && !PERSONAL_EMAIL_DOMAINS.has(emailDomainVal)) {
     hints.push(`Prospect email domain (${emailDomainVal}) differs from company domain (${companyDomain}).`);
   }
   if (hints.length) {
@@ -331,6 +379,7 @@ async function renderAccountPanel() {
   if (!panel || !currentSession) return;
   await renderAccountView(panel, currentSession, {
     accountId: selectedAccountId || undefined,
+    lifecycleOwnerId: accountLifecycleOwnerId || undefined,
     listSearchQuery: accountListSearchQuery,
     detailSearchQuery: accountDetailSearchQuery,
     onListSearchQueryChange: (q) => {
@@ -339,13 +388,21 @@ async function renderAccountPanel() {
     onDetailSearchQueryChange: (q) => {
       accountDetailSearchQuery = q;
     },
+    onLifecycleLensChange: (ownerId) => {
+      accountLifecycleOwnerId = ownerId;
+    },
+    onSeTeamChange: () => {
+      void renderAccountPanel();
+    },
     onSelectAccount: (id) => {
       selectedAccountId = id;
+      accountLifecycleOwnerId = null;
       switchView("accounts", { accountId: id });
     },
     onBack: () => {
       selectedAccountId = null;
       accountDetailSearchQuery = "";
+      accountLifecycleOwnerId = null;
       switchView("accounts");
     },
     onPrep: () => switchView("precall"),
@@ -418,13 +475,50 @@ function clearSidebarRecentWork() {
   if (callEmpty) show(callEmpty, true);
 }
 
+function normalizeSidebarCompanyKey(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function formatSidebarDate(when) {
+  const s = String(when || "").trim();
+  return s ? s : "";
+}
+
+function sidebarBriefDedupeKey(b) {
+  const domain = String(b.meta?.domain || b.meta?.companyDomain || "")
+    .toLowerCase()
+    .trim();
+  if (domain) return `domain:${domain}`;
+  const slug = String(b.meta?.company || b.company || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 48);
+  if (slug) return `slug:${slug}`;
+  return normalizeSidebarCompanyKey(b.company);
+}
+
+function dedupeBriefsByCompany(briefs) {
+  const seen = new Set();
+  const out = [];
+  for (const b of briefs || []) {
+    const key = sidebarBriefDedupeKey(b);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(b);
+  }
+  return out;
+}
+
 async function refreshSidebarRecentWork() {
   if (!currentSession?.email) {
     clearSidebarRecentWork();
     return;
   }
 
-  const briefs = loadLocalBriefs().slice(0, 5);
+  const briefs = dedupeBriefsByCompany(loadLocalBriefs()).slice(0, 5);
   const calls = listPostCallAnalyses(currentSession.email).slice(0, 5);
 
   const prepList = $("sidebar-prep-list");
@@ -443,7 +537,7 @@ async function refreshSidebarRecentWork() {
           (b) => `<li>
         <fw-button class="sidebar-history-item sidebar-prep-item" color="secondary" fill="clear" data-id="${esc(b.id)}" title="${esc(b.company || "Brief")}">
           <span class="hist-title">${esc(b.company || "Account")}</span>
-          <span class="hist-meta"><span class="hist-when">${esc(b.when || "")}</span></span>
+          <span class="hist-meta"><span class="hist-kind">${esc(b.kind || "Discovery")}</span><span class="hist-when">${esc(formatSidebarDate(b.when))}</span></span>
         </fw-button>
       </li>`,
         )
@@ -799,14 +893,17 @@ async function initFirebase() {
 
 async function warnIfWorkerDown() {
   const banner = $("worker-warning");
-  if (!banner) return;
+  if (!banner) return true;
+  const configUrl = `${WORKER_BASE_URL}/api/config`;
   try {
-    const res = await fetch(`${WORKER_BASE_URL}/api/config`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(configUrl, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     banner.hidden = true;
+    return true;
   } catch {
     banner.textContent = WORKER_DOWN_MSG;
     banner.hidden = false;
+    return false;
   }
 }
 
@@ -825,6 +922,19 @@ function agentBootLog(location, message, data, hypothesisId = "A") {
     body: JSON.stringify(entry),
   }).catch(() => {});
   // #endregion
+}
+
+/** Re-check while worker is down (e.g. user starts worker in a second terminal). */
+function startWorkerHealthMonitoring() {
+  let timerId = null;
+  const schedule = (workerUp) => {
+    if (timerId) clearTimeout(timerId);
+    timerId = setTimeout(async () => {
+      const up = await warnIfWorkerDown();
+      schedule(up);
+    }, workerUp ? 60_000 : 5_000);
+  };
+  void warnIfWorkerDown().then(schedule);
 }
 
 async function boot() {
@@ -857,6 +967,7 @@ async function boot() {
   initPrecall({
     researchUrl: PREP_RESEARCH_URL,
     synthesizeUrl: PREP_SYNTHESIZE_URL,
+    enrichUrl: CONTACT_ENRICH_URL,
     authEnabled: isFirebaseAuthEnabled(),
     workerDownMsg: WORKER_DOWN_MSG,
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
@@ -891,12 +1002,18 @@ async function boot() {
     },
   });
 
-  $("prospectEmail")?.addEventListener("fwInput", updateDomainHint);
-  $("prospectEmail")?.addEventListener("input", updateDomainHint);
+  $("prospectEmail")?.addEventListener("fwInput", () => {
+    syncAutoCompanyDomain();
+    updateDomainHint();
+  });
+  $("prospectEmail")?.addEventListener("input", () => {
+    syncAutoCompanyDomain();
+    updateDomainHint();
+  });
   $("companyName")?.addEventListener("fwInput", updateDomainHint);
   $("companyName")?.addEventListener("input", updateDomainHint);
-  $("companyDomain")?.addEventListener("fwInput", updateDomainHint);
-  $("companyDomain")?.addEventListener("input", updateDomainHint);
+  $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
+  $("companyDomain")?.addEventListener("input", onCompanyDomainInput);
 
   const dashTabs = $("dash-tabs");
   if (dashTabs) {
@@ -952,7 +1069,7 @@ async function boot() {
     if (!existing) showLogin();
   }
 
-  void warnIfWorkerDown();
+  startWorkerHealthMonitoring();
 }
 
 void boot().catch((err) => {

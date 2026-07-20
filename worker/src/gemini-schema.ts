@@ -6,7 +6,6 @@ import { PREP_SCHEMA } from "./schema";
 const GEMINI_RESPONSE_SCHEMA_KEYS = new Set([
   "type",
   "format",
-  "description",
   "nullable",
   "enum",
   "maxItems",
@@ -25,6 +24,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Recursively remove JSON Schema keywords unsupported by Gemini responseSchema. */
 export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const requiredList = Array.isArray(schema.required) ? (schema.required as string[]) : [];
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(schema)) {
@@ -33,9 +33,11 @@ export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<
     if (key === "properties" && isPlainObject(value)) {
       const props: Record<string, unknown> = {};
       for (const [propName, propSchema] of Object.entries(value)) {
-        props[propName] = isPlainObject(propSchema)
-          ? toGeminiResponseSchema(propSchema)
-          : propSchema;
+        let child = isPlainObject(propSchema) ? toGeminiResponseSchema(propSchema) : propSchema;
+        if (isPlainObject(child) && !requiredList.includes(propName)) {
+          child = { ...child, nullable: true };
+        }
+        props[propName] = child;
       }
       out[key] = props;
       continue;
@@ -49,6 +51,10 @@ export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<
       } else {
         out[key] = value;
       }
+      continue;
+    }
+
+    if (key === "maxItems" && typeof value === "number" && value < 1) {
       continue;
     }
 
@@ -106,4 +112,11 @@ export function toPrepGeminiResponseSchema(
   }
 
   return toGeminiResponseSchema(slim);
+}
+
+/** Alias used by prep schema tests and synthesize fallback paths. */
+export function buildPrepSchemaForGemini(
+  prepSchema: Record<string, unknown>,
+): Record<string, unknown> {
+  return toPrepGeminiResponseSchema(prepSchema);
 }

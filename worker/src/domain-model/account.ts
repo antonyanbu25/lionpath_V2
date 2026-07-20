@@ -34,6 +34,15 @@ export interface AccountMetadata extends AccountResearchMetadata {
   [key: string]: unknown;
 }
 
+export type SeTeamRole = "primary" | "secondary";
+
+export interface AccountSeTeamMember {
+  seUserId: string;
+  role: SeTeamRole;
+  addedAt: number;
+  addedBy?: string;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -41,9 +50,13 @@ export interface Account {
   slug: string;
   industry?: string;
   metadata?: AccountMetadata;
+  seTeam?: AccountSeTeamMember[];
+  primarySeUserId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
+
+export const MAX_SE_TEAM_SIZE = 4;
 
 /** Normalize company name to a lookup slug — prefers explicit company domain. */
 export function normalizeAccountSlug(name: string, domain?: string | null): string {

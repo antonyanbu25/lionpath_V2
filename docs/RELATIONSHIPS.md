@@ -160,17 +160,20 @@ Indexes defined in [`firestore.indexes.json`](../firestore.indexes.json).
 
 ---
 
-## User ↔ Account without M:N table
+## User ↔ Account deal team + lifecycles
 
-Multiple SEs can engage the same account. Each pair gets its own Lifecycle:
+Multiple SEs engage the same account via **`Account.seTeam`** (max 4: one **primary**, up to three **secondary**) and **one active Lifecycle per `(ownerId, accountId)`**:
 
 ```
 Account "Acme"
-  ├── Lifecycle (owner: SE Alice)
-  └── Lifecycle (owner: SE Bob)
+  seTeam: [primary Alice, secondary Bob]
+  ├── Lifecycle (owner: Alice) → events, preps, tasks
+  └── Lifecycle (owner: Bob)   → events, preps, tasks
 ```
 
-Do **not** add `user_accounts` join table unless you need membership without engagement context.
+Shared on the account: contacts, MEDDPICC, firmographics. Per-SE: lifecycle stage and artifacts. Activity UI merges lifecycle events across assigned SEs.
+
+Do **not** add a separate `user_accounts` join table unless you need membership without engagement context.
 
 ---
 

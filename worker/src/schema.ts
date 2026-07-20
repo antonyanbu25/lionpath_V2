@@ -89,8 +89,24 @@ const prospectRow = {
     totalExperience: { type: "string", description: "Years experience e.g. 12 years, max 6 words." },
     priorEmployers: {
       type: "array",
-      maxItems: 4,
+      maxItems: 6,
       items: { type: "string", description: "Prior employer, max 6 words." },
+    },
+    summary: { type: "string", description: "2-4 sentence profile summary from LinkedIn, max 80 words." },
+    skills: {
+      type: "array",
+      maxItems: 8,
+      items: { type: "string", description: "Skill label, max 4 words." },
+    },
+    languages: {
+      type: "array",
+      maxItems: 6,
+      items: { type: "string", description: "Language, max 4 words." },
+    },
+    education: {
+      type: "array",
+      maxItems: 4,
+      items: { type: "string", description: "Education line, max 12 words." },
     },
     competitorTouchpoints: {
       type: "array",
@@ -109,8 +125,10 @@ const prospectRow = {
         secondary: { type: "string" },
         confidence: { type: "string", enum: ["low", "medium", "high"] },
         evidence: { type: "array", items: { type: "string" }, maxItems: 4 },
+        inferred: { type: "boolean" },
+        source: { type: "string" },
       },
-      description: "Optional DISC hint when evidence exists in research.",
+      description: "Inferred DISC hint when evidence exists in research.",
     },
   },
 } as const;
@@ -270,9 +288,9 @@ export const PREP_SCHEMA = {
     },
     industryUseCases: {
       type: "array",
-      maxItems: 0,
+      maxItems: 1,
       items: useCaseRow,
-      description: "Deprecated — return empty array [].",
+      description: "Deprecated — always return empty array [].",
     },
     checklist: {
       type: "array",
@@ -398,6 +416,15 @@ export interface SignalRow {
   sourceLabel: string;
 }
 
+export interface ProspectDiscHint {
+  primary?: "D" | "I" | "S" | "C" | "unknown";
+  secondary?: string;
+  confidence?: "low" | "medium" | "high";
+  evidence?: string[];
+  inferred?: boolean;
+  source?: string;
+}
+
 export interface ProspectProfile {
   name: string;
   role: string;
@@ -405,6 +432,12 @@ export interface ProspectProfile {
   priorEmployers: string[];
   competitorTouchpoints: string[];
   sourceLabel: string;
+  summary?: string;
+  skills?: string[];
+  languages?: string[];
+  education?: string[];
+  discHint?: ProspectDiscHint;
+  influence?: { level: "high" | "medium" | "low" | "unknown"; decisionRole: string };
 }
 
 export interface IcpFit {
@@ -474,6 +507,10 @@ export interface Prep {
   icpFit: IcpFit;
   sources: PrepSource[];
   assets?: PrepAsset[];
+  meddpiccHints?: Record<
+    string,
+    { value?: string; status?: "unknown" | "partial" | "confirmed"; contactId?: string }
+  >;
 }
 
 export const FIT_LABELS = ["Support channels", "Self Serve", "Agent Assist"] as const;

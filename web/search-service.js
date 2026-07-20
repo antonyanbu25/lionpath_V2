@@ -2,7 +2,7 @@
  * Client-side search index for accounts, discovery briefs, and call reviews.
  */
 
-import { listAccountsForUser } from "./domain/account-service.js";
+import { listAccountsForSession } from "./domain/account-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
 import { STAGE_LABELS } from "./domain/types.js";
@@ -31,7 +31,7 @@ function collectTokens(parts) {
 
 /** Build searchable token list for an account row. */
 export function accountRowTokens(row, contacts = []) {
-  const { account, lifecycle } = row;
+  const { account, lifecycle, seTeamDisplay } = row;
   const stageLabel = STAGE_LABELS[lifecycle?.stage] || lifecycle?.stage || "";
   const parts = [
     account?.name,
@@ -40,6 +40,9 @@ export function accountRowTokens(row, contacts = []) {
     stageLabel,
     lifecycle?.stage,
   ];
+  for (const m of seTeamDisplay || []) {
+    parts.push(m.user?.displayName, m.user?.jobTitle);
+  }
   for (const c of contacts) {
     parts.push(c.name, c.email, c.title);
   }
@@ -127,7 +130,7 @@ export async function buildSearchIndex(session) {
   const store = getStore();
 
   if (userId) {
-    const rows = await listAccountsForUser(session);
+    const rows = await listAccountsForSession(session);
     await Promise.all(
       rows.map(async (row) => {
         const contacts = await store.listContactsByAccount(row.account.id);

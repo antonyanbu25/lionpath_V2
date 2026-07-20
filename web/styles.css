@@ -502,6 +502,8 @@ fw-button.sidebar-history-item.active {
   border-color: var(--accent-soft);
 }
 .hist-title {
+  display: block;
+  width: 100%;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -510,10 +512,20 @@ fw-button.sidebar-history-item.active {
 }
 .hist-meta {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
   align-items: center;
+  width: 100%;
+  gap: 8px;
+  margin-top: 2px;
   font-size: 11px;
   color: var(--muted);
+}
+.hist-kind {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
 }
 .hist-score {
   font-weight: 600;

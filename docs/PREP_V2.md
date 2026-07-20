@@ -31,6 +31,7 @@ Form (company + domain + emails)
   "companyDomain": "acme.com",
   "prospectEmail": "alex@acme.com",
   "prospectEmails": ["alex@acme.com"],
+  "linkedinProfileExports": [{ "fileName": "Profile.pdf", "text": "…extracted text…" }],
   "prepType": "new_business",
   "forceRefresh": false,
   "cachedResearch": { "...": "optional client-side cache" }
@@ -103,10 +104,35 @@ When `APOLLO_API_KEY` is set, Apollo runs before playbook; playbook fills gaps (
 - Read-only SF: `Account.metadata.sfAccountId`
 - No write-back to Salesforce in v1
 
-## Human-in-the-loop
+## UI flow (pre-call form)
 
-1. UI shows **Confirm company** modal (`companyName` + `companyDomain`) before research
-2. Optional two-step API: `/api/prep/research` → user confirms facts → `/api/prep/synthesize`
+1. **Fields (top to bottom):** Company → Prospect emails → Company domain (editable).
+2. **Domain auto-fill:** First corporate prospect email domain prefills company domain; **not** filled for personal providers (Gmail, Outlook, etc.) — SE enters website manually.
+3. **One click:** **Generate brief** runs research then synthesize with default-checked facts (no Confirm company or Review facts modals).
+4. **API (unchanged):** `POST /api/prep/research` then `POST /api/prep/synthesize`, or `POST /api/generate-prep` for all-in-one.
+
+## LinkedIn profile PDF (SE upload)
+
+No Sales Navigator / Apollo required for rich **prospect** rows when SEs attach LinkedIn **Save to PDF** exports.
+
+| Step | Behavior |
+|------|----------|
+| UI | Optional **Add PDFs** (max 5, 2 MB each); text extracted in browser via PDF.js |
+| Request | `linkedinProfileExports: [{ fileName, text }]` on research/synthesize/generate-prep |
+| Match | PDF → email via email in text, LinkedIn `/in/` slug, or name fuzzy match |
+| Enrich | **`POST /api/contact/enrich`** — one Gemini call per prospect with PDF (profile + inferred DISC) before research |
+| Research | PDF text still feeds account snippets; batched LinkedIn fact LLM removed (prospect depth from enrich) |
+| Synthesize | `confirmedProspectProfiles[]` merged deterministically into `prospects[]` after validation |
+| Result | Prospect cards show summary, skills, DISC (inferred callout); contacts updated on dual-write |
+
+See **`docs/CONTACT_ENRICHMENT.md`** for Zoom/Kaia provisioned fields.
+
+Stored prep input truncates PDF text (~8k chars per file) for Firestore/local size.
+
+## Human-in-the-loop (legacy / API)
+
+- Modals removed from default UI; disputes still available on the generated brief via **Report**.
+- Optional two-step API remains for tools: `/api/prep/research` → `confirmedFacts` → `/api/prep/synthesize`
 
 ## Evaluation
 

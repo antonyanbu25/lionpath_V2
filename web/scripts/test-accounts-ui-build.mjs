@@ -65,14 +65,16 @@ assert(!(await fileExists("account-sidebar.js")), "account-sidebar.js should be 
 assert(await fileExists("domain/account-service.js"), "account-service.js missing");
 
 const accountService = await readWeb("domain/account-service.js");
+assert(accountService.includes("listAccountsForSession"), "account-service: listAccountsForSession missing");
 assert(accountService.includes("listAccountsForUser"), "account-service: listAccountsForUser missing");
+assert(accountService.includes("updateAccountSeTeam"), "account-service: updateAccountSeTeam missing");
 assert(accountService.includes("getAccountEngagementDetail"), "account-service: getAccountEngagementDetail missing");
 
 const accountView = await readWeb("account-view.js");
 assert(accountView.includes("All accounts"), "account-view: account-centric copy missing");
 assert(!accountView.includes("All lifecycles"), "account-view: lifecycle copy still present");
 assert(accountView.includes("account-list-search"), "account-view: list search missing");
-assert(accountView.includes("account-detail-search"), "account-view: detail search missing");
+assert(accountView.includes("Deal team"), "account-view: deal team card missing");
 
 assert(await fileExists("search-service.js"), "search-service.js missing");
 assert(await fileExists("global-search.js"), "global-search.js missing");

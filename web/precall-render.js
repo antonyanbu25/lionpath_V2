@@ -207,34 +207,155 @@ function renderSignalRows(signals, sources) {
     .join("");
 }
 
-function renderProspectColumn(prospects, sources) {
-  const list = prospects?.length ? prospects : [];
-  if (!list.length) {
-    return `<p class="muted">No prospect profiles yet — regenerate the brief.</p>`;
+function prospectTabLabel(name, index) {
+  const n = String(name || "").trim();
+  if (n && n !== "unknown") {
+    const parts = n.split(/\s+/);
+    return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
   }
-  return list
-    .map((p, i) => {
-      const mono = companyMono(p.name);
-      const src = sources.find((s) => s.label === p.sourceLabel) || sources[i % sources.length];
-      const conf = src?.confidence ?? 50;
-      const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
-      const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
-      const unverified = isUnverifiedSource(sources, p.sourceLabel);
-      return `<div class="prep-prospect-card${unverified ? " prep-kv-unverified" : ""}">
-        <div class="prep-prospect-head">
-          <span class="prep-prospect-avatar">${esc(mono)}</span>
-          <div>
-            <div class="prep-prospect-name">${dash(p.name, unverified && !isUnknown(p.name))}</div>
-            <div class="prep-prospect-role muted">${dash(p.role, unverified && !isUnknown(p.role))}</div>
-          </div>
-          ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
-        </div>
-        <div class="prep-kv-row"><span class="prep-kv-key">Experience</span><span class="prep-kv-val">${dash(p.totalExperience)}</span></div>
-        <div class="prep-kv-row"><span class="prep-kv-key">Prior employers</span><span class="prep-kv-val">${employers.length ? esc(employers.join(", ")) : dash("")}</span></div>
-        <div class="prep-kv-row"><span class="prep-kv-key">Competitor touchpoints</span><span class="prep-kv-val">${touchpoints.length ? esc(touchpoints.join(", ")) : dash("")}</span></div>
-      </div>`;
-    })
+  return `Prospect ${index + 1}`;
+}
+
+function experienceHeroLine(totalExperience, employers) {
+  let exp = String(totalExperience ?? "").trim();
+  let shortExp = exp;
+  if (exp.length > 80) {
+    const sent = exp.match(/^[^.!?]+[.!?]?/);
+    shortExp = sent ? sent[0].trim() : `${exp.slice(0, 77)}…`;
+  }
+  const emp = (employers || []).filter((e) => e && !isUnknown(e));
+  const top2 = emp.slice(0, 2).join(", ");
+  const more = emp.length > 2 ? ` · +${emp.length - 2} more` : "";
+  if (shortExp && !isUnknown(shortExp) && top2) return `${shortExp} · ${top2}${more}`;
+  if (shortExp && !isUnknown(shortExp)) return shortExp;
+  if (top2) return `${top2}${more}`;
+  return "";
+}
+
+function renderSkillChips(skills, maxVisible = 6) {
+  const list = (skills || []).filter(Boolean);
+  if (!list.length) return "";
+  const visible = list.slice(0, maxVisible);
+  const extra = list.length - visible.length;
+  return `<div class="prep-skill-chips">${visible
+    .map((s) => `<span class="prep-skill-chip">${esc(s)}</span>`)
+    .join("")}${extra > 0 ? `<span class="prep-skill-chip prep-skill-more">+${extra}</span>` : ""}</div>`;
+}
+
+function renderProspectCard(p, i, sources) {
+  const mono = companyMono(p.name);
+  const src = sources.find((s) => s.label === p.sourceLabel) || sources[i % sources.length];
+  const conf = src?.confidence ?? 50;
+  const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
+  const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
+  const unverified = isUnverifiedSource(sources, p.sourceLabel);
+  const disc = p.discHint;
+  const discPrimary = disc?.primary && disc.primary !== "unknown" ? disc.primary : "";
+  const discEvidence = (disc?.evidence || []).slice(0, 4);
+  const skills = (p.skills || []).filter(Boolean);
+  const langs = (p.languages || []).filter(Boolean);
+  const edu = (p.education || []).filter(Boolean);
+  const summary = p.summary && !isUnknown(p.summary) ? p.summary : "";
+  const expLine = experienceHeroLine(p.totalExperience, employers);
+
+  const discHero = discPrimary
+    ? `<div class="prep-prospect-disc-row">
+        <span class="prep-disc-chip">DISC ${esc(discPrimary)}${disc.secondary && disc.secondary !== "unknown" ? `<span class="prep-disc-chip-sec"> / ${esc(disc.secondary)}</span>` : ""}${disc.confidence ? `<span class="prep-disc-chip-conf"> · ${esc(disc.confidence)}</span>` : ""}</span>
+        <p class="prep-disc-inferred muted">Inferred from LinkedIn — not a formal assessment</p>
+      </div>`
+    : "";
+
+  const summaryPreview =
+    summary ?
+      `<p class="prep-prospect-summary prep-line-clamp">${esc(summary)}</p>`
+    : "";
+
+  const detailsBlocks = [
+    summary ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Full summary</span><p>${esc(summary)}</p></div>`
+    : "",
+    employers.length ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Prior employers</span><p>${esc(employers.join(", "))}</p></div>`
+    : "",
+    langs.length ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Languages</span><p>${esc(langs.join(", "))}</p></div>`
+    : "",
+    edu.length ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Education</span><p>${esc(edu.join("; "))}</p></div>`
+    : "",
+    `<div class="prep-detail-block"><span class="prep-kv-key">Competitor touchpoints</span><p>${touchpoints.length ? esc(touchpoints.join(", ")) : dash("")}</p></div>`,
+    discPrimary && discEvidence.length ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Why (DISC)</span><ul class="prep-disc-evidence">${discEvidence.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></div>`
+    : "",
+  ]
+    .filter(Boolean)
     .join("");
+
+  const hasDetails = !!(summary || employers.length || langs.length || edu.length || touchpoints.length || discEvidence.length);
+
+  return `<div class="prep-prospect-card${unverified ? " prep-kv-unverified" : ""}" data-prospect-idx="${i}">
+    <div class="prep-prospect-hero">
+      <div class="prep-prospect-head">
+        <span class="prep-prospect-avatar">${esc(mono)}</span>
+        <div class="prep-prospect-head-text">
+          <div class="prep-prospect-name">${dash(p.name, unverified && !isUnknown(p.name))}</div>
+          <div class="prep-prospect-role muted">${dash(p.role, unverified && !isUnknown(p.role))}</div>
+        </div>
+        ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
+      </div>
+      ${discHero}
+      ${expLine ? `<p class="prep-prospect-exp-line muted">${esc(expLine)}</p>` : ""}
+      ${renderSkillChips(skills)}
+      ${summaryPreview}
+    </div>
+    ${
+      hasDetails ?
+        `<details class="prep-prospect-details">
+        <summary>Profile details</summary>
+        <div class="prep-prospect-details-body">${detailsBlocks}</div>
+      </details>`
+      : ""
+    }
+  </div>`;
+}
+
+function resolvePeopleProspectTab(requested, prospectCount) {
+  const match = String(requested || "").match(/^prospect-(\d+)$/);
+  if (!match) return "prospect-0";
+  const idx = Number(match[1]);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= prospectCount) return "prospect-0";
+  return `prospect-${idx}`;
+}
+
+function renderProspectSection(prospects, sources, linkedinNote = "", peopleProspectTab) {
+  const list = prospects?.length ? prospects : [];
+  const head = `${sectionHead("People on this call", "var(--dew-amber)")}${linkedinNote}`;
+
+  if (!list.length) {
+    return `<fw-card class="prep-card prep-people-section">${head}<p class="muted">No prospect profiles yet — regenerate the brief.</p></fw-card>`;
+  }
+
+  if (list.length === 1) {
+    return `<fw-card class="prep-card prep-people-section">${head}${renderProspectCard(list[0], 0, sources)}</fw-card>`;
+  }
+
+  const tabs = list
+    .map(
+      (p, i) =>
+        `<fw-tab slot="tab" panel="prospect-${i}">${esc(prospectTabLabel(p.name, i))}</fw-tab>`,
+    )
+    .join("");
+  const panels = list
+    .map((p, i) => `<fw-tab-panel name="prospect-${i}">${renderProspectCard(p, i, sources)}</fw-tab-panel>`)
+    .join("");
+  const activeTab = resolvePeopleProspectTab(peopleProspectTab, list.length);
+
+  return `<fw-card class="prep-card prep-people-section">${head}
+    <fw-tabs id="prep-people-tabs" class="prep-people-tabs" active-tab-name="${esc(activeTab)}">
+      ${tabs}
+      ${panels}
+    </fw-tabs>
+  </fw-card>`;
 }
 
 function renderSupportJDBlock(supportJD, sources) {
@@ -415,13 +536,17 @@ export function renderResultHeader(prep, meta) {
   </div>`;
 }
 
-export function renderDiscoveryTab(prep, sourcesOpen) {
+export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
   const sources = prep.sources || [];
+  const linkedinNote =
+    renderOpts.linkedinMatchedEmails?.length ?
+      `<p class="muted prep-linkedin-result-note">Includes LinkedIn PDF you attached (${renderOpts.linkedinMatchedEmails.length} matched).</p>`
+    : "";
   return `<div class="prep-tab-body prep-rise">
     <fw-inline-message type="warning" open class="prep-ai-banner">
       Generated by AI — prone to error. Please validate before customer conversations.
     </fw-inline-message>
-    <div class="prep-grid-3">
+    <div class="prep-grid-2 prep-grid-account">
       <fw-card class="prep-card">
         ${sectionHead("Account facts", "var(--dew-primary)")}
         <p class="prep-about muted">${dash(prep.about)}</p>
@@ -432,11 +557,8 @@ export function renderDiscoveryTab(prep, sourcesOpen) {
         ${sectionHead("Signals", "var(--dew-purple)")}
         ${renderSignalRows(prep.signals, sources)}
       </fw-card>
-      <fw-card class="prep-card">
-        ${sectionHead("Prospect information", "var(--dew-amber)")}
-        ${renderProspectColumn(prep.prospects, sources)}
-      </fw-card>
     </div>
+    ${renderProspectSection(prep.prospects, sources, linkedinNote, renderOpts.peopleProspectTab)}
     ${renderSupportJDBlock(prep.supportJD, sources)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}

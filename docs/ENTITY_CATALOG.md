@@ -113,6 +113,13 @@ These are stored **inside** a parent document. They are never queried or secured
   domain: string | null;
   slug: string;
   industry?: string;
+  seTeam?: Array<{
+    seUserId: string;
+    role: "primary" | "secondary";
+    addedAt: number;
+    addedBy?: string;
+  }>;
+  primarySeUserId?: string | null;
   metadata?: {
     research?: object;
     firmographics?: object;

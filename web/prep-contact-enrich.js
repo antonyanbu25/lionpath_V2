@@ -1,0 +1,192 @@
+/**
+ * Client-side PDF→email matching and parallel /api/contact/enrich calls.
+ */
+
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+function normalizeName(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function extractNameFromPdfText(text) {
+  const lines = String(text || "")
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    if (/^contact/i.test(lines[i])) continue;
+    if (/linkedin\.com\/in\//i.test(lines[i])) continue;
+    if (
+      /^(top skills|aptitudes|languages|honors|publications|summary|extracto|experiencia|experience|education|educación)/i.test(
+        lines[i],
+      )
+    ) {
+      break;
+    }
+    if (lines[i].length >= 6 && lines[i].length <= 80 && /[A-Za-z]/.test(lines[i]) && !/@/.test(lines[i])) {
+      const words = lines[i].split(/\s+/);
+      if (words.length >= 2 && words.length <= 8) return lines[i];
+    }
+  }
+  return null;
+}
+
+function findEmailsInText(text) {
+  const matches = text.match(EMAIL_RE) || [];
+  const seen = new Set();
+  const out = [];
+  for (const m of matches) {
+    const e = m.toLowerCase();
+    if (seen.has(e)) continue;
+    seen.add(e);
+    out.push(e);
+  }
+  return out;
+}
+
+function slugTokensFromLinkedInUrl(text) {
+  const m = text.match(/linkedin\.com\/in\/([a-z0-9-]+)/i);
+  if (!m) return [];
+  return m[1]
+    .toLowerCase()
+    .split("-")
+    .filter((t) => t.length > 2);
+}
+
+function localPart(email) {
+  return email.split("@")[0]?.replace(/[.+]/g, " ").toLowerCase() || "";
+}
+
+export function matchPdfToEmail(pdf, emails, hintName) {
+  const text = pdf.text;
+  const normalizedProspects = emails.map((e) => e.toLowerCase());
+  const inText = findEmailsInText(text);
+  for (const e of inText) {
+    if (normalizedProspects.includes(e)) return e;
+  }
+  const slugTokens = slugTokensFromLinkedInUrl(text);
+  if (slugTokens.length) {
+    for (const prospect of normalizedProspects) {
+      const local = localPart(prospect).replace(/\s+/g, "");
+      const joined = slugTokens.join("");
+      if (joined.includes(local) || local.includes(slugTokens[0] || "")) return prospect;
+    }
+  }
+  const pdfName = extractNameFromPdfText(text);
+  const targetNorm = hintName ? normalizeName(hintName) : "";
+  if (pdfName && targetNorm) {
+    const pdfNorm = normalizeName(pdfName);
+    if (pdfNorm === targetNorm || pdfNorm.includes(targetNorm) || targetNorm.includes(pdfNorm)) {
+      return emails[0] || null;
+    }
+  }
+  if (pdfName) {
+    for (const email of emails) {
+      const localNorm = normalizeName(localPart(email));
+      const pdfParts = normalizeName(pdfName)
+        .split(" ")
+        .filter((p) => p.length > 2);
+      const localParts = localNorm.split(" ").filter(Boolean);
+      if (pdfParts.length && localParts.some((lp) => pdfParts.some((pp) => pp.startsWith(lp) || lp.startsWith(pp)))) {
+        return email;
+      }
+    }
+  }
+  return null;
+}
+
+/** Assign each PDF to at most one prospect email. */
+export function assignPdfsToEmails(pdfs, emails) {
+  const map = new Map();
+  const used = new Set();
+  for (const pdf of pdfs || []) {
+    let email = null;
+    for (const e of emails) {
+      if (used.has(e)) continue;
+      if (matchPdfToEmail(pdf, [e]) === e) {
+        email = e;
+        break;
+      }
+    }
+    if (!email) {
+      const remaining = emails.filter((e) => !used.has(e));
+      for (const e of remaining) {
+        if (matchPdfToEmail(pdf, [e]) === e) {
+          email = e;
+          break;
+        }
+      }
+    }
+    if (email && !used.has(email)) {
+      used.add(email);
+      map.set(email.toLowerCase(), pdf);
+    }
+  }
+  return map;
+}
+
+/**
+ * Run enrich API for each prospect that has sources.
+ * @param {{ enrichUrl: string, getToken?: () => Promise<string>, authEnabled?: boolean }} deps
+ */
+export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onProgress }) {
+  const pdfMap = assignPdfsToEmails(pdfs, emails);
+  const zoomExcerpt = payload.zoomTranscriptExcerpt || "";
+  const kaiaSummary = payload.kaiaSummary || "";
+  const notes = payload.additionalContext || "";
+
+  const tasks = emails.map(async (email, idx) => {
+    const pdf = pdfMap.get(email.toLowerCase());
+    const sources = {};
+    if (pdf?.text) sources.linkedinPdf = { fileName: pdf.fileName, text: pdf.text };
+    if (zoomExcerpt) sources.zoomTranscriptExcerpt = zoomExcerpt;
+    if (kaiaSummary) sources.kaiaSummary = kaiaSummary;
+    if (notes) sources.additionalNotes = notes;
+
+    const hasSource =
+      sources.linkedinPdf?.text?.trim() ||
+      sources.zoomTranscriptExcerpt?.trim() ||
+      sources.kaiaSummary?.trim() ||
+      sources.additionalNotes?.trim();
+    if (!hasSource) return null;
+
+    onProgress?.(idx + 1, emails.length);
+
+    const headers = { "content-type": "application/json" };
+    if (deps.authEnabled && deps.getToken) {
+      headers.Authorization = `Bearer ${await deps.getToken()}`;
+    }
+    const res = await fetch(deps.enrichUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        email,
+        companyName: payload.companyName,
+        companyDomain: payload.companyDomain,
+        sources,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Enrich failed (${res.status})`);
+    return data;
+  });
+
+  const results = await Promise.all(tasks);
+  return results.filter(Boolean);
+}
+
+/** Map enrich API responses to worker confirmedProspectProfiles shape. */
+export function toConfirmedProspectProfiles(enrichResponses) {
+  return (enrichResponses || []).map((r) => ({
+    email: r.email,
+    profile: r.profile,
+    disc: r.disc,
+    influence: r.influence,
+  }));
+}

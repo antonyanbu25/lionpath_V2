@@ -4,11 +4,11 @@ import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } f
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
 import { PREP_SCHEMA, type Prep } from "../schema";
-
-const PREP_GEMINI_SCHEMA = toPrepGeminiResponseSchema();
 import { normalizePrepOutput } from "../word-limits";
 import { kbContextBlock } from "./extract-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
+
+const PREP_GEMINI_SCHEMA = toPrepGeminiResponseSchema();
 
 function synthesizeSystemPrompt(): string {
   return `You are a senior Solution Engineer at Freshworks preparing a Discovery + Demo prep brief.
@@ -44,10 +44,16 @@ function synthesizeUserPrompt(
     additionalContext?: string;
     meetingType?: string;
     ae?: string;
+    confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
   },
   facts: ResearchFact[],
   sources: SourceRef[],
 ): string {
+  const confirmedBlock =
+    input.confirmedProspectProfiles?.length ?
+      `\nConfirmed prospect profiles (copy name, role, experience, summary, skills, discHint into matching prospects[] by email order — do NOT overwrite with unknown):\n${JSON.stringify(input.confirmedProspectProfiles, null, 2)}\n`
+    : "";
+
   return [
     `Prepare Discovery brief for:`,
     `Company: ${input.companyName}`,
@@ -56,15 +62,62 @@ function synthesizeUserPrompt(
     input.additionalContext ? `Additional context:\n${input.additionalContext}` : "",
     input.meetingType ? `Meeting type: ${input.meetingType}` : "",
     input.ae ? `AE: ${input.ae}` : "",
+    confirmedBlock,
     "",
     "Extracted research facts (ONLY source for prospect/account claims):",
     JSON.stringify({ facts, sources }, null, 2),
     "",
     "Fill the full prep brief. prospects[] must have one entry per email.",
+    "Prefer LinkedIn PDF facts (sourceLabel LinkedIn PDF) for prospect name, role, experience when present.",
     "If a fact is unknown in research, use unknown in output.",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function isGeminiInvalidSchemaError(err: unknown): boolean {
+  const msg = (err as Error)?.message || "";
+  return msg.includes("Gemini API 400") && /INVALID_ARGUMENT|invalid argument/i.test(msg);
+}
+
+async function generateSynthesis(
+  provider: ReturnType<typeof getProvider>,
+  input: {
+    companyName: string;
+    companyDomain: string;
+    emails: string[];
+    additionalContext?: string;
+    meetingType?: string;
+    ae?: string;
+    effort?: string;
+    confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
+  },
+  facts: ResearchFact[],
+  sources: SourceRef[],
+) {
+  const effort = input.effort || "medium";
+  const base = {
+    system: synthesizeSystemPrompt(),
+    user: synthesizeUserPrompt(input, facts, sources),
+    maxTokens: 12000,
+    temperature: 0,
+    research: false as const,
+    effort,
+    step: "prep/synthesize",
+  };
+
+  try {
+    return await provider.generate({
+      ...base,
+      jsonSchema: PREP_GEMINI_SCHEMA,
+    });
+  } catch (err) {
+    if (!isGeminiInvalidSchemaError(err)) throw err;
+    return await provider.generate({
+      ...base,
+      jsonMimeOnly: true,
+    });
+  }
 }
 
 export async function synthesizePrep(
@@ -77,23 +130,14 @@ export async function synthesizePrep(
     meetingType?: string;
     ae?: string;
     effort?: string;
+    confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
   },
   facts: ResearchFact[],
   sources: SourceRef[],
 ): Promise<Prep> {
   const provider = getProvider(env);
-  const effort = input.effort || env.EFFORT || "medium";
 
-  const result = await provider.generate({
-    system: synthesizeSystemPrompt(),
-    user: synthesizeUserPrompt(input, facts, sources),
-    maxTokens: 12000,
-    temperature: 0,
-    research: false,
-    effort,
-    jsonSchema: PREP_GEMINI_SCHEMA,
-    step: "prep/synthesize",
-  });
+  const result = await generateSynthesis(provider, input, facts, sources);
 
   try {
     return normalizePrepOutput(extractJson<Prep>(result.text));

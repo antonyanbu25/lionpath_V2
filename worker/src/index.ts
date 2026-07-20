@@ -1,10 +1,13 @@
 // Cloudflare Worker entry. Routes:
 //   POST /api/generate-prep   — pre-call research brief
+//   POST /api/contact/enrich  — per-contact profile + inferred DISC
 //   POST /api/analyze-call    — post-call summary + next steps + quality coach
 //   GET  /api/zoom/status     — whether Zoom OAuth is configured
 //   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
 
+//   POST /api/contact/enrich — per-contact LinkedIn / Zoom / Kaia enrichment
 import { generatePrep, runPrepResearch, runPrepSynthesize, resolveProspectEmails, type Env as PrepEnv, type PrepInput } from "./prep";
+import { enrichContact, type ContactEnrichRequest } from "./contact/enrich";
 import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
@@ -284,6 +287,21 @@ export default {
         }
       }
 
+      if (request.method === "POST" && path === "/api/contact/enrich") {
+        await requireUser(request, env);
+        const body = (await request.json()) as ContactEnrichRequest;
+        try {
+          const result = await enrichContact(env, body);
+          return json(result, 200, cors);
+        } catch (err) {
+          const status = (err as { status?: number }).status;
+          if (status) {
+            return json({ error: (err as Error).message }, status, cors);
+          }
+          throw err;
+        }
+      }
+
       if (request.method === "POST" && path === "/api/prep/research") {
         await requireUser(request, env);
         const input = (await request.json()) as Partial<PrepInput>;
@@ -335,6 +353,7 @@ export default {
           prospectEmails: emails,
           confirmedFacts: input.confirmedFacts as import("./prep/types").ResearchFact[],
           researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
+          confirmedProspectProfiles: (input as PrepInput).confirmedProspectProfiles,
         });
         return json(
           {

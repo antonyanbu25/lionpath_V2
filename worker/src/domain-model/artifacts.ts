@@ -12,6 +12,7 @@ export interface PrepInput {
   meetingType?: string;
   ae?: string;
   effort?: string;
+  linkedinProfileExports?: Array<{ fileName: string; text: string }>;
 }
 
 export interface PrepBriefMeta {

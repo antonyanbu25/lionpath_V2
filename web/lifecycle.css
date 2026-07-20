@@ -165,22 +165,29 @@
 }
 
 .account-accordion-title-inner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 10px;
   width: 100%;
-  flex-wrap: wrap;
+  align-items: start;
 }
 
 .account-accordion-title-text {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.account-detail-contact-email {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .account-accordion-tags {
+  grid-column: 1 / -1;
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
@@ -317,7 +324,25 @@
 
 .meddpicc-field-value {
   font-size: 0.85rem;
+  min-width: 0;
+}
+
+.meddpicc-field-value-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   word-break: break-word;
+}
+
+.meddpicc-field-status {
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .meddpicc-field-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .meddpicc-updated {
@@ -410,4 +435,184 @@
 
 .sidebar-lifecycle-list .sidebar-history-item {
   font-size: 0.85rem;
+}
+
+.account-deal-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-deal-team-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-deal-team-trailing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-deal-team-info {
+  min-width: 0;
+}
+
+.account-deal-team-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lifecycle-lens-select {
+  margin-bottom: 12px;
+  max-width: 280px;
+}
+
+.lifecycle-lens-hint {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.lifecycle-timeline-rich .lifecycle-timeline-item-rich {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.lifecycle-timeline-item-compact {
+  padding: 4px 0;
+}
+
+.lifecycle-timeline-days {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.lifecycle-timeline-day {
+  list-style: none;
+}
+
+.lifecycle-timeline-day-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-text-secondary, #5a6570);
+  margin: 12px 0 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--dew-border);
+}
+
+.lifecycle-timeline-day:first-child .lifecycle-timeline-day-label {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
+.lifecycle-timeline-day-items {
+  margin: 0;
+  padding: 0;
+}
+
+.lifecycle-timeline-day-items .lifecycle-timeline-item:last-child {
+  border-bottom: none;
+}
+
+.lifecycle-timeline-group-details {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+}
+
+.lifecycle-timeline-group-details summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.lifecycle-timeline-detail-list {
+  margin: 4px 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.account-activity-show-more-wrap {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.lifecycle-timeline-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.lifecycle-timeline-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lifecycle-timeline-sub {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+}
+
+.lifecycle-timeline-spine {
+  font-size: 0.85rem;
+}
+
+.lifecycle-timeline-count {
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.lifecycle-category-pill {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--dew-border, #e5e7eb);
+  color: var(--dew-text-secondary, #5a6570);
+}
+
+.lifecycle-category-pill--stage {
+  background: #e8f4fd;
+  color: #1a5a8a;
+}
+
+.lifecycle-category-pill--engagement {
+  background: #eef6ee;
+  color: #2d6a2d;
+}
+
+.lifecycle-category-pill--team {
+  background: #f3eef9;
+  color: #5a3d8a;
+}
+
+.lifecycle-category-pill--tasks {
+  background: #fff4e5;
+  color: #8a5a1a;
+}
+
+.lifecycle-category-pill--contact {
+  background: #fceef0;
+  color: #8a2d3d;
+}
+
+.lifecycle-category-pill--activity {
+  background: var(--dew-border, #e5e7eb);
+  color: var(--dew-text-secondary, #5a6570);
+}
+
+.account-list-primary-se {
+  font-weight: 500;
 }

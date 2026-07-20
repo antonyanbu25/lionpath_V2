@@ -116,6 +116,8 @@ function buildGenerationConfig(req: LlmRequest, model: string): Record<string, u
   if (req.jsonSchema) {
     generationConfig.responseMimeType = "application/json";
     generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);
+  } else if (req.jsonMimeOnly) {
+    generationConfig.responseMimeType = "application/json";
   }
 
   const thinkingConfig = buildThinkingConfig(req, model);

@@ -175,6 +175,34 @@ export function createFirestoreStore(fb) {
       return accountsCrud.get(id);
     },
 
+    async listAccounts() {
+      const snap = await getDocs(collection(db, "accounts"));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    },
+
+    async listActiveLifecyclesForAccount(accountId) {
+      const q = query(
+        collection(db, "lifecycles"),
+        where("accountId", "==", accountId),
+        where("status", "==", "active"),
+        orderBy("lastActivityAt", "desc")
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listLifecyclesByOrg(orgId) {
+      const q = query(
+        collection(db, "lifecycles"),
+        where("orgId", "==", orgId),
+        orderBy("lastActivityAt", "desc")
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
     async findContactByAccountEmail(accountId, email) {
       const key = String(email || "").trim().toLowerCase();
       const q = query(

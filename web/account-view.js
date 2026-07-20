@@ -2,11 +2,11 @@
  * Accounts list + detail (CRM-style). Lifecycle remains the internal engagement spine.
  */
 
-import { listAccountsForUser, getAccountEngagementDetail } from "./domain/account-service.js";
+import { listAccountsForSession, getAccountEngagementDetail, updateAccountSeTeam } from "./domain/account-service.js";
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
-import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS } from "./domain/types.js";
+import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
 import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { filterAccountRows } from "./search-service.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
@@ -34,6 +34,8 @@ function formatDate(ts) {
   if (!ts) return "—";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
+
+export const ACTIVITY_INITIAL_VISIBLE = 10;
 
 function stageBadge(stage) {
   const label = STAGE_LABELS[stage] || stage;
@@ -93,18 +95,30 @@ function renderTerminalStep(stage, currentStage) {
     >${esc(label)}</fw-button>`;
 }
 
-function renderLifecyclePipeline(currentStage) {
+function renderLifecyclePipeline(currentStage, lensOptions, lensOwnerId) {
   const openSteps = OPEN_PIPELINE_STAGES.map((s) => renderOpenPipelineStep(s, currentStage)).join(
     `<span class="lifecycle-pipeline-connector" aria-hidden="true"></span>`
   );
   const terminalSteps = TERMINAL_STAGES.map((s) => renderTerminalStep(s, currentStage)).join("");
 
+  const lensName = lensOptions.find((o) => o.value === lensOwnerId)?.label || "SE";
+  const lensSelect =
+    lensOptions.length > 1
+      ? `<fw-select class="lifecycle-lens-select" label="Lifecycle lens" value="${esc(lensOwnerId)}" data-action="lifecycle-lens">
+          ${lensOptions.map((o) => `<fw-select-option value="${esc(o.value)}">${esc(o.label)}</fw-select-option>`).join("")}
+        </fw-select>`
+      : "";
+
   return `
     <fw-card class="account-lifecycle-card account-detail-card">
       <div class="account-card-header">
-        <h3 class="account-card-title">Lifecycle</h3>
+        <div>
+          <h3 class="account-card-title">Lifecycle</h3>
+          ${lensOptions.length > 1 ? `<p class="muted lifecycle-lens-hint">Stage for <strong>${esc(lensName)}</strong></p>` : ""}
+        </div>
         ${stageBadge(currentStage)}
       </div>
+      ${lensSelect}
       <div class="lifecycle-pipeline-open" role="list" aria-label="Open pipeline stages">
         ${openSteps}
       </div>
@@ -112,6 +126,75 @@ function renderLifecyclePipeline(currentStage) {
         <span class="lifecycle-terminal-label muted">Outcome</span>
         <div class="lifecycle-pipeline-terminal-steps">${terminalSteps}</div>
       </div>
+    </fw-card>`;
+}
+
+function renderDealTeamCard(detail) {
+  const { seTeamDisplay, canManageTeam, assignableSeOptions } = detail;
+  const teamCount = seTeamDisplay?.length || 0;
+  const canAddSe =
+    canManageTeam && teamCount < MAX_SE_TEAM_SIZE && assignableSeOptions && assignableSeOptions.length > 0;
+
+  if (!seTeamDisplay?.length) {
+    return `
+      <fw-card class="account-deal-team-card account-detail-card">
+        <div class="account-card-header"><h3 class="account-card-title">Deal team</h3></div>
+        <p class="muted">No SEs assigned yet — run prep to claim primary.</p>
+      </fw-card>`;
+  }
+
+  const rows = seTeamDisplay
+    .map((m) => {
+      const initials = contactInitials({ name: m.user.displayName, email: m.user.displayName });
+      return `
+        <div class="account-deal-team-row" data-se-user-id="${esc(m.seUserId)}">
+          <span class="account-contact-avatar" aria-hidden="true">${esc(initials)}</span>
+          <div class="account-deal-team-info">
+            <span class="account-detail-contact-name">${esc(m.user.displayName)}</span>
+            ${m.user.jobTitle ? `<span class="muted account-contact-title">${esc(m.user.jobTitle)}</span>` : ""}
+          </div>
+          <div class="account-deal-team-trailing">
+            <span class="account-deal-team-tags">
+              ${m.role === "primary" ? `<fw-tag text="Primary" color="blue"></fw-tag>` : `<fw-tag text="Secondary" color="grey"></fw-tag>`}
+            </span>
+            ${canManageTeam ? `
+              <span class="account-deal-team-actions">
+                ${m.role !== "primary" ? `<fw-button color="secondary" fill="clear" size="small" data-action="set-primary" data-se-user-id="${esc(m.seUserId)}">Make primary</fw-button>` : ""}
+                ${m.role !== "primary" ? `<fw-button color="danger" fill="clear" size="small" data-action="remove-se" data-se-user-id="${esc(m.seUserId)}">Remove</fw-button>` : ""}
+              </span>` : ""}
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const addSeBlock = canAddSe
+    ? `<div class="account-deal-team-add">
+        <fw-select
+          class="account-deal-team-add-select"
+          label="Add SE"
+          placeholder="Select SE"
+          data-action="add-se-select">
+          <fw-select-option value="">Select SE</fw-select-option>
+          ${assignableSeOptions
+            .map(
+              (o) =>
+                `<fw-select-option value="${esc(o.seUserId)}">${esc(o.user.displayName)}</fw-select-option>`
+            )
+            .join("")}
+        </fw-select>
+        <fw-button color="primary" size="small" data-action="add-se">Add</fw-button>
+      </div>`
+    : "";
+
+  return `
+    <fw-card class="account-deal-team-card account-detail-card">
+      <div class="account-card-header">
+        <h3 class="account-card-title">Deal team</h3>
+        <fw-tag text="${seTeamDisplay.length}" color="grey"></fw-tag>
+      </div>
+      <div class="account-deal-team-list">${rows}</div>
+      ${addSeBlock}
+      ${canManageTeam && teamCount < MAX_SE_TEAM_SIZE ? `<p class="muted account-deal-team-hint">Add SEs from your org (max 4).</p>` : ""}
     </fw-card>`;
 }
 
@@ -128,29 +211,170 @@ function eventIcon(type) {
       return "tasks";
     case "stage_changed":
       return "arrow-right";
+    case "se_added":
+    case "se_removed":
+    case "primary_se_changed":
+      return "agent";
     default:
       return "calendar-time";
   }
 }
 
-function renderTimeline(events) {
-  if (!events?.length) return `<p class="muted account-detail-empty-timeline">No activity yet.</p>`;
-  return `<ul class="lifecycle-timeline">
-    ${events.map((ev) => {
-      let typeLabel = EVENT_LABELS[ev.type] || ev.type;
-      if (ev.type === "contact_updated" && ev.payload?.contactName) {
-        const fields = (ev.payload.fields || []).join(", ");
-        typeLabel = `Contact updated — ${ev.payload.contactName}${fields ? `: ${fields}` : ""}`;
+function eventCategoryPill(type) {
+  const map = {
+    stage_changed: ["Stage", "stage"],
+    prep_generated: ["Engagement", "engagement"],
+    postcall_analyzed: ["Engagement", "engagement"],
+    se_added: ["Team", "team"],
+    se_removed: ["Team", "team"],
+    primary_se_changed: ["Team", "team"],
+    task_created: ["Tasks", "tasks"],
+    task_completed: ["Tasks", "tasks"],
+    contact_updated: ["Contact", "contact"],
+  };
+  const [label, mod] = map[type] || ["Activity", "activity"];
+  return `<span class="lifecycle-category-pill lifecycle-category-pill--${mod}">${esc(label)}</span>`;
+}
+
+function eventTitleSubtitle(ev, seNameById = {}) {
+  const p = ev.payload || {};
+  switch (ev.type) {
+    case "stage_changed":
+      return {
+        title: "Stage updated",
+        subtitle: `${STAGE_LABELS[p.fromStage] || p.fromStage || "—"} → ${STAGE_LABELS[p.toStage] || p.toStage || "—"}`,
+      };
+    case "prep_generated":
+      return { title: "Prep generated", subtitle: p.company ? String(p.company) : "Prep brief" };
+    case "postcall_analyzed":
+      return {
+        title: "Post-call analyzed",
+        subtitle: p.qualityScore != null ? `Quality ${p.qualityScore}/10` : "Call analysis",
+      };
+    case "task_created":
+      return { title: "Task created", subtitle: p.title ? String(p.title) : "New task" };
+    case "task_completed":
+      return { title: "Task completed", subtitle: p.title ? String(p.title) : "Task" };
+    case "se_added": {
+      const name = p.seUserId ? seNameById[p.seUserId] : "";
+      return {
+        title: "SE added to deal team",
+        subtitle: name || (p.seUserId ? "New team member" : "New team member"),
+      };
+    }
+    case "se_removed": {
+      const name = p.seUserId ? seNameById[p.seUserId] : "";
+      return { title: "SE removed from deal team", subtitle: name || "Removed" };
+    }
+    case "primary_se_changed":
+      return { title: "Primary SE changed", subtitle: "Deal team lead updated" };
+    case "contact_updated":
+      if (p.contactName) {
+        const fields = (p.fields || []).join(", ");
+        return {
+          title: "Contact updated",
+          subtitle: `${p.contactName}${fields ? `: ${fields}` : ""}`,
+        };
       }
-      const searchText = `${typeLabel} ${formatDate(ev.timestamp)}`;
-      return `
-      <li class="lifecycle-timeline-item" data-search-text="${esc(searchText.toLowerCase())}">
-        <fw-icon class="lifecycle-timeline-icon" name="${esc(eventIcon(ev.type))}" size="16" aria-hidden="true"></fw-icon>
-        <span class="lifecycle-timeline-type">${esc(typeLabel)}</span>
-        <span class="lifecycle-timeline-when muted">${esc(formatDate(ev.timestamp))}</span>
-      </li>`;
-    }).join("")}
-  </ul>`;
+      return { title: EVENT_LABELS.contact_updated || "Contact updated", subtitle: "" };
+    default:
+      return { title: EVENT_LABELS[ev.type] || ev.type, subtitle: "" };
+  }
+}
+
+function eventDayKey(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatTimelineMeta(ev, seNameById = {}, options = {}) {
+  const actorName = ev.actorId && seNameById[ev.actorId] ? seNameById[ev.actorId] : "";
+  const ownerName = ev.lifecycleOwnerName ? String(ev.lifecycleOwnerName).trim() : "";
+  const ownerSuffix =
+    ownerName && actorName && ownerName.toLowerCase() !== actorName.toLowerCase() ? ownerName : "";
+  const parts = [actorName ? `by ${actorName}` : "", ownerSuffix];
+  if (!options.omitDate) parts.push(formatDate(ev.timestamp));
+  return parts.filter(Boolean).join(" · ");
+}
+
+function groupTimelineByDay(events) {
+  const sections = [];
+  const indexByDay = new Map();
+  for (const ev of events || []) {
+    const day = eventDayKey(ev.timestamp);
+    let section = indexByDay.get(day);
+    if (!section) {
+      section = { day, label: formatDate(ev.timestamp), events: [] };
+      indexByDay.set(day, section);
+      sections.push(section);
+    }
+    section.events.push(ev);
+  }
+  return sections;
+}
+
+function renderTimelineEventItem(ev, seNameById, options = {}) {
+  const { title, subtitle } = eventTitleSubtitle(ev, seNameById);
+  const meta = formatTimelineMeta(ev, seNameById, { omitDate: options.omitDate });
+  const actorName = ev.actorId && seNameById[ev.actorId] ? seNameById[ev.actorId] : "";
+  const ownerName = ev.lifecycleOwnerName ? String(ev.lifecycleOwnerName).trim() : "";
+  const showOwnerSpine =
+    ownerName && (!actorName || ownerName.toLowerCase() !== actorName.toLowerCase());
+  const searchText = `${title} ${subtitle} ${meta}`.toLowerCase();
+  const subtitleBlock =
+    subtitle ?
+      `<p class="lifecycle-timeline-sub muted">${esc(subtitle)}${showOwnerSpine ? ` <span class="lifecycle-timeline-spine">(${esc(ownerName)})</span>` : ""}</p>`
+    : "";
+  return `
+        <li class="lifecycle-timeline-item lifecycle-timeline-item-rich lifecycle-timeline-item-compact" data-search-text="${esc(searchText)}">
+          <fw-icon class="lifecycle-timeline-icon" name="${esc(eventIcon(ev.type))}" size="16" aria-hidden="true"></fw-icon>
+          <div class="lifecycle-timeline-body">
+            <div class="lifecycle-timeline-head">
+              <span class="lifecycle-timeline-type">${esc(title)}</span>
+              ${eventCategoryPill(ev.type)}
+              ${meta ? `<span class="lifecycle-timeline-when muted">${esc(meta)}</span>` : ""}
+            </div>
+            ${subtitleBlock}
+          </div>
+        </li>`;
+}
+
+function renderTimeline(events, seNameById = {}, options = {}) {
+  if (!events?.length) return `<p class="muted account-detail-empty-timeline">No activity yet.</p>`;
+  const showAll = options.activityShowAll === true;
+  const sorted = events || [];
+  const visible = showAll ? sorted : sorted.slice(0, ACTIVITY_INITIAL_VISIBLE);
+  const hiddenCount = showAll ? 0 : Math.max(0, sorted.length - visible.length);
+  const daySections = groupTimelineByDay(visible);
+
+  const body = daySections
+    .map(
+      (section) => `
+    <li class="lifecycle-timeline-day">
+      <div class="lifecycle-timeline-day-label">${esc(section.label)}</div>
+      <ul class="lifecycle-timeline lifecycle-timeline-rich lifecycle-timeline-day-items">
+        ${section.events.map((ev) => renderTimelineEventItem(ev, seNameById, { omitDate: true })).join("")}
+      </ul>
+    </li>`,
+    )
+    .join("");
+
+  const showAllBtn =
+    hiddenCount > 0 ?
+      `<div class="account-activity-show-more-wrap">
+        <fw-button id="account-activity-show-all" class="account-activity-show-all" color="secondary" fill="clear" size="small">
+          Show all activities (${hiddenCount} more)
+        </fw-button>
+      </div>`
+    : "";
+
+  return `<ul class="lifecycle-timeline-days">${body}</ul>${showAllBtn}`;
+}
+
+/** @deprecated use eventCategoryPill in timeline */
+function eventCategoryTag(type) {
+  return eventCategoryPill(type);
 }
 
 function contactInitials(contact) {
@@ -166,7 +390,7 @@ function discTag(contact) {
   if (primary && primary !== "unknown") {
     return `<fw-tag text="DISC ${esc(primary)}" color="blue"></fw-tag>`;
   }
-  return `<fw-tag text="DISC not assessed" color="grey"></fw-tag>`;
+  return "";
 }
 
 function influenceTag(contact) {
@@ -175,7 +399,7 @@ function influenceTag(contact) {
     const label = level.charAt(0).toUpperCase() + level.slice(1);
     return `<fw-tag text="${esc(label)} influence" color="blue"></fw-tag>`;
   }
-  return `<fw-tag text="Influence not assessed" color="grey"></fw-tag>`;
+  return "";
 }
 
 function meddpiccStatusTag(status) {
@@ -191,6 +415,26 @@ function formatContactEvent(ev) {
   return `${label}${source}`;
 }
 
+/** Group contact events by type, source, and calendar day for display. */
+export function summarizeContactEvents(events) {
+  const groups = [];
+  const indexByKey = new Map();
+  for (const ev of events || []) {
+    const label = formatContactEvent(ev);
+    const day = eventDayKey(ev.timestamp);
+    const key = `${ev.type}|${ev.payload?.source || ""}|${day}|${label}`;
+    let g = indexByKey.get(key);
+    if (!g) {
+      g = { label, day, count: 0, timestamp: ev.timestamp };
+      indexByKey.set(key, g);
+      groups.push(g);
+    }
+    g.count += 1;
+    g.timestamp = ev.timestamp;
+  }
+  return groups;
+}
+
 function renderLabelValue(label, value) {
   return `
     <div class="account-label-value">
@@ -199,38 +443,65 @@ function renderLabelValue(label, value) {
     </div>`;
 }
 
+function renderContactActivityList(events) {
+  const allGroups = summarizeContactEvents(events);
+  const groups = allGroups.slice(0, 5);
+  const restCount = allGroups.length - groups.length;
+  if (!groups.length) return `<p class="muted">No contact activity yet.</p>`;
+  const rows = groups
+    .map(
+      (g) =>
+        `<li><span>${esc(g.label)}${g.count > 1 ? ` · ${g.count}×` : ""}</span><span class="muted">${esc(formatDate(g.timestamp))}</span></li>`,
+    )
+    .join("");
+  const more =
+    restCount > 0 ?
+      `<details class="account-contact-activity-more"><summary>${restCount} more grouped entries</summary><ul class="account-contact-activity">${allGroups
+        .slice(5)
+        .map(
+          (g) =>
+            `<li><span>${esc(g.label)} · ${g.count}×</span><span class="muted">${esc(formatDate(g.timestamp))}</span></li>`,
+        )
+        .join("")}</ul></details>`
+    : "";
+  return `<ul class="account-contact-activity">${rows}</ul>${more}`;
+}
+
 function renderContactAccordionBody(contact, events) {
   const disc = contact.metadata?.disc;
   const influence = contact.metadata?.influence;
+  const hasDisc = disc?.primary && disc.primary !== "unknown";
+  const hasInfluence = influence?.level && influence.level !== "unknown";
   const evidence = disc?.evidence || [];
-  const activity = (events || []).slice(0, 10);
+  const evidencePreview = evidence.slice(0, 3);
+  const evidenceExtra = evidence.length - evidencePreview.length;
 
-  const discValue =
-    disc?.primary && disc.primary !== "unknown"
-      ? `<strong>${esc(disc.primary)}</strong>${disc.secondary ? ` / ${esc(disc.secondary)}` : ""}
+  const discValue = hasDisc
+    ? `<strong>${esc(disc.primary)}</strong>${disc.secondary ? ` / ${esc(disc.secondary)}` : ""}
          <span class="muted"> · ${esc(disc.confidence || "low")} confidence</span>`
-      : `<span class="muted">Not assessed yet</span>`;
+    : `<span class="muted">Not assessed yet</span>`;
 
-  const influenceValue =
-    influence?.level && influence.level !== "unknown"
-      ? `<strong>${esc(influence.level)}</strong>${influence.decisionRole && influence.decisionRole !== "unknown" ? ` · ${esc(influence.decisionRole.replace(/_/g, " "))}` : ""}`
-      : `<span class="muted">Not assessed yet</span>`;
+  const influenceValue = hasInfluence
+    ? `<strong>${esc(influence.level)}</strong>${influence.decisionRole && influence.decisionRole !== "unknown" ? ` · ${esc(influence.decisionRole.replace(/_/g, " "))}` : ""}`
+    : `<span class="muted">Not assessed yet</span>`;
+
+  const evidenceBlock =
+    evidencePreview.length ?
+      `<ul class="account-contact-evidence">${evidencePreview.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>${evidenceExtra > 0 ? `<details class="account-contact-evidence-more"><summary>+${evidenceExtra} more evidence</summary><ul class="account-contact-evidence">${evidence.slice(3).map((e) => `<li>${esc(e)}</li>`).join("")}</ul></details>` : ""}`
+    : "";
 
   return `
     <div class="account-contact-body">
       ${renderLabelValue("DISC", discValue)}
-      ${disc?.assessedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(disc.assessedAt))}${disc.source ? ` · ${esc(disc.source)}` : ""}</p>` : ""}
-      ${evidence.length ? `<ul class="account-contact-evidence">${evidence.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : ""}
+      ${hasDisc && disc?.assessedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(disc.assessedAt))}${disc.source ? ` · ${esc(disc.source)}` : ""}</p>` : ""}
+      ${evidenceBlock}
       ${renderLabelValue("Influence", influenceValue)}
-      ${influence?.updatedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(influence.updatedAt))}${influence.source ? ` · ${esc(influence.source)}` : ""}</p>` : ""}
-      ${!disc?.primary && !influence?.level
+      ${hasInfluence && influence?.updatedAt ? `<p class="muted account-contact-source">Updated ${esc(formatDate(influence.updatedAt))}${influence.source ? ` · ${esc(influence.source)}` : ""}</p>` : ""}
+      ${!hasDisc && !hasInfluence
         ? `<fw-inline-message type="info" closable="false">Will populate from prep or post-call when evidence is available.</fw-inline-message>`
         : ""}
       <h4 class="account-contact-activity-heading">Contact activity</h4>
-      ${activity.length
-        ? `<ul class="account-contact-activity">${activity.map((ev) => `
-            <li><span>${esc(formatContactEvent(ev))}</span><span class="muted">${esc(formatDate(ev.timestamp))}</span></li>`).join("")}</ul>`
-        : `<p class="muted">No contact activity yet.</p>`}
+      ${renderContactActivityList(events)}
     </div>`;
 }
 
@@ -291,6 +562,11 @@ function renderContactsCard(contacts, primaryContactId, contactEventsByContactId
     </fw-card>`;
 }
 
+function meddpiccValueContainsName(value, name) {
+  if (!value || !name) return false;
+  return String(value).toLowerCase().includes(String(name).toLowerCase());
+}
+
 function renderMeddpiccCard(account, contacts) {
   const med = account?.metadata?.meddpicc;
   const score = med?.completionScore ?? 0;
@@ -302,12 +578,15 @@ function renderMeddpiccCard(account, contacts) {
     const letter = MEDDPICC_LETTERS[key] || label.charAt(0);
     let valueHtml = `<span class="muted">—</span>`;
     if (slot?.value) {
-      let text = slot.value;
+      let text = String(slot.value);
       if (slot.contactId && contactById.has(slot.contactId)) {
         const linked = contactById.get(slot.contactId);
-        text = `${slot.value} (${linked.name || linked.email})`;
+        const linkedName = linked.name || linked.email || "";
+        if (linkedName && !meddpiccValueContainsName(text, linkedName)) {
+          text = `${slot.value} (${linkedName})`;
+        }
       }
-      valueHtml = `<span>${esc(text)}</span>`;
+      valueHtml = `<span class="meddpicc-field-value-text" title="${esc(text)}">${esc(text)}</span>`;
     }
     return `
       <div class="meddpicc-field" data-search-text="${esc(label.toLowerCase())} ${esc(String(slot?.value || "").toLowerCase())}">
@@ -315,8 +594,8 @@ function renderMeddpiccCard(account, contacts) {
         <div class="meddpicc-field-body">
           <span class="meddpicc-field-label">${esc(label)}</span>
           <span class="meddpicc-field-value">${valueHtml}</span>
+          <span class="meddpicc-field-status">${meddpiccStatusTag(slot?.status)}</span>
         </div>
-        ${meddpiccStatusTag(slot?.status)}
       </div>`;
   }).join("");
 
@@ -342,12 +621,43 @@ function artifactRow(label, display) {
   return `<li data-search-text="${esc(searchText)}">${display ?? esc(label)}</li>`;
 }
 
+function summarizePrepArtifactRows(preps) {
+  const groups = [];
+  const indexByKey = new Map();
+  for (const p of preps || []) {
+    const company = String(p.meta?.company || "Prep").trim();
+    const day = eventDayKey(p.createdAt);
+    const key = `${day}|${company.toLowerCase()}`;
+    let g = indexByKey.get(key);
+    if (!g) {
+      g = { company, createdAt: p.createdAt, count: 0 };
+      indexByKey.set(key, g);
+      groups.push(g);
+    }
+    g.count += 1;
+    g.createdAt = p.createdAt;
+  }
+  return groups;
+}
+
 function renderArtifactTabs(detail) {
   const { preps, postCalls, tasks } = detail;
-  const prepRows = (preps || []).map((p) => {
-    const label = `${formatDate(p.createdAt)} — ${p.meta?.company || "Prep"}`;
-    return artifactRow(label);
-  }).join("") || `<li class="muted account-detail-empty-artifacts" data-search-text="">No preps yet</li>`;
+  const prepGroups = summarizePrepArtifactRows(preps);
+  const prepExtra = prepGroups.length > 5 ? prepGroups.length - 5 : 0;
+  const prepRows =
+    prepGroups.length ?
+      prepGroups
+        .slice(0, 5)
+        .map((g) => {
+          const suffix = g.count > 1 ? ` (${g.count} preps)` : "";
+          const label = `${formatDate(g.createdAt)} — ${g.company}${suffix}`;
+          return artifactRow(label);
+        })
+        .join("") +
+        (prepExtra > 0 ?
+          `<li class="muted account-detail-artifact-more" data-search-text="">+${prepExtra} more prep days</li>`
+        : "")
+    : `<li class="muted account-detail-empty-artifacts" data-search-text="">No preps yet</li>`;
 
   const callRows = (postCalls || []).map((c) => {
     const score = c.qualityScore != null ? ` (${c.qualityScore}/10)` : "";
@@ -371,9 +681,18 @@ function renderArtifactTabs(detail) {
     </fw-tabs>`;
 }
 
-function renderAccountDetail(detail, detailSearchQuery = "") {
-  const { lifecycle, account, events, contacts, contactEventsByContactId } = detail;
+function renderAccountDetail(detail, detailSearchQuery = "", viewOpts = {}) {
+  const { lifecycle, account, events, contacts, contactEventsByContactId, seTeamDisplay, lifecycleOwnerId } =
+    detail;
   const firmo = account?.metadata?.firmographics?.suggestedProduct;
+
+  const lensOptions = (seTeamDisplay || []).map((m) => ({
+    value: m.seUserId,
+    label: m.user.displayName,
+  }));
+  const seNameById = Object.fromEntries(
+    (seTeamDisplay || []).map((m) => [m.seUserId, m.user.displayName])
+  );
 
   return `
     <div class="lifecycle-detail account-detail">
@@ -394,7 +713,8 @@ function renderAccountDetail(detail, detailSearchQuery = "") {
         </div>
       </fw-card>
 
-      ${renderLifecyclePipeline(lifecycle.stage)}
+      ${renderDealTeamCard(detail)}
+      ${renderLifecyclePipeline(lifecycle.stage, lensOptions, lifecycleOwnerId || lifecycle.ownerId)}
 
       <fw-input id="account-detail-search" class="account-detail-search" placeholder="Filter contacts, activity, artifacts…" value="${esc(detailSearchQuery)}" clear-input></fw-input>
       <p id="account-detail-no-matches" class="muted account-detail-no-matches" hidden>No matches for this filter.</p>
@@ -407,8 +727,11 @@ function renderAccountDetail(detail, detailSearchQuery = "") {
       <fw-card class="account-activity-card account-detail-card">
         <div class="account-card-header">
           <h3 class="account-card-title">Activity</h3>
+          <fw-tag text="Merged" color="grey"></fw-tag>
         </div>
-        ${renderTimeline(events)}
+        ${renderTimeline(events, seNameById, {
+          activityShowAll: viewOpts.activityShowAll === true,
+        })}
       </fw-card>
 
       <fw-card class="account-artifacts-card account-detail-card">
@@ -493,6 +816,12 @@ function wireDetailEvents(container, session, opts) {
     opts.onBack?.();
   });
 
+  container.querySelector("#account-activity-show-all")?.addEventListener("fwClick", async () => {
+    opts.activityShowAll = true;
+    opts.onActivityShowAllChange?.(true);
+    await renderAccountView(container, session, opts);
+  });
+
   container.querySelector('[data-action="prep"]')?.addEventListener("fwClick", () => {
     opts.onPrep?.();
   });
@@ -511,21 +840,74 @@ function wireDetailEvents(container, session, opts) {
     });
   });
 
+  const lensSelect = container.querySelector('[data-action="lifecycle-lens"]');
+  if (lensSelect) {
+    lensSelect.addEventListener("fwChange", async () => {
+      const val = await readFieldValueAsync(lensSelect);
+      opts.lifecycleOwnerId = val;
+      opts.onLifecycleLensChange?.(val);
+      await renderAccountView(container, session, opts);
+    });
+  }
+
+  container.querySelectorAll('[data-action="set-primary"]').forEach((btn) => {
+    btn.addEventListener("fwClick", async () => {
+      const seUserId = btn.getAttribute("data-se-user-id");
+      if (!seUserId || !opts.accountId) return;
+      await updateAccountSeTeam(session, opts.accountId, "set_primary", { seUserId });
+      opts.onSeTeamChange?.();
+      await renderAccountView(container, session, opts);
+    });
+  });
+
+  container.querySelectorAll('[data-action="remove-se"]').forEach((btn) => {
+    btn.addEventListener("fwClick", async () => {
+      const seUserId = btn.getAttribute("data-se-user-id");
+      if (!seUserId || !opts.accountId) return;
+      await updateAccountSeTeam(session, opts.accountId, "remove", { seUserId });
+      opts.onSeTeamChange?.();
+      await renderAccountView(container, session, opts);
+    });
+  });
+
+  const addSeBtn = container.querySelector('[data-action="add-se"]');
+  if (addSeBtn) {
+    addSeBtn.addEventListener("fwClick", async () => {
+      const select = container.querySelector('[data-action="add-se-select"]');
+      const seUserId = select ? await readFieldValueAsync(select) : "";
+      if (!seUserId || !opts.accountId) return;
+      await updateAccountSeTeam(session, opts.accountId, "add_secondary", { seUserId });
+      opts.onSeTeamChange?.();
+      await renderAccountView(container, session, opts);
+    });
+  }
+
   wireDetailSearch(container, opts);
 }
 
-function renderAccountListItem({ account, lifecycle }) {
+function renderAccountListItem(row) {
+  const { account, lifecycle, seTeamDisplay, secondaryCount } = row;
   const score = lifecycle.latestQualityScore != null ? `${lifecycle.latestQualityScore}/10` : "—";
   const title = account.name || lifecycle.title || "Account";
   const domain = account.domain ? `<span class="account-list-domain muted">${esc(account.domain)}</span>` : "";
+  const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
+  const primaryLabel = primary?.user?.displayName
+    ? `<span class="account-list-primary-se">${esc(primary.user.displayName)}</span>`
+    : "";
+  const secondaryTag =
+    secondaryCount > 0
+      ? `<fw-tag text="+${secondaryCount} SE${secondaryCount > 1 ? "s" : ""}" color="grey"></fw-tag>`
+      : "";
   return `
     <fw-button class="lifecycle-list-item account-list-item" color="secondary" fill="clear" data-account-id="${esc(account.id)}">
       <div class="lifecycle-list-main">
         <span class="lifecycle-list-title">${esc(title)}</span>
         ${stageBadge(lifecycle.stage)}
+        ${secondaryTag}
       </div>
       ${domain}
       <div class="lifecycle-list-meta muted">
+        ${primaryLabel ? `<span>${primaryLabel}</span>` : ""}
         <span>${esc(formatDate(lifecycle.lastActivityAt))}</span>
         <span>${lifecycle.prepCount || 0} preps · ${lifecycle.postCallCount || 0} calls · ${lifecycle.openTaskCount || 0} tasks</span>
         <span>Score: ${esc(score)}</span>
@@ -552,20 +934,25 @@ export async function renderAccountView(container, session, opts = {}) {
   }
 
   if (opts.accountId) {
-    const detail = await getAccountEngagementDetail(session, opts.accountId);
+    const detail = await getAccountEngagementDetail(session, opts.accountId, {
+      lifecycleOwnerId: opts.lifecycleOwnerId,
+    });
     if (!detail) {
       container.innerHTML = `<p class="muted">Account not found.</p>`;
       return;
     }
-    container.innerHTML = renderAccountDetail(detail, opts.detailSearchQuery || "");
+    container.innerHTML = renderAccountDetail(detail, opts.detailSearchQuery || "", {
+      activityShowAll: opts.activityShowAll,
+    });
     wireDetailEvents(container, session, {
       ...opts,
+      accountId: opts.accountId,
       lifecycleId: detail.lifecycle.id,
     });
     return;
   }
 
-  const rows = await enrichRowsWithContacts(await listAccountsForUser(session));
+  const rows = await enrichRowsWithContacts(await listAccountsForSession(session));
 
   if (!rows.length) {
     container.innerHTML = `
