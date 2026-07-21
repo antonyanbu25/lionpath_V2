@@ -186,6 +186,7 @@ function renderActiveTab() {
   if (disc) {
     disc.innerHTML = renderDiscoveryTab(prep, state.srcOpen, {
       linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
+      kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
       peopleProspectTab: state.peopleProspectTab,
     });
   }
@@ -528,12 +529,15 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const pdfs = payload.linkedinProfileExports || [];
   let confirmedProspectProfiles = [];
 
+  let kaiaFetched = false;
+
   if (payload.kaiaMeetingUrl?.trim() && deps.fetchKaiaUrl) {
     setLoading(true, "Fetching Kaia meeting summary…");
     try {
       const kaia = await postJson(deps.fetchKaiaUrl, { kaiaUrl: payload.kaiaMeetingUrl.trim() });
       if (kaia.summary?.trim()) {
         payload.kaiaSummary = kaia.summary.trim();
+        kaiaFetched = true;
         const kaiaField = $("kaiaMeetingUrl");
         if (kaiaField) {
           kaiaField.placeholder = kaia.title
@@ -625,6 +629,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
     const enrichedMeta = {
       ...meta,
+      kaiaFetched,
       researchMeta: data.researchMeta,
       researchBundle: data.researchBundle,
       linkedinMatchedEmails: data.researchMeta?.linkedinMatchedEmails,

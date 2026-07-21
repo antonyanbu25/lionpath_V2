@@ -5,6 +5,7 @@ import {
   renderDemoTab,
   renderResultHeader,
   confidenceMeta,
+  discInferredLabel,
   SIGNAL_TOOLTIPS,
 } from "../precall-render.js";
 
@@ -121,6 +122,46 @@ const discoveryMultiTab1 = renderDiscoveryTab(
 const demo = renderDemoTab(sampleV8, {}, "endurance-doors");
 const header = renderResultHeader(sampleV8, meta);
 
+const discoveryKaia = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "Kaia",
+        discHint: {
+          primary: "I",
+          confidence: "medium",
+          evidence: ["Asked detailed questions in meeting"],
+          inferred: true,
+          source: "kaia",
+        },
+      },
+    ],
+  },
+  false,
+  { kaiaFetched: true },
+);
+const discoveryMerged = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "LinkedIn + Kaia",
+        discHint: {
+          primary: "D",
+          confidence: "medium",
+          evidence: ["Direct tone in Kaia call", "Leadership on LinkedIn"],
+          inferred: true,
+          source: "merged",
+        },
+      },
+    ],
+  },
+  false,
+);
+
 const checks = [
   ["isV8Prep accepts v8 shape", isV8Prep(sampleV8)],
   ["isV7Prep accepts v8 shape", isV7Prep(sampleV8)],
@@ -143,7 +184,15 @@ const checks = [
   ["discovery new AI signal label", discovery.includes("AI in their current tech stack")],
   ["discovery has source badges", discovery.includes("prep-src-badge")],
   ["discovery has Fit grid", discovery.includes("prep-fit-grid")],
-  ["discovery prospect DISC inferred label", discovery.includes("Inferred from LinkedIn")],
+  ["discovery prospect DISC inferred label fallback", discovery.includes("Inferred from LinkedIn — not a formal assessment")],
+  ["discInferredLabel linkedin_pdf", discInferredLabel("linkedin_pdf").includes("LinkedIn PDF")],
+  ["discInferredLabel kaia", discInferredLabel("kaia").includes("Kaia meeting")],
+  ["discInferredLabel merged", discInferredLabel("merged").includes("LinkedIn + Kaia")],
+  ["discovery kaia DISC label", discoveryKaia.includes("Inferred from Kaia meeting")],
+  ["discovery kaia source badge", discoveryKaia.includes('aria-label="Source Kaia"')],
+  ["discovery kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
+  ["discovery merged DISC label", discoveryMerged.includes("Inferred from LinkedIn + Kaia")],
+  ["discovery merged source badge", discoveryMerged.includes("LinkedIn + Kaia")],
   ["discovery prospect summary", discovery.includes("Seasoned support leader")],
   ["discovery people tabs when 2 prospects", discoveryMulti.includes("prep-people-tabs")],
   ["discovery people tab persists prospect-1", discoveryMultiTab1.includes('active-tab-name="prospect-1"')],

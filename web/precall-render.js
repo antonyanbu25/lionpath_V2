@@ -103,6 +103,39 @@ function sourceBadge(label, conf, idx) {
   </button>`;
 }
 
+/** Friendly DISC inference line from enrichment source (discHint.source). */
+export function discInferredLabel(source) {
+  switch (source) {
+    case "linkedin_pdf":
+      return "Inferred from LinkedIn PDF — not a formal assessment";
+    case "kaia":
+      return "Inferred from Kaia meeting — not a formal assessment";
+    case "merged":
+      return "Inferred from LinkedIn + Kaia — not a formal assessment";
+    case "zoom":
+      return "Inferred from Zoom transcript — not a formal assessment";
+    default:
+      return "Inferred from LinkedIn — not a formal assessment";
+  }
+}
+
+function prospectUsesKaia(p) {
+  const src = p.discHint?.source;
+  if (src === "kaia" || src === "merged") return true;
+  return /kaia/i.test(String(p.sourceLabel || ""));
+}
+
+function prospectSourceBadges(p, src, sources, renderOpts = {}) {
+  const primaryLabel = p.sourceLabel || src?.label || "S1";
+  const conf = src?.confidence ?? 50;
+  const idx = Math.max(0, sources.indexOf(src));
+  let html = sourceBadge(primaryLabel, conf, idx);
+  if (renderOpts.kaiaFetched && !prospectUsesKaia(p)) {
+    html += `<span class="prep-src-badge prep-kaia-indicator" title="Kaia meeting linked for this brief">Kaia</span>`;
+  }
+  return html;
+}
+
 function sectionHead(title, dotColor) {
   return `<div class="prep-section-head">
     <span class="prep-section-dot" style="background:${dotColor}"></span>
@@ -242,7 +275,7 @@ function renderSkillChips(skills, maxVisible = 6) {
     .join("")}${extra > 0 ? `<span class="prep-skill-chip prep-skill-more">+${extra}</span>` : ""}</div>`;
 }
 
-function renderProspectCard(p, i, sources) {
+function renderProspectCard(p, i, sources, renderOpts = {}) {
   const mono = companyMono(p.name);
   const src = sources.find((s) => s.label === p.sourceLabel) || sources[i % sources.length];
   const conf = src?.confidence ?? 50;
@@ -261,7 +294,7 @@ function renderProspectCard(p, i, sources) {
   const discHero = discPrimary
     ? `<div class="prep-prospect-disc-row">
         <span class="prep-disc-chip">DISC ${esc(discPrimary)}${disc.secondary && disc.secondary !== "unknown" ? `<span class="prep-disc-chip-sec"> / ${esc(disc.secondary)}</span>` : ""}${disc.confidence ? `<span class="prep-disc-chip-conf"> · ${esc(disc.confidence)}</span>` : ""}</span>
-        <p class="prep-disc-inferred muted">Inferred from LinkedIn — not a formal assessment</p>
+        <p class="prep-disc-inferred muted">${esc(discInferredLabel(disc?.source))}</p>
       </div>`
     : "";
 
@@ -301,7 +334,7 @@ function renderProspectCard(p, i, sources) {
           <div class="prep-prospect-name">${dash(p.name, unverified && !isUnknown(p.name))}</div>
           <div class="prep-prospect-role muted">${dash(p.role, unverified && !isUnknown(p.role))}</div>
         </div>
-        ${sourceBadge(p.sourceLabel || src?.label || "S1", conf, sources.indexOf(src))}
+        ${prospectSourceBadges(p, src, sources, renderOpts)}
       </div>
       ${discHero}
       ${expLine ? `<p class="prep-prospect-exp-line muted">${esc(expLine)}</p>` : ""}
@@ -327,16 +360,16 @@ function resolvePeopleProspectTab(requested, prospectCount) {
   return `prospect-${idx}`;
 }
 
-function renderProspectSection(prospects, sources, linkedinNote = "", peopleProspectTab) {
+function renderProspectSection(prospects, sources, sectionNotes = "", peopleProspectTab, renderOpts = {}) {
   const list = prospects?.length ? prospects : [];
-  const head = `${sectionHead("People on this call", "var(--dew-amber)")}${linkedinNote}`;
+  const head = `${sectionHead("People on this call", "var(--dew-amber)")}${sectionNotes}`;
 
   if (!list.length) {
     return `<fw-card class="prep-card prep-people-section">${head}<p class="muted">No prospect profiles yet — regenerate the brief.</p></fw-card>`;
   }
 
   if (list.length === 1) {
-    return `<fw-card class="prep-card prep-people-section">${head}${renderProspectCard(list[0], 0, sources)}</fw-card>`;
+    return `<fw-card class="prep-card prep-people-section">${head}${renderProspectCard(list[0], 0, sources, renderOpts)}</fw-card>`;
   }
 
   const tabs = list
@@ -346,7 +379,7 @@ function renderProspectSection(prospects, sources, linkedinNote = "", peoplePros
     )
     .join("");
   const panels = list
-    .map((p, i) => `<fw-tab-panel name="prospect-${i}">${renderProspectCard(p, i, sources)}</fw-tab-panel>`)
+    .map((p, i) => `<fw-tab-panel name="prospect-${i}">${renderProspectCard(p, i, sources, renderOpts)}</fw-tab-panel>`)
     .join("");
   const activeTab = resolvePeopleProspectTab(peopleProspectTab, list.length);
 
@@ -542,6 +575,11 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
     renderOpts.linkedinMatchedEmails?.length ?
       `<p class="muted prep-linkedin-result-note">Includes LinkedIn PDF you attached (${renderOpts.linkedinMatchedEmails.length} matched).</p>`
     : "";
+  const kaiaNote =
+    renderOpts.kaiaFetched ?
+      `<p class="muted prep-kaia-result-note">Includes Kaia meeting summary from your link.</p>`
+    : "";
+  const peopleNotes = `${linkedinNote}${kaiaNote}`;
   return `<div class="prep-tab-body prep-rise">
     <fw-inline-message type="warning" open class="prep-ai-banner">
       Generated by AI — prone to error. Please validate before customer conversations.
@@ -558,7 +596,7 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
         ${renderSignalRows(prep.signals, sources)}
       </fw-card>
     </div>
-    ${renderProspectSection(prep.prospects, sources, linkedinNote, renderOpts.peopleProspectTab)}
+    ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
     ${renderSupportJDBlock(prep.supportJD, sources)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}

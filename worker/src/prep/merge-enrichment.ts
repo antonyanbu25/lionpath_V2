@@ -13,6 +13,22 @@ function linkedInSourceLabel(sources: Prep["sources"]): string {
   return li?.label || "LinkedIn PDF";
 }
 
+function enrichmentSourceLabel(
+  discSource: ContactEnrichDisc["source"] | undefined,
+  liLabel: string,
+): string {
+  switch (discSource) {
+    case "kaia":
+      return "Kaia";
+    case "merged":
+      return "LinkedIn + Kaia";
+    case "zoom":
+      return "Zoom";
+    default:
+      return liLabel;
+  }
+}
+
 /** Deterministic merge: enrichment wins over model output for matching emails (by index). */
 export function mergeEnrichmentsIntoPrep(
   prep: Prep,
@@ -59,7 +75,7 @@ export function mergeEnrichmentsIntoPrep(
       skills: profile.skills?.length ? profile.skills : p.skills,
       languages: profile.languages?.length ? profile.languages : p.languages,
       education: profile.education?.length ? profile.education : p.education,
-      sourceLabel: liLabel,
+      sourceLabel: enrichmentSourceLabel(en.disc.source, liLabel),
       discHint: {
         primary: en.disc.primary || "unknown",
         secondary: en.disc.secondary,
