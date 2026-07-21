@@ -1,5 +1,7 @@
 /** Pure HTML builders for pre-call wireframe (v8 brief). */
 
+import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
+
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -511,12 +513,17 @@ function renderChecklist(checklist, checks, accountId) {
   </div>${rows}`;
 }
 
-function renderAssets(assets) {
+function renderAssets(assets, prep) {
   if (!(assets || []).length) return '<p class="muted">—</p>';
+  const customerRefUrl = resolveCustomerReferenceUrl(prep);
   return (assets || [])
     .map((a) => {
       const extClass = `prep-ext prep-ext-${String(a.ext || "DOC").toLowerCase()}`;
-      const href = a.url && !isUnknown(a.url) ? esc(a.url) : "#";
+      let url = a.url;
+      if (String(a.label || "").trim().toLowerCase() === "customer reference" && customerRefUrl) {
+        url = customerRefUrl;
+      }
+      const href = url && !isUnknown(url) ? esc(url) : "#";
       return `<a class="prep-asset-row" href="${href}" target="_blank" rel="noopener noreferrer">
         <span class="prep-asset-label">${esc(a.label)}</span>
         <span class="${extClass}">${esc(a.ext || "DOC")}</span>
@@ -537,8 +544,8 @@ export function renderDemoTab(prep, checks, accountId) {
           ${renderChecklist(prep.checklist, checks, accountId)}
         </fw-card>
         <fw-card class="prep-card">
-          ${sectionHead("Deck &amp; assets", "var(--dew-purple)")}
-          ${renderAssets(prep.assets)}
+          ${sectionHead("Deck and assets", "var(--dew-purple)")}
+          ${renderAssets(prep.assets, prep)}
         </fw-card>
       </div>
     </div>

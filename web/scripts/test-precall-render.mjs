@@ -8,6 +8,7 @@ import {
   discInferredLabel,
   SIGNAL_TOOLTIPS,
 } from "../precall-render.js";
+import { CUSTOMER_REFERENCE_BY_INDUSTRY } from "../customer-reference-links.js";
 
 const sampleV8 = {
   description: "B2B SaaS customer support platform",
@@ -104,7 +105,11 @@ const sampleV8 = {
     { label: "S2", title: "LinkedIn company", url: "https://linkedin.com", confidence: 72 },
     { label: "S3", title: "Job posting", url: "unknown", confidence: 45 },
   ],
-  assets: [{ label: "Demo script", ext: "ENV", url: "https://example.com/sheet" }],
+  assets: [
+    { label: "Demo script", ext: "ENV", url: "https://example.com/sheet" },
+    { label: "Customer reference", ext: "PPT", url: "https://example.com/old-customer-ref" },
+    { label: "Slide pack", ext: "PPT", url: "https://example.com/slides" },
+  ],
 };
 
 const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
@@ -202,6 +207,12 @@ const checks = [
   ["demo rows match likely pains", (demo.match(/prep-script-row/g) || []).length === sampleV8.likelyPains.length],
   ["demo value bullets", demo.includes("prep-script-values")],
   ["demo no use cases", !demo.includes("prep-uc-grid")],
+  ["demo deck title plain text", demo.includes("Deck and assets") && !demo.includes("Deck &amp; assets")],
+  [
+    "demo customer reference industry url",
+    demo.includes(encodeURI(CUSTOMER_REFERENCE_BY_INDUSTRY.manufacturing)) ||
+      demo.includes(CUSTOMER_REFERENCE_BY_INDUSTRY.manufacturing),
+  ],
   ["confidence high band", confidenceMeta(85).word === "High"],
   ["confidence low band", confidenceMeta(40).word === "Low"],
   ["signal tooltips map complete", Object.keys(SIGNAL_TOOLTIPS).length === 6],
