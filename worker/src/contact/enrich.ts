@@ -3,6 +3,7 @@
  */
 
 import { extractJson } from "../json";
+import { fetchKaiaSummaryFromShareLink } from "../kaiaShare";
 import { getProvider } from "../providers";
 import type { Env } from "../prep/types";
 import { matchPdfToProspect } from "../prep/linkedin-pdf";
@@ -324,7 +325,14 @@ export async function fetchZoomExcerptForEnrich(
   return { ok: false, reason: "not_configured" };
 }
 
-/** Stub: fetch Kaia summary from URL (not configured). */
-export async function fetchKaiaSummary(_url: string): Promise<{ ok: false; reason: string }> {
-  return { ok: false, reason: "not_configured" };
+/** Fetch Kaia meeting summary text from a public share URL. */
+export async function fetchKaiaSummary(
+  url: string,
+): Promise<{ ok: false; reason: string } | { ok: true; text: string; title?: string }> {
+  try {
+    const result = await fetchKaiaSummaryFromShareLink(url);
+    return { ok: true, text: result.summary, title: result.title };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "fetch_failed" };
+  }
 }

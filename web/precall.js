@@ -528,7 +528,31 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const pdfs = payload.linkedinProfileExports || [];
   let confirmedProspectProfiles = [];
 
-  if (deps.enrichUrl && (pdfs.length || payload.additionalContext)) {
+  if (payload.kaiaMeetingUrl?.trim() && deps.fetchKaiaUrl) {
+    setLoading(true, "Fetching Kaia meeting summary…");
+    try {
+      const kaia = await postJson(deps.fetchKaiaUrl, { kaiaUrl: payload.kaiaMeetingUrl.trim() });
+      if (kaia.summary?.trim()) {
+        payload.kaiaSummary = kaia.summary.trim();
+        const kaiaField = $("kaiaMeetingUrl");
+        if (kaiaField) {
+          kaiaField.placeholder = kaia.title
+            ? `Fetched · ${kaia.title}`
+            : "Fetched · Kaia summary loaded";
+        }
+      }
+    } catch (err) {
+      showInlineStatus(status, {
+        type: "warn",
+        message: `Kaia summary not fetched: ${err.message || "error"}. Continuing without it…`,
+      });
+    }
+  }
+
+  const hasEnrichSources =
+    pdfs.length || payload.additionalContext?.trim() || payload.kaiaSummary?.trim();
+
+  if (deps.enrichUrl && hasEnrichSources) {
     setLoading(true, "Enriching prospects…");
     try {
       const enrichResponses = await enrichProspectsParallel(

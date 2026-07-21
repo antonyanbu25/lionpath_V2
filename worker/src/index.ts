@@ -11,6 +11,7 @@ import { enrichContact, type ContactEnrichRequest } from "./contact/enrich";
 import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import { analyzePostCall, type PostCallInput } from "./postcall";
 import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
+import { fetchKaiaSummaryFromShareLink } from "./kaiaShare";
 import { fetchTranscriptFromShareLink } from "./zoomShare";
 import {
   historyStorageAvailable,
@@ -377,6 +378,21 @@ export default {
           body.recordingPassword?.trim(),
         );
         return json(result, 200, cors);
+      }
+
+      if (request.method === "POST" && path === "/api/fetch-kaia-summary") {
+        await requireUser(request, env);
+        const body = (await request.json()) as { kaiaUrl?: string };
+        if (!body.kaiaUrl?.trim()) {
+          return json({ error: "kaiaUrl is required." }, 400, cors);
+        }
+        try {
+          const result = await fetchKaiaSummaryFromShareLink(body.kaiaUrl.trim());
+          return json(result, 200, cors);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Failed to fetch Kaia summary.";
+          return json({ error: message }, 400, cors);
+        }
       }
 
       if (request.method === "POST" && path === "/api/analyze-call") {

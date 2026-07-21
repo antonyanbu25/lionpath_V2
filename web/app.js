@@ -56,6 +56,7 @@ import {
 const PREP_RESEARCH_URL = `${WORKER_BASE_URL}/api/prep/research`;
 const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
 const CONTACT_ENRICH_URL = `${WORKER_BASE_URL}/api/contact/enrich`;
+const FETCH_KAIA_SUMMARY_URL = `${WORKER_BASE_URL}/api/fetch-kaia-summary`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
@@ -968,6 +969,7 @@ async function boot() {
     researchUrl: PREP_RESEARCH_URL,
     synthesizeUrl: PREP_SYNTHESIZE_URL,
     enrichUrl: CONTACT_ENRICH_URL,
+    fetchKaiaUrl: FETCH_KAIA_SUMMARY_URL,
     authEnabled: isFirebaseAuthEnabled(),
     workerDownMsg: WORKER_DOWN_MSG,
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
