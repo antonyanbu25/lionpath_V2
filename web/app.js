@@ -15,6 +15,7 @@ import {
   setSession,
   isFirebaseAuthEnabled,
   sessionUserId,
+  withEffectiveUserId,
 } from "./auth.js";
 import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
@@ -821,13 +822,14 @@ async function renderCallPanel() {
   if (!sessionUserId(session)) {
     try {
       session = (await syncSessionWithDomainStore(session)) || session;
-      if (sessionUserId(session)) {
-        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
-        session = currentSession;
-      }
     } catch (err) {
       console.warn("[app] call panel session sync failed:", err);
     }
+  }
+  session = withEffectiveUserId(session);
+  if (session?.email) {
+    currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+    session = currentSession;
   }
   if (selectedCallId) {
     const ownerEmail = callRecordOwnerEmail;

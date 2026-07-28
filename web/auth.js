@@ -17,7 +17,11 @@ const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
 
 /** Domain user id from session (internal usr_* — not Firebase auth uid). */
-export { sessionUserId } from "./domain/session.js";
+export {
+  sessionUserId,
+  effectiveSessionUserId,
+  withEffectiveUserId,
+} from "./domain/session.js";
 
 export function authMode() {
   return firebaseConfig.projectId ? "firebase" : "dummy";
@@ -155,6 +159,12 @@ export async function persistFirebaseSession(user, opts = {}) {
     };
   } catch (err) {
     console.warn("Could not sync Firebase user to domain store:", err);
+    const fallbackId = stableUserIdForEmail(base.email);
+    session = {
+      ...base,
+      userId: fallbackId,
+      uid: fallbackId,
+    };
   }
   if (opts.persist !== false) {
     setSession(session, opts);

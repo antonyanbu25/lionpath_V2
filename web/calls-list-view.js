@@ -9,7 +9,8 @@ import { resolveDealId, resolveCallType } from "./call-view.js";
 import { formatTypeComposite, typeComposite, isEligibleForAggregate } from "./quality-score.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
-import { sessionUserId } from "./domain/session.js";
+import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
+import { syncSessionWithDomainStore } from "./auth.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 
@@ -404,23 +405,26 @@ async function enrichDealsAndAccounts(records) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallsListView(container, session, opts = {}) {
-  const userId = sessionUserId(session);
-  if (!userId) {
-    if (session?.email) {
-      container.innerHTML = renderCallsEmptyState(
-        "We could not load your profile yet. Refresh the page or sign out and back in.",
-      );
-    } else {
-      container.innerHTML = `<p class="muted">Sign in to view calls.</p>`;
+  let activeSession = session;
+  if (!sessionUserId(activeSession)) {
+    try {
+      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+    } catch (err) {
+      console.warn("[calls-list] session sync failed:", err);
     }
+  }
+  activeSession = withEffectiveUserId(activeSession);
+
+  if (!activeSession?.email) {
+    container.innerHTML = `<p class="muted">Sign in to view calls.</p>`;
     return;
   }
 
   try {
     const allRecords = dedupeAnalysesByCallIdentity(
       opts.teamScope
-        ? await listAnalysesForSession(session, { teamScope: true })
-        : listPostCallAnalyses(session.email),
+        ? await listAnalysesForSession(activeSession, { teamScope: true })
+        : listPostCallAnalyses(activeSession.email),
     );
     const listFiltered = filterCallRecordsForList(allRecords, opts.listFilter);
     if (!listFiltered.length) {

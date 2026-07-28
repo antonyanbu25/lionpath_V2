@@ -14,7 +14,7 @@ import { renderQipScorecard } from "./postcall.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS } from "./domain/contact-service.js";
-import { sessionUserId } from "./domain/session.js";
+import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { renderCallProductGapRow } from "./product-signal-view.js";
@@ -1329,16 +1329,10 @@ export async function renderCallView(container, session, opts = {}) {
       console.warn("[call-view] session sync failed:", err);
     }
   }
+  activeSession = withEffectiveUserId(activeSession);
 
-  const userId = sessionUserId(activeSession);
-  if (!userId) {
-    if (activeSession?.email) {
-      container.innerHTML = renderCallEmptyState(
-        "We could not load your profile yet. Refresh the page or sign out and back in.",
-      );
-    } else {
-      container.innerHTML = `<p class="muted">Sign in to view call records.</p>`;
-    }
+  if (!activeSession?.email) {
+    container.innerHTML = `<p class="muted">Sign in to view call records.</p>`;
     return;
   }
 
