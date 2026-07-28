@@ -655,7 +655,28 @@ function renderQipEvidence(evidence) {
     .join("")}</ul>`;
 }
 
-/** v2 QIP scorecard — group by section, weight, NA greyed with reason, evidence inline. */
+function qipLineConfidencePill(line, fallbackConf) {
+  if (!line.applicable) return "";
+  const c = line.confidence ?? fallbackConf;
+  if (c == null) return `<span class="pill">—</span>`;
+  if (c >= 0.65) return '<span class="pill green">High</span>';
+  if (c >= 0.4) return '<span class="pill amber">Med</span>';
+  return '<span class="pill red">Low</span>';
+}
+
+function renderQipEvidenceBlocks(evidence, tone) {
+  const items = (evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
+  if (!items.length) return "";
+  return items
+    .map((e) => {
+      const ts = formatEvidenceAt(e.atS);
+      const evCls = tone ? ` ev ${tone}` : " ev";
+      return `<div class="${evCls.trim()}">${ts != null ? `<div class="ts">${esc(ts)}</div>` : ""}${truncateWords(e.quote, 40)}</div>`;
+    })
+    .join("");
+}
+
+/** v2 QIP scorecard — wireframe srow layout: theme, score, weighted bar, confidence. */
 export function renderQipScorecard(scorecard, analysisMeta = {}) {
   if (!scorecard?.lines?.length) {
     return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
@@ -678,31 +699,37 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
   const totalLabel = formatTypeComposite(composite);
   const conf = scorecard.confidence ?? analysisMeta.analysisConfidence;
   const confPct = conf != null ? Math.round(conf * 100) : null;
+  const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
   const sections = groupLinesBySection(scorecard.lines);
 
-  const sectionHtml = sections
+  const rowHtml = sections
     .map((sec) => {
       const rows = sec.lines
         .map((line) => {
-          const heavy = (line.weight || 0) >= 15;
+          const heavy = (line.weight || 0) >= 10;
           const na = !line.applicable;
           const suppressed = !na && isThemeScoreSuppressed(line.themeKey);
+          const maxScore = line.maxScore || 100;
+          const pct = na || suppressed ? 0 : scorePct(line.score, maxScore);
           const cls = [
             "qip-line",
+            suppressed ? "qip-line-suppressed" : "",
             heavy ? "qip-line-heavy" : "",
             na ? "qip-line-na" : "",
-            suppressed ? "qip-line-suppressed" : "",
           ]
             .filter(Boolean)
             .join(" ");
-          let scoreDisplay;
-          if (na) {
-            scoreDisplay = `<span class="qip-na-badge">N/A</span>`;
-          } else if (suppressed) {
-            scoreDisplay = `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`;
-          } else {
-            scoreDisplay = `<span class="qip-line-score ${barClass(line.score, line.maxScore || 100)}">${esc(line.score)}<span class="qip-line-max">/${esc(line.maxScore || 100)}</span></span>`;
-          }
+          const scoreCol = na
+            ? `<span class="qip-na-badge">N/A</span>`
+            : suppressed
+              ? `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`
+              : `<span class="qip-line-score ${barClass(line.score, maxScore)}">${esc(line.score)}<span class="qip-line-max">/${esc(maxScore)}</span></span>`;
+          const barCls = barClass(line.score, maxScore);
+          const barColor =
+            barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
+          const barCol = na || suppressed
+            ? `<span class="muted">—</span>`
+            : `<div class="bar qip-weight-bar"><span style="width:${pct}%;background:${barColor}"></span></div>`;
           const reason = na && line.notApplicableReason
             ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
             : "";
@@ -710,40 +737,54 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
             !na && line.coachingNote && !isUnknown(line.coachingNote)
               ? `<p class="qip-coaching"><span class="qip-coaching-label">Coach</span> ${truncateWords(line.coachingNote, 20)}</p>`
               : "";
+          const evidenceHtml = na
+            ? ""
+            : renderQipEvidenceBlocks(line.evidence || line.evidenceJson) ||
+              renderQipEvidence(line.evidence || line.evidenceJson);
           return `<details class="${cls}" data-theme-key="${esc(line.themeKey)}">
-            <summary class="qip-line-summary">
-              <span class="qip-theme-name">${esc(themeLabel(line.themeKey))}</span>
-              <span class="qip-weight${heavy ? " qip-weight-heavy" : ""}" title="Theme weight">wt ${esc(line.weight)}</span>
-              ${scoreDisplay}
+            <summary class="qip-line-summary srow-hd">
+              <div class="qip-theme-cell">
+                <span class="qip-theme-name">${esc(themeLabel(line.themeKey))}</span>
+                ${heavy ? '<span class="pill purple qip-heavy-pill">10 pt</span>' : ""}
+                ${line.sourceHint && !isUnknown(line.sourceHint) ? `<div class="sub qip-theme-hint">${esc(line.sourceHint)}</div>` : ""}
+              </div>
+              <div class="qip-score-cell">${scoreCol}</div>
+              <div class="qip-weighted-cell">${barCol}</div>
+              <div class="qip-conf-cell">${na ? "" : qipLineConfidencePill(line, conf)}</div>
+              <div class="chev" aria-hidden="true">›</div>
             </summary>
-            <div class="qip-line-body">
+            <div class="qip-line-body srow-bd">
               ${reason}
-              ${na ? "" : renderQipEvidence(line.evidence || line.evidenceJson)}
+              ${evidenceHtml}
               ${note}
             </div>
           </details>`;
         })
         .join("");
-      return `<div class="qip-section">
-        <h3 class="qip-section-title">${esc(sec.label)}</h3>
-        <div class="qip-section-lines">${rows}</div>
-      </div>`;
+      return sec.label
+        ? `<div class="qip-section">
+            <h3 class="qip-section-title">${esc(sec.label)}</h3>
+            <div class="qip-section-lines">${rows}</div>
+          </div>`
+        : `<div class="qip-section-lines">${rows}</div>`;
     })
     .join("");
 
   return `
     <div class="qip-scorecard${provisional ? " qip-provisional" : ""}">
-      <div class="qip-hero">
-        <div class="qip-total">
-          <span class="qip-total-label">QIP</span>
-          <span class="qip-total-score">${esc(totalLabel)}</span>
+      <div class="qip-scorecard-head">
+        <div>
+          <h2 class="qip-scorecard-title">QIP · ${esc(callTypeLabel.toLowerCase())} profile</h2>
+          <p class="sub qip-scorecard-sub">Click any theme for the evidence. Heavy themes carry more of the 100 points.</p>
         </div>
-        <div class="qip-hero-meta">
-          ${provisional ? '<span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span>' : ""}
-          ${confPct != null ? `<span class="qip-confidence muted">Analysis confidence ${esc(confPct)}%</span>` : ""}
-        </div>
+        <span class="pill qip-total-pill">${esc(totalLabel)} · weighted</span>
       </div>
-      ${sectionHtml}
+      ${provisional ? '<span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span>' : ""}
+      ${confPct != null ? `<p class="muted qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
+      <div class="qip-grid-header eyebrow">
+        <div>Theme</div><div>Score</div><div>Weighted</div><div>Conf</div><div></div>
+      </div>
+      ${rowHtml}
     </div>`;
 }
 
@@ -1074,9 +1115,9 @@ async function postJson(url, body) {
   return data;
 }
 
-function renderProgressStep(label, status) {
+function renderProgressStep(label, status, index) {
   const icon =
-    status === "done" ? "✓" : status === "active" ? "…" : status === "error" ? "!" : "○";
+    status === "done" ? "✓" : status === "active" ? "…" : status === "error" ? "!" : String(index + 1);
   const cls =
     status === "done"
       ? "postcall-step-done"
@@ -1085,13 +1126,25 @@ function renderProgressStep(label, status) {
         : status === "error"
           ? "postcall-step-error"
           : "postcall-step-pending";
-  return `<li class="postcall-step ${cls}"><span class="postcall-step-icon" aria-hidden="true">${icon}</span>${esc(label)}</li>`;
+  return `<li class="postcall-step ${cls}"><span class="postcall-step-icon" aria-hidden="true">${icon}</span><span class="postcall-step-label">${esc(label)}</span></li>`;
 }
 
 function showPipelineProgress(steps) {
   const host = $("postcall-progress");
   if (!host) return;
-  host.innerHTML = `<ol class="postcall-step-list">${steps.map((s) => renderProgressStep(s.label, s.status)).join("")}</ol>`;
+  const doneCount = steps.filter((s) => s.status === "done").length;
+  const pct = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
+  host.innerHTML = `
+    <div class="postcall-pipeline-card">
+      <div class="postcall-pipeline-head">
+        <span class="prep-form-eyebrow">Pipeline</span>
+        <span class="muted postcall-pipeline-meta">${esc(String(doneCount))} of ${esc(String(steps.length))} complete</span>
+      </div>
+      <div class="postcall-pipeline-bar" role="progressbar" aria-valuenow="${esc(String(pct))}" aria-valuemin="0" aria-valuemax="100">
+        <span style="width:${pct}%"></span>
+      </div>
+      <ol class="postcall-step-list">${steps.map((s, i) => renderProgressStep(s.label, s.status, i)).join("")}</ol>
+    </div>`;
   show(host, true);
 }
 
@@ -1349,14 +1402,25 @@ function renderConfirmationGate(resolve, classify) {
         .join("")
     : `<p class="muted">No deals on this account yet — confirm to attach later from Accounts.</p>`;
 
+  const accountMatchDetail = account ? formatMatchReasons(account.reasons) : "";
+
   const dealHeadline =
     account && selectedDeal
-      ? `<p class="postcall-match-title"><strong>${esc(account.accountName)} · ${esc(selectedDeal.title)} · ${esc(selectedDeal.stage)}</strong></p>`
+      ? `<div class="postcall-match-row">
+          <div>
+            <div class="postcall-match-title"><strong>${esc(account.accountName)} · ${esc(selectedDeal.title)} · ${esc(selectedDeal.stage)}</strong></div>
+            <div class="postcall-match-detail">${accountMatchDetail}</div>
+          </div>
+          <button type="button" class="postcall-change-btn btn-wire" id="postcall-deal-change-btn">Change</button>
+        </div>`
       : account
-        ? `<p class="postcall-match-title"><strong>${esc(account.accountName)}</strong></p>`
+        ? `<div class="postcall-match-row">
+            <div><div class="postcall-match-title"><strong>${esc(account.accountName)}</strong></div></div>
+            <button type="button" class="postcall-change-btn btn-wire" id="postcall-deal-change-btn">Change</button>
+          </div>`
         : "";
 
-  const accountMatchDetail = account ? formatMatchReasons(account.reasons) : "";
+  const accountFieldsHidden = account ? ' hidden' : '';
 
   const accountFields = account
     ? `<label class="postcall-confirm-edit" for="pc-confirm-account">Change account name</label>
@@ -1374,11 +1438,10 @@ function renderConfirmationGate(resolve, classify) {
           ${dealPill}
         </div>
         ${dealHeadline}
-        <div class="postcall-match-detail">${accountMatchDetail}</div>
-        <div class="postcall-confirm-block postcall-confirm-block--nested">
+        <div class="postcall-confirm-block postcall-confirm-block--nested postcall-match-edit"${accountFieldsHidden}>
           ${accountFields}
         </div>
-        <div class="postcall-confirm-block postcall-confirm-block--nested">
+        <div class="postcall-confirm-block postcall-confirm-block--nested postcall-deal-picker"${accountFieldsHidden}>
           <h3 class="postcall-confirm-subhead">Deal on account</h3>
           <div class="postcall-deal-list">${dealOptions}</div>
         </div>
@@ -1433,6 +1496,16 @@ function renderConfirmationGate(resolve, classify) {
     <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>`;
 }
 
+function wireDealChangeToggle(card) {
+  const btn = card?.querySelector("#postcall-deal-change-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    card.querySelectorAll(".postcall-match-edit, .postcall-deal-picker").forEach((el) => {
+      el.hidden = !el.hidden;
+    });
+  });
+}
+
 function showConfirmationGate(resolve, classify) {
   const card = $("postcall-confirm-view");
   if (!card) return;
@@ -1446,6 +1519,8 @@ function showConfirmationGate(resolve, classify) {
   $("postcall-confirm-btn")?.addEventListener("click", (e) => { void confirmAndGenerate(e); });
   $("postcall-restart-btn")?.addEventListener("fwClick", (e) => { void restartPipeline(e); });
   $("postcall-restart-btn")?.addEventListener("click", (e) => { void restartPipeline(e); });
+
+  wireDealChangeToggle(card);
 
   card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }

@@ -13,7 +13,7 @@ import { formatTypeComposite, isEligibleForAggregate, typeComposite } from "./qu
 import { renderQipScorecard } from "./postcall.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
-import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS } from "./domain/contact-service.js";
+import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
@@ -311,6 +311,125 @@ function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus
   }`;
 }
 
+function tractionPillClass(status) {
+  if (status === "Advancing") return "green";
+  if (status === "At risk") return "red";
+  if (status === "Stalled") return "amber";
+  return "";
+}
+
+function tcStatusLabel(status) {
+  const labels = { yes: "Yes", no: "No", pending: "Pending", at_risk: "At risk" };
+  return labels[status] || status || "—";
+}
+
+function tcStatusPillClass(status) {
+  const colors = { yes: "green", no: "red", pending: "amber", at_risk: "red" };
+  return colors[status] || "";
+}
+
+function stakeholderInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function stakeholderAvatarClass(role) {
+  const r = String(role || "").toLowerCase();
+  if (/customer|prospect|attendee/.test(r)) return "brand";
+  if (/ae|account/.test(r)) return "blue";
+  return "";
+}
+
+function renderMeddpiccList(meddpicc) {
+  if (!meddpicc) return "";
+  return MEDDPICC_FIELD_KEYS.map((key, i) => {
+    const slot = meddpicc[key];
+    const filled = slot?.value && slot.status !== "unknown";
+    const label = MEDDPICC_FIELD_LABELS[key] || key;
+    const value = filled ? slot.value : "Not surfaced";
+    return `<div class="call-medp-row${i < MEDDPICC_FIELD_KEYS.length - 1 ? " call-medp-row--border" : ""}">
+      <span class="call-medp-dot${filled ? " call-medp-dot--on" : ""}" aria-hidden="true"></span>
+      <div>
+        <div class="call-medp-label">${esc(label)}</div>
+        <div class="sub call-medp-value${filled ? "" : " muted"}">${esc(value)}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+const SPINE_SEGMENT_COLORS = {
+  slides: ["#EFEBFD", "#4A3BA8"],
+  product: ["#E3F5EE", "#0D5C41"],
+  cde: ["#E3F5EE", "#0D5C41"],
+  customer_screen: ["#E8F0FE", "#1D4FD8"],
+  none: ["#F1F3F7", "#5A6B82"],
+  intro: ["#EFEBFD", "#4A3BA8"],
+  discovery: ["#E8F0FE", "#1D4FD8"],
+  demo: ["#E3F5EE", "#0D5C41"],
+  pricing: ["#FDF3E2", "#B7791F"],
+  objection_handling: ["#FDECEF", "#D6455D"],
+  next_steps: ["#E3F5EE", "#0D5C41"],
+};
+
+function renderVisualSpine(segments, markers, durationSec) {
+  const total = durationSec && Number.isFinite(durationSec) && durationSec > 0
+    ? durationSec
+    : Math.max(...segments.map((s) => Number(s.endS) || 0), 1);
+  let html = '<div class="call-spine spine" aria-hidden="true">';
+  segments.forEach((seg, i) => {
+    const start = Number(seg.startS) || 0;
+    const end = Number(seg.endS) || start;
+    const left = (start / total) * 100;
+    const width = Math.max(((end - start) / total) * 100, 0.5);
+    const type = seg.segmentType || "none";
+    const [bg, fg] = SPINE_SEGMENT_COLORS[type] || SPINE_SEGMENT_COLORS.none;
+    const label = seg.label || segmentTypeLabel(type);
+    const radius =
+      i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
+    html += `<div class="seg" style="left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
+  });
+  for (const m of markers || []) {
+    const at = Number(m.atS);
+    if (!Number.isFinite(at)) continue;
+    const left = (at / total) * 100;
+    html += `<div class="mk" style="left:${left}%"></div><div class="mkl" style="left:${left}%">${esc(m.label || MARKER_LABELS[m.kind] || m.kind || "")}</div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
+function renderSpineTimeAxis(durationSec) {
+  if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) return "";
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => formatSegmentTime(durationSec * f));
+  return `<div class="call-spine-axis">${ticks.map((t) => `<span>${esc(t)}</span>`).join("")}</div>`;
+}
+
+function renderSpineMetrics(videoFacts, scorecard) {
+  const metrics = [];
+  if (videoFacts?.cameraOnPct != null) {
+    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`]);
+  }
+  if (videoFacts?.shareOnPct != null) {
+    metrics.push(["Screen share", `${Math.round(Number(videoFacts.shareOnPct))}%`]);
+  }
+  const engagement = (scorecard?.lines || []).find((l) => l.themeKey === "customer_engagement");
+  if (engagement?.score != null && engagement.applicable) {
+    metrics.push(["Customer engagement", `${esc(String(engagement.score))}%`]);
+  }
+  if (!metrics.length) return "";
+  return `<div class="call-spine-metrics">${metrics
+    .map(
+      ([label, value]) =>
+        `<div><div class="sub call-spine-metric-label">${esc(label)}</div><div class="call-spine-metric-value num">${value}</div></div>`,
+    )
+    .join("")}</div>`;
+}
+
 function contextItem(label, valueHtml) {
   return `
     <div class="call-deal-context-item">
@@ -320,7 +439,7 @@ function contextItem(label, valueHtml) {
 }
 
 function renderDealContextStrip(ctx) {
-  const { deal, account, sequence, momentumStatus, arrLabel } = ctx;
+  const { deal, account, sequence, momentumStatus, arrLabel, technicalCommit } = ctx;
   const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "—";
   const dealLabel = account?.name ? `${account.name} — ${dealTitle}` : dealTitle;
   const dealLink = deal?.id
@@ -328,11 +447,20 @@ function renderDealContextStrip(ctx) {
     : esc(dealLabel);
   const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : "—";
   const stageHtml = stage !== "—" ? `<span class="pill">${esc(stage)}</span>` : `<span class="muted">—</span>`;
+  const tractionClass = tractionPillClass(momentumStatus);
   const traction =
     momentumStatus && momentumStatus !== "—"
-      ? esc(momentumStatus)
+      ? `<span class="pill${tractionClass ? ` ${tractionClass}` : ""}">${esc(momentumStatus)}</span>`
       : '<span class="muted">—</span>';
-  const arrHtml = arrLabel ? esc(arrLabel) : '<span class="muted">—</span>';
+  const arrHtml = arrLabel ? `<span class="num">${esc(arrLabel)}</span>` : '<span class="muted">—</span>';
+  const tcStatus = technicalCommit?.status;
+  const tcHtml = tcStatus
+    ? `<span class="pill ${tcStatusPillClass(tcStatus)}">${esc(tcStatusLabel(tcStatus))}</span>`
+    : '<span class="muted">—</span>';
+  const aiVal = formatTcFieldValue(technicalCommit?.aiAttach);
+  const aiHtml = aiVal
+    ? `<span class="pill purple">${esc(aiVal)}</span>`
+    : '<span class="muted">—</span>';
   const seqLabel =
     sequence.position && sequence.total
       ? `Call ${sequence.position} of ${sequence.total} on this deal`
@@ -346,8 +474,8 @@ function renderDealContextStrip(ctx) {
         ${contextItem("Deal", dealLink)}
         ${contextItem("Stage", stageHtml)}
         ${contextItem("ARR", arrHtml)}
-        ${contextItem("TC", '<span class="muted">—</span>')}
-        ${contextItem("AI attach", '<span class="muted">—</span>')}
+        ${contextItem("TC", tcHtml)}
+        ${contextItem("AI attach", aiHtml)}
         ${contextItem("Traction", traction)}
         <div class="call-deal-context-seq muted">${esc(seqLabel)}</div>
       </div>
@@ -462,15 +590,15 @@ function renderCallNotesSection(notes) {
 
 function renderStakeholderSection(identities, attendees, hasVideo) {
   const rows = [];
-  const pushUnique = (name, role) => {
+  const pushUnique = (name, role, meta = "") => {
     const label = String(name || "").trim();
     if (!label) return;
     const key = label.toLowerCase();
     if (rows.some((r) => r.key === key)) return;
-    rows.push({ key, name: label, role });
+    rows.push({ key, name: label, role, meta });
   };
-  if (identities?.seIdentity) pushUnique(identities.seIdentity, "SE");
-  if (identities?.aeIdentity) pushUnique(identities.aeIdentity, "AE");
+  if (identities?.seIdentity) pushUnique(identities.seIdentity, "Solution Engineer", "Host");
+  if (identities?.aeIdentity) pushUnique(identities.aeIdentity, "Account Executive");
   for (const c of identities?.customerIdentities || []) pushUnique(c, "Customer");
   for (const a of attendees || []) {
     pushUnique(a.name || a.email, a.role || "Attendee");
@@ -478,17 +606,19 @@ function renderStakeholderSection(identities, attendees, hasVideo) {
 
   let body;
   if (rows.length) {
-    body = `<ul class="call-stakeholder-list">
-      ${rows
-        .map(
-          (r) =>
-            `<li class="call-stakeholder-item">
-              <strong>${esc(r.name)}</strong>
-              <span class="pill">${esc(r.role)}</span>
-            </li>`,
-        )
-        .join("")}
-    </ul>
+    body = `<div class="call-stakeholder-cards">${rows
+      .map((r, i) => {
+        const avCls = stakeholderAvatarClass(r.role);
+        return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
+          <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
+          <div class="call-stakeholder-main">
+            <div class="call-stakeholder-name">${esc(r.name)}</div>
+            <div class="sub call-stakeholder-role">${esc(r.role)}</div>
+            ${r.meta ? `<div class="sub call-stakeholder-meta">${esc(r.meta)}</div>` : ""}
+          </div>
+        </div>`;
+      })
+      .join("")}</div>
     ${
       hasVideo
         ? `<p class="muted call-stakeholder-note">Talk-share / camera curves from Pass 2 attach when video sampling succeeds.</p>`
@@ -558,22 +688,27 @@ function renderTimelineSpine(segments, markers) {
  * derived from transcript timestamps. The transcript spine is display evidence only —
  * `call_flow` and the other video-dependent themes stay not-applicable without video.
  */
-export function renderTimelineSection(hasVideo, timeline, durationLabel) {
+export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = {}) {
   const all = timeline?.segments || [];
   const markers = (timeline?.markers || []).slice().sort((a, b) => (a.atS || 0) - (b.atS || 0));
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
   const transcriptSegments = all.filter((s) => s.source === "transcript");
   const usingTranscript = !videoSegments.length && transcriptSegments.length > 0;
   const segments = videoSegments.length ? videoSegments : transcriptSegments;
+  const durationSec =
+    timeline?.facts?.durationSec ??
+    (segments.length ? Math.max(...segments.map((s) => Number(s.endS) || 0)) : null);
 
-  let body;
+  let body = "";
   if (segments.length) {
-    body = renderTimelineSpine(segments, markers);
+    body += renderVisualSpine(segments, markers, durationSec);
+    body += renderSpineTimeAxis(durationSec);
+    body += renderSpineMetrics(opts.videoFacts, opts.scorecard);
+    body += renderTimelineSpine(segments, markers);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored — those need Pass 2.</p>`;
     }
   } else if (markers.length) {
-    // Phases can be undetectable while individual moments are still well located.
     body = renderTimelineMarkers(markers);
   } else if (timeline?.facts?.status && timeline.facts.status !== "unavailable") {
     body = renderVideoEmptySection(
@@ -612,7 +747,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel) {
     </section>`;
 }
 
-function renderTechnicalCommitTab(technicalCommit, tcDeltas) {
+function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWorks) {
   const tc = technicalCommit || null;
   const deltas = tcDeltas || [];
   if (!tc && !deltas.length) {
@@ -622,124 +757,129 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas) {
     );
   }
 
-  const fields = [
+  const slotRows = [
     ["Incumbent", formatTcFieldValue(tc?.incumbent)],
     ["Competitor", formatTcFieldValue(tc?.competitor)],
     ["Identified risk", formatTcFieldValue(tc?.identifiedRisk)],
-    ["Go live", formatTcFieldValue(tc?.timelineForClosure)],
+    ["Timeline for closure", formatTcFieldValue(tc?.timelineForClosure)],
     ["Reason for evaluation", formatTcFieldValue(tc?.reasonForEvaluation)],
     ["AI attach", formatTcFieldValue(tc?.aiAttach)],
-    ["What's working", formatTcFieldValue(tc?.whatsWorking)],
-  ].filter(([, v]) => v);
-
-  const fieldRows = fields
+  ]
+    .filter(([, v]) => v)
     .map(
       ([label, value]) =>
-        `<div class="call-tc-field"><span class="muted">${esc(label)}</span><span>${esc(value)}</span></div>`,
+        `<div class="call-tc-slot"><div class="prep-form-eyebrow">${esc(label)}</div><div>${esc(value)}</div></div>`,
     )
     .join("");
 
   const deltaRows = deltas.length
-    ? `<section class="call-tc-deltas">
-        <h3>What this call moved</h3>
-        <ul class="call-delta-list">
-          ${deltas
-            .map((d) => {
-              const label = TC_SLOT_LABELS[d.field] || d.field;
-              const current = formatTcFieldValue(d.current);
-              return `<li class="call-delta-item">
-                ${deltaChangePill(d.changeType)}
-                <strong>${esc(label)}</strong>
-                ${current ? `<span>${esc(current)}</span>` : ""}
-                ${d.evidence ? `<span class="muted call-delta-evidence">${esc(d.evidence)}</span>` : ""}
-              </li>`;
-            })
-            .join("")}
-        </ul>
-      </section>`
-    : `<p class="muted">No per-call TC deltas on this record — snapshot only.</p>`;
+    ? `<ul class="call-delta-list call-tc-delta-list">
+        ${deltas
+          .map((d) => {
+            const label = TC_SLOT_LABELS[d.field] || d.field;
+            const current = formatTcFieldValue(d.current);
+            return `<li class="call-delta-item">
+              ${deltaChangePill(d.changeType)}
+              <strong>${esc(label)}</strong>
+              ${current ? `<span>${esc(current)}</span>` : ""}
+            </li>`;
+          })
+          .join("")}
+      </ul>`
+    : "";
+
+  const pendingRows = (followUps || [])
+    .filter((f) => f?.description)
+    .slice(0, 5)
+    .map((f) => {
+      const owner = ownerLabel(f.owner) || "Open";
+      const due = f.dueDate ? esc(f.dueDate) : "No date";
+      const pillCls = f.status === "open" && !f.dueDate ? "red" : f.owner === "customer" ? "amber" : "";
+      return `<div class="call-tc-pending-row"><span>${esc(f.description)}</span><span class="pill ${pillCls}">${esc(owner)} · ${due}</span></div>`;
+    })
+    .join("");
+
+  const winsHtml = (whatWorks || [])
+    .slice(0, 3)
+    .map(
+      (w) =>
+        `<div class="ev good"><div class="ts">${esc(w.productArea || "Win")}</div>${esc(w.verbatim || w.summary || "")}</div>`,
+    )
+    .join("");
 
   return `
-    <div class="call-tc-tab">
-      <div class="call-tc-head">
-        <h3>Technical commit</h3>
-        ${tc ? tcStatusPill(tc.status) : ""}
+    <div class="call-tc-tab call-tc-tab--wireframe">
+      <div class="call-tc-tab-grid">
+        <div class="call-tc-main card-wire card-wire--tight">
+          <div class="call-tc-head">
+            <h3>Technical commit</h3>
+            ${tc ? tcStatusPill(tc.status) : ""}
+          </div>
+          <p class="sub call-tc-intro">What this call contributed to the commit. Deltas from the previous call are marked.</p>
+          ${tc?.justification ? `<p class="call-tc-justification">${esc(tc.justification)}</p>` : ""}
+          <div class="call-tc-slots">${slotRows || '<p class="muted">No commit fields on this snapshot.</p>'}</div>
+          ${deltaRows ? `<div class="call-tc-deltas-inline">${deltaRows}</div>` : ""}
+        </div>
+        <div class="call-tc-aside">
+          ${
+            pendingRows
+              ? `<div class="card-wire card-wire--tight call-tc-side-card"><div class="prep-form-eyebrow">Pending action items</div>${pendingRows}</div>`
+              : ""
+          }
+          ${
+            winsHtml
+              ? `<div class="card-wire card-wire--tight call-tc-side-card"><div class="prep-form-eyebrow">What's working</div>${winsHtml}</div>`
+              : ""
+          }
+        </div>
       </div>
-      ${tc?.justification ? `<p class="call-tc-justification">${esc(tc.justification)}</p>` : ""}
-      ${fieldRows ? `<div class="call-tc-fields">${fieldRows}</div>` : ""}
-      ${deltaRows}
     </div>`;
 }
 
-function renderDealHealthTab(meddpiccDeltas, objections, dealSignal) {
+function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, meddpiccFilled) {
   const deltas = meddpiccDeltas || [];
   const objs = objections || [];
   const reasons = dealSignal?.reasonsJson || dealSignal?.reasons || [];
+  const medList = renderMeddpiccList(meddpicc);
 
-  if (!deltas.length && !objs.length && !reasons.length) {
+  if (!deltas.length && !objs.length && !reasons.length && !medList) {
     return renderPhase2TabEmpty(
       "No deal-health movement yet",
       "Pass 4 MEDDPICC deltas, Pass 7 objections, and Pass 8 traction reasons appear here after analysis on a linked deal.",
     );
   }
 
-  const medHtml = deltas.length
-    ? `<section class="call-health-section">
-        <h3>MEDDPICC movement</h3>
-        <ul class="call-delta-list">
-          ${deltas
-            .map((d) => {
-              const slot = d.slot || d.field || "slot";
-              const value = d.current?.value || formatTcFieldValue(d.current) || "";
-              return `<li class="call-delta-item">
-                ${deltaChangePill(d.changeType)}
-                <strong>${esc(slot)}</strong>
-                ${value ? `<span>${esc(value)}</span>` : ""}
-                ${d.evidence ? `<span class="muted call-delta-evidence">${esc(d.evidence)}</span>` : ""}
-              </li>`;
-            })
-            .join("")}
-        </ul>
-      </section>`
-    : "";
-
   const objHtml = objs.length
-    ? `<section class="call-health-section">
-        <h3>Objections</h3>
-        <ul class="call-objection-list">
-          ${objs
-            .map(
-              (o) => `<li class="call-objection-item">
-                <div class="call-objection-head">
-                  <strong>${esc(o.objectionText || "")}</strong>
-                  <fw-tag text="${o.landed ? "Landed" : "Open"}" color="${o.landed ? "green" : "yellow"}"></fw-tag>
-                  ${o.theme ? `<span class="pill">${esc(o.theme)}</span>` : ""}
-                </div>
-                ${o.handling ? `<p class="muted">${esc(o.handling)}</p>` : ""}
-              </li>`,
-            )
-            .join("")}
-        </ul>
-      </section>`
+    ? `<div class="card-wire card-wire--tight call-health-side-card">
+        <div class="prep-form-eyebrow">Objections</div>
+        ${objs
+          .map(
+            (o) => `<div class="call-objection-wire-row">
+              <div class="call-objection-wire-text">${esc(o.objectionText || "")}</div>
+              <div class="sub">${esc(o.handling || "—")} · <span class="${o.landed ? "call-landed" : "call-open"}">${o.landed ? "landed" : "open"}</span></div>
+            </div>`,
+          )
+          .join("")}
+      </div>`
     : "";
 
   const tractionHtml = reasons.length
-    ? `<section class="call-health-section">
-        <h3>Traction reasons</h3>
-        <ul class="call-traction-list">
-          ${reasons.map((r) => `<li>${esc(typeof r === "string" ? r : r.reason || JSON.stringify(r))}</li>`).join("")}
-        </ul>
-        ${
-          dealSignal?.lean != null
-            ? `<p class="muted">Lean: ${esc(String(dealSignal.lean))}${
-                dealSignal.score != null ? ` · score ${esc(String(dealSignal.score))}` : ""
-              }</p>`
-            : ""
-        }
-      </section>`
+    ? `<div class="card-wire card-wire--tight call-health-traction-card">
+        <div class="prep-form-eyebrow">Traction${dealSignal?.lean != null ? ` · ${esc(String(dealSignal.lean))}` : ""}</div>
+        <div class="call-traction-bullets">${reasons.map((r) => `· ${esc(typeof r === "string" ? r : r.reason || JSON.stringify(r))}`).join("<br>")}</div>
+      </div>`
     : "";
 
-  return `<div class="call-health-tab">${medHtml}${objHtml}${tractionHtml}</div>`;
+  return `<div class="call-health-tab call-health-tab--wireframe">
+    <div class="call-health-grid">
+      <div class="card-wire card-wire--tight">
+        <h3>MEDPICC</h3>
+        <p class="sub">${meddpiccFilled != null ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced on this call` : "Deal qualification"}</p>
+        <div class="call-medp-list">${medList || '<p class="muted">No MEDPICC rollup on this deal yet.</p>'}</div>
+      </div>
+      <div class="call-health-aside">${objHtml}${tractionHtml}</div>
+    </div>
+  </div>`;
 }
 
 /**
@@ -907,12 +1047,18 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
         </fw-tab-panel>
         <fw-tab-panel name="technical">
           <div class="call-tab-panel-inner">
-            ${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas)}
+            ${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas, tabs.followUps, tabs.whatWorks)}
           </div>
         </fw-tab-panel>
         <fw-tab-panel name="health">
           <div class="call-tab-panel-inner">
-            ${renderDealHealthTab(tabs.meddpiccDeltas, tabs.objections, tabs.dealSignal)}
+            ${renderDealHealthTab(
+              tabs.meddpiccDeltas,
+              tabs.objections,
+              tabs.dealSignal,
+              tabs.meddpicc,
+              tabs.meddpiccFilled,
+            )}
           </div>
         </fw-tab-panel>
         <fw-tab-panel name="signal">
@@ -1134,6 +1280,7 @@ async function loadCallBundle(session, record) {
     qipDeltaPill: deltaInfo ? formatDeltaPill(deltaInfo.delta) : "",
     meddpiccScore,
     meddpiccFilled,
+    meddpicc: med,
     momentumStatus,
     confidencePct,
     arrLabel,
@@ -1149,6 +1296,7 @@ async function loadCallBundle(session, record) {
     identities,
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
+    videoFacts: timelineFacts,
     productSignal: { productGaps, whatWorks, clusterLabels },
     technicalCommit,
     tcDeltas,
@@ -1218,14 +1366,20 @@ function renderCallRecord(bundle) {
           ${renderCallNotesSection(bundle.callNotes)}
           ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo)}
         </div>
-        ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel)}
+        ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
+          videoFacts: bundle.videoFacts,
+          scorecard: bundle.scorecard,
+        })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
           technicalCommit: bundle.technicalCommit,
           tcDeltas: bundle.tcDeltas,
           meddpiccDeltas: bundle.meddpiccDeltas,
+          meddpicc: bundle.meddpicc,
+          meddpiccFilled: bundle.meddpiccFilled,
           objections: bundle.objections,
           followUps: bundle.followUps,
+          whatWorks: bundle.productSignal?.whatWorks,
           momDraft: bundle.momDraft,
           dealSignal: bundle.dealSignal,
         })}
