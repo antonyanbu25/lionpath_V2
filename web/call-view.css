@@ -269,15 +269,45 @@
   margin-bottom: 8px;
 }
 
+.call-notes-read {
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.call-notes-bullets {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.call-notes-bullets li {
+  padding-left: 4px;
+}
+
+.call-notes-bullets li::marker {
+  color: var(--dew-text-secondary);
+}
+
+.call-notes-empty {
+  margin: 0;
+  font-size: 13px;
+}
+
+.call-notes-edit[hidden] {
+  display: none !important;
+}
+
 .call-notes-editor {
   width: 100%;
-  min-height: 180px;
+  min-height: 140px;
   font: inherit;
   line-height: 1.7;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
+  padding: 12px;
+  border: 1px solid var(--dew-border);
+  border-radius: 10px;
+  background: var(--dew-surface-faint);
   color: inherit;
   resize: vertical;
 }

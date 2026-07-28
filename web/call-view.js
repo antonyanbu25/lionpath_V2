@@ -761,15 +761,56 @@ function renderPhase2TabEmpty(title, detail) {
     </div>`;
 }
 
+/** Split internal call notes into scannable bullets for the wireframe read view. */
+export function formatCallNotesBullets(notes) {
+  const text = String(notes || "").trim();
+  if (!text) return [];
+
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const prefixed = lines.filter((l) => /^[-•*]\s/.test(l));
+  if (prefixed.length >= 2) {
+    return prefixed.map((l) => l.replace(/^[-•*]\s+/, "").trim()).filter(Boolean);
+  }
+
+  const paras = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paras.length >= 2) return paras.slice(0, 8);
+
+  const sentences =
+    text.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+  if (sentences.length <= 5) return sentences;
+
+  const bullets = [];
+  const groupSize = sentences.length > 8 ? 2 : 1;
+  for (let i = 0; i < sentences.length && bullets.length < 7; i += groupSize) {
+    bullets.push(sentences.slice(i, i + groupSize).join(" "));
+  }
+  return bullets;
+}
+
+function renderCallNotesBulletsHtml(notes) {
+  const bullets = formatCallNotesBullets(notes);
+  if (!bullets.length) {
+    return '<p class="muted call-notes-empty">No call notes yet — re-run post-call analysis or edit to add.</p>';
+  }
+  return `<ul class="call-notes-bullets">${bullets
+    .map((b) => `<li>${esc(b)}</li>`)
+    .join("")}</ul>`;
+}
+
 function renderCallNotesSection(notes) {
   return `
     <section class="call-section call-notes-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
-        <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
-        <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>
+        <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
+        <div id="call-notes-edit" class="call-notes-edit" hidden>
+          <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
+          <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>
+        </div>
         <div class="call-notes-actions">
-          <fw-button id="call-notes-save" color="secondary" fill="outline" size="small">Save notes</fw-button>
+          <fw-button id="call-notes-edit-btn" color="secondary" fill="outline" size="small">Edit notes</fw-button>
+          <fw-button id="call-notes-save" color="secondary" fill="outline" size="small" hidden>Save notes</fw-button>
+          <fw-button id="call-notes-cancel" color="secondary" fill="clear" size="small" hidden>Cancel</fw-button>
           <span id="call-notes-save-status" class="call-save-status muted" hidden></span>
         </div>
       </div>
@@ -1516,6 +1557,26 @@ function parseDurationMinutesLabel(record, timeline) {
 
 function renderCallRecord(bundle) {
   const { record, callTypeLabel, account } = bundle;
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+    body: JSON.stringify({
+      sessionId: "72b8a2",
+      runId: "pre-fix",
+      hypothesisId: "H1-H3",
+      location: "call-view.js:renderCallRecord",
+      message: "call notes render shape",
+      data: {
+        notesLen: (bundle.callNotes || "").length,
+        bulletCount: formatCallNotesBullets(bundle.callNotes).length,
+        hasNewlines: /\n/.test(bundle.callNotes || ""),
+        hasBulletPrefix: /^[-•*]\s/m.test(bundle.callNotes || ""),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const analysis = record.analysis || record.result?.analysis || {};
   const hdr = analysis.callHeader || {};
   const title = hdr.title || record.title || "Call";
@@ -1647,8 +1708,31 @@ function wireCallRecord(container, session, bundle, opts) {
   }
 
   const notesEditor = container.querySelector("#call-notes-editor");
+  const notesRead = container.querySelector("#call-notes-read");
+  const notesEditPanel = container.querySelector("#call-notes-edit");
+  const notesEditBtn = container.querySelector("#call-notes-edit-btn");
+  const notesCancelBtn = container.querySelector("#call-notes-cancel");
   const notesSave = container.querySelector("#call-notes-save");
   const notesStatus = container.querySelector("#call-notes-save-status");
+
+  const setNotesEditMode = (editing) => {
+    if (notesRead) notesRead.hidden = editing;
+    if (notesEditPanel) notesEditPanel.hidden = !editing;
+    if (notesEditBtn) notesEditBtn.hidden = editing;
+    if (notesSave) notesSave.hidden = !editing;
+    if (notesCancelBtn) notesCancelBtn.hidden = !editing;
+  };
+
+  notesEditBtn?.addEventListener("fwClick", () => setNotesEditMode(true));
+  notesEditBtn?.addEventListener("click", () => setNotesEditMode(true));
+  notesCancelBtn?.addEventListener("fwClick", () => {
+    if (notesEditor) notesEditor.value = bundle.callNotes || "";
+    setNotesEditMode(false);
+  });
+  notesCancelBtn?.addEventListener("click", () => {
+    if (notesEditor) notesEditor.value = bundle.callNotes || "";
+    setNotesEditMode(false);
+  });
 
   const saveNotes = async () => {
     const notes = notesEditor?.value ?? "";
@@ -1664,7 +1748,24 @@ function wireCallRecord(container, session, bundle, opts) {
     });
     if (updated) {
       bundle.callNotes = notes;
+      if (notesRead) notesRead.innerHTML = renderCallNotesBulletsHtml(notes);
+      setNotesEditMode(false);
       flashSaveStatus(notesStatus, "Saved");
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+        body: JSON.stringify({
+          sessionId: "72b8a2",
+          runId: "pre-fix",
+          hypothesisId: "H4",
+          location: "call-view.js:saveNotes",
+          message: "call notes saved",
+          data: { bulletCount: formatCallNotesBullets(notes).length, notesLen: notes.length },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
     } else {
       flashSaveStatus(notesStatus, "Could not save", true);
     }

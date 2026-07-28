@@ -171,11 +171,12 @@ Example tone: "The call ended without a customer-owned next step, which is what 
 Rules:
 - Internal only — never diplomatic fluff, never customer-facing language.
 - Cover: what happened, what moved, what stalled, open risks, coaching observation.
-- Max ~350 words. Narrative paragraphs, not bullet CRM paste.
+- Format: 5–7 bullet points. Each bullet is one crisp coaching observation (15–35 words). Start each line with "- ".
+- On-point density: not a CRM dump, not a single vague sentence — enough context to coach from.
 - Use transcript evidence only. Do not invent attendees or commitments.
 - Do NOT write minutes-of-meeting. Do NOT soften failures.
 
-Respond with JSON only: { callNotes }.`;
+Respond with JSON only: { callNotes } where callNotes is a single string with newline-separated bullets (each line starts with "- ").`;
 }
 
 function momSystemPrompt(): string {

@@ -60,7 +60,7 @@ const saved = await savePostCallAnalysis(
   {
     analysis: {
       callHeader: { title: "Acme · Demo", duration: "48 min", attendees: [{ name: "Pat", role: "Customer" }] },
-      callNotes: "Strong demo; pricing objection at 35m.",
+      callNotes: "- Strong demo overall.\n- Pricing objection surfaced at 35m and was not fully closed.",
       momentum: { status: "Advancing" },
     },
     scorecard: {
@@ -97,6 +97,8 @@ assert(container.innerHTML.includes("QIP scorecard"), "shows QIP tab");
 assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
 assert(container.innerHTML.includes("qip-grid-header"), "shows QIP column header");
 assert(container.innerHTML.includes("Weighted"), "shows weighted column");
+assert(container.innerHTML.includes("call-notes-bullets"), "shows call notes bullets");
+assert(container.innerHTML.includes("Edit notes"), "shows edit notes action");
 assert(container.innerHTML.includes("Re-run"), "shows re-run action");
 assert(
   !container.innerHTML.includes("We could not load your profile"),
