@@ -253,12 +253,20 @@ export function createLocalStore() {
       return findById("deals", id);
     },
 
-    async listDealsByAccount(accountId) {
+    async listDealsByAccount(accountId, ownerId) {
       return findMany(
         "deals",
-        (d) => d.accountId === accountId,
+        (d) => d.accountId === accountId && (!ownerId || d.ownerId === ownerId),
         (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
       );
+    },
+
+    async listDealsByOwner(ownerId, limitCount = 300) {
+      return findMany(
+        "deals",
+        (d) => d.ownerId === ownerId,
+        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
+      ).slice(0, limitCount);
     },
 
     async createLifecycle(lifecycle) {
@@ -287,8 +295,12 @@ export function createLocalStore() {
       return upsertById("prepBriefs", doc);
     },
 
-    async listPrepBriefsByLifecycle(lifecycleId) {
-      return findMany("prepBriefs", (p) => p.lifecycleId === lifecycleId, (a, b) => b.createdAt - a.createdAt);
+    async listPrepBriefsByLifecycle(lifecycleId, ownerId) {
+      return findMany(
+        "prepBriefs",
+        (p) => p.lifecycleId === lifecycleId && (!ownerId || p.ownerId === ownerId),
+        (a, b) => b.createdAt - a.createdAt
+      );
     },
 
     async findPostCallByIdentity(ownerId, callIdentityKey) {

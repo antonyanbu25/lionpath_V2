@@ -100,11 +100,11 @@ export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opt
   });
 }
 
-/** @param {string} accountId */
-export async function listDealsForAccount(accountId) {
+/** @param {string} accountId @param {string} [ownerId] */
+export async function listDealsForAccount(accountId, ownerId) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  return store.listDealsByAccount(accountId);
+  return store.listDealsByAccount(accountId, ownerId);
 }
 
 /** @param {string} dealId */

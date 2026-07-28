@@ -3,7 +3,7 @@ import { isFirebaseAuthEnabled } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach, formatTypeComposite, typeComposite } from "./quality-score.js";
 import { buildPostCallResolveContext } from "./postcall-resolve-context.js";
-import { sessionUserId } from "./domain/session.js";
+import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
 import {
   readFieldValue,
@@ -249,7 +249,7 @@ async function prefillCompanyFromEmails() {
   const emails = parseProspectEmails(await readFieldValueAsync($("pc-prospect-emails")));
   if (!emails.length) return;
 
-  const ownerId = sessionUserId(currentSession);
+  const ownerId = effectiveSessionUserId(currentSession);
   if (!ownerId) return;
   try {
     const ctx = await buildPostCallResolveContext(ownerId);
@@ -1903,7 +1903,7 @@ async function startPipeline(e) {
   });
 
   try {
-    const ownerId = sessionUserId(currentSession) || undefined;
+    const ownerId = effectiveSessionUserId(currentSession) || undefined;
     const domainContext = ownerId
       ? await buildPostCallResolveContext(ownerId)
       : { briefs: [], accounts: [], deals: [] };

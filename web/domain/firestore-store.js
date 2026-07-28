@@ -329,11 +329,21 @@ export function createFirestoreStore(fb) {
       return getById("deals", id);
     },
 
-    async listDealsByAccount(accountId) {
+    async listDealsByAccount(accountId, ownerId) {
+      const constraints = [where("accountId", "==", accountId)];
+      if (ownerId) constraints.push(where("ownerId", "==", ownerId));
+      constraints.push(orderBy("lastActivityAt", "desc"));
+      const q = query(collection(db, "deals"), ...constraints);
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listDealsByOwner(ownerId, limitCount = 300) {
       const q = query(
         collection(db, "deals"),
-        where("accountId", "==", accountId),
-        orderBy("lastActivityAt", "desc")
+        where("ownerId", "==", ownerId),
+        orderBy("lastActivityAt", "desc"),
+        limit(limitCount)
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -384,12 +394,11 @@ export function createFirestoreStore(fb) {
       return data;
     },
 
-    async listPrepBriefsByLifecycle(lifecycleId) {
-      const q = query(
-        collection(db, "prepBriefs"),
-        where("lifecycleId", "==", lifecycleId),
-        orderBy("createdAt", "desc")
-      );
+    async listPrepBriefsByLifecycle(lifecycleId, ownerId) {
+      const constraints = [where("lifecycleId", "==", lifecycleId)];
+      if (ownerId) constraints.push(where("ownerId", "==", ownerId));
+      constraints.push(orderBy("createdAt", "desc"));
+      const q = query(collection(db, "prepBriefs"), ...constraints);
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
