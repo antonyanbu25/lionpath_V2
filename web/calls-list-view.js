@@ -438,11 +438,17 @@ export async function renderCallsListView(container, session, opts = {}) {
   }
 
   try {
-    const allRecords = dedupeAnalysesByCallIdentity(
-      opts.teamScope
-        ? await listAnalysesForSession(activeSession, { teamScope: true })
-        : listPostCallAnalyses(activeSession.email),
-    );
+    let allRecords = [];
+    try {
+      allRecords = dedupeAnalysesByCallIdentity(
+        opts.teamScope
+          ? await listAnalysesForSession(activeSession, { teamScope: true })
+          : listPostCallAnalyses(activeSession.email),
+      );
+    } catch (loadErr) {
+      console.warn("[calls-list] session analyses failed, using local history:", loadErr?.message || loadErr);
+      allRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(activeSession.email));
+    }
     const listFiltered = filterCallRecordsForList(allRecords, opts.listFilter);
     if (!listFiltered.length) {
       container.innerHTML = renderCallsEmptyState(

@@ -320,60 +320,54 @@ export async function logSeTeamEvent(lifecycleId, type, actorId, payload) {
  * @param {object} session
  */
 export async function listLifecyclesForSession(session) {
-  const store = getStore();
   const { effectiveSessionUserId } = await import("./session.js");
   const ownerId = effectiveSessionUserId(session);
   if (!ownerId) return [];
 
-  const { getVisibleScope, resolveOrgForUser, userWithDirectorFlag, getOrg } = await import(
-    "./org-service.js"
-  );
-  const user = await store.getUser(ownerId);
-  const org = user?.orgId ? await getOrg(user.orgId) : null;
-  const enriched = userWithDirectorFlag(user, org);
-  const scope = await getVisibleScope(enriched);
+  const { safeStoreOp } = await import("./safe-store.js");
+  const store = getStore();
 
-  /** @type {import("./types.js").Lifecycle[]} */
-  let lifecycles = [];
+  try {
+    const { getVisibleScope, userWithDirectorFlag, getOrg } = await import("./org-service.js");
+    const user = await safeStoreOp("getUser", () => store.getUser(ownerId), null);
+    const org = user?.orgId ? await safeStoreOp("getOrg", () => getOrg(user.orgId), null) : null;
+    const enriched = userWithDirectorFlag(user, org);
+    const scope = await getVisibleScope(enriched);
 
-  if (scope.type === "own") {
-    lifecycles = await store.listLifecyclesByOwner(ownerId);
-    let accounts = [];
-    if (store.listAccounts) {
-      try {
-        accounts = await store.listAccounts();
-      } catch (err) {
-        console.warn("[lifecycle] seTeam account scan failed:", err);
+    /** @type {import("./types.js").Lifecycle[]} */
+    let lifecycles = [];
+
+    if (scope.type === "own") {
+      lifecycles = await safeStoreOp(
+        "listLifecyclesByOwner",
+        () => store.listLifecyclesByOwner(ownerId),
+        [],
+      );
+      let accounts = [];
+      if (store.listAccounts) {
+        accounts = await safeStoreOp("listAccounts", () => store.listAccounts(), []);
       }
-    }
-    const accountIdsOnTeam = new Set(
-      accounts
-        .filter((a) => (a.seTeam || []).some((m) => m.seUserId === ownerId))
-        .map((a) => a.id)
-    );
-    for (const accountId of accountIdsOnTeam) {
-      const lc = await store.findActiveLifecycle(ownerId, accountId);
-      if (lc) lifecycles.push(lc);
-    }
-  } else if (scope.type === "team") {
-    const seen = new Set();
-    for (const teamId of scope.teamIds) {
-      const teamLcs = await store.listLifecyclesByTeam(teamId);
-      for (const lc of teamLcs) {
-        if (!seen.has(lc.id)) {
-          seen.add(lc.id);
-          lifecycles.push(lc);
-        }
+      const accountIdsOnTeam = new Set(
+        accounts
+          .filter((a) => (a.seTeam || []).some((m) => m.seUserId === ownerId))
+          .map((a) => a.id),
+      );
+      for (const accountId of accountIdsOnTeam) {
+        const lc = await safeStoreOp(
+          "findActiveLifecycle",
+          () => store.findActiveLifecycle(ownerId, accountId),
+          null,
+        );
+        if (lc) lifecycles.push(lc);
       }
-    }
-  } else if (scope.type === "org" && scope.orgId) {
-    if (store.listLifecyclesByOrg) {
-      lifecycles = await store.listLifecyclesByOrg(scope.orgId);
-    }
-    if (!lifecycles.length && scope.teamIds.length) {
+    } else if (scope.type === "team") {
       const seen = new Set();
       for (const teamId of scope.teamIds) {
-        const teamLcs = await store.listLifecyclesByTeam(teamId);
+        const teamLcs = await safeStoreOp(
+          "listLifecyclesByTeam",
+          () => store.listLifecyclesByTeam(teamId),
+          [],
+        );
         for (const lc of teamLcs) {
           if (!seen.has(lc.id)) {
             seen.add(lc.id);
@@ -381,10 +375,37 @@ export async function listLifecyclesForSession(session) {
           }
         }
       }
+    } else if (scope.type === "org" && scope.orgId) {
+      if (store.listLifecyclesByOrg) {
+        lifecycles = await safeStoreOp(
+          "listLifecyclesByOrg",
+          () => store.listLifecyclesByOrg(scope.orgId),
+          [],
+        );
+      }
+      if (!lifecycles.length && scope.teamIds.length) {
+        const seen = new Set();
+        for (const teamId of scope.teamIds) {
+          const teamLcs = await safeStoreOp(
+            "listLifecyclesByTeam",
+            () => store.listLifecyclesByTeam(teamId),
+            [],
+          );
+          for (const lc of teamLcs) {
+            if (!seen.has(lc.id)) {
+              seen.add(lc.id);
+              lifecycles.push(lc);
+            }
+          }
+        }
+      }
     }
-  }
 
-  return lifecycles.filter((l) => l.status === "active");
+    return lifecycles.filter((l) => l.status === "active");
+  } catch (err) {
+    console.warn("[lifecycle] listLifecyclesForSession failed:", err?.message || err);
+    return [];
+  }
 }
 
 /** List lifecycles for current user or team. */

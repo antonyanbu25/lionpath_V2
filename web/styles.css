@@ -1055,6 +1055,10 @@ fw-button.sidebar-history-item.active {
   max-width: min(1400px, calc(100% - 32px));
 }
 
+.main-content:has(.call-record) {
+  max-width: min(1400px, calc(100% - 32px));
+}
+
 .main-content:has(.account-record) {
   max-width: min(1280px, calc(100% - 32px));
   padding-top: 20px;

@@ -76,9 +76,15 @@ export async function getVisibleScope(user) {
 
   if (orgLeader && user.orgId) {
     const store = getStore();
-    const teams = store.listTeamsByOrg
-      ? await store.listTeamsByOrg(user.orgId)
-      : [];
+    let teams = [];
+    if (store.listTeamsByOrg) {
+      try {
+        teams = await store.listTeamsByOrg(user.orgId);
+      } catch (err) {
+        console.warn("[org] listTeamsByOrg failed:", err?.message || err);
+        teams = [];
+      }
+    }
     const teamIds = teams.length
       ? teams.map((t) => t.id)
       : (org?.teamIds || []);

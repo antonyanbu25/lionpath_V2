@@ -7,11 +7,13 @@ import {
   getAccountEngagementDetail,
   updateAccountSeTeam,
   enrichAccountListRow,
+  listAccountRowsFromHistory,
 } from "./domain/account-service.js";
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getStore } from "./domain/store.js";
+import { safeStoreOp } from "./domain/safe-store.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
@@ -2007,7 +2009,11 @@ async function enrichRowsWithContacts(rows) {
   return Promise.all(
     rows.map(async (row) => ({
       ...row,
-      contacts: await store.listContactsByAccount(row.account.id),
+      contacts: await safeStoreOp(
+        "listContactsByAccount",
+        () => store.listContactsByAccount(row.account.id),
+        [],
+      ),
     })),
   );
 }
@@ -2089,8 +2095,15 @@ export async function renderAccountView(container, session, opts = {}) {
       return;
     }
 
+    let baseRows = [];
+    try {
+      baseRows = await enrichRowsWithContacts(await listAccountsForSession(activeSession));
+    } catch (err) {
+      console.warn("[account-view] Firestore account list failed, using history:", err?.message || err);
+      baseRows = listAccountRowsFromHistory(activeSession);
+    }
+
     const store = getStore();
-    const baseRows = await enrichRowsWithContacts(await listAccountsForSession(activeSession));
     const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
 
     if (!rows.length) {

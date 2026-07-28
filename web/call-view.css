@@ -1056,6 +1056,34 @@
   margin-bottom: 6px;
 }
 
+.call-spine-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 4px;
+}
+
+.call-spine-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--dew-text-secondary);
+}
+
+.call-spine-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.call-spine-legend-swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .call-spine .seg {
   position: absolute;
   top: 16px;
@@ -1104,9 +1132,15 @@
 
 .call-spine-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-top: 14px;
+  border-top: 1px solid var(--dew-border);
+  padding-top: 14px;
+}
+
+.call-spine-metric-value--warn {
+  color: var(--amber);
 }
 
 .call-spine-metric-label {
@@ -1286,5 +1320,23 @@
   .call-tc-tab-grid,
   .call-health-grid {
     grid-template-columns: 1fr;
+  }
+
+  .call-spine-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .call-record-notes-row {
+    grid-template-columns: 1fr;
+  }
+
+  .call-spine-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .call-spine-legend {
+    gap: 8px 12px;
   }
 }

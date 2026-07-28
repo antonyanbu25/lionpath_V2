@@ -27,7 +27,6 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
-<<<<<<< HEAD
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.
 
 ---
@@ -59,7 +58,8 @@ Implementation lives in `worker/src/postcall/` (17 modules) plus `worker/src/vid
 | Post-call not in sidebar history | Refresh sidebar immediately after save; await history sync (no fire-and-forget race) |
 | Call page “could not load your profile” | Re-sync session before `renderCallView`; stable `userId` fallback when Firestore upsert fails |
 | Pass 2 / Sample video fails without ffmpeg | Gemini transcript inference (`gemini-3.1-flash-lite`) — detects slides/PPT/product share segments; ffmpeg optional on VPS |
-| Accounts / Deals “could not load” on SSO | `effectiveSessionUserId` + owner-scoped Firestore queries (same pattern as call view) |
+| Accounts / Deals “could not load” on SSO | `effectiveSessionUserId` + owner-scoped Firestore queries; `safeStoreOp` swallows permission errors; history fallback rows from localStorage |
+| Call timeline misaligned vs wireframe | Horizontal spine + legend + inline markers + 5-metric row (SE talk ratio, customer questions, longest monologue, SE camera, customer cameras); removed phase list |
 | Call record tabs / QIP grid misaligned | Wireframe v4 native tabs + 5-column scorecard grid (Theme / Score / Weighted / Conf) |
 | Calls list slow first paint | Render from local history immediately; enrich deal/account labels in parallel |
 
@@ -477,12 +477,13 @@ git fetch origin
 git checkout 2.0.7
 git pull origin 2.0.7
 cd deploy/vps
-./start.sh
+docker compose build --no-cache worker web
+docker compose up -d
 # If Caddyfile changed:
 docker compose restart caddy
 ```
 
-**Stable production today:** branch **`2.0.6`** or **`2.0.4`** — swap `2.0.7` above for the branch you want.
+**Stable production today:** branch **`2.0.7`**.
 
 First-time setup:
 

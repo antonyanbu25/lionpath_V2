@@ -3,6 +3,9 @@
  */
 
 import { getStore } from "./store.js";
+import { safeStoreOp } from "./safe-store.js";
+import { listPostCallAnalyses } from "../history.js";
+import { normalizeUserEmail } from "../shared.js";
 import { normalizeAccountSlug, domainFromEmail, newId, now, can, MAX_SE_TEAM_SIZE } from "./types.js";
 import { isFreeMailDomain } from "./constants.js";
 import {
@@ -15,7 +18,7 @@ import {
 } from "./lifecycle-service.js";
 import { listDealsForAccount, DEAL_TYPE_LABELS, resolveDealForEngagement } from "./deal-service.js";
 import { resolveEngagementMotion } from "./deal-motion.js";
-import { sessionUserId } from "./session.js";
+import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
   loadContactEventsForAccount,
   recordContactEvent,
@@ -226,14 +229,95 @@ function selectedDealFromLifecycle(deals, lifecycle) {
   return deals.find((d) => d.status === "active") || null;
 }
 
+function companyFromHistoryRecord(rec) {
+  const a = rec?.analysis || rec?.result?.analysis || {};
+  const fromTitle = (rec.title || a.callHeader?.title || "")
+    .split(/[·|–—-]/)[0]
+    ?.trim();
+  return (
+    a.company ||
+    rec.result?.confirmed?.company ||
+    rec.result?.resolve?.account?.name ||
+    fromTitle ||
+    ""
+  ).trim();
+}
+
+function resolveHistoryAccountId(rec, fallbackKey) {
+  return (
+    rec.result?.confirmed?.accountId ||
+    rec.result?.resolve?.account?.accountId ||
+    rec.accountId ||
+    `hist_${fallbackKey}`
+  );
+}
+
+/**
+ * Minimal account rows from local post-call history when Firestore lists fail or are empty.
+ * @param {object} session
+ */
+export function listAccountRowsFromHistory(session) {
+  const email = normalizeUserEmail(session?.email);
+  if (!email) return [];
+  const ownerId = effectiveSessionUserId(session);
+  const byKey = new Map();
+
+  for (const rec of listPostCallAnalyses(email)) {
+    const name = companyFromHistoryRecord(rec);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const ts = rec.timestamp || 0;
+    let row = byKey.get(key);
+    if (!row) {
+      const accountId = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+      row = {
+        account: { id: accountId, name, domain: "" },
+        lifecycle: {
+          id: `lc_hist_${accountId}`,
+          accountId,
+          ownerId: effectiveSessionUserId(session),
+          title: name,
+          stage: "demo",
+          status: "active",
+          lastActivityAt: ts,
+        },
+        seTeamDisplay: [],
+        secondaryCount: 0,
+        lastActivityAt: ts,
+        dealType: "new_business",
+        dealTypeLabel: DEAL_TYPE_LABELS.new_business,
+        dealStage: "demo",
+        deals: [],
+        canonicalDealId: rec.result?.confirmed?.dealId || null,
+        historyCallCount: 0,
+        _historyFallback: true,
+      };
+      byKey.set(key, row);
+    }
+    row.historyCallCount = (row.historyCallCount || 0) + 1;
+    if (ts > (row.lastActivityAt || 0)) {
+      row.lastActivityAt = ts;
+      row.lifecycle.lastActivityAt = ts;
+    }
+  }
+
+  return [...byKey.values()].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+}
+
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session) {
   const store = getStore();
   const { effectiveSessionUserId } = await import("./session.js");
   const ownerId = effectiveSessionUserId(session);
-  const lifecycles = await listLifecyclesForSession(session);
-  const byAccount = new Map();
 
+  let lifecycles = [];
+  try {
+    lifecycles = await listLifecyclesForSession(session);
+  } catch (err) {
+    console.warn("[account-service] listLifecyclesForSession failed:", err?.message || err);
+  }
+
+  const byAccount = new Map();
   for (const lifecycle of lifecycles) {
     const list = byAccount.get(lifecycle.accountId) || [];
     list.push(lifecycle);
@@ -242,39 +326,56 @@ export async function listAccountsForSession(session) {
 
   const rows = await Promise.all(
     [...byAccount.entries()].map(async ([accountId, lcs]) => {
-      let account = await store.getAccount(accountId);
-      if (!account) return null;
-      account = await backfillAccountSeTeam(accountId);
-      const lifecycle = pickRowLifecycle(account, lcs);
-      if (!lifecycle) return null;
-      const seTeamDisplay = await resolveSeTeamDisplay(account);
-      const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
-      const deals = store.listDealsByAccount
-        ? await store.listDealsByAccount(accountId, ownerId || undefined)
-        : [];
-      const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
-      const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
-      const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);
-      const dealType = canonicalDeal?.type || "new_business";
-      const dealStage = canonicalDeal?.stage || lifecycle.stage;
-      return {
-        account,
-        lifecycle,
-        seTeamDisplay,
-        secondaryCount,
-        lastActivityAt: maxLastActivity(lcs),
-        dealType,
-        dealTypeLabel: DEAL_TYPE_LABELS[dealType] || dealType,
-        dealStage,
-        deals,
-        canonicalDealId: canonicalDeal?.id || lifecycle.dealId || null,
-      };
-    })
+      try {
+        let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
+        if (!account) return null;
+        account = await safeStoreOp(
+          "backfillAccountSeTeam",
+          () => backfillAccountSeTeam(accountId),
+          account,
+        );
+        const lifecycle = pickRowLifecycle(account, lcs);
+        if (!lifecycle) return null;
+        const seTeamDisplay = await safeStoreOp(
+          "resolveSeTeamDisplay",
+          () => resolveSeTeamDisplay(account),
+          [],
+        );
+        const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
+        const deals = store.listDealsByAccount
+          ? await safeStoreOp(
+              "listDealsByAccount",
+              () => store.listDealsByAccount(accountId, ownerId || undefined),
+              [],
+            )
+          : [];
+        const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
+        const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
+        const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);
+        const dealType = canonicalDeal?.type || "new_business";
+        const dealStage = canonicalDeal?.stage || lifecycle.stage;
+        return {
+          account,
+          lifecycle,
+          seTeamDisplay,
+          secondaryCount,
+          lastActivityAt: maxLastActivity(lcs),
+          dealType,
+          dealTypeLabel: DEAL_TYPE_LABELS[dealType] || dealType,
+          dealStage,
+          deals,
+          canonicalDealId: canonicalDeal?.id || lifecycle.dealId || null,
+        };
+      } catch (err) {
+        console.warn("[account-service] account row skipped:", accountId, err?.message || err);
+        return null;
+      }
+    }),
   );
 
-  return rows
-    .filter(Boolean)
-    .sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+  const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+  if (sorted.length) return sorted;
+  return listAccountRowsFromHistory(session);
 }
 
 const TRACTION_RANK = { hot: 0, warm: 1, cold: 2 };
@@ -306,7 +407,7 @@ export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
  * @param {object} row
  */
 export async function enrichAccountListRow(store, row) {
-  const { account, deals, lastActivityAt } = row;
+  const { account, deals, lastActivityAt, historyCallCount } = row;
   const dealList = deals || [];
   const activeDeals = dealList.filter((d) => d.status === "active");
   const meta = account?.metadata || {};
@@ -315,7 +416,7 @@ export async function enrichAccountListRow(store, row) {
   let totalArrHigh = 0;
   let hasEstimates = false;
   const products = new Set();
-  let callCount = 0;
+  let callCount = historyCallCount || 0;
   let worstTraction = null;
   let maxDaysSilent = null;
 
@@ -327,11 +428,19 @@ export async function enrichAccountListRow(store, row) {
       totalArrHigh += deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? 0;
     }
     if (store.listArrLinesByDeal) {
-      const lines = selectLatestArrLines(await store.listArrLinesByDeal(deal.id));
+      const lines = selectLatestArrLines(
+        await safeStoreOp("listArrLinesByDeal", () => store.listArrLinesByDeal(deal.id), []),
+      );
       const base = lines.find((l) => l.kind === "base" && !l.excluded);
       if (base?.product) products.add(formatProductLabel(base.product));
     }
-    const signals = store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+    const signals = store.listDealSignalsByDeal
+      ? await safeStoreOp(
+          "listDealSignalsByDeal",
+          () => store.listDealSignalsByDeal(deal.id, 1),
+          [],
+        )
+      : [];
     const signal = signals[0];
     if (signal?.traction) {
       if (!worstTraction || tractionSortRank(signal.traction) > tractionSortRank(worstTraction)) {

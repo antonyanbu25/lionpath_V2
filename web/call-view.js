@@ -94,11 +94,68 @@ function segmentTypeLabel(type) {
 }
 
 const MARKER_LABELS = {
-  gap: "Gap",
-  objection: "Objection",
-  win: "Win",
-  weak_cta: "Weak close",
+  gap: "gap raised",
+  objection: "objection",
+  win: "what worked",
+  weak_cta: "weak CTA",
 };
+
+const SPINE_LEGEND = [
+  ["slides", "Slides", "#EFEBFD", "#4A3BA8"],
+  ["product", "Product / CDE", "#E3F5EE", "#0D5C41"],
+  ["customer_screen", "Customer screen", "#E8F0FE", "#1D4FD8"],
+  ["none", "No share", "#F1F3F7", "#5A6B82"],
+];
+
+function spineSegmentLabel(type, customLabel) {
+  if (customLabel) return customLabel;
+  if (type === "product" || type === "cde") return "Product / CDE";
+  return segmentTypeLabel(type);
+}
+
+function markerDisplayLabel(marker) {
+  const raw = marker?.label || MARKER_LABELS[marker?.kind] || marker?.kind || "";
+  return String(raw).trim();
+}
+
+function parseCustomerQuestions(scorecard, record) {
+  const lines = scorecard?.lines || [];
+  const eng = lines.find((l) => l.themeKey === "customer_engagement");
+  const texts = [eng?.evidence, eng?.feedback, eng?.summary].filter(Boolean);
+  for (const t of texts) {
+    const m = String(t).match(/(\d+)\s+customer questions?/i);
+    if (m) return Number(m[1]);
+  }
+  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader;
+  if (hdr?.customerQuestions != null && Number.isFinite(Number(hdr.customerQuestions))) {
+    return Number(hdr.customerQuestions);
+  }
+  return null;
+}
+
+function parseLongestMonologue(scorecard) {
+  const line = (scorecard?.lines || []).find((l) => l.themeKey === "call_flow");
+  const texts = [line?.evidence, line?.feedback, line?.summary].filter(Boolean);
+  for (const t of texts) {
+    const m = String(t).match(/(\d+)\s*m\s*(\d+)\s*s|(\d+)m(\d+)s|(\d+):(\d{2})/i);
+    if (m) {
+      if (m[5] != null) {
+        return `${Number(m[5])}m ${String(m[6]).padStart(2, "0")}s`;
+      }
+      const mins = Number(m[1] || m[3]);
+      const secs = Number(m[2] || m[4]);
+      return `${mins}m ${String(secs).padStart(2, "0")}s`;
+    }
+  }
+  return null;
+}
+
+function renderSpineLegend() {
+  return `<div class="call-spine-legend" aria-hidden="true">${SPINE_LEGEND.map(
+    ([, label, bg, fg]) =>
+      `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
+  ).join("")}</div>`;
+}
 
 function formatSegmentTime(sec) {
   const n = Number(sec);
@@ -380,7 +437,8 @@ function renderVisualSpine(segments, markers, durationSec) {
   const total = durationSec && Number.isFinite(durationSec) && durationSec > 0
     ? durationSec
     : Math.max(...segments.map((s) => Number(s.endS) || 0), 1);
-  let html = '<div class="call-spine spine" aria-hidden="true">';
+  let html = '<div class="call-spine-wrap">';
+  html += '<div class="call-spine spine" aria-hidden="true">';
   segments.forEach((seg, i) => {
     const start = Number(seg.startS) || 0;
     const end = Number(seg.endS) || start;
@@ -388,7 +446,7 @@ function renderVisualSpine(segments, markers, durationSec) {
     const width = Math.max(((end - start) / total) * 100, 0.5);
     const type = seg.segmentType || "none";
     const [bg, fg] = SPINE_SEGMENT_COLORS[type] || SPINE_SEGMENT_COLORS.none;
-    const label = seg.label || segmentTypeLabel(type);
+    const label = spineSegmentLabel(type, seg.label || segmentTypeLabel(type));
     const radius =
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
@@ -397,9 +455,9 @@ function renderVisualSpine(segments, markers, durationSec) {
     const at = Number(m.atS);
     if (!Number.isFinite(at)) continue;
     const left = (at / total) * 100;
-    html += `<div class="mk" style="left:${left}%"></div><div class="mkl" style="left:${left}%">${esc(m.label || MARKER_LABELS[m.kind] || m.kind || "")}</div>`;
+    html += `<div class="mk" style="left:${left}%"></div><div class="mkl" style="left:${left}%">${esc(markerDisplayLabel(m))}</div>`;
   }
-  html += "</div>";
+  html += "</div></div>";
   return html;
 }
 
@@ -411,24 +469,30 @@ function renderSpineTimeAxis(durationSec) {
 
 function renderSpineMetrics(videoFacts, scorecard, record) {
   const metrics = [];
-  const tm = record?.transcriptMeta || record?.result?.transcriptMeta || {};
   const curves = normalizeParticipantStats(videoFacts?.attendeeCurveJson);
   const seCurve = curves.find((p) => /solution engineer|^se$/i.test(p.role || ""));
   const customerCurves = curves.filter((p) => /customer/i.test(p.role || ""));
 
   if (seCurve?.talkPct != null) {
-    metrics.push(["SE talk ratio", `${seCurve.talkPct}%`]);
-  } else if (tm.speakerCount && tm.wordCount) {
-    metrics.push(["Speakers", `${tm.speakerCount}`]);
+    metrics.push(["SE talk ratio", `${seCurve.talkPct}%`, ""]);
+  } else {
+    metrics.push(["SE talk ratio", "—", ""]);
   }
 
-  const engagement = (scorecard?.lines || []).find((l) => l.themeKey === "customer_engagement");
-  if (engagement?.score != null && engagement.applicable) {
-    metrics.push(["Customer engagement", `${esc(String(engagement.score))}%`]);
-  }
+  const customerQuestions = parseCustomerQuestions(scorecard, record);
+  metrics.push([
+    "Customer questions",
+    customerQuestions != null ? String(customerQuestions) : "—",
+    "",
+  ]);
+
+  const monologue = parseLongestMonologue(scorecard);
+  metrics.push(["Longest monologue", monologue || "—", monologue ? "warn" : ""]);
 
   if (videoFacts?.cameraOnPct != null) {
-    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`]);
+    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`, ""]);
+  } else {
+    metrics.push(["SE camera on", "—", ""]);
   }
 
   const customerCamOn = customerCurves.filter((p) => p.cameraOn === true).length;
@@ -437,16 +501,16 @@ function renderSpineMetrics(videoFacts, scorecard, record) {
     metrics.push([
       "Customer cameras",
       customerCamOn ? `${customerCamOn} of ${customerTotal}` : `0 of ${customerTotal}`,
+      "",
     ]);
-  } else if (videoFacts?.shareOnPct != null) {
-    metrics.push(["Screen share", `${Math.round(Number(videoFacts.shareOnPct))}%`]);
+  } else {
+    metrics.push(["Customer cameras", "—", ""]);
   }
 
-  if (!metrics.length) return "";
   return `<div class="call-spine-metrics">${metrics
     .map(
-      ([label, value]) =>
-        `<div><div class="sub call-spine-metric-label">${esc(label)}</div><div class="call-spine-metric-value num">${value}</div></div>`,
+      ([label, value, tone]) =>
+        `<div><div class="sub call-spine-metric-label">${esc(label)}</div><div class="call-spine-metric-value num${tone === "warn" ? " call-spine-metric-value--warn" : ""}">${esc(String(value))}</div></div>`,
     )
     .join("")}</div>`;
 }
@@ -779,9 +843,9 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   let body = "";
   if (segments.length) {
     body += renderVisualSpine(segments, markers, durationSec);
+    body += renderSpineLegend();
     body += renderSpineTimeAxis(durationSec);
     body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record);
-    body += renderTimelineSpine(segments, markers);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored — those need Pass 2.</p>`;
     }

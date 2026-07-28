@@ -1,4 +1,4 @@
-/** Timeline card — video spine, transcript spine, markers, empty states. */
+/** Timeline card — wireframe spine, inline markers, five-metric row. */
 import assert from "node:assert/strict";
 
 import { renderTimelineSection } from "../call-view.js";
@@ -15,16 +15,54 @@ const transcriptSegments = [
 ];
 
 const markers = [
-  { atS: 200, kind: "objection", label: "security review", quote: "the security review" },
-  { atS: 600, kind: "gap", label: "integrations · migration" },
-  { atS: 900, kind: "win", label: "automation" },
-  { atS: 1200, kind: "weak_cta", label: "no owner named" },
+  { atS: 200, kind: "objection", label: "objection" },
+  { atS: 600, kind: "gap", label: "gap raised" },
+  { atS: 900, kind: "win", label: "what worked" },
+  { atS: 1200, kind: "weak_cta", label: "weak CTA" },
 ];
 
-function testVideoSpineUnchanged() {
-  const html = renderTimelineSection(true, { segments: videoSegments, markers: [] });
+const scorecard = {
+  lines: [
+    {
+      themeKey: "call_flow",
+      evidence: "Clean sequencing, one 6m 40s monologue at 18:00 cost a point.",
+    },
+    {
+      themeKey: "customer_engagement",
+      evidence: "9 customer questions, both attendees spoke.",
+    },
+  ],
+};
+
+const videoFacts = {
+  cameraOnPct: 100,
+  attendeeCurveJson: [
+    { name: "SE", role: "Solution Engineer", talkPct: 71, cameraOn: true },
+    { name: "Alex", role: "customer", talkPct: 24, cameraOn: true },
+    { name: "Sam", role: "customer", talkPct: 5, cameraOn: false },
+  ],
+};
+
+function testVideoSpineWireframe() {
+  const html = renderTimelineSection(
+    true,
+    { segments: videoSegments, markers, facts: { durationSec: 2880 } },
+    "48 minutes",
+    { videoFacts, scorecard, record: {} },
+  );
   assert.match(html, /Product walkthrough/);
   assert.match(html, /feeds call flow scoring directly/);
+  assert.match(html, /call-spine-legend/);
+  assert.match(html, /Product \/ CDE/);
+  assert.match(html, /SE talk ratio/);
+  assert.match(html, /Customer questions/);
+  assert.match(html, /Longest monologue/);
+  assert.match(html, /6m 40s/);
+  assert.match(html, /SE camera on/);
+  assert.match(html, /Customer cameras/);
+  assert.match(html, /1 of 2/);
+  assert.match(html, /class="mkl"/);
+  assert.doesNotMatch(html, /call-timeline-list/);
   assert.doesNotMatch(html, /Built from transcript timestamps/);
 }
 
@@ -32,32 +70,22 @@ function testTranscriptSpine() {
   const html = renderTimelineSection(false, { segments: transcriptSegments, markers });
 
   assert.match(html, /Intro and agenda/);
-  assert.match(html, /Discovery/);
-  // Subtitle must not claim a screen-share source or scoring impact.
   assert.doesNotMatch(html, /feeds call flow scoring directly/);
   assert.match(html, /Conversation phases from the transcript clock/);
   assert.match(html, /Camera, CDE, call flow and engagement stay unscored/);
+  assert.doesNotMatch(html, /call-timeline-list/);
 }
 
-function testMarkersNestUnderTheirPhase() {
-  const html = renderTimelineSection(false, { segments: transcriptSegments, markers });
-
-  // The objection at 3:20 belongs to discovery (140–520), not intro.
-  const introIdx = html.indexOf("Intro and agenda");
-  const discoveryIdx = html.indexOf("Discovery");
-  const objectionIdx = html.indexOf("security review");
-  assert.ok(discoveryIdx > introIdx);
-  assert.ok(objectionIdx > discoveryIdx, "objection renders inside the discovery phase");
-
-  assert.match(html, /3:20/);
-  assert.match(html, /integrations · migration/);
-  assert.match(html, /Weak close/);
-  assert.match(html, /pill--win/);
+function testInlineMarkersOnBar() {
+  const html = renderTimelineSection(true, { segments: videoSegments, markers, facts: { durationSec: 900 } });
+  assert.match(html, /gap raised/);
+  assert.match(html, /what worked/);
+  assert.match(html, /weak CTA/);
 }
 
 function testMarkersWithoutSpine() {
   const html = renderTimelineSection(false, { segments: [], markers });
-  assert.match(html, /integrations · migration/);
+  assert.match(html, /gap raised/);
   assert.doesNotMatch(html, /No timeline/);
 }
 
@@ -65,7 +93,6 @@ function testEmptyStateIsHonest() {
   const html = renderTimelineSection(false, { segments: [], markers: [] });
   assert.match(html, /No timeline/);
   assert.match(html, /plain-text transcript has no clock/);
-  // The old copy blamed missing video even when a VTT would have worked.
   assert.doesNotMatch(html, /This recording has transcript only/);
 }
 
@@ -87,9 +114,9 @@ function testEscaping() {
   assert.match(html, /&lt;img/);
 }
 
-testVideoSpineUnchanged();
+testVideoSpineWireframe();
 testTranscriptSpine();
-testMarkersNestUnderTheirPhase();
+testInlineMarkersOnBar();
 testMarkersWithoutSpine();
 testEmptyStateIsHonest();
 testVideoWinsWhenBothExist();
