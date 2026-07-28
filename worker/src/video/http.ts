@@ -11,6 +11,9 @@ export interface VideoPassRequestBody {
   recordingUrl?: string;
   recordingPassword?: string;
   media?: ZoomShareMedia;
+  transcript?: string;
+  durationSec?: number | null;
+  callType?: string | null;
   visualAnalysisConsent?: boolean;
   skipVision?: boolean;
 }
@@ -40,6 +43,9 @@ export async function handleVideoPassNode(
     media: body.media,
     recordingUrl: body.recordingUrl,
     recordingPassword: body.recordingPassword,
+    transcript: body.transcript,
+    durationSec: body.durationSec,
+    callType: body.callType,
     visualAnalysisConsent: !!body.visualAnalysisConsent,
     skipVision: !!body.skipVision,
   });

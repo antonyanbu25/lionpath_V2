@@ -62,8 +62,22 @@ function testDraftUnavailable() {
   assert.equal(draft.segments.length, 0);
 }
 
+function testDraftWithSegmentsOverride() {
+  const draft = buildVideoFactsDraft({
+    status: "ready",
+    samples: [],
+    streamKind: "transcript_infer",
+    segments: [{ startS: 0, endS: 120, segmentType: "slides", label: "Opening deck" }],
+    shareOnPct: 65,
+  });
+  assert.equal(draft.segments.length, 1);
+  assert.equal(draft.segments[0].segmentType, "slides");
+  assert.equal(draft.shareOnPct, 65);
+}
+
 testPickKeyframes();
 testSceneSegments();
 testDraftReady();
 testDraftUnavailable();
+testDraftWithSegmentsOverride();
 console.log("test-video-facts: ok");

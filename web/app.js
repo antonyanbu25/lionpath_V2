@@ -823,6 +823,7 @@ async function renderCallPanel() {
       session = (await syncSessionWithDomainStore(session)) || session;
       if (sessionUserId(session)) {
         currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+        session = currentSession;
       }
     } catch (err) {
       console.warn("[app] call panel session sync failed:", err);
@@ -1608,7 +1609,7 @@ async function boot() {
 
   setOnAnalysisSaved(async (record, payload, data) => {
     let linked = null;
-    if (currentSession?.uid && currentSession?.teamId) {
+    if (sessionUserId(currentSession) && currentSession?.teamId) {
       try {
         linked = await linkPostCallToLifecycle(currentSession, payload, data, record);
       } catch (err) {
@@ -1640,7 +1641,10 @@ async function boot() {
         console.warn("[app] dealId write-back failed:", err?.message || err);
       }
     }
-    void loadPersistedHistory().then(async () => {
+    // Paint sidebar immediately — do not wait for remote history sync.
+    refreshSidebarRecentWork();
+    try {
+      await loadPersistedHistory();
       if (currentSession?.email) {
         await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
       }
@@ -1654,7 +1658,10 @@ async function boot() {
       if (currentView === "signal") void renderProductSignalPanel();
       invalidateSearchIndex();
       refreshSidebarRecentWork();
-    });
+    } catch (err) {
+      console.warn("[app] post-call history refresh failed:", err?.message || err);
+      refreshSidebarRecentWork();
+    }
   });
 
   initDomainStore(null);

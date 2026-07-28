@@ -321,8 +321,7 @@ export async function handleFetchTranscript(
 }
 
 /**
- * CF Worker stub — real Pass 2 runs on VPS Node (node-server intercepts this path).
- * Always returns unavailable here so wrangler never bundles ffmpeg.
+ * Pass 2 — Gemini transcript inference on Workers; ffmpeg sampling on VPS Node (node-server intercepts).
  */
 export async function handleVideoPass(
   request: Request,
@@ -331,21 +330,37 @@ export async function handleVideoPass(
   cors: Record<string, string>,
 ): Promise<Response> {
   await requireUser(request, env);
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, error: "Invalid JSON body." }, 400, cors);
+  }
+
+  const callId = typeof body.callId === "string" ? body.callId.trim() : "";
+  if (!callId) {
+    return json({ ok: false, error: "callId is required." }, 400, cors);
+  }
+
+  const { runVideoPass } = await import("./video/pass2");
+  const result = await runVideoPass(env, {
+    callId,
+    media: body.media as import("./zoomShare").ZoomShareMedia | undefined,
+    recordingUrl: typeof body.recordingUrl === "string" ? body.recordingUrl : undefined,
+    recordingPassword: typeof body.recordingPassword === "string" ? body.recordingPassword : undefined,
+    transcript: typeof body.transcript === "string" ? body.transcript : undefined,
+    durationSec: typeof body.durationSec === "number" ? body.durationSec : null,
+    callType: typeof body.callType === "string" ? body.callType : null,
+    visualAnalysisConsent: !!body.visualAnalysisConsent,
+    skipVision: !!body.skipVision,
+  });
+
   return json(
     {
-      ok: false,
-      unavailable: true,
-      reason: "Pass 2 requires the VPS Node runtime with ffmpeg (not Cloudflare Workers).",
-      videoPass: "unavailable",
-      videoFacts: {
-        status: "unavailable",
-        cameraOnPct: null,
-        keyframeRefs: [],
-        sampleIntervalS: 10,
-        retentionExpiresAt: Date.now(),
-        segments: [],
-        errorMessage: "Pass 2 requires VPS Node + ffmpeg",
-      },
+      ok: result.ok,
+      unavailable: result.unavailable,
+      reason: result.reason,
+      videoFacts: result.videoFacts,
     },
     200,
     cors,

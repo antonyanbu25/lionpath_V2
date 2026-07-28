@@ -46,11 +46,31 @@ Post-call analysis is being split into explicit passes (UI and worker still evol
 | ARR | `POST /api/postcall/arr-inputs`, `/arr-compute` | Extract pricing inputs; compute ARR |
 | 6 | `POST /api/postcall/gaps` | Product gaps + what landed |
 | 7 | `POST /api/postcall/summarise` | Commitments, call notes, MoM (never auto-send) |
+| 2 | `POST /api/video-pass` | **Pass 2** — slide/PPT + screen-share inference via **Gemini** (transcript); optional ffmpeg on VPS |
 | Legacy | `POST /api/analyze-call` | Facade — auto-pick + generate (existing UI) |
 
-Implementation lives in `worker/src/postcall/` (17 modules). **Status:** WIP — expect schema/UI churn before a stable release tag.
+Implementation lives in `worker/src/postcall/` (17 modules) plus `worker/src/video/` for Pass 2.
 
-**Local testing:** requires `GEMINI_API_KEY` in `worker/.dev.vars` for prep and all post-call passes.
+### Bugfixes in `2.0.7` (this release)
+
+| Issue | Fix |
+|-------|-----|
+| Post-call not in sidebar history | Refresh sidebar immediately after save; await history sync (no fire-and-forget race) |
+| Call page “could not load your profile” | Re-sync session before `renderCallView`; stable `userId` fallback when Firestore upsert fails |
+| Pass 2 / Sample video fails without ffmpeg | Gemini transcript inference (`gemini-3.1-flash-lite`) — detects slides/PPT/product share segments; ffmpeg optional on VPS |
+
+**Call record UI** (`#calls/:id`): QIP / MEDDPICC / traction / confidence verdict strip, deal context header, call notes + participants, timeline (“How the N minutes went”), scorecard tabs — see [wireframe v4](./docs/wireframes/se-singha-paathai-v4.html).
+
+**Local testing:** requires `GEMINI_API_KEY` in `worker/.dev.vars` for prep, post-call passes, and Pass 2. Dummy login: `se@freshworks.com` / `se123`.
+
+```bash
+# From repo root — web UI + worker API
+cd web && npm run dev:all
+# Worker only (if not using dev:all)
+cd worker && npm run dev:node
+```
+
+Pass 2 no longer requires ffmpeg locally when a transcript is present (Zoom resolve or pasted VTT). VPS deploy still benefits from ffmpeg for keyframe vision when available.
 
 ---
 

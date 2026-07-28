@@ -490,10 +490,34 @@ export async function enrichSessionFromStore(session) {
       createdAt: ts,
       updatedAt: ts,
     };
-    await store.upsertUser(user);
+    try {
+      await store.upsertUser(user);
+    } catch (err) {
+      console.warn("[seed-dev] upsertUser failed — using stable id fallback:", err?.message || err);
+      return {
+        ...session,
+        userId: session.userId || session.uid || userId,
+        uid: session.userId || session.uid || userId,
+        authUid: session.authUid ?? null,
+        role: user.role,
+        teamId: user.teamId,
+        orgId: user.orgId || null,
+        name: user.displayName,
+      };
+    }
   }
 
-  if (!user) return session;
+  if (!user) {
+    if (session?.email) {
+      const fallbackId = stableUserIdForEmail(session.email);
+      return {
+        ...session,
+        userId: session.userId || session.uid || fallbackId,
+        uid: session.userId || session.uid || fallbackId,
+      };
+    }
+    return session;
+  }
 
   const org = user.orgId ? await getOrg(user.orgId) : null;
 

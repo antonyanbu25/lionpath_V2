@@ -103,13 +103,16 @@ export function buildVideoFactsDraft(opts: {
   errorMessage?: string | null;
   sampleIntervalS?: number;
   nowMs?: number;
+  /** When set (e.g. Gemini transcript inference), skip scene-delta segment builder. */
+  segments?: VideoFactsDraft["segments"];
 }): VideoFactsDraft {
   const durationSec = opts.durationSec ?? null;
   const keyframes = opts.status === "ready" ? pickKeyframes(opts.samples) : [];
   const segments =
-    opts.status === "ready"
+    opts.segments ??
+    (opts.status === "ready"
       ? buildSceneSegments(opts.samples, durationSec ?? 0)
-      : [];
+      : []);
 
   return {
     status: opts.status,

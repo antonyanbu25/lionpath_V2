@@ -14,6 +14,7 @@ import {
 import { computeDaysInStage, computeStageMedianDays } from "./domain/deal-traction-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
+import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { resolveCallType } from "./call-view.js";
 import { resolveDurationMinutes } from "./calls-list-view.js";
@@ -1195,9 +1196,18 @@ function wireDealRecordEvents(container, session, opts, detail) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderDealView(container, session, opts = {}) {
-  const userId = sessionUserId(session);
+  let activeSession = session;
+  if (!sessionUserId(activeSession)) {
+    try {
+      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+    } catch (err) {
+      console.warn("[deal-view] session sync failed:", err);
+    }
+  }
+
+  const userId = sessionUserId(activeSession);
   if (!userId) {
-    if (session?.email) {
+    if (activeSession?.email) {
       container.innerHTML = renderDealsEmptyState(
         "We could not load your profile yet. Refresh the page or sign out and back in.",
       );
@@ -1209,17 +1219,17 @@ export async function renderDealView(container, session, opts = {}) {
 
   try {
     if (opts.dealId) {
-      const detail = await loadDealRecordDetail(session, opts.dealId, opts);
+      const detail = await loadDealRecordDetail(activeSession, opts.dealId, opts);
       if (!detail) {
         container.innerHTML = `<p class="muted">Deal not found.</p>`;
         return;
       }
       container.innerHTML = renderDealRecord(detail);
-      wireDealRecordEvents(container, session, opts, detail);
+      wireDealRecordEvents(container, activeSession, opts, detail);
       const arrMount = container.querySelector("#deal-arr-module-mount");
       if (arrMount && detail.selectedDeal) {
         mountDealArrModule(arrMount, detail.selectedDeal, detail.arrLines || [], {
-          session,
+          session: activeSession,
           getAuthHeaders: getWorkerAuthHeaders,
         });
       }
@@ -1227,7 +1237,7 @@ export async function renderDealView(container, session, opts = {}) {
     }
 
     const store = getStore();
-    const baseRows = await listDealsForSession(session);
+    const baseRows = await listDealsForSession(activeSession);
     if (!baseRows.length) {
       container.innerHTML = renderDealsEmptyState(
         "No deals yet — run a prep or post-call on an account to create your first opportunity.",

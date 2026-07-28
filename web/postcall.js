@@ -1523,7 +1523,17 @@ async function confirmAndGenerate(e) {
   show($("postcall-loading"), true);
 
   let videoFacts = null;
-  if (pipelineState.resolve.videoAvailable && pipelineState.resolve.media?.streams?.length) {
+  const pass2Transcript = pipelineState.resolve.transcript?.trim() || "";
+  const pass2DurationSec =
+    pipelineState.resolve.media?.durationSec ??
+    (pipelineState.resolve.durationMinutes != null
+      ? Math.round(Number(pipelineState.resolve.durationMinutes) * 60)
+      : null);
+  const canRunPass2 =
+    (pipelineState.resolve.videoAvailable && pipelineState.resolve.media?.streams?.length) ||
+    pass2Transcript.length > 0;
+
+  if (canRunPass2) {
     showPipelineProgress([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
@@ -1532,7 +1542,9 @@ async function confirmAndGenerate(e) {
     ]);
     showInlineStatus(status, {
       type: "info",
-      message: "Sampling Zoom video for camera / share facts… (VPS + ffmpeg; skips on Workers)",
+      message: pass2Transcript
+        ? "Running Pass 2 via Gemini (slide/PPT + screen-share inference from transcript)…"
+        : "Sampling Zoom video for camera / share facts… (ffmpeg on VPS when available)",
       loading: true,
     });
     try {
@@ -1542,6 +1554,9 @@ async function confirmAndGenerate(e) {
         recordingUrl: pipelineState.payload.recordingUrl,
         recordingPassword: pipelineState.payload.recordingPassword,
         media: pipelineState.resolve.media,
+        transcript: pass2Transcript || undefined,
+        durationSec: pass2DurationSec,
+        callType,
         visualAnalysisConsent: !!pipelineState.payload.visualAnalysisConsent,
       });
       videoFacts = videoRes?.videoFacts || null;
@@ -1557,7 +1572,7 @@ async function confirmAndGenerate(e) {
     { label: "Classify call type", status: "done" },
     {
       label: "Sample video (Pass 2)",
-      status: pipelineState.resolve.videoAvailable
+      status: canRunPass2
         ? videoFacts?.status === "ready"
           ? "done"
           : "error"

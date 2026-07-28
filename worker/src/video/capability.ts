@@ -1,15 +1,17 @@
 /**
- * Pass 2 requires a Node runtime with ffmpeg (VPS Docker apk, PATH, or ffmpeg-static).
- * Cloudflare Workers always report unavailable.
+ * Pass 2 capability — ffmpeg frame sampling (VPS) or Gemini transcript inference (any runtime).
  */
 
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
+import type { ProviderEnv } from "../providers/types";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
+
+type VideoPassEnv = { VIDEO_PASS_ENABLED?: string };
 
 let cachedBin: string | null | undefined;
 let cachedOk: boolean | null = null;
@@ -23,6 +25,10 @@ export function isNodeRuntime(): boolean {
   return typeof process !== "undefined" && !!process.versions?.node;
 }
 
+function geminiKey(env?: ProviderEnv): string | undefined {
+  return env?.GEMINI_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+}
+
 async function resolveFfmpegBinary(): Promise<string | null> {
   if (cachedBin !== undefined) return cachedBin;
   if (process.env.FFMPEG_PATH?.trim()) {
@@ -30,7 +36,6 @@ async function resolveFfmpegBinary(): Promise<string | null> {
     return cachedBin;
   }
   try {
-    // Optional local dep for mac/agent shells without system ffmpeg
     const fromPkg = require("ffmpeg-static") as string | null;
     if (fromPkg) {
       await access(fromPkg);
@@ -40,7 +45,6 @@ async function resolveFfmpegBinary(): Promise<string | null> {
   } catch {
     // not installed
   }
-  // Prefer PATH (VPS apk)
   cachedBin = "ffmpeg";
   return cachedBin;
 }
@@ -66,20 +70,30 @@ export async function ffmpegAvailable(): Promise<boolean> {
   return cachedOk;
 }
 
-export async function videoPassReady(env?: { VIDEO_PASS_ENABLED?: string }): Promise<{
+export async function videoPassReady(env?: VideoPassEnv & ProviderEnv): Promise<{
   ready: boolean;
+  mode?: "ffmpeg" | "gemini";
   reason?: string;
 }> {
   if (!videoPassEnvEnabled(env)) {
     return { ready: false, reason: "VIDEO_PASS_ENABLED is off" };
   }
+  if (geminiKey(env)) {
+    return { ready: true, mode: "gemini" };
+  }
   if (!isNodeRuntime()) {
-    return { ready: false, reason: "Pass 2 requires Node/VPS with ffmpeg (not Cloudflare Workers)" };
+    return {
+      ready: false,
+      reason: "Pass 2 needs GEMINI_API_KEY (transcript inference) or VPS Node with ffmpeg",
+    };
   }
-  if (!(await ffmpegAvailable())) {
-    return { ready: false, reason: "ffmpeg not found on PATH" };
+  if (await ffmpegAvailable()) {
+    return { ready: true, mode: "ffmpeg" };
   }
-  return { ready: true };
+  return {
+    ready: false,
+    reason: "Pass 2 needs GEMINI_API_KEY or ffmpeg on PATH",
+  };
 }
 
 export function videoDataRoot(): string {

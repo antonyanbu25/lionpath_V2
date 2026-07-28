@@ -15,6 +15,7 @@ import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS } from "./domain/contact-service.js";
 import { sessionUserId } from "./domain/session.js";
+import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { renderCallProductGapRow } from "./product-signal-view.js";
 import { esc } from "./shared.js";
@@ -557,7 +558,7 @@ function renderTimelineSpine(segments, markers) {
  * derived from transcript timestamps. The transcript spine is display evidence only —
  * `call_flow` and the other video-dependent themes stay not-applicable without video.
  */
-export function renderTimelineSection(hasVideo, timeline) {
+export function renderTimelineSection(hasVideo, timeline, durationLabel) {
   const all = timeline?.segments || [];
   const markers = (timeline?.markers || []).slice().sort((a, b) => (a.atS || 0) - (b.atS || 0));
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
@@ -583,7 +584,7 @@ export function renderTimelineSection(hasVideo, timeline) {
   } else if (hasVideo) {
     body = renderVideoEmptySection(
       "Timeline not loaded",
-      "Video was available, but Pass 2 sampling did not produce share segments for this call (needs Node + ffmpeg locally — skipped on Workers).",
+      "Video was available, but Pass 2 did not produce share segments (Gemini transcript inference or VPS ffmpeg).",
     );
   } else {
     body = renderVideoEmptySection(
@@ -592,6 +593,9 @@ export function renderTimelineSection(hasVideo, timeline) {
     );
   }
 
+  const title = durationLabel
+    ? `How the ${durationLabel} went`
+    : "How the call went";
   const subtitle = usingTranscript
     ? "Conversation phases from the transcript clock — evidence only, not scored"
     : "From the screen-share track — feeds call flow scoring directly";
@@ -600,7 +604,7 @@ export function renderTimelineSection(hasVideo, timeline) {
     <section class="call-section call-timeline-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="call-timeline-head">
-          <h2 class="call-timeline-title">How the call went</h2>
+          <h2 class="call-timeline-title">${esc(title)}</h2>
           <span class="muted call-timeline-sub">${esc(subtitle)}</span>
         </div>
         ${body}
@@ -1125,12 +1129,31 @@ async function loadCallBundle(session, record) {
   };
 }
 
+function parseDurationMinutesLabel(record, timeline) {
+  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
+  const fromHdr = hdr.duration;
+  if (typeof fromHdr === "string") {
+    const m = fromHdr.match(/(\d+(?:\.\d+)?)\s*min/i);
+    if (m) return `${Math.round(Number(m[1]))} minutes`;
+  }
+  const sec =
+    timeline?.facts?.durationSec ??
+    record?.result?.videoFacts?.durationSec ??
+    record?.result?.resolve?.media?.durationSec ??
+    null;
+  if (sec != null && Number.isFinite(Number(sec)) && Number(sec) > 0) {
+    return `${Math.round(Number(sec) / 60)} minutes`;
+  }
+  return null;
+}
+
 function renderCallRecord(bundle) {
   const { record, callTypeLabel, account } = bundle;
   const analysis = record.analysis || record.result?.analysis || {};
   const hdr = analysis.callHeader || {};
   const title = hdr.title || record.title || "Call";
   const attendeeCount = Array.isArray(hdr.attendees) ? hdr.attendees.length : null;
+  const durationLabel = parseDurationMinutesLabel(record, bundle.timeline);
   const metaBits = [
     account?.id
       ? `<a href="#accounts/${esc(account.id)}" class="call-meta-link">${esc(account.name)}</a>`
@@ -1164,7 +1187,7 @@ function renderCallRecord(bundle) {
           ${renderCallNotesSection(bundle.callNotes)}
           ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo)}
         </div>
-        ${renderTimelineSection(bundle.hasVideo, bundle.timeline)}
+        ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel)}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
           technicalCommit: bundle.technicalCommit,
@@ -1298,9 +1321,18 @@ function renderCallEmptyState(message) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallView(container, session, opts = {}) {
-  const userId = sessionUserId(session);
+  let activeSession = session;
+  if (!sessionUserId(activeSession)) {
+    try {
+      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+    } catch (err) {
+      console.warn("[call-view] session sync failed:", err);
+    }
+  }
+
+  const userId = sessionUserId(activeSession);
   if (!userId) {
-    if (session?.email) {
+    if (activeSession?.email) {
       container.innerHTML = renderCallEmptyState(
         "We could not load your profile yet. Refresh the page or sign out and back in.",
       );
@@ -1318,18 +1350,18 @@ export async function renderCallView(container, session, opts = {}) {
   }
 
   try {
-    const ownerEmail = opts.ownerEmail || session.email;
+    const ownerEmail = opts.ownerEmail || activeSession.email;
     const record =
-      (await getPostCallForSession(session, opts.callId, ownerEmail)) ||
-      getPostCallAnalysis(session.email, opts.callId);
+      (await getPostCallForSession(activeSession, opts.callId, ownerEmail)) ||
+      getPostCallAnalysis(activeSession.email, opts.callId);
     if (!record) {
       container.innerHTML = renderCallEmptyState("Call not found — it may have been cleared from this browser.");
       return;
     }
 
-    const bundle = await loadCallBundle(session, record);
+    const bundle = await loadCallBundle(activeSession, record);
     container.innerHTML = renderCallRecord(bundle);
-    wireCallRecord(container, session, bundle, opts);
+    wireCallRecord(container, activeSession, bundle, opts);
   } catch (err) {
     console.error("[call-view] failed to render call:", err);
     container.innerHTML = renderCallEmptyState(
