@@ -99,6 +99,7 @@ assert(container.innerHTML.includes("qip-grid-header"), "shows QIP column header
 assert(container.innerHTML.includes("Weighted"), "shows weighted column");
 assert(container.innerHTML.includes("call-notes-bullets"), "shows call notes bullets");
 assert(container.innerHTML.includes("Edit notes"), "shows edit notes action");
+assert(!container.innerHTML.includes("call-notes-editor"), "textarea not mounted until edit mode");
 assert(container.innerHTML.includes("Re-run"), "shows re-run action");
 assert(
   !container.innerHTML.includes("We could not load your profile"),

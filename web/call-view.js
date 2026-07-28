@@ -20,7 +20,7 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { esc } from "./shared.js";
 
 /** Bumped with call-notes read/edit UI — grep console for [DEBUG-72b8a2] on portal. */
-const CALL_VIEW_MODULE_VERSION = "call-notes-bullets-3";
+const CALL_VIEW_MODULE_VERSION = "call-notes-bullets-4";
 
 const CALL_TYPE_LABELS = {
   demo: "Demo",
@@ -800,16 +800,19 @@ function renderCallNotesBulletsHtml(notes) {
     .join("")}</ul>`;
 }
 
+function renderCallNotesEditPanelHtml(notes) {
+  return `
+          <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
+          <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>`;
+}
+
 function renderCallNotesSection(notes) {
   return `
     <section class="call-section call-notes-section card-wire" data-call-notes-ui="${CALL_VIEW_MODULE_VERSION}">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
         <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
-        <div id="call-notes-edit" class="call-notes-edit" hidden aria-hidden="true">
-          <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
-          <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>
-        </div>
+        <div id="call-notes-edit" class="call-notes-edit" hidden aria-hidden="true"></div>
         <div class="call-notes-actions">
           <fw-button id="call-notes-edit-btn" color="secondary" fill="outline" size="small">Edit notes</fw-button>
           <fw-button id="call-notes-save" class="call-notes-action--edit" color="secondary" fill="outline" size="small" hidden>Save notes</fw-button>
@@ -1695,7 +1698,7 @@ function wireCallRecord(container, session, bundle, opts) {
     if (opts.initialTab) activateTab(opts.initialTab);
   }
 
-  const notesEditor = container.querySelector("#call-notes-editor");
+  let notesEditor = container.querySelector("#call-notes-editor");
   const notesRead = container.querySelector("#call-notes-read");
   const notesEditPanel = container.querySelector("#call-notes-edit");
   const notesEditBtn = container.querySelector("#call-notes-edit-btn");
@@ -1703,18 +1706,23 @@ function wireCallRecord(container, session, bundle, opts) {
   const notesSave = container.querySelector("#call-notes-save");
   const notesStatus = container.querySelector("#call-notes-save-status");
 
+  const mountNotesEditor = () => {
+    if (!notesEditPanel || notesEditor) return notesEditor;
+    notesEditPanel.innerHTML = renderCallNotesEditPanelHtml(bundle.callNotes);
+    notesEditor = notesEditPanel.querySelector("#call-notes-editor");
+    return notesEditor;
+  };
+
   const setNotesEditMode = (editing) => {
+    if (editing) mountNotesEditor();
     if (notesRead) {
       notesRead.hidden = editing;
       notesRead.setAttribute("aria-hidden", editing ? "true" : "false");
-      notesRead.style.display = editing ? "none" : "";
     }
     if (notesEditPanel) {
       notesEditPanel.hidden = !editing;
       notesEditPanel.setAttribute("aria-hidden", editing ? "false" : "true");
       notesEditPanel.classList.toggle("call-notes-edit--open", editing);
-      // Inline fallback when call-view.css is stale-cached on the portal CDN/browser.
-      notesEditPanel.style.display = editing ? "" : "none";
     }
     if (notesEditBtn) {
       notesEditBtn.hidden = editing;
@@ -1767,7 +1775,7 @@ function wireCallRecord(container, session, bundle, opts) {
     body: JSON.stringify({
       sessionId: "72b8a2",
       runId: "post-fix-verify",
-      hypothesisId: "H7-cache",
+      hypothesisId: "H5-lazy-edit",
       location: "call-view.js:wireCallRecord",
       message: "call notes DOM after wire",
       data: {
