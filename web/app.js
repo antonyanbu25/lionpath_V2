@@ -23,7 +23,7 @@ import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=accounts-mock-v1";
 import { renderDealView } from "./deal-view.js";
-import { renderCallView } from "./call-view.js";
+import { renderCallView } from "./call-view.js?v=call-notes-bullets-2";
 import { renderCallsListView } from "./calls-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";

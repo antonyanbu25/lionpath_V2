@@ -1726,21 +1726,24 @@ function wireCallRecord(container, session, bundle, opts) {
   setNotesEditMode(false);
 
   // #region agent log
+  const notesHtml = container.innerHTML || "";
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
     body: JSON.stringify({
       sessionId: "72b8a2",
       runId: "post-fix-verify",
-      hypothesisId: "H5-H6",
+      hypothesisId: "H7-cache",
       location: "call-view.js:wireCallRecord",
       message: "call notes DOM after wire",
       data: {
         bulletCount: formatCallNotesBullets(bundle.callNotes).length,
         notesLen: (bundle.callNotes || "").length,
-        hasBulletsEl: !!container.querySelector(".call-notes-bullets"),
-        editPanelHidden: notesEditPanel?.hidden ?? null,
-        readPanelHidden: notesRead?.hidden ?? null,
+        htmlHasBullets: notesHtml.includes("call-notes-bullets"),
+        htmlHasTextarea: notesHtml.includes("call-notes-editor"),
+        htmlHasEditBtn: notesHtml.includes("call-notes-edit-btn"),
+        foundReadEl: !!notesRead,
+        foundEditEl: !!notesEditPanel,
       },
       timestamp: Date.now(),
     }),
