@@ -295,7 +295,12 @@
   font-size: 13px;
 }
 
-.call-notes-edit[hidden] {
+.call-notes-edit[hidden],
+.call-notes-edit:not(.call-notes-edit--open) {
+  display: none !important;
+}
+
+.call-notes-action--edit[hidden] {
   display: none !important;
 }
 

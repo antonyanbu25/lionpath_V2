@@ -803,14 +803,14 @@ function renderCallNotesSection(notes) {
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
         <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
-        <div id="call-notes-edit" class="call-notes-edit" hidden>
+        <div id="call-notes-edit" class="call-notes-edit" hidden aria-hidden="true">
           <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
           <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>
         </div>
         <div class="call-notes-actions">
           <fw-button id="call-notes-edit-btn" color="secondary" fill="outline" size="small">Edit notes</fw-button>
-          <fw-button id="call-notes-save" color="secondary" fill="outline" size="small" hidden>Save notes</fw-button>
-          <fw-button id="call-notes-cancel" color="secondary" fill="clear" size="small" hidden>Cancel</fw-button>
+          <fw-button id="call-notes-save" class="call-notes-action--edit" color="secondary" fill="outline" size="small" hidden>Save notes</fw-button>
+          <fw-button id="call-notes-cancel" class="call-notes-action--edit" color="secondary" fill="clear" size="small" hidden>Cancel</fw-button>
           <span id="call-notes-save-status" class="call-save-status muted" hidden></span>
         </div>
       </div>
@@ -1521,7 +1521,12 @@ async function loadCallBundle(session, record) {
       confidencePct,
     }),
     hasVideo: resolveVideoAvailable(record),
-    callNotes: typeof analysis.callNotes === "string" ? analysis.callNotes : "",
+    callNotes: (() => {
+      const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
+      if (fromAnalysis) return fromAnalysis;
+      const fromSummarise = record.result?.summarise?.callNotes;
+      return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
+    })(),
     identities,
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
@@ -1696,12 +1701,51 @@ function wireCallRecord(container, session, bundle, opts) {
   const notesStatus = container.querySelector("#call-notes-save-status");
 
   const setNotesEditMode = (editing) => {
-    if (notesRead) notesRead.hidden = editing;
-    if (notesEditPanel) notesEditPanel.hidden = !editing;
-    if (notesEditBtn) notesEditBtn.hidden = editing;
-    if (notesSave) notesSave.hidden = !editing;
-    if (notesCancelBtn) notesCancelBtn.hidden = !editing;
+    if (notesRead) {
+      notesRead.hidden = editing;
+      notesRead.setAttribute("aria-hidden", editing ? "true" : "false");
+    }
+    if (notesEditPanel) {
+      notesEditPanel.hidden = !editing;
+      notesEditPanel.setAttribute("aria-hidden", editing ? "false" : "true");
+      notesEditPanel.classList.toggle("call-notes-edit--open", editing);
+    }
+    if (notesEditBtn) {
+      notesEditBtn.hidden = editing;
+      if (editing) notesEditBtn.setAttribute("hidden", "");
+      else notesEditBtn.removeAttribute("hidden");
+    }
+    for (const el of [notesSave, notesCancelBtn]) {
+      if (!el) continue;
+      el.hidden = !editing;
+      if (!editing) el.setAttribute("hidden", "");
+      else el.removeAttribute("hidden");
+    }
   };
+
+  setNotesEditMode(false);
+
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
+    body: JSON.stringify({
+      sessionId: "72b8a2",
+      runId: "post-fix-verify",
+      hypothesisId: "H5-H6",
+      location: "call-view.js:wireCallRecord",
+      message: "call notes DOM after wire",
+      data: {
+        bulletCount: formatCallNotesBullets(bundle.callNotes).length,
+        notesLen: (bundle.callNotes || "").length,
+        hasBulletsEl: !!container.querySelector(".call-notes-bullets"),
+        editPanelHidden: notesEditPanel?.hidden ?? null,
+        readPanelHidden: notesRead?.hidden ?? null,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   notesEditBtn?.addEventListener("fwClick", () => setNotesEditMode(true));
   notesEditBtn?.addEventListener("click", () => setNotesEditMode(true));
