@@ -19,6 +19,9 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc } from "./shared.js";
 
+/** Bumped with call-notes read/edit UI — grep console for [DEBUG-72b8a2] on portal. */
+const CALL_VIEW_MODULE_VERSION = "call-notes-bullets-3";
+
 const CALL_TYPE_LABELS = {
   demo: "Demo",
   discovery: "Discovery",
@@ -1704,11 +1707,14 @@ function wireCallRecord(container, session, bundle, opts) {
     if (notesRead) {
       notesRead.hidden = editing;
       notesRead.setAttribute("aria-hidden", editing ? "true" : "false");
+      notesRead.style.display = editing ? "none" : "";
     }
     if (notesEditPanel) {
       notesEditPanel.hidden = !editing;
       notesEditPanel.setAttribute("aria-hidden", editing ? "false" : "true");
       notesEditPanel.classList.toggle("call-notes-edit--open", editing);
+      // Inline fallback when call-view.css is stale-cached on the portal CDN/browser.
+      notesEditPanel.style.display = editing ? "" : "none";
     }
     if (notesEditBtn) {
       notesEditBtn.hidden = editing;
@@ -1727,6 +1733,26 @@ function wireCallRecord(container, session, bundle, opts) {
 
   // #region agent log
   const notesHtml = container.innerHTML || "";
+  const readCallNotesVisibility = () => ({
+    callViewModuleVersion: CALL_VIEW_MODULE_VERSION,
+    readHidden: notesRead?.hidden ?? null,
+    editHidden: notesEditPanel?.hidden ?? null,
+    editHasOpenClass: notesEditPanel?.classList.contains("call-notes-edit--open") ?? null,
+    readDisplay:
+      notesRead && typeof getComputedStyle === "function"
+        ? getComputedStyle(notesRead).display
+        : null,
+    editDisplay:
+      notesEditPanel && typeof getComputedStyle === "function"
+        ? getComputedStyle(notesEditPanel).display
+        : null,
+  });
+  const logCallNotesVisibility = (label) => {
+    const vis = readCallNotesVisibility();
+    console.log("[DEBUG-72b8a2]", label, vis);
+    return vis;
+  };
+  const visibility = logCallNotesVisibility("after setNotesEditMode(false)");
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
@@ -1744,10 +1770,16 @@ function wireCallRecord(container, session, bundle, opts) {
         htmlHasEditBtn: notesHtml.includes("call-notes-edit-btn"),
         foundReadEl: !!notesRead,
         foundEditEl: !!notesEditPanel,
+        ...visibility,
       },
       timestamp: Date.now(),
     }),
   }).catch(() => {});
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => {
+      logCallNotesVisibility("after paint setNotesEditMode(false)");
+    });
+  }
   // #endregion
 
   notesEditBtn?.addEventListener("fwClick", () => setNotesEditMode(true));
