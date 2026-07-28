@@ -36,13 +36,13 @@ High-level structure for Lionpath domain data. Detailed entity definitions: [ENT
 | Team | RBAC boundary for manager visibility |
 | Account | Shared company record (dedupe by slug) |
 | Contact | Person at account |
-| Lifecycle | Aggregate root — one SE × one account engagement thread |
+| Lifecycle | Engagement aggregate (today) — one active SE × account thread; evolves toward **Deal** + optional SE lens — see [adr/003-account-deal-engagement.md](./adr/003-account-deal-engagement.md) |
 | PrepBrief | Pre-call artifact |
 | PostCall | Post-call artifact |
 | Task | Action item from prep/post-call/manual |
 | LifecycleEvent | Append-only audit timeline |
 
-**Super object:** Lifecycle links User + Account and owns all activity artifacts.
+**Navigation backbone:** **Account** (contacts, deal team, merged timeline). **Lifecycle** still owns pipeline stage and artifacts in the MVP; **Deal/Opportunity** will sit between Account and artifacts for NB → expansion (ADR 003).
 
 ---
 
@@ -120,12 +120,15 @@ Cutover checklist in [DOMAIN_MODEL.md](./DOMAIN_MODEL.md#migration-runbook).
 
 | Doc | Contents |
 |-----|----------|
+| [HLD.md](./HLD.md) | High-level design — context, layers, deploy, NFRs |
+| [LLD.md](./LLD.md) | Low-level design — flows, modules, APIs per feature |
 | [APP_AND_DOMAIN_CONTEXT.md](./APP_AND_DOMAIN_CONTEXT.md) | Product overview |
 | [ENTITY_CATALOG.md](./ENTITY_CATALOG.md) | Entities vs value objects |
 | [ID_STANDARDS.md](./ID_STANDARDS.md) | ID generation |
 | [RELATIONSHIPS.md](./RELATIONSHIPS.md) | FKs and cardinalities |
 | [RBAC.md](./RBAC.md) | Roles and permissions |
 | [adr/001-user-identity.md](./adr/001-user-identity.md) | User.id vs Firebase uid |
+| [adr/003-account-deal-engagement.md](./adr/003-account-deal-engagement.md) | Account + Deal + engagement (expansion path) |
 | [DOMAIN_MODEL.md](./DOMAIN_MODEL.md) | Firestore collections, indexes, migration |
 
 ---
@@ -137,5 +140,5 @@ Architecture supports future scale when:
 1. New features add **new entity types** referencing core IDs
 2. Core PrepBrief/PostCall schema stays stable
 3. `ownerId` is always internal `User.id`
-4. Lifecycle remains the engagement aggregate root
+4. **Account** is the customer backbone; **Deal** + engagement aggregate (Lifecycle today) own pursuit stage and artifacts per [adr/003](./adr/003-account-deal-engagement.md)
 5. RBAC extends via new roles + resource types, not ad-hoc flags

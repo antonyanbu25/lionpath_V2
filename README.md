@@ -4,11 +4,14 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.0.3`** — contact enrichment, discovery UX, accounts/sidebar polish, activity feed ([tree/2.0.3](https://github.com/skut264/lionpath/tree/2.0.3)) |
-| **Previous release** | **`2.0.2`** — accounts CRM, MEDDPICC, org hierarchy ([tree/2.0.2](https://github.com/skut264/lionpath/tree/2.0.2)) |
+| **Current branch** | **`2.0.7`** — multi-pass **post-call pipeline** (WIP), built on **`2.0.6`** CRM Accounts/Deals ([tree/2.0.7](https://github.com/skut264/lionpath/tree/2.0.7)) |
+| **Previous release** | **`2.0.6`** — CRM **Accounts** / **Deals** nav, MEDDPICC on deal, compact command deck ([tree/2.0.6](https://github.com/skut264/lionpath/tree/2.0.6)) |
+| **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
 | **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
-| **Repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
+| **Repo (upstream)** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
+| **Fork (contributors)** | [github.com/sowravsunil/singapaathai](https://github.com/sowravsunil/singapaathai) — push here first, then open PR to `lionpath` |
+| **Architecture docs** | [docs/HLD.md](./docs/HLD.md) · [docs/LLD.md](./docs/LLD.md) · [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) |
 | **Demo login** | `se@freshworks.com` / `se123` |
 
 ---
@@ -24,23 +27,148 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
-**Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish.
+**Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.
 
 ---
 
-## Key features (branch `2.0.3`)
+## Key features (branch `2.0.7` — WIP)
+
+### Multi-pass post-call pipeline
+
+Post-call analysis is being split into explicit passes (UI and worker still evolving):
+
+| Pass | Route | Purpose |
+|------|-------|---------|
+| 0 | `POST /api/postcall/resolve` | Match recording to account/deal (no LLM) |
+| 1 | `POST /api/postcall/classify` | Call type classification (cheap LLM) |
+| — | `POST /api/postcall/generate` | Core analysis generation |
+| 4 | `POST /api/postcall/qualify` | MEDDPICC qualification |
+| ARR | `POST /api/postcall/arr-inputs`, `/arr-compute` | Extract pricing inputs; compute ARR |
+| 6 | `POST /api/postcall/gaps` | Product gaps + what landed |
+| 7 | `POST /api/postcall/summarise` | Commitments, call notes, MoM (never auto-send) |
+| Legacy | `POST /api/analyze-call` | Facade — auto-pick + generate (existing UI) |
+
+Implementation lives in `worker/src/postcall/` (17 modules). **Status:** WIP — expect schema/UI churn before a stable release tag.
+
+**Local testing:** requires `GEMINI_API_KEY` in `worker/.dev.vars` for prep and all post-call passes.
+
+---
+
+## Key features (branch `2.0.6`)
+
+### CRM navigation — Accounts, Deals, and opportunities
+
+Freshsales-style object nav in the sidebar:
+
+| Nav | List | Detail |
+|-----|------|--------|
+| **Accounts** | Companies you work | **Account overview** — contacts, deal team, opportunities table (`#accounts/{id}`) |
+| **Deals** | All opportunities across those accounts | **Opportunity workspace** — same command deck as account drill-down (`#deals/{dealId}` or `#accounts/{id}/deals/{dealId}`) |
+
+**Opportunity workspace (compact command deck):**
+
+- Summary row — primary contact, primary SE, last activity, **Type** (New business / Expansion)
+- **Sales stage** stepper only (no separate “Deal” sub-header; handoff-to-expansion removed from UI for now)
+- Three columns — contacts, activity/preps/post-calls/tasks, deal team + **MEDDPICC on the selected deal**
+- Changing **Type** updates which deal/lifecycle is in context for the next prep or post-call
+
+**Domain & docs:**
+
+- First-class **Deal** records (`web/domain/deal-service.js`); prep/post-call merge MEDDPICC onto **`Deal.metadata.meddpicc`** ([ADR 005](./docs/adr/005-meddpicc-on-deal.md))
+- Hash routes documented in **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** (`#deals`, `#deals/{dealId}`, account variants)
+- Wireframes: [account-record-v4-1b-compact-command.md](./docs/wireframes/account-record-v4-1b-compact-command.md)
+
+**Tests:** `cd web && npm test` — includes `test-account-view`, `test-deal-view`, `test-deal-meddpicc`, `check-meddpicc-writes`.
+
+---
+
+## Key features (branch `2.0.5`)
+
+### Kaia share-content hardening
+
+- **Primary API:** `POST /api/kaia/share-content` with `{ url }` returns summary plus participants/metadata for prep and enrich
+- **Legacy alias:** `POST /api/fetch-kaia-summary` with `{ kaiaUrl }` (2.0.4 precall compat)
+- **Per-prospect excerpts** from Kaia `summaryJson` speaker tags; research input hash includes Kaia ref + additional context fingerprint
+- **Worker-side cache/retry** on public Engage share links (~15 min TTL per isolate)
+
+### Carried from `2.0.4`
+
+See **Key features (branch `2.0.4`)** below for Kaia DISC badges, customer reference links, SSO/Accounts fixes, and boot performance refactors.
+
+---
+
+## Key features (branch `2.0.4`)
+
+### Kaia DISC enrichment & source badges
+
+- **Optional Kaia share URL** on the prep form — worker fetches meeting summary text via `POST /api/fetch-kaia-summary` and merges it into contact enrichment
+- **DISC source labels** — chips show **Kaia**, **LinkedIn + Kaia**, or other merged sources so SEs know where inference came from
+- Enrichment still supports LinkedIn PDF, Zoom excerpts, and notes — see **[docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md)**
+
+### Industry customer reference links
+
+- Pre-call briefs link to the right **Seismic customer reference deck** based on detected industry (BFSI, education, logistics, manufacturing, e-commerce, high-tech, and more)
+- Fallback to General B2B when industry is ambiguous — `web/customer-reference-links.js`
+
+### Merged from `2.0.3`
+
+Branch **`2.0.4`** ships on top of the full **`2.0.3`** release (merged onto main):
+
+| Area | What changed | Why |
+|------|--------------|-----|
+| **Contact enrichment** | Worker enrich API, prep merge, DISC/influence on account contacts | Richer prospect context before discovery calls |
+| **Accounts UX** | Accordion contacts, MEDDPICC readability, deal team grid, sidebar brief dedupe | Cleaner CRM-style account detail at a glance |
+| **Activity feed** | Day-grouped timeline; **10 most recent** + **Show all activities** (no event merging) | Easier scan of team activity on an account |
+
+See **[docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md)** and the **`2.0.3`** key-features section below for full detail.
+
+### Reliability & performance (`2.0.4`)
+
+| Area | What changed | Why |
+|------|--------------|-----|
+| **Gemini prep** | Slim `PREP_SCHEMA`, tuned `thinkingLevel` for `google_search`, default `gemini-3.1-flash-lite` | Fixes intermittent prep 400 errors on AI Studio keys |
+| **SSO / VPS boot** | Restore `isFirebaseAuthEnabled`, bust stale auth JS cache, localhost-only boot diagnostics | Prevents login flash and SSO failures after deploy |
+| **Login sync** | Parallel history + task fetch on sign-in | Faster dashboard populate after auth |
+| **Local store** | In-memory read cache (cleared on logout) | Snappier accounts/sidebar navigation |
+| **Dashboard** | Cached `normalizeQualityCoach` in aggregation; bulk-resolve SE emails for team metrics | Less repeated work when rendering coaching charts |
+| **Firestore / store** | 30s TTL read cache on `getById`; cap list queries at 200 | Safer performance as artifact volume grows |
+
+### Boot & maintainability refactors (`2.0.4`)
+
+Ten focused refactors — no user-facing behavior change, easier to extend and debug:
+
+1. **`web/shared.js`** — shared `esc`, `$`, `show`, `normalizeUserEmail` utilities
+2. **`web/chart-shared.js`** — extracted radar/gauge chart helpers
+3. **`agentBootLog`** — debug logging gated to localhost only
+4. **Prep disputes** — simplified inline boot; removed `MutationObserver`
+5. **Parallel login** — history and task sync run concurrently in `loadPersistedHistory`
+6. **Sidebar** — recent-work click handling delegated in app boot
+7. **`local-store.js`** — in-memory cache with logout clear
+8. **Dashboard QC** — cache normalized Quality Coach scores during aggregation
+9. **Post-call boot** — listener wiring deferred until app boot completes
+10. **Worker routes** — route map with named handlers in `worker/src/routes.ts`
+
+---
+
+## Key features (branch `2.0.3`, still included)
 
 ### Accounts — CRM-style detail (Crayons UI)
 
 - **Accounts list** — filter by company, domain, contact, or stage; open any account for full context
+- **Account overview** — opportunities list, contacts, deal team (no full pursuit deck on the account shell)
+- **Opportunity** — open from account row or **Deals** nav; pursuit pipeline + MEDDPICC + artifacts
+- **Deals list** — sidebar **Deals**; filter cross-account opportunities; same opportunity UI on drill-down
+- **Account detail wireframe (v2)** — [docs/wireframes/account-record-v2.md](./docs/wireframes/account-record-v2.md)
+- **Account detail usability (v2.1 left column)** — [docs/wireframes/account-record-v2.1-left-column.md](./docs/wireframes/account-record-v2.1-left-column.md)
+- **Compact command deck (v4 1b)** — [docs/wireframes/account-record-v4-1b-compact-command.md](./docs/wireframes/account-record-v4-1b-compact-command.md)
 - **Lifecycle pipeline** — open stages (Research → Business case) as a stepper; terminal outcomes (Closed won / lost / Nurture) as separate actions (replaces stage dropdown)
 - **Contacts** — `fw-card` + accordion per person; primary contact expanded by default; DISC and influence tags when assessed (no noisy “not assessed” chips in headers)
-- **MEDDPICC scorecard** — completion %, clamped field values with hover for full text; **Not captured** / **Partial** / **Confirmed** tags
+- **MEDDPICC scorecard** — on the **active deal** (with account fallback during migration); completion %, field status tags
 - **Activity** — merged team timeline grouped **by calendar day**; each event shown individually (no merging); **10 most recent** activities plus **Show all activities**; compact rows with actor-only meta under day headers
 - **Artifacts** — preps deduped by day + company in the list; post-calls and tasks in tabs
 - **Sidebar** — Discovery briefs deduped by company domain/slug (one row per account)
 
-Domain data lives under `web/domain/` (`account-service`, `contact-service`, `lifecycle-service`). See **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** and **[docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md)**.
+Domain data lives under `web/domain/` (`account-service`, `contact-service`, `lifecycle-service`, `deal-service`). See **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** and **[docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md)**.
 
 ### Contact enrichment (prep + worker)
 
@@ -117,6 +245,8 @@ Production uses **Firebase Google SSO** with `@freshworks.com` domain restrictio
 | **Pre-call prep** | Company + email form → v3 one-pager with comparison table and SE playbook |
 | **New analysis** | Zoom link form → redesigned post-call one-pager with Quality Coach |
 | **History (sidebar)** | Past analyses with quality scores; click to reload any call |
+| **Accounts** | Company list → overview (contacts, opportunities) or open an opportunity |
+| **Deals** | All opportunities → pipeline, MEDDPICC, activity (same workspace as account drill-down) |
 | **Manager view** | Placeholder team dashboard (rollup planned — see Roadmap) |
 
 For a leadership-friendly walkthrough of post-call flow and FAQ, see **[docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md)**.  
@@ -136,8 +266,8 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Layer | Role |
 |-------|------|
-| **`web/`** | Static portal — pre-call, post-call, dashboard, **accounts**, history, profile, Crayons (Freshworks Dew) |
-| **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/contact/enrich`, `/api/history`, Zoom transcript fetch |
+| **`web/`** | Static portal — pre-call, post-call, dashboard, **accounts**, **deals**, history, profile, Crayons (Freshworks Dew) |
+| **`worker/`** | API server — `/api/generate-prep`, `/api/analyze-call`, `/api/contact/enrich`, `/api/fetch-kaia-summary`, `/api/history`, Zoom transcript fetch |
 | **VPS (production)** | Docker Compose + Caddy HTTPS — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** |
 | **LLM** | Gemini 3.1 Flash Lite (default) — web search for pre-call; structured JSON for post-call |
 
@@ -149,6 +279,14 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Area | What changed |
 |------|--------------|
+| **`2.0.6` — CRM IA** | Accounts overview vs opportunity routes; **Deals** sidebar + `#deals/{id}`; Type in summary row; MEDDPICC on deal ([ADR 004](./docs/adr/004-account-record-crm-ia.md), [ADR 005](./docs/adr/005-meddpicc-on-deal.md)) |
+| **`2.0.5` — Kaia** | `POST /api/kaia/share-content`, research hash v2, per-prospect excerpts — [CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) |
+| **`2.0.4` — Kaia DISC** | Optional Kaia share URL fetch; source badges on DISC chips and prospect tabs |
+| **`2.0.4` — Customer refs** | Industry-mapped Seismic customer reference links on pre-call briefs |
+| **`2.0.4` — Gemini / SSO** | Prep schema + thinkingLevel fixes; SSO export restore; VPS auth cache bust |
+| **`2.0.4` — Performance** | Parallel login sync, local-store cache, dashboard QC cache, Firestore TTL + query caps |
+| **`2.0.4` — Refactors** | shared.js, chart-shared.js, disputes, sidebar boot, deferred post-call, worker route map |
+| **`2.0.4` — Main sync** | Merged `2.0.3` contact enrichment, accounts UX, and activity feed onto main |
 | **`2.0.3` — Contact enrichment** | Worker enrich API, prep merge, DISC/influence on contacts; docs in `CONTACT_ENRICHMENT.md` |
 | **`2.0.3` — Discovery UX** | Account facts + signals grid, people hero/tabs, nested tab fix for multi-prospect preps |
 | **`2.0.3` — Accounts & sidebar** | Accordion layout, MEDDPICC readability, deal team grid, sidebar brief dedupe by domain |
@@ -184,46 +322,61 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 2. Log in (`se@freshworks.com` / `se123`)
 3. **Before a call:** Pre-call prep → company + email + context → brief
 4. **After a call:** New analysis → Zoom link → summary, next steps, Quality Coach
+5. **Accounts / Deals:** Sidebar → review companies or opportunities, run prep/post-call from the opportunity workspace
 
-### For developers (local laptop)
+### For developers (local laptop — Windows PowerShell)
 
-**Two terminals on your machine:**
+**Auth on localhost:** Production uses Firebase Google SSO, but **`localhost` is not in Firebase authorized domains** for most setups. For local dev, use **dummy login** — do **not** create `web/firebase-config.local.js` unless you have added `localhost` in Firebase Console (see **[docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md)**).
 
-1. **Install Node.js** — LTS from [nodejs.org](https://nodejs.org/)
-2. **Clone:** `git clone https://github.com/skut264/lionpath.git` → `cd lionpath`
-3. **Checkout release branch:** `git checkout 2.0.3` (or `2.0.2` for the prior stable tree)
-3. **API key:** `cd worker`, copy `.dev.vars.example` to `.dev.vars`, add **GEMINI_API_KEY** from [Google AI Studio](https://aistudio.google.com/apikey). Never commit `.dev.vars`.
-4. **Terminal A (API):** `cd worker && npm install && npm run dev` → **http://localhost:8787**
-5. **Terminal B (UI):** `cd web && npx wrangler pages dev .` → **http://localhost:8788**
-6. **Open** **http://localhost:8788** — log in with `se@freshworks.com` / `se123`
-7. **Tests (web):** `cd web && npm test` — account view, contacts/MEDDPICC, org hierarchy, prep disputes, profile
+| Mode | Setup | Login |
+|------|-------|-------|
+| **Dummy auth (recommended locally)** | Leave `firebaseConfig.projectId` empty (default) | `se@freshworks.com` / `se123` |
+| **Firebase SSO locally** | Copy `web/firebase-config.local.example.js` → `web/firebase-config.local.js`, add `localhost` to Firebase **Authorized domains** | Google `@freshworks.com` |
 
-Set `WORKER_BASE_URL` in `web/firebase-config.js` to `http://localhost:8787` for local dev.
+**One-time setup:**
 
-**Push to GitHub (lionpath repo):**
-
-```bash
-git remote add lionpath git@github.com:skut264/lionpath.git   # once, if missing
-git checkout 2.0.3
-git push -u lionpath 2.0.3
+```powershell
+git clone https://github.com/skut264/lionpath.git
+cd lionpath
+git checkout 2.0.7
+cd worker
+Copy-Item .dev.vars.example .dev.vars
+# Edit .dev.vars — set GEMINI_API_KEY from https://aistudio.google.com/apikey
+npm.cmd install
+cd ..\web
+npm.cmd install
 ```
 
-Open a PR **into `2.0.2`** (or `main` if your team uses it) when ready to release. Production VPS may stay on `2.0.2` until deploy — see **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**.
+**Run (pick one):**
 
-If a local **pre-push hook** blocks pushes because it checks `origin` instead of `lionpath`, push explicitly to the `lionpath` remote or use `--no-verify` only when your policy allows it.
+```powershell
+# Option A — one terminal (recommended)
+cd web
+npm.cmd run dev:all
+# → worker http://localhost:8787  +  web http://localhost:8788
 
-| Terminal | Command | URL |
-|----------|---------|-----|
-| 1 — Worker | `cd worker && npm install && npm run dev` | http://localhost:8787 |
-| 2 — Web | `cd web && npx wrangler pages dev .` | http://localhost:8788 |
+# Option B — two terminals
+cd worker; npm.cmd run dev:node    # terminal 1 → :8787
+cd web;    npm.cmd run dev         # terminal 2 → :8788
+```
+
+Open **http://localhost:8788** → sign in with **`se@freshworks.com` / `se123`**.
+
+**Notes:**
+
+- `worker/.dev.vars` must include **`GEMINI_API_KEY`** — required for pre-call prep and post-call API passes.
+- SSO / Google sign-in **will not work** on localhost until `localhost` is added in Firebase Console → Authentication → Settings → Authorized domains.
+- `web/firebase-config.js` already points local hosts at `http://localhost:8787` for the worker API.
+
+**Tests (web):** `cd web; npm.cmd test`
 
 Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.md)**
 
 ### Team development workflow
 
-1. Branch from **`2.0.3`** (or `2.0.2`) — e.g. `feature/my-change`
-2. Develop and test locally (both terminals above); run `cd web && npm test`
-3. Push to **`lionpath`** and open a **pull request** into `2.0.3` / `2.0.2`
+1. Branch from **`2.0.7`** (or `2.0.6` for stable CRM) — e.g. `feature/my-change`
+2. Develop and test locally (`npm.cmd run dev:all` or two terminals); run `cd web; npm.cmd test`
+3. Push to **`origin`** and open a **pull request** into `2.0.7` / `2.0.6`
 4. Deploy production from the branch your team tags for release — see Deploy section below
 
 ---
@@ -236,7 +389,11 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo — post-call flow, Quality Coach, FAQ |
 | [docs/SHARE_WITH_TEAM.md](./docs/SHARE_WITH_TEAM.md) | SEs & managers — team share pack |
 | [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | Developers — enrich API, prep merge, DISC inference |
-| [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md) | Developers — domain entities (Account, Contact, Lifecycle, …) |
+| [docs/adr/003-account-deal-engagement.md](./docs/adr/003-account-deal-engagement.md) | Developers — Account, Deal, lifecycle engagement |
+| [docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md) | Developers — Accounts vs opportunity UI |
+| [docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md) | Developers — MEDDPICC on deal records |
+| [docs/HLD.md](./docs/HLD.md) · [docs/LLD.md](./docs/LLD.md) | Developers — high/low level design |
+| [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md) | Developers — domain entities (Account, Deal, Contact, …) |
 | [docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md) | Developers — how entities link |
 | [docs/RBAC.md](./docs/RBAC.md) | Developers — roles and visibility |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers — local setup, tunnel sharing, onboarding |
@@ -250,6 +407,23 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 ### Option A — VPS (production — `lionpath.benjaminsquare.com`)
 
 See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
+
+**Deploy branch `2.0.7` when ready (WIP — test locally first):**
+
+```bash
+cd /opt/se-singha-paathai
+git fetch origin
+git checkout 2.0.7
+git pull origin 2.0.7
+cd deploy/vps
+./start.sh
+# If Caddyfile changed:
+docker compose restart caddy
+```
+
+**Stable production today:** branch **`2.0.6`** or **`2.0.4`** — swap `2.0.7` above for the branch you want.
+
+First-time setup:
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps

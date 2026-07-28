@@ -31,6 +31,9 @@ const stylesCss = await readWeb("styles.css");
 
 // Nav: Accounts present, Lifecycles nav removed
 assert(indexHtml.includes('data-view="accounts"'), "index.html: Accounts nav missing");
+assert(indexHtml.includes('data-view="deals"'), "index.html: Deals nav missing");
+assert(indexHtml.includes('data-view="calls"'), "index.html: Calls nav missing");
+assert(indexHtml.includes('id="view-deals"'), "index.html: view-deals section missing");
 assert(!indexHtml.includes('data-view="lifecycles"'), "index.html: Lifecycles nav still present");
 assert(!indexHtml.includes('id="sidebar-account"'), "index.html: sidebar account card still present");
 assert(!indexHtml.includes("sidebar-lifecycle-section"), "index.html: Recent lifecycles section still present");
@@ -50,6 +53,8 @@ assert(stylesCss.includes(".global-search-input"), "styles.css: global search st
 
 // App routing
 assert(appJs.includes('accounts: "Accounts"'), "app.js: VIEW_TITLES accounts missing");
+assert(appJs.includes('calls: "All calls"'), "app.js: VIEW_TITLES calls missing");
+assert(appJs.includes("renderCallsListView"), "app.js: renderCallsListView missing");
 assert(appJs.includes("initGlobalSearch"), "app.js: initGlobalSearch missing");
 assert(appJs.includes("invalidateSearchIndex"), "app.js: invalidateSearchIndex missing");
 assert(appJs.includes("selectedAccountId"), "app.js: selectedAccountId routing missing");
@@ -61,6 +66,7 @@ assert(!appJs.includes("refreshAccountSidebarContext"), "app.js: sidebar account
 
 // Files
 assert(await fileExists("account-view.js"), "account-view.js missing");
+assert(await fileExists("calls-list-view.js"), "calls-list-view.js missing");
 assert(!(await fileExists("account-sidebar.js")), "account-sidebar.js should be deleted");
 assert(await fileExists("domain/account-service.js"), "account-service.js missing");
 
@@ -81,7 +87,7 @@ assert(await fileExists("global-search.js"), "global-search.js missing");
 
 // Syntax
 const { spawnSync } = await import("node:child_process");
-for (const f of ["app.js", "account-view.js", "domain/account-service.js", "search-service.js", "global-search.js"]) {
+for (const f of ["app.js", "account-view.js", "calls-list-view.js", "domain/account-service.js", "search-service.js", "global-search.js"]) {
   const r = spawnSync(process.execPath, ["--check", join(WEB_ROOT, f)], { stdio: "pipe" });
   assert(r.status === 0, `syntax check failed: ${f}`);
 }

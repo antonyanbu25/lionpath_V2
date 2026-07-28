@@ -6,6 +6,9 @@ import { WORKER_BASE_URL } from "./firebase-config.js";
 import { aggregateFollowUps, dueUrgency, parseDueDate } from "./follow-ups.js";
 import { listPostCallAnalyses } from "./history.js";
 import { newId } from "./domain/types.js";
+import { esc, normalizeUserEmail } from "./shared.js";
+
+export { normalizeUserEmail };
 
 export const TASKS_STORAGE_PREFIX = "se-singha-tasks:";
 const MAX_TASKS = 200;
@@ -26,18 +29,8 @@ export function clearTasksAuthGetter() {
 }
 
 /** @param {string} email */
-export function normalizeUserEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
-
-/** @param {string} email */
 export function tasksStorageKey(email) {
   return `${TASKS_STORAGE_PREFIX}${normalizeUserEmail(email)}`;
-}
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function readLocal(email) {

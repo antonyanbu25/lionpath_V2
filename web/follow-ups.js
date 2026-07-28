@@ -4,14 +4,10 @@
 
 import { listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
+import { esc } from "./shared.js";
 
 const SOON_DAYS = 3;
 const UNKNOWN_DUE = new Set(["unknown", "-", "n/a", "tbd", ""]);
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function startOfDay(d) {
   const x = new Date(d);

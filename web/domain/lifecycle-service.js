@@ -5,37 +5,75 @@
 import { getStore } from "./store.js";
 import { newId, now, stageAfterFirstPostCall } from "./types.js";
 import { sessionUserId } from "./session.js";
+import {
+  resolveDealForEngagement,
+  ensureDealForLifecycle,
+  bumpDealAfterPrep,
+  bumpDealAfterPostCall,
+  bumpDealAfterTask,
+  advanceDealStage,
+} from "./deal-service.js";
 
 /**
  * Get or create an active lifecycle for (ownerId, accountId).
  * @param {string} ownerId
  * @param {string} accountId
  * @param {string} teamId
- * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null }} [opts]
+ * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string }} [opts]
  */
 export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}) {
   const store = getStore();
-  const existing = await store.findActiveLifecycle(ownerId, accountId);
-  if (existing) return existing;
+
+  if (opts.dealId && store.findActiveLifecycleByDeal) {
+    const byDeal = await store.findActiveLifecycleByDeal(ownerId, accountId, opts.dealId);
+    if (byDeal) return byDeal;
+  } else {
+    const existing = await store.findActiveLifecycle(ownerId, accountId);
+    if (existing) {
+      if (!existing.dealId) {
+        await ensureDealForLifecycle(existing);
+        return store.getLifecycle(existing.id);
+      }
+      if (!opts.dealId || existing.dealId === opts.dealId) {
+        return existing;
+      }
+    }
+  }
+
+  if (opts.dealId) {
+    const stale = await store.findActiveLifecycle(ownerId, accountId);
+    if (stale && stale.dealId !== opts.dealId) {
+      await archiveLifecycle(stale.id, opts.actorId || ownerId, "deal_switch");
+    }
+  }
+
+  const deal = await resolveDealForEngagement(accountId, ownerId, teamId, opts.orgId || null, {
+    dealId: opts.dealId,
+    prepType: opts.prepType,
+    title: opts.title,
+    primaryContactId: opts.primaryContactId,
+    useSessionContext: opts.useSessionContext,
+  });
 
   const ts = now();
   const lifecycle = await store.createLifecycle({
     id: newId("lifecycle"),
+    dealId: deal.id,
     ownerId,
     teamId,
     orgId: opts.orgId || null,
     accountId,
-    primaryContactId: opts.primaryContactId ?? null,
-    stage: "research",
+    primaryContactId: opts.primaryContactId ?? deal.primaryContactId ?? null,
+    stage: deal.stage,
     status: "active",
-    title: opts.title || "Account",
+    title: opts.title || deal.title || "Account",
     createdAt: ts,
     updatedAt: ts,
     lastActivityAt: ts,
-    prepCount: 0,
-    postCallCount: 0,
-    openTaskCount: 0,
-    latestQualityScore: null,
+    prepCount: deal.prepCount || 0,
+    postCallCount: deal.postCallCount || 0,
+    openTaskCount: deal.openTaskCount || 0,
+    latestQualityScore: deal.latestQualityScore ?? null,
   });
 
   await store.addLifecycleEvent({
@@ -44,7 +82,7 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
     type: "lifecycle_created",
     actorId: opts.actorId || ownerId,
     timestamp: ts,
-    payload: { accountId, teamId, orgId: opts.orgId || null },
+    payload: { accountId, teamId, orgId: opts.orgId || null, dealId: deal.id },
   });
 
   return lifecycle;
@@ -54,15 +92,25 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
 export async function attachPrep(lifecycleId, prepBrief, actorId) {
   const store = getStore();
   const ts = now();
-  const saved = await store.createPrepBrief({ ...prepBrief, lifecycleId, createdAt: prepBrief.createdAt || ts });
-
   const lifecycle = await store.getLifecycle(lifecycleId);
+  const dealId = prepBrief.dealId || lifecycle?.dealId || null;
+  const saved = await store.createPrepBrief({
+    ...prepBrief,
+    lifecycleId,
+    dealId,
+    createdAt: prepBrief.createdAt || ts,
+  });
+
   if (lifecycle) {
-    await store.updateLifecycle(lifecycleId, {
-      prepCount: (lifecycle.prepCount || 0) + 1,
-      lastActivityAt: ts,
-      primaryContactId: lifecycle.primaryContactId || prepBrief.primaryContactId || null,
-    });
+    if (dealId) {
+      await bumpDealAfterPrep(dealId, { primaryContactId: prepBrief.primaryContactId });
+    } else {
+      await store.updateLifecycle(lifecycleId, {
+        prepCount: (lifecycle.prepCount || 0) + 1,
+        lastActivityAt: ts,
+        primaryContactId: lifecycle.primaryContactId || prepBrief.primaryContactId || null,
+      });
+    }
   }
 
   await store.addLifecycleEvent({
@@ -84,6 +132,7 @@ export async function attachPrep(lifecycleId, prepBrief, actorId) {
 export async function attachPostCall(lifecycleId, postCall, actorId) {
   const store = getStore();
   const ts = now();
+  const lifecycle = await store.getLifecycle(lifecycleId);
 
   const existing = postCall.callIdentityKey
     ? await store.findPostCallByIdentity(postCall.ownerId, postCall.callIdentityKey)
@@ -97,6 +146,7 @@ export async function attachPostCall(lifecycleId, postCall, actorId) {
       ...existing,
       ...postCall,
       lifecycleId,
+      dealId: postCall.dealId || existing.dealId || lifecycle?.dealId || null,
       updatedAt: ts,
     });
   } else {
@@ -105,24 +155,42 @@ export async function attachPostCall(lifecycleId, postCall, actorId) {
       ...postCall,
       id: postCall.id || newId("postCall"),
       lifecycleId,
+      dealId: postCall.dealId || lifecycle?.dealId || null,
       createdAt: postCall.createdAt || ts,
       updatedAt: ts,
     });
   }
 
-  const lifecycle = await store.getLifecycle(lifecycleId);
+  const dealId = saved.dealId || lifecycle?.dealId || null;
   if (lifecycle) {
-    const patch = {
-      lastActivityAt: ts,
-      latestQualityScore: postCall.qualityScore ?? lifecycle.latestQualityScore,
-    };
-    if (isNew) {
-      patch.postCallCount = (lifecycle.postCallCount || 0) + 1;
-      patch.stage = stageAfterFirstPostCall(lifecycle.stage);
+    let newStage = lifecycle.stage;
+    if (dealId) {
+      if (isNew) {
+        newStage = stageAfterFirstPostCall(lifecycle.stage);
+        await bumpDealAfterPostCall(dealId, {
+          isNew: true,
+          qualityScore: postCall.qualityScore,
+          stage: newStage,
+        });
+      } else {
+        await bumpDealAfterPostCall(dealId, { isNew: false, qualityScore: postCall.qualityScore });
+      }
+      const refreshed = await store.getLifecycle(lifecycleId);
+      if (refreshed) newStage = refreshed.stage;
+    } else {
+      const patch = {
+        lastActivityAt: ts,
+        latestQualityScore: postCall.qualityScore ?? lifecycle.latestQualityScore,
+      };
+      if (isNew) {
+        patch.postCallCount = (lifecycle.postCallCount || 0) + 1;
+        newStage = stageAfterFirstPostCall(lifecycle.stage);
+        patch.stage = newStage;
+      }
+      await store.updateLifecycle(lifecycleId, patch);
     }
-    await store.updateLifecycle(lifecycleId, patch);
 
-    if (isNew && lifecycle.stage === "research") {
+    if (isNew && lifecycle.stage === "research" && newStage === "discovery") {
       await store.addLifecycleEvent({
         id: newId("event"),
         lifecycleId,
@@ -151,11 +219,16 @@ export async function attachPostCall(lifecycleId, postCall, actorId) {
   return saved;
 }
 
-/** Manually advance lifecycle stage. */
+/** Manually advance lifecycle stage (deal is canonical when linked). */
 export async function advanceStage(lifecycleId, toStage, actorId) {
   const store = getStore();
   const lifecycle = await store.getLifecycle(lifecycleId);
   if (!lifecycle || lifecycle.stage === toStage) return lifecycle;
+
+  if (lifecycle.dealId) {
+    await advanceDealStage(lifecycle.dealId, toStage, actorId);
+    return store.getLifecycle(lifecycleId);
+  }
 
   const ts = now();
   await store.updateLifecycle(lifecycleId, { stage: toStage, lastActivityAt: ts });
@@ -175,14 +248,19 @@ export async function advanceStage(lifecycleId, toStage, actorId) {
 export async function attachTask(lifecycleId, task, actorId) {
   const store = getStore();
   const ts = now();
-  const saved = await store.createTask({ ...task, lifecycleId, createdAt: task.createdAt || ts });
-
   const lifecycle = await store.getLifecycle(lifecycleId);
+  const dealId = task.dealId || lifecycle?.dealId || null;
+  const saved = await store.createTask({ ...task, lifecycleId, dealId, createdAt: task.createdAt || ts });
+
   if (lifecycle && saved.status !== "completed" && saved.status !== "dismissed") {
-    await store.updateLifecycle(lifecycleId, {
-      openTaskCount: (lifecycle.openTaskCount || 0) + 1,
-      lastActivityAt: ts,
-    });
+    if (dealId) {
+      await bumpDealAfterTask(dealId);
+    } else {
+      await store.updateLifecycle(lifecycleId, {
+        openTaskCount: (lifecycle.openTaskCount || 0) + 1,
+        lastActivityAt: ts,
+      });
+    }
   }
 
   await store.addLifecycleEvent({
@@ -259,7 +337,14 @@ export async function listLifecyclesForSession(session) {
 
   if (scope.type === "own") {
     lifecycles = await store.listLifecyclesByOwner(ownerId);
-    const accounts = store.listAccounts ? await store.listAccounts() : [];
+    let accounts = [];
+    if (store.listAccounts) {
+      try {
+        accounts = await store.listAccounts();
+      } catch (err) {
+        console.warn("[lifecycle] seTeam account scan failed:", err);
+      }
+    }
     const accountIdsOnTeam = new Set(
       accounts
         .filter((a) => (a.seTeam || []).some((m) => m.seUserId === ownerId))

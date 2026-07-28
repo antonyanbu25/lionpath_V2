@@ -48,7 +48,7 @@ if (workerAlreadyRunning) {
   console.log(`Worker already running on port ${WORKER_PORT} — not starting a second instance.\n`);
 } else {
   console.log("Starting worker → http://localhost:" + WORKER_PORT);
-  worker = run("worker", join(REPO_DIR, "worker"), ["run", "dev"]);
+  worker = run("worker", join(REPO_DIR, "worker"), ["run", "dev:node"]);
   const ready = await waitForWorkerReady();
   if (ready) {
     console.log(`Worker API ready at http://localhost:${WORKER_PORT}\n`);

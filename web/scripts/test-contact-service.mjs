@@ -53,6 +53,25 @@ await store.createContact({
   updatedAt: ts,
 });
 
+await store.createDeal({
+  id: "deal_test_nb",
+  accountId,
+  type: "new_business",
+  stage: "research",
+  status: "active",
+  ownerId: "usr_test",
+  teamId: "team_test",
+  orgId: null,
+  title: "NB",
+  prepCount: 0,
+  postCallCount: 0,
+  openTaskCount: 0,
+  latestQualityScore: null,
+  createdAt: ts,
+  updatedAt: ts,
+  lastActivityAt: ts,
+});
+
 const confirmed = mergeFieldSlot(
   { value: "Existing pain", status: "confirmed", source: "prep", updatedAt: ts },
   { value: "New weaker pain", status: "partial", source: "postcall", updatedAt: ts + 1 }
@@ -125,15 +144,17 @@ const prep = {
 
 await applyPrepContactFrameworks(accountId, prep, ["alex@test.co"], {
   actorId: "usr_test",
+  dealId: "deal_test_nb",
 });
 
 const accountAfter = await store.getAccount(accountId);
+const dealAfter = await store.getDeal("deal_test_nb");
 const contactAfter = await store.findContactByAccountEmail(accountId, "alex@test.co");
 
 const checks = [
   ["confirmed not downgraded", confirmed.value === "Existing pain" && confirmed.status === "confirmed"],
   ["partial upgraded to confirmed", upgraded.status === "confirmed" && upgraded.value === "Confirmed metrics"],
-  ["meddpicc merge", !!accountAfter.metadata?.meddpicc?.identifyPain?.value],
+  ["meddpicc merge", !!medMeta.meddpicc?.identifyPain?.value],
   ["meddpicc score", computeMeddpiccScore(medMeta.meddpicc) > 0],
   ["prep influence merge", prepMerge.changes.includes("influence")],
   ["prep disc merge", prepMerge.changes.includes("disc")],
@@ -142,7 +163,8 @@ const checks = [
   ["influence meddpicc hint", !!influenceSignals.economicBuyer?.value],
   ["postcall influence merge", postMerge.changes.includes("influence")],
   ["contact event recorded", events.length >= 1],
-  ["apply prep updates account meddpicc", !!accountAfter.metadata?.meddpicc?.champion],
+  ["apply prep updates deal meddpicc", !!dealAfter.metadata?.meddpicc?.champion],
+  ["apply prep leaves account meddpicc empty", !accountAfter.metadata?.meddpicc],
   ["signals from prep pains", !!meddpiccSignalsFromPrep({ likelyPains: ["Pain A"] }).identifyPain],
   ["signals from postcall", !!meddpiccSignalsFromPostCall({
     signals: { painsConfirmed: ["Pain"], competitors: ["Zendesk"] },

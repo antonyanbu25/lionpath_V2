@@ -60,6 +60,14 @@ service cloud.firestore {
         );
     }
 
+    function isPm() {
+      return isSignedIn() && (userRole() == 'pm' || userRole() == 'admin');
+    }
+
+    function canReadProductSignal(orgId) {
+      return isPm() && sameOrg(orgId);
+    }
+
     function canReadTeamResource(ownerId, teamId, orgId) {
       return isAdmin()
         || isOwner(ownerId)
@@ -123,6 +131,16 @@ service cloud.firestore {
       }
     }
 
+    // --- Deals (opportunities on account) ---
+    match /deals/{dealId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
     // --- Lifecycles ---
     match /lifecycles/{lifecycleId} {
       allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
@@ -171,6 +189,232 @@ service cloud.firestore {
                     && request.resource.data.orgId == userOrgId();
       allow update: if canWriteOwnResource(resource.data.ownerId);
       allow delete: if canAdmin() || canWriteOwnResource(resource.data.ownerId);
+    }
+
+    // --- QIP rubrics (org-wide reference) ---
+    match /rubrics/{rubricId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /rubricThemes/{themeDocId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // --- ARR price book (org-wide reference) ---
+    match /priceBooks/{rowId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /addonPriceBooks/{rowId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /assumptionsBooks/{rowId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // --- QIP scorecards (queryable per-call scoring) ---
+    match /scorecards/{scorecardId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /scorecardLines/{lineId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /scoreOverrides/{overrideId} {
+      allow read: if canReadTeamResource(
+        get(/databases/$(database)/documents/scorecardLines/$(resource.data.scorecardLineId)).data.ownerId,
+        get(/databases/$(database)/documents/scorecardLines/$(resource.data.scorecardLineId)).data.teamId,
+        get(/databases/$(database)/documents/scorecardLines/$(resource.data.scorecardLineId)).data.orgId
+      );
+      allow create: if canWriteOwnResource(request.resource.data.userId)
+                    && request.resource.data.userId == currentUserId()
+                    && canWriteOwnResource(
+                      get(/databases/$(database)/documents/scorecardLines/$(request.resource.data.scorecardLineId)).data.ownerId
+                    );
+      allow update, delete: if false;
+    }
+
+    // --- Pass 2 video facts (same RBAC as scorecards / parent PostCall) ---
+    match /videoFacts/{factsId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /timelineSegments/{segmentId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      // Owner delete: re-running a call replaces its derived rows rather than layering.
+      allow delete: if canWriteOwnResource(resource.data.ownerId) || isAdmin();
+    }
+
+    match /timelineMarkers/{markerId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if canWriteOwnResource(resource.data.ownerId) || isAdmin();
+    }
+
+    // --- Pass 7 commitments + MoM (never auto-send) ---
+    match /followUps/{followUpId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /objections/{objectionId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /momDrafts/{momId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId()
+                    // Never create a MoM already marked sent — send is a human update.
+                    && request.resource.data.sentAt == null;
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /meddpiccDeltas/{deltaId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /technicalCommits/{tcId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /tcDeltas/{deltaId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      // Re-running a call replaces its deltas — the owner clears their own rows.
+      allow delete: if canWriteOwnResource(resource.data.ownerId) || isAdmin();
+    }
+
+    match /dealSignals/{signalId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /dealSummaries/{summaryId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /accountSummaries/{summaryId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /arrLines/{lineId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /arrOverrides/{overrideId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.userId)
+                    && request.resource.data.userId == currentUserId()
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update, delete: if false;
+    }
+
+    // --- Product signal (ADR-006) ---
+    match /productGaps/{gapId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId)
+                  || canReadProductSignal(resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId)
+                    || canReadProductSignal(resource.data.orgId);
+      allow delete: if isAdmin();
+    }
+
+    match /whatWorks/{rowId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId)
+                  || canReadProductSignal(resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /gapClusters/{clusterId} {
+      allow read: if canReadProductSignal(resource.data.orgId);
+      allow create, update: if canReadProductSignal(request.resource.data.orgId);
+      allow delete: if isAdmin();
+    }
+
+    match /clusteringState/{orgKey} {
+      allow read: if canReadProductSignal(resource.data.orgId);
+      allow create, update: if canReadProductSignal(request.resource.data.orgId);
+      allow delete: if isAdmin();
     }
 
     function canAdmin() {

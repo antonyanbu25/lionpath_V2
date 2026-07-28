@@ -2,7 +2,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini ffmpeg
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
@@ -13,10 +13,12 @@ COPY src ./src
 ENV NODE_ENV=production
 ENV PORT=8787
 ENV HISTORY_FILE_DIR=/data/history
+ENV VIDEO_DATA_DIR=/data/video
+ENV VIDEO_PASS_ENABLED=1
 
 EXPOSE 8787
 
-RUN mkdir -p /data/history && chmod 700 /data
+RUN mkdir -p /data/history /data/video && chmod 700 /data
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["npx", "tsx", "src/node-server.ts"]

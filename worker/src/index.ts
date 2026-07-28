@@ -1,46 +1,30 @@
 // Cloudflare Worker entry. Routes:
 //   POST /api/generate-prep   — pre-call research brief
 //   POST /api/contact/enrich  — per-contact profile + inferred DISC
-//   POST /api/analyze-call    — post-call summary + next steps + quality coach
+//   POST /api/kaia/share-content — Kaia Engage public share → summary bundle
+//   POST /api/fetch-kaia-summary — legacy alias for Kaia summary fetch
+//   POST /api/postcall/resolve   — Pass 0: recording + deal match (no LLM)
+//   POST /api/postcall/classify  — Pass 1: call type (cheap LLM)
+//   POST /api/postcall/generate  — confirmed analysis generation
+//   POST /api/postcall/qualify   — Pass 4: MEDDPICC qualification
+//   POST /api/postcall/arr-inputs — ARR input extraction (no arithmetic)
+//   POST /api/postcall/arr-compute  — ARR from extracted inputs (pure compute)
+//   POST /api/postcall/summarise — Pass 7: commitments + call notes + MoM (never auto-send)
+//   POST /api/postcall/gaps      — Pass 6: product gaps + what landed (spec §8)
+//   POST /api/product-signal/cluster — async gap clustering (ADR-006)
+//   POST /api/analyze-call       — legacy facade (auto-pick + generate)
 //   GET  /api/zoom/status     — whether Zoom OAuth is configured
 //   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
 
-//   POST /api/contact/enrich — per-contact LinkedIn / Zoom / Kaia enrichment
-import { generatePrep, runPrepResearch, runPrepSynthesize, resolveProspectEmails, type Env as PrepEnv, type PrepInput } from "./prep";
-import { enrichContact, type ContactEnrichRequest } from "./contact/enrich";
-import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
-import { analyzePostCall, type PostCallInput } from "./postcall";
-import { zoomAuthUrl, zoomConfigured, type ZoomEnv } from "./zoom";
-import { fetchKaiaSummaryFromShareLink } from "./kaiaShare";
-import { fetchTranscriptFromShareLink } from "./zoomShare";
+import type { Env } from "./env";
+import { json } from "./http";
 import {
-  historyStorageAvailable,
-  historyStorageKind,
-  loadHistory,
-  normalizeHistoryEmail,
-  replaceHistory,
-  saveHistoryEntry,
-  type HistoryEntry,
-  type HistoryEnv,
-} from "./history";
-import {
-  deleteTask,
-  loadTasks,
-  patchTask,
-  saveTasks,
-  tasksStorageAvailable,
-  upsertTask,
-  type Task,
-} from "./tasks";
-import { appendFeedback, feedbackStorageAvailable, loadGlobalFeedback, loadFeedback, normalizeFeedbackCategory, type FeedbackEntry } from "./feedback";
-import { effectiveGeminiModel } from "./providers/gemini";
+  handleTaskDelete,
+  handleTaskPatch,
+  routes,
+} from "./routes";
 
-interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
-  ALLOWED_ORIGINS?: string;
-  ALLOWED_EMAIL_DOMAIN?: string;
-  FIREBASE_PROJECT_ID?: string;
-  APOLLO_API_KEY?: string;
-}
+export type { Env } from "./env";
 
 function corsHeaders(origin: string, allowed: string[]): Record<string, string> {
   const allow = allowed.includes("*")
@@ -57,110 +41,6 @@ function corsHeaders(origin: string, allowed: string[]): Record<string, string> 
   };
 }
 
-function json(body: unknown, status: number, headers: Record<string, string>): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", ...headers },
-  });
-}
-
-// ---- Firebase ID token verification (RS256 via Google JWK) ----
-
-interface Jwk { kid: string; n: string; e: string; kty: string; alg?: string }
-let jwkCache: { keys: Jwk[]; fetchedAt: number } | null = null;
-const JWK_URL =
-  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-
-function b64urlToBytes(s: string): Uint8Array {
-  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
-  const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-async function getJwks(): Promise<Jwk[]> {
-  const now = Date.now();
-  if (jwkCache && now - jwkCache.fetchedAt < 60 * 60 * 1000) return jwkCache.keys;
-  const res = await fetch(JWK_URL);
-  if (!res.ok) throw new Error("Could not fetch Firebase signing keys.");
-  const data = (await res.json()) as { keys: Jwk[] };
-  jwkCache = { keys: data.keys, fetchedAt: now };
-  return data.keys;
-}
-
-interface VerifiedUser { email: string; uid: string }
-
-async function verifyFirebaseToken(token: string, projectId: string): Promise<VerifiedUser> {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Malformed token.");
-  const [headerB64, payloadB64, sigB64] = parts;
-  const header = JSON.parse(new TextDecoder().decode(b64urlToBytes(headerB64)));
-  const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(payloadB64)));
-
-  const jwk = (await getJwks()).find((k) => k.kid === header.kid);
-  if (!jwk) throw new Error("Unknown token key id.");
-
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256", ext: true },
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlToBytes(sigB64), data);
-  if (!ok) throw new Error("Invalid token signature.");
-
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.aud !== projectId) throw new Error("Token audience mismatch.");
-  if (payload.iss !== `https://securetoken.google.com/${projectId}`)
-    throw new Error("Token issuer mismatch.");
-  if (typeof payload.exp !== "number" || payload.exp < now) throw new Error("Token expired.");
-  if (!payload.email || payload.email_verified !== true)
-    throw new Error("Email not verified.");
-
-  return { email: String(payload.email).toLowerCase(), uid: String(payload.sub) };
-}
-
-async function requireUser(request: Request, env: Env): Promise<VerifiedUser | null> {
-  if (!env.FIREBASE_PROJECT_ID) return null;
-  const auth = request.headers.get("Authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) throw Object.assign(new Error("Sign-in required."), { status: 401 });
-  const user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
-  const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
-  if (domain && !user.email.endsWith(`@${domain}`)) {
-    throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
-  }
-  return user;
-}
-
-function assertAllowedEmail(email: string, env: Env): string {
-  const normalized = normalizeHistoryEmail(email);
-  if (!normalized) throw Object.assign(new Error("email is required."), { status: 400 });
-  const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
-  if (domain && !normalized.endsWith(`@${domain}`)) {
-    throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
-  }
-  return normalized;
-}
-
-/** Firebase auth when configured; otherwise demo mode accepts email in query/body. */
-async function resolveHistoryEmail(
-  request: Request,
-  env: Env,
-  fallbackEmail?: string,
-): Promise<string> {
-  const user = await requireUser(request, env);
-  if (user) return user.email;
-  if (env.FIREBASE_PROJECT_ID) {
-    throw Object.assign(new Error("Sign-in required."), { status: 401 });
-  }
-  return assertAllowedEmail(fallbackEmail || "", env);
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
@@ -173,372 +53,20 @@ export default {
     const path = url.pathname;
 
     try {
-      if (request.method === "GET" && path === "/api/zoom/status") {
-        return json({ configured: zoomConfigured(env) }, 200, cors);
+      const methodRoutes = routes[path];
+      const handler = methodRoutes?.[request.method];
+      if (handler) {
+        return handler(request, env, url, cors);
       }
 
-      if (request.method === "GET" && path === "/api/config") {
-        const prepProvider = env.LLM_PROVIDER || "gemini";
-        const postcallProvider = env.POSTCALL_LLM_PROVIDER || prepProvider || "gemini";
-        const prepModel = env.MODEL || "gemini-3.1-flash-lite";
-        const postcallModel = env.POSTCALL_MODEL || "gemini-3.1-flash-lite";
-        return json(
-          {
-            prep: {
-              provider: prepProvider,
-              model: prepModel,
-              effectiveModel:
-                prepProvider === "gemini" ? effectiveGeminiModel(env) : prepModel,
-            },
-            postcall: {
-              provider: postcallProvider,
-              model: postcallModel,
-              effectiveModel:
-                postcallProvider === "gemini"
-                  ? effectiveGeminiModel(env, env.POSTCALL_MODEL)
-                  : postcallModel,
-            },
-            zoom: { configured: zoomConfigured(env) },
-            keys: {
-              anthropic: !!env.ANTHROPIC_API_KEY,
-              gemini: !!env.GEMINI_API_KEY || !!(env.GOOGLE_CLOUD_PROJECT || env.VERTEX_PROJECT),
-              zoominfo: !!env.ZOOMINFO_API_KEY,
-            },
-            history: {
-              available: historyStorageAvailable(env),
-              storage: historyStorageKind(env),
-            },
-            tasks: {
-              available: tasksStorageAvailable(env),
-              storage: historyStorageKind(env),
-            },
-            feedback: {
-              available: feedbackStorageAvailable(env),
-              storage: historyStorageKind(env),
-            },
-          },
-          200,
-          cors,
-        );
-      }
-
-      if (request.method === "GET" && path === "/api/zoom/auth") {
-        await requireUser(request, env);
-        const state = crypto.randomUUID();
-        const authUrl = zoomAuthUrl(env, state);
-        return json({ authUrl, state }, 200, cors);
-      }
-
-      if (request.method === "GET" && path === "/api/history") {
-        if (!historyStorageAvailable(env)) {
-          return json({ error: "History storage is not configured." }, 503, cors);
+      const taskIdMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
+      if (taskIdMatch) {
+        if (request.method === "PATCH") {
+          return handleTaskPatch(request, env, url, cors, taskIdMatch[1]);
         }
-        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
-        const entries = await loadHistory(env, email);
-        return json({ email, entries }, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/generate-prep") {
-        await requireUser(request, env);
-        const input = (await request.json()) as Partial<PrepInput> & {
-          lifecycleId?: string;
-          cachedResearch?: unknown;
-        };
-        if (!input.companyName) {
-          return json({ error: "companyName is required." }, 400, cors);
+        if (request.method === "DELETE") {
+          return handleTaskDelete(request, env, url, cors, taskIdMatch[1]);
         }
-        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
-        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
-          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
-        }
-        if (input.prepType === "expansion") {
-          return json({ error: "Expansion prep is not yet available." }, 501, cors);
-        }
-        if (input.lifecycleId) {
-          console.log("generate-prep lifecycleId:", input.lifecycleId);
-        }
-        const emails = resolveProspectEmails(input as PrepInput);
-        if (!emails.length && !input.prospectEmail?.trim()) {
-          return json({ error: "At least one valid prospect email is required." }, 400, cors);
-        }
-        try {
-          const result = await generatePrep(env, {
-            ...(input as PrepInput),
-            companyDomain,
-            prospectEmail: emails[0] || String(input.prospectEmail).trim(),
-            prospectEmails: emails.length ? emails : undefined,
-            prepType: input.prepType || "new_business",
-          });
-          return json(
-            {
-              prep: result.prep,
-              researchMeta: result.researchMeta,
-              researchBundle: result.researchBundle,
-              contactDrafts: result.contactDrafts,
-            },
-            200,
-            cors,
-          );
-        } catch (err) {
-          const status = (err as { status?: number }).status;
-          if (status) {
-            return json({ error: (err as Error).message }, status, cors);
-          }
-          throw err;
-        }
-      }
-
-      if (request.method === "POST" && path === "/api/contact/enrich") {
-        await requireUser(request, env);
-        const body = (await request.json()) as ContactEnrichRequest;
-        try {
-          const result = await enrichContact(env, body);
-          return json(result, 200, cors);
-        } catch (err) {
-          const status = (err as { status?: number }).status;
-          if (status) {
-            return json({ error: (err as Error).message }, status, cors);
-          }
-          throw err;
-        }
-      }
-
-      if (request.method === "POST" && path === "/api/prep/research") {
-        await requireUser(request, env);
-        const input = (await request.json()) as Partial<PrepInput>;
-        if (!input.companyName) {
-          return json({ error: "companyName is required." }, 400, cors);
-        }
-        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
-        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
-          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
-        }
-        if (input.prepType === "expansion") {
-          return json({ error: "Expansion prep is not yet available." }, 501, cors);
-        }
-        const emails = resolveProspectEmails(input as PrepInput);
-        if (!emails.length) {
-          return json({ error: "At least one valid prospect email is required." }, 400, cors);
-        }
-        const result = await runPrepResearch(env, {
-          ...(input as PrepInput),
-          companyDomain,
-          prospectEmail: emails[0],
-          prospectEmails: emails,
-          prepType: input.prepType || "new_business",
-        });
-        return json(result, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/prep/synthesize") {
-        await requireUser(request, env);
-        const input = (await request.json()) as Partial<PrepInput> & {
-          confirmedFacts?: unknown[];
-          researchBundle?: unknown;
-        };
-        if (!input.companyName || !input.confirmedFacts?.length) {
-          return json({ error: "companyName and confirmedFacts are required." }, 400, cors);
-        }
-        const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
-        if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
-          return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
-        }
-        const emails = resolveProspectEmails(input as PrepInput);
-        if (!emails.length) {
-          return json({ error: "At least one valid prospect email is required." }, 400, cors);
-        }
-        const result = await runPrepSynthesize(env, {
-          ...(input as PrepInput),
-          companyDomain,
-          prospectEmail: emails[0],
-          prospectEmails: emails,
-          confirmedFacts: input.confirmedFacts as import("./prep/types").ResearchFact[],
-          researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
-          confirmedProspectProfiles: (input as PrepInput).confirmedProspectProfiles,
-        });
-        return json(
-          {
-            prep: result.prep,
-            researchMeta: result.researchMeta,
-            researchBundle: result.researchBundle,
-          },
-          200,
-          cors,
-        );
-      }
-
-      if (request.method === "POST" && path === "/api/fetch-transcript") {
-        await requireUser(request, env);
-        const body = (await request.json()) as { recordingUrl?: string; recordingPassword?: string };
-        if (!body.recordingUrl?.trim()) {
-          return json({ error: "recordingUrl is required." }, 400, cors);
-        }
-        const result = await fetchTranscriptFromShareLink(
-          body.recordingUrl.trim(),
-          body.recordingPassword?.trim(),
-        );
-        return json(result, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/fetch-kaia-summary") {
-        await requireUser(request, env);
-        const body = (await request.json()) as { kaiaUrl?: string };
-        if (!body.kaiaUrl?.trim()) {
-          return json({ error: "kaiaUrl is required." }, 400, cors);
-        }
-        try {
-          const result = await fetchKaiaSummaryFromShareLink(body.kaiaUrl.trim());
-          return json(result, 200, cors);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "Failed to fetch Kaia summary.";
-          return json({ error: message }, 400, cors);
-        }
-      }
-
-      if (request.method === "POST" && path === "/api/analyze-call") {
-        await requireUser(request, env);
-        const input = (await request.json()) as Partial<PostCallInput> & { lifecycleId?: string };
-        if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
-          return json({ error: "Paste a transcript or a Zoom recording link (with passcode if needed)." }, 400, cors);
-        }
-        if (input.lifecycleId) {
-          console.log("analyze-call lifecycleId:", input.lifecycleId);
-        }
-        const result = await analyzePostCall(env, input as PostCallInput);
-        return json(result, 200, cors);
-      }
-
-      if (request.method === "GET" && path === "/api/tasks") {
-        if (!tasksStorageAvailable(env)) {
-          return json({ error: "Task storage is not configured." }, 503, cors);
-        }
-        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
-        const tasks = await loadTasks(env, email);
-        return json({ email, tasks }, 200, cors);
-      }
-
-      const taskPatchMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
-      if (request.method === "PATCH" && taskPatchMatch) {
-        if (!tasksStorageAvailable(env)) {
-          return json({ error: "Task storage is not configured." }, 503, cors);
-        }
-        const body = (await request.json()) as Partial<Task> & { email?: string };
-        const email = await resolveHistoryEmail(request, env, body.email || "");
-        const task = await patchTask(env, email, taskPatchMatch[1], body);
-        if (!task) return json({ error: "Task not found." }, 404, cors);
-        return json({ email, task }, 200, cors);
-      }
-
-      if (request.method === "DELETE" && taskPatchMatch) {
-        if (!tasksStorageAvailable(env)) {
-          return json({ error: "Task storage is not configured." }, 503, cors);
-        }
-        const body = (await request.json().catch(() => ({}))) as { email?: string };
-        const email = await resolveHistoryEmail(
-          request,
-          env,
-          body.email || url.searchParams.get("email") || "",
-        );
-        const ok = await deleteTask(env, email, taskPatchMatch[1]);
-        if (!ok) return json({ error: "Task not found." }, 404, cors);
-        return json({ email, deleted: taskPatchMatch[1] }, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/tasks") {
-        if (!tasksStorageAvailable(env)) {
-          return json({ error: "Task storage is not configured." }, 503, cors);
-        }
-        const body = (await request.json()) as {
-          email?: string;
-          task?: Task;
-          tasks?: Task[];
-        };
-        const email = await resolveHistoryEmail(request, env, body.email || "");
-
-        if (Array.isArray(body.tasks)) {
-          const tasks = await saveTasks(env, email, body.tasks);
-          return json({ email, tasks, count: tasks.length }, 200, cors);
-        }
-
-        if (!body.task?.id || !body.task.title) {
-          return json({ error: "task with id and title is required." }, 400, cors);
-        }
-        const tasks = await upsertTask(env, email, body.task);
-        return json({ email, task: body.task, count: tasks.length }, 200, cors);
-      }
-
-      if (request.method === "GET" && path === "/api/feedback") {
-        if (!feedbackStorageAvailable(env)) {
-          return json({ error: "Feedback storage is not configured." }, 503, cors);
-        }
-        const global = url.searchParams.get("global") === "1";
-        if (global) {
-          const entries = await loadGlobalFeedback(env);
-          return json({ entries, count: entries.length }, 200, cors);
-        }
-        const email = await resolveHistoryEmail(request, env, url.searchParams.get("email") || "");
-        const entries = await loadFeedback(env, email);
-        return json({ email, entries, count: entries.length }, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/feedback") {
-        if (!feedbackStorageAvailable(env)) {
-          return json({ error: "Feedback storage is not configured." }, 503, cors);
-        }
-        const body = (await request.json()) as {
-          email?: string;
-          entry?: Partial<FeedbackEntry> & { body?: string };
-          message?: string;
-          body?: string;
-          category?: string;
-          id?: string;
-          page?: string;
-          createdAt?: number;
-        };
-        const email = await resolveHistoryEmail(request, env, body.email || body.entry?.email || "");
-        const nested = body.entry || {};
-        const message = String(
-          nested.message || nested.body || body.message || body.body || "",
-        ).trim();
-        if (!message) {
-          return json({ error: "entry.message is required." }, 400, cors);
-        }
-        const entry: FeedbackEntry = {
-          id: nested.id || body.id || crypto.randomUUID(),
-          category: normalizeFeedbackCategory(String(nested.category || body.category || "Idea")),
-          message: message.slice(0, 4000),
-          page: nested.page || body.page,
-          email,
-          createdAt: nested.createdAt || body.createdAt || Date.now(),
-        };
-        const entries = await appendFeedback(env, email, entry);
-        console.info(
-          `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
-        );
-        return json({ email, entry, count: entries.length }, 200, cors);
-      }
-
-      if (request.method === "POST" && path === "/api/history") {
-        if (!historyStorageAvailable(env)) {
-          return json({ error: "History storage is not configured." }, 503, cors);
-        }
-        const body = (await request.json()) as {
-          email?: string;
-          entry?: HistoryEntry;
-          entries?: HistoryEntry[];
-        };
-        const email = await resolveHistoryEmail(request, env, body.email || "");
-
-        if (Array.isArray(body.entries)) {
-          const entries = await replaceHistory(env, email, body.entries);
-          return json({ email, entries, count: entries.length }, 200, cors);
-        }
-
-        if (!body.entry?.id || typeof body.entry.timestamp !== "number") {
-          return json({ error: "entry with id and timestamp is required." }, 400, cors);
-        }
-        const entries = await saveHistoryEntry(env, email, body.entry);
-        return json({ email, entry: body.entry, count: entries.length }, 200, cors);
       }
 
       return json({ error: "Not found." }, 404, cors);

@@ -1,5 +1,6 @@
 /**
  * LinkedIn "Save to PDF" attachments — extract text in browser, enforce limits.
+ * Supports separate prep / postcall bags so both forms can use the same control.
  */
 
 export const MAX_LINKEDIN_PDF_FILES = 5;
@@ -7,11 +8,21 @@ export const MAX_LINKEDIN_PDF_BYTES = 2 * 1024 * 1024;
 export const MAX_LINKEDIN_TEXT_CHARS = 20_000;
 export const STORED_LINKEDIN_TEXT_CHARS = 8_000;
 
-/** @type {{ fileName: string, text: string, truncated?: boolean }[]} */
-let attachments = [];
+/** @typedef {{ fileName: string, text: string, truncated?: boolean }} LinkedInAttachment */
+
+/** @type {Record<string, LinkedInAttachment[]>} */
+const bags = {
+  prep: [],
+  postcall: [],
+};
 
 /** @type {Promise<typeof import('pdfjs-dist')>|null} */
 let pdfjsLoadPromise = null;
+
+function bagOf(bag = "prep") {
+  if (!bags[bag]) bags[bag] = [];
+  return bags[bag];
+}
 
 async function loadPdfJs() {
   if (!pdfjsLoadPromise) {
@@ -52,23 +63,27 @@ export function truncateLinkedInText(text, maxChars = MAX_LINKEDIN_TEXT_CHARS) {
   return { text: s.slice(0, maxChars), truncated: true };
 }
 
-export function getLinkedInAttachments() {
-  return attachments.map(({ fileName, text, truncated }) => ({
+/** @param {string} [bag] */
+export function getLinkedInAttachments(bag = "prep") {
+  return bagOf(bag).map(({ fileName, text, truncated }) => ({
     fileName,
     text,
     truncated: !!truncated,
   }));
 }
 
-export function clearLinkedInAttachments() {
-  attachments = [];
+/** @param {string} [bag] */
+export function clearLinkedInAttachments(bag = "prep") {
+  bags[bag] = [];
 }
 
 /**
  * @param {File[]} files
+ * @param {string} [bag]
  * @returns {Promise<{ added: number, errors: string[] }>}
  */
-export async function addLinkedInPdfFiles(files) {
+export async function addLinkedInPdfFiles(files, bag = "prep") {
+  const attachments = bagOf(bag);
   const errors = [];
   let added = 0;
   const existingNames = new Set(attachments.map((a) => a.fileName.toLowerCase()));
@@ -110,18 +125,21 @@ export async function addLinkedInPdfFiles(files) {
   return { added, errors };
 }
 
-export function removeLinkedInAttachment(fileName) {
-  attachments = attachments.filter((a) => a.fileName !== fileName);
+/** @param {string} fileName @param {string} [bag] */
+export function removeLinkedInAttachment(fileName, bag = "prep") {
+  bags[bag] = bagOf(bag).filter((a) => a.fileName !== fileName);
 }
 
-/** Payload for worker API. */
-export function linkedinProfileExportsForPayload() {
+/** Payload for worker API. @param {string} [bag] */
+export function linkedinProfileExportsForPayload(bag = "prep") {
+  const attachments = bagOf(bag);
   if (!attachments.length) return undefined;
   return attachments.map(({ fileName, text }) => ({ fileName, text }));
 }
 
-/** Truncated copy for PrepBrief.input storage. */
-export function linkedinProfileExportsForStorage() {
+/** Truncated copy for PrepBrief.input storage. @param {string} [bag] */
+export function linkedinProfileExportsForStorage(bag = "prep") {
+  const attachments = bagOf(bag);
   if (!attachments.length) return undefined;
   return attachments.map(({ fileName, text }) => {
     const { text: stored } = truncateLinkedInText(text, STORED_LINKEDIN_TEXT_CHARS);
@@ -129,27 +147,38 @@ export function linkedinProfileExportsForStorage() {
   });
 }
 
-export function linkedinFingerprintForHash() {
-  return getLinkedInAttachments()
+/** @param {string} [bag] */
+export function linkedinFingerprintForHash(bag = "prep") {
+  return getLinkedInAttachments(bag)
     .map((e) => `${e.fileName}:${e.text.length}:${e.text.slice(0, 200)}`)
     .sort()
     .join("|");
 }
 
 /**
- * Wire pre-call LinkedIn PDF upload UI.
- * @param {{ onListChange?: () => void, setParsing?: (on: boolean) => void }} [opts]
+ * Wire LinkedIn PDF upload UI (prep or post-call).
+ * @param {{
+ *   bag?: string,
+ *   fileInputId?: string,
+ *   addBtnId?: string,
+ *   listElId?: string,
+ *   errElId?: string,
+ *   parsingElId?: string,
+ *   onListChange?: () => void,
+ *   setParsing?: (on: boolean) => void,
+ * }} [opts]
  */
 export function initLinkedInPdfUpload(opts = {}) {
-  const fileInput = document.getElementById("prep-linkedin-pdfs");
-  const addBtn = document.getElementById("prep-linkedin-add-btn");
-  const listEl = document.getElementById("prep-linkedin-file-list");
-  const errEl = document.getElementById("prep-linkedin-error");
-  const parsingEl = document.getElementById("prep-linkedin-parsing");
+  const bag = opts.bag || "prep";
+  const fileInput = document.getElementById(opts.fileInputId || "prep-linkedin-pdfs");
+  const addBtn = document.getElementById(opts.addBtnId || "prep-linkedin-add-btn");
+  const listEl = document.getElementById(opts.listElId || "prep-linkedin-file-list");
+  const errEl = document.getElementById(opts.errElId || "prep-linkedin-error");
+  const parsingEl = document.getElementById(opts.parsingElId || "prep-linkedin-parsing");
 
   const renderList = () => {
     if (!listEl) return;
-    const items = getLinkedInAttachments();
+    const items = getLinkedInAttachments(bag);
     listEl.innerHTML = items.length
       ? items
           .map(
@@ -162,7 +191,7 @@ export function initLinkedInPdfUpload(opts = {}) {
       : "";
     listEl.querySelectorAll("[data-remove-linkedin]").forEach((btn) => {
       btn.addEventListener("fwClick", () => {
-        removeLinkedInAttachment(btn.getAttribute("data-remove-linkedin"));
+        removeLinkedInAttachment(btn.getAttribute("data-remove-linkedin"), bag);
         renderList();
         opts.onListChange?.();
       });
@@ -181,7 +210,7 @@ export function initLinkedInPdfUpload(opts = {}) {
     if (parsingEl) parsingEl.hidden = false;
     opts.setParsing?.(true);
     try {
-      const { errors } = await addLinkedInPdfFiles(files);
+      const { errors } = await addLinkedInPdfFiles(files, bag);
       if (errors.length && errEl) {
         errEl.textContent = errors.join(" ");
         errEl.hidden = false;
@@ -197,11 +226,13 @@ export function initLinkedInPdfUpload(opts = {}) {
 }
 
 function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
-  );
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function escapeAttr(s) {
-  return escapeHtml(s).replace(/"/g, "&quot;");
+  return escapeHtml(s).replace(/'/g, "&#39;");
 }

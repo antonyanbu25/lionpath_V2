@@ -172,7 +172,7 @@ function geminiApiErrorMessage(
   step?: string,
 ): string {
   const stepPrefix = step ? `[${step}] ` : "";
-  const base = `${stepPrefix}Gemini API ${status}: ${errBody.slice(0, 500)}`;
+  const base = `${stepPrefix}Gemini API ${status}: ${errBody}`;
   const hints: string[] = [];
 
   if ((status === 400 || status === 404) && backend.mode === "aistudio") {

@@ -4,6 +4,7 @@ import {
   showInlineStatus,
 } from "./crayons-ui.js";
 import { newId } from "./domain/types.js";
+import { esc } from "./shared.js";
 
 export const STORAGE_KEY = "se-prep-disputes";
 export const DISPUTE_UI_VERSION = "static-v11";
@@ -373,11 +374,6 @@ async function syncDisputeToWorker(entry) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
-}
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function renderTargetDetails(ctx) {

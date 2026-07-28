@@ -171,6 +171,34 @@ Use Firebase Admin SDK to batch-write `migration-output.json` entities, or rely 
 - [ ] Remove dual-write to legacy `preps`/`postcalls` collections
 - [ ] Deprecate Worker `/api/history` read path (keep write shim one release)
 
+### ADR-003 — Lifecycle → Deal backfill
+
+1. Deploy Firestore indexes and rules (`deals` collection) before running migration.
+2. Export domain collections (`lifecycles`, `prepBriefs`, `postCalls`, `tasks`) to JSON.
+3. Dry run:
+
+```bash
+node worker/scripts/migrate-lifecycle-to-deals.mjs --export ./domain-export.json --dry-run
+```
+
+4. Generate output:
+
+```bash
+node worker/scripts/migrate-lifecycle-to-deals.mjs --export ./domain-export.json --out deals-migration-output.json
+```
+
+5. Import (dummy mode):
+
+```javascript
+import { importDealsMigrationData } from "./domain/migration-import.js";
+const data = await fetch("/deals-migration-output.json").then((r) => r.json());
+await importDealsMigrationData(data);
+```
+
+6. Production: batch-write `deals` and merge `dealId` on existing documents via Admin SDK (idempotent — skip lifecycles that already have `dealId`).
+
+New activity after app deploy auto-creates deals via `getOrCreateLifecycle`; backfill is only for historical rows.
+
 ## Testing
 
 - Lifecycle uniqueness: same SE + same account → one active lifecycle

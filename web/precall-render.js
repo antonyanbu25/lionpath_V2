@@ -1,11 +1,7 @@
 /** Pure HTML builders for pre-call wireframe (v8 brief). */
 
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { esc } from "./shared.js";
 
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
 const dash = (v, unverified = false) => {

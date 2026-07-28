@@ -29,6 +29,72 @@ export const MEDDPICC_FIELD_LABELS = {
 
 const STATUS_RANK = { unknown: 0, partial: 1, confirmed: 2 };
 
+/** Dual-read legacy account MEDDPICC until Phase 6 cleanup (ADR 005). */
+export const MEDDPICC_ACCOUNT_FALLBACK = true;
+
+/**
+ * Merge MEDDPICC signals into a metadata bag (deal or account).
+ * @param {object|undefined} existingMeta
+ * @param {object} signals
+ * @param {"prep"|"postcall"|"manual"|"migration"} source
+ */
+export function mergeMeddpiccIntoMeta(existingMeta, signals, source) {
+  if (!signals || !Object.keys(signals).length) return existingMeta || {};
+  const meta = { ...(existingMeta || {}) };
+  const current = { ...(meta.meddpicc || {}) };
+  const ts = now();
+
+  for (const key of MEDDPICC_FIELD_KEYS) {
+    const incoming = signals[key];
+    if (!incoming) continue;
+    const merged = mergeFieldSlot(current[key], {
+      ...incoming,
+      source: incoming.source || source,
+      updatedAt: incoming.updatedAt || ts,
+    });
+    if (merged) current[key] = merged;
+  }
+
+  current.lastUpdatedAt = ts;
+  current.completionScore = computeMeddpiccScore(current);
+  meta.meddpicc = current;
+  return meta;
+}
+
+/** @deprecated Migration only — use mergeDealMeddpicc for writes (ADR 005). */
+export function mergeAccountMeddpicc(existingMeta, signals, source) {
+  return mergeMeddpiccIntoMeta(existingMeta, signals, source);
+}
+
+/**
+ * @param {import("./types.js").Deal|null|undefined} deal
+ * @param {object} signals
+ * @param {"prep"|"postcall"|"manual"|"migration"} source
+ * @returns {{ metadata: object }|null}
+ */
+export function mergeDealMeddpicc(deal, signals, source) {
+  if (!deal?.id) return null;
+  const metadata = mergeMeddpiccIntoMeta(deal.metadata, signals, source);
+  return { metadata };
+}
+
+/**
+ * Resolve MEDDPICC rollup for UI (deal first, optional account fallback).
+ * @param {import("./types.js").Deal|null|undefined} deal
+ * @param {import("./types.js").Account|null|undefined} account
+ * @returns {import("./types.js").MeddpiccRollup|null}
+ */
+export function resolveDealMeddpicc(deal, account) {
+  const onDeal = deal?.metadata?.meddpicc;
+  if (onDeal && Object.keys(onDeal).length > 1) return onDeal;
+  const hasDealFields = onDeal && MEDDPICC_FIELD_KEYS.some((k) => onDeal[k]?.value);
+  if (hasDealFields) return onDeal;
+  if (MEDDPICC_ACCOUNT_FALLBACK && account?.metadata?.meddpicc) {
+    return account.metadata.meddpicc;
+  }
+  return onDeal || null;
+}
+
 /**
  * Merge a MEDDPICC field slot without downgrading confirmed values.
  * @param {object|undefined} existing
@@ -53,30 +119,6 @@ export function mergeFieldSlot(existing, incoming) {
     updatedAt: incoming.updatedAt || now(),
     contactId: incoming.contactId ?? existing?.contactId,
   };
-}
-
-/** @param {object|undefined} existingMeta @param {object} signals @param {"prep"|"postcall"|"manual"} source */
-export function mergeAccountMeddpicc(existingMeta, signals, source) {
-  if (!signals || !Object.keys(signals).length) return existingMeta || {};
-  const meta = { ...(existingMeta || {}) };
-  const current = { ...(meta.meddpicc || {}) };
-  const ts = now();
-
-  for (const key of MEDDPICC_FIELD_KEYS) {
-    const incoming = signals[key];
-    if (!incoming) continue;
-    const merged = mergeFieldSlot(current[key], {
-      ...incoming,
-      source: incoming.source || source,
-      updatedAt: incoming.updatedAt || ts,
-    });
-    if (merged) current[key] = merged;
-  }
-
-  current.lastUpdatedAt = ts;
-  current.completionScore = computeMeddpiccScore(current);
-  meta.meddpicc = current;
-  return meta;
 }
 
 /** @param {object} meddpicc */
@@ -290,8 +332,106 @@ export function meddpiccSignalsFromPrep(prep) {
   return out;
 }
 
-/** Extract MEDDPICC signals from post-call analysis. */
+/** Extract MEDDPICC signals from Pass 4 qualification output. */
+export function meddpiccSignalsFromQualification(qualification) {
+  const out = {};
+  if (!qualification || typeof qualification !== "object") return out;
+
+  for (const key of MEDDPICC_FIELD_KEYS) {
+    const el = qualification[key];
+    if (!el?.surfaced || !String(el.value || "").trim()) continue;
+    out[key] = {
+      value: String(el.value).trim(),
+      status: inferQualificationSlotStatus(el),
+      contactId: el.contactId || undefined,
+    };
+  }
+  return out;
+}
+
+function inferQualificationSlotStatus(el) {
+  const evidence = String(el.evidence || "").toLowerCase();
+  if (
+    /\b(i am|we are|confirmed|sign.?off|final approv|budget owner|economic buyer|procurement|legal review scheduled)\b/.test(
+      evidence,
+    )
+  ) {
+    return "confirmed";
+  }
+  return "partial";
+}
+
+/**
+ * Build per-call MEDDPICC delta drafts before deal merge is applied.
+ * @param {string} dealId
+ * @param {string} callId
+ * @param {object|null|undefined} previousMeddpicc
+ * @param {object} qualification
+ */
+export function buildMeddpiccDeltaDrafts(dealId, callId, previousMeddpicc, qualification) {
+  if (!dealId || !callId || !qualification) return [];
+  const deltas = [];
+  const ts = now();
+
+  for (const slot of MEDDPICC_FIELD_KEYS) {
+    const el = qualification[slot];
+    if (!el?.surfaced || !String(el.value || "").trim()) continue;
+
+    const incoming = {
+      value: String(el.value).trim(),
+      status: inferQualificationSlotStatus(el),
+      source: "postcall",
+      updatedAt: ts,
+      contactId: el.contactId || undefined,
+    };
+    const previous = previousMeddpicc?.[slot] || null;
+    const merged = mergeFieldSlot(previous, incoming);
+
+    if (!merged) continue;
+
+    const blockedDowngrade =
+      previous &&
+      STATUS_RANK[previous.status || "unknown"] === 2 &&
+      STATUS_RANK[incoming.status || "partial"] < 2;
+    if (blockedDowngrade) continue;
+
+    const sameSlot =
+      previous?.value === merged.value &&
+      previous?.status === merged.status &&
+      (previous?.contactId || null) === (merged.contactId || null);
+
+    let changeType;
+    if (!previous?.value) {
+      changeType = "new";
+    } else if (previous.value !== merged.value || (previous.contactId || null) !== (merged.contactId || null)) {
+      changeType = "changed";
+    } else {
+      changeType = "confirmed";
+    }
+
+    if (sameSlot && changeType !== "confirmed") continue;
+
+    deltas.push({
+      callId,
+      dealId,
+      slot,
+      previous,
+      current: merged,
+      changeType,
+      evidence: el.evidence || "not surfaced",
+    });
+  }
+
+  return deltas;
+}
+
+/** Extract MEDDPICC signals from post-call analysis (legacy — prefer Pass 4 qualification). */
 export function meddpiccSignalsFromPostCall(analysis) {
+  const qualification = analysis?.qualification;
+  if (qualification && typeof qualification === "object") {
+    return meddpiccSignalsFromQualification(qualification);
+  }
+
   const dq = analysis?.dealQualification;
   const out = {};
   if (dq && typeof dq === "object") {
@@ -327,6 +467,35 @@ export function meddpiccSignalsFromPostCall(analysis) {
   return out;
 }
 
+/**
+ * @param {string} dealId
+ * @param {string} accountId
+ * @param {object} signals
+ * @param {"prep"|"postcall"|"manual"|"migration"} source
+ */
+async function applyMeddpiccSignalsToDeal(dealId, accountId, signals, source) {
+  if (!signals || !Object.keys(signals).length) return null;
+  if (!dealId) {
+    console.warn("[meddpicc] skipped write: missing dealId for account", accountId);
+    return null;
+  }
+  const store = getStore();
+  let deal = await store.getDeal(dealId);
+  if (!deal || deal.accountId !== accountId) return null;
+  const patch = mergeDealMeddpicc(deal, signals, source);
+  if (!patch) return null;
+  return store.updateDeal(dealId, patch);
+}
+
+function appendMeddpiccSignals(target, addition) {
+  if (!addition) return target;
+  const out = { ...target };
+  for (const key of Object.keys(addition)) {
+    if (!out[key]) out[key] = addition[key];
+  }
+  return out;
+}
+
 function findAttendeeForProspect(attendees, prospectMeta, email) {
   const nameKey = normalizeName(prospectMeta?.name);
   if (!nameKey) return null;
@@ -337,20 +506,15 @@ function findAttendeeForProspect(attendees, prospectMeta, email) {
  * @param {string} accountId
  * @param {object} prep
  * @param {string[]} emails
- * @param {{ lifecycleId?: string, actorId?: string, prepBriefId?: string }} ctx
+ * @param {{ lifecycleId?: string, actorId?: string, prepBriefId?: string, dealId?: string|null }} ctx
  */
 export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = {}) {
   const store = getStore();
   const ts = now();
   const attendees = prep?.attendees || [];
   const prospects = prep?.prospects || [];
-  const account = await store.getAccount(accountId);
-  let accountMeta = account?.metadata;
 
-  const medSignals = meddpiccSignalsFromPrep(prep);
-  if (Object.keys(medSignals).length) {
-    accountMeta = mergeAccountMeddpicc(accountMeta, medSignals, "prep");
-  }
+  let medSignalsAccum = meddpiccSignalsFromPrep(prep);
 
   const allChanges = [];
   for (let i = 0; i < emails.length; i++) {
@@ -360,9 +524,7 @@ export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = 
     if (!contact) continue;
 
     const influenceSignals = meddpiccSignalsFromProspectInfluence(prospectMeta, contact.id);
-    if (Object.keys(influenceSignals).length) {
-      accountMeta = mergeAccountMeddpicc(accountMeta, influenceSignals, "prep");
-    }
+    medSignalsAccum = appendMeddpiccSignals(medSignalsAccum, influenceSignals);
 
     const attendee = findAttendeeForProspect(attendees, prospectMeta, email);
     const { metadata, changes } = mergeContactFromPrep(contact, {
@@ -387,29 +549,26 @@ export async function applyPrepContactFrameworks(accountId, prep, emails, ctx = 
     }
   }
 
-  if (JSON.stringify(accountMeta) !== JSON.stringify(account?.metadata)) {
-    await store.updateAccount(accountId, { metadata: accountMeta });
-  }
+  const updatedDeal = await applyMeddpiccSignalsToDeal(ctx.dealId, accountId, medSignalsAccum, "prep");
 
-  return { accountMetadata: accountMeta, contactChanges: allChanges };
+  return { dealMetadata: updatedDeal?.metadata, contactChanges: allChanges };
 }
 
 /**
  * Match post-call attendees to contacts; create when email present.
  * @param {string} accountId
  * @param {object} analysis
- * @param {{ lifecycleId?: string, actorId?: string, postCallId?: string }} ctx
+ * @param {{ lifecycleId?: string, actorId?: string, postCallId?: string, dealId?: string|null }} ctx
  */
 export async function applyPostCallContactFrameworks(accountId, analysis, ctx = {}) {
   const store = getStore();
   const attendees = analysis?.callHeader?.attendees || [];
-  const account = await store.getAccount(accountId);
-  let accountMeta = account?.metadata;
 
-  const medSignals = meddpiccSignalsFromPostCall(analysis);
-  if (Object.keys(medSignals).length) {
-    accountMeta = mergeAccountMeddpicc(accountMeta, medSignals, "postcall");
-    await store.updateAccount(accountId, { metadata: accountMeta });
+  const skipMedMerge = !!(ctx.qualification || analysis?.qualification);
+  let updatedDeal = null;
+  if (!skipMedMerge) {
+    const medSignals = meddpiccSignalsFromPostCall(analysis);
+    updatedDeal = await applyMeddpiccSignalsToDeal(ctx.dealId, accountId, medSignals, "postcall");
   }
 
   const contacts = await store.listContactsByAccount(accountId);
@@ -464,7 +623,7 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
     }
   }
 
-  return { accountMetadata: accountMeta, contactChanges: allChanges };
+  return { dealMetadata: updatedDeal?.metadata, contactChanges: allChanges };
 }
 
 /** @param {string} contactId @param {import("./types.js").ContactEventType} type @param {string} actorId @param {object} payload */

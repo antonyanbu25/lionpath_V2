@@ -1,6 +1,12 @@
 // Post-call analysis output shape (v5) — momentum hero at top, follow-up table, signals,
 // next steps, quality coach, and artifacts. transcriptMeta is computed in postcall.ts.
 
+/** Stamped on every new analysis; absent on stored v1 payloads (implicit version 1). */
+export const CURRENT_ANALYSIS_VERSION = 1;
+
+/** Six-dimension quality-coach rubric (pre-QIP). */
+export const CURRENT_RUBRIC_VERSION = "quality-coach-v1";
+
 export const POSTCALL_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -244,6 +250,11 @@ export const POSTCALL_SCHEMA = {
       },
       description: "Optional MEDDPICC qualification extracted from the call when evidence exists.",
     },
+    // Pass 7 owns callNotes — optional here so stored merges survive schema checks.
+    // Generate must leave this empty; /api/postcall/summarise fills it.
+    callNotes: { type: "string" },
+    analysisVersion: { type: "number" },
+    rubricVersion: { type: "string" },
   },
 } as const;
 
@@ -289,6 +300,13 @@ export interface PostCallAnalysis {
     suggestedFollowUpEmail: { subject: string; body: string };
     crmNotes: string;
   };
+  /**
+   * Internal blunt narrative (Pass 7). Optional — absent on legacy analyses.
+   * MoM is NOT here; it lives in the momDrafts collection.
+   */
+  callNotes?: string;
+  analysisVersion?: number;
+  rubricVersion?: string;
 }
 
 export interface TranscriptMeta {

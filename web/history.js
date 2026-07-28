@@ -5,6 +5,9 @@
 
 import { WORKER_BASE_URL } from "./firebase-config.js";
 import { newId } from "./domain/types.js";
+import { normalizeUserEmail } from "./shared.js";
+
+export { normalizeUserEmail };
 
 export const STORAGE_PREFIX = "se-singha-history:";
 const LEGACY_PREFIX = "se-sp-postcalls:";
@@ -20,11 +23,6 @@ export function setHistoryAuthGetter(fn) {
 
 export function clearHistoryAuthGetter() {
   getAuthToken = null;
-}
-
-/** @param {string} email */
-export function normalizeUserEmail(email) {
-  return String(email || "").trim().toLowerCase();
 }
 
 /** @param {string} email */
@@ -234,8 +232,16 @@ export async function savePostCallAnalysis(email, input, result) {
     timestamp: Date.now(),
     zoomLink: input?.recordingUrl || "",
     title: analysis?.callHeader?.title || analysis?.callSummary?.headline || "Call analysis",
+    dealId: input?.dealId || result?.confirmed?.dealId || null,
+    callType: input?.callType || result?.analysisMeta?.callType || result?.confirmed?.callType || null,
+    confirmedIdentities: input?.confirmedIdentities || null,
     analysis,
     transcriptMeta: result?.transcriptMeta || null,
+    /** Pass 3 draft kept on the history record for coaching eligibility (also persisted to scorecards). */
+    scorecard: result?.scorecard || null,
+    analysisMeta: result?.analysisMeta || null,
+    /** Keep Pass 6 on the history blob so Product signal can render even if dual-write lags. */
+    pass6: result?.pass6 || null,
     result,
   };
   const list = readAll(normalized);
@@ -269,7 +275,38 @@ export function getPostCallAnalysis(email, id) {
   return listPostCallAnalyses(email).find((r) => r.id === id) || null;
 }
 
-/** For tests and dashboard — all analyses with qualityCoach data. */
+/**
+ * Patch one history record (local + best-effort remote sync).
+ * @param {string} email
+ * @param {string} id
+ * @param {(rec: object) => object} updater
+ */
+export async function updatePostCallAnalysis(email, id, updater) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized || !id || typeof updater !== "function") return null;
+
+  const list = readAll(normalized);
+  const idx = list.findIndex((r) => r.id === id);
+  if (idx < 0) return null;
+
+  const updated = updater(JSON.parse(JSON.stringify(list[idx])));
+  if (!updated?.id) return null;
+
+  list[idx] = updated;
+  const ok = writeAll(normalized, list);
+  if (!ok) return null;
+
+  try {
+    await pushRemoteEntry(normalized, updated);
+  } catch (err) {
+    console.warn("[history] remote update failed (local copy kept):", err.message || err);
+  }
+  return updated;
+}
+
+/** For tests and dashboard — analyses with qualityCoach or QIP scorecard. */
 export function listAnalysesWithQuality(email) {
-  return listPostCallAnalyses(email).filter((r) => r.analysis?.qualityCoach);
+  return listPostCallAnalyses(email).filter(
+    (r) => r.analysis?.qualityCoach || r.scorecard?.lines?.length || r.result?.scorecard?.lines?.length,
+  );
 }

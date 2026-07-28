@@ -2,6 +2,8 @@
  * Client-side PDF→email matching and parallel /api/contact/enrich calls.
  */
 
+import { matchProspectKaiaExcerpt } from "./kaia-prospect-match.js";
+
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 
 function normalizeName(s) {
@@ -11,6 +13,15 @@ function normalizeName(s) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** User SE notes only (exclude injected Kaia blocks). */
+export function seNotesForEnrich(payload) {
+  const raw = payload.seAdditionalContext ?? payload.additionalContext ?? "";
+  return String(raw)
+    .replace(/\n?\n?Kaia meeting summary:[\s\S]*$/i, "")
+    .replace(/\n?\n?Kaia meeting context:[\s\S]*$/i, "")
     .trim();
 }
 
@@ -138,15 +149,26 @@ export function assignPdfsToEmails(pdfs, emails) {
 export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onProgress }) {
   const pdfMap = assignPdfsToEmails(pdfs, emails);
   const zoomExcerpt = payload.zoomTranscriptExcerpt || "";
-  const kaiaSummary = payload.kaiaSummary || "";
-  const notes = payload.additionalContext || "";
+  const kaiaContent = payload.kaiaContent;
+  const kaiaSummaryFallback = payload.kaiaSummary || "";
+  const notes = seNotesForEnrich(payload);
 
   const tasks = emails.map(async (email, idx) => {
     const pdf = pdfMap.get(email.toLowerCase());
     const sources = {};
     if (pdf?.text) sources.linkedinPdf = { fileName: pdf.fileName, text: pdf.text };
     if (zoomExcerpt) sources.zoomTranscriptExcerpt = zoomExcerpt;
-    if (kaiaSummary) sources.kaiaSummary = kaiaSummary;
+
+    if (kaiaContent?.summary) {
+      sources.kaiaSummary = matchProspectKaiaExcerpt({
+        email,
+        hintName: payload.prospectName,
+        bundle: kaiaContent,
+      });
+    } else if (kaiaSummaryFallback) {
+      sources.kaiaSummary = kaiaSummaryFallback;
+    }
+
     if (notes) sources.additionalNotes = notes;
 
     const hasSource =

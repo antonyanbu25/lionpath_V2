@@ -14,11 +14,16 @@ import {
   syncSessionWithDomainStore,
   setSession,
   isFirebaseAuthEnabled,
+  sessionUserId,
 } from "./auth.js";
 import { initDomainStore, getStore } from "./domain/store.js";
+import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js";
+import { renderAccountView } from "./account-view.js?v=accounts-mock-v1";
+import { renderDealView } from "./deal-view.js";
+import { renderCallView } from "./call-view.js";
+import { renderCallsListView } from "./calls-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
@@ -27,9 +32,20 @@ import {
   setTasksAuthGetter,
   clearTasksAuthGetter,
 } from "./tasks.js";
+import { setSummariesAuthGetter, clearSummariesAuthGetter } from "./domain/summaries-service.js";
+import { setTimelineAuthGetter } from "./domain/timeline-service.js";
+import {
+  setProductSignalAuthGetter,
+  clearProductSignalAuthGetter,
+} from "./domain/product-signal-service.js";
 import { normalizeQualityCoach } from "./quality-score.js";
-import { renderDashboard, renderManagerDashboard } from "./dashboard.js";
+import { assertThemeScoreSuppressionReady } from "./theme-score-suppression.js";
+import { renderDashboard, renderManagerDashboard, buildTeamThemeAverages } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
+import { renderSeDetailView } from "./se-detail-view.js";
+import { renderPipelineView } from "./pipeline-view.js";
+import { renderProductSignalView } from "./product-signal-view.js";
+import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { renderProfileSettings } from "./profile-settings.js";
 import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
@@ -38,12 +54,14 @@ import {
   loadLocalBriefs,
   openPrepBrief,
   parseProspectEmails,
+  syncPrepEngagementMotion,
 } from "./precall.js?v=dispute-static-v11";
 import {
-  displayPostCall,
+  initPostcall,
   onSessionReady,
   onSessionCleared,
   setOnAnalysisSaved,
+  setOnCallRecordReady,
 } from "./postcall.js";
 import {
   applyAutoCompanyDomain,
@@ -51,11 +69,13 @@ import {
   PERSONAL_EMAIL_DOMAINS,
   normalizeCompanyDomain as normalizePrepDomain,
 } from "./prep-domain.js";
+import { esc, $, show } from "./shared.js";
 
 
 const PREP_RESEARCH_URL = `${WORKER_BASE_URL}/api/prep/research`;
 const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
 const CONTACT_ENRICH_URL = `${WORKER_BASE_URL}/api/contact/enrich`;
+const KAIA_SHARE_CONTENT_URL = `${WORKER_BASE_URL}/api/kaia/share-content`;
 const FETCH_KAIA_SUMMARY_URL = `${WORKER_BASE_URL}/api/fetch-kaia-summary`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
@@ -68,30 +88,109 @@ let currentSession = null;
 let currentView = "dashboard";
 let currentDashTab = "overview";
 
-const $ = (id) => document.getElementById(id);
-const show = (el, on = true) => { el.hidden = !on; };
-
 const VIEW_TITLES = {
   dashboard: "My dashboard",
   precall: "Pre-call",
   postcall: "Post-call",
   accounts: "Accounts",
+  deals: "Deals",
+  calls: "All calls",
   manager: "Manager dashboard",
+  se: "SE detail",
   profile: "Profile settings",
+  pipeline: "Pipeline review",
+  signal: "Product signal",
 };
 
 let selectedAccountId = null;
+/** @type {string|null|undefined} undefined = auto-resolve deal on account load */
+let selectedAccountDealId = undefined;
+let selectedAccountContactId = null;
+/** @type {'new_business'|'expansion'|undefined} */
+let selectedAccountEngagementPrepType = undefined;
+
+function accountDetailHash() {
+  if (!selectedAccountId) return "accounts";
+  if (selectedAccountContactId) {
+    return `accounts/${selectedAccountId}/contacts/${selectedAccountContactId}`;
+  }
+  if (selectedAccountDealId) {
+    return `accounts/${selectedAccountId}/deals/${selectedAccountDealId}`;
+  }
+  return `accounts/${selectedAccountId}`;
+}
+/** Selected deal when Deals nav is active */
+let selectedDealNavId = null;
+let dealListSearchQuery = "";
+let dealListSortKey = "traction";
+let pipelineQuarterFilter = "";
+let pipelineSubRegionFilter = "";
+let pipelineSortKey = "agents";
+
+/** Selected call when viewing call record (#calls/:id) */
+let selectedCallId = null;
+/** @type {string|undefined} */
+let callRecordTab = undefined;
+let callExpandThemeKey = undefined;
+/** Owner email when a manager opens a team member's call */
+let callRecordOwnerEmail = undefined;
+
+function parseLocationHash() {
+  const raw = location.hash.replace(/^#/, "");
+  const qIdx = raw.indexOf("?");
+  const path = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
+  const params = new URLSearchParams(qIdx >= 0 ? raw.slice(qIdx + 1) : "");
+  return { path, params };
+}
+
+function seDetailHash() {
+  if (!selectedSeEmail) return "manager";
+  const base = `se/${encodeURIComponent(selectedSeEmail)}`;
+  if (seExpandThemeKey) return `${base}?theme=${encodeURIComponent(seExpandThemeKey)}`;
+  return base;
+}
+
+function callDetailHash() {
+  if (!selectedCallId) {
+    if (callsListFilter) return `calls?filter=${encodeURIComponent(callsListFilter)}`;
+    return "calls";
+  }
+  const params = new URLSearchParams();
+  if (callRecordTab) params.set("tab", callRecordTab);
+  if (callExpandThemeKey) params.set("theme", callExpandThemeKey);
+  if (callRecordOwnerEmail) params.set("owner", callRecordOwnerEmail);
+  const qs = params.toString();
+  return qs ? `calls/${selectedCallId}?${qs}` : `calls/${selectedCallId}`;
+}
+
+function dealDetailHash() {
+  if (selectedDealNavId) return `deals/${selectedDealNavId}`;
+  if (dealListTractionFilter) return `deals?filter=${encodeURIComponent(dealListTractionFilter)}`;
+  return "deals";
+}
+
+function pipelineHash() {
+  const params = new URLSearchParams();
+  if (pipelineQuarterFilter) params.set("quarter", pipelineQuarterFilter);
+  if (pipelineSubRegionFilter) params.set("sub", pipelineSubRegionFilter);
+  if (pipelineSortKey && pipelineSortKey !== "agents") params.set("sort", pipelineSortKey);
+  const qs = params.toString();
+  return qs ? `pipeline?${qs}` : "pipeline";
+}
+
+/** Selected SE on manager drill-down (#se/:email) */
+let selectedSeEmail = null;
+let seExpandThemeKey = undefined;
+let callsListFilter = "";
+let dealListTractionFilter = "";
+let callsFilterType = "";
+let callsFilterWindow = "30d";
 let accountListSearchQuery = "";
 let accountDetailSearchQuery = "";
 let accountLifecycleOwnerId = null;
 
 /** Tracks manual edits vs auto-filled company domain on pre-call form. */
 const prepDomainState = { userEdited: false, lastAutoValue: null };
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function emailDomain(emailRaw) {
   const emails = parseProspectEmails(emailRaw);
@@ -258,7 +357,7 @@ function dashboardOpts() {
   return {
     seName: currentSession?.name,
     fetchRemotePreps: buildFetchRemotePreps(),
-    onOpenCall: (id) => openHistoryItem(id),
+    onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
     onPrep: () => {
       switchView("precall");
     },
@@ -271,6 +370,74 @@ function dashboardOpts() {
   };
 }
 
+const MANAGER_DRILL_VIEWS = new Set(["accounts", "deals", "calls", "se"]);
+
+function managerDashboardOpts() {
+  return {
+    onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
+    onOpenSe: (email, { theme } = {}) => openSeDetail(email, { theme }),
+    onOpenTeamTheme: (theme) => {
+      const view = $("view-manager")?._managerView;
+      if (!view?.seRows?.length) return;
+      const weakest = [...view.seRows].sort((a, b) => (a.avgScore ?? 100) - (b.avgScore ?? 100))[0];
+      if (weakest?.email) openSeDetail(weakest.email, { theme });
+    },
+    onOpenFilteredDeals: (filter) => {
+      dealListTractionFilter = filter || "";
+      selectedDealNavId = null;
+      switchView("deals", { drillDown: true });
+    },
+    onOpenFilteredCalls: (filter) => {
+      callsListFilter = filter || "";
+      selectedCallId = null;
+      switchView("calls", { drillDown: true });
+    },
+  };
+}
+
+function openSeDetail(email, { theme } = {}) {
+  selectedSeEmail = normalizeSeEmail(email);
+  seExpandThemeKey = theme || undefined;
+  switchView("se", { drillDown: true, theme });
+}
+
+async function renderSePanel() {
+  const panel = $("view-se");
+  if (!panel || !currentSession?.email || !selectedSeEmail) return;
+
+  const managerView = $("view-manager")?._managerView;
+  const teamThemeAverages = managerView?.seScorecardsByEmail
+    ? buildTeamThemeAverages(managerView.seScorecardsByEmail)
+    : undefined;
+
+  await renderSeDetailView(panel, currentSession, {
+    targetEmail: selectedSeEmail,
+    expandThemeKey: seExpandThemeKey,
+    teamThemeAverages,
+    reportsTo: isManagerRole(currentSession) ? currentSession.name : undefined,
+    onBack: isManagerRole(currentSession)
+      ? () => {
+          selectedSeEmail = null;
+          seExpandThemeKey = undefined;
+          switchView("manager");
+        }
+      : undefined,
+    onExpandTheme: (themeKey) => {
+      seExpandThemeKey = themeKey;
+      history.replaceState(null, "", `#${seDetailHash()}`);
+      void renderSePanel();
+    },
+    onOpenAccount: async (accountId) => {
+      if (!(await canSessionReadAccount(currentSession, accountId))) return;
+      selectedAccountId = accountId;
+      selectedAccountDealId = null;
+      selectedAccountContactId = null;
+      switchView("accounts", { accountId, drillDown: true });
+    },
+    onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
+  });
+}
+
 async function renderDashboardPanels(email, opts = {}) {
   await renderDashboard($("dash-tab-overview"), email, opts);
   renderCoaching($("dash-tab-coaching"), email, {
@@ -280,9 +447,15 @@ async function renderDashboardPanels(email, opts = {}) {
 
 function updateNavForRole() {
   const isManager = isManagerRole(currentSession);
+  const isLeader = currentSession?.isOrgDirector === true;
+  const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
   document.querySelectorAll(".nav-item[data-role]").forEach((btn) => {
     const role = btn.dataset.role;
-    const showBtn = role === "manager" ? isManager : !isManager;
+    let showBtn;
+    if (role === "manager") showBtn = isManager;
+    else if (role === "leader") showBtn = isLeader;
+    else if (role === "curator") showBtn = isCurator;
+    else showBtn = !isManager;
     btn.hidden = !showBtn;
   });
   const globalSearch = $("global-search-input");
@@ -293,8 +466,18 @@ function refreshActiveDashboard() {
   if (!currentSession?.email) return;
   if (isManagerRole(currentSession)) {
     if (currentView === "manager") {
-      void renderManagerDashboard($("view-manager"), currentSession);
+      void renderManagerDashboard($("view-manager"), currentSession, managerDashboardOpts());
     }
+    if (currentView === "pipeline" && currentSession?.isOrgDirector) {
+      void renderPipelinePanel();
+    }
+    if (currentView === "se" && selectedSeEmail) {
+      void renderSePanel();
+    }
+    return;
+  }
+  if (currentView === "se" && selectedSeEmail) {
+    void renderSePanel();
     return;
   }
   if (currentView === "dashboard") {
@@ -323,9 +506,22 @@ function switchView(name, opts = {}) {
     precall: $("view-precall"),
     postcall: $("view-postcall"),
     accounts: $("view-accounts"),
+    deals: $("view-deals"),
+    calls: $("view-calls"),
     manager: $("view-manager"),
+    pipeline: $("view-pipeline"),
+    signal: $("view-signal"),
+    se: $("view-se"),
     profile: $("view-profile"),
   };
+
+  if (name === "pipeline" && !currentSession?.isOrgDirector) {
+    name = isManager ? "manager" : "dashboard";
+  }
+  const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
+  if (name === "signal" && !isCurator) {
+    name = isManager ? "manager" : "dashboard";
+  }
 
   if (name === "profile") {
     Object.entries(panels).forEach(([key, el]) => show(el, key === "profile"));
@@ -341,10 +537,13 @@ function switchView(name, opts = {}) {
   }
 
   if (isManager) {
-    if (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall") {
+    const allowDrill = opts.drillDown === true || MANAGER_DRILL_VIEWS.has(name);
+    if (!allowDrill && (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall")) {
       name = "manager";
     }
   } else if (name === "manager") {
+    name = "dashboard";
+  } else if (name === "se" && !selectedSeEmail) {
     name = "dashboard";
   }
 
@@ -359,27 +558,80 @@ function switchView(name, opts = {}) {
     const dashTab = opts.dashTab || currentDashTab || getStoredDashTab();
     switchDashboardTab(dashTab);
   } else if (name === "manager" && isManager) {
-    void renderManagerDashboard($("view-manager"), currentSession);
-  } else if (name === "accounts" && !isManager) {
+    void renderManagerDashboard($("view-manager"), currentSession, managerDashboardOpts());
+  } else if (name === "pipeline" && currentSession?.isOrgDirector) {
+    void renderPipelinePanel();
+  } else if (name === "signal" && isCurator) {
+    void renderProductSignalPanel();
+  } else if (name === "se") {
+    if (opts.targetEmail) selectedSeEmail = normalizeSeEmail(opts.targetEmail);
+    if (opts.theme) seExpandThemeKey = opts.theme;
+    $("main-view-title").textContent = VIEW_TITLES.se;
+    void renderSePanel();
+  } else if (name === "accounts") {
     if (opts.accountId) selectedAccountId = opts.accountId;
     void renderAccountPanel();
+  } else if (name === "deals") {
+    if (opts.dealId) selectedDealNavId = opts.dealId;
+    void renderDealPanel();
+  } else if (name === "calls") {
+    if (opts.callId) selectedCallId = opts.callId;
+    else if (!opts.drillDown) selectedCallId = null;
+    if (opts.callTab) callRecordTab = opts.callTab;
+    if (opts.expandTheme) callExpandThemeKey = opts.expandTheme;
+    if (opts.ownerEmail) callRecordOwnerEmail = opts.ownerEmail;
+    if (opts.listFilter) callsListFilter = opts.listFilter;
+    $("main-view-title").textContent = selectedCallId ? "Call record" : VIEW_TITLES.calls;
+    void renderCallPanel();
   }
 
   const hash =
     name === "dashboard" && currentDashTab === "coaching"
       ? "dashboard/coaching"
-      : name === "accounts" && selectedAccountId
-        ? `accounts/${selectedAccountId}`
-        : name;
+      : name === "se"
+        ? seDetailHash()
+        : name === "accounts" && selectedAccountId
+          ? accountDetailHash()
+          : name === "deals"
+            ? dealDetailHash()
+            : name === "calls"
+              ? callDetailHash()
+              : name === "pipeline"
+                ? pipelineHash()
+                : name;
   history.replaceState(null, "", `#${hash}`);
   closeSidebar();
+  if (name === "precall") {
+    syncPrepEngagementMotion();
+  }
 }
 
 async function renderAccountPanel() {
   const panel = $("account-panel");
-  if (!panel || !currentSession) return;
-  await renderAccountView(panel, currentSession, {
+  if (!panel || !currentSession?.email) return;
+  let session = currentSession;
+  if (!sessionUserId(session)) {
+    try {
+      session = (await syncSessionWithDomainStore(session)) || session;
+      if (sessionUserId(session)) {
+        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+      }
+    } catch (err) {
+      console.warn("[app] account panel session sync failed:", err);
+    }
+  }
+  await renderAccountView(panel, session, {
     accountId: selectedAccountId || undefined,
+    ...(selectedAccountId
+      ? {
+          dealId:
+            typeof selectedAccountDealId === "string" && selectedAccountDealId
+              ? selectedAccountDealId
+              : null,
+        }
+      : {}),
+    ...(selectedAccountEngagementPrepType ? { engagementPrepType: selectedAccountEngagementPrepType } : {}),
+    contactId: selectedAccountContactId || undefined,
     lifecycleOwnerId: accountLifecycleOwnerId || undefined,
     listSearchQuery: accountListSearchQuery,
     detailSearchQuery: accountDetailSearchQuery,
@@ -392,33 +644,258 @@ async function renderAccountPanel() {
     onLifecycleLensChange: (ownerId) => {
       accountLifecycleOwnerId = ownerId;
     },
+    onDealChange: (dealId, engagementPrepType) => {
+      selectedAccountDealId = dealId;
+      if (engagementPrepType === "expansion" || engagementPrepType === "new_business") {
+        selectedAccountEngagementPrepType = engagementPrepType;
+      } else if (dealId) {
+        selectedAccountEngagementPrepType = undefined;
+      }
+      selectedAccountContactId = null;
+      if (selectedAccountId) {
+        history.replaceState(null, "", `#${accountDetailHash()}`);
+      }
+    },
+    onBackToAccount: () => {
+      selectedAccountDealId = null;
+      selectedAccountEngagementPrepType = undefined;
+      selectedAccountContactId = null;
+      accountDetailSearchQuery = "";
+      if (selectedAccountId) {
+        history.replaceState(null, "", `#${accountDetailHash()}`);
+      }
+    },
+    onContactChange: (contactId) => {
+      selectedAccountContactId = contactId || null;
+      if (selectedAccountId) {
+        history.replaceState(null, "", `#${accountDetailHash()}`);
+      }
+    },
     onSeTeamChange: () => {
       void renderAccountPanel();
     },
     onSelectAccount: (id) => {
       selectedAccountId = id;
+      selectedAccountDealId = null;
+      selectedAccountEngagementPrepType = undefined;
+      selectedAccountContactId = null;
       accountLifecycleOwnerId = null;
       switchView("accounts", { accountId: id });
     },
     onBack: () => {
       selectedAccountId = null;
+      selectedAccountDealId = undefined;
+      selectedAccountEngagementPrepType = undefined;
+      selectedAccountContactId = null;
       accountDetailSearchQuery = "";
       accountLifecycleOwnerId = null;
       switchView("accounts");
     },
     onPrep: () => switchView("precall"),
     onPostcall: () => switchView("postcall"),
+    onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
+  });
+}
+
+async function renderPipelinePanel() {
+  const panel = $("pipeline-panel");
+  if (!panel || !currentSession?.email) return;
+  let session = currentSession;
+  if (!sessionUserId(session)) {
+    try {
+      session = (await syncSessionWithDomainStore(session)) || session;
+      if (sessionUserId(session)) {
+        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+      }
+    } catch (err) {
+      console.warn("[app] pipeline panel session sync failed:", err);
+    }
+  }
+  await renderPipelineView(panel, session, {
+    quarterFilter: pipelineQuarterFilter,
+    subRegionFilter: pipelineSubRegionFilter,
+    sortKey: pipelineSortKey,
+    onFiltersChange: ({ quarterFilter, subRegionFilter }) => {
+      pipelineQuarterFilter = quarterFilter || "";
+      pipelineSubRegionFilter = subRegionFilter || "";
+      history.replaceState(null, "", `#${pipelineHash()}`);
+      void renderPipelinePanel();
+    },
+    onSortKeyChange: (key) => {
+      pipelineSortKey = key === "arr" || key === "mrr" ? key : "agents";
+      history.replaceState(null, "", `#${pipelineHash()}`);
+      void renderPipelinePanel();
+    },
+    onSelectDeal: (dealId) => {
+      selectedDealNavId = dealId;
+      switchView("deals", { dealId, drillDown: true });
+    },
+  });
+}
+
+async function renderProductSignalPanel() {
+  const panel = $("product-signal-panel");
+  if (!panel || !currentSession?.email) return;
+  let session = currentSession;
+  if (!sessionUserId(session)) {
+    try {
+      session = (await syncSessionWithDomainStore(session)) || session;
+      if (sessionUserId(session)) {
+        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+      }
+    } catch (err) {
+      console.warn("[app] product signal panel session sync failed:", err);
+    }
+  }
+  await renderProductSignalView(session, panel, {
+    onRefresh: () => void renderProductSignalPanel(),
+  });
+}
+
+async function renderDealPanel() {
+  const panel = $("deal-panel");
+  if (!panel || !currentSession?.email) return;
+  let session = currentSession;
+  if (!sessionUserId(session)) {
+    try {
+      session = (await syncSessionWithDomainStore(session)) || session;
+      if (sessionUserId(session)) {
+        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+      }
+    } catch (err) {
+      console.warn("[app] deal panel session sync failed:", err);
+    }
+  }
+  await renderDealView(panel, session, {
+    dealId: selectedDealNavId || undefined,
+    lifecycleOwnerId: accountLifecycleOwnerId || undefined,
+    listSearchQuery: dealListSearchQuery,
+    listSortKey: dealListSortKey,
+    listTractionFilter: dealListTractionFilter,
+    detailSearchQuery: accountDetailSearchQuery,
+    onListSearchQueryChange: (q) => {
+      dealListSearchQuery = q;
+    },
+    onListSortKeyChange: (key) => {
+      dealListSortKey = key;
+    },
+    onDetailSearchQueryChange: (q) => {
+      accountDetailSearchQuery = q;
+    },
+    onLifecycleLensChange: (ownerId) => {
+      accountLifecycleOwnerId = ownerId;
+    },
+    onSelectDeal: (dealId) => {
+      selectedDealNavId = dealId;
+      history.replaceState(null, "", `#${dealDetailHash()}`);
+      void renderDealPanel();
+    },
+    onBackToDealList: () => {
+      selectedDealNavId = null;
+      accountDetailSearchQuery = "";
+      history.replaceState(null, "", `#${dealDetailHash()}`);
+      void renderDealPanel();
+    },
+    onSeTeamChange: () => {
+      void renderDealPanel();
+    },
+    onDealChange: (dealId, engagementPrepType) => {
+      selectedDealNavId = dealId || selectedDealNavId;
+      if (engagementPrepType === "expansion" || engagementPrepType === "new_business") {
+        selectedAccountEngagementPrepType = engagementPrepType;
+      }
+      if (selectedDealNavId) {
+        history.replaceState(null, "", `#${dealDetailHash()}`);
+      }
+    },
+    onPrep: () => switchView("precall"),
+    onPostcall: () => switchView("postcall"),
+    onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
+  });
+}
+
+async function renderCallPanel() {
+  const panel = $("call-panel");
+  if (!panel || !currentSession?.email) return;
+  let session = currentSession;
+  if (!sessionUserId(session)) {
+    try {
+      session = (await syncSessionWithDomainStore(session)) || session;
+      if (sessionUserId(session)) {
+        currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+      }
+    } catch (err) {
+      console.warn("[app] call panel session sync failed:", err);
+    }
+  }
+  if (selectedCallId) {
+    const ownerEmail = callRecordOwnerEmail;
+    const initialTab = callRecordTab;
+    const expandTheme = callExpandThemeKey;
+    await renderCallView(panel, session, {
+      callId: selectedCallId,
+      ownerEmail,
+      initialTab,
+      expandThemeKey: expandTheme,
+      onBack: () => {
+        selectedCallId = null;
+        callRecordTab = undefined;
+        callExpandThemeKey = undefined;
+        callRecordOwnerEmail = undefined;
+        switchView("calls", { drillDown: true });
+      },
+      onOpenDeal: (dealId) => {
+        selectedDealNavId = dealId;
+        selectedCallId = null;
+        callRecordTab = undefined;
+        callExpandThemeKey = undefined;
+        callRecordOwnerEmail = undefined;
+        switchView("deals", { dealId, drillDown: true });
+      },
+    });
+    callRecordTab = undefined;
+    callExpandThemeKey = undefined;
+    return;
+  }
+  await renderCallsListView(panel, session, {
+    callType: callsFilterType,
+    window: callsFilterWindow,
+    listFilter: callsListFilter,
+    teamScope: isManagerRole(currentSession),
+    onFiltersChange: ({ callType, window }) => {
+      callsFilterType = callType || "";
+      callsFilterWindow = window || "30d";
+    },
+    onSelectCall: (id, rowOpts = {}) => {
+      selectedCallId = id;
+      if (rowOpts.ownerEmail) callRecordOwnerEmail = rowOpts.ownerEmail;
+      switchView("calls", { callId: id, drillDown: true, ownerEmail: rowOpts.ownerEmail });
+    },
+  });
+}
+
+function openCallRecord(id, opts = {}) {
+  if (!id) return;
+  selectedCallId = id;
+  if (opts.tab) callRecordTab = opts.tab;
+  if (opts.expandTheme) callExpandThemeKey = opts.expandTheme;
+  if (opts.ownerEmail) callRecordOwnerEmail = normalizeSeEmail(opts.ownerEmail);
+  switchView("calls", {
+    callId: id,
+    callTab: opts.tab,
+    expandTheme: opts.expandTheme,
+    ownerEmail: opts.ownerEmail,
+    drillDown: true,
+  });
+  document.querySelectorAll(".sidebar-call-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.id === id);
   });
 }
 
 function openHistoryItem(id) {
   const record = getPostCallAnalysis(currentSession.email, id);
-  if (!record?.result) return;
-  switchView("postcall");
-  displayPostCall(record.result, { title: record.title });
-  document.querySelectorAll(".sidebar-call-item").forEach((el) => {
-    el.classList.toggle("active", el.dataset.id === id);
-  });
+  if (!record?.result && !record?.analysis) return;
+  openCallRecord(id);
 }
 
 function clearSidebarHistory() {
@@ -441,8 +918,10 @@ async function loadPersistedHistory() {
   }
   setSidebarHistorySyncing(true);
   try {
-    const list = await syncHistoryOnLogin(currentSession.email);
-    await syncTasksOnLogin(currentSession.email);
+    const [list] = await Promise.all([
+      syncHistoryOnLogin(currentSession.email),
+      syncTasksOnLogin(currentSession.email),
+    ]);
     await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
     refreshSidebarHistory();
     const count = list.length;
@@ -543,9 +1022,6 @@ async function refreshSidebarRecentWork() {
       </li>`,
         )
         .join("");
-      prepList.querySelectorAll(".sidebar-prep-item").forEach((btn) => {
-        btn.addEventListener("fwClick", () => openPrepBriefItem(btn.dataset.id));
-      });
     }
   }
 
@@ -569,9 +1045,6 @@ async function refreshSidebarRecentWork() {
       </li>`;
         })
         .join("");
-      callList.querySelectorAll(".sidebar-call-item").forEach((btn) => {
-        btn.addEventListener("fwClick", () => openHistoryItem(btn.dataset.id));
-      });
     }
   }
 }
@@ -641,8 +1114,12 @@ function showLogin() {
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
+  clearLocalStoreCache();
   clearHistoryAuthGetter();
   clearTasksAuthGetter();
+  clearSummariesAuthGetter();
+  setTimelineAuthGetter(null);
+  clearProductSignalAuthGetter();
   clearSidebarHistory();
   onSessionCleared();
 }
@@ -678,12 +1155,16 @@ async function showApp(session, opts = {}) {
       : null;
     setHistoryAuthGetter(tokenFn);
     setTasksAuthGetter(tokenFn);
+    setSummariesAuthGetter(tokenFn);
+    setTimelineAuthGetter(tokenFn);
+    setProductSignalAuthGetter(tokenFn);
     onSessionReady(currentSession, tokenFn);
 
     updateNavForRole();
 
     const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
-    const hash = location.hash.replace("#", "");
+    const { path: hashPath, params: hashParams } = parseLocationHash();
+    const hash = hashPath;
     const hashAliases = {
       lifecycles: { view: "accounts" },
       coaching: { view: "dashboard", dashTab: "coaching" },
@@ -701,20 +1182,92 @@ async function showApp(session, opts = {}) {
         const lc = await store.getLifecycle(lifecycleMatch[1]);
         if (lc?.accountId) {
           selectedAccountId = lc.accountId;
+          selectedAccountDealId = lc.dealId || null;
           switchView("accounts", { accountId: lc.accountId });
         } else {
           switchView("accounts");
         }
       } else {
-        const accountMatch = /^accounts\/(.+)$/.exec(hash);
-        if (accountMatch) {
-          selectedAccountId = accountMatch[1];
-          switchView("accounts", { accountId: selectedAccountId });
+        const seMatch = /^se\/(.+)$/.exec(hash);
+        if (seMatch) {
+          selectedSeEmail = normalizeSeEmail(decodeURIComponent(seMatch[1]));
+          seExpandThemeKey = hashParams.get("theme") || undefined;
+          switchView("se", { drillDown: true, targetEmail: selectedSeEmail, theme: seExpandThemeKey });
         } else {
-          const valid = ["dashboard", "precall", "postcall", "accounts", "manager", "profile"];
-          switchView(valid.includes(hash) ? hash : defaultView, {
-            dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
-          });
+          const dealNavMatch = /^deals\/([^/?]+)$/.exec(hash);
+          if (dealNavMatch) {
+            selectedDealNavId = dealNavMatch[1];
+            dealListTractionFilter = "";
+            switchView("deals", { drillDown: true });
+          } else if (hash === "deals") {
+            selectedDealNavId = null;
+            dealListTractionFilter = hashParams.get("filter") || "";
+            switchView("deals", { drillDown: !!dealListTractionFilter });
+          } else if (hash === "pipeline") {
+            pipelineQuarterFilter = hashParams.get("quarter") || "";
+            pipelineSubRegionFilter = hashParams.get("sub") || "";
+            const sort = hashParams.get("sort");
+            pipelineSortKey = sort === "arr" || sort === "mrr" ? sort : "agents";
+            switchView("pipeline");
+          } else if (hash === "signal") {
+            switchView("signal");
+          } else {
+            const callMatch = /^calls\/([^/?]+)$/.exec(hash);
+            if (callMatch) {
+              selectedCallId = callMatch[1];
+              callRecordTab = hashParams.get("tab") || undefined;
+              callExpandThemeKey = hashParams.get("theme") || undefined;
+              callRecordOwnerEmail = hashParams.get("owner")
+                ? normalizeSeEmail(hashParams.get("owner"))
+                : undefined;
+              switchView("calls", { drillDown: true });
+            } else if (hash === "calls") {
+              selectedCallId = null;
+              callsListFilter = hashParams.get("filter") || "";
+              switchView("calls", { drillDown: !!callsListFilter });
+            } else {
+              const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
+              if (accountDealMatch) {
+                selectedAccountId = accountDealMatch[1];
+                selectedAccountDealId = accountDealMatch[2];
+                selectedAccountContactId = null;
+                switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+              } else {
+                const accountContactMatch = /^accounts\/([^/]+)\/contacts\/([^/]+)$/.exec(hash);
+                if (accountContactMatch) {
+                  selectedAccountId = accountContactMatch[1];
+                  selectedAccountContactId = accountContactMatch[2];
+                  selectedAccountDealId = null;
+                  switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+                } else {
+                  const accountMatch = /^accounts\/([^/]+)$/.exec(hash);
+                  if (accountMatch) {
+                    selectedAccountId = accountMatch[1];
+                    selectedAccountDealId = null;
+                    selectedAccountContactId = null;
+                    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+                  } else {
+                    const valid = [
+                      "dashboard",
+                      "precall",
+                      "postcall",
+                      "accounts",
+                      "deals",
+                      "calls",
+                      "manager",
+                      "pipeline",
+                      "signal",
+                      "se",
+                      "profile",
+                    ];
+                    switchView(valid.includes(hash) ? hash : defaultView, {
+                      dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
+                    });
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -864,7 +1417,7 @@ async function initFirebase() {
     db: fsMod.getFirestore(app),
     collection: fsMod.collection, addDoc: fsMod.addDoc, doc: fsMod.doc,
     getDoc: fsMod.getDoc, getDocs: fsMod.getDocs, setDoc: fsMod.setDoc,
-    updateDoc: fsMod.updateDoc, query: fsMod.query,
+    updateDoc: fsMod.updateDoc, deleteDoc: fsMod.deleteDoc, query: fsMod.query,
     where: fsMod.where, orderBy: fsMod.orderBy, limit: fsMod.limit,
     serverTimestamp: fsMod.serverTimestamp,
   };
@@ -909,6 +1462,11 @@ async function warnIfWorkerDown() {
 }
 
 function agentBootLog(location, message, data, hypothesisId = "A") {
+  if (typeof globalThis.location !== "undefined" &&
+      globalThis.location.hostname !== "localhost" &&
+      globalThis.location.hostname !== "127.0.0.1") {
+    return; // Skip debug telemetry in production
+  }
   const entry = { sessionId: "72b8a2", runId: "post-fix", hypothesisId, location, message, data, timestamp: Date.now() };
   // #region agent log
   try {
@@ -939,6 +1497,7 @@ function startWorkerHealthMonitoring() {
 }
 
 async function boot() {
+  assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
   agentBootLog("app.js:boot:afterLoadFirebaseConfig", "boot after loadFirebaseConfig", {
     host: typeof location !== "undefined" ? location.hostname : "",
@@ -969,6 +1528,7 @@ async function boot() {
     researchUrl: PREP_RESEARCH_URL,
     synthesizeUrl: PREP_SYNTHESIZE_URL,
     enrichUrl: CONTACT_ENRICH_URL,
+    kaiaShareUrl: KAIA_SHARE_CONTENT_URL,
     fetchKaiaUrl: FETCH_KAIA_SUMMARY_URL,
     authEnabled: isFirebaseAuthEnabled(),
     workerDownMsg: WORKER_DOWN_MSG,
@@ -998,11 +1558,15 @@ async function boot() {
       if (isFirebaseAuthEnabled() && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
       if (currentView === "dashboard") refreshDashboardFromStorage();
       if (currentView === "accounts") void renderAccountPanel();
+      if (currentView === "deals") void renderDealPanel();
+      if (currentView === "calls") void renderCallPanel();
       invalidateSearchIndex();
       await refreshSidebarRecentWork();
       return lifecycleId;
     },
   });
+  initPostcall();
+  setOnCallRecordReady((id) => openCallRecord(id));
 
   $("prospectEmail")?.addEventListener("fwInput", () => {
     syncAutoCompanyDomain();
@@ -1033,22 +1597,61 @@ async function boot() {
   $("sidebar-close")?.addEventListener("fwClick", closeSidebar);
   $("sidebar-backdrop").onclick = closeSidebar;
 
+  $("sidebar-prep-list")?.addEventListener("fwClick", (e) => {
+    const btn = e.target?.closest?.(".sidebar-prep-item");
+    if (btn?.dataset?.id) openPrepBriefItem(btn.dataset.id);
+  });
+  $("sidebar-call-list")?.addEventListener("fwClick", (e) => {
+    const btn = e.target?.closest?.(".sidebar-call-item");
+    if (btn?.dataset?.id) openHistoryItem(btn.dataset.id);
+  });
+
   setOnAnalysisSaved(async (record, payload, data) => {
+    let linked = null;
     if (currentSession?.uid && currentSession?.teamId) {
       try {
-        await linkPostCallToLifecycle(currentSession, payload, data, record);
+        linked = await linkPostCallToLifecycle(currentSession, payload, data, record);
       } catch (err) {
         console.warn("Lifecycle dual-write (post-call) failed:", err);
+      }
+    }
+    // Dual-write may create the deal when confirm had none — stamp it onto history
+    // so Open deal / deal strip work on the call view that opens next.
+    const linkedDealId = linked?.lifecycle?.dealId || linked?.postCall?.dealId || null;
+    if (linkedDealId && currentSession?.email && record?.id) {
+      try {
+        const { updatePostCallAnalysis } = await import("./history.js");
+        await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
+          rec.dealId = linkedDealId;
+          if (rec.result) {
+            rec.result = {
+              ...rec.result,
+              confirmed: {
+                ...(rec.result.confirmed || {}),
+                dealId: linkedDealId,
+                accountId: linked?.accountId || rec.result.confirmed?.accountId || null,
+              },
+            };
+          }
+          return rec;
+        });
+        record.dealId = linkedDealId;
+      } catch (err) {
+        console.warn("[app] dealId write-back failed:", err?.message || err);
       }
     }
     void loadPersistedHistory().then(async () => {
       if (currentSession?.email) {
         await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
       }
-      if (currentView === "dashboard" || currentView === "manager" || currentView === "accounts") {
+      if (currentView === "dashboard" || currentView === "manager" || currentView === "pipeline" || currentView === "accounts") {
         refreshDashboardFromStorage();
       }
       if (currentView === "accounts") void renderAccountPanel();
+      if (currentView === "deals") void renderDealPanel();
+      if (currentView === "calls") void renderCallPanel();
+      if (currentView === "pipeline") void renderPipelinePanel();
+      if (currentView === "signal") void renderProductSignalPanel();
       invalidateSearchIndex();
       refreshSidebarRecentWork();
     });

@@ -5,11 +5,7 @@
 import { listLifecyclesForUser, getLifecycleDetail, advanceStage } from "./domain/lifecycle-service.js";
 import { sessionUserId } from "./domain/session.js";
 import { STAGE_LABELS, EVENT_LABELS, LIFECYCLE_STAGES } from "./domain/types.js";
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
+import { esc } from "./shared.js";
 
 function formatDate(ts) {
   if (!ts) return "—";
@@ -22,7 +18,6 @@ function stageBadge(stage) {
 }
 
 function renderLifecycleListItem(lc, account) {
-  const score = lc.latestQualityScore != null ? `${lc.latestQualityScore}/10` : "—";
   return `
     <fw-button class="lifecycle-list-item" color="secondary" fill="clear" data-id="${esc(lc.id)}">
       <div class="lifecycle-list-main">
@@ -32,7 +27,6 @@ function renderLifecycleListItem(lc, account) {
       <div class="lifecycle-list-meta muted">
         <span>${esc(formatDate(lc.lastActivityAt))}</span>
         <span>${lc.prepCount || 0} preps · ${lc.postCallCount || 0} calls · ${lc.openTaskCount || 0} tasks</span>
-        <span>Score: ${esc(score)}</span>
       </div>
     </fw-button>`;
 }
@@ -142,8 +136,8 @@ export async function renderLifecycleView(container, session, opts = {}) {
 
   container.innerHTML = `
     <div class="lifecycle-list-view">
-      <h2>Account lifecycles</h2>
-      <p class="muted lifecycle-list-sub">One thread per account — preps, calls, and tasks in one place.</p>
+        <h2>Accounts</h2>
+        <p class="muted lifecycle-list-sub">Engagements now live under <strong>Accounts</strong> — open an account to switch deals (new business vs expansion).</p>
       <div class="lifecycle-list">
         ${lifecycles.map((lc, i) => renderLifecycleListItem(lc, accounts[i])).join("")}
       </div>

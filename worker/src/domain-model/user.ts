@@ -1,6 +1,6 @@
 /** Authenticated Freshworks user (SE, Manager, or Admin). */
 
-export type UserRole = "se" | "manager" | "admin";
+export type UserRole = "se" | "manager" | "pm" | "admin";
 
 export type UserStatus = "active" | "inactive";
 

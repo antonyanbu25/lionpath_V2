@@ -9,6 +9,7 @@ import {
   recentFromIndex,
   invalidateSearchIndex,
 } from "./search-service.js";
+import { esc } from "./shared.js";
 
 export { invalidateSearchIndex };
 
@@ -19,11 +20,6 @@ const TYPE_LABELS = {
 };
 
 const TYPE_ORDER = ["account", "brief", "call"];
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function isEditableTarget(el) {
   if (!el) return false;

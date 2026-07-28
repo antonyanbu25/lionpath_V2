@@ -11,10 +11,10 @@ const json = JSON.stringify(gemini);
 assert(!json.includes('"maxItems":0'), "Gemini prep schema must not contain maxItems: 0");
 assert(gemini.type === "object", "root type object");
 const props = gemini.properties as Record<string, unknown> | undefined;
-assert(props?.meddpiccHints, "meddpiccHints included in Gemini schema");
+assert(!props?.meddpiccHints, "meddpiccHints stripped from Gemini response schema (prompt-only)");
 const prospects = props?.prospects as Record<string, unknown> | undefined;
 const items = prospects?.items as Record<string, unknown> | undefined;
 const itemProps = items?.properties as Record<string, unknown> | undefined;
-assert(itemProps?.discHint, "discHint included on prospect row for Gemini");
+assert(!itemProps?.discHint, "discHint stripped from Gemini response schema");
 
 console.log("test-gemini-prep-schema: ok");

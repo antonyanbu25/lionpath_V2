@@ -1,25 +1,33 @@
 export { newId, stableUserIdForEmail, dummyUidForEmail, normalizeLegacyUserId, ID_PREFIXES } from "./id.js";
+import { isFreeMailDomain } from "./constants.js";
 
 /**
- * @typedef {"se" | "manager" | "admin"} UserRole
+ * @typedef {"se" | "manager" | "pm" | "admin"} UserRole
  * @typedef {"active"|"inactive"} UserStatus
  * @typedef {{ id: string, email: string, authUid: string|null, displayName: string, role: UserRole, teamId: string|null, orgId: string|null, managerId: string|null, jobTitle: string|null, status: UserStatus, avatarDataUrl?: string|null, createdAt: number, updatedAt: number }} User
  * @typedef {{ id: string, name: string, orgId: string|null, managerId: string, memberIds: string[], createdAt: number, updatedAt: number }} Team
  * @typedef {{ id: string, name: string, directorId: string, seniorLeaderIds: string[], teamIds: string[], createdAt: number, updatedAt: number }} Org
  * @typedef {"primary"|"secondary"} SeTeamRole
  * @typedef {{ seUserId: string, role: SeTeamRole, addedAt: number, addedBy?: string }} AccountSeTeamMember
- * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, createdAt: number, updatedAt: number }} Account
+ * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, programPhase?: "new_business"|"live"|"expansion", metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, createdAt: number, updatedAt: number }} Account
+ * @typedef {"new_business"|"expansion"} DealType
+ * @typedef {"active"|"paused"|"archived"} DealStatus
+ * @typedef {{ value?: string, status?: "unknown"|"partial"|"confirmed", source?: string, updatedAt?: number, contactId?: string }} MeddpiccFieldSlot
+ * @typedef {{ metrics?: MeddpiccFieldSlot, economicBuyer?: MeddpiccFieldSlot, decisionCriteria?: MeddpiccFieldSlot, decisionProcess?: MeddpiccFieldSlot, paperProcess?: MeddpiccFieldSlot, identifyPain?: MeddpiccFieldSlot, champion?: MeddpiccFieldSlot, competition?: MeddpiccFieldSlot, lastUpdatedAt?: number, completionScore?: number }} MeddpiccRollup
+ * Deal.latestQualityScore is deprecated — QIP belongs on the call, not the deal (POST_CALL_SPEC_V2 §2.1). Field retained until migration.
+ * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup }, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
  * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
  * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
  * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
  * @typedef {"active"|"paused"|"archived"} LifecycleStatus
- * @typedef {{ id: string, ownerId: string, teamId: string, orgId: string, accountId: string, primaryContactId: string|null, stage: LifecycleStage, status: LifecycleStatus, title: string, createdAt: number, updatedAt: number, lastActivityAt: number, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore: number|null }} Lifecycle
+ * Lifecycle.latestQualityScore is deprecated — mirror of deprecated Deal field (POST_CALL_SPEC_V2 §2.1). Field retained until migration.
+ * @typedef {{ id: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, primaryContactId: string|null, stage: LifecycleStage, status: LifecycleStatus, title: string, createdAt: number, updatedAt: number, lastActivityAt: number, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null }} Lifecycle
  * @typedef {"lifecycle_created"|"stage_changed"|"prep_generated"|"postcall_analyzed"|"task_created"|"task_completed"|"contact_updated"|"lifecycle_archived"|"artifact_imported"|"se_added"|"se_removed"|"primary_se_changed"} LifecycleEventType
  * @typedef {{ id: string, lifecycleId: string, type: LifecycleEventType, actorId: string, timestamp: number, payload: object }} LifecycleEvent
- * @typedef {{ id: string, lifecycleId: string, ownerId: string, teamId: string, orgId: string, accountId: string, input: object, prep: object, meta: { company: string, domain?: string, additionalContext?: string }, createdAt: number }} PrepBrief
- * @typedef {{ id: string, lifecycleId: string, ownerId: string, teamId: string, orgId: string, accountId: string, zoomLink?: string, title?: string, callIdentityKey: string, analysis: object, transcriptMeta?: unknown, qualityScore?: number|null, createdAt: number, updatedAt: number }} PostCallDoc
- * @typedef {{ id: string, lifecycleId: string, ownerId: string, teamId: string, orgId: string, accountId: string, title: string, status: string, source: string, sourceKey?: string, callId?: string, company?: string, due?: string, dueDate?: number|null, createdAt: number, completedAt?: number }} TaskDoc
+ * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, input: object, prep: object, meta: { company: string, domain?: string, additionalContext?: string }, createdAt: number }} PrepBrief
+ * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, zoomLink?: string, title?: string, callIdentityKey: string, analysis: object, transcriptMeta?: unknown, qualityScore?: number|null, arrSnapshot?: object|null, createdAt: number, updatedAt: number }} PostCallDoc
+ * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, title: string, status: string, source: string, sourceKey?: string, callId?: string, company?: string, due?: string, dueDate?: number|null, createdAt: number, completedAt?: number }} TaskDoc
  */
 
 /** @type {LifecycleStage[]} */
@@ -75,9 +83,9 @@ export const CONTACT_EVENT_LABELS = {
   linked_from_postcall: "Linked from post-call",
 };
 
-/** Normalize company name to lookup slug — prefers explicit company domain. */
+/** Normalize company name to lookup slug — prefers corporate domain; ignores free-mail. */
 export function normalizeAccountSlug(name, domain) {
-  if (domain) {
+  if (domain && !isFreeMailDomain(domain)) {
     const fromDomain = String(domain)
       .toLowerCase()
       .replace(/^www\./, "")
@@ -151,6 +159,8 @@ export function can(user, action, resource = {}) {
     case "manage_team":
     case "manage_users":
       return user.role === "admin";
+    case "read_product_signal":
+      return user.role === "pm" && sameOrg;
     default:
       return false;
   }

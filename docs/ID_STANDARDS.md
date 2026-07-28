@@ -23,8 +23,66 @@ Example: `usr_a1b2c3d4-e5f6-7890-abcd-ef1234567890`
 | PostCall | `call_` | `"postCall"` |
 | Task | `task_` | `"task"` |
 | LifecycleEvent | `evt_` | `"event"` |
+| Rubric | `rub_` | `"rubric"` — seeded ids use deterministic `rub_{callType}_{versionSlug}` |
+| Scorecard | `scr_` | `"scorecard"` |
+| ScorecardLine | `scl_` | `"scorecardLine"` |
+| ScoreOverride | `sov_` | `"scoreOverride"` |
+| VideoFacts | `vf_` | `"videoFacts"` |
+| TimelineSegment | `tls_` | `"timelineSegment"` |
+| TimelineMarker | `tlm_` | `"timelineMarker"` |
+| FollowUp | `fu_` | `"followUp"` |
+| Objection | `obj_` | `"objection"` |
+| MomDraft | `mom_` | `"momDraft"` |
+| MeddpiccDelta | `mdd_` | `"meddpiccDelta"` |
+| TechnicalCommit | `tc_` | `"technicalCommit"` |
+| TcDelta | `tcd_` | `"tcDelta"` |
+| DealSignal | `dsig_` | `"dealSignal"` |
+| ProductGap | `pgap_` | `"productGap"` |
+| WhatWorks | `ww_` | `"whatWorks"` |
+| GapCluster | `gclus_` | `"gapCluster"` |
+| DealSummary | `dsum_` | `"dealSummary"` |
+| AccountSummary | `asum_` | `"accountSummary"` |
+| PriceBook | `pb_` | `"priceBook"` — seeded ids use deterministic slug (see below) |
+| AddonPriceBook | `apb_` | `"addonPriceBook"` — seeded ids use deterministic slug |
+| AssumptionsBook | `asb_` | `"assumptionsBook"` — seeded ids use deterministic slug |
+| ArrLine | `arl_` | `"arrLine"` |
 
-Prefixes aid debugging and log scanning. They are **not** a substitute for type checking — always store entities in the correct collection.
+Seeded price-book ids omit UUIDs — stable across re-seeds, like rubrics:
+
+- `pb_{product}_{tier}_{currency}_{term}_{effectiveFrom}` — e.g. `pb_freshdesk_growth_usd_annual_2026-07-24`
+- `apb_{addon}_{appliesTo}_{requiresTier}_{currency}_{term}_{effectiveFrom}` — tiers/appliesTo joined with `-`; `any` when unrestricted
+- `asb_{key}_{scope}_{versionSlug}` — e.g. `asb_ai_session_rate_global_2026-07-24-usd-list`
+
+RubricTheme rows use composite Firestore document ids `{rubricId}__{themeKey}` in collection `rubric_themes` / `rubricThemes` — no separate prefix.
+
+Prefixes aid debugging and log scanning.
+
+---
+
+## Firestore collection paths (spec registration)
+
+| Spec name | Firestore collection | Entity | Prefix / id |
+|-----------|---------------------|--------|-------------|
+| `scorecards` | `scorecards` | Scorecard | `scr_` |
+| `scorecard_lines` | `scorecardLines` | ScorecardLine | `scl_` |
+| `score_overrides` | `scoreOverrides` | ScoreOverride | `sov_` |
+| `rubrics` | `rubrics` | Rubric | `rub_` |
+| `rubric_themes` | `rubricThemes` | RubricTheme | `{rubricId}__{themeKey}` |
+| `meddpicc_deltas` | `meddpiccDeltas` | MeddpiccDelta | `mdd_` |
+| `technical_commit` | `technicalCommits` | TechnicalCommit | `tc_` |
+| `tc_deltas` | `tcDeltas` | TcDelta | `tcd_` |
+| `deal_signals` | `dealSignals` | DealSignal | `dsig_` |
+| `product_gaps` | `productGaps` | ProductGap | `pgap_` |
+| `what_works` | `whatWorks` | WhatWorks | `ww_` |
+| `gap_clusters` | `gapClusters` | GapCluster | `gclus_` |
+| `clustering_state` | `clusteringState` | ClusteringState | org id key |
+| `deal_summaries` | `dealSummaries` | DealSummary | `dsum_` |
+| `account_summaries` | `accountSummaries` | AccountSummary | `asum_` |
+| `price_book` | `priceBooks` | PriceBook | `pb_` |
+| `addon_price_book` | `addonPriceBooks` | AddonPriceBook | `apb_` |
+| `assumptions_book` | `assumptionsBooks` | AssumptionsBook | `asb_` |
+| `arr_lines` | `arrLines` | ArrLine | `arl_` |
+| `arr_overrides` | `arrOverrides` | ArrOverride | `aov_` |
 
 ---
 
@@ -43,7 +101,7 @@ Prefixes aid debugging and log scanning. They are **not** a substitute for type 
 
 ### Do call `newId(type)` when:
 
-- Creating a User, Team, Account, Contact, Lifecycle, PrepBrief, PostCall, Task, or LifecycleEvent
+- Creating a User, Team, Account, Contact, Lifecycle, PrepBrief, PostCall, Task, LifecycleEvent, Rubric, Scorecard, ScorecardLine, ScoreOverride, VideoFacts, TimelineSegment, TimelineMarker, FollowUp, Objection, MomDraft, MeddpiccDelta, TechnicalCommit, TcDelta, DealSignal, ProductGap, WhatWorks, GapCluster, DealSummary, AccountSummary, or ArrLine
 - At entity creation boundaries in:
   - [`account-service.js`](../web/domain/account-service.js)
   - [`lifecycle-service.js`](../web/domain/lifecycle-service.js)

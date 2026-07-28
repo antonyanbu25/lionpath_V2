@@ -5,6 +5,7 @@
 import { firebaseConfig } from "../firebase-config.js";
 import { createLocalStore } from "./local-store.js";
 import { createFirestoreStore } from "./firestore-store.js";
+import { runMeddpiccDealMigrationIfNeeded } from "./migrate-meddpicc-to-deals.js";
 
 /** @type {ReturnType<createLocalStore>|null} */
 let storeInstance = null;
@@ -23,6 +24,9 @@ export function initDomainStore(fb) {
   } else {
     storeInstance = createLocalStore();
   }
+  void runMeddpiccDealMigrationIfNeeded(storeInstance).catch((err) => {
+    console.warn("[domain] meddpicc deal migration failed:", err.message);
+  });
   return storeInstance;
 }
 

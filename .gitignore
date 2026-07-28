@@ -12,3 +12,7 @@ scripts/mac/.tunnel-token
 deploy/vps/.env
 web/firebase-config.local.js
 .firebaserc
+singapaathai-source-*.zip
+.tools/
+worker/consistency-runs/
+worker/override-reports/

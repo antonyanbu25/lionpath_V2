@@ -12,7 +12,11 @@ import {
   type ProspectProfile,
   type IcpFit,
 } from "./schema";
-import type { PostCallAnalysis } from "./postcall-schema";
+import {
+  CURRENT_ANALYSIS_VERSION,
+  CURRENT_RUBRIC_VERSION,
+  type PostCallAnalysis,
+} from "./postcall-schema";
 
 export const LIMITS = {
   TABLE_CELL: 8,
@@ -728,5 +732,12 @@ export function normalizePostCallOutput(raw: LoosePostCall): PostCallAnalysis {
       },
       crmNotes: String(raw.artifacts?.crmNotes ?? ""),
     },
+    // Pass 7 owns callNotes — preserve when present; never invent here.
+    ...(typeof (raw as { callNotes?: unknown }).callNotes === "string" &&
+    (raw as { callNotes?: string }).callNotes!.trim()
+      ? { callNotes: String((raw as { callNotes: string }).callNotes) }
+      : {}),
+    analysisVersion: CURRENT_ANALYSIS_VERSION,
+    rubricVersion: CURRENT_RUBRIC_VERSION,
   };
 }

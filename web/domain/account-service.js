@@ -4,6 +4,7 @@
 
 import { getStore } from "./store.js";
 import { normalizeAccountSlug, domainFromEmail, newId, now, can, MAX_SE_TEAM_SIZE } from "./types.js";
+import { isFreeMailDomain } from "./constants.js";
 import {
   listLifecyclesForSession,
   listActiveLifecyclesForAccount,
@@ -12,10 +13,10 @@ import {
   archiveLifecycle,
   logSeTeamEvent,
 } from "./lifecycle-service.js";
+import { listDealsForAccount, DEAL_TYPE_LABELS, resolveDealForEngagement } from "./deal-service.js";
+import { resolveEngagementMotion } from "./deal-motion.js";
 import { sessionUserId } from "./session.js";
 import {
-  mergeAccountMeddpicc,
-  meddpiccSignalsFromPrep,
   loadContactEventsForAccount,
   recordContactEvent,
 } from "./contact-service.js";
@@ -27,6 +28,13 @@ import {
   userDisplayFields,
 } from "./account-se-team.js";
 import { getOrg, getVisibleScope, resolveOrgForUser, userWithDirectorFlag } from "./org-service.js";
+import { selectLatestArrLines } from "./arr-service.js";
+import { buildAccountArrRollup, formatProductLabel } from "./account-arr-service.js";
+import { resolveDealMeddpicc } from "./contact-service.js";
+import {
+  computePrepInputHash as computePrepInputHashImpl,
+  PREP_PLAYBOOK_VERSION,
+} from "../prep-input-hash.js";
 
 export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -42,32 +50,33 @@ export async function upsertAccountFromPrep(input) {
   const companyDomain = normalizeDomain(input.companyDomain || input.domain);
   const emails = collectEmails(input);
   const emailDomain = domainFromEmail(emails[0]) || null;
-  const primaryDomain = companyDomain || emailDomain;
-  const slug = normalizeAccountSlug(companyName, primaryDomain);
+  const resolvedDomain =
+    companyDomain || (emailDomain && !isFreeMailDomain(emailDomain) ? emailDomain : null);
+  const fromFreeMailProspect = !companyDomain && !!emailDomain && isFreeMailDomain(emailDomain);
+  const slug = normalizeAccountSlug(companyName, resolvedDomain);
 
   let account = await store.findAccountBySlug(slug);
   let metadataPatch = input.researchBundle
     ? mergeAccountResearch(account?.metadata, input.researchBundle, input.prep)
     : account?.metadata ? { ...account.metadata } : undefined;
-  if (input.prep) {
-    metadataPatch = mergeAccountMeddpicc(metadataPatch, meddpiccSignalsFromPrep(input.prep), "prep");
-  }
   if (metadataPatch && !Object.keys(metadataPatch).length) metadataPatch = undefined;
 
   if (!account) {
+    const createMetadata = metadataPatch ? { ...metadataPatch } : {};
+    if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
     account = await store.createAccount({
       id: newId("account"),
       name: companyName || slug,
-      domain: primaryDomain,
+      domain: resolvedDomain,
       slug,
-      metadata: metadataPatch,
+      metadata: Object.keys(createMetadata).length ? createMetadata : undefined,
       createdAt: ts,
       updatedAt: ts,
     });
   } else {
     const patch = { updatedAt: ts };
     if (companyName && account.name !== companyName) patch.name = companyName;
-    if (primaryDomain && account.domain !== primaryDomain) patch.domain = primaryDomain;
+    if (resolvedDomain && account.domain !== resolvedDomain) patch.domain = resolvedDomain;
     if (metadataPatch) patch.metadata = metadataPatch;
     if (Object.keys(patch).length > 1) {
       account = await store.updateAccount(account.id, patch);
@@ -208,6 +217,15 @@ function maxLastActivity(lifecyclesForAccount) {
   return lifecyclesForAccount.reduce((max, l) => Math.max(max, l.lastActivityAt || 0), 0);
 }
 
+/** @param {import("./types.js").Deal[]} deals @param {import("./types.js").Lifecycle} lifecycle */
+function selectedDealFromLifecycle(deals, lifecycle) {
+  if (lifecycle.dealId) {
+    const linked = deals.find((d) => d.id === lifecycle.dealId);
+    if (linked) return linked;
+  }
+  return deals.find((d) => d.status === "active") || null;
+}
+
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session) {
   const store = getStore();
@@ -229,12 +247,23 @@ export async function listAccountsForSession(session) {
       if (!lifecycle) return null;
       const seTeamDisplay = await resolveSeTeamDisplay(account);
       const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
+      const deals = store.listDealsByAccount ? await store.listDealsByAccount(accountId) : [];
+      const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
+      const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
+      const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);
+      const dealType = canonicalDeal?.type || "new_business";
+      const dealStage = canonicalDeal?.stage || lifecycle.stage;
       return {
         account,
         lifecycle,
         seTeamDisplay,
         secondaryCount,
         lastActivityAt: maxLastActivity(lcs),
+        dealType,
+        dealTypeLabel: DEAL_TYPE_LABELS[dealType] || dealType,
+        dealStage,
+        deals,
+        canonicalDealId: canonicalDeal?.id || lifecycle.dealId || null,
       };
     })
   );
@@ -244,9 +273,126 @@ export async function listAccountsForSession(session) {
     .sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
 }
 
+const TRACTION_RANK = { hot: 0, warm: 1, cold: 2 };
+
+function tractionSortRank(traction) {
+  return TRACTION_RANK[traction] ?? 2;
+}
+
+function daysSince(ts) {
+  if (!ts) return null;
+  return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)));
+}
+
+/** @param {string|null|undefined} worstTraction @param {number|null} daysSilent @param {number|null} lastActivityAt */
+export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
+  const silent = daysSilent ?? daysSince(lastActivityAt);
+  if (worstTraction === "cold" || (silent != null && silent >= 30)) {
+    return { label: "At risk", tone: "red" };
+  }
+  if (worstTraction === "hot" && (silent == null || silent < 14)) {
+    return { label: "Healthy", tone: "green" };
+  }
+  return { label: "Watch", tone: "amber" };
+}
+
+/**
+ * List row metrics — spec §11.5 columns.
+ * @param {ReturnType<import("./store.js").getStore>} store
+ * @param {object} row
+ */
+export async function enrichAccountListRow(store, row) {
+  const { account, deals, lastActivityAt } = row;
+  const dealList = deals || [];
+  const activeDeals = dealList.filter((d) => d.status === "active");
+  const meta = account?.metadata || {};
+
+  let totalArrLow = 0;
+  let totalArrHigh = 0;
+  let hasEstimates = false;
+  const products = new Set();
+  let callCount = 0;
+  let worstTraction = null;
+  let maxDaysSilent = null;
+
+  for (const deal of dealList) {
+    callCount += deal.postCallCount || 0;
+    if (deal.arrEstimatePoint != null) {
+      hasEstimates = true;
+      totalArrLow += deal.arrEstimateLow ?? deal.arrEstimatePoint ?? 0;
+      totalArrHigh += deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? 0;
+    }
+    if (store.listArrLinesByDeal) {
+      const lines = selectLatestArrLines(await store.listArrLinesByDeal(deal.id));
+      const base = lines.find((l) => l.kind === "base" && !l.excluded);
+      if (base?.product) products.add(formatProductLabel(base.product));
+    }
+    const signals = store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+    const signal = signals[0];
+    if (signal?.traction) {
+      if (!worstTraction || tractionSortRank(signal.traction) > tractionSortRank(worstTraction)) {
+        worstTraction = signal.traction;
+      }
+    }
+    if (signal?.daysSilent != null) {
+      maxDaysSilent = Math.max(maxDaysSilent ?? 0, signal.daysSilent);
+    }
+  }
+
+  const region = meta.region || meta.sub_region || meta.subRegion || "—";
+  const health = deriveAccountHealth(worstTraction, maxDaysSilent, lastActivityAt);
+  const lastTouchDays = daysSince(lastActivityAt);
+
+  return {
+    ...row,
+    region,
+    dealCount: activeDeals.length || dealList.length,
+    totalArrLow: hasEstimates ? totalArrLow : null,
+    totalArrHigh: hasEstimates ? totalArrHigh : null,
+    totalArrPoint: hasEstimates ? (totalArrLow + totalArrHigh) / 2 : null,
+    productsInPlay: [...products].join(", ") || "—",
+    callCount,
+    health,
+    lastTouchDays,
+    worstTraction,
+  };
+}
+
 /** @deprecated use listAccountsForSession */
 export async function listAccountsForUser(session) {
   return listAccountsForSession(session);
+}
+
+/**
+ * All deals on accounts visible to the session (Deals nav list).
+ * @param {object} session
+ * @returns {Promise<Array<{ deal: import("./types.js").Deal, account: import("./types.js").Account, seTeamDisplay: object[], primarySeName: string|null, lastActivityAt: number }>>}
+ */
+export async function listDealsForSession(session) {
+  const accountRows = await listAccountsForSession(session);
+  /** @type {Map<string, object>} */
+  const byDealId = new Map();
+
+  for (const row of accountRows) {
+    const { account, seTeamDisplay, deals } = row;
+    if (!account?.id) continue;
+    const dealList = deals?.length ? deals : await listDealsForAccount(account.id);
+    const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
+    const primarySeName = primary?.user?.displayName || null;
+
+    for (const deal of dealList) {
+      if (!deal?.id || byDealId.has(deal.id)) continue;
+      byDealId.set(deal.id, {
+        deal,
+        account,
+        seTeamDisplay,
+        primarySeName,
+        lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
+      });
+    }
+  }
+
+  return [...byDealId.values()].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
 }
 
 /** Org/team-visible SE users not already on the deal team (empty when roster is full). */
@@ -325,10 +471,54 @@ async function canReadAccountEngagement(user, account, lifecycles) {
 }
 
 /**
+ * Pick existing deal for account detail (never creates deals).
+ * @param {string} accountId
+ * @param {string} actorId
+ * @param {import("./types.js").Deal[]} deals
+ * @param {string|null|undefined} explicitDealId
+ * @returns {Promise<{ dealId: string | null, source: 'explicit' | 'override' | 'motion' | 'fallback', prepType?: import("./types.js").DealType }>}
+ */
+export async function resolveSelectedDealForAccountView(accountId, actorId, deals, explicitDealId) {
+  const list = deals || [];
+  if (explicitDealId) {
+    const match = list.find((d) => d.id === explicitDealId && d.accountId === accountId);
+    if (match) {
+      return { dealId: explicitDealId, source: "explicit", prepType: match.type };
+    }
+  }
+
+  const motion = await resolveEngagementMotion(accountId, actorId, { useSessionContext: true });
+  if (motion.dealId) {
+    const byId = list.find((d) => d.id === motion.dealId);
+    if (byId) {
+      const source = motion.source === "account" ? "override" : "motion";
+      return { dealId: byId.id, source, prepType: byId.type };
+    }
+  }
+
+  if (motion.prepType) {
+    const byType = list.find((d) => d.status === "active" && d.type === motion.prepType);
+    if (byType) {
+      return { dealId: byType.id, source: "motion", prepType: byType.type };
+    }
+    return { dealId: null, source: "motion", prepType: motion.prepType };
+  }
+
+  const active = list.find((d) => d.status === "active");
+  const fallbackId = active?.id || list[0]?.id || null;
+  const fallbackDeal = fallbackId ? list.find((d) => d.id === fallbackId) : null;
+  return {
+    dealId: fallbackId,
+    source: "fallback",
+    prepType: fallbackDeal?.type || "new_business",
+  };
+}
+
+/**
  * Account detail: merged activity, deal team, lens lifecycle for pipeline/artifacts.
  * @param {object} session
  * @param {string} accountId
- * @param {{ lifecycleOwnerId?: string }} [options]
+ * @param {{ lifecycleOwnerId?: string, dealId?: string|null, engagementPrepType?: import("./types.js").DealType }} [options]
  */
 export async function getAccountEngagementDetail(session, accountId, options = {}) {
   const user = await sessionUser(session);
@@ -338,6 +528,40 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   let account = await store.getAccount(accountId);
   if (!account) return null;
   account = await backfillAccountSeTeam(accountId);
+
+  const deals = await listDealsForAccount(accountId);
+  let selectedDealId = null;
+  /** @type {'explicit' | 'override' | 'motion' | 'fallback'} */
+  let engagementSelectionSource = "fallback";
+  /** @type {import("./types.js").DealType} */
+  let selectedDealType = "new_business";
+
+  if (typeof options.dealId === "string" && options.dealId) {
+    selectedDealId = options.dealId;
+    engagementSelectionSource = "explicit";
+  } else if (options.dealId === null) {
+    selectedDealId = null;
+    engagementSelectionSource = "explicit";
+    if (options.engagementPrepType === "expansion" || options.engagementPrepType === "new_business") {
+      selectedDealType = options.engagementPrepType;
+    }
+  } else {
+    const resolved = await resolveSelectedDealForAccountView(accountId, user.id, deals, null);
+    selectedDealId = resolved.dealId;
+    engagementSelectionSource = resolved.source;
+    if (resolved.prepType) selectedDealType = resolved.prepType;
+  }
+
+  const selectedDeal = selectedDealId
+    ? deals.find((d) => d.id === selectedDealId) || (await store.getDeal?.(selectedDealId))
+    : null;
+  if (selectedDeal?.type) selectedDealType = selectedDeal.type;
+  else if (selectedDealId === null && !options.engagementPrepType) {
+    const overrideType = account?.metadata?.engagementOverride?.dealType;
+    if (overrideType === "expansion" || overrideType === "new_business") {
+      selectedDealType = overrideType;
+    }
+  }
 
   const teamLifecycles = await listActiveLifecyclesForAccount(accountId);
   if (!(await canReadAccountEngagement(user, account, teamLifecycles))) {
@@ -353,9 +577,15 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     else lensOwnerId = account.primarySeUserId || teamLifecycles[0]?.ownerId || user.id;
   }
 
-  let lensLifecycle =
-    teamLifecycles.find((l) => l.ownerId === lensOwnerId) ||
-    (await store.findActiveLifecycle(lensOwnerId, accountId));
+  let lensLifecycle = null;
+  if (selectedDealId && store.findLifecycleByDealAndOwner) {
+    lensLifecycle = await store.findLifecycleByDealAndOwner(selectedDealId, lensOwnerId);
+  }
+  if (!lensLifecycle) {
+    lensLifecycle =
+      teamLifecycles.find((l) => l.ownerId === lensOwnerId) ||
+      (await store.findActiveLifecycle(lensOwnerId, accountId));
+  }
   if (!lensLifecycle && teamLifecycles.length) {
     lensLifecycle = teamLifecycles[0];
     lensOwnerId = lensLifecycle.ownerId;
@@ -368,14 +598,20 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   const userNameById = new Map(seTeamDisplay.map((m) => [m.seUserId, m.user.displayName]));
 
   const mergedEvents = [];
-  for (const lc of teamLifecycles) {
+  const lifecyclesForEvents = selectedDealId
+    ? teamLifecycles.filter((lc) => lc.dealId === selectedDealId)
+    : teamLifecycles;
+  for (const lc of lifecyclesForEvents.length ? lifecyclesForEvents : teamLifecycles) {
     const evs = await store.listLifecycleEvents(lc.id);
     const ownerName = userNameById.get(lc.ownerId) || lc.ownerId;
+    const dealLabel = deals.find((d) => d.id === lc.dealId);
     for (const ev of evs) {
       mergedEvents.push({
         ...ev,
         lifecycleOwnerId: lc.ownerId,
         lifecycleOwnerName: ownerName,
+        dealId: lc.dealId || null,
+        dealLabel: dealLabel ? `${DEAL_TYPE_LABELS[dealLabel.type] || dealLabel.type}` : null,
       });
     }
   }
@@ -395,6 +631,17 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     assignableSeOptions = await listAssignableSeOptions(user, memberIds);
   }
 
+  let dealSummary = null;
+  let accountSummary = null;
+  if (selectedDealId && store.getDealSummaryByDeal) {
+    dealSummary = await store.getDealSummaryByDeal(selectedDealId);
+  }
+  if (store.getAccountSummaryByAccount) {
+    accountSummary = await store.getAccountSummaryByAccount(accountId);
+  }
+
+  const accountRollup = await loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts);
+
   return {
     ...lensDetail,
     account,
@@ -404,9 +651,191 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     seTeamDisplay,
     lifecycleOwnerId: lensOwnerId,
     teamLifecycles,
+    deals,
+    selectedDealId,
+    selectedDeal,
+    selectedDealType,
+    engagementSelectionSource,
     canManageTeam,
     assignableSeOptions,
+    dealSummary,
+    accountSummary,
+    accountRollup,
   };
+}
+
+/**
+ * Account overview data: ARR roll-up, calls across deals, firmographics, deal rows.
+ * @param {ReturnType<import("./store.js").getStore>} store
+ * @param {import("./types.js").Account} account
+ * @param {import("./types.js").Deal[]} deals
+ * @param {object[]} seTeamDisplay
+ * @param {import("./types.js").Contact[]} contacts
+ */
+async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts) {
+  const arrRollup = await buildAccountArrRollup(store, account.id, deals);
+
+  /** @type {Map<string, string>} */
+  const seNameByDealId = new Map();
+  for (const deal of deals || []) {
+    const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
+    seNameByDealId.set(deal.id, primary?.user?.displayName || "—");
+  }
+
+  const dealRows = await Promise.all(
+    (deals || []).map(async (deal) => {
+      const signals = store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+      const signal = signals[0] || null;
+      const lines = arrRollup.linesByDealId.get(deal.id) || [];
+      const base = lines.find((l) => l.kind === "base" && !l.excluded);
+      return {
+        deal,
+        arrPoint: deal.arrEstimatePoint ?? null,
+        arrLow: deal.arrEstimateLow ?? deal.arrEstimatePoint ?? null,
+        arrHigh: deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? null,
+        productLabel: formatProductLabel(base?.product || deal.product),
+        traction: signal?.traction || null,
+        primarySeName: seNameByDealId.get(deal.id) || "—",
+      };
+    }),
+  );
+
+  const postCalls = store.listPostCallsByAccount ? await store.listPostCallsByAccount(account.id, 100) : [];
+  const accountCalls = await Promise.all(
+    postCalls.map(async (postCall) => {
+      const deal = deals.find((d) => d.id === postCall.dealId);
+      const med = deal ? resolveDealMeddpicc(deal, account) : null;
+      const scorecards = store.listScorecardsByCall ? await store.listScorecardsByCall(postCall.id) : [];
+      const scorecard = scorecards[0] || null;
+      const ownerName =
+        seTeamDisplay.find((m) => m.seUserId === postCall.ownerId)?.user?.displayName ||
+        seTeamDisplay[0]?.user?.displayName ||
+        "—";
+      return {
+        postCall,
+        deal,
+        dealLabel: deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "—"),
+        meddpiccScore: med?.completionScore ?? null,
+        scorecard,
+        ownerName,
+      };
+    }),
+  );
+
+  accountCalls.sort((a, b) => (b.postCall.createdAt || 0) - (a.postCall.createdAt || 0));
+
+  const meta = account.metadata || {};
+  const firmographics = {
+    industry: account.industry || meta.industry || "—",
+    region: meta.region || "—",
+    subRegion: meta.sub_region || meta.subRegion || "—",
+    hq: meta.hq || meta.headquarters || "—",
+    supportAgents: meta.support_agent_count ?? meta.supportAgentCount ?? "—",
+    incumbent: meta.incumbent || "—",
+    competitor: meta.competitor || "Unknown",
+  };
+
+  let reasonForEvaluation = meta.reason_for_evaluation || meta.reasonForEvaluation || null;
+  let whyAi = meta.why_ai || meta.whyAi || null;
+  if ((!reasonForEvaluation || !whyAi) && store.getTechnicalCommitByDeal) {
+    for (const deal of deals || []) {
+      const tc = await store.getTechnicalCommitByDeal(deal.id);
+      if (!reasonForEvaluation && tc?.reasonForEvaluation) {
+        reasonForEvaluation = tc.reasonForEvaluation?.value ?? tc.reasonForEvaluation;
+      }
+      if (!whyAi && tc?.whyAi) {
+        whyAi = tc.whyAi?.value ?? tc.whyAi;
+      }
+      if (reasonForEvaluation && whyAi) break;
+    }
+  }
+
+  const hasEconomicBuyer = (contacts || []).some(
+    (c) => c.metadata?.influence?.decisionRole === "economic_buyer",
+  ) || (deals || []).some((deal) => {
+    const med = resolveDealMeddpicc(deal, account);
+    return med?.economicBuyer?.value && med.economicBuyer.status !== "unknown";
+  });
+
+  const activeDeals = (deals || []).filter((d) => d.status === "active");
+  let worstTraction = null;
+  let maxDaysSilent = null;
+  for (const deal of activeDeals) {
+    const signals = store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+    const signal = signals[0];
+    if (signal?.traction) {
+      if (!worstTraction || tractionSortRank(signal.traction) > tractionSortRank(worstTraction)) {
+        worstTraction = signal.traction;
+      }
+    }
+    if (signal?.daysSilent != null) {
+      maxDaysSilent = Math.max(maxDaysSilent ?? 0, signal.daysSilent);
+    }
+  }
+
+  return {
+    arrRollup,
+    dealRows,
+    accountCalls,
+    firmographics,
+    reasonForEvaluation,
+    whyAi,
+    hasEconomicBuyer,
+    health: deriveAccountHealth(worstTraction, maxDaysSilent, account.updatedAt),
+    callCount: accountCalls.length,
+    dealCount: activeDeals.length || (deals || []).length,
+  };
+}
+
+/**
+ * Persist account-level engagement override (managers or deal team with manage_account_team).
+ * @param {object} session
+ * @param {string} accountId
+ * @param {{ dealType?: 'new_business'|'expansion', dealId?: string|null, clear?: boolean }} payload
+ */
+export async function setAccountEngagementOverride(session, accountId, payload = {}) {
+  const user = await sessionUser(session);
+  if (!user || !accountId) return { success: false, error: "Unauthorized" };
+
+  const store = getStore();
+  let account = await backfillAccountSeTeam(accountId);
+  if (!account) return { success: false, error: "Account not found" };
+
+  const memberIds = seTeamUserIds(account);
+  const canManage =
+    memberIds.includes(user.id) ||
+    can(user, "manage_account_team", {
+      seTeamUserIds: memberIds,
+      accountOrgId: user.orgId,
+      teamId: user.teamId || undefined,
+    }) ||
+    user.role === "admin";
+
+  if (!canManage) return { success: false, error: "Not allowed" };
+
+  const ts = now();
+  const metadata = { ...(account.metadata || {}) };
+
+  if (payload.clear) {
+    delete metadata.engagementOverride;
+  } else {
+    /** @type {{ dealType?: string, dealId?: string|null, updatedAt: number, updatedBy: string }} */
+    const override = {
+      ...(metadata.engagementOverride || {}),
+      updatedAt: ts,
+      updatedBy: user.id,
+    };
+    if (payload.dealType === "expansion" || payload.dealType === "new_business") {
+      override.dealType = payload.dealType;
+    }
+    if (payload.dealId !== undefined) {
+      override.dealId = payload.dealId;
+    }
+    metadata.engagementOverride = override;
+  }
+
+  account = await store.updateAccount(accountId, { metadata, updatedAt: ts });
+  return { success: true, account };
 }
 
 /**
@@ -535,21 +964,18 @@ export async function loadCachedResearch(companyName, companyDomain, inputHash) 
   const account = await findAccountByCompanyName(companyName, companyDomain);
   const research = account?.metadata?.research;
   if (!research?.lastResearchedAt || research.inputHash !== inputHash) return null;
+  if ((research.playbookVersion || "1") !== PREP_PLAYBOOK_VERSION) return null;
   if (Date.now() - research.lastResearchedAt > RESEARCH_TTL_MS) return null;
   return research;
 }
 
 /** Simple input hash matching worker (must stay in sync). */
-export function computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprint = "") {
-  const payload = {
-    companyDomain: normalizeDomain(companyDomain),
-    companyName: String(companyName || "").toLowerCase(),
-    emails: [...emails].sort(),
-    playbookVersion: "1",
-    linkedin: linkedinFingerprint || "",
-  };
-  let h = 0;
-  const s = JSON.stringify(payload);
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return `h${Math.abs(h).toString(36)}`;
+export function computePrepInputHash(
+  companyName,
+  companyDomain,
+  emails,
+  linkedinFingerprint = "",
+  options = {},
+) {
+  return computePrepInputHashImpl(companyName, companyDomain, emails, linkedinFingerprint, options);
 }

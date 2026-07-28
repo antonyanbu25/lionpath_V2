@@ -84,6 +84,11 @@ export interface PrepInput {
   meetingZoomUrl?: string;
   meetingZoomPasscode?: string;
   kaiaMeetingUrl?: string;
+  kaiaSummary?: string;
+  kaiaContent?: KaiaShareBundle;
+  /** Client context for artifact linking — not used in prep generation. */
+  lifecycleId?: string;
+  dealId?: string | null;
 }
 
 export interface ResearchMeta {
@@ -126,5 +131,19 @@ export interface ResearchOnlyResult {
   researchBundle: ResearchBundle;
 }
 
-export const PLAYBOOK_VERSION = "1";
+export const PLAYBOOK_VERSION = "2";
+
+export interface KaiaParticipantMeta {
+  displayName: string;
+  isHost?: boolean;
+}
+
+/** Client or worker-fetched Kaia bundle for research + per-prospect matching. */
+export interface KaiaShareBundle {
+  summary: string;
+  title?: string;
+  startTime?: string;
+  participants?: KaiaParticipantMeta[];
+  summaryJson?: string;
+}
 export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;

@@ -8,6 +8,15 @@ import {
 
 /** Dummy accounts for development until Firebase SSO is wired. */
 export const DUMMY_USERS = {
+  "product.pm@freshworks.com": {
+    password: "pm123",
+    role: "pm",
+    name: "Maya Chen",
+    jobTitle: "Product Manager — CX Platform",
+    teamId: null,
+    orgId: DEMO_ORG_ID,
+    managerEmail: "vipin.thomas@freshworks.com",
+  },
   "vipin.thomas@freshworks.com": {
     password: "vipin123",
     role: "manager",
@@ -80,7 +89,7 @@ export const DUMMY_USERS = {
     orgId: DEMO_ORG_ID,
     managerEmail: "preethi.sriram@freshworks.com",
   },
-  // Ajay Simhan squad — Solution Engineers
+  // International - NB — Solution Engineers
   "saketh.poruri@freshworks.com": {
     password: "se123",
     role: "se",
@@ -117,7 +126,7 @@ export const DUMMY_USERS = {
     orgId: DEMO_ORG_ID,
     managerEmail: "ajay.raghavan@freshworks.com",
   },
-  // Nikil Ravi squad — Solution Engineers
+  // North America - NB — Solution Engineers
   "vivehanandan.agoram@freshworks.com": {
     password: "se123",
     role: "se",
@@ -289,7 +298,7 @@ export const DUMMY_USERS = {
     orgId: DEMO_ORG_ID,
     managerEmail: "manager.preethi.sriram@freshworks.com",
   },
-  // Legacy alias — assigned to Ajay's squad until real IC roster is added.
+  // Legacy alias — assigned to International - NB until real IC roster is added.
   "se@freshworks.com": {
     password: "se123",
     role: "se",

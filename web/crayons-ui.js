@@ -92,7 +92,15 @@ export function wireCallLinks(root, onOpen, selector = ".dash-call-link, [data-o
   root.querySelectorAll(selector).forEach((btn) => {
     const id = btn.dataset.callId || btn.dataset.openCall || btn.dataset.id;
     if (!id) return;
-    btn.addEventListener("fwClick", () => onOpen?.(id));
+    const handler = () => {
+      onOpen?.(id, {
+        tab: btn.dataset.callTab || undefined,
+        expandTheme: btn.dataset.expandTheme || undefined,
+        ownerEmail: btn.dataset.callOwner || undefined,
+      });
+    };
+    btn.addEventListener("click", handler);
+    btn.addEventListener("fwClick", handler);
   });
 }
 

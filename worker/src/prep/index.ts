@@ -12,6 +12,7 @@ import {
   normalizeLinkedInExports,
 } from "./linkedin-pdf";
 import { mergeEnrichmentsIntoPrep } from "./merge-enrichment";
+import { resolveKaiaForPrepInput } from "../kaia/prepKaia";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
   Env,
@@ -112,11 +113,18 @@ async function gatherResearch(
   const pdfSnippets = linkedInPdfSnippets(linkedinExports);
   const allSnippets = [...snippets, ...pdfSnippets];
 
+  const { researchContext } = await resolveKaiaForPrepInput(input);
+  let additionalContext = input.additionalContext || "";
+  if (researchContext) {
+    const block = `Kaia meeting context:\n${researchContext}`;
+    additionalContext = additionalContext ? `${additionalContext}\n\n${block}` : block;
+  }
+
   const extracted = await extractFacts(env, allSnippets, {
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     emails,
-    additionalContext: input.additionalContext,
+    additionalContext,
   });
 
   const facts = mergeFacts(apolloFacts, extracted.facts);

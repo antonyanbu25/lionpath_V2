@@ -8,7 +8,10 @@ export type ResourceType =
   | "postCall"
   | "task"
   | "team"
-  | "user";
+  | "user"
+  | "scorecard"
+  | "scorecardLine"
+  | "scoreOverride";
 
 export type Action =
   | "read"

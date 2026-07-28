@@ -3,15 +3,24 @@
  */
 
 import { extractJson } from "../json";
-import { fetchKaiaSummaryFromShareLink } from "../kaiaShare";
 import { getProvider } from "../providers";
 import type { Env } from "../prep/types";
+import { fetchKaiaSummary } from "../kaia/fetchShareContent";
+import { isKaiaEngageShareUrl } from "../kaia/shareLink";
+import {
+  ENRICH_LIMIT_KAIA,
+  ENRICH_LIMIT_LINKEDIN,
+  ENRICH_LIMIT_NOTES,
+  ENRICH_LIMIT_ZOOM,
+} from "./enrich-limits";
 import { matchPdfToProspect } from "../prep/linkedin-pdf";
 
 export interface ContactEnrichSources {
   linkedinPdf?: { fileName: string; text: string };
   zoomTranscriptExcerpt?: string;
   kaiaSummary?: string;
+  /** Resolve server-side via public Engage share link when summary is omitted. */
+  kaiaMeetingUrl?: string;
   additionalNotes?: string;
 }
 
@@ -204,6 +213,7 @@ function hasAnySource(sources: ContactEnrichSources): boolean {
     sources.linkedinPdf?.text?.trim() ||
     sources.zoomTranscriptExcerpt?.trim() ||
     sources.kaiaSummary?.trim() ||
+    sources.kaiaMeetingUrl?.trim() ||
     sources.additionalNotes?.trim()
   );
 }
@@ -219,22 +229,22 @@ function buildUserPrompt(req: ContactEnrichRequest): string {
 
   if (req.sources.linkedinPdf?.text) {
     parts.push(`--- LinkedIn PDF (${req.sources.linkedinPdf.fileName}) ---`);
-    parts.push(req.sources.linkedinPdf.text.slice(0, 12_000));
+    parts.push(req.sources.linkedinPdf.text.slice(0, ENRICH_LIMIT_LINKEDIN));
     parts.push("");
   }
   if (req.sources.zoomTranscriptExcerpt) {
     parts.push("--- Zoom transcript excerpt ---");
-    parts.push(req.sources.zoomTranscriptExcerpt.slice(0, 8000));
+    parts.push(req.sources.zoomTranscriptExcerpt.slice(0, ENRICH_LIMIT_ZOOM));
     parts.push("");
   }
   if (req.sources.kaiaSummary) {
     parts.push("--- Kaia meeting summary ---");
-    parts.push(req.sources.kaiaSummary.slice(0, 8000));
+    parts.push(req.sources.kaiaSummary.slice(0, ENRICH_LIMIT_KAIA));
     parts.push("");
   }
   if (req.sources.additionalNotes) {
     parts.push("--- Additional notes ---");
-    parts.push(req.sources.additionalNotes.slice(0, 2000));
+    parts.push(req.sources.additionalNotes.slice(0, ENRICH_LIMIT_NOTES));
   }
 
   return parts.filter(Boolean).join("\n");
@@ -251,6 +261,30 @@ function inferDiscSource(sources: ContactEnrichSources): "linkedin_pdf" | "zoom"
   return "linkedin_pdf";
 }
 
+async function resolveEnrichSources(sources: ContactEnrichSources): Promise<ContactEnrichSources> {
+  const next = { ...sources };
+  if (!next.kaiaSummary?.trim() && next.kaiaMeetingUrl?.trim()) {
+    if (!isKaiaEngageShareUrl(next.kaiaMeetingUrl)) {
+      throw Object.assign(new Error("Invalid Kaia meeting URL (engage.freshworks.com share links only)."), {
+        status: 400,
+      });
+    }
+    const fetched = await fetchKaiaSummary(next.kaiaMeetingUrl.trim());
+    if (!fetched.ok) {
+      throw Object.assign(
+        new Error(
+          fetched.reason === "forbidden" || fetched.reason === "auth_required"
+            ? "This Kaia link requires login; use a public share link or paste summary in Additional context."
+            : "Could not fetch Kaia summary from the share link.",
+        ),
+        { status: 400 },
+      );
+    }
+    next.kaiaSummary = fetched.text;
+  }
+  return next;
+}
+
 export async function enrichContact(env: Env, req: ContactEnrichRequest): Promise<ContactEnrichResponse> {
   const email = String(req.email || "")
     .trim()
@@ -258,14 +292,16 @@ export async function enrichContact(env: Env, req: ContactEnrichRequest): Promis
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Valid email is required."), { status: 400 });
   }
-  if (!hasAnySource(req.sources)) {
+  const sources = await resolveEnrichSources(req.sources);
+  if (!hasAnySource(sources)) {
     throw Object.assign(new Error("At least one source (linkedinPdf, zoom, kaia, or notes) is required."), {
       status: 400,
     });
   }
 
-  const discSource = inferDiscSource(req.sources);
+  const discSource = inferDiscSource(sources);
   const linkedInOnly = discSource === "linkedin_pdf";
+  const kaiaSpeakerScoped = !!req.sources.kaiaSummary?.includes("Speaker-specific segments:");
 
   const provider = getProvider(env);
   const result = await provider.generate({
@@ -274,13 +310,14 @@ export async function enrichContact(env: Env, req: ContactEnrichRequest): Promis
 Profile: fill name, role, totalExperience (e.g. "28+ years" from Experience section), priorEmployers (company names from Experience, max 6), summary (2-4 sentences), skills, languages, education lines, linkedinUrl if present. competitorTouchpoints ONLY if support tools (Zendesk, Intercom, etc.) are mentioned; else [].
 
 DISC: This is an INFERRED behavioral guess, NOT a formal assessment. primary must be D, I, S, or C (or unknown if insufficient). Include 1-4 short evidence quotes from the source text. confidence: low unless multiple consistent cues; medium only with strong textual evidence. ${linkedInOnly ? "LinkedIn-only sources: confidence MUST be low or medium, never high." : "If Zoom/Kaia dialogue present, medium is allowed for DISC."}
+${kaiaSpeakerScoped ? "Kaia excerpt is speaker-scoped: use ONLY quotes from speaker-specific segments for DISC evidence when present." : ""}
 source field: ${discSource}
 inferred: true
 
 Influence: from job title — GM/Director/VP → high + economic_buyer or champion; assistant/analyst → medium/low.
 
 Output JSON only.`,
-    user: buildUserPrompt(req),
+    user: buildUserPrompt({ ...req, sources }),
     maxTokens: 3500,
     temperature: 0,
     research: false,
@@ -325,14 +362,4 @@ export async function fetchZoomExcerptForEnrich(
   return { ok: false, reason: "not_configured" };
 }
 
-/** Fetch Kaia meeting summary text from a public share URL. */
-export async function fetchKaiaSummary(
-  url: string,
-): Promise<{ ok: false; reason: string } | { ok: true; text: string; title?: string }> {
-  try {
-    const result = await fetchKaiaSummaryFromShareLink(url);
-    return { ok: true, text: result.summary, title: result.title };
-  } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "fetch_failed" };
-  }
-}
+export { fetchKaiaSummary } from "../kaia/fetchShareContent";

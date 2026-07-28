@@ -24,6 +24,7 @@ export interface PrepBriefMeta {
 export interface PrepBrief {
   id: string;
   lifecycleId: string;
+  dealId?: string | null;
   ownerId: string;
   teamId: string;
   accountId: string;
@@ -36,6 +37,7 @@ export interface PrepBrief {
 export interface PostCallDoc {
   id: string;
   lifecycleId: string;
+  dealId?: string | null;
   ownerId: string;
   teamId: string;
   accountId: string;
@@ -55,6 +57,7 @@ export type TaskSource = "postcall" | "prep" | "manual";
 export interface TaskDoc {
   id: string;
   lifecycleId: string;
+  dealId?: string | null;
   ownerId: string;
   teamId: string;
   accountId: string;

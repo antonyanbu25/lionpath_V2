@@ -1,7 +1,13 @@
-// Zoom OAuth + recording fetch — phase 2 integration stubs.
-// MVP: SEs paste or upload VTT. When ZOOM_CLIENT_ID/SECRET are set, OAuth flow activates.
+// Zoom OAuth + recording fetch.
+//
+// Two paths exist:
+// 1. Server-to-Server OAuth (ZOOM_ACCOUNT_ID + client id/secret) — the reliable path.
+//    Freshworks share links answer `needRecaptcha: true` on the very first share-info
+//    call, so the passcode scrape in zoomShare.ts cannot unlock them. The API can.
+// 2. User OAuth (ZOOM_REDIRECT_URI) — kept for a future per-SE connect flow.
 
 export interface ZoomEnv {
+  ZOOM_ACCOUNT_ID?: string;
   ZOOM_CLIENT_ID?: string;
   ZOOM_CLIENT_SECRET?: string;
   ZOOM_REDIRECT_URI?: string;
@@ -9,6 +15,11 @@ export interface ZoomEnv {
 
 export function zoomConfigured(env: ZoomEnv): boolean {
   return !!(env.ZOOM_CLIENT_ID && env.ZOOM_CLIENT_SECRET && env.ZOOM_REDIRECT_URI);
+}
+
+/** Server-to-Server OAuth — account-level recording reads, no SE interaction. */
+export function zoomApiConfigured(env: ZoomEnv): boolean {
+  return !!(env.ZOOM_ACCOUNT_ID && env.ZOOM_CLIENT_ID && env.ZOOM_CLIENT_SECRET);
 }
 
 export function zoomAuthUrl(env: ZoomEnv, state: string): string {

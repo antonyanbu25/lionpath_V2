@@ -29,7 +29,7 @@ const MIME = {
   ".webm": "audio/webm",
 };
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   try {
     let pathname = (req.url || "/").split("?")[0];
     if (pathname === "/") pathname = "/index.html";
@@ -58,7 +58,21 @@ createServer(async (req, res) => {
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Server error");
   }
-}).listen(PORT, HOST, async () => {
+});
+
+server.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} is already in use (${HOST}). Stop the other process, e.g.:\n` +
+        `  lsof -ti :${PORT} | xargs kill\n` +
+        `Then run npm run dev again.`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
+
+server.listen(PORT, HOST, async () => {
   const url = `http://${HOST}:${PORT}`;
   console.log(`Web dev server ready on ${url}`);
   const workerPort = Number(process.env.WORKER_PORT || 8787);
@@ -68,13 +82,13 @@ createServer(async (req, res) => {
     if (res.ok) {
       console.log(`Worker API reachable at http://${HOST}:${workerPort}`);
     } else {
-      console.warn(`Worker API returned HTTP ${res.status} — run: cd ../worker && npm run dev`);
+      console.warn(`Worker API returned HTTP ${res.status} — run: cd ../worker && npm run dev:node`);
     }
   } catch {
     console.warn(
       `Worker API not running on port ${workerPort}.\n` +
-      `  → Second terminal: cd ../worker && npm run dev\n` +
-      `  → Or one command: npm run dev:all`,
+        `  → Second terminal: cd ../worker && npm run dev:node\n` +
+        `  → Or one command: npm run dev:all`,
     );
   }
 });

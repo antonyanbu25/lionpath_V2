@@ -1,5 +1,14 @@
 /** Unit tests for quality score normalization (Node). */
-import { computeOverallScore, overallLabelFromScore, normalizeQualityCoach } from "../quality-score.js";
+import {
+  computeOverallScore,
+  overallLabelFromScore,
+  normalizeQualityCoach,
+  typeComposite,
+  spineComposite,
+  themeAverage,
+  formatTypeComposite,
+  isEligibleForAggregate,
+} from "../quality-score.js";
 
 const dims = [
   { name: "Discovery", score: 4, maxScore: 5 },
@@ -9,6 +18,15 @@ const dims = [
   { name: "Next-step clarity", score: 5, maxScore: 5 },
   { name: "Talk balance", score: 4, maxScore: 5 },
 ];
+
+const demoCard = {
+  callType: "demo",
+  rubricVersion: "1.0",
+  lines: [
+    { themeKey: "call_flow", score: 80, maxScore: 100, applicable: true, weight: 10 },
+    { themeKey: "camera_on", score: 100, maxScore: 100, applicable: false, weight: 5 },
+  ],
+};
 
 const checks = [
   ["avg 4.5/5 → 9.0", computeOverallScore(dims) === 9],
@@ -24,6 +42,120 @@ const checks = [
       const n = normalizeQualityCoach({ overallScore: 4.5, overallLabel: "Strong", dimensions: dims });
       return n.overallScore === 9 && n.overallLabel === "Excellent";
     })(),
+  ],
+  [
+    "typeComposite weighted single call",
+    (() => {
+      const r = typeComposite([demoCard], "demo", { includeIneligible: true });
+      return r.score === 80 && r.applicableWeight === 10;
+    })(),
+  ],
+  [
+    "typeComposite aggregates lines across calls",
+    (() => {
+      const r = typeComposite(
+        [
+          demoCard,
+          {
+            callType: "demo",
+            rubricVersion: "1.0",
+            lines: [
+              { themeKey: "call_flow", score: 60, maxScore: 100, applicable: true, weight: 10 },
+            ],
+          },
+        ],
+        "demo",
+        { includeIneligible: true },
+      );
+      return r.score === 70 && r.applicableWeight === 20;
+    })(),
+  ],
+  [
+    "formatTypeComposite",
+    formatTypeComposite({
+      score: 86,
+      applicableWeight: 100,
+      totalWeight: 100,
+      applicableCount: 10,
+      rubricVersion: "1.0",
+      callType: "demo",
+    }) === "86 / 100 (demo v1.0)",
+  ],
+  [
+    "spineComposite unweighted",
+    spineComposite([
+      {
+        lines: [
+          { themeKey: "call_flow", score: 80, maxScore: 100, applicable: true },
+          { themeKey: "customer_engagement", score: 60, maxScore: 100, applicable: true },
+          { themeKey: "objections", score: 40, maxScore: 100, applicable: true },
+          { themeKey: "camera_on", score: 20, maxScore: 100, applicable: true },
+        ],
+      },
+    ]).score === 50,
+  ],
+  [
+    "spineComposite excludes provisional",
+    spineComposite([
+      {
+        provisional: true,
+        lines: [
+          { themeKey: "call_flow", score: 100, maxScore: 100, applicable: true },
+          { themeKey: "customer_engagement", score: 100, maxScore: 100, applicable: true },
+          { themeKey: "objections", score: 100, maxScore: 100, applicable: true },
+          { themeKey: "camera_on", score: 100, maxScore: 100, applicable: true },
+        ],
+      },
+      {
+        provisional: false,
+        lines: [
+          { themeKey: "call_flow", score: 40, maxScore: 100, applicable: true },
+          { themeKey: "customer_engagement", score: 40, maxScore: 100, applicable: true },
+          { themeKey: "objections", score: 40, maxScore: 100, applicable: true },
+          { themeKey: "camera_on", score: 40, maxScore: 100, applicable: true },
+        ],
+      },
+    ]).score === 40,
+  ],
+  [
+    "themeAverage cross-type",
+    themeAverage(
+      [
+        {
+          callType: "demo",
+          lines: [{ themeKey: "questions", score: 80, maxScore: 100, applicable: true }],
+        },
+        {
+          callType: "discovery",
+          lines: [{ themeKey: "questions", score: 60, maxScore: 100, applicable: true }],
+        },
+      ],
+      "questions",
+      null,
+      { includeIneligible: true },
+    ).score === 70,
+  ],
+  [
+    "themeAverage callType filter",
+    themeAverage(
+      [
+        {
+          callType: "demo",
+          lines: [{ themeKey: "questions", score: 80, maxScore: 100, applicable: true }],
+        },
+        {
+          callType: "discovery",
+          lines: [{ themeKey: "questions", score: 60, maxScore: 100, applicable: true }],
+        },
+      ],
+      "questions",
+      "demo",
+      { includeIneligible: true },
+    ).score === 80,
+  ],
+  [
+    "isEligibleForAggregate blocks shadow",
+    isEligibleForAggregate({ provisional: true, confidence: 0.99 }) === false,
   ],
 ];
 

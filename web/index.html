@@ -20,10 +20,11 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=accounts-flow-4" />
     <link rel="stylesheet" href="./precall.css?v=dispute-static-v11" />
     <link rel="stylesheet" href="./postcall.css" />
-    <link rel="stylesheet" href="./lifecycle.css" />
+    <link rel="stylesheet" href="./call-view.css" />
+    <link rel="stylesheet" href="./lifecycle.css?v=accounts-flow-4" />
     <style id="prep-dispute-critical-css">
       #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
       #prep-dispute-modal.prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
@@ -96,7 +97,8 @@
           <ul class="muted">
             <li>Director: <code>vipin.thomas@freshworks.com</code> / <code>vipin123</code></li>
             <li>Senior manager: <code>antony.sagayaraj@freshworks.com</code> / <code>leader123</code></li>
-            <li>Squad manager: <code>ajay.raghavan@freshworks.com</code> / <code>mgr123</code></li>
+            <li>Line manager (International - NB): <code>ajay.raghavan@freshworks.com</code> / <code>mgr123</code></li>
+            <li>Product (PM): <code>product.pm@freshworks.com</code> / <code>pm123</code></li>
             <li>SE: <code>se@freshworks.com</code> / <code>se123</code></li>
           </ul>
         </details>
@@ -139,9 +141,25 @@
             <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
             <span class="nav-label">Accounts</span>
           </fw-button>
+          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="Deals">
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <span class="nav-label">Deals</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
+            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="16"></fw-icon>
+            <span class="nav-label">Calls</span>
+          </fw-button>
           <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Manager dashboard" hidden>
             <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
             <span class="nav-label">Manager dashboard</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <span class="nav-label">Pipeline review</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <span class="nav-label">Product signal</span>
           </fw-button>
         </nav>
         <div class="sidebar-recent-work">
@@ -241,6 +259,19 @@
           <!-- Manager dashboard -->
           <section id="view-manager" class="view-panel" hidden></section>
 
+          <!-- Pipeline review (org leadership) -->
+          <section id="view-pipeline" class="view-panel" hidden>
+            <div id="pipeline-panel" class="lifecycle-panel pipeline-panel"></div>
+          </section>
+
+          <!-- Product signal (PM / admin) -->
+          <section id="view-signal" class="view-panel" hidden>
+            <div id="product-signal-panel" class="lifecycle-panel product-signal-panel"></div>
+          </section>
+
+          <!-- SE detail (manager drill-down) -->
+          <section id="view-se" class="view-panel" hidden></section>
+
           <!-- Profile settings -->
           <section id="view-profile" class="view-panel" hidden>
             <div id="profile-settings-root"></div>
@@ -251,55 +282,104 @@
             <div id="account-panel" class="lifecycle-panel account-panel"></div>
           </section>
 
+          <!-- Deals -->
+          <section id="view-deals" class="view-panel" hidden>
+            <div id="deal-panel" class="lifecycle-panel deal-panel"></div>
+          </section>
+
+          <!-- Call record -->
+          <section id="view-calls" class="view-panel" hidden>
+            <div id="call-panel" class="lifecycle-panel call-panel"></div>
+          </section>
+
           <!-- Pre-call -->
           <section id="view-precall" class="view-panel" hidden>
             <div id="prep-form-view" class="prep-form-wrap">
               <div class="prep-form-center">
                 <div class="prep-form-heading">
-                  <h1>Prep for your next call</h1>
-                  <p class="muted">Enter the company and prospect emails — we'll infer the website when we can and draft your discovery + demo brief.</p>
+                  <h1>Pre-call brief</h1>
+                  <p class="muted">Research the account and the room before you walk in. The brief becomes the answer key the post-call scorecard grades against.</p>
+                </div>
+                <div id="prep-motion-row" class="prep-motion-row" hidden>
+                  <div id="prep-motion-from-account" class="prep-motion-from-account" hidden>
+                    <fw-tag id="prep-motion-chip" color="blue"></fw-tag>
+                    <span class="muted">Change pursuit type on the account page.</span>
+                  </div>
+                  <fw-select id="prep-meeting-motion" class="prep-meeting-motion" label="Meeting motion" data-action="deal-type" value="new_business">
+                    <fw-select-option value="new_business">New business</fw-select-option>
+                    <fw-select-option value="expansion">Expansion</fw-select-option>
+                  </fw-select>
                 </div>
                 <fw-card class="prep-form-card">
                   <form id="prep-form">
                     <div class="prep-form-grid">
-                      <fw-input id="companyName" class="prep-form-full" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
+                      <fw-input id="companyName" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
+                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible — edit if the customer uses a different website" required clear-input></fw-input>
                       <div class="prep-email-field prep-form-full">
-                        <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Separate multiple emails with commas — we research each contact" required clear-input></fw-input>
+                        <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Comma separated — we research each contact, and these become the matching keys for post-call." required clear-input></fw-input>
                         <fw-tooltip content="Add everyone on the call, e.g. alex@acme.com, sam@acme.com. Each person appears in the Prospect information column.">
                           <span class="prep-email-tip muted">Multiple emails supported</span>
                         </fw-tooltip>
                         <span id="domain-hint" class="field-hint" hidden></span>
                       </div>
-                      <fw-input id="companyDomain" class="prep-form-full" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible — edit if the customer uses a different website" required clear-input></fw-input>
-                      <div class="prep-linkedin-upload prep-form-full">
-                        <span class="prep-linkedin-label">LinkedIn profiles (optional)</span>
-                        <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
-                        <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
-                        <div class="prep-linkedin-actions">
-                          <fw-button id="prep-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small">Add PDFs</fw-button>
-                          <span id="prep-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
-                        </div>
-                        <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
-                        <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
-                      </div>
-                      <details class="prep-enrich-advanced prep-form-full">
-                        <summary>Meeting links (optional · Zoom / Kaia)</summary>
-                        <fw-input id="meetingZoomUrl" label="Zoom recording URL" placeholder="https://…" clear-input></fw-input>
-                        <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
-                        <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="Paste Kaia share link"></fw-input>
-                      </details>
                     </div>
-                    <fw-textarea
-                      id="additionalContext"
-                      label="Additional context"
-                      hint-text="Optional · AE notes, meeting context"
-                      rows="4"
-                      placeholder="Paste AE notes or meeting type…"
-                    ></fw-textarea>
-                    <fw-button id="generate" color="primary" type="submit" style="width:100%;margin-top:14px">Generate brief</fw-button>
+                    <div class="prep-form-optional">
+                      <div class="prep-form-eyebrow">Optional</div>
+                      <div class="prep-optional-grid">
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">LinkedIn profiles</span>
+                          <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
+                          <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="prep-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add PDFs</fw-button>
+                            <span id="prep-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
+                          </div>
+                          <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
+                          <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
+                        </div>
+                        <div class="prep-meeting-col">
+                          <fw-input id="meetingZoomUrl" label="Meeting link" type="text" placeholder="Zoom or Kaia" clear-input></fw-input>
+                          <details class="prep-enrich-advanced prep-meeting-extra">
+                            <summary>More meeting links</summary>
+                            <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
+                            <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="https://engage.freshworks.com/s/…"></fw-input>
+                          </details>
+                        </div>
+                      </div>
+                      <fw-textarea
+                        id="additionalContext"
+                        label="Additional context"
+                        hint-text="Optional · AE notes, meeting type"
+                        rows="2"
+                        placeholder="AE notes, meeting type"
+                      ></fw-textarea>
+                    </div>
+                    <fw-button id="generate" color="primary" type="submit" class="prep-form-submit">Generate brief</fw-button>
+                    <p class="prep-form-footnote">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
                   </form>
                 </fw-card>
-                <p class="prep-form-footnote">Optional LinkedIn PDFs enrich prospect columns. Other signals from website, funding records &amp; traffic estimates.</p>
+                <fw-card class="prep-loop-card">
+                  <div class="prep-form-eyebrow">What the brief produces — and what post-call grades against it</div>
+                  <div class="prep-loop-rows">
+                    <div class="prep-loop-row">
+                      <span>Suggested agenda</span>
+                      <span class="pill purple">→ Research &amp; agenda</span>
+                    </div>
+                    <div class="prep-loop-row">
+                      <span>Discovery questions to ask</span>
+                      <span class="pill purple">→ Questions</span>
+                    </div>
+                    <div class="prep-loop-row">
+                      <span>Likely incumbent and competitor</span>
+                      <span class="pill purple">→ Incumbent &amp; competition</span>
+                    </div>
+                    <div class="prep-loop-row prep-loop-row--last">
+                      <span>Stakeholder profiles and likely roles</span>
+                      <span class="pill purple">→ MEDPICC · champion</span>
+                    </div>
+                  </div>
+                  <p class="prep-loop-note muted">This is the loop nothing else closes. Research &amp; agenda is the weakest theme to score from a transcript alone — with a brief on file it becomes a diff against a document we already wrote.</p>
+                </fw-card>
               </div>
             </div>
             <div id="prep-status" class="dew-status-host" hidden></div>
@@ -335,36 +415,121 @@
               <div class="prep-form-center">
                 <div class="prep-form-heading">
                   <h1>Post-call analysis</h1>
-                  <p class="muted">Paste your Zoom recording link and passcode — we fetch the transcript and generate summary, next steps, and quality coaching.</p>
+                  <p class="muted">Paste the recording. We pull transcript and video, find the deal, and score the call.</p>
                 </div>
                 <fw-card class="prep-form-card">
                   <form id="postcall-form">
-                    <fw-input
-                      id="pc-recording-url"
-                      label="Zoom recording link"
-                      type="text"
-                      required
-                      placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
-                      clear-input
-                    ></fw-input>
-                    <fw-input
-                      id="pc-recording-pwd"
-                      label="Passcode"
-                      hint-text="Only if not in the link above"
-                      type="password"
-                      placeholder="From Zoom email"
-                      autocomplete="off"
-                      clear-input
-                    ></fw-input>
-                    <p class="muted tip">You can paste everything in one line: <code>https://…/rec/share/… Passcode: xyz</code></p>
-                    <fw-button id="analyze-call" color="primary" type="submit" style="width:100%;margin-top:14px">Analyze call</fw-button>
+                    <div class="postcall-recording-block">
+                      <fw-input
+                        id="pc-recording-url"
+                        label="Recording link"
+                        type="text"
+                        placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
+                        hint-text="Kaia share link, or Zoom when Zoom API access is configured. Otherwise download the transcript from Zoom and upload it below."
+                        clear-input
+                      ></fw-input>
+                      <div id="pc-passcode-wrap">
+                        <fw-input
+                          id="pc-recording-pwd"
+                          label="Passcode"
+                          hint-text="From the Zoom recording email (required for most Freshworks shares). The .SyK… bit in the URL is not this."
+                          type="password"
+                          placeholder="Passcode from Zoom email"
+                          autocomplete="off"
+                          clear-input
+                        ></fw-input>
+                      </div>
+                      <label class="pc-consent-row" id="pc-visual-consent-wrap">
+                        <input type="checkbox" id="pc-visual-consent" />
+                        <span>
+                          I have authority to run automated <strong>visual analysis</strong> of this
+                          recording (camera state + screen content) for coaching. Without this,
+                          camera-on is not scored; screen/CDE sampling may still run.
+                        </span>
+                      </label>
+                    </div>
+                    <div class="prep-form-grid">
+                      <fw-input
+                        id="pc-company-name"
+                        label="Company"
+                        type="text"
+                        placeholder="Acme Corp"
+                        required
+                        clear-input
+                      ></fw-input>
+                      <div class="prep-email-field">
+                        <fw-input
+                          id="pc-prospect-emails"
+                          label="Prospect emails"
+                          type="text"
+                          placeholder="alex@acme.com, sam@acme.com"
+                          hint-text="Comma separated — primary matching key"
+                          required
+                          clear-input
+                        ></fw-input>
+                      </div>
+                    </div>
+                    <div class="prep-form-optional">
+                      <div class="prep-form-eyebrow">Optional</div>
+                      <div class="prep-optional-grid">
+                        <fw-input
+                          id="pc-deck-link"
+                          label="Deck link"
+                          type="text"
+                          placeholder="Google Slides or .pptx"
+                          hint-text="Stored only — deck diff deferred to v2"
+                          clear-input
+                        ></fw-input>
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">LinkedIn PDFs</span>
+                          <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
+                          <input type="file" id="pc-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="pc-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add PDFs</fw-button>
+                            <span id="pc-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
+                          </div>
+                          <ul id="pc-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
+                          <p id="pc-linkedin-error" class="field-hint warn" hidden></p>
+                        </div>
+                      </div>
+                      <fw-textarea
+                        id="pc-additional-context"
+                        label="Additional context"
+                        hint-text="Optional · AE notes, anything the recording won't show"
+                        rows="2"
+                        placeholder="AE notes, anything the recording won't show"
+                      ></fw-textarea>
+                    </div>
+                    <details class="prep-enrich-advanced postcall-transcript-fallback" id="pc-transcript-fallback">
+                      <summary>No recording? Upload or paste transcript</summary>
+                      <div class="prep-linkedin-upload">
+                        <span class="prep-linkedin-label">Transcript file</span>
+                        <p class="muted prep-linkedin-hint">In Zoom: open the recording → Audio Transcript → Download. Drop the .vtt here.</p>
+                        <input type="file" id="pc-transcript-file" accept=".vtt,.srt,.txt,text/vtt,text/plain" hidden />
+                        <div class="prep-linkedin-actions">
+                          <fw-button id="pc-transcript-file-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Upload VTT</fw-button>
+                        </div>
+                        <p id="pc-transcript-file-name" class="field-hint" hidden></p>
+                        <p id="pc-transcript-file-error" class="field-hint warn" hidden></p>
+                      </div>
+                      <fw-textarea
+                        id="pc-transcript"
+                        label="Transcript"
+                        hint-text="Video-dependent themes (camera, CDE, call flow, engagement) will be marked not applicable"
+                        rows="6"
+                        placeholder="Paste the call transcript…"
+                      ></fw-textarea>
+                    </details>
+                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit">Analyze call</fw-button>
+                    <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>
                   </form>
                 </fw-card>
-                <p class="prep-form-footnote">Transcript pulled from Zoom — analysis usually takes 10–25 seconds.</p>
               </div>
             </div>
-            <div id="postcall-status" class="dew-status-host" hidden></div>
-            <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Analyzing call">
+            <div id="postcall-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
+            <fw-card id="postcall-confirm-view" class="postcall-confirm-card postcall-stage-panel" hidden></fw-card>
+            <div id="postcall-status" class="dew-status-host postcall-stage-panel" hidden></div>
+            <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="rect" height="150px" effect="sheen"></fw-skeleton>
@@ -434,27 +599,16 @@
     <script type="module" src="./theme.js"></script>
     <script type="module" src="./splash.js"></script>
     <script>
-      document.getElementById("login-form")?.addEventListener("submit", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      });
-      window.purgeLegacyDisputeModal = function purgeLegacyDisputeModal() {
-        document.querySelectorAll("fw-modal").forEach(function (el) {
-          var id = el.id || "";
-          var title = (el.getAttribute("title-text") || el.titleText || "").trim();
-          if (id === "prep-dispute-modal" || /report research/i.test(title)) {
-            try { if (el.isOpen) el.isOpen = false; } catch (e) {}
-            el.remove();
-          }
+      // Static dispute modal shell — created once at page load
+      (function initDisputeShell() {
+        // Prevent default form submit on login form
+        document.getElementById("login-form")?.addEventListener("submit", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
         });
-        var stale = document.getElementById("prep-dispute-modal");
-        if (stale && stale.tagName !== "DIV") stale.remove();
-      };
-      window.ensureStaticDisputeShell = function ensureStaticDisputeShell() {
-        window.purgeLegacyDisputeModal();
+
         var modal = document.getElementById("prep-dispute-modal");
         var backdrop = document.getElementById("prep-dispute-backdrop");
-        if (modal?.tagName === "DIV" && backdrop) return;
         if (!backdrop) {
           backdrop = document.createElement("div");
           backdrop.id = "prep-dispute-backdrop";
@@ -463,198 +617,61 @@
           document.body.appendChild(backdrop);
         }
         if (!modal || modal.tagName !== "DIV") {
-          modal?.remove?.();
+          if (modal) modal.remove();
           modal = document.createElement("div");
           modal.id = "prep-dispute-modal";
           modal.className = "prep-dispute-overlay";
           modal.hidden = true;
           modal.setAttribute("role", "dialog");
           modal.setAttribute("aria-labelledby", "prep-dispute-title");
-          modal.setAttribute("aria-labelledby", "prep-dispute-title");
-          modal.innerHTML = document.getElementById("prep-dispute-modal-template")?.innerHTML || "";
-          if (!modal.innerHTML.trim()) {
-            modal.innerHTML = '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">×</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
-          }
+          var tpl = document.getElementById("prep-dispute-modal-template");
+          modal.innerHTML = tpl ? tpl.innerHTML : '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">\u00d7</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
           document.body.appendChild(modal);
         }
-      };
-      window.purgeLegacyDisputeModal();
-      window.ensureStaticDisputeShell();
-      (function watchLegacyDisputeModalOpen() {
-        function blockLegacy() {
-          document.querySelectorAll("fw-modal").forEach(function (m) {
-            var id = m.id || "";
-            var title = (m.getAttribute("title-text") || m.titleText || "").trim();
-            if ((id === "prep-dispute-modal" || /report research/i.test(title)) && m.isOpen) {
-              try { m.isOpen = false; } catch (e) {}
-              m.remove();
-              window.ensureStaticDisputeShell && window.ensureStaticDisputeShell();
-            }
-          });
-        }
-        blockLegacy();
-        if (typeof MutationObserver !== "undefined") {
-          new MutationObserver(blockLegacy).observe(document.documentElement, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ["is-open", "title-text"],
-          });
-        }
-      })();
-      (function seDisputeInlineBoot() {
-        function findDisputeTrigger(ev) {
-          var path = typeof ev.composedPath === "function" ? ev.composedPath() : null;
-          if (path) {
+
+        window.ensureStaticDisputeShell = initDisputeShell;
+        window.purgeLegacyDisputeModal = function() {};
+
+        window.ensureDisputeFieldsVisible = function() {
+          var cat = document.getElementById("prep-dispute-category");
+          var note = document.getElementById("prep-dispute-note");
+          if (cat) { cat.style.display = "block"; cat.style.width = "100%"; cat.style.minHeight = "42px"; }
+          if (note) { note.style.display = "block"; note.style.width = "100%"; note.style.minHeight = "96px"; }
+        };
+
+        // Delegated click handler for dispute triggers
+        document.addEventListener("click", function(ev) {
+          var btn = ev.target && ev.target.closest ? ev.target.closest(".prep-dispute-trigger") : null;
+          if (!btn) {
+            var path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
             for (var i = 0; i < path.length; i++) {
-              var node = path[i];
-              if (node && node.classList && node.classList.contains("prep-dispute-trigger")) return node;
+              if (path[i] && path[i].classList && path[i].classList.contains("prep-dispute-trigger")) { btn = path[i]; break; }
             }
           }
-          return ev.target && ev.target.closest ? ev.target.closest(".prep-dispute-trigger") : null;
-        }
-        function ensureDisputeFieldsVisibleInline() {
-          var form = document.getElementById("prep-dispute-form");
-          var cat = document.getElementById("prep-dispute-category");
-          var note = document.getElementById("prep-dispute-note");
-          var healed = false;
-          var rebuilt = false;
-          var catBroken = !cat || cat.tagName !== "SELECT";
-          var noteBroken = !note || note.tagName !== "TEXTAREA";
-          if (form && (catBroken || noteBroken)) {
-            var actions = form.querySelector(".prep-dispute-actions");
-            if (actions) {
-              if (cat && cat.tagName !== "SELECT") cat.closest(".prep-dispute-field")?.remove();
-              if (note && note.tagName !== "TEXTAREA") note.closest(".prep-dispute-field")?.remove();
-              var catLabel = document.createElement("label");
-              catLabel.className = "prep-dispute-field";
-              catLabel.setAttribute("for", "prep-dispute-category");
-              catLabel.innerHTML = '<span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select>';
-              var noteLabel = document.createElement("label");
-              noteLabel.className = "prep-dispute-field";
-              noteLabel.setAttribute("for", "prep-dispute-note");
-              noteLabel.innerHTML = '<span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required></textarea>';
-              form.insertBefore(noteLabel, actions);
-              form.insertBefore(catLabel, actions);
-              cat = document.getElementById("prep-dispute-category");
-              note = document.getElementById("prep-dispute-note");
-              rebuilt = true;
-              healed = true;
-            }
-          }
-          function force(el, minH) {
-            if (!el) return;
-            el.style.display = "block";
-            el.style.width = "100%";
-            el.style.boxSizing = "border-box";
-            el.style.opacity = "1";
-            el.style.visibility = "visible";
-            el.style.height = "auto";
-            el.style.overflow = "visible";
-            el.style.minHeight = minH + "px";
-          }
-          force(cat, 42);
-          force(note, 96);
-          if (form) {
-            form.style.display = "flex";
-            form.style.flexDirection = "column";
-            form.style.gap = "12px";
-          }
-          form?.querySelectorAll(".prep-dispute-field").forEach(function (field) {
-            field.style.display = "flex";
-            field.style.flexDirection = "column";
-            field.style.gap = "6px";
-            field.style.opacity = "1";
-            field.style.visibility = "visible";
-          });
-          var catH = cat ? cat.offsetHeight : 0;
-          var noteH = note ? note.offsetHeight : 0;
-          if (catH === 0 || noteH === 0) {
-            if (cat) cat.style.height = "42px";
-            if (note) note.style.height = "96px";
-            healed = true;
-            catH = cat ? cat.offsetHeight : 0;
-            noteH = note ? note.offsetHeight : 0;
-          }
-          return {
-            categoryHeight: catH,
-            noteHeight: noteH,
-            categoryTag: cat ? cat.tagName : "missing",
-            noteTag: note ? note.tagName : "missing",
-            categoryDisplay: cat ? getComputedStyle(cat).display : "",
-            noteDisplay: note ? getComputedStyle(note).display : "",
-            healed: healed,
-            rebuilt: rebuilt,
-          };
-        }
-        window.ensureDisputeFieldsVisible = window.ensureDisputeFieldsVisible || ensureDisputeFieldsVisibleInline;
-        function ctxFromBtn(btn) {
-          var key = btn.getAttribute("data-dispute-key") || "";
-          var company = (document.querySelector(".prep-company-name") || {}).textContent || "";
-          company = company.trim();
-          return {
-            step: btn.getAttribute("data-dispute-step") || "brief_result",
-            section: btn.getAttribute("data-dispute-section") || "general",
-            factKeys: key ? [key] : [],
-            companyName: company,
-          };
-        }
-        function inlineOpen(ctx) {
-          window.purgeLegacyDisputeModal();
-          window.ensureStaticDisputeShell();
-          var modal = document.getElementById("prep-dispute-modal");
-          var backdrop = document.getElementById("prep-dispute-backdrop");
-          var intro = document.getElementById("prep-dispute-context");
-          var note = document.getElementById("prep-dispute-note");
-          var cat = document.getElementById("prep-dispute-category");
-          if (!modal || !backdrop || modal.tagName !== "DIV") return;
-          document.querySelectorAll("fw-modal").forEach(function (m) {
-            if (m.isOpen) m.isOpen = false;
-          });
-          if (intro) {
-            intro.textContent = ctx.factKeys && ctx.factKeys[0]
-              ? 'Reporting issue with "' + ctx.factKeys[0] + '" for ' + (ctx.companyName || "this account") + "."
-              : "Report incorrect or incomplete research for " + (ctx.companyName || "this account") + ".";
-          }
-          if (note) note.value = "";
-          if (cat) cat.value = "wrong_data";
-          ensureDisputeFieldsVisibleInline();
-          modal.removeAttribute("hidden");
-          backdrop.removeAttribute("hidden");
-          modal.hidden = false;
-          backdrop.hidden = false;
-          requestAnimationFrame(function () {
-            ensureDisputeFieldsVisibleInline();
-          });
-        }
-        window.openSeDisputeModal = window.openSeDisputeModal || inlineOpen;
-        document.addEventListener("click", function (ev) {
-          var btn = findDisputeTrigger(ev);
           if (!btn) return;
           ev.preventDefault();
           ev.stopPropagation();
-          window.purgeLegacyDisputeModal();
-          window.ensureStaticDisputeShell();
-          window.openSeDisputeModal(ctxFromBtn(btn));
+          var key = btn.getAttribute("data-dispute-key") || "";
+          var company = (document.querySelector(".prep-company-name") || {}).textContent || "";
+          if (window.openSeDisputeModal) {
+            window.openSeDisputeModal({
+              step: btn.getAttribute("data-dispute-step") || "brief_result",
+              section: btn.getAttribute("data-dispute-section") || "general",
+              factKeys: key ? [key] : [],
+              companyName: company.trim(),
+            });
+          }
         }, true);
-        document.getElementById("prep-dispute-cancel")?.addEventListener("click", function () {
-          var modal = document.getElementById("prep-dispute-modal");
-          var backdrop = document.getElementById("prep-dispute-backdrop");
-          if (modal) modal.hidden = true;
-          if (backdrop) backdrop.hidden = true;
-        });
-        document.getElementById("prep-dispute-close-x")?.addEventListener("click", function () {
-          var modal = document.getElementById("prep-dispute-modal");
-          var backdrop = document.getElementById("prep-dispute-backdrop");
-          if (modal) modal.hidden = true;
-          if (backdrop) backdrop.hidden = true;
-        });
-        document.getElementById("prep-dispute-backdrop")?.addEventListener("click", function () {
-          var modal = document.getElementById("prep-dispute-modal");
-          var backdrop = document.getElementById("prep-dispute-backdrop");
-          if (modal) modal.hidden = true;
-          if (backdrop) backdrop.hidden = true;
-        });
+
+        function closeDispute() {
+          var m = document.getElementById("prep-dispute-modal");
+          var b = document.getElementById("prep-dispute-backdrop");
+          if (m) m.hidden = true;
+          if (b) b.hidden = true;
+        }
+        document.getElementById("prep-dispute-cancel")?.addEventListener("click", closeDispute);
+        document.getElementById("prep-dispute-close-x")?.addEventListener("click", closeDispute);
+        document.getElementById("prep-dispute-backdrop")?.addEventListener("click", closeDispute);
       })();
     </script>
     <script type="module" src="./prep-disputes-boot.mjs?v=dispute-static-v11"></script>
@@ -694,7 +711,7 @@
     </script>
     <script type="module">
       import "./firebase-config.js?v=auth-fix-v3";
-      import("./app.js?v=auth-fix-v3").catch(function (err) {
+      import("./app.js?v=accounts-mock-v1").catch(function (err) {
         console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {

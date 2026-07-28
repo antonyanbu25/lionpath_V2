@@ -1037,7 +1037,72 @@ fw-button.sidebar-history-item.active {
   box-shadow: var(--dew-shadow-island);
   border: 1px solid var(--dew-border);
 }
+.app-shell:has(.account-record) {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.main-content:has(.account-list-view--compact) {
+  max-width: min(1280px, calc(100% - 32px));
+}
+
+.main-content:has(.deal-list-view--compact) {
+  max-width: min(1600px, calc(100% - 32px));
+}
+
+.main-content:has(.call-list-view--compact) {
+  max-width: min(1400px, calc(100% - 32px));
+}
+
+.main-content:has(.account-record) {
+  max-width: min(1280px, calc(100% - 32px));
+  padding-top: 20px;
+  padding-bottom: 28px;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#view-accounts:has(.account-record) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .view-panel { display: block; }
+
+.main-content:has(.account-record) #view-accounts.view-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main-content:has(.account-record) #account-panel.account-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main-content:has(.account-record) .account-record.lifecycle-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.main-content:has(.account-record) .account-command-deck {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .wrap-banner { margin: 0; border-radius: 0; }
 
 .sidebar-backdrop {
@@ -3262,6 +3327,347 @@ fw-button.launch-recent-row {
 
 .coaching-stats,
 .manager-stats { margin-bottom: 26px; }
+
+.manager-team-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.manager-filter-banner {
+  margin: 12px 0 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2px solid var(--dew-brand);
+  background: color-mix(in srgb, var(--dew-brand) 8%, var(--surface));
+}
+.manager-filter-banner--spine {
+  border-color: var(--dew-brand);
+}
+.manager-filter-eyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.manager-filter-label {
+  display: block;
+  font-size: 18px;
+  color: var(--dew-navy, var(--text));
+  margin-bottom: 4px;
+}
+.manager-filter-detail { display: block; font-size: 13px; line-height: 1.5; }
+.manager-filter-provisional {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+}
+.manager-heatmap-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.manager-heatmap-filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.manager-heatmap-filter {
+  min-width: 280px;
+  max-width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+}
+.manager-heatmap-card { padding: 16px 12px 14px; overflow: hidden; }
+.team-heatmap-wrap { overflow-x: auto; }
+.team-heatmap {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+.team-heatmap th,
+.team-heatmap td {
+  padding: 6px 5px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-soft);
+}
+.team-heatmap-theme {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+.team-heatmap-se {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+.team-heatmap-col-summary-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dew-navy, var(--text));
+  white-space: nowrap;
+}
+.team-heatmap-col-summary { background: color-mix(in srgb, var(--dew-brand) 6%, transparent); }
+.team-heatmap-row-summary-head {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+  font-weight: 600;
+}
+.team-heatmap-cell { padding: 4px 3px; }
+.team-heatmap-score {
+  border-radius: 6px;
+  padding: 8px 4px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  min-width: 38px;
+}
+.team-heatmap-cell--col-summary .team-heatmap-score {
+  padding: 11px 4px;
+  font-size: 15px;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--dew-brand) 25%, transparent);
+}
+.team-heatmap-cell--corner-muted { background: transparent; border: none; }
+.team-heatmap-cell--row-summary .team-heatmap-score {
+  opacity: 0.55;
+  font-size: 11px;
+  font-weight: 500;
+}
+.team-heatmap-foot {
+  margin: 14px 4px 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.team-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 4px 0;
+  font-size: 11px;
+}
+.team-heatmap-swatch {
+  width: 22px;
+  height: 11px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.manager-secondary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.dash-section-sub { margin: -6px 0 12px; font-size: 13px; }
+.manager-deal-title { font-weight: 600; }
+.manager-deal-account { font-size: 12px; }
+.manager-deals-table td.num,
+.manager-coaching-queue-table td.num { font-variant-numeric: tabular-nums; }
+
+.dash-drill-link {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.dash-drill-link:hover { color: var(--dew-brand); }
+.team-heatmap-score-btn {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.team-heatmap-se-link,
+.manager-se-link {
+  font-weight: 600;
+  color: var(--ink);
+}
+.manager-metric-link {
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease;
+}
+.manager-metric-link:hover { border-color: color-mix(in srgb, var(--dew-brand) 35%, transparent); }
+
+.se-detail-view .se-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.se-detail-identity { display: flex; gap: 13px; align-items: center; }
+.se-detail-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #efebfd;
+  color: var(--dew-brand);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.se-detail-stats { margin-bottom: 18px; }
+.se-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.se-theme-rows { display: grid; gap: 9px; }
+.se-theme-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(80px, 120px) 40px auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+.se-theme-row--expanded { background: color-mix(in srgb, var(--dew-brand) 8%, transparent); }
+.se-theme-delta { font-size: 11px; white-space: nowrap; }
+.se-accounts-table td:first-child,
+.se-calls-table td:first-child { font-weight: 600; }
+.health-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.health-pill--red { background: #fce8ec; color: #8c2237; }
+.health-pill--green { background: #e6f6ef; color: #0d5c41; }
+.health-pill--amber { background: #fef3e2; color: #8a5a11; }
+
+@media (max-width: 960px) {
+  .se-detail-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 960px) {
+  .manager-team-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .manager-secondary-grid { grid-template-columns: 1fr; }
+}
+
+.coaching-head .coaching-privacy { margin: 6px 0 0; max-width: 52rem; }
+.coaching-provisional-note { margin: 0 0 14px; font-size: 13px; }
+.coaching-stats-types { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.coaching-spine-note { display: block; margin-top: 6px; font-size: 11px; line-height: 1.4; }
+.coaching-two-averages-note {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.coaching-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.coaching-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.coaching-trend-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.coaching-trend-swatch { width: 18px; height: 3px; border-radius: 2px; }
+.coaching-theme-rows { gap: 9px; }
+.coaching-receipts-card { padding: 16px 18px; }
+.coaching-receipts-sub { margin: 0 0 12px; }
+.coaching-receipt-list { display: grid; gap: 12px; }
+.coaching-receipt {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-muted);
+}
+.coaching-receipt-weak { border-color: color-mix(in srgb, var(--danger) 35%, var(--border-soft)); }
+.coaching-receipt-link {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  min-width: 0;
+}
+.coaching-receipt-link:hover .coaching-receipt-quote { text-decoration: underline; }
+.coaching-receipt-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.coaching-receipt-quote {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.coaching-receipt-dispute,
+.coaching-call-dispute {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.coaching-receipt-dispute:hover,
+.coaching-call-dispute:hover { text-decoration: underline; }
+.coaching-calls-card { padding: 0; overflow: hidden; }
+.coaching-calls-table-wrap { overflow-x: auto; }
+.coaching-calls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.coaching-calls-table th,
+.coaching-calls-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+.coaching-calls-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.coaching-call-link {
+  all: unset;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+.coaching-call-link:hover { text-decoration: underline; }
+.coaching-call-score { white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .coaching-charts-grid { grid-template-columns: 1fr; }
+}
 
 /* Manager dashboard table */
 .manager-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }

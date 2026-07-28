@@ -1,0 +1,76 @@
+[
+  {
+    "id": "demo-strong-retail",
+    "callType": "demo",
+    "companyName": "Northwind Retail",
+    "meetingTitle": "Freshdesk Omni demo — ticket deflection",
+    "briefContext": "Agenda: confirm Zendesk renewal pain, show AI agent + self-service, quantify deflection ROI for 400-agent contact center.",
+    "transcript": "WEBVTT\n\n00:00:05.000 --> 00:00:12.000\nSarah Chen: Thanks for joining. Before we jump in, I reviewed your Zendesk renewal notes — you mentioned 18% ticket growth and agent burnout.\n\n00:00:13.000 --> 00:00:22.000\nMike Torres: Yeah, our BPO costs are up and first-response SLA slipped to four hours on email.\n\n00:00:23.000 --> 00:00:35.000\nSarah Chen: Perfect. Today I'll show how a retail support lead — think Maria handling returns — and an agent, James, plus admin Priya configure routing. Does that match your personas?\n\n00:00:36.000 --> 00:00:40.000\nMike Torres: Close enough. We have store associates and a central team.\n\n00:00:41.000 --> 00:00:55.000\nSarah Chen: Great. Quick check — what would success look like ninety days post go-live?\n\n00:00:56.000 --> 00:01:05.000\nMike Torres: Twenty percent deflection on order-status and return-policy questions without hurting CSAT.\n\n00:01:06.000 --> 00:01:25.000\nSarah Chen: I'll anchor on that. Starting with Maria's portal — she sees order 8842 flagged for damaged shipment; the AI agent already suggested a replacement SKU from your catalog feed.\n\n00:01:26.000 --> 00:01:40.000\nMike Torres: How is that different from our current bot?\n\n00:01:41.000 --> 00:02:05.000\nSarah Chen: Fair objection — Zendesk's bot is keyword-driven. Ours uses your order API plus policy docs you uploaded last week. James can override and the note lands in the same ticket thread.\n\n00:02:06.000 --> 00:02:20.000\nSarah Chen: Switching to admin — Priya sets business hours for APAC stores and maps escalation to your Slack channel.\n\n00:02:21.000 --> 00:02:35.000\nMike Torres: What about Salesforce cases?\n\n00:02:36.000 --> 00:02:55.000\nSarah Chen: Bi-directional sync — case 44102 here mirrors SFDC. For ROI, customers your size typically see six-month payback if deflection hits fifteen percent.\n\n00:02:56.000 --> 00:03:10.000\nSarah Chen: Recap: we aligned on deflection target, showed persona-led flow, addressed Zendesk gap. Next step — technical deep dive Thursday with your CRM admin?\n\n00:03:11.000 --> 00:03:15.000\nMike Torres: Yes, send the invite."
+  },
+  {
+    "id": "demo-weak-feature-tour",
+    "callType": "demo",
+    "companyName": "Acme Logistics",
+    "meetingTitle": "Product walkthrough",
+    "transcript": "WEBVTT\n\n00:00:03.000 --> 00:00:10.000\nAlex Kim: Hi, I'll share my screen and walk through the product.\n\n00:00:11.000 --> 00:00:25.000\nAlex Kim: Here is the ticket list. Here is the automation builder. Here is reporting.\n\n00:00:26.000 --> 00:00:35.000\nJordan Lee: Okay.\n\n00:00:36.000 --> 00:00:50.000\nAlex Kim: You can also use AI. Any questions?\n\n00:00:51.000 --> 00:01:00.000\nJordan Lee: Not really.\n\n00:01:01.000 --> 00:01:15.000\nAlex Kim: Great, we can follow up later. Thanks."
+  },
+  {
+    "id": "demo-with-deck",
+    "callType": "demo",
+    "companyName": "Helios Health",
+    "meetingTitle": "Freshservice ITSM demo",
+    "deckLink": "https://example.com/decks/helios-itsm-overview.pdf",
+    "transcript": "WEBVTT\n\n00:00:04.000 --> 00:00:15.000\nPriya Nair: I shared a deck tailored to Helios — slide three maps your incident volume by campus.\n\n00:00:16.000 --> 00:00:28.000\nTom Reed: We saw that. Our ServiceNow project stalled on change advisory board workflows.\n\n00:00:29.000 --> 00:00:45.000\nPriya Nair: I'll jump from slide five into the live tenant — employee Dana submits a VPN issue on mobile, technician Sam gets AI-suggested runbook steps.\n\n00:00:46.000 --> 00:01:05.000\nTom Reed: Does this integrate with Azure AD groups?\n\n00:01:06.000 --> 00:01:20.000\nPriya Nair: Yes — SCIM provisioning. Case study on slide nine: peer hospital cut MTTR thirty-two percent.\n\n00:01:21.000 --> 00:01:35.000\nPriya Nair: Summarizing — CAB automation, employee self-service, measurable MTTR. Can we schedule a pilot scope workshop?"
+  },
+  {
+    "id": "discovery-deep-questions",
+    "callType": "discovery",
+    "companyName": "BrightPay",
+    "meetingTitle": "Discovery — support stack",
+    "transcript": "WEBVTT\n\n00:00:05.000 --> 00:00:18.000\nElena Rossi: Goal today is to understand current state before any demo. What's your ticket volume by channel monthly?\n\n00:00:19.000 --> 00:00:30.000\nChris Park: About 42k — sixty percent chat, thirty email, ten phone.\n\n00:00:31.000 --> 00:00:45.000\nElena Rossi: Who owns the budget for tooling — you or IT?\n\n00:00:46.000 --> 00:01:00.000\nChris Park: Shared. CFO cares about cost per contact; I care about agent retention.\n\n00:01:01.000 --> 00:01:20.000\nElena Rossi: Incumbent is Intercom today — what breaks at scale?\n\n00:01:21.000 --> 00:01:40.000\nChris Park: Routing is manual, no real SLA reporting, AI answers drift from policy.\n\n00:01:41.000 --> 00:02:00.000\nElena Rossi: Pain qualification — if you fix one thing in Q3, is it deflection, quality, or supervisor visibility?\n\n00:02:01.000 --> 00:02:15.000\nChris Park: Supervisor visibility — we can't see why escalations spike Tuesdays.\n\n00:02:16.000 --> 00:02:35.000\nElena Rossi: Competition-wise, are you also talking to Zendesk or staying Freshworks-only evaluation?\n\n00:02:36.000 --> 00:02:50.000\nChris Park: Zendesk quoted last week but implementation timeline scared us.\n\n00:02:51.000 --> 00:03:05.000\nElena Rossi: I'll send a summary and propose a demo focused on supervisor analytics — sound right?"
+  },
+  {
+    "id": "discovery-shallow",
+    "callType": "discovery",
+    "companyName": "QuickShip",
+    "meetingTitle": "Intro call",
+    "transcript": "WEBVTT\n\n00:00:02.000 --> 00:00:12.000\nSam Ortiz: Tell me about your company.\n\n00:00:13.000 --> 00:00:22.000\nPat Nguyen: We do last-mile delivery, about 200 support tickets a day.\n\n00:00:23.000 --> 00:00:35.000\nSam Ortiz: Cool. We have AI and omnichannel. Want a demo next week?\n\n00:00:36.000 --> 00:00:40.000\nPat Nguyen: Sure."
+  },
+  {
+    "id": "demo-heavy-objections",
+    "callType": "demo",
+    "companyName": "GlobalBank EU",
+    "meetingTitle": "Security review demo",
+    "transcript": "WEBVTT\n\n00:00:06.000 --> 00:00:20.000\nNadia Volkov: I'll cover data residency, encryption, and audit trails before features.\n\n00:00:21.000 --> 00:00:35.000\nFrank Muller: We cannot store PII outside EU — non-negotiable.\n\n00:00:36.000 --> 00:00:55.000\nNadia Volkov: Understood. Frankfurt region, keys customer-managed. Here's SOC2 Type II and ISO 27001 summary.\n\n00:00:56.000 --> 00:01:15.000\nFrank Muller: What about model training on our tickets?\n\n00:01:16.000 --> 00:01:35.000\nNadia Volkov: Zero retention for training by default; contract addendum available. Objection you raised on latency — p95 under 400ms in EU.\n\n00:01:36.000 --> 00:01:55.000\nFrank Muller: Our InfoSec will still need a questionnaire.\n\n00:01:56.000 --> 00:02:10.000\nNadia Volkov: I'll attach the SIG Lite today. Next: scoped POC with synthetic data only?"
+  },
+  {
+    "id": "demo-storytelling-focus",
+    "callType": "demo",
+    "companyName": "UrbanEats",
+    "meetingTitle": "Restaurant ops demo",
+    "briefContext": "Prospect runs 120 franchise locations; pain is franchisee support consistency.",
+    "transcript": "WEBVTT\n\n00:00:04.000 --> 00:00:20.000\nLeo Martinez: Meet franchise owner Ana in Austin — her Friday rush sees triple the 'app down' tickets. Shift lead Marco handles kitchen display errors. HQ ops manager Kim sets macros.\n\n00:00:21.000 --> 00:00:35.000\nRita Shah: We need that franchise lens, not generic examples.\n\n00:00:36.000 --> 00:00:55.000\nLeo Martinez: Ana's ticket T-9921 shows POS sync delay; AI pulls the Austin store config, not corporate default.\n\n00:00:56.000 --> 00:01:15.000\nLeo Martinez: Marco escalates to Kim only when fryer integration fails — that's the thread we keep through reporting.\n\n00:01:16.000 --> 00:01:30.000\nRita Shah: How fast can franchisees get answers without calling HQ?\n\n00:01:31.000 --> 00:01:50.000\nLeo Martinez: Target under two minutes for tier-one — Ana's flow shows suggested reply from franchise playbook v3."
+  },
+  {
+    "id": "demo-rushed-close",
+    "callType": "demo",
+    "companyName": "DataPipe SaaS",
+    "meetingTitle": "Mid-market demo",
+    "transcript": "WEBVTT\n\n00:00:03.000 --> 00:00:15.000\nJon Reed: Quick demo today — integrations, AI, dashboards.\n\n00:00:16.000 --> 00:00:40.000\nJon Reed: Salesforce sync, webhook events, sentiment tag on tickets.\n\n00:00:41.000 --> 00:00:55.000\nAmy Cho: What about Jira?\n\n00:00:56.000 --> 00:01:10.000\nJon Reed: Yes, bi-directional. We're almost out of time — I'll email materials.\n\n00:01:11.000 --> 00:01:15.000\nAmy Cho: Okay thanks."
+  },
+  {
+    "id": "discovery-incumbent-comp",
+    "callType": "discovery",
+    "companyName": "Finova",
+    "meetingTitle": "Discovery — renewal evaluation",
+    "transcript": "WEBVTT\n\n00:00:05.000 --> 00:00:20.000\nHannah Lee: You're on Salesforce Service Cloud today — what's driving the look at alternatives?\n\n00:00:21.000 --> 00:00:40.000\nDavid Wu: License cost and slow releases. Agents hate the UI.\n\n00:00:41.000 --> 00:01:00.000\nHannah Lee: Incumbent contract ends when, and is there a bake-off with anyone else?\n\n00:01:01.000 --> 00:01:20.000\nDavid Wu: March renewal. Zendesk and Freshdesk on the short list.\n\n00:01:21.000 --> 00:01:40.000\nHannah Lee: Pain qualification — rank agent experience vs automation vs reporting.\n\n00:01:41.000 --> 00:02:00.000\nDavid Wu: Agent experience first, then automation. Reporting is fine enough.\n\n00:02:01.000 --> 00:02:15.000\nHannah Lee: I'll tailor the demo to agent desktop and AI assist — agree?"
+  },
+  {
+    "id": "demo-research-agenda-gap",
+    "callType": "demo",
+    "companyName": "CloudMint",
+    "meetingTitle": "Scheduled demo",
+    "briefContext": "Brief asked to cover SSO, sandbox provisioning, and admin RBAC for 50 agents.",
+    "transcript": "WEBVTT\n\n00:00:04.000 --> 00:00:15.000\nTaylor Brooks: Jumping straight into the agent inbox — here's ticket routing.\n\n00:00:16.000 --> 00:00:30.000\nCasey Lin: We actually needed SSO and sandbox first per the prep doc.\n\n00:00:31.000 --> 00:00:45.000\nTaylor Brooks: Right, we can cover that later. Here's automation for password resets.\n\n00:00:46.000 --> 00:01:00.000\nCasey Lin: Our security team blocked the last vendor without SAML.\n\n00:01:01.000 --> 00:01:20.000\nTaylor Brooks: We support SAML — I'll show it if we have time. Any other questions on routing?"
+  }
+]

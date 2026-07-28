@@ -3,7 +3,7 @@
  * See docs/ID_STANDARDS.md
  */
 
-/** @typedef {"user"|"team"|"org"|"account"|"contact"|"lifecycle"|"prep"|"postCall"|"task"|"event"|"contactEvent"} EntityIdType */
+/** @typedef {"user"|"team"|"org"|"account"|"contact"|"lifecycle"|"deal"|"prep"|"postCall"|"task"|"event"|"contactEvent"|"scorecard"|"scorecardLine"|"scoreOverride"|"videoFacts"|"timelineSegment"|"timelineMarker"|"followUp"|"objection"|"momDraft"|"meddpiccDelta"|"technicalCommit"|"tcDelta"|"dealSignal"|"dealSummary"|"accountSummary"|"arrLine"|"arrOverride"|"productGap"|"whatWorks"|"gapCluster"} EntityIdType */
 
 export const ID_PREFIXES = {
   user: "usr_",
@@ -12,11 +12,32 @@ export const ID_PREFIXES = {
   account: "acc_",
   contact: "con_",
   lifecycle: "lc_",
+  deal: "deal_",
   prep: "prep_",
   postCall: "call_",
   task: "task_",
   event: "evt_",
   contactEvent: "cevt_",
+  scorecard: "scr_",
+  scorecardLine: "scl_",
+  scoreOverride: "sov_",
+  videoFacts: "vf_",
+  timelineSegment: "tls_",
+  timelineMarker: "tlm_",
+  followUp: "fu_",
+  objection: "obj_",
+  momDraft: "mom_",
+  meddpiccDelta: "mdd_",
+  technicalCommit: "tc_",
+  tcDelta: "tcd_",
+  dealSignal: "dsig_",
+  dealSummary: "dsum_",
+  accountSummary: "asum_",
+  arrLine: "arl_",
+  arrOverride: "aov_",
+  productGap: "pgap_",
+  whatWorks: "ww_",
+  gapCluster: "gclus_",
 };
 
 /**

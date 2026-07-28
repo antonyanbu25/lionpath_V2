@@ -11,13 +11,9 @@ import {
 import { setSession } from "./auth.js";
 import { refreshUserMenu } from "./user-menu.js";
 import { readFieldValue } from "./crayons-ui.js";
+import { esc } from "./shared.js";
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function initialsFromName(name, email) {
   const n = String(name || "").trim();

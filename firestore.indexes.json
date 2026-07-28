@@ -106,11 +106,294 @@
       ]
     },
     {
+      "collectionGroup": "deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lifecycles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lifecycles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "events",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "lifecycleId", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rubrics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callType", "order": "ASCENDING" },
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "version", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rubricThemes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rubricId", "order": "ASCENDING" },
+        { "fieldPath": "themeKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scorecards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scorecards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scorecards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scorecardLines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scorecardId", "order": "ASCENDING" },
+        { "fieldPath": "themeKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scorecardLines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "themeKey", "order": "ASCENDING" },
+        { "fieldPath": "applicable", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scoreOverrides",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scorecardLineId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "videoFacts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineSegments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "videoFactsId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineSegments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" },
+        { "fieldPath": "startS", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineSegments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" },
+        { "fieldPath": "source", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineMarkers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" },
+        { "fieldPath": "atS", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "followUps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "followUps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "objections",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "momDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "postCalls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dealSignals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dealSignals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "postCalls",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dealSummaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountSummaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "arrLines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "callId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "arrLines",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealId", "order": "ASCENDING" },
+        { "fieldPath": "computedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "momDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "productGaps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "productGaps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "postCallId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gapClusters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "arrTotal", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "whatWorks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "postCallId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "whatWorks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "technicalCommits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     }
   ],

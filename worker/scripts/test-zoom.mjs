@@ -1,12 +1,27 @@
-import { fetchTranscriptFromShareLink } from "../src/zoomShare.ts";
+import { fetchRecordingFromShareLink, preferredMediaStream } from "../src/zoomShare.ts";
 
-const url =
-  "https://freshworks.zoom.us/rec/share/6MEJ2k7HpXytcPxctK3QbdjAXa5Ia8HKudeGuaCXLCzvJR6kGukUbvTPPVPtzrNK.6vmMiETOazxB3hML";
-const pwd = "$QmaE6xD";
+const url = process.argv[2];
+const pwd = process.argv[3];
+if (!url) {
+  console.error("Usage: node --import tsx scripts/test-zoom.mjs <share-url> [passcode]");
+  process.exit(1);
+}
 
 try {
-  const r = await fetchTranscriptFromShareLink(url, pwd);
-  console.log("OK", r.source, r.topic, r.transcript.slice(0, 300));
+  const r = await fetchRecordingFromShareLink(url, pwd);
+  const preferred = preferredMediaStream(r.media);
+  console.log("OK", {
+    source: r.source,
+    topic: r.topic,
+    transcriptChars: r.transcript.length,
+    mediaStreams: r.media?.streams.map((s) => s.kind) ?? [],
+    preferredKind: preferred?.kind,
+    durationSec: r.media?.durationSec,
+    disableDownload: r.media?.disableDownload,
+    totalClips: r.media?.totalClips,
+  });
+  console.log(r.transcript.slice(0, 300));
 } catch (e) {
-  console.error("FAIL", e.message);
+  console.error("FAIL", e instanceof Error ? e.message : e);
+  process.exit(1);
 }

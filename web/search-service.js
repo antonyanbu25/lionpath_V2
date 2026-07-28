@@ -3,6 +3,7 @@
  */
 
 import { listAccountsForSession } from "./domain/account-service.js";
+import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
 import { STAGE_LABELS } from "./domain/types.js";
@@ -31,14 +32,15 @@ function collectTokens(parts) {
 
 /** Build searchable token list for an account row. */
 export function accountRowTokens(row, contacts = []) {
-  const { account, lifecycle, seTeamDisplay } = row;
-  const stageLabel = STAGE_LABELS[lifecycle?.stage] || lifecycle?.stage || "";
+  const { account, lifecycle, seTeamDisplay, dealTypeLabel, dealStage } = row;
+  const stageLabel = STAGE_LABELS[dealStage || lifecycle?.stage] || lifecycle?.stage || "";
   const parts = [
     account?.name,
     account?.domain,
     lifecycle?.title,
     stageLabel,
-    lifecycle?.stage,
+    dealStage || lifecycle?.stage,
+    dealTypeLabel,
   ];
   for (const m of seTeamDisplay || []) {
     parts.push(m.user?.displayName, m.user?.jobTitle);
@@ -56,6 +58,36 @@ export function filterAccountRows(rows, query, contactsByAccountId = {}) {
   return rows.filter((row) => {
     const contacts = row.contacts || contactsByAccountId[row.account?.id] || [];
     const rowTokens = accountRowTokens(row, contacts);
+    return tokens.every((t) => rowTokens.some((rt) => rt.includes(t)));
+  });
+}
+
+/** Build searchable tokens for a deal list row. */
+export function dealRowTokens(row) {
+  const { deal, account, primarySeName } = row;
+  const stageLabel = STAGE_LABELS[deal?.stage] || deal?.stage || "";
+  const typeLabel = DEAL_TYPE_LABELS[deal?.type] || deal?.type || "";
+  const statusLabel =
+    deal?.status === "archived" ? "archived"
+    : deal?.status === "paused" ? "paused"
+    : "active";
+  return collectTokens([
+    account?.name,
+    account?.domain,
+    deal?.title,
+    typeLabel,
+    stageLabel,
+    statusLabel,
+    primarySeName,
+  ]);
+}
+
+/** Filter deal rows by query (account, deal title, stage, motion, SE). */
+export function filterDealRows(rows, query) {
+  const tokens = tokenizeQuery(query);
+  if (!tokens.length) return rows;
+  return rows.filter((row) => {
+    const rowTokens = dealRowTokens(row);
     return tokens.every((t) => rowTokens.some((rt) => rt.includes(t)));
   });
 }

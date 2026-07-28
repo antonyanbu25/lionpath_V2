@@ -110,10 +110,14 @@ function workerBaseUrl() {
     if (host.endsWith(".run.app")) {
       return "https://prep-portal-api-781846715448.us-central1.run.app";
     }
-    // Local dev: same hostname, port 8787 (localhost:8788 → localhost:8787)
+    // Local dev: pin to IPv4 loopback. Worker may be IPv4-only; Chrome often
+    // resolves "localhost" to ::1 first and surfaces that as Failed to fetch.
+    if (host === "localhost" || host === "127.0.0.1") {
+      return `${location.protocol}//127.0.0.1:8787`;
+    }
     return `${location.protocol}//${host}:8787`;
   }
-  return "http://localhost:8787";
+  return "http://127.0.0.1:8787";
 }
 
 // Manual override (uncomment while testing a different tunnel domain):

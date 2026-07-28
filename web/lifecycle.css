@@ -102,6 +102,1685 @@
   margin-bottom: 16px;
 }
 
+/* Account workspace */
+.account-list-view,
+.account-record {
+  font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.account-record-top {
+  position: static;
+  z-index: auto;
+  background: var(--dew-surface, #fff);
+  margin: 0 0 16px;
+  padding-bottom: 0;
+  flex: 0 0 auto;
+  border: 1px solid var(--dew-border, #e4e7ec);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(18, 52, 77, 0.06));
+}
+
+.account-record.account-detail {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.account-record--overview .account-overview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.account-overview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 16px;
+  align-items: start;
+  padding: 0 18px 18px;
+}
+
+/* Account overview — wireframe v4 */
+.account-record--overview .account-record-top--wireframe {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 16px;
+}
+
+.account-record--overview .account-command-chrome {
+  padding: 0 18px;
+}
+
+.account-record--overview .account-command-header--overview-wire {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: flex-start;
+  gap: 12px 20px;
+  padding: 0;
+}
+
+.account-record--overview .account-command-header-title h2 {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.account-record--overview .account-command-header-domain {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.account-record--overview .account-header-arr-value {
+  color: var(--dew-text, var(--text));
+}
+
+.account-record--overview .account-overview-layout {
+  padding: 0 18px 18px;
+}
+
+.account-record--overview .account-overview-main,
+.account-record--overview .account-overview-aside {
+  gap: 14px;
+}
+
+.account-record--overview .account-record-section {
+  margin-bottom: 0;
+}
+
+.account-record--overview .account-record-section--card {
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: none;
+  padding: 18px 16px;
+}
+
+.account-record--overview .account-record-section--tight {
+  padding: 14px 16px;
+}
+
+.account-record--overview .account-deals-on-account.account-record-section--card,
+.account-record--overview .account-calls-on-account.account-record-section--card {
+  padding: 18px 8px 4px;
+}
+
+.account-record--overview .account-section-eyebrow {
+  margin-bottom: 11px;
+}
+
+.account-record--overview .account-deals-eyebrow,
+.account-record--overview .account-calls-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.account-record--overview .account-generated-summary-body {
+  margin-top: 0;
+  line-height: 1.7;
+}
+
+.account-record--overview .account-deals-on-account-table th:first-child,
+.account-record--overview .account-deals-on-account-table td:first-child,
+.account-record--overview .account-calls-on-account-table th:first-child,
+.account-record--overview .account-calls-on-account-table td:first-child {
+  padding-left: 14px;
+}
+
+.account-record--overview .account-deals-on-account-name,
+.account-record--overview .account-calls-on-account-title {
+  font-weight: 600;
+}
+
+.account-record--overview .account-deals-on-account-row:hover,
+.account-record--overview .account-calls-on-account-row:hover {
+  background: var(--dew-surface-subtle);
+}
+
+.account-record--overview .account-deals-on-account-row:focus-visible,
+.account-record--overview .account-calls-on-account-row:focus-visible {
+  outline: 2px solid var(--dew-primary, var(--fw-primary-color));
+  outline-offset: -2px;
+}
+
+.account-record--overview .account-calls-date-short {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+}
+
+.account-record--overview .account-cross-sell-hint--wire {
+  border: none;
+  border-radius: 0;
+  padding: 12px 14px 4px;
+  margin: 0;
+  background: transparent;
+}
+
+.account-record--overview .account-gaps-placeholder {
+  border: none;
+  border-radius: var(--dew-radius-md);
+  padding: 14px 0 4px;
+  text-align: left;
+  background: transparent;
+}
+
+.account-record--overview .account-arr-module--wireframe-sidebar .account-arr-derivation {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+
+.account-record--overview .account-arr-derivation-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-record--overview .account-arr-derivation-row--total {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dew-border);
+  font-weight: 700;
+}
+
+.account-record--overview .account-arr-module--wireframe-sidebar .account-attach-matrix-wrap {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dew-border);
+}
+
+.account-record--overview .account-arr-module--wireframe-sidebar .account-attach-matrix-title {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.account-record--overview .account-contacts-section--sidebar-compact .account-contacts-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-record--overview .account-contact-row--sidebar-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.account-record--overview .account-contact-row--sidebar-compact:hover {
+  background: transparent;
+}
+
+.account-record--overview .account-contact-row--sidebar-compact.account-contact-row--selected {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+.account-record--overview .account-contact-row--sidebar-compact .account-contact-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+  background: var(--dew-purple-tint, var(--purple-bg));
+  color: var(--dew-brand, var(--brand));
+}
+
+.account-record--overview .account-contact-row-sub {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.account-record--overview .account-eval-footnote {
+  font-size: 11px;
+  margin: 7px 0 0;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+}
+
+.account-record--overview .account-economic-buyer-empty {
+  margin-top: 10px;
+}
+
+@media (max-width: 960px) {
+  .account-record--overview .account-command-header--overview-wire {
+    grid-template-columns: auto 1fr;
+  }
+
+  .account-record--overview .account-header-arr,
+  .account-record--overview .account-command-header-actions {
+    grid-column: 1 / -1;
+  }
+
+  .account-record--overview .account-header-arr {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-record--overview .account-deals-on-account-row,
+  .account-record--overview .account-calls-on-account-row,
+  .account-record--overview .account-contact-row--sidebar-compact {
+    transition: none;
+  }
+}
+
+.account-overview-main,
+.account-overview-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.account-command-header--with-arr {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 12px 16px;
+}
+
+.account-header-arr {
+  text-align: right;
+  align-self: center;
+}
+
+.account-header-arr-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--navy, #0f2e4c);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-header-arr-label {
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.account-firmographics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+  font-size: 13px;
+}
+
+.account-firmographics-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-deals-on-account-wrap,
+.account-calls-on-account-wrap {
+  overflow-x: auto;
+}
+
+.account-deals-on-account-table,
+.account-calls-on-account-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.account-deals-on-account-table th,
+.account-calls-on-account-table th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3, #93a0b4);
+  font-weight: 700;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-deals-on-account-table td,
+.account-calls-on-account-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+  vertical-align: middle;
+}
+
+.account-deals-on-account-row,
+.account-calls-on-account-row {
+  cursor: pointer;
+}
+
+.account-deals-on-account-row:hover,
+.account-calls-on-account-row:hover {
+  background: var(--dew-surface-muted, #f5f7f9);
+}
+
+.account-list-num {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.account-gaps-placeholder {
+  border: 1px dashed var(--dew-hairline, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.account-economic-buyer-empty {
+  border: 1px dashed var(--dew-hairline, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 13px;
+  margin: 10px 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-2, #5a6b82);
+  background: var(--dew-surface-muted, #fafbfc);
+}
+
+.account-cross-sell-hint {
+  border: 1px dashed var(--dew-hairline, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: -8px;
+}
+
+.account-arr-module .account-arr-totals {
+  margin-bottom: 14px;
+}
+
+.account-arr-total-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-arr-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.account-attach-matrix-wrap {
+  margin-top: 12px;
+}
+
+.account-attach-matrix-title,
+.account-arr-subtitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.account-attach-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.account-attach-matrix th,
+.account-attach-matrix td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+  text-align: center;
+  vertical-align: middle;
+}
+
+.account-attach-matrix-addon {
+  text-align: left !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.account-attach-cell--attached {
+  color: var(--green, #127a56);
+  font-weight: 600;
+}
+
+.account-attach-cell--discussed {
+  color: var(--amber, #b7791f);
+  font-weight: 700;
+}
+
+.account-arr-cross-sell-list,
+.account-arr-unquantified-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.account-reason-body,
+.account-why-ai-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.account-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 16px;
+  align-items: start;
+  min-height: 0;
+}
+
+.account-opportunities-section .account-record-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.account-opportunities-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.account-opportunities-table .account-opportunities-row {
+  cursor: pointer;
+}
+
+.account-opportunities-table .account-opportunities-row:hover {
+  background: var(--dew-surface-muted, #f5f7f9);
+}
+
+.account-opportunities-open-col {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 960px) {
+  .account-overview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .account-command-header--with-arr {
+    grid-template-columns: auto 1fr;
+  }
+
+  .account-header-arr {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}
+
+@media (max-width: 960px) {
+  .account-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.account-command-chrome {
+  position: static;
+  z-index: auto;
+  background: transparent;
+  margin: 0;
+  padding: 14px 18px 0;
+  border-bottom: none;
+  box-shadow: none;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.account-meta-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 12px 32px;
+  padding: 12px 0 14px;
+  min-height: 0;
+  overflow: visible;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-meta-rail__cell--contact {
+  max-width: 200px;
+}
+
+.account-meta-rail__cell--contact .account-meta-rail__value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-meta-rail__cell--type {
+  min-width: 148px;
+}
+
+.account-meta-rail__cell--type .account-meta-rail-type-select {
+  min-width: 140px;
+}
+
+.account-meta-rail__cell--type fw-select {
+  --fw-label-font-size: 0;
+}
+
+.account-pursuit-command__stage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.account-pursuit-command--pipeline-only {
+  padding-top: 12px;
+}
+
+.account-pursuit-bar--pipeline-only {
+  border-top: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-pursuit-band {
+  margin: 0;
+  padding: 0;
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  overflow: visible;
+  border-top: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-pursuit-command {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px 18px 16px;
+  width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  background: var(--dew-surface-subtle, #f8f9fb);
+  border: none;
+  border-radius: 0;
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.account-pursuit-command__top {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr) auto;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.account-pursuit-command__intro {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-pursuit-command__eyebrow {
+  color: var(--dew-text-secondary, #5a6570);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.account-pursuit-command__hint {
+  color: var(--dew-text-muted, #6b7785);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.account-pursuit-command__stage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-pursuit-command__controls--type {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.account-deal-type-select {
+  min-width: 10.5rem;
+  max-width: 14rem;
+}
+
+.account-deal-type-empty-hint {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.account-deal-type-empty-hint--pipeline {
+  margin: 0;
+  padding: 8px 0;
+}
+
+.account-pursuit-motion--segmented {
+  --segmented-bg: var(--dew-surface-subtle, #eef1f4);
+}
+
+.account-pursuit-command__controls--segmented {
+  flex-wrap: nowrap;
+}
+
+.lifecycle-pipeline-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  margin-right: 4px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.lifecycle-pipeline-step--current .lifecycle-pipeline-step-num {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.account-contacts-split {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.account-contacts-list-scroll {
+  max-height: min(168px, 28vh);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.account-contact-row--selectable {
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  border: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+  background: var(--dew-surface, #fff);
+}
+
+.account-contact-row--selectable:hover {
+  border-color: var(--dew-border, #d0d7de);
+  background: var(--dew-surface-faint, #fafbfc);
+}
+
+.account-contact-row--selected {
+  border-color: var(--dew-brand, #276cf0);
+  background: var(--dew-brand-subtle, rgba(39, 108, 240, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(39, 108, 240, 0.12);
+}
+
+.account-contact-row-name-text {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.account-contact-selected-panel {
+  padding-top: 10px;
+  border-top: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.account-contact-detail-hero--inline {
+  margin-bottom: 10px;
+}
+
+.account-contact-selected-title {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.account-contact-evidence-heading {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, #6b7785);
+}
+
+.account-meddpicc-details--expanded .account-meddpicc-summary {
+  cursor: default;
+}
+
+.meddpicc-field-grid--sidebar {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.meddpicc-field--compact {
+  grid-template-columns: auto 1fr;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+}
+
+.meddpicc-field--compact .meddpicc-field-body {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meddpicc-field--compact .meddpicc-field-status {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .account-pursuit-command__pipeline .account-record-pipeline--inline {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+}
+
+.account-pursuit-command:not(:has(.account-pursuit-handoff fw-button)) .account-pursuit-command__handoff {
+  display: none;
+}
+
+.account-pursuit-command__controls .account-pursuit-motion {
+  flex-shrink: 0;
+}
+
+.account-pursuit-command__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  max-width: none;
+}
+
+.account-pursuit-command__pipeline {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.account-pursuit-command__handoff {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.account-pursuit-command__handoff:empty {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .account-pursuit-command__top {
+    grid-template-columns: 1fr auto;
+  }
+
+  .account-pursuit-command__intro {
+    grid-column: 1 / -1;
+    align-self: start;
+  }
+
+  .account-pursuit-command__controls {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
+  .account-pursuit-command__handoff {
+    justify-self: end;
+  }
+}
+
+.account-record-pipeline--inline .lifecycle-pipeline-track--inline {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  min-width: min-content;
+}
+
+.account-record-pipeline--inline .lifecycle-pipeline-open--compact,
+.account-record-pipeline--inline .lifecycle-pipeline-terminal--compact {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.account-record-pipeline--inline .lifecycle-pipeline-terminal-steps {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  align-items: center;
+}
+
+.account-record-pipeline--inline .lifecycle-pipeline-connector--inline {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: var(--dew-border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.account-pursuit-command__pipeline .account-record-pipeline--compact {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: min-content;
+}
+
+.account-pursuit-command__pipeline .lifecycle-pipeline-open--compact {
+  display: flex;
+  flex-wrap: nowrap;
+  margin-bottom: 0;
+}
+
+.account-pursuit-command__pipeline .lifecycle-pipeline-terminal--compact {
+  display: flex;
+  flex-wrap: nowrap;
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.account-command-header {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 0 0 6px;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.account-command-header-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-command-header-title h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-command-header-actions {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.account-meta-rail__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(280px, 100%);
+}
+
+.account-meta-rail__cell--contact {
+  max-width: 200px;
+}
+
+.account-meta-rail__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--fw-color-text-tertiary, #92a2b1));
+  line-height: 1.2;
+}
+
+.account-meta-rail__value {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--dew-text, inherit);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+
+.account-meta-rail__value .lifecycle-stage-badge,
+.account-meta-rail__value fw-tag {
+  vertical-align: middle;
+}
+
+.account-pursuit-handoff {
+  margin-top: 0;
+  align-self: center;
+}
+
+.account-command-deck {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.95fr) minmax(360px, 1.65fr) minmax(260px, 1.05fr);
+  gap: 14px;
+  align-items: stretch;
+  margin-top: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.account-command-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--dew-surface, #fff);
+  border: 1px solid var(--dew-border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(18, 52, 77, 0.06));
+}
+
+.account-command-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.account-command-panel--activity .account-command-panel-scroll {
+  max-height: none;
+  overflow-y: auto;
+}
+
+.account-command-panel--activity {
+  background: var(--dew-surface, #fff);
+}
+
+.account-record .account-command-header-title h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.account-contacts-row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-contact-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
+  background: var(--dew-surface, #fff);
+}
+
+.account-contact-row-avatar {
+  margin-top: 2px;
+}
+
+.account-contact-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.account-contact-row-name {
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0;
+  min-height: auto;
+  order: 0;
+}
+
+.account-contact-row-title {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  flex: 1 1 100%;
+  order: 2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-contact-row-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  order: 1;
+  margin-top: 0;
+}
+
+.account-contact-row-activity-btn {
+  flex-shrink: 0;
+}
+
+.account-contact-row-expand {
+  margin: 0 0 8px 0;
+  padding: 8px 10px 10px 42px;
+  border: 1px solid var(--dew-hairline);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--dew-surface-faint, #fafbfc);
+  margin-top: -6px;
+}
+
+/* Legacy summary strip (unused in v4; kept for reference) */
+.account-record-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 4px;
+  padding: 8px 0 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.06));
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.account-summary-sep {
+  color: var(--fw-color-text-tertiary, #999);
+  user-select: none;
+  padding: 0 2px;
+}
+
+.account-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.account-summary-primary-contact strong {
+  font-weight: 600;
+}
+
+.account-summary-contact-email {
+  font-size: 0.8125rem;
+}
+
+.account-summary-icp-suffix {
+  font-size: 0.75rem;
+  margin-left: 2px;
+}
+
+.account-deals-details {
+  margin-top: 12px;
+}
+
+.account-generated-summary {
+  margin-bottom: 16px;
+}
+
+.account-generated-summary-meta {
+  font-size: 0.8125rem;
+}
+
+.account-generated-summary-body {
+  margin: 8px 0 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.account-generated-summary--empty .muted {
+  margin: 4px 0 0;
+}
+
+.account-deals-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 10px;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.account-deals-summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-deals-summary-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.account-deals-body {
+  padding: 8px 0 0;
+}
+
+.account-deals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.account-deals-table th,
+.account-deals-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.account-deals-row {
+  cursor: pointer;
+}
+
+.account-deals-row:hover {
+  background: var(--fw-color-bg-secondary, rgba(0, 0, 0, 0.03));
+}
+
+.account-deals-row--selected {
+  background: var(--fw-color-bg-brand-subtle, rgba(74, 144, 217, 0.08));
+}
+
+.account-contact-name-link {
+  padding: 0;
+  min-height: auto;
+  font-weight: 600;
+  text-align: left;
+}
+
+.account-contact-detail-panel {
+  padding: 0 4px;
+}
+
+.account-contact-detail-head {
+  margin-bottom: 12px;
+}
+
+.account-contact-detail-hero {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.account-contact-detail-avatar {
+  flex-shrink: 0;
+}
+
+.account-contact-detail-name {
+  margin: 0 0 4px;
+  font-size: 1.125rem;
+}
+
+.account-contact-detail-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.account-record-subheader {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+  display: block;
+  box-shadow: none;
+}
+
+.account-pursuit-row--controls {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.account-pursuit-motion {
+  min-width: 0;
+}
+
+.account-engagement-menu--compact .account-engagement-menu-summary {
+  padding: 4px 10px;
+  font-size: 1.1rem;
+  line-height: 1;
+  letter-spacing: 0.12em;
+}
+
+.account-engagement-menu {
+  position: relative;
+}
+
+.account-engagement-menu-summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fw-color-text-primary, inherit);
+  list-style: none;
+  padding: 6px 10px;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.account-engagement-menu-summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-engagement-menu-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 240px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--fw-color-bg-primary, #fff);
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.account-pursuit-handoff {
+  margin-top: 2px;
+}
+
+.account-record-tabs-head {
+  margin-bottom: 10px;
+}
+
+.account-record-tabs-head .account-detail-search {
+  width: 100%;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.account-record-col--left .account-detail-card {
+  margin-bottom: 12px;
+  box-shadow: none;
+}
+
+.account-deal-team-section,
+.account-meddpicc-details {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.account-meddpicc-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 10px;
+  margin-bottom: 0;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.account-meddpicc-summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-meddpicc-summary-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.account-meddpicc-details[open] .account-meddpicc-summary {
+  margin-bottom: 10px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.account-meddpicc-body {
+  padding: 0 10px 10px;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--fw-color-bg-primary, #fff);
+}
+
+.account-contacts-table-wrap--scroll {
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+}
+
+.account-contacts-table--compact {
+  font-size: 0.8125rem;
+}
+
+.account-contacts-table--compact th,
+.account-contacts-table--compact td {
+  padding: 6px 8px;
+}
+
+.account-contacts-meta-col,
+.account-contacts-meta-cell,
+.account-contacts-action-col {
+  width: 2.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.account-contacts-action-col {
+  width: auto;
+  text-align: right;
+}
+
+.account-contacts-name-cell {
+  min-width: 8rem;
+}
+
+.account-contact-email-inline {
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.contact-meta-abbrev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--dew-surface-subtle, #eef1f4);
+  color: inherit;
+}
+
+.contact-meta-abbrev--disc {
+  background: #e8f0fe;
+  color: #1a5a8a;
+}
+
+.contact-meta-abbrev--influence--high {
+  background: #eef6ee;
+  color: #2d6a2d;
+}
+
+.contact-meta-abbrev--influence--medium {
+  background: #fff4e5;
+  color: #8a5a1a;
+}
+
+.contact-meta-abbrev--influence--low {
+  background: var(--dew-surface-subtle, #eef1f4);
+  color: var(--dew-text-secondary, #5a6570);
+}
+
+.contact-meta-abbrev--primary {
+  background: #e8f0fe;
+  color: var(--dew-brand, #276cf0);
+  font-size: 0.85rem;
+}
+
+.contact-meta-abbrev--empty {
+  font-weight: 400;
+  background: transparent;
+}
+
+.account-contacts-title-cell {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-record-col--left .account-detail-card fw-card {
+  box-shadow: none;
+}
+
+.account-deal-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+}
+
+.account-subheader-trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-record-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px 24px;
+  align-items: start;
+}
+
+.account-record-col--left {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.account-record-col--right {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.account-record-contacts-band {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+.account-record-contacts-band .account-contacts-section {
+  margin-bottom: 0;
+}
+
+@media (max-width: 960px) {
+  .account-record-top {
+    overflow: visible;
+  }
+
+  .account-command-chrome,
+  .account-pursuit-command {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .account-pursuit-command__top {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .account-pursuit-command__controls {
+    width: 100%;
+  }
+
+  .account-pursuit-command__handoff {
+    justify-self: start;
+    margin-left: 0;
+  }
+
+  .account-pursuit-command__stage {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .account-command-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .account-command-panel--activity {
+    order: 1;
+  }
+
+  .account-command-panel--contacts {
+    order: 2;
+  }
+
+  .account-command-panel--reference {
+    order: 3;
+  }
+
+  .account-command-panel-scroll {
+    max-height: none;
+  }
+
+  .account-record-body {
+    grid-template-columns: 1fr;
+  }
+
+  .account-record-col--left,
+  .account-record-col--right,
+  .account-record-contacts-band {
+    grid-column: 1;
+  }
+
+  .account-record-col--left {
+    grid-row: 1;
+  }
+
+  .account-record-col--right {
+    grid-row: 2;
+  }
+
+  .account-record-contacts-band {
+    grid-row: 3;
+  }
+}
+
+.account-record-section {
+  margin-bottom: 14px;
+}
+
+.account-record-section-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.account-record-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.account-contacts-table-wrap {
+  overflow-x: auto;
+}
+
+.account-contacts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.account-contacts-table th,
+.account-contacts-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  vertical-align: top;
+}
+
+.account-contacts-expand-row td {
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.lifecycle-list-item.account-list-item {
+  padding: 10px 12px;
+}
+
+.account-list-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.prep-motion-row {
+  margin-bottom: 12px;
+  max-width: 520px;
+}
+
+.prep-motion-from-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lifecycle-pipeline-open--compact {
+  margin-bottom: 6px;
+}
+
+.lifecycle-pipeline-terminal--compact {
+  margin-top: 4px;
+}
+
 @media (max-width: 900px) {
   .account-detail-grid {
     grid-template-columns: 1fr;
@@ -615,4 +2294,2248 @@
 
 .account-list-primary-se {
   font-weight: 500;
+}
+
+/* Accounts list — wireframe v4 compact grid */
+#view-accounts .account-list-view--compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.account-list-view--compact .account-list-toolbar--compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+
+.account-list-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.account-list-view--compact .account-list-heading {
+  margin: 0 0 4px;
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex: 0 0 auto;
+  color: var(--dew-text-primary, var(--text));
+}
+
+.account-list-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.account-list-view--compact .account-list-search {
+  flex: 0 1 200px;
+  width: 200px;
+  max-width: 100%;
+  margin-bottom: 0;
+}
+
+#view-accounts .account-list-metrics {
+  margin: 0 0 18px;
+}
+
+#view-accounts .account-list-metrics .account-list-stat {
+  box-shadow: none;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  transition: border-color var(--transition, 0.15s ease);
+}
+
+#view-accounts .account-list-metrics .account-list-stat:hover {
+  box-shadow: none;
+  border-color: var(--dew-border-strong, var(--dew-border));
+}
+
+#view-accounts .account-list-metrics .dash-stat-value {
+  font-size: 1.625rem;
+  letter-spacing: -0.02em;
+  color: var(--dew-text-primary, var(--text));
+}
+
+#view-accounts .account-list-metrics .dash-stat-value.weak {
+  color: var(--danger);
+}
+
+#view-accounts .account-list-metrics .dash-stat-sub {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.72rem;
+}
+
+#view-accounts .account-list-table-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+}
+
+.account-list-view--compact {
+  --account-list-cols: minmax(160px, 2fr) 72px 52px 88px 88px minmax(72px, 1fr) 52px 88px 64px;
+}
+
+.account-list-view--compact .lifecycle-list {
+  gap: 0;
+}
+
+.account-list-view--compact .account-list-item.account-list-row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 11px 14px !important;
+  border: none !important;
+  border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06)) !important;
+  border-radius: 0 !important;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.account-list-view--compact .account-list-item.account-list-row:last-child {
+  border-bottom: none;
+}
+
+.account-list-view--compact .account-list-item.account-list-row:hover {
+  background: var(--dew-surface-subtle);
+}
+
+.account-list-view--compact .account-list-item.account-list-row:focus-visible {
+  outline: 2px solid var(--dew-primary, var(--fw-primary-color, #2c5cc5));
+  outline-offset: 1px;
+}
+
+.account-list-grid-header,
+.account-list-row-grid {
+  display: grid;
+  grid-template-columns: var(--account-list-cols, minmax(180px, 2.4fr) 96px 112px 128px 112px);
+  gap: 8px 16px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.account-list-grid-header {
+  padding: 0 14px 8px;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--muted));
+  border-bottom: 1px solid var(--dew-border);
+  margin-bottom: 0;
+}
+
+#view-accounts .account-list-table-card .account-list-no-matches {
+  padding: 12px 14px 16px;
+  margin: 0;
+}
+
+.account-list-view--compact .account-list-item:not(.account-list-row) {
+  padding: 8px 12px !important;
+  border-radius: 8px;
+}
+
+.account-command-header-domain {
+  margin: 2px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.account-record .account-command-header-title h2 {
+  margin-bottom: 0;
+}
+
+.account-list-row-grid .account-list-col {
+  min-width: 0;
+  font-size: 0.9rem;
+  overflow: hidden;
+}
+
+.account-list-col--stage .lifecycle-stage-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.account-list-col--motion {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.account-list-motion-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.account-list-motion-badge--new-business {
+  background: rgba(44, 92, 197, 0.12);
+  color: #1e4fad;
+}
+
+.account-list-motion-badge--expansion {
+  background: rgba(180, 130, 0, 0.15);
+  color: #8a6500;
+}
+
+.account-list-col--stage fw-tag,
+.account-list-col--motion fw-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-list-col--se {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-list-col--company {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.account-list-row-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.account-list-row-mobile-meta {
+  display: none;
+  font-size: 0.8125rem;
+}
+
+.account-list-row-secondary-tag {
+  margin-top: 2px;
+}
+
+@media (max-width: 959px) {
+  .account-list-view--compact .account-list-toolbar--compact {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-list-view--compact .account-list-search {
+    flex-basis: auto;
+    max-width: none;
+    width: 100%;
+  }
+
+  .account-list-grid-header {
+    display: none;
+  }
+
+  .account-list-row-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .account-list-col--stage,
+  .account-list-col--motion,
+  .account-list-col--se,
+  .account-list-col--activity,
+  .account-list-col--score {
+    display: none;
+  }
+
+  .account-list-row-mobile-meta {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-accounts .account-list-metrics .account-list-stat {
+    transition: none;
+  }
+}
+
+/* Deals list (mirrors account list compact) */
+.deal-list-view,
+.deal-list-view--compact {
+  font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#view-deals .deal-list-view--compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  --deal-list-cols:
+    minmax(120px, 1.4fr) minmax(88px, 1fr) 88px 92px 72px 44px 72px 72px 64px 72px 56px;
+}
+
+.deal-list-footnote {
+  margin: 12px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.deal-list-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.deal-list-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deal-list-money--low-confidence {
+  color: var(--dew-text-muted, #667085);
+  font-style: italic;
+}
+
+.deal-list-money-mark {
+  margin-left: 2px;
+  color: var(--amber, #f57f17);
+  font-weight: 700;
+  font-style: normal;
+}
+
+.deal-list-sort-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.deal-list-sort-btn:hover {
+  color: var(--dew-text, #101828);
+}
+
+.deal-list-sort-btn--active {
+  color: var(--dew-text, #101828);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.deal-list-silent {
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-list-silent--cold {
+  color: var(--red, #d92d20);
+}
+
+.deal-list-silent--hot {
+  color: var(--dew-text-muted, #667085);
+}
+
+.deal-list-silent--warm {
+  color: var(--dew-text-muted, #667085);
+}
+
+.deal-list-toolbar--compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 18px;
+}
+
+#view-deals .deal-list-heading {
+  margin: 0 0 4px;
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+#view-deals .deal-list-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.deal-list-search {
+  flex: 0 1 200px;
+  width: 200px;
+  max-width: 100%;
+  min-width: 180px;
+}
+
+#view-deals .deal-list-metrics-host {
+  margin-bottom: 18px;
+}
+
+#view-deals .deal-list-metrics {
+  margin: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+#view-deals .deal-list-metrics .deal-list-stat {
+  box-shadow: none;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  transition: border-color var(--transition, 0.15s ease);
+}
+
+#view-deals .deal-list-metrics .deal-list-stat:hover {
+  box-shadow: none;
+}
+
+#view-deals .deal-list-stat .dash-stat-value {
+  font-size: 1.625rem;
+  letter-spacing: -0.02em;
+}
+
+#view-deals .deal-list-stat .dash-stat-value.deal-list-stat-warn {
+  color: var(--amber);
+}
+
+#view-deals .deal-list-stat .dash-stat-value.deal-list-stat-danger {
+  color: var(--danger);
+}
+
+#view-deals .deal-list-stat .dash-stat-sub {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.72rem;
+}
+
+#view-deals .deal-list-table-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+}
+
+.deal-list-grid-header,
+.deal-list-row-grid {
+  display: grid;
+  grid-template-columns: var(
+    --deal-list-cols,
+    minmax(120px, 1.4fr) minmax(88px, 1fr) 88px 92px 72px 44px 72px 72px 64px 72px 56px
+  );
+  gap: 8px 12px;
+  align-items: center;
+}
+
+#view-deals .deal-list-grid-header {
+  padding: 0 14px 8px;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-text-muted, #667085);
+  border-bottom: 1px solid var(--dew-border);
+  margin-bottom: 0;
+}
+
+#view-deals .deal-list-view--compact .lifecycle-list {
+  gap: 0;
+}
+
+#view-deals .deal-list-view--compact .deal-list-item.deal-list-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border: none;
+  border-bottom: 1px solid var(--dew-border);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#view-deals .deal-list-view--compact .deal-list-item.deal-list-row:last-child {
+  border-bottom: none;
+}
+
+#view-deals .deal-list-view--compact .deal-list-item.deal-list-row:hover {
+  background: var(--dew-surface-subtle);
+}
+
+#view-deals .deal-list-view--compact .deal-list-item.deal-list-row:focus-visible {
+  outline: 2px solid var(--dew-primary, var(--fw-primary-color));
+  outline-offset: -2px;
+}
+
+#view-deals .deal-list-grid-header .deal-list-col--deal,
+#view-deals .deal-list-row-grid .deal-list-col--deal {
+  padding-left: 14px;
+}
+
+#view-deals .deal-list-deal-title {
+  font-weight: 600;
+}
+
+.deal-list-row-mobile-meta {
+  display: none;
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  #view-deals .deal-list-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  #view-deals .deal-list-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-deals .deal-list-grid-header {
+    display: none;
+  }
+
+  #view-deals .deal-list-row-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  #view-deals .deal-list-col--account,
+  #view-deals .deal-list-col--stage,
+  #view-deals .deal-list-col--arr,
+  #view-deals .deal-list-col--mrr,
+  #view-deals .deal-list-col--calls,
+  #view-deals .deal-list-col--meddpicc,
+  #view-deals .deal-list-col--tc,
+  #view-deals .deal-list-col--ai,
+  #view-deals .deal-list-col--traction,
+  #view-deals .deal-list-col--silent {
+    display: none;
+  }
+
+  #view-deals .deal-list-row-mobile-meta {
+    display: block;
+  }
+}
+
+@media (max-width: 560px) {
+  #view-deals .deal-list-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-deals .deal-list-metrics .deal-list-stat,
+  #view-deals .deal-list-view--compact .deal-list-item.deal-list-row {
+    transition: none;
+  }
+}
+
+/* Deal record (spec §11.6) */
+.deal-record--wireframe .deal-record-top--wireframe {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  margin-bottom: 14px;
+}
+
+.deal-record--wireframe .deal-record-header--wireframe {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: flex-start;
+  gap: 12px 20px;
+}
+
+.deal-record--wireframe .deal-record-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+}
+
+.deal-record--wireframe .deal-record-title {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.deal-record--wireframe .deal-record-sf-id {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.75rem;
+}
+
+.deal-record--wireframe .deal-header-arr {
+  text-align: right;
+}
+
+.deal-record--wireframe .deal-header-arr-value {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--dew-text, var(--text));
+}
+
+.deal-record--wireframe .deal-header-arr-label {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 11px;
+}
+
+.deal-record--wireframe .deal-record-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.deal-record--wireframe .deal-record-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 16px;
+  align-items: start;
+}
+
+.deal-record--wireframe .deal-record-main,
+.deal-record--wireframe .deal-record-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.deal-record--wireframe .account-record-section--card {
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: none;
+  padding: 18px 16px;
+  margin-bottom: 0;
+}
+
+.deal-record--wireframe .account-record-section--tight {
+  padding: 14px 16px;
+}
+
+.deal-record--wireframe .deal-record-calls--wireframe {
+  padding: 18px 8px 4px;
+}
+
+.deal-record--wireframe .deal-record-calls-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.deal-record--wireframe .deal-record-traction--cold-card {
+  border-color: var(--danger);
+}
+
+.deal-record--wireframe .deal-record-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 0;
+}
+
+.deal-record--wireframe .deal-record-metric-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.deal-record--wireframe .deal-record-score--good {
+  color: var(--green);
+}
+
+.deal-record--wireframe .deal-record-score--watch {
+  color: var(--amber);
+}
+
+.deal-record--wireframe .deal-record-score--risk {
+  color: var(--danger);
+}
+
+.deal-record--wireframe .deal-tc-fields--grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dew-border);
+  font-size: 13px;
+}
+
+.deal-record--wireframe .deal-record-reporting {
+  margin-top: 0;
+}
+
+@media (max-width: 960px) {
+  .deal-record--wireframe .deal-record-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .deal-record--wireframe .deal-record-header--wireframe {
+    grid-template-columns: auto 1fr;
+  }
+
+  .deal-record--wireframe .deal-header-arr,
+  .deal-record--wireframe .deal-record-header-actions {
+    grid-column: 1 / -1;
+  }
+
+  .deal-record--wireframe .deal-header-arr {
+    text-align: left;
+  }
+}
+
+.deal-record-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+}
+
+.deal-record-header-main {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.deal-record-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.deal-record-subtitle {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.deal-record-body {
+  max-width: 960px;
+}
+
+.deal-record-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .deal-record-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.deal-record-metric-card {
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.deal-record-metric-value {
+  margin: 6px 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.deal-record-metric-unit {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.deal-record-metric-sub,
+.deal-record-meddpicc-score {
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+}
+
+.deal-record-velocity--slow .meddpicc-progress-bar {
+  background: var(--fw-color-danger, #c0392b);
+}
+
+.deal-record-velocity--ok .meddpicc-progress-bar {
+  background: var(--fw-color-success, #27ae60);
+}
+
+.deal-traction-reasons {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.deal-traction-reasons li + li {
+  margin-top: 6px;
+}
+
+.deal-traction-action {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.deal-traction-action-title {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.deal-record-fitment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .deal-record-fitment-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.deal-record-fitment-label {
+  margin: 0 0 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.deal-tc-justification {
+  margin: 0 0 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.deal-tc-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  font-size: 0.875rem;
+}
+
+.deal-tc-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deal-calls-table-wrap {
+  overflow-x: auto;
+}
+
+.deal-calls-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.deal-calls-table th,
+.deal-calls-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  vertical-align: top;
+}
+
+.deal-calls-row {
+  cursor: pointer;
+}
+
+.deal-calls-row:hover {
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.deal-calls-row:focus-visible {
+  outline: 2px solid var(--fw-color-primary, #2e5bff);
+  outline-offset: -2px;
+}
+
+.deal-calls-col--movement {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  max-width: 360px;
+}
+
+.deal-calls-note,
+.deal-record-calls-note {
+  margin: 0 0 10px;
+  font-size: 0.8125rem;
+}
+
+.deal-arr-module {
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--fw-color-bg-primary, #fff);
+}
+
+.deal-arr-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.deal-arr-header-main {
+  min-width: 0;
+}
+
+.deal-arr-title {
+  margin-bottom: 4px;
+}
+
+.deal-arr-header-totals {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-arr-sep {
+  margin: 0 0.35rem;
+  color: var(--fw-color-text-secondary, #6b7280);
+  font-weight: 400;
+}
+
+.deal-arr-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.deal-arr-confidence {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.deal-arr-confidence--high {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.deal-arr-confidence--medium {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.deal-arr-confidence--low,
+.deal-arr-confidence--unknown {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.deal-arr-version.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.deal-arr-body {
+  display: grid;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+
+.deal-arr-row,
+.deal-arr-derivation {
+  border-bottom: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.06));
+  padding-bottom: 8px;
+}
+
+.deal-arr-row:last-child,
+.deal-arr-derivation:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.deal-arr-row-main {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(100px, 1fr) auto minmax(140px, 1.2fr);
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.deal-arr-row-label {
+  font-weight: 600;
+}
+
+.deal-arr-row-qty {
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-arr-row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.deal-arr-money {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deal-arr-row--excluded {
+  opacity: 0.72;
+}
+
+.deal-arr-row--excluded .deal-arr-row-label {
+  font-weight: 500;
+  color: var(--fw-color-text-secondary, #6b7280);
+}
+
+.deal-arr-row--conflict .deal-arr-row-label,
+.deal-arr-conflict-badge {
+  color: #c62828;
+}
+
+.deal-arr-conflict-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: #ffebee;
+}
+
+.deal-arr-assumed-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #e65100;
+}
+
+.deal-arr-evidence {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+}
+
+.deal-arr-derivation-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.deal-arr-derivation-summary::-webkit-details-marker {
+  display: none;
+}
+
+.deal-arr-chain {
+  margin: 6px 0 0 12px;
+  padding-left: 8px;
+  border-left: 2px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.deal-arr-chain-step {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.deal-arr-chain-tree {
+  color: var(--fw-color-text-secondary, #6b7280);
+}
+
+.deal-arr-chain-label {
+  display: inline-block;
+  min-width: 5.5rem;
+  color: var(--fw-color-text-secondary, #6b7280);
+}
+
+.deal-arr-chain-quote {
+  font-family: inherit;
+}
+
+.deal-arr-subtotals {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  display: grid;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+.deal-arr-subtotal {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deal-arr-subtotal-label {
+  font-weight: 600;
+}
+
+.deal-arr-subtotal-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-arr-normalised-note {
+  font-size: 0.75rem;
+}
+
+.deal-arr-total-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.12));
+  font-weight: 700;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-arr-addon-share {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+}
+
+.deal-arr-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  font-size: 0.75rem;
+}
+
+.deal-arr-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.deal-arr-module--editable .deal-arr-field-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.deal-arr-field-input,
+.deal-arr-field-unit {
+  font: inherit;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--fw-color-border, #c8cdd3);
+  border-radius: 4px;
+  background: var(--fw-color-bg, #fff);
+  max-width: 7rem;
+}
+
+.deal-arr-field-meta {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.85em;
+  margin-top: 0.15rem;
+}
+
+.deal-arr-field-provenance {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75em;
+  letter-spacing: 0.03em;
+}
+
+.deal-arr-field-provenance--stated {
+  color: var(--fw-color-success, #0a7a3e);
+}
+
+.deal-arr-field-provenance--derived {
+  color: var(--fw-color-text-secondary, #5c6570);
+}
+
+.deal-arr-field-provenance--se_override {
+  color: var(--fw-color-primary, #1a6fb0);
+}
+
+.deal-arr-unit-toggle {
+  display: inline-flex;
+  border: 1px solid var(--fw-color-border, #c8cdd3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.deal-arr-unit-btn {
+  font: inherit;
+  font-size: 0.8em;
+  padding: 0.2rem 0.55rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.deal-arr-unit-btn--active {
+  background: var(--fw-color-primary, #1a6fb0);
+  color: #fff;
+}
+
+.deal-arr-chain-actions {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.deal-arr-confirm-assumptions {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid var(--fw-color-border, #c8cdd3);
+  border-radius: 4px;
+  background: var(--fw-color-bg, #fff);
+  cursor: pointer;
+}
+
+.deal-arr-live-note {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 0.85em;
+}
+
+@media (max-width: 720px) {
+  .deal-arr-row-main {
+    grid-template-columns: 1fr;
+    text-align: left;
+  }
+
+  .deal-arr-money {
+    text-align: left;
+  }
+}
+
+.deal-record-reporting-summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 10px;
+  border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fw-color-bg-secondary, #f8f9fa);
+}
+
+.deal-record-reporting-summary::-webkit-details-marker {
+  display: none;
+}
+
+.deal-reporting-body {
+  padding: 10px 4px 0;
+  display: grid;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+.deal-reporting-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Pipeline review — leadership (spec §11.9) */
+.pipeline-view {
+  font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pipeline-cols:
+    minmax(120px, 1.35fr) minmax(88px, 1fr) 56px 108px 88px 72px minmax(88px, 1.1fr) 72px 56px
+    minmax(72px, 0.9fr);
+}
+
+.pipeline-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pipeline-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.pipeline-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.pipeline-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.pipeline-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pipeline-filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-text-muted, #667085);
+}
+
+.pipeline-filter-select {
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid var(--dew-border, #d0d5dd);
+  border-radius: 8px;
+  padding: 8px 11px;
+  min-width: 148px;
+  background: #fff;
+}
+
+.pipeline-stats {
+  margin-bottom: 18px;
+}
+
+.pipeline-table-card {
+  padding: 18px 12px 8px;
+}
+
+.pipeline-grid-header,
+.pipeline-row-grid {
+  display: grid;
+  grid-template-columns: var(--pipeline-cols);
+  gap: 10px;
+  align-items: center;
+}
+
+.pipeline-grid-header {
+  padding: 0 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-text-muted, #667085);
+  border-bottom: 1px solid var(--dew-border, #e4e7ec);
+}
+
+.pipeline-list-item.pipeline-row {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 11px 8px;
+  border-bottom: 1px solid var(--dew-border, #e4e7ec);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.pipeline-list-item.pipeline-row:hover {
+  background: #f8f9fc;
+}
+
+.pipeline-deal-title {
+  font-weight: 600;
+}
+
+.pipeline-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pipeline-blocker {
+  font-size: 12.5px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-money {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeline-money--low-confidence .pipeline-money-amount {
+  color: var(--dew-text-muted, #667085);
+  font-style: italic;
+}
+
+.pipeline-money .deal-arr-confidence {
+  font-size: 10px;
+  padding: 1px 5px;
+}
+
+.pipeline-sort-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pipeline-sort-btn:hover,
+.pipeline-sort-btn--active {
+  color: var(--dew-text, #101828);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pipeline-footnote {
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.pipeline-empty {
+  padding: 20px 8px;
+}
+
+@media (max-width: 1100px) {
+  .pipeline-grid-header {
+    display: none;
+  }
+
+  .pipeline-row-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .pipeline-col--account,
+  .pipeline-col--agents,
+  .pipeline-col--arr,
+  .pipeline-col--mrr,
+  .pipeline-col--tc,
+  .pipeline-col--blockers,
+  .pipeline-col--traction,
+  .pipeline-col--pending,
+  .pipeline-col--ai {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .pipeline-col--account::before,
+  .pipeline-col--agents::before,
+  .pipeline-col--arr::before,
+  .pipeline-col--mrr::before,
+  .pipeline-col--tc::before,
+  .pipeline-col--blockers::before,
+  .pipeline-col--traction::before,
+  .pipeline-col--pending::before,
+  .pipeline-col--ai::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--dew-text-muted, #667085);
+  }
+}
+
+/* Product signal (gap clusters) */
+.product-signal-view {
+  display: grid;
+  gap: 16px;
+}
+
+.product-signal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.product-signal-title {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+}
+
+.product-signal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-signal-table-wrap {
+  overflow-x: auto;
+}
+
+.product-signal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.product-signal-table th,
+.product-signal-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dew-border-subtle, #eaecf0);
+  vertical-align: top;
+  text-align: left;
+}
+
+.ps-col-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ps-cluster-label {
+  font-weight: 600;
+}
+
+.ps-cluster-sample {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.ps-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 12px 0;
+  color: var(--dew-text-muted, #667085);
+}
+
+.call-product-signal-tab {
+  display: grid;
+  gap: 20px;
+}
+
+.call-product-gap-row,
+.call-product-win-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--dew-border-subtle, #eaecf0);
+}
+
+.call-product-gap-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.call-product-gap-verbatim {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--dew-border-strong, #d0d5dd);
+  font-size: 13px;
+  color: var(--dew-text-secondary, #344054);
+}
+
+.call-product-gap-meta {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.call-product-gap-loop {
+  font-size: 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--dew-surface-subtle, #f9fafb);
+  border-radius: 6px;
+}
+
+.product-signal-stats--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .product-signal-stats--five {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .product-signal-stats--five {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.ps-stat-warn {
+  color: var(--dew-danger, #d92d20);
+}
+
+.ps-stat-amber {
+  color: var(--dew-warning, #dc6803);
+}
+
+.product-signal-halves {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .product-signal-halves {
+    grid-template-columns: 1fr;
+  }
+}
+
+.product-signal-half {
+  min-width: 0;
+}
+
+.ps-competitor-note {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.ps-col-type {
+  white-space: nowrap;
+}
+
+.product-signal-ai-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 860px) {
+  .product-signal-ai-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.product-signal-ai-card {
+  padding: 16px 18px;
+}
+
+.ps-ai-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.ps-ai-sub {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+
+.ps-theme-bars {
+  display: grid;
+  gap: 9px;
+}
+
+.ps-theme-bar-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  margin-bottom: 4px;
+}
+
+.ps-theme-bar-pct {
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-theme-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--dew-border-subtle, #eaecf0);
+  overflow: hidden;
+}
+
+.ps-theme-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.ps-bar-opt-in {
+  background: var(--dew-brand, #2e90fa);
+}
+
+.ps-bar-decline {
+  background: var(--dew-danger, #d92d20);
+}
+
+.ps-ai-footnote {
+  font-size: 12px;
+  margin: 14px 0 0;
+}
+
+/* Coaching view — wireframe v4 */
+.coaching-view--wireframe .coaching-head {
+  margin-bottom: 18px;
+}
+
+.coaching-view--wireframe .coaching-privacy {
+  margin: 0;
+  max-width: none;
+}
+
+.coaching-view--wireframe .coaching-stats-wire {
+  margin: 0 0 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.coaching-view--wireframe .coaching-metric-card {
+  box-shadow: none;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  padding: 14px 16px;
+  transition: border-color var(--transition, 0.15s ease);
+}
+
+.coaching-view--wireframe .coaching-metric-card:hover {
+  border-color: var(--dew-border-strong, var(--dew-border));
+}
+
+.coaching-view--wireframe .coaching-metric-card .dash-stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dew-text-secondary, var(--muted));
+}
+
+.coaching-view--wireframe .coaching-metric-num {
+  font-size: 1.625rem;
+  letter-spacing: -0.02em;
+  color: var(--dew-text-primary, var(--text));
+}
+
+.coaching-view--wireframe .coaching-metric-theme {
+  font-size: 17px;
+  font-weight: 700;
+  padding: 6px 0 4px;
+  line-height: 1.25;
+}
+
+.coaching-view--wireframe .coaching-metric-theme.weak {
+  color: var(--danger);
+}
+
+.coaching-view--wireframe .coaching-metric-hint {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.72rem;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+.coaching-view--wireframe .coaching-two-averages-note {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--dew-surface-faint, var(--surface-muted));
+  border: 1px dashed var(--dew-border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dew-text-secondary, var(--muted));
+}
+
+.coaching-view--wireframe .coaching-two-averages-note strong {
+  color: var(--dew-text-primary, var(--text));
+}
+
+.coaching-view--wireframe .coaching-spine-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.coaching-view--wireframe .coaching-charts-grid {
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.coaching-view--wireframe .coaching-chart-card,
+.coaching-view--wireframe .coaching-receipts-card {
+  padding: 18px 16px;
+}
+
+.coaching-view--wireframe .coaching-card-title {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dew-text-primary, var(--text));
+}
+
+.coaching-view--wireframe .coaching-card-sub {
+  margin: 0 0 14px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.coaching-view--wireframe .coaching-trend-svg {
+  width: 100%;
+  height: auto;
+}
+
+.coaching-view--wireframe .coaching-ev {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: start;
+  border-left: 3px solid var(--dew-border);
+  background: var(--dew-surface-faint, var(--surface-muted));
+  padding: 9px 13px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 7px;
+}
+
+.coaching-view--wireframe .coaching-ev--bad,
+.coaching-view--wireframe .coaching-ev--weak {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--dew-surface));
+}
+
+.coaching-view--wireframe .coaching-ev-ts {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 10.5px;
+  color: var(--dew-text-muted, var(--muted));
+  margin-bottom: 3px;
+}
+
+.coaching-view--wireframe .coaching-ev-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dew-text-primary, var(--text));
+}
+
+.coaching-view--wireframe .coaching-receipt-link:hover .coaching-ev-body {
+  text-decoration: underline;
+}
+
+.coaching-view--wireframe .coaching-receipts-card {
+  margin-bottom: 14px;
+}
+
+.coaching-view--wireframe .coaching-receipts-sub {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+}
+
+.coaching-view--wireframe .coaching-receipt-list {
+  gap: 0;
+}
+
+.coaching-view--wireframe .coaching-calls-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+}
+
+.coaching-view--wireframe .coaching-calls-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.coaching-view--wireframe .coaching-calls-table th,
+.coaching-view--wireframe .coaching-calls-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.coaching-view--wireframe .coaching-calls-table th {
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+.coaching-view--wireframe .coaching-calls-col-call,
+.coaching-view--wireframe .coaching-calls-table th.coaching-calls-col-call {
+  padding-left: 14px;
+}
+
+.coaching-view--wireframe .coaching-calls-col-date {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+}
+
+.coaching-view--wireframe .coaching-call-link {
+  color: var(--dew-brand, var(--accent));
+}
+
+@media (max-width: 960px) {
+  .coaching-view--wireframe .coaching-stats-wire {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .coaching-view--wireframe .coaching-stats-wire {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coaching-view--wireframe .coaching-metric-card {
+    transition: none;
+  }
+}
+
+/* Shared wireframe metric card pattern */
+.wireframe-metric-card,
+.coaching-view--wireframe .coaching-metric-card,
+.manager-view--wireframe .manager-metric-card,
+.se-detail-view--wireframe .se-metric-card,
+.pipeline-view--wireframe .pipeline-metric-card,
+.product-signal-view--wireframe .product-signal-metric-card {
+  box-shadow: none;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+  padding: 14px 16px;
+  transition: border-color var(--transition, 0.15s ease);
+}
+
+.wireframe-metric-card:hover,
+.coaching-view--wireframe .coaching-metric-card:hover,
+.manager-view--wireframe .manager-metric-card:hover,
+.se-detail-view--wireframe .se-metric-card:hover,
+.pipeline-view--wireframe .pipeline-metric-card:hover,
+.product-signal-view--wireframe .product-signal-metric-card:hover {
+  border-color: var(--dew-border-strong, var(--dew-border));
+}
+
+.wireframe-metric-num,
+.coaching-view--wireframe .coaching-metric-num,
+.manager-view--wireframe .manager-metric-num,
+.se-detail-view--wireframe .se-metric-num,
+.pipeline-view--wireframe .pipeline-metric-num,
+.product-signal-view--wireframe .product-signal-metric-num {
+  font-size: 1.625rem;
+  letter-spacing: -0.02em;
+  color: var(--dew-text-primary, var(--text));
+}
+
+.wireframe-metric-hint,
+.coaching-view--wireframe .coaching-metric-hint,
+.manager-view--wireframe .manager-metric-hint,
+.se-detail-view--wireframe .se-metric-hint,
+.pipeline-view--wireframe .pipeline-metric-hint,
+.product-signal-view--wireframe .product-signal-metric-hint {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.72rem;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+/* Manager team view — wireframe v4 */
+.manager-view--wireframe .manager-head {
+  margin-bottom: 18px;
+}
+
+.manager-view--wireframe .manager-subtitle {
+  margin: 0;
+}
+
+.manager-view--wireframe .manager-metrics-wire {
+  margin: 0 0 18px;
+}
+
+.manager-view--wireframe .manager-metric-link {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.manager-view--wireframe .manager-metric-link:hover {
+  border-color: var(--dew-brand, var(--accent));
+}
+
+.manager-view--wireframe .manager-metric-warn {
+  color: var(--amber);
+}
+
+.manager-view--wireframe .manager-heatmap-card {
+  padding: 18px 16px;
+  margin-bottom: 14px;
+}
+
+.manager-view--wireframe .manager-card-title {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.manager-view--wireframe .manager-se-table-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.manager-view--wireframe .manager-se-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.manager-view--wireframe .manager-se-col-name,
+.manager-view--wireframe .manager-se-table th.manager-se-col-name,
+.manager-view--wireframe .manager-se-table td:first-child {
+  padding-left: 14px;
+}
+
+.manager-view--wireframe .manager-se-table th,
+.manager-view--wireframe .manager-se-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.manager-view--wireframe .manager-se-table th {
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+.manager-view--wireframe .team-heatmap-foot {
+  margin: 14px 0 0;
+  font-size: 0.8125rem;
+}
+
+.manager-view--wireframe .team-heatmap-legend {
+  margin-top: 14px;
+  font-size: 11.5px;
+}
+
+/* SE detail — wireframe v4 */
+.se-detail-view--wireframe .se-detail-head {
+  margin-bottom: 16px;
+}
+
+.se-detail-view--wireframe .se-detail-metrics-wire {
+  margin: 0 0 18px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.se-detail-view--wireframe .se-detail-grid {
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.se-detail-view--wireframe .se-card-title {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.se-detail-view--wireframe .se-card-sub,
+.se-detail-view--wireframe .se-receipts-sub {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+}
+
+.se-detail-view--wireframe .se-receipt-list {
+  display: grid;
+  gap: 0;
+}
+
+.se-detail-view--wireframe .coaching-ev {
+  display: block;
+  border-left: 3px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--dew-surface));
+  padding: 9px 13px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 7px;
+}
+
+.se-detail-view--wireframe .coaching-ev-ts {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 10.5px;
+  color: var(--dew-text-muted, var(--muted));
+  margin-bottom: 3px;
+}
+
+.se-detail-view--wireframe .coaching-ev-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.se-detail-view--wireframe .se-table-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.se-detail-view--wireframe .se-table-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.se-detail-view--wireframe .se-table-col-name,
+.se-detail-view--wireframe .se-accounts-table th.se-table-col-name,
+.se-detail-view--wireframe .se-calls-table th.se-table-col-name,
+.se-detail-view--wireframe .se-accounts-table td:first-child,
+.se-detail-view--wireframe .se-calls-table td.se-table-col-name {
+  padding-left: 14px;
+}
+
+.se-detail-view--wireframe .se-table-col-date {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+}
+
+.se-detail-view--wireframe .se-accounts-table th,
+.se-detail-view--wireframe .se-accounts-table td,
+.se-detail-view--wireframe .se-calls-table th,
+.se-detail-view--wireframe .se-calls-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.se-detail-view--wireframe .se-accounts-table th,
+.se-detail-view--wireframe .se-calls-table th {
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+/* Pipeline review — wireframe v4 overrides */
+.pipeline-view--wireframe .pipeline-metrics-wire {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.pipeline-view--wireframe .pipeline-table-card {
+  padding: 18px 8px 4px;
+  box-shadow: none;
+}
+
+.pipeline-view--wireframe .pipeline-grid-header {
+  padding: 0 14px 8px;
+}
+
+.pipeline-view--wireframe .pipeline-list-item.pipeline-row {
+  padding: 11px 14px;
+}
+
+.pipeline-view--wireframe .pipeline-list-item.pipeline-row:hover {
+  background: var(--dew-surface-subtle);
+}
+
+.pipeline-view--wireframe .pipeline-filter-select {
+  background: var(--dew-surface);
+}
+
+/* Product signal — wireframe v4 overrides */
+.product-signal-view--wireframe {
+  gap: 14px;
+}
+
+.product-signal-view--wireframe .product-signal-metrics-wire {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.product-signal-view--wireframe .product-signal-note {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--dew-surface-faint, var(--surface-muted));
+  border: 1px dashed var(--dew-border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dew-text-secondary, var(--muted));
+}
+
+.product-signal-view--wireframe .product-signal-note strong {
+  color: var(--dew-text-primary, var(--text));
+}
+
+.product-signal-view--wireframe .product-signal-table-card {
+  padding: 18px 8px 4px;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.product-signal-view--wireframe .product-signal-eyebrow {
+  padding: 0 12px 12px;
+  margin-bottom: 0;
+}
+
+.product-signal-view--wireframe .product-signal-table th.ps-col-gap-head,
+.product-signal-view--wireframe .product-signal-table td.ps-col-gap {
+  padding-left: 14px;
+}
+
+.product-signal-view--wireframe .product-signal-table th,
+.product-signal-view--wireframe .product-signal-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.product-signal-view--wireframe .product-signal-table th {
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted, var(--muted));
+}
+
+.product-signal-view--wireframe .product-signal-ai-grid {
+  gap: 14px;
+}
+
+.product-signal-view--wireframe .product-signal-ai-card {
+  box-shadow: none;
+}
+
+@media (max-width: 960px) {
+  .se-detail-view--wireframe .se-detail-metrics-wire,
+  .pipeline-view--wireframe .pipeline-metrics-wire,
+  .product-signal-view--wireframe .product-signal-metrics-wire,
+  .manager-view--wireframe .manager-metrics-wire {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .se-detail-view--wireframe .se-detail-metrics-wire,
+  .pipeline-view--wireframe .pipeline-metrics-wire,
+  .product-signal-view--wireframe .product-signal-metrics-wire,
+  .manager-view--wireframe .manager-metrics-wire {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manager-view--wireframe .manager-metric-card,
+  .se-detail-view--wireframe .se-metric-card,
+  .pipeline-view--wireframe .pipeline-metric-card,
+  .product-signal-view--wireframe .product-signal-metric-card {
+    transition: none;
+  }
 }

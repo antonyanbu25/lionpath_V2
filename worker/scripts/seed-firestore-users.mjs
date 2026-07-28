@@ -20,6 +20,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  TEAM_AJAY_ID,
+  TEAM_DISPLAY_NAMES,
+  TEAM_NAME_INTERNATIONAL_NB,
+} from "../../web/domain/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_ORG_ID = "org_freshworks_se";
@@ -36,7 +41,14 @@ function newUserId() {
 }
 
 function parseArgs(argv) {
-  const args = { csv: "", bootstrapTeam: false, teamId: "team_ajay", teamName: "Ajay Squad", orgId: DEMO_ORG_ID, dryRun: false };
+  const args = {
+    csv: "",
+    bootstrapTeam: false,
+    teamId: TEAM_AJAY_ID,
+    teamName: TEAM_NAME_INTERNATIONAL_NB,
+    orgId: DEMO_ORG_ID,
+    dryRun: false,
+  };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === "--csv") args.csv = argv[++i];
     else if (argv[i] === "--bootstrap-team") args.bootstrapTeam = true;
@@ -263,7 +275,7 @@ async function assignUsers(admin, db, rows, dryRun) {
     const mergedMembers = [...new Set([...(existing.memberIds || []), ...memberIds])];
     const patch = {
       id: teamId,
-      name: existing.name || "SE Team",
+      name: TEAM_DISPLAY_NAMES[teamId] || existing.name || "SE Team",
       orgId: existing.orgId || DEMO_ORG_ID,
       managerId: existing.managerId || teamManagerId || "",
       memberIds: mergedMembers,

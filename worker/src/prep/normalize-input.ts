@@ -1,6 +1,7 @@
 import { isValidCompanyDomain, normalizeCompanyDomain } from "../domain";
 import type { PrepInput } from "./types";
-import { linkedInFingerprint, normalizeLinkedInExports } from "./linkedin-pdf";
+import { computeInputHash as computeInputHashImpl } from "./input-hash";
+import { normalizeLinkedInExports } from "./linkedin-pdf";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -57,16 +58,5 @@ export function normalizePrepInput(input: PrepInput): PrepInput {
 }
 
 export function computeInputHash(input: PrepInput, emails: string[]): string {
-  const exports = normalizeLinkedInExports(input.linkedinProfileExports);
-  const payload = {
-    companyDomain: input.companyDomain,
-    companyName: input.companyName.toLowerCase(),
-    emails: [...emails].sort(),
-    playbookVersion: "1",
-    linkedin: exports.length ? linkedInFingerprint(exports) : "",
-  };
-  let h = 0;
-  const s = JSON.stringify(payload);
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return `h${Math.abs(h).toString(36)}`;
+  return computeInputHashImpl(input, emails);
 }

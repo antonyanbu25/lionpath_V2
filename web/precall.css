@@ -5,54 +5,154 @@
   flex-direction: column;
   min-height: calc(100vh - 120px);
   overflow: hidden;
+  line-height: 1.55;
 }
 
 .prep-form-wrap {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 40px 24px;
+  padding: 24px 28px 70px;
   overflow: auto;
 }
 
 .prep-form-center {
   width: 100%;
-  max-width: 620px;
+  max-width: 660px;
+  margin: 12px auto;
   animation: prep-rise 0.4s ease;
 }
 
 .prep-form-heading {
   text-align: center;
-  margin-bottom: 26px;
+  margin-bottom: 20px;
 }
 
 .prep-form-heading h1 {
-  margin: 0 0 8px;
-  font-size: 27px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--dew-text);
 }
 
 .prep-form-heading p {
-  margin: 0;
-  font-size: 14.5px;
+  margin: 5px 0 0;
+  font-size: 13px;
 }
 
-.prep-form-card {
-  padding: 26px;
-  box-shadow: var(--dew-shadow-card);
+#view-precall fw-card.prep-form-card,
+#view-precall fw-card.prep-loop-card {
+  padding: 22px;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: none;
+  margin-bottom: 0;
+  transition: none;
+}
+
+#view-precall fw-card.prep-form-card:hover,
+#view-precall fw-card.prep-loop-card:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+#view-precall fw-card.prep-loop-card {
+  margin-top: 14px;
 }
 
 .prep-form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .prep-form-full {
   grid-column: 1 / -1;
+}
+
+.prep-form-optional {
+  border-top: 1px solid var(--dew-border);
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+
+.prep-form-eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  font-weight: 700;
+  margin-bottom: 9px;
+}
+
+.prep-optional-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.prep-meeting-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.prep-meeting-extra summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dew-text-secondary);
+}
+
+.prep-form-submit {
+  display: block;
+  width: 100%;
+  margin-top: 0;
+  padding: 11px 14px;
+}
+
+.prep-loop-rows {
+  display: grid;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.prep-loop-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.prep-loop-row--last {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+#view-precall .pill.purple {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--dew-purple-tint);
+  color: var(--dew-brand);
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.prep-loop-note {
+  font-size: 12px;
+  margin: 12px 0 0;
+  line-height: 1.55;
 }
 
 .prep-linkedin-upload {
@@ -135,9 +235,9 @@
 
 .prep-form-footnote {
   text-align: center;
-  margin-top: 14px;
-  font-size: 12px;
-  color: var(--dew-text-muted);
+  margin: 11px 0 0;
+  font-size: 11.5px;
+  color: var(--dew-text-secondary);
 }
 
 #prep-result-view {
@@ -908,11 +1008,6 @@
   border-color: var(--dew-border);
 }
 
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dew-text-secondary);
-}
-
 .prep-facts-val {
   font-size: 13px;
   font-weight: 500;
@@ -1375,11 +1470,31 @@
   .prep-fit-grid {
     grid-template-columns: 1fr;
   }
-  .prep-form-grid {
+  .prep-form-grid,
+  .prep-optional-grid {
     grid-template-columns: 1fr;
+  }
+  .prep-loop-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
   .prep-result-header-inner {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+@media (max-width: 640px) {
+  .prep-form-wrap {
+    padding: 16px 16px 48px;
+  }
+}
+
+#view-precall fw-button:focus-visible,
+#view-precall fw-input:focus-within,
+#view-precall fw-textarea:focus-within,
+#view-precall fw-select:focus-within,
+#view-precall .prep-enrich-advanced summary:focus-visible {
+  outline: 2px solid var(--dew-primary);
+  outline-offset: 1px;
 }

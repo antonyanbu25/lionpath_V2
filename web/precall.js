@@ -29,6 +29,8 @@ import {
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles } from "./prep-contact-enrich.js";
+import { esc, $, show } from "./shared.js";
+import { getAccountEngagementContext } from "./domain/account-context.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
 const BRIEFS_KEY = "lionpath_briefs";
@@ -103,16 +105,6 @@ let state = {
   peopleProspectTab: "prospect-0",
   linkedinParsing: false,
 };
-
-const $ = (id) => document.getElementById(id);
-const show = (el, on = true) => {
-  if (el) el.hidden = !on;
-};
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
 
 function accountId(meta) {
   return String(meta?.company || "account")
@@ -395,7 +387,13 @@ async function buildPayload() {
     throw new Error("Company name is required.");
   }
 
-  const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash());
+  const additionalContext = (await readFieldValueAsync($("additionalContext"))) || undefined;
+  const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
+
+  const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash(), {
+    additionalContext,
+    kaiaMeetingUrl,
+  });
   let cachedResearch = null;
   try {
     cachedResearch = await loadCachedResearch(companyName, companyDomain, inputHash);
@@ -406,7 +404,17 @@ async function buildPayload() {
   const linkedinProfileExports = linkedinProfileExportsForPayload();
   const meetingZoomUrl = (await readFieldValueAsync($("meetingZoomUrl")))?.trim() || undefined;
   const meetingZoomPasscode = (await readFieldValueAsync($("meetingZoomPasscode")))?.trim() || undefined;
-  const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
+
+  const engagementCtx = getAccountEngagementContext();
+
+  let prepType = engagementCtx.prepType || "new_business";
+  const motionSelect = $("prep-meeting-motion");
+  const fromAccount = $("prep-motion-from-account");
+  if (fromAccount && !fromAccount.hidden) {
+    prepType = engagementCtx.prepType || prepType;
+  } else if (motionSelect && !$("prep-motion-row")?.hidden) {
+    prepType = (await readFieldValueAsync(motionSelect)) || prepType;
+  }
 
   return {
     payload: {
@@ -414,8 +422,11 @@ async function buildPayload() {
       companyDomain,
       prospectEmail: emails[0],
       prospectEmails: emails,
-      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
-      prepType: "new_business",
+      additionalContext,
+      seAdditionalContext: additionalContext,
+      prepType,
+      dealId: engagementCtx.dealId || undefined,
+      lifecycleId: engagementCtx.lifecycleId || undefined,
       cachedResearch: cachedResearch || undefined,
       linkedinProfileExports,
       meetingZoomUrl,
@@ -427,7 +438,7 @@ async function buildPayload() {
       companyDomain,
       domain: companyDomain,
       emailDomain: emailDomain(emails[0]),
-      additionalContext: (await readFieldValueAsync($("additionalContext"))) || undefined,
+      additionalContext,
     },
     emails,
   };
@@ -524,39 +535,65 @@ function selectDefaultConfirmedFacts(researchData) {
   return facts.filter((f) => factCheckedByDefault(f, sources, lowSet));
 }
 
+/** Whether per-contact enrich should run (exported for tests). */
+export function shouldRunProspectEnrich(payload, pdfCount = 0) {
+  return !!(
+    pdfCount ||
+    String(payload?.additionalContext || "").trim() ||
+    String(payload?.kaiaMeetingUrl || "").trim() ||
+    String(payload?.kaiaSummary || "").trim() ||
+    String(payload?.meetingZoomUrl || "").trim()
+  );
+}
+
+async function hydrateKaiaSummary(payload, statusEl) {
+  const url = payload.kaiaMeetingUrl?.trim();
+  if (!url || payload.kaiaSummary?.trim()) return false;
+  const endpoint = deps.kaiaShareUrl || deps.fetchKaiaUrl;
+  if (!endpoint) return false;
+
+  setLoading(true, "Fetching Kaia meeting summary…");
+  try {
+    const data = deps.kaiaShareUrl
+      ? await postJson(deps.kaiaShareUrl, { url })
+      : await postJson(deps.fetchKaiaUrl, { kaiaUrl: url });
+    const summary = String(data.summary || "").trim();
+    if (!summary) return false;
+    payload.kaiaContent = data.bundle || {
+      summary,
+      title: data.title,
+      startTime: data.startTime,
+      participants: data.participants,
+      summaryJson: data.summaryJson,
+    };
+    payload.kaiaSummary = summary;
+    payload.kaiaMeetingUrl = undefined;
+    const kaiaField = $("kaiaMeetingUrl");
+    if (kaiaField) {
+      kaiaField.placeholder = data.title
+        ? `Fetched · ${data.title}`
+        : "Fetched · Kaia summary loaded";
+    }
+    return true;
+  } catch (err) {
+    showInlineStatus(statusEl, {
+      type: "warn",
+      message: `Kaia fetch skipped: ${err.message || "error"}. Continuing without Kaia text…`,
+    });
+    return false;
+  }
+}
+
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
   const pdfs = payload.linkedinProfileExports || [];
+
+  await hydrateKaiaSummary(payload, status);
+  let kaiaFetched = !!payload.kaiaSummary?.trim();
+
   let confirmedProspectProfiles = [];
 
-  let kaiaFetched = false;
-
-  if (payload.kaiaMeetingUrl?.trim() && deps.fetchKaiaUrl) {
-    setLoading(true, "Fetching Kaia meeting summary…");
-    try {
-      const kaia = await postJson(deps.fetchKaiaUrl, { kaiaUrl: payload.kaiaMeetingUrl.trim() });
-      if (kaia.summary?.trim()) {
-        payload.kaiaSummary = kaia.summary.trim();
-        kaiaFetched = true;
-        const kaiaField = $("kaiaMeetingUrl");
-        if (kaiaField) {
-          kaiaField.placeholder = kaia.title
-            ? `Fetched · ${kaia.title}`
-            : "Fetched · Kaia summary loaded";
-        }
-      }
-    } catch (err) {
-      showInlineStatus(status, {
-        type: "warn",
-        message: `Kaia summary not fetched: ${err.message || "error"}. Continuing without it…`,
-      });
-    }
-  }
-
-  const hasEnrichSources =
-    pdfs.length || payload.additionalContext?.trim() || payload.kaiaSummary?.trim();
-
-  if (deps.enrichUrl && hasEnrichSources) {
+  if (deps.enrichUrl && shouldRunProspectEnrich(payload, pdfs.length)) {
     setLoading(true, "Enriching prospects…");
     try {
       const enrichResponses = await enrichProspectsParallel(
@@ -707,6 +744,32 @@ export function initPrecall(options) {
 
 export function resetPrecallOnView() {
   if (state.view === "form") return;
+}
+
+/** Show meeting motion controls based on account engagement context. */
+export function syncPrepEngagementMotion() {
+  const row = $("prep-motion-row");
+  const fromAccount = $("prep-motion-from-account");
+  const select = $("prep-meeting-motion");
+  const chip = $("prep-motion-chip");
+  if (!row) return;
+
+  const ctx = getAccountEngagementContext();
+  const hasAccount = Boolean(ctx.accountId);
+
+  row.hidden = false;
+  if (hasAccount) {
+    if (fromAccount) fromAccount.hidden = false;
+    if (select) select.hidden = true;
+    const label = ctx.prepType === "expansion" ? "Expansion" : "New business";
+    if (chip) chip.text = `Meeting motion: ${label}`;
+  } else {
+    if (fromAccount) fromAccount.hidden = true;
+    if (select) {
+      select.hidden = false;
+      select.value = ctx.prepType === "expansion" ? "expansion" : "new_business";
+    }
+  }
 }
 
 export { isV8Prep, isV7Prep, isV6Prep, companyMono };

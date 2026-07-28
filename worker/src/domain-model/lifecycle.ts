@@ -14,6 +14,7 @@ export type LifecycleStatus = "active" | "paused" | "archived";
 
 export interface Lifecycle {
   id: string;
+  dealId?: string | null;
   ownerId: string;
   teamId: string;
   accountId: string;

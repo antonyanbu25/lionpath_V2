@@ -17,8 +17,11 @@ services:
       PORT: "8787"
       HOST: "0.0.0.0"
       HISTORY_FILE_DIR: /data/history
+      VIDEO_DATA_DIR: /data/video
+      VIDEO_PASS_ENABLED: "1"
     volumes:
       - /var/lib/se-paathai/history:/data/history
+      - /var/lib/se-paathai/video:/data/video
     expose:
       - "8787"
     networks:
