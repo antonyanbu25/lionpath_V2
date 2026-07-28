@@ -802,7 +802,7 @@ function renderCallNotesBulletsHtml(notes) {
 
 function renderCallNotesSection(notes) {
   return `
-    <section class="call-section call-notes-section card-wire">
+    <section class="call-section call-notes-section card-wire" data-call-notes-ui="${CALL_VIEW_MODULE_VERSION}">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
         <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
@@ -1748,8 +1748,16 @@ function wireCallRecord(container, session, bundle, opts) {
         : null,
   });
   const logCallNotesVisibility = (label) => {
-    const vis = readCallNotesVisibility();
+    const vis = {
+      ...readCallNotesVisibility(),
+      htmlHasBullets: notesHtml.includes("call-notes-bullets"),
+      htmlHasSaveNotes: notesHtml.includes(">Save notes</fw-button>") && !notesHtml.includes("call-notes-edit-btn"),
+      htmlHasEditNotes: notesHtml.includes("call-notes-edit-btn"),
+    };
     console.log("[DEBUG-72b8a2]", label, vis);
+    try {
+      sessionStorage.setItem("debug-72b8a2-call-notes", JSON.stringify({ label, ...vis, ts: Date.now() }));
+    } catch (_) {}
     return vis;
   };
   const visibility = logCallNotesVisibility("after setNotesEditMode(false)");
