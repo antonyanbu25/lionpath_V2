@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = await readFile(join(WEB_ROOT, "index.html"), "utf8");
 
-const collapseInHead = /<div class="sidebar-head">[\s\S]*?id="sidebar-collapse"[\s\S]*?<\/div>\s*<nav class="sidebar-nav"/.test(html);
+const collapseInHead = /<div class="sidebar-head">[\s\S]*?id="sidebar-collapse"[\s\S]*?<\/div>\s*<div class="sidebar-user"[\s\S]*?<nav class="sidebar-nav"/.test(html);
 
 const checks = [
   ["user menu container", html.includes('id="user-menu"')],
@@ -17,7 +17,11 @@ const checks = [
   ["sign out in menu", html.includes('id="user-menu-signout"')],
   ["profile view panel", html.includes('id="view-profile"')],
   ["collapse inside sidebar-head", collapseInHead],
-  ["no sidebar-user block", !html.includes('id="sidebar-user-name"')],
+  ["sidebar user block", html.includes('id="sidebar-user-name"')],
+  ["sidebar nav groups", html.includes('class="nav-grp"')],
+  ["My deals nav label", html.includes("My deals")],
+  ["My coaching nav", html.includes('data-view="coaching"')],
+  ["SE Singha Paathai brand", html.includes("SE Singha Paathai")],
   ["no sidebar logout btn", !html.includes('id="logout-btn"')],
   ["no app topbar theme toggle", !html.includes('class="main-topbar"') || !/main-topbar[\s\S]*data-theme-toggle/.test(html)],
   ["login theme toggle kept", html.includes('login-card-head') && html.includes('data-theme-toggle')],

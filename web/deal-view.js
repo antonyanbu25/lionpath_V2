@@ -2,7 +2,7 @@
  * Deals nav: global deal list + deal record (spec §11.6).
  */
 
-import { listDealsForSession, getAccountEngagementDetail } from "./domain/account-service.js";
+import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail } from "./domain/account-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import {
@@ -13,6 +13,7 @@ import {
 } from "./domain/contact-service.js";
 import { computeDaysInStage, computeStageMedianDays } from "./domain/deal-traction-service.js";
 import { getStore } from "./domain/store.js";
+import { safeStoreOp } from "./domain/safe-store.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
@@ -129,14 +130,24 @@ export async function enrichDealListRows(store, rows) {
       const med = resolveDealMeddpicc(deal, account);
       const meddpiccScore = med?.completionScore ?? computeMeddpiccScore(med);
 
-      const tc =
-        store.getTechnicalCommitByDeal ? await store.getTechnicalCommitByDeal(deal.id) : null;
+      const tc = await safeStoreOp(
+        "getTechnicalCommitByDeal",
+        () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
+        null,
+      );
 
-      const signals =
-        store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+      const signals = await safeStoreOp(
+        "listDealSignalsByDeal",
+        () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
+        [],
+      );
       const signal = signals[0] || null;
 
-      const arrLines = store.listArrLinesByDeal ? await store.listArrLinesByDeal(deal.id) : [];
+      const arrLines = await safeStoreOp(
+        "listArrLinesByDeal",
+        () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
+        [],
+      );
       const latestLines = selectLatestArrLines(arrLines);
       const arrConfidence = weightedArrConfidence(latestLines);
 
@@ -1037,8 +1048,33 @@ function renderDealRecord(detail) {
 
 /** @param {object} session @param {string} dealId @param {object} [opts] */
 async function loadDealRecordDetail(session, dealId, opts = {}) {
-  const deal = await getDeal(dealId);
-  if (!deal?.accountId) return null;
+  const deal = await safeStoreOp("getDeal", () => getDeal(dealId), null);
+  if (!deal?.accountId) {
+    const histRow = listDealsFromHistory(session).find((r) => r.deal.id === dealId);
+    if (histRow) {
+      const detail = await getAccountEngagementDetail(session, histRow.account.id, {
+        dealId: histRow.deal.id,
+        lifecycleOwnerId: opts.lifecycleOwnerId,
+      });
+      if (!detail) return null;
+      const callRows = (detail.accountRollup?.accountCalls || []).map(({ postCall, movement }) => ({
+        postCall,
+        meddpiccDeltas: [],
+        tcDeltas: [],
+        movement: movement || "—",
+      }));
+      return {
+        ...detail,
+        technicalCommit: null,
+        latestSignal: null,
+        daysInStage: 0,
+        stageMedianDays: 34,
+        callRows,
+        arrLines: [],
+      };
+    }
+    return null;
+  }
 
   const detail = await getAccountEngagementDetail(session, deal.accountId, {
     dealId: deal.id,
@@ -1047,21 +1083,47 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
   if (!detail) return null;
 
   const store = getStore();
-  const technicalCommit =
-    store.getTechnicalCommitByDeal ? await store.getTechnicalCommitByDeal(deal.id) : null;
+  const technicalCommit = await safeStoreOp(
+    "getTechnicalCommitByDeal",
+    () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
+    null,
+  );
 
-  const signals = store.listDealSignalsByDeal ? await store.listDealSignalsByDeal(deal.id, 1) : [];
+  const signals = await safeStoreOp(
+    "listDealSignalsByDeal",
+    () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
+    [],
+  );
   const latestSignal = signals[0] || null;
 
-  const daysInStage = await computeDaysInStage(store, deal);
-  const stageMedianDays = await computeStageMedianDays(store, deal.accountId, deal.stage);
+  const daysInStage = await safeStoreOp(
+    "computeDaysInStage",
+    () => computeDaysInStage(store, deal),
+    0,
+  );
+  const stageMedianDays = await safeStoreOp(
+    "computeStageMedianDays",
+    () => computeStageMedianDays(store, deal.accountId, deal.stage),
+    34,
+  );
 
-  const postCalls = store.listPostCallsByDeal ? await store.listPostCallsByDeal(deal.id, 50) : [];
+  const postCalls = await safeStoreOp(
+    "listPostCallsByDeal",
+    () => (store.listPostCallsByDeal ? store.listPostCallsByDeal(deal.id, 50) : []),
+    [],
+  );
   const callRows = await Promise.all(
     postCalls.map(async (postCall) => {
-      const meddpiccDeltas =
-        store.listMeddpiccDeltasByCall ? await store.listMeddpiccDeltasByCall(postCall.id) : [];
-      const tcDeltas = store.listTcDeltasByCall ? await store.listTcDeltasByCall(postCall.id) : [];
+      const meddpiccDeltas = await safeStoreOp(
+        "listMeddpiccDeltasByCall",
+        () => (store.listMeddpiccDeltasByCall ? store.listMeddpiccDeltasByCall(postCall.id) : []),
+        [],
+      );
+      const tcDeltas = await safeStoreOp(
+        "listTcDeltasByCall",
+        () => (store.listTcDeltasByCall ? store.listTcDeltasByCall(postCall.id) : []),
+        [],
+      );
       return {
         postCall,
         meddpiccDeltas,
@@ -1071,7 +1133,11 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
     }),
   );
 
-  const arrLines = store.listArrLinesByDeal ? await store.listArrLinesByDeal(deal.id) : [];
+  const arrLines = await safeStoreOp(
+    "listArrLinesByDeal",
+    () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
+    [],
+  );
 
   return {
     ...detail,
@@ -1238,12 +1304,18 @@ export async function renderDealView(container, session, opts = {}) {
     }
 
     const store = getStore();
-    const baseRows = await listDealsForSession(activeSession);
-    if (!baseRows.length) {
-      container.innerHTML = renderDealsEmptyState(
-        "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+    let baseRows = [];
+    try {
+      baseRows = await safeStoreOp(
+        "listDealsForSession",
+        () => listDealsForSession(activeSession),
+        [],
       );
-      return;
+    } catch (err) {
+      console.warn("[deal-view] listDealsForSession failed:", err?.message || err);
+    }
+    if (!baseRows.length) {
+      baseRows = listDealsFromHistory(activeSession);
     }
 
     const enrichedRows = await enrichDealListRows(store, baseRows);
@@ -1254,6 +1326,13 @@ export async function renderDealView(container, session, opts = {}) {
     const filtered = filterDealRows(sortedRows, listQuery);
     const openCount = enrichedRows.filter((row) => isOpenPipelineDeal(row.deal)).length;
     const listMetrics = summarizeDealListMetrics(enrichedRows);
+
+    if (!filtered.length && !enrichedRows.length) {
+      container.innerHTML = renderDealsEmptyState(
+        "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+      );
+      return;
+    }
 
     container.innerHTML = `
       <div class="lifecycle-list-view deal-list-view deal-list-view--compact">

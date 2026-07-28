@@ -89,6 +89,7 @@ export function refreshUserMenu(session) {
   const emailEl = document.getElementById("user-menu-email");
   const name = session?.name || "";
   const email = session?.email || "";
+  const initials = initialsFromName(name, email);
   if (avatar) {
     const url = session?.avatarDataUrl;
     if (url) {
@@ -96,9 +97,20 @@ export function refreshUserMenu(session) {
       avatar.innerHTML = `<img src="${String(url).replace(/"/g, "&quot;")}" alt="" class="user-menu-avatar-img" />`;
     } else {
       avatar.classList.remove("has-image");
-      avatar.textContent = initialsFromName(name, email);
+      avatar.textContent = initials;
     }
   }
   if (nameEl) nameEl.textContent = name || email.split("@")[0] || "User";
   if (emailEl) emailEl.textContent = email;
+
+  const sidebarAvatar = document.getElementById("sidebar-user-avatar");
+  const sidebarName = document.getElementById("sidebar-user-name");
+  const sidebarRole = document.getElementById("sidebar-user-role");
+  if (sidebarAvatar) sidebarAvatar.textContent = initials;
+  if (sidebarName) sidebarName.textContent = name || email.split("@")[0] || "User";
+  if (sidebarRole) {
+    const title = session?.jobTitle || "Solution Engineer";
+    const region = session?.region || session?.subRegion || "";
+    sidebarRole.textContent = region ? `${title} · ${region}` : title;
+  }
 }

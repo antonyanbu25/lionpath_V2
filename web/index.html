@@ -115,20 +115,24 @@
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-inner">
           <div class="sidebar-head">
+            <div class="sidebar-brand">
+              <span class="sidebar-brand-icon" aria-hidden="true">SP</span>
+              <span class="sidebar-brand-text">SE Singha Paathai</span>
+            </div>
             <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
               <span slot="before-label" class="sidebar-collapse-glyph" aria-hidden="true">‹</span>
             </fw-button>
-            <div class="sidebar-brand">
-              <span class="sidebar-brand-icon" aria-hidden="true">SW</span>
-              <span class="sidebar-brand-text">SE Workbench</span>
-            </div>
             <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
           </div>
+          <div class="sidebar-user" id="sidebar-user">
+            <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
+            <div class="sidebar-user-text">
+              <span class="sidebar-user-name" id="sidebar-user-name">—</span>
+              <span class="sidebar-user-role muted" id="sidebar-user-role">—</span>
+            </div>
+          </div>
         <nav class="sidebar-nav" role="navigation">
-          <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="My dashboard">
-            <fw-icon slot="before-label" class="nav-icon" name="nav-dashboard" size="16"></fw-icon>
-            <span class="nav-label">My dashboard</span>
-          </fw-button>
+          <div class="nav-grp">Capture</div>
           <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call">
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
             <span class="nav-label">Pre-call</span>
@@ -137,21 +141,27 @@
             <fw-icon slot="before-label" class="nav-icon" name="phone" size="16"></fw-icon>
             <span class="nav-label">Post-call</span>
           </fw-button>
+          <div class="nav-grp">Mine</div>
+          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
+            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="16"></fw-icon>
+            <span class="nav-label">All calls</span>
+          </fw-button>
           <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
             <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
             <span class="nav-label">Accounts</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="Deals">
+          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
             <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
-            <span class="nav-label">Deals</span>
+            <span class="nav-label">My deals</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
-            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="16"></fw-icon>
-            <span class="nav-label">Calls</span>
+          <fw-button type="button" class="nav-item" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <span class="nav-label">My coaching</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Manager dashboard" hidden>
+          <div class="nav-grp nav-grp--rollup" data-role="rollup" hidden>Roll-ups</div>
+          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
             <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
-            <span class="nav-label">Manager dashboard</span>
+            <span class="nav-label">Team</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
             <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>

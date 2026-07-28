@@ -322,24 +322,24 @@ fw-button.sidebar-collapse:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 16px 16px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 8px;
+  padding: 0 16px 14px;
+  border-bottom: 1px solid var(--dew-border);
+  margin-bottom: 4px;
   overflow: hidden;
 }
 .sidebar-user-avatar {
-  display: none;
   flex-shrink: 0;
+  display: flex;
   width: 36px;
   height: 36px;
   align-items: center;
   justify-content: center;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--dew-brand);
+  color: #fff;
   font-weight: 700;
-  font-size: 14px;
-  border-radius: 50%;
-  border: 1px solid var(--border-soft);
+  font-size: 13px;
+  border-radius: 8px;
+  border: none;
 }
 .sidebar-user-text {
   min-width: 0;
@@ -365,7 +365,18 @@ fw-button.sidebar-collapse:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 8px;
+  padding: 8px 8px 0;
+}
+.nav-grp {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  font-weight: 700;
+  padding: 12px 12px 5px;
+}
+.nav-grp--rollup[hidden] {
+  display: none;
 }
 .nav-item {
   display: flex;
@@ -591,6 +602,7 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed .sidebar-brand-text,
 .sidebar-collapsed .nav-label,
 .sidebar-collapsed .sidebar-user-text,
+.sidebar-collapsed .nav-grp,
 .sidebar-collapsed .sidebar-history-label,
 .sidebar-collapsed .sidebar-feedback .nav-label {
   opacity: 0;

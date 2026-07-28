@@ -94,9 +94,10 @@ const VIEW_TITLES = {
   precall: "Pre-call",
   postcall: "Post-call",
   accounts: "Accounts",
-  deals: "Deals",
+  deals: "My deals",
   calls: "All calls",
-  manager: "Manager dashboard",
+  coaching: "My coaching",
+  manager: "Team",
   se: "SE detail",
   profile: "Profile settings",
   pipeline: "Pipeline review",
@@ -450,6 +451,7 @@ function updateNavForRole() {
   const isManager = isManagerRole(currentSession);
   const isLeader = currentSession?.isOrgDirector === true;
   const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
+  let rollupVisible = false;
   document.querySelectorAll(".nav-item[data-role]").forEach((btn) => {
     const role = btn.dataset.role;
     let showBtn;
@@ -458,7 +460,12 @@ function updateNavForRole() {
     else if (role === "curator") showBtn = isCurator;
     else showBtn = !isManager;
     btn.hidden = !showBtn;
+    if (showBtn && (role === "manager" || role === "leader" || role === "curator")) {
+      rollupVisible = true;
+    }
   });
+  const rollupGrp = document.querySelector(".nav-grp--rollup");
+  if (rollupGrp) rollupGrp.hidden = !rollupVisible;
   const globalSearch = $("global-search-input");
   if (globalSearch) globalSearch.hidden = isManager;
 }
@@ -552,7 +559,11 @@ function switchView(name, opts = {}) {
   $("main-view-title").textContent = VIEW_TITLES[name] || name;
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === name);
+    const view = btn.dataset.view;
+    const active =
+      view === name ||
+      (view === "coaching" && name === "dashboard" && currentDashTab === "coaching");
+    btn.classList.toggle("active", active);
   });
 
   if (name === "dashboard" && !isManager) {
@@ -1191,6 +1202,7 @@ async function showApp(session, opts = {}) {
       lifecycles: { view: "accounts" },
       coaching: { view: "dashboard", dashTab: "coaching" },
       "dashboard/coaching": { view: "dashboard", dashTab: "coaching" },
+      team: { view: "manager" },
       analysis: { view: "postcall" },
       workspace: { view: "postcall" },
     };
