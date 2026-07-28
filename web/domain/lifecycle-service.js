@@ -321,7 +321,8 @@ export async function logSeTeamEvent(lifecycleId, type, actorId, payload) {
  */
 export async function listLifecyclesForSession(session) {
   const store = getStore();
-  const ownerId = sessionUserId(session);
+  const { effectiveSessionUserId } = await import("./session.js");
+  const ownerId = effectiveSessionUserId(session);
   if (!ownerId) return [];
 
   const { getVisibleScope, resolveOrgForUser, userWithDirectorFlag, getOrg } = await import(

@@ -18,6 +18,13 @@ const VIDEO_SEGMENT_TYPES = new Set<TimelineSegmentType>([
   "scene_change",
 ]);
 
+export interface ParticipantInferRow {
+  name: string;
+  talkPct?: number | null;
+  cameraOn?: boolean | null;
+  role?: string | null;
+}
+
 export interface TranscriptInferInput {
   transcript: string;
   durationSec?: number | null;
@@ -65,6 +72,7 @@ export function parseInferResponse(
   cdeEvidence: string | null;
   shareOnPct: number | null;
   segments: Array<{ startS: number; endS: number; segmentType: TimelineSegmentType; label?: string }>;
+  participants: ParticipantInferRow[];
 } {
   const empty = {
     cameraOnPct: null as number | null,
@@ -77,6 +85,7 @@ export function parseInferResponse(
       segmentType: TimelineSegmentType;
       label?: string;
     }>,
+    participants: [] as ParticipantInferRow[],
   };
   if (!parsed) return empty;
 
@@ -113,6 +122,33 @@ export function parseInferResponse(
 
   segments.sort((a, b) => a.startS - b.startS);
 
+  const partRaw = Array.isArray(parsed.participants) ? parsed.participants : [];
+  const participants: ParticipantInferRow[] = [];
+  for (const row of partRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim().slice(0, 80) : "";
+    if (!name) continue;
+    const talkRaw = r.talkPct ?? r.talkSharePct;
+    const talkPct =
+      typeof talkRaw === "number" && Number.isFinite(talkRaw)
+        ? Math.max(0, Math.min(100, Math.round(talkRaw)))
+        : null;
+    const camRaw = r.cameraOn ?? r.camOn;
+    let cameraOn: boolean | null = null;
+    if (typeof camRaw === "boolean") cameraOn = camRaw;
+    else if (typeof camRaw === "string") {
+      const s = camRaw.toLowerCase();
+      if (s === "on" || s === "off") cameraOn = s === "on";
+    }
+    participants.push({
+      name,
+      talkPct,
+      cameraOn,
+      role: typeof r.role === "string" ? r.role.trim().slice(0, 40) : null,
+    });
+  }
+
   return {
     cameraOnPct:
       consent && typeof cameraRaw === "number" && Number.isFinite(cameraRaw)
@@ -125,6 +161,7 @@ export function parseInferResponse(
     cdeCustomized: typeof cde === "boolean" ? cde : null,
     cdeEvidence: evidence || null,
     segments,
+    participants,
   };
 }
 
@@ -163,14 +200,22 @@ export async function inferVideoFactsFromTranscript(
       : "Estimate timestamps in seconds from context (intro ~0, demo mid-call).",
     `Call type: ${callType}.`,
     consent
-      ? "You may estimate camera_on_pct from whether the SE references being on camera."
-      : "Set cameraOnPct to null (no face consent).",
+      ? "You may estimate camera_on_pct from whether the SE references being on camera. Infer per-participant talkPct and cameraOn when names appear in the transcript."
+      : "Set cameraOnPct to null (no face consent). Still infer talkPct per named speaker; set cameraOn false for everyone.",
     "Reply JSON only:",
     JSON.stringify({
       shareOnPct: "<0-100 int — estimated % of call with screenshare>",
       cameraOnPct: consent ? "<0-100 int or null>" : null,
       cdeCustomized: "<boolean|null — product tenant looks customer-specific vs stock demo>",
       cdeEvidence: "<max 25 words or null>",
+      participants: [
+        {
+          name: "First Last",
+          talkPct: 24,
+          cameraOn: consent ? true : false,
+          role: "se|customer|ae",
+        },
+      ],
       segments: [
         {
           startS: 0,
@@ -249,6 +294,7 @@ export async function inferVideoFactsFromTranscript(
       cdeEvidence: inferred.cdeEvidence,
       shareOnPct: inferred.shareOnPct,
       visualAnalysisConsent: consent,
+      attendeeCurveJson: inferred.participants.length ? inferred.participants : null,
       segments: inferred.segments,
     });
   } catch (err) {

@@ -409,18 +409,39 @@ function renderSpineTimeAxis(durationSec) {
   return `<div class="call-spine-axis">${ticks.map((t) => `<span>${esc(t)}</span>`).join("")}</div>`;
 }
 
-function renderSpineMetrics(videoFacts, scorecard) {
+function renderSpineMetrics(videoFacts, scorecard, record) {
   const metrics = [];
-  if (videoFacts?.cameraOnPct != null) {
-    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`]);
+  const tm = record?.transcriptMeta || record?.result?.transcriptMeta || {};
+  const curves = normalizeParticipantStats(videoFacts?.attendeeCurveJson);
+  const seCurve = curves.find((p) => /solution engineer|^se$/i.test(p.role || ""));
+  const customerCurves = curves.filter((p) => /customer/i.test(p.role || ""));
+
+  if (seCurve?.talkPct != null) {
+    metrics.push(["SE talk ratio", `${seCurve.talkPct}%`]);
+  } else if (tm.speakerCount && tm.wordCount) {
+    metrics.push(["Speakers", `${tm.speakerCount}`]);
   }
-  if (videoFacts?.shareOnPct != null) {
-    metrics.push(["Screen share", `${Math.round(Number(videoFacts.shareOnPct))}%`]);
-  }
+
   const engagement = (scorecard?.lines || []).find((l) => l.themeKey === "customer_engagement");
   if (engagement?.score != null && engagement.applicable) {
     metrics.push(["Customer engagement", `${esc(String(engagement.score))}%`]);
   }
+
+  if (videoFacts?.cameraOnPct != null) {
+    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`]);
+  }
+
+  const customerCamOn = customerCurves.filter((p) => p.cameraOn === true).length;
+  const customerTotal = customerCurves.length;
+  if (customerTotal) {
+    metrics.push([
+      "Customer cameras",
+      customerCamOn ? `${customerCamOn} of ${customerTotal}` : `0 of ${customerTotal}`,
+    ]);
+  } else if (videoFacts?.shareOnPct != null) {
+    metrics.push(["Screen share", `${Math.round(Number(videoFacts.shareOnPct))}%`]);
+  }
+
   if (!metrics.length) return "";
   return `<div class="call-spine-metrics">${metrics
     .map(
@@ -428,6 +449,69 @@ function renderSpineMetrics(videoFacts, scorecard) {
         `<div><div class="sub call-spine-metric-label">${esc(label)}</div><div class="call-spine-metric-value num">${value}</div></div>`,
     )
     .join("")}</div>`;
+}
+
+function normalizeParticipantStats(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p) => {
+      const name = String(p?.name || p?.displayName || "").trim();
+      if (!name) return null;
+      const talkRaw = p.talkPct ?? p.talkSharePct ?? p.talk_pct;
+      const camRaw = p.cameraOn ?? p.camOn ?? p.camera;
+      let cameraOn = false;
+      if (typeof camRaw === "boolean") cameraOn = camRaw;
+      else if (typeof camRaw === "string") cameraOn = camRaw.toLowerCase() === "on";
+      return {
+        name,
+        role: String(p.role || p.side || "").trim(),
+        talkPct:
+          talkRaw != null && Number.isFinite(Number(talkRaw)) ? Math.round(Number(talkRaw)) : null,
+        cameraOn,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildStakeholderRows(identities, attendees, videoFacts) {
+  const statsByName = new Map();
+  for (const p of normalizeParticipantStats(videoFacts?.attendeeCurveJson)) {
+    statsByName.set(p.name.toLowerCase(), p);
+  }
+
+  const rows = [];
+  const pushUnique = (name, role, side = "") => {
+    const label = String(name || "").trim();
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (rows.some((r) => r.key === key)) return;
+    const stat = statsByName.get(key);
+    let talkPct = stat?.talkPct ?? null;
+    let cameraOn = stat?.cameraOn;
+    if (cameraOn == null && /solution engineer|^se$/i.test(role)) {
+      if (videoFacts?.cameraOnPct != null) {
+        cameraOn = Number(videoFacts.cameraOnPct) >= 50;
+      }
+    }
+    if (cameraOn == null) cameraOn = false;
+    rows.push({
+      key,
+      name: label,
+      role,
+      side,
+      talkPct,
+      cameraOn,
+    });
+  };
+
+  if (identities?.seIdentity) pushUnique(identities.seIdentity, "Solution Engineer", "internal");
+  if (identities?.aeIdentity) pushUnique(identities.aeIdentity, "Account Executive", "internal");
+  for (const c of identities?.customerIdentities || []) pushUnique(c, "Customer", "customer");
+  for (const a of attendees || []) {
+    const role = a.role || "Attendee";
+    pushUnique(a.name || a.email, role, /customer/i.test(role) ? "customer" : "");
+  }
+  return rows;
 }
 
 function contextItem(label, valueHtml) {
@@ -588,41 +672,34 @@ function renderCallNotesSection(notes) {
     </section>`;
 }
 
-function renderStakeholderSection(identities, attendees, hasVideo) {
-  const rows = [];
-  const pushUnique = (name, role, meta = "") => {
-    const label = String(name || "").trim();
-    if (!label) return;
-    const key = label.toLowerCase();
-    if (rows.some((r) => r.key === key)) return;
-    rows.push({ key, name: label, role, meta });
-  };
-  if (identities?.seIdentity) pushUnique(identities.seIdentity, "Solution Engineer", "Host");
-  if (identities?.aeIdentity) pushUnique(identities.aeIdentity, "Account Executive");
-  for (const c of identities?.customerIdentities || []) pushUnique(c, "Customer");
-  for (const a of attendees || []) {
-    pushUnique(a.name || a.email, a.role || "Attendee");
-  }
+function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
+  const rows = buildStakeholderRows(identities, attendees, videoFacts);
 
   let body;
   if (rows.length) {
     body = `<div class="call-stakeholder-cards">${rows
       .map((r, i) => {
         const avCls = stakeholderAvatarClass(r.role);
+        const talkPill =
+          r.talkPct != null
+            ? `<span class="pill call-stakeholder-pill">talk ${esc(String(r.talkPct))}%</span>`
+            : "";
+        const camCls = r.cameraOn ? "green" : "";
+        const camLabel = r.cameraOn ? "On" : "Off";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">
             <div class="call-stakeholder-name">${esc(r.name)}</div>
             <div class="sub call-stakeholder-role">${esc(r.role)}</div>
-            ${r.meta ? `<div class="sub call-stakeholder-meta">${esc(r.meta)}</div>` : ""}
+            <div class="call-stakeholder-signals">${talkPill}<span class="pill ${camCls} call-stakeholder-pill">cam ${camLabel}</span></div>
           </div>
         </div>`;
       })
       .join("")}</div>
     ${
       hasVideo
-        ? `<p class="muted call-stakeholder-note">Talk-share / camera curves from Pass 2 attach when video sampling succeeds.</p>`
-        : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake.</p>`
+        ? `<p class="muted call-stakeholder-note">Talk-share and camera from Pass 2 (Gemini transcript/vision) when sampling succeeds.</p>`
+        : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake; camera defaults to Off without video.</p>`
     }`;
   } else if (hasVideo) {
     body = renderVideoEmptySection(
@@ -703,7 +780,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   if (segments.length) {
     body += renderVisualSpine(segments, markers, durationSec);
     body += renderSpineTimeAxis(durationSec);
-    body += renderSpineMetrics(opts.videoFacts, opts.scorecard);
+    body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record);
     body += renderTimelineSpine(segments, markers);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored — those need Pass 2.</p>`;
@@ -1032,51 +1109,63 @@ function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
 function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
   const qipHtml = scorecard?.lines?.length
     ? renderQipScorecard(scorecard, analysisMeta)
-    : `<fw-inline-message type="warning" open closable="false">No QIP scorecard for this call yet.</fw-inline-message>`;
+    : `<div class="call-tab-empty"><h4>No QIP scorecard</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
+
+  const tabDefs = [
+    { id: "qip", label: "QIP scorecard", body: `<div class="call-tab-panel-inner call-tab-qip">${qipHtml}</div>` },
+    {
+      id: "technical",
+      label: "Technical commit",
+      body: `<div class="call-tab-panel-inner">${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas, tabs.followUps, tabs.whatWorks)}</div>`,
+    },
+    {
+      id: "health",
+      label: "Deal health",
+      body: `<div class="call-tab-panel-inner">${renderDealHealthTab(
+        tabs.meddpiccDeltas,
+        tabs.objections,
+        tabs.dealSignal,
+        tabs.meddpicc,
+        tabs.meddpiccFilled,
+      )}</div>`,
+    },
+    {
+      id: "signal",
+      label: "Product signal",
+      body: `<div class="call-tab-panel-inner">${renderProductSignalTab(
+        tabs.productGaps,
+        tabs.whatWorks,
+        tabs.clusterLabels || {},
+      )}</div>`,
+    },
+    {
+      id: "minutes",
+      label: "Minutes",
+      body: `<div class="call-tab-panel-inner">${renderMinutesTab(record, {
+        momDraft: tabs.momDraft,
+        followUps: tabs.followUps,
+      })}</div>`,
+    },
+  ];
+
+  const initial = tabs.initialTab || "qip";
+  const tabButtons = tabDefs
+    .map(
+      (t) =>
+        `<button type="button" class="call-record-tab${t.id === initial ? " on" : ""}" data-call-tab="${esc(t.id)}" role="tab" aria-selected="${t.id === initial ? "true" : "false"}">${esc(t.label)}</button>`,
+    )
+    .join("");
+  const tabPanels = tabDefs
+    .map(
+      (t) =>
+        `<div class="call-record-tabpane tabpane${t.id === initial ? " on" : ""}" data-call-panel="${esc(t.id)}" role="tabpanel">${t.body}</div>`,
+    )
+    .join("");
 
   return `
     <section class="call-record-tabs-section">
-      <fw-tabs class="call-record-tabs" active-tab-name="qip">
-        <fw-tab slot="tab" panel="qip">QIP scorecard</fw-tab>
-        <fw-tab slot="tab" panel="technical">Technical commit</fw-tab>
-        <fw-tab slot="tab" panel="health">Deal health</fw-tab>
-        <fw-tab slot="tab" panel="signal">Product signal</fw-tab>
-        <fw-tab slot="tab" panel="minutes">Minutes</fw-tab>
-        <fw-tab-panel name="qip">
-          <div class="call-tab-panel-inner call-tab-qip">${qipHtml}</div>
-        </fw-tab-panel>
-        <fw-tab-panel name="technical">
-          <div class="call-tab-panel-inner">
-            ${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas, tabs.followUps, tabs.whatWorks)}
-          </div>
-        </fw-tab-panel>
-        <fw-tab-panel name="health">
-          <div class="call-tab-panel-inner">
-            ${renderDealHealthTab(
-              tabs.meddpiccDeltas,
-              tabs.objections,
-              tabs.dealSignal,
-              tabs.meddpicc,
-              tabs.meddpiccFilled,
-            )}
-          </div>
-        </fw-tab-panel>
-        <fw-tab-panel name="signal">
-          <div class="call-tab-panel-inner">
-            ${renderProductSignalTab(
-              tabs.productGaps,
-              tabs.whatWorks,
-              tabs.clusterLabels || {},
-            )}
-          </div>
-        </fw-tab-panel>
-        <fw-tab-panel name="minutes">
-          <div class="call-tab-panel-inner">${renderMinutesTab(record, {
-            momDraft: tabs.momDraft,
-            followUps: tabs.followUps,
-          })}</div>
-        </fw-tab-panel>
-      </fw-tabs>
+      <div class="call-record-tablist tabs" role="tablist">${tabButtons}</div>
+      <div class="call-record-tabpanes">${tabPanels}</div>
     </section>`;
 }
 
@@ -1189,6 +1278,9 @@ async function loadCallBundle(session, record) {
   if (!timelineSegments.length && Array.isArray(draftVf?.segments)) {
     timelineSegments = draftVf.segments;
     timelineFacts = timelineFacts || draftVf;
+  }
+  if (timelineFacts && draftVf?.attendeeCurveJson && !timelineFacts.attendeeCurveJson) {
+    timelineFacts = { ...timelineFacts, attendeeCurveJson: draftVf.attendeeCurveJson };
   }
 
   let timelineMarkers = store.listTimelineMarkersByCall
@@ -1364,11 +1456,12 @@ function renderCallRecord(bundle) {
         ${renderVerdictStrip(bundle)}
         <div class="call-record-notes-row">
           ${renderCallNotesSection(bundle.callNotes)}
-          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo)}
+          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts)}
         </div>
         ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
           videoFacts: bundle.videoFacts,
           scorecard: bundle.scorecard,
+          record,
         })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
@@ -1413,10 +1506,42 @@ function wireCallRecord(container, session, bundle, opts) {
   };
   container.querySelector('[data-action="open-deal"]')?.addEventListener("fwClick", openDeal);
   container.querySelector('[data-action="open-deal"]')?.addEventListener("click", openDeal);
-  container.querySelector('a[data-action="open-deal"]')?.addEventListener("click", (e) => {
-    e.preventDefault();
-    openDeal();
+  container.querySelectorAll('a[data-action="open-deal"]').forEach((link) => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      openDeal();
+    });
   });
+
+  container.querySelectorAll('a.call-meta-link[href^="#accounts/"]').forEach((link) => {
+    link.addEventListener("click", (e) => {
+      const m = /^#accounts\/([^/?#]+)/.exec(link.getAttribute("href") || "");
+      if (m?.[1]) {
+        e.preventDefault();
+        opts.onOpenAccount?.(m[1]);
+      }
+    });
+  });
+
+  const tablist = container.querySelector(".call-record-tablist");
+  if (tablist) {
+    const buttons = tablist.querySelectorAll("[data-call-tab]");
+    const panels = container.querySelectorAll("[data-call-panel]");
+    const activateTab = (name) => {
+      buttons.forEach((btn) => {
+        const on = btn.getAttribute("data-call-tab") === name;
+        btn.classList.toggle("on", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      panels.forEach((panel) => {
+        panel.classList.toggle("on", panel.getAttribute("data-call-panel") === name);
+      });
+    };
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => activateTab(btn.getAttribute("data-call-tab")));
+    });
+    if (opts.initialTab) activateTab(opts.initialTab);
+  }
 
   const notesEditor = container.querySelector("#call-notes-editor");
   const notesSave = container.querySelector("#call-notes-save");
@@ -1470,11 +1595,6 @@ function wireCallRecord(container, session, bundle, opts) {
 
   momSave?.addEventListener("fwClick", () => { void saveMom(); });
   momSave?.addEventListener("click", () => { void saveMom(); });
-
-  if (opts.initialTab) {
-    const tabs = container.querySelector(".call-record-tabs");
-    if (tabs) tabs.activeTabName = opts.initialTab;
-  }
 
   if (opts.expandThemeKey) {
     const themeKey = opts.expandThemeKey;

@@ -85,6 +85,13 @@ export interface VideoFactsDraft {
   shareOnPct?: number | null;
   /** Spec §12.8 — face/camera vision only when true. */
   visualAnalysisConsent?: boolean;
+  /** Per-participant talk % / camera — from Pass 2 transcript or keyframe vision. */
+  attendeeCurveJson?: Array<{
+    name: string;
+    talkPct?: number | null;
+    cameraOn?: boolean | null;
+    role?: string | null;
+  }> | null;
   segments: Array<{
     startS: number;
     endS: number;

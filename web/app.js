@@ -621,6 +621,11 @@ async function renderAccountPanel() {
       console.warn("[app] account panel session sync failed:", err);
     }
   }
+  session = withEffectiveUserId(session);
+  if (session?.email) {
+    currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+    session = currentSession;
+  }
   await renderAccountView(panel, session, {
     accountId: selectedAccountId || undefined,
     ...(selectedAccountId
@@ -767,6 +772,11 @@ async function renderDealPanel() {
       console.warn("[app] deal panel session sync failed:", err);
     }
   }
+  session = withEffectiveUserId(session);
+  if (session?.email) {
+    currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+    session = currentSession;
+  }
   await renderDealView(panel, session, {
     dealId: selectedDealNavId || undefined,
     lifecycleOwnerId: accountLifecycleOwnerId || undefined,
@@ -854,6 +864,15 @@ async function renderCallPanel() {
         callExpandThemeKey = undefined;
         callRecordOwnerEmail = undefined;
         switchView("deals", { dealId, drillDown: true });
+      },
+      onOpenAccount: (accountId) => {
+        selectedAccountId = accountId;
+        selectedAccountDealId = null;
+        selectedCallId = null;
+        callRecordTab = undefined;
+        callExpandThemeKey = undefined;
+        callRecordOwnerEmail = undefined;
+        switchView("accounts", { accountId, drillDown: true });
       },
     });
     callRecordTab = undefined;

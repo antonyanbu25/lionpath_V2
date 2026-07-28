@@ -105,6 +105,7 @@ export function buildVideoFactsDraft(opts: {
   nowMs?: number;
   /** When set (e.g. Gemini transcript inference), skip scene-delta segment builder. */
   segments?: VideoFactsDraft["segments"];
+  attendeeCurveJson?: VideoFactsDraft["attendeeCurveJson"];
 }): VideoFactsDraft {
   const durationSec = opts.durationSec ?? null;
   const keyframes = opts.status === "ready" ? pickKeyframes(opts.samples) : [];
@@ -137,6 +138,7 @@ export function buildVideoFactsDraft(opts: {
         ? null
         : Math.max(0, Math.min(100, Math.round(opts.shareOnPct))),
     visualAnalysisConsent: !!opts.visualAnalysisConsent,
+    attendeeCurveJson: opts.attendeeCurveJson ?? null,
     segments,
   };
 }

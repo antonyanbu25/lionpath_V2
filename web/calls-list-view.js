@@ -390,18 +390,35 @@ async function enrichDealsAndAccounts(records) {
   const deals = new Map();
   const accounts = new Map();
   const dealIds = [...new Set(records.map((r) => resolveDealId(r)).filter(Boolean))];
-  for (const id of dealIds) {
-    const deal = await getDeal(id);
-    if (deal) deals.set(id, deal);
-  }
   const store = getStore();
+
+  await Promise.all(
+    dealIds.map(async (id) => {
+      try {
+        const deal = await getDeal(id);
+        if (deal) deals.set(id, deal);
+      } catch (err) {
+        console.warn("[calls-list] getDeal skipped:", id, err?.message || err);
+      }
+    }),
+  );
+
   const accountIds = [...new Set([...deals.values()].map((d) => d.accountId).filter(Boolean))];
-  for (const id of accountIds) {
-    const account = store.getAccount ? await store.getAccount(id) : null;
-    if (account) accounts.set(id, account);
-  }
+  await Promise.all(
+    accountIds.map(async (id) => {
+      try {
+        const account = store.getAccount ? await store.getAccount(id) : null;
+        if (account) accounts.set(id, account);
+      } catch (err) {
+        console.warn("[calls-list] getAccount skipped:", id, err?.message || err);
+      }
+    }),
+  );
   return { deals, accounts };
 }
+
+/** @type {WeakMap<object, { deals: Map, accounts: Map, promise?: Promise<any> }>} */
+const enrichCache = new WeakMap();
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallsListView(container, session, opts = {}) {
@@ -436,11 +453,22 @@ export async function renderCallsListView(container, session, opts = {}) {
       return;
     }
 
-    const { deals, accounts } = await enrichDealsAndAccounts(listFiltered);
     const filters = {
       callType: opts.callType || "",
       window: opts.window || "30d",
     };
+
+    const emptyMaps = { deals: new Map(), accounts: new Map() };
+    let enrichState = enrichCache.get(listFiltered);
+    if (!enrichState) {
+      enrichState = { deals: emptyMaps.deals, accounts: emptyMaps.accounts };
+      enrichCache.set(listFiltered, enrichState);
+      enrichState.promise = enrichDealsAndAccounts(listFiltered).then((result) => {
+        enrichState.deals = result.deals;
+        enrichState.accounts = result.accounts;
+        return result;
+      });
+    }
 
     const typeOptions = [
       `<fw-select-option value="">All types</fw-select-option>`,
@@ -454,10 +482,10 @@ export async function renderCallsListView(container, session, opts = {}) {
         `<fw-select-option value="${esc(w.id)}"${filters.window === w.id ? " selected" : ""}>${esc(w.label)}</fw-select-option>`,
     ).join("");
 
-    const paint = (activeFilters) => {
+    const paint = (activeFilters, dealMap = enrichState.deals, accountMap = enrichState.accounts) => {
       const filtered = filterCallRecords(listFiltered, activeFilters);
       const metrics = aggregateCallListMetrics(filtered);
-      const rows = filtered.map((rec) => buildCallListRow(rec, deals, accounts));
+      const rows = filtered.map((rec) => buildCallListRow(rec, dealMap, accountMap));
       const listEl = container.querySelector(".call-list-compact");
       const metricsEl = container.querySelector(".call-list-metrics-host");
       if (metricsEl) metricsEl.innerHTML = renderMetrics(metrics, activeFilters);
@@ -496,7 +524,7 @@ export async function renderCallsListView(container, session, opts = {}) {
           </div>
           <div class="lifecycle-list call-list-compact">
             ${filterCallRecords(listFiltered, filters)
-              .map((rec) => renderCallListItem(buildCallListRow(rec, deals, accounts)))
+              .map((rec) => renderCallListItem(buildCallListRow(rec, emptyMaps.deals, emptyMaps.accounts)))
               .join("")}
           </div>
         </div>
@@ -504,7 +532,19 @@ export async function renderCallsListView(container, session, opts = {}) {
       </div>`;
 
     wireCallListClicks(container, opts);
-    wireCallListFilters(container, listFiltered, deals, accounts, opts, paint);
+    wireCallListFilters(container, listFiltered, enrichState.deals, enrichState.accounts, opts, paint);
+    paint(filters);
+
+    void enrichState.promise?.then(() => {
+      paint(
+        {
+          callType: opts.callType || "",
+          window: opts.window || "30d",
+        },
+        enrichState.deals,
+        enrichState.accounts,
+      );
+    });
   } catch (err) {
     console.error("[calls-list-view] failed to render:", err);
     container.innerHTML = renderCallsEmptyState(

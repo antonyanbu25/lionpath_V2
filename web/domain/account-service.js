@@ -229,6 +229,8 @@ function selectedDealFromLifecycle(deals, lifecycle) {
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session) {
   const store = getStore();
+  const { effectiveSessionUserId } = await import("./session.js");
+  const ownerId = effectiveSessionUserId(session);
   const lifecycles = await listLifecyclesForSession(session);
   const byAccount = new Map();
 
@@ -247,7 +249,9 @@ export async function listAccountsForSession(session) {
       if (!lifecycle) return null;
       const seTeamDisplay = await resolveSeTeamDisplay(account);
       const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
-      const deals = store.listDealsByAccount ? await store.listDealsByAccount(accountId) : [];
+      const deals = store.listDealsByAccount
+        ? await store.listDealsByAccount(accountId, ownerId || undefined)
+        : [];
       const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
       const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
       const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);

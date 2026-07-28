@@ -12,7 +12,8 @@ import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getStore } from "./domain/store.js";
-import { sessionUserId } from "./domain/session.js";
+import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
+import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
 import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS, resolveDealMeddpicc } from "./domain/contact-service.js";
 import { filterAccountRows } from "./search-service.js";
@@ -2024,9 +2025,18 @@ function renderAccountsEmptyState(message) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderAccountView(container, session, opts = {}) {
-  const userId = sessionUserId(session);
+  let activeSession = session;
+  if (!sessionUserId(activeSession)) {
+    try {
+      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+    } catch (err) {
+      console.warn("[account-view] session sync failed:", err);
+    }
+  }
+  activeSession = withEffectiveUserId(activeSession);
+  const userId = sessionUserId(activeSession);
   if (!userId) {
-    if (session?.email) {
+    if (activeSession?.email) {
       container.innerHTML = renderAccountsEmptyState(
         "We could not load your profile yet. Refresh the page or sign out and back in.",
       );
@@ -2049,7 +2059,7 @@ export async function renderAccountView(container, session, opts = {}) {
         detailQuery.dealId = null;
       }
 
-      const detail = await getAccountEngagementDetail(session, opts.accountId, detailQuery);
+      const detail = await getAccountEngagementDetail(activeSession, opts.accountId, detailQuery);
       if (!detail) {
         container.innerHTML = `<p class="muted">Account not found.</p>`;
         return;
@@ -2067,7 +2077,7 @@ export async function renderAccountView(container, session, opts = {}) {
           })
         : renderAccountOverview(detail, viewOpts);
 
-      wireDetailEvents(container, session, {
+      wireDetailEvents(container, activeSession, {
         ...opts,
         accountId: opts.accountId,
         lifecycleId: detail.lifecycle.id,
@@ -2080,7 +2090,7 @@ export async function renderAccountView(container, session, opts = {}) {
     }
 
     const store = getStore();
-    const baseRows = await enrichRowsWithContacts(await listAccountsForSession(session));
+    const baseRows = await enrichRowsWithContacts(await listAccountsForSession(activeSession));
     const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
 
     if (!rows.length) {

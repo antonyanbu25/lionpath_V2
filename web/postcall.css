@@ -442,6 +442,16 @@
   font-weight: 700;
 }
 
+.postcall-nav-link {
+  color: var(--dew-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.postcall-nav-link:hover {
+  text-decoration: underline;
+}
+
 /* Result island */
 #postcall-result.postcall-result-card {
   padding: 0;

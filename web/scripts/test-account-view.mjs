@@ -408,8 +408,9 @@ assert(emptyContainer.innerHTML.includes("account-list-view"), "empty list uses 
 const noUserContainer = mockContainer();
 await renderAccountView(noUserContainer, { email: "logged@freshworks.com" });
 assert(
-  noUserContainer.innerHTML.toLowerCase().includes("could not load your profile"),
-  "email-only session shows profile message",
+  noUserContainer.innerHTML.includes("No accounts yet") ||
+    noUserContainer.innerHTML.includes("account-list-view"),
+  "email-only session uses effective userId and renders accounts list",
 );
 
 const signedOutContainer = mockContainer();

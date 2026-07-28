@@ -13,7 +13,7 @@ import {
 } from "./domain/contact-service.js";
 import { computeDaysInStage, computeStageMedianDays } from "./domain/deal-traction-service.js";
 import { getStore } from "./domain/store.js";
-import { sessionUserId } from "./domain/session.js";
+import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { resolveCallType } from "./call-view.js";
@@ -1204,6 +1204,7 @@ export async function renderDealView(container, session, opts = {}) {
       console.warn("[deal-view] session sync failed:", err);
     }
   }
+  activeSession = withEffectiveUserId(activeSession);
 
   const userId = sessionUserId(activeSession);
   if (!userId) {

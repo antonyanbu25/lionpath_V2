@@ -360,9 +360,45 @@
   overflow: visible;
 }
 
-.call-record-tabs {
-  --fw-tabs-header-padding: 0;
+.call-record-tablist.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--dew-border);
   margin-bottom: 18px;
+}
+
+.call-record-tab {
+  all: unset;
+  cursor: pointer;
+  padding: 9px 15px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--dew-text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: inherit;
+}
+
+.call-record-tab:hover {
+  color: var(--dew-text);
+}
+
+.call-record-tab.on {
+  color: var(--dew-primary);
+  border-bottom-color: var(--dew-primary);
+}
+
+.call-record-tab:focus-visible {
+  outline: 2px solid var(--dew-primary);
+  outline-offset: -2px;
+}
+
+.call-record-tabpane {
+  display: none;
+}
+
+.call-record-tabpane.on {
+  display: block;
 }
 
 .call-tab-panel-inner {
@@ -439,12 +475,27 @@
   box-shadow: none;
 }
 
-.call-record .qip-line-summary {
+.call-record .qip-line-summary.srow-hd {
   display: grid;
-  grid-template-columns: 1fr 78px 120px 20px;
+  grid-template-columns: 1fr 78px 120px 74px 20px;
   gap: 12px;
   align-items: center;
   padding: 11px 4px;
+}
+
+.call-record .qip-weighted-cell .bar,
+.call-record .qip-weighted-cell .qip-weight-bar {
+  width: 100%;
+  min-width: 72px;
+}
+
+.call-record .qip-grid-header {
+  display: grid;
+  grid-template-columns: 1fr 78px 120px 74px 20px;
+  gap: 12px;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid var(--dew-border);
+  margin-bottom: 4px;
 }
 
 .call-record .qip-line {
@@ -511,11 +562,13 @@
     width: 100%;
   }
 
-  .call-record .qip-line-summary {
+  .call-record .qip-line-summary.srow-hd {
     grid-template-columns: 1fr auto;
   }
 
-  .call-record .qip-weight {
+  .call-record .qip-weighted-cell,
+  .call-record .qip-conf-cell,
+  .call-record .qip-grid-header > :nth-child(n + 3) {
     display: none;
   }
 }
@@ -1111,6 +1164,17 @@
 .call-stakeholder-role,
 .call-stakeholder-meta {
   font-size: 12px;
+}
+
+.call-stakeholder-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.call-stakeholder-pill {
+  font-size: 10.5px;
 }
 
 .call-tc-tab-grid,

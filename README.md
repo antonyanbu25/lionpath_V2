@@ -59,6 +59,18 @@ Implementation lives in `worker/src/postcall/` (17 modules) plus `worker/src/vid
 | Post-call not in sidebar history | Refresh sidebar immediately after save; await history sync (no fire-and-forget race) |
 | Call page “could not load your profile” | Re-sync session before `renderCallView`; stable `userId` fallback when Firestore upsert fails |
 | Pass 2 / Sample video fails without ffmpeg | Gemini transcript inference (`gemini-3.1-flash-lite`) — detects slides/PPT/product share segments; ffmpeg optional on VPS |
+| Accounts / Deals “could not load” on SSO | `effectiveSessionUserId` + owner-scoped Firestore queries (same pattern as call view) |
+| Call record tabs / QIP grid misaligned | Wireframe v4 native tabs + 5-column scorecard grid (Theme / Score / Weighted / Conf) |
+| Calls list slow first paint | Render from local history immediately; enrich deal/account labels in parallel |
+
+**Pass 2 vision models** (see `worker/src/video/`):
+
+| Path | Model | Used for |
+|------|--------|----------|
+| Transcript inference (`transcript-infer.ts`) | `gemini-3.1-flash-lite` (default via `POSTCALL_MODEL`) | Slides/PPT segments, share %, per-participant talk/cam when no ffmpeg |
+| Keyframe vision (`vision.ts`) | Same Gemini model on up to 16 JPEG keyframes (VPS + ffmpeg) | SE camera %, CDE customization, screen-share % |
+
+Participant **cam On/Off** defaults to **Off** when Pass 2 has no camera signal. PPT/slide detection runs on both paths via segment types `slides`, `product`, `cde`.
 
 **Call record UI** (`#calls/:id`): QIP / MEDDPICC / traction / confidence verdict strip, deal context header, call notes + participants, timeline (“How the N minutes went”), scorecard tabs — see [wireframe v4](./docs/wireframes/se-singha-paathai-v4.html).
 
@@ -72,9 +84,8 @@ cd worker && npm run dev:node
 ```
 
 Pass 2 no longer requires ffmpeg locally when a transcript is present (Zoom resolve or pasted VTT). VPS deploy still benefits from ffmpeg for keyframe vision when available.
-=======
+
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation** (Accounts / Deals, MEDDPICC on deals) plus a **call-ready Discovery tab** — account + people above the fold, collapsed signals grid, discovery kit closer to the top, and **Research extras** (Support JD + sources). See **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**.
->>>>>>> 15d850e (Redesign Discovery tab (Option A) and map SE context into signals.)
 
 ---
 

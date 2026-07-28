@@ -729,7 +729,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
             barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
           const barCol = na || suppressed
             ? `<span class="muted">—</span>`
-            : `<div class="bar qip-weight-bar"><span style="width:${pct}%;background:${barColor}"></span></div>`;
+            : `<div class="bar qip-weight-bar"><span style="width:${Math.max(pct, line.score === 0 ? 0 : 4)}%;background:${barColor}"></span></div>`;
           const reason = na && line.notApplicableReason
             ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
             : "";
@@ -820,6 +820,14 @@ function renderConfirmedReadOnlyBanner(data) {
     data?.resolve?.deals?.find((d) => d.dealId === c?.dealId) ||
     data?.resolve?.deals?.find((d) => d.preselected);
   const dealLabel = deal?.title || c?.dealId || "—";
+  const accountId = data?.resolve?.account?.accountId || c?.accountId || null;
+  const dealId = c?.dealId || deal?.dealId || null;
+  const accountLink = accountId
+    ? `<a href="#accounts/${esc(accountId)}" class="postcall-nav-link" data-postcall-nav="account">${esc(accountName)}</a>`
+    : esc(accountName);
+  const dealLink = dealId
+    ? `<a href="#deals/${esc(dealId)}" class="postcall-nav-link" data-postcall-nav="deal">${esc(dealLabel)}</a>`
+    : esc(dealLabel);
   const overrideNotes = [];
   if (c?.callTypeOverride) {
     overrideNotes.push(
@@ -830,7 +838,7 @@ function renderConfirmedReadOnlyBanner(data) {
     overrideNotes.push("Deal selection corrected");
   }
   return `<div class="postcall-confirmed-banner" aria-label="Confirmed match summary">
-    <strong>Confirmed</strong> — Account: ${esc(accountName)} · Deal: ${esc(dealLabel)} · Call type: ${esc(callLabel)}
+    <strong>Confirmed</strong> — Account: ${accountLink} · Deal: ${dealLink} · Call type: ${esc(callLabel)}
     ${overrideNotes.length ? `<span class="muted"> (${esc(overrideNotes.join("; "))})</span>` : ""}
   </div>${renderVideoNaBanner(data)}`;
 }
@@ -1069,6 +1077,7 @@ export function displayPostCall(data, meta) {
     console.error("[postcall] render failed:", err);
     result.innerHTML = `<fw-inline-message type="error" open closable="false">${esc(err.message || "Could not render analysis.")}</fw-inline-message>`;
   }
+  wirePostCallNavigation(result, data);
   show($("postcall-form-view"), false);
   show(result, true);
   initPostCallAnimations(result);
@@ -1082,6 +1091,30 @@ export function displayPostCall(data, meta) {
     },
   });
   result.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+}
+
+function wirePostCallNavigation(root, data) {
+  if (!root) return;
+  const accountId = data?.resolve?.account?.accountId || data?.confirmed?.accountId || null;
+  const dealId =
+    data?.confirmed?.dealId ||
+    data?.resolve?.deals?.find((d) => d.preselected)?.dealId ||
+    data?.resolve?.deals?.[0]?.dealId ||
+    null;
+  root.querySelectorAll('[data-postcall-nav="account"]').forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (!accountId) return;
+      e.preventDefault();
+      location.hash = `#accounts/${accountId}`;
+    });
+  });
+  root.querySelectorAll('[data-postcall-nav="deal"]').forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (!dealId) return;
+      e.preventDefault();
+      location.hash = `#deals/${dealId}`;
+    });
+  });
 }
 
 let onAnalysisSaved = null;
