@@ -885,6 +885,13 @@ async function renderCallPanel() {
         callRecordOwnerEmail = undefined;
         switchView("accounts", { accountId, drillDown: true });
       },
+      onRerun: () => {
+        selectedCallId = null;
+        callRecordTab = undefined;
+        callExpandThemeKey = undefined;
+        callRecordOwnerEmail = undefined;
+        switchView("postcall");
+      },
     });
     callRecordTab = undefined;
     callExpandThemeKey = undefined;

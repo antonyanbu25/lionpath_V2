@@ -17,7 +17,6 @@ import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPIC
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
-import { renderCallProductGapRow } from "./product-signal-view.js";
 import { esc } from "./shared.js";
 
 const CALL_TYPE_LABELS = {
@@ -402,21 +401,62 @@ function stakeholderAvatarClass(role) {
   return "";
 }
 
-function renderMeddpiccList(meddpicc) {
+function renderMeddpiccList(meddpicc, meddpiccDeltas) {
   if (!meddpicc) return "";
+  const deltaByField = {};
+  for (const d of meddpiccDeltas || []) {
+    if (d?.field) deltaByField[d.field] = d;
+  }
   return MEDDPICC_FIELD_KEYS.map((key, i) => {
     const slot = meddpicc[key];
     const filled = slot?.value && slot.status !== "unknown";
     const label = MEDDPICC_FIELD_LABELS[key] || key;
     const value = filled ? slot.value : "Not surfaced";
+    const delta = deltaByField[key];
+    const deltaPill = delta?.changeType
+      ? `<span class="pill ${delta.changeType === "new" ? "red" : delta.changeType === "confirmed" ? "green" : "amber"}" style="margin-left:4px">${esc(delta.changeType === "new" ? "New this call" : delta.changeType === "confirmed" ? "Confirmed" : "Still unknown")}</span>`
+      : "";
     return `<div class="call-medp-row${i < MEDDPICC_FIELD_KEYS.length - 1 ? " call-medp-row--border" : ""}">
       <span class="call-medp-dot${filled ? " call-medp-dot--on" : ""}" aria-hidden="true"></span>
       <div>
         <div class="call-medp-label">${esc(label)}</div>
-        <div class="sub call-medp-value${filled ? "" : " muted"}">${esc(value)}</div>
+        <div class="sub call-medp-value${filled ? "" : " muted"}">${esc(value)}${deltaPill}</div>
       </div>
     </div>`;
   }).join("");
+}
+
+function tcFieldDeltaPill(field, tcDeltas) {
+  const delta = (tcDeltas || []).find((d) => d.field === field);
+  if (!delta?.changeType) return "";
+  if (delta.changeType === "new") return ' <span class="pill red">New this call</span>';
+  if (delta.changeType === "still_unknown" || delta.changeType === "unknown") {
+    return ' <span class="pill amber">Still unknown</span>';
+  }
+  if (delta.changeType === "confirmed") return ' <span class="pill green">Confirmed</span>';
+  return "";
+}
+
+function renderFitmentCard(deal) {
+  const functional = deal?.functionalFitment ?? deal?.metadata?.functionalFitment;
+  const technical = deal?.technicalFitment ?? deal?.metadata?.technicalFitment;
+  const fitBar = (label, val) => {
+    const n = val != null && Number.isFinite(Number(val)) ? Math.round(Number(val)) : null;
+    const pct = n != null ? Math.min(100, Math.max(0, n)) : null;
+    return `<div class="call-fitment-metric">
+      <div class="sub">${esc(label)}</div>
+      <div class="call-fitment-value num">${pct != null ? `${pct}%` : "—"}</div>
+      <div class="bar"><span style="width:${pct ?? 0}%;background:var(--green)"></span></div>
+    </div>`;
+  };
+  if (functional == null && technical == null) return "";
+  return `<div class="card-wire card-wire--tight call-tc-side-card call-fitment-card">
+    <div class="prep-form-eyebrow">Fitment</div>
+    <div class="call-fitment-grid">
+      ${fitBar("Functional", functional)}
+      ${fitBar("Technical", technical)}
+    </div>
+  </div>`;
 }
 
 const SPINE_SEGMENT_COLORS = {
@@ -888,7 +928,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     </section>`;
 }
 
-function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWorks) {
+function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWorks, deal) {
   const tc = technicalCommit || null;
   const deltas = tcDeltas || [];
   if (!tc && !deltas.length) {
@@ -898,36 +938,22 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
     );
   }
 
-  const slotRows = [
-    ["Incumbent", formatTcFieldValue(tc?.incumbent)],
-    ["Competitor", formatTcFieldValue(tc?.competitor)],
-    ["Identified risk", formatTcFieldValue(tc?.identifiedRisk)],
-    ["Timeline for closure", formatTcFieldValue(tc?.timelineForClosure)],
-    ["Reason for evaluation", formatTcFieldValue(tc?.reasonForEvaluation)],
-    ["AI attach", formatTcFieldValue(tc?.aiAttach)],
-  ]
-    .filter(([, v]) => v)
+  const tcFields = [
+    ["incumbent", "Incumbent", formatTcFieldValue(tc?.incumbent)],
+    ["competitor", "Competitor", formatTcFieldValue(tc?.competitor)],
+    ["identifiedRisk", "Identified risk", formatTcFieldValue(tc?.identifiedRisk)],
+    ["timelineForClosure", "Timeline for closure", formatTcFieldValue(tc?.timelineForClosure)],
+    ["reasonForEvaluation", "Reason for evaluation", formatTcFieldValue(tc?.reasonForEvaluation)],
+    ["aiAttach", "AI attach", formatTcFieldValue(tc?.aiAttach)],
+  ];
+
+  const slotRows = tcFields
+    .filter(([, , v]) => v)
     .map(
-      ([label, value]) =>
-        `<div class="call-tc-slot"><div class="prep-form-eyebrow">${esc(label)}</div><div>${esc(value)}</div></div>`,
+      ([field, label, value]) =>
+        `<div class="call-tc-slot call-tc-slot--wire"><div class="prep-form-eyebrow">${esc(label)}</div><div>${esc(value)}${tcFieldDeltaPill(field, deltas)}</div></div>`,
     )
     .join("");
-
-  const deltaRows = deltas.length
-    ? `<ul class="call-delta-list call-tc-delta-list">
-        ${deltas
-          .map((d) => {
-            const label = TC_SLOT_LABELS[d.field] || d.field;
-            const current = formatTcFieldValue(d.current);
-            return `<li class="call-delta-item">
-              ${deltaChangePill(d.changeType)}
-              <strong>${esc(label)}</strong>
-              ${current ? `<span>${esc(current)}</span>` : ""}
-            </li>`;
-          })
-          .join("")}
-      </ul>`
-    : "";
 
   const pendingRows = (followUps || [])
     .filter((f) => f?.description)
@@ -944,9 +970,13 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
     .slice(0, 3)
     .map(
       (w) =>
-        `<div class="ev good"><div class="ts">${esc(w.productArea || "Win")}</div>${esc(w.verbatim || w.summary || "")}</div>`,
+        `<div class="ev good"><div class="ts">${esc(formatSegmentTime(w.atS) || w.productArea || "Win")}</div>${esc(w.verbatim || w.summary || "")}</div>`,
     )
     .join("");
+
+  const tcPill = tc?.status
+    ? `<span class="pill ${tcStatusPillClass(tc.status)}">${esc(tcStatusLabel(tc.status))} · unchanged</span>`
+    : "";
 
   return `
     <div class="call-tc-tab call-tc-tab--wireframe">
@@ -954,12 +984,11 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
         <div class="call-tc-main card-wire card-wire--tight">
           <div class="call-tc-head">
             <h3>Technical commit</h3>
-            ${tc ? tcStatusPill(tc.status) : ""}
+            ${tcPill}
           </div>
           <p class="sub call-tc-intro">What this call contributed to the commit. Deltas from the previous call are marked.</p>
           ${tc?.justification ? `<p class="call-tc-justification">${esc(tc.justification)}</p>` : ""}
           <div class="call-tc-slots">${slotRows || '<p class="muted">No commit fields on this snapshot.</p>'}</div>
-          ${deltaRows ? `<div class="call-tc-deltas-inline">${deltaRows}</div>` : ""}
         </div>
         <div class="call-tc-aside">
           ${
@@ -972,6 +1001,7 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
               ? `<div class="card-wire card-wire--tight call-tc-side-card"><div class="prep-form-eyebrow">What's working</div>${winsHtml}</div>`
               : ""
           }
+          ${renderFitmentCard(deal)}
         </div>
       </div>
     </div>`;
@@ -981,7 +1011,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
   const deltas = meddpiccDeltas || [];
   const objs = objections || [];
   const reasons = dealSignal?.reasonsJson || dealSignal?.reasons || [];
-  const medList = renderMeddpiccList(meddpicc);
+  const medList = renderMeddpiccList(meddpicc, deltas);
 
   if (!deltas.length && !objs.length && !reasons.length && !medList) {
     return renderPhase2TabEmpty(
@@ -995,7 +1025,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
         <div class="prep-form-eyebrow">Objections</div>
         ${objs
           .map(
-            (o) => `<div class="call-objection-wire-row">
+            (o, i) => `<div class="call-objection-wire-row${i < objs.length - 1 ? " call-objection-wire-row--border" : ""}">
               <div class="call-objection-wire-text">${esc(o.objectionText || "")}</div>
               <div class="sub">${esc(o.handling || "—")} · <span class="${o.landed ? "call-landed" : "call-open"}">${o.landed ? "landed" : "open"}</span></div>
             </div>`,
@@ -1004,8 +1034,14 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
       </div>`
     : "";
 
+  const tractionClass =
+    dealSignal?.lean === "hot" || dealSignal?.lean === "Hot"
+      ? "green"
+      : dealSignal?.lean === "cold" || dealSignal?.lean === "Cold"
+        ? "red"
+        : "amber";
   const tractionHtml = reasons.length
-    ? `<div class="card-wire card-wire--tight call-health-traction-card">
+    ? `<div class="card-wire card-wire--tight call-health-traction-card call-health-traction-card--${tractionClass}">
         <div class="prep-form-eyebrow">Traction${dealSignal?.lean != null ? ` · ${esc(String(dealSignal.lean))}` : ""}</div>
         <div class="call-traction-bullets">${reasons.map((r) => `· ${esc(typeof r === "string" ? r : r.reason || JSON.stringify(r))}`).join("<br>")}</div>
       </div>`
@@ -1075,68 +1111,45 @@ export function renderMinutesTab(record, opts = {}) {
     );
   }
 
-  const sentLine = sentAt
-    ? `Sent ${formatDateTime(sentAt)}.`
-    : "Not sent yet — edit before sharing with the customer.";
+  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
+  const title = hdr.title || record?.title || "Call recap";
+  const dateLabel = hdr.date || (record?.timestamp ? formatDate(record.timestamp) : "");
+
+  const nextStepsHtml = actionItems.length
+    ? `<br><br><b>Next steps</b><br>${actionItems
+        .map((a) => {
+          const owner = ownerLabel(a.owner);
+          const due = a.dueDate ? ` — <i>${esc(owner || "Owner")}, by ${esc(a.dueDate)}</i>` : owner ? ` — <i>${esc(owner)}</i>` : "";
+          return `· ${esc(a.text)}${due}`;
+        })
+        .join("<br>")}`
+    : "";
 
   const keyPointsHtml = keyPoints.length
-    ? `<section class="call-mom-keypoints">
-        <div class="call-mom-section-head">
-          <h3>Key points</h3>
-        </div>
-        <div class="call-mom-keypoints-list">
-          ${keyPoints
-            .map(
-              (kp, i) => `<details class="call-mom-keypoint" ${i === 0 ? "open" : ""}>
-                <summary>${esc(kp.title)}</summary>
-                ${kp.detail ? `<p>${esc(kp.detail)}</p>` : ""}
-              </details>`,
-            )
-            .join("")}
-        </div>
-      </section>`
+    ? `<br><br><b>What we covered</b><br>${keyPoints.map((kp) => `${esc(kp.title)}${kp.detail ? `: ${esc(kp.detail)}` : ""}`).join("<br>")}`
     : "";
 
-  const actionsHtml = actionItems.length
-    ? `<section class="call-mom-actions-section">
-        <h3>Action items</h3>
-        <ul class="call-mom-action-list">
-          ${actionItems
-            .map((a) => {
-              const time =
-                a.atS != null
-                  ? `<span class="call-mom-action-time num">${esc(formatSegmentTime(a.atS))}</span>`
-                  : "";
-              const meta = [ownerLabel(a.owner), a.dueDate].filter(Boolean).join(" · ");
-              return `<li class="call-mom-action-item">
-                ${time}
-                <div class="call-mom-action-body">
-                  <span>${esc(a.text)}</span>
-                  ${meta ? `<span class="muted call-mom-action-meta">${esc(meta)}</span>` : ""}
-                  <span class="muted call-mom-action-source">Suggested from call</span>
-                </div>
-              </li>`;
-            })
-            .join("")}
-        </ul>
-      </section>`
-    : "";
+  const bodyText = outcome.trim() || draftBody.trim();
+  const recapHtml = `${esc(bodyText)}${keyPointsHtml}${nextStepsHtml}`;
 
   return `
-    <div class="call-mom-panel call-mom-panel--kaia">
-      <p class="muted call-mom-hint">Customer-facing minutes — ${esc(sentLine)}</p>
-      <section class="call-mom-outcome">
-        <h3>Outcome</h3>
-        <p class="call-mom-outcome-text">${esc(outcome || draftBody)}</p>
-      </section>
-      ${keyPointsHtml}
-      ${actionsHtml}
+    <div class="call-mom-panel call-mom-panel--wireframe">
+      <div class="call-mom-wire-head">
+        <h3>Minutes of meeting</h3>
+        <span class="pill blue">Customer facing · never auto-sends</span>
+      </div>
+      <p class="sub call-mom-wire-sub">Drafted from commitments made aloud, with timestamps kept underneath.</p>
+      <div class="call-mom-wire-body">
+        <div class="call-mom-wire-title">${esc(title)}${dateLabel ? ` — ${esc(dateLabel)}` : ""}</div>
+        ${recapHtml}
+      </div>
       <details class="call-mom-edit-wrap">
-        <summary>Edit flat draft</summary>
+        <summary>Edit draft</summary>
         <textarea id="call-mom-editor" class="call-mom-editor" aria-label="Minutes draft">${esc(draftBody || outcome)}</textarea>
         <div class="call-mom-actions">
           <fw-button id="call-mom-save" color="primary" size="small">Save draft</fw-button>
           <span id="call-mom-save-status" class="call-save-status muted" hidden></span>
+          ${sentAt ? `<span class="muted">Sent ${esc(formatDateTime(sentAt))}</span>` : '<span class="muted">Not sent yet</span>'}
         </div>
       </details>
     </div>`;
@@ -1146,33 +1159,52 @@ function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
   const gaps = productGaps || [];
   const wins = whatWorks || [];
   if (!gaps.length && !wins.length) {
-    return `<p class="muted">No product gaps or wins recorded for this call yet. Re-run post-call analysis — Pass 6 extracts gaps (e.g. missing Flutter SDK) from the transcript and call notes.</p>`;
+    return `<p class="muted">No product gaps or wins recorded for this call yet. Re-run post-call analysis — Pass 6 extracts gaps from the transcript and call notes.</p>`;
   }
-  const gapsHtml = gaps.length
-    ? `<section class="call-product-signal-section"><h3>Gaps raised</h3>${gaps
-        .map((g) => renderCallProductGapRow(g, g.clusterId ? clusterLabels[g.clusterId] : null))
-        .join("")}</section>`
-    : "";
-  const winsHtml = wins.length
-    ? `<section class="call-product-signal-section"><h3>What landed</h3>${wins
-        .map(
-          (w) => `
-        <div class="call-product-win-row">
-          <div class="call-product-gap-head">
-            <span class="call-product-gap-area">${esc(w.productArea || "other")}</span>
-            ${w.referenceCandidate ? `<fw-tag text="Reference candidate" color="green"></fw-tag>` : ""}
-          </div>
-          <blockquote class="call-product-gap-verbatim">${esc(w.verbatim || "")}</blockquote>
-        </div>`,
-        )
-        .join("")}</section>`
-    : "";
-  return `<div class="call-product-signal-tab">${gapsHtml}${winsHtml}</div>`;
+
+  const gapRows = gaps.map((g) => {
+    const cluster = g.clusterId ? clusterLabels[g.clusterId] : null;
+    const typeLabel = g.gapType === "enablement_gap" ? "Enablement gap" : "Real gap";
+    const typeCls = g.gapType === "enablement_gap" ? "amber" : "red";
+    const statusLabel = g.status === "published" ? "Roadmap Q3" : "Triage";
+    const ts = g.atS != null ? formatSegmentTime(g.atS) : null;
+    return `<div class="call-product-unified-row">
+      <div class="call-product-unified-main">
+        <div class="call-product-unified-title">${esc(g.title || g.productArea || "Product gap")}</div>
+        ${g.verbatim ? `<div class="ev bad"><div class="ts">${ts ? esc(ts) : "—"}</div>${esc(g.verbatim)}</div>` : ""}
+        <div class="sub call-product-unified-meta">${esc(formatProductAreaLabel(g))}${cluster ? ` · ${esc(cluster)}` : ""} · <span class="pill ${typeCls}">${esc(typeLabel)}</span></div>
+      </div>
+      <span class="pill blue">${esc(statusLabel)}</span>
+    </div>`;
+  });
+
+  const winRows = wins.map((w) => {
+    const ts = w.atS != null ? formatSegmentTime(w.atS) : null;
+    return `<div class="call-product-unified-row call-product-unified-row--win">
+      <div class="call-product-unified-main">
+        <div class="call-product-unified-title">${esc(w.title || w.productArea || "What landed")}</div>
+        ${w.verbatim ? `<div class="ev good"><div class="ts">${ts ? esc(ts) : "—"}</div>${esc(w.verbatim)}</div>` : `<div class="sub">${esc(w.summary || "")}</div>`}
+      </div>
+      <span class="pill green">What's working</span>
+    </div>`;
+  });
+
+  return `<div class="call-product-signal-tab call-product-signal-tab--wireframe">
+    <h3>Raised on this call</h3>
+    <p class="sub">Classified against the taxonomy, clustered on the verbatim</p>
+    ${[...gapRows, ...winRows].join("")}
+  </div>`;
+}
+
+function formatProductAreaLabel(gap) {
+  const area = String(gap.productArea || "other").replace(/_/g, " ");
+  if (!gap.subArea || gap.subArea === "other") return area;
+  return `${area} › ${String(gap.subArea).replace(/_/g, " ")}`;
 }
 
 function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
   const qipHtml = scorecard?.lines?.length
-    ? renderQipScorecard(scorecard, analysisMeta)
+    ? renderQipScorecard(scorecard, analysisMeta, { context: "call-record" })
     : `<div class="call-tab-empty"><h4>No QIP scorecard</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
 
   const tabDefs = [
@@ -1180,7 +1212,7 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
     {
       id: "technical",
       label: "Technical commit",
-      body: `<div class="call-tab-panel-inner">${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas, tabs.followUps, tabs.whatWorks)}</div>`,
+      body: `<div class="call-tab-panel-inner">${renderTechnicalCommitTab(tabs.technicalCommit, tabs.tcDeltas, tabs.followUps, tabs.whatWorks, tabs.deal)}</div>`,
     },
     {
       id: "health",
@@ -1513,6 +1545,7 @@ function renderCallRecord(bundle) {
             ${metaBits.length ? `<p class="call-record-meta-line muted">${metaBits.join(" · ")}</p>` : ""}
           </div>
           <div class="call-record-header-actions">
+            <fw-button color="secondary" fill="outline" size="small" data-action="rerun">Re-run</fw-button>
             <fw-button color="secondary" fill="outline" size="small" data-action="open-deal" ${bundle.deal?.id ? "" : "disabled"}>Open deal</fw-button>
           </div>
         </header>
@@ -1539,6 +1572,7 @@ function renderCallRecord(bundle) {
           whatWorks: bundle.productSignal?.whatWorks,
           momDraft: bundle.momDraft,
           dealSignal: bundle.dealSignal,
+          deal: bundle.deal,
         })}
       </div>
     </div>`;
@@ -1570,6 +1604,11 @@ function wireCallRecord(container, session, bundle, opts) {
   };
   container.querySelector('[data-action="open-deal"]')?.addEventListener("fwClick", openDeal);
   container.querySelector('[data-action="open-deal"]')?.addEventListener("click", openDeal);
+  const rerun = () => {
+    opts.onRerun?.();
+  };
+  container.querySelector('[data-action="rerun"]')?.addEventListener("fwClick", rerun);
+  container.querySelector('[data-action="rerun"]')?.addEventListener("click", rerun);
   container.querySelectorAll('a[data-action="open-deal"]').forEach((link) => {
     link.addEventListener("click", (e) => {
       e.preventDefault();

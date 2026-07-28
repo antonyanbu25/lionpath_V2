@@ -676,12 +676,19 @@ function renderQipEvidenceBlocks(evidence, tone) {
     .join("");
 }
 
+function qipScoreColor(pct) {
+  if (pct >= 0.8) return "var(--green)";
+  if (pct >= 0.6) return "var(--amber)";
+  return "var(--red)";
+}
+
 /** v2 QIP scorecard — wireframe srow layout: theme, score, weighted bar, confidence. */
-export function renderQipScorecard(scorecard, analysisMeta = {}) {
+export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   if (!scorecard?.lines?.length) {
     return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
   }
 
+  const wireframe = opts.context === "call-record";
   const provisional = !!(scorecard.provisional ?? analysisMeta.provisional);
   const callType = scorecard.callType || analysisMeta.callType || "demo";
   const rubricVersion = scorecard.rubricVersion || analysisMeta.rubricVersion || "1.0";
@@ -700,68 +707,78 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
   const conf = scorecard.confidence ?? analysisMeta.analysisConfidence;
   const confPct = conf != null ? Math.round(conf * 100) : null;
   const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
-  const sections = groupLinesBySection(scorecard.lines);
+  const heavyCount = scorecard.lines.filter((l) => (l.weight || 0) >= 10 && l.applicable).length;
+  const subCopy = wireframe
+    ? `Click any theme for the evidence.${heavyCount ? ` ${heavyCount} theme${heavyCount === 1 ? "" : "s"} carry extra weight on the 100 points.` : " Heavy themes carry more of the 100 points."}`
+    : "Click any theme for the evidence. Heavy themes carry more of the 100 points.";
 
-  const rowHtml = sections
+  const lineGroups = wireframe
+    ? [{ label: "", lines: scorecard.lines }]
+    : groupLinesBySection(scorecard.lines);
+
+  const renderLine = (line) => {
+    const heavy = (line.weight || 0) >= 10;
+    const na = !line.applicable;
+    const suppressed = !na && isThemeScoreSuppressed(line.themeKey);
+    const maxScore = line.maxScore || 100;
+    const pct = na || suppressed ? 0 : scorePct(line.score, maxScore);
+    const cls = [
+      "qip-line",
+      wireframe ? "srow" : "",
+      suppressed ? "qip-line-suppressed" : "",
+      heavy ? "qip-line-heavy" : "",
+      na ? "qip-line-na" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const scoreCol = na
+      ? `<span class="qip-na-badge">N/A</span>`
+      : suppressed
+        ? `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`
+        : wireframe
+          ? `<span class="qip-line-score num" style="font-weight:700;color:${qipScoreColor(pct)}">${esc(line.score)}<span class="qip-line-max"> / ${esc(maxScore)}</span></span>`
+          : `<span class="qip-line-score ${barClass(line.score, maxScore)}">${esc(line.score)}<span class="qip-line-max">/${esc(maxScore)}</span></span>`;
+    const barCls = barClass(line.score, maxScore);
+    const barColor =
+      barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
+    const barCol = na || suppressed
+      ? `<span class="muted">—</span>`
+      : `<div class="bar qip-weight-bar"><span style="width:${Math.max(pct, line.score === 0 ? 0 : 4)}%;background:${barColor}"></span></div>`;
+    const reason = na && line.notApplicableReason
+      ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
+      : "";
+    const note =
+      !na && line.coachingNote && !isUnknown(line.coachingNote)
+        ? `<p class="qip-coaching"><span class="qip-coaching-label">Coach</span> ${truncateWords(line.coachingNote, 20)}</p>`
+        : "";
+    const evidenceHtml = na
+      ? ""
+      : renderQipEvidenceBlocks(line.evidence || line.evidenceJson) ||
+        renderQipEvidence(line.evidence || line.evidenceJson);
+    return `<details class="${cls}" data-theme-key="${esc(line.themeKey)}">
+      <summary class="qip-line-summary srow-hd">
+        <div class="qip-theme-cell">
+          <span class="qip-theme-name${heavy ? " qip-theme-name--heavy" : ""}">${esc(themeLabel(line.themeKey))}</span>
+          ${heavy ? '<span class="pill purple qip-heavy-pill">10 pt</span>' : ""}
+          ${line.sourceHint && !isUnknown(line.sourceHint) ? `<div class="sub qip-theme-hint">${esc(line.sourceHint)}</div>` : ""}
+        </div>
+        <div class="qip-score-cell">${scoreCol}</div>
+        <div class="qip-weighted-cell">${barCol}</div>
+        <div class="qip-conf-cell">${na ? "" : qipLineConfidencePill(line, conf)}</div>
+        <div class="chev" aria-hidden="true">›</div>
+      </summary>
+      <div class="qip-line-body srow-bd">
+        ${reason}
+        ${evidenceHtml}
+        ${note}
+      </div>
+    </details>`;
+  };
+
+  const rowHtml = lineGroups
     .map((sec) => {
-      const rows = sec.lines
-        .map((line) => {
-          const heavy = (line.weight || 0) >= 10;
-          const na = !line.applicable;
-          const suppressed = !na && isThemeScoreSuppressed(line.themeKey);
-          const maxScore = line.maxScore || 100;
-          const pct = na || suppressed ? 0 : scorePct(line.score, maxScore);
-          const cls = [
-            "qip-line",
-            suppressed ? "qip-line-suppressed" : "",
-            heavy ? "qip-line-heavy" : "",
-            na ? "qip-line-na" : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          const scoreCol = na
-            ? `<span class="qip-na-badge">N/A</span>`
-            : suppressed
-              ? `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`
-              : `<span class="qip-line-score ${barClass(line.score, maxScore)}">${esc(line.score)}<span class="qip-line-max">/${esc(maxScore)}</span></span>`;
-          const barCls = barClass(line.score, maxScore);
-          const barColor =
-            barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
-          const barCol = na || suppressed
-            ? `<span class="muted">—</span>`
-            : `<div class="bar qip-weight-bar"><span style="width:${Math.max(pct, line.score === 0 ? 0 : 4)}%;background:${barColor}"></span></div>`;
-          const reason = na && line.notApplicableReason
-            ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
-            : "";
-          const note =
-            !na && line.coachingNote && !isUnknown(line.coachingNote)
-              ? `<p class="qip-coaching"><span class="qip-coaching-label">Coach</span> ${truncateWords(line.coachingNote, 20)}</p>`
-              : "";
-          const evidenceHtml = na
-            ? ""
-            : renderQipEvidenceBlocks(line.evidence || line.evidenceJson) ||
-              renderQipEvidence(line.evidence || line.evidenceJson);
-          return `<details class="${cls}" data-theme-key="${esc(line.themeKey)}">
-            <summary class="qip-line-summary srow-hd">
-              <div class="qip-theme-cell">
-                <span class="qip-theme-name">${esc(themeLabel(line.themeKey))}</span>
-                ${heavy ? '<span class="pill purple qip-heavy-pill">10 pt</span>' : ""}
-                ${line.sourceHint && !isUnknown(line.sourceHint) ? `<div class="sub qip-theme-hint">${esc(line.sourceHint)}</div>` : ""}
-              </div>
-              <div class="qip-score-cell">${scoreCol}</div>
-              <div class="qip-weighted-cell">${barCol}</div>
-              <div class="qip-conf-cell">${na ? "" : qipLineConfidencePill(line, conf)}</div>
-              <div class="chev" aria-hidden="true">›</div>
-            </summary>
-            <div class="qip-line-body srow-bd">
-              ${reason}
-              ${evidenceHtml}
-              ${note}
-            </div>
-          </details>`;
-        })
-        .join("");
-      return sec.label
+      const rows = sec.lines.map(renderLine).join("");
+      return sec.label && !wireframe
         ? `<div class="qip-section">
             <h3 class="qip-section-title">${esc(sec.label)}</h3>
             <div class="qip-section-lines">${rows}</div>
@@ -770,12 +787,19 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
     })
     .join("");
 
+  const actionsHtml = wireframe
+    ? `<div class="qip-scorecard-actions">
+        <button type="button" class="btn-wire sm" disabled title="Score override — coming soon">Override a score</button>
+        <button type="button" class="btn-wire sm" disabled title="Compare to your average — coming soon">Compare to my average</button>
+      </div>`
+    : "";
+
   return `
-    <div class="qip-scorecard${provisional ? " qip-provisional" : ""}">
+    <div class="qip-scorecard${provisional ? " qip-provisional" : ""}${wireframe ? " qip-scorecard--wireframe" : ""}">
       <div class="qip-scorecard-head">
         <div>
           <h2 class="qip-scorecard-title">QIP · ${esc(callTypeLabel.toLowerCase())} profile</h2>
-          <p class="sub qip-scorecard-sub">Click any theme for the evidence. Heavy themes carry more of the 100 points.</p>
+          <p class="sub qip-scorecard-sub">${subCopy}</p>
         </div>
         <span class="pill qip-total-pill">${esc(totalLabel)} · weighted</span>
       </div>
@@ -785,6 +809,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}) {
         <div>Theme</div><div>Score</div><div>Weighted</div><div>Conf</div><div></div>
       </div>
       ${rowHtml}
+      ${actionsHtml}
     </div>`;
 }
 

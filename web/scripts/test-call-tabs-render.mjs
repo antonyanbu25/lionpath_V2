@@ -1,8 +1,8 @@
-/** Call-view tabs — TC, deal health, Kaia-style minutes (no DOM). */
+/** Call-view tabs — TC, deal health, wireframe minutes (no DOM). */
 import assert from "node:assert/strict";
 import { renderMinutesTab, resolveMinutesViewModel } from "../call-view.js";
 
-function testKaiaMinutesFromStructured() {
+function testWireframeMinutesFromStructured() {
   const html = renderMinutesTab(
     {},
     {
@@ -24,14 +24,14 @@ function testKaiaMinutesFromStructured() {
     },
   );
 
-  assert.match(html, /Outcome/);
+  assert.match(html, /Minutes of meeting/);
+  assert.match(html, /Customer facing · never auto-sends/);
   assert.match(html, /Salesforce replacement/);
-  assert.match(html, /Key points/);
+  assert.match(html, /What we covered/);
   assert.match(html, /Omnichannel support/);
-  assert.match(html, /Action items/);
-  assert.match(html, /6:12/);
-  assert.match(html, /Suggested from call/);
-  assert.match(html, /Edit flat draft/);
+  assert.match(html, /Next steps/);
+  assert.match(html, /Follow up via email on open questions/);
+  assert.match(html, /Edit draft/);
   assert.doesNotMatch(html, /Phase 2/);
 }
 
@@ -44,9 +44,9 @@ function testLegacyFlatMomStillRenders() {
       },
     },
   });
-  assert.match(html, /Outcome/);
+  assert.match(html, /Minutes of meeting/);
   assert.match(html, /POC plan/);
-  assert.match(html, /Action items/);
+  assert.match(html, /Next steps/);
   assert.match(html, /Send POC plan/);
 }
 
@@ -66,7 +66,7 @@ function testResolveFallsBackToFollowUps() {
   assert.equal(view.actionItems[0].text, "Book security review");
 }
 
-testKaiaMinutesFromStructured();
+testWireframeMinutesFromStructured();
 testLegacyFlatMomStillRenders();
 testEmptyMinutes();
 testResolveFallsBackToFollowUps();

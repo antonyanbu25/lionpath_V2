@@ -212,6 +212,13 @@ for (const [name, data] of cases) {
         { ...data.analysisMeta, provisional: true },
       );
       if (!provisionalHtml.includes("Provisional")) throw new Error("missing provisional badge");
+      const wireframeHtml = renderQipScorecard(data.scorecard, data.analysisMeta, {
+        context: "call-record",
+      });
+      if (!wireframeHtml.includes("qip-scorecard--wireframe")) throw new Error("missing wireframe class");
+      if (!wireframeHtml.includes("Override a score")) throw new Error("missing override action");
+      if (!wireframeHtml.includes("Compare to my average")) throw new Error("missing compare action");
+      if (!wireframeHtml.includes("srow")) throw new Error("missing srow class");
     }
     console.log("OK:", name, `(${html.length} chars)`);
   } catch (e) {

@@ -93,6 +93,11 @@ assert(container.innerHTML.includes("call-record"), "renders call record shell")
 assert(container.innerHTML.includes("Acme · Demo"), "shows call title");
 assert(container.innerHTML.includes("QIP"), "shows verdict strip");
 assert(container.innerHTML.includes("How the 48 minutes went"), "timeline title from duration");
+assert(container.innerHTML.includes("QIP scorecard"), "shows QIP tab");
+assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
+assert(container.innerHTML.includes("qip-grid-header"), "shows QIP column header");
+assert(container.innerHTML.includes("Weighted"), "shows weighted column");
+assert(container.innerHTML.includes("Re-run"), "shows re-run action");
 assert(
   !container.innerHTML.includes("We could not load your profile"),
   "must not show profile gate error",

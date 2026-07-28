@@ -454,39 +454,56 @@
 .call-record .call-tab-qip {
   padding: 18px 20px;
   border: 1px solid var(--dew-border);
-  border-radius: var(--dew-radius-lg);
+  border-radius: 14px;
   background: var(--dew-surface);
 }
 
 .call-record .call-tab-panel-inner:not(.call-tab-qip) {
-  padding: 18px 20px;
-  border: 1px solid var(--dew-border);
-  border-radius: var(--dew-radius-lg);
-  background: var(--dew-surface);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
+/* Wireframe v4 QIP — scoped to call record only (postcall.css handles #postcall-result) */
 .call-record .qip-scorecard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   border: none;
   padding: 0;
 }
 
-.call-record .qip-hero {
-  margin-bottom: 14px;
-  box-shadow: none;
-}
-
-.call-record .qip-line-summary.srow-hd {
-  display: grid;
-  grid-template-columns: 1fr 78px 120px 74px 20px;
+.call-record .qip-scorecard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
-  align-items: center;
-  padding: 11px 4px;
+  margin-bottom: 4px;
 }
 
-.call-record .qip-weighted-cell .bar,
-.call-record .qip-weighted-cell .qip-weight-bar {
-  width: 100%;
-  min-width: 72px;
+.call-record .qip-scorecard-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dew-text);
+}
+
+.call-record .qip-scorecard-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dew-text-secondary);
+}
+
+.call-record .qip-total-pill {
+  background: var(--dew-hairline);
+  color: var(--dew-text-secondary);
+  white-space: nowrap;
+}
+
+.call-record .qip-confidence {
+  margin: 0 0 14px;
+  font-size: 13px;
 }
 
 .call-record .qip-grid-header {
@@ -495,27 +512,292 @@
   gap: 12px;
   padding: 0 4px 8px;
   border-bottom: 1px solid var(--dew-border);
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  font-weight: 700;
 }
 
-.call-record .qip-line {
+.call-record .qip-section-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.call-record .qip-line,
+.call-record .qip-line.srow {
   border: none;
   border-bottom: 1px solid var(--dew-border);
   border-radius: 0;
   background: transparent;
+  margin: 0;
 }
 
 .call-record .qip-line:last-child {
   border-bottom: none;
 }
 
+.call-record .qip-line-summary,
+.call-record .qip-line-summary.srow-hd {
+  display: grid;
+  grid-template-columns: 1fr 78px 120px 74px 20px;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 4px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.call-record .qip-line-summary::-webkit-details-marker {
+  display: none;
+}
+
 .call-record .qip-line-summary:hover {
-  background: var(--dew-surface-subtle);
+  background: #f8f9fc;
+}
+
+.call-record .qip-line[open] .chev {
+  transform: rotate(90deg);
+}
+
+.call-record .qip-line .chev {
+  color: var(--dew-text-muted);
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+
+.call-record .qip-theme-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.call-record .qip-theme-name--heavy {
+  font-weight: 700;
+}
+
+.call-record .qip-weighted-cell .bar,
+.call-record .qip-weighted-cell .qip-weight-bar {
+  width: 100%;
+  min-width: 72px;
+  height: 5px;
+  background: #eef0f4;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0;
+}
+
+.call-record .qip-weighted-cell .bar span,
+.call-record .qip-weighted-cell .qip-weight-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.call-record .qip-line-body.srow-bd {
+  padding: 2px 4px 15px;
+  border-top: none;
+  background: transparent;
+}
+
+.call-record .ev {
+  border-left: 3px solid var(--dew-border);
+  background: #fafbfc;
+  padding: 9px 13px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.call-record .ev.good {
+  border-left-color: var(--green);
+  background: var(--green-bg, #e3f5ee);
+}
+
+.call-record .ev.bad {
+  border-left-color: var(--danger);
+  background: var(--danger-bg, #fdecef);
+}
+
+.call-record .ev .ts {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--dew-text-muted);
+  margin-bottom: 3px;
+}
+
+.call-record .qip-scorecard-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.call-record .btn-wire {
+  all: unset;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dew-border);
+  color: var(--dew-text);
+  background: #fff;
+  text-align: center;
+}
+
+.call-record .btn-wire:hover:not(:disabled) {
+  background: #f6f7f9;
+}
+
+.call-record .btn-wire:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.call-record .qip-line-max {
+  color: var(--dew-text-muted);
+  font-weight: 400;
 }
 
 .call-record .qip-line-na,
 .call-record .qip-line-suppressed {
   opacity: 1;
+}
+
+/* TC / fitment / product signal wireframe tabs */
+.call-tc-slot--wire {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.call-tc-slot--wire:last-child {
+  border-bottom: none;
+}
+
+.call-fitment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.call-fitment-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 2px 0 5px;
+}
+
+.call-fitment-metric .bar {
+  height: 5px;
+  background: #eef0f4;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.call-fitment-metric .bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.call-product-signal-tab--wireframe h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.call-product-unified-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.call-product-unified-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.call-product-unified-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.call-product-unified-meta {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.call-mom-panel--wireframe .call-mom-wire-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.call-mom-panel--wireframe .call-mom-wire-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.call-mom-wire-sub {
+  margin: 0 0 12px;
+}
+
+.call-mom-wire-body {
+  background: #fafbfc;
+  border: 1px solid var(--dew-border);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+
+.call-mom-wire-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.call-health-traction-card--red {
+  border-color: var(--danger-bg, #f5cdd5);
+}
+
+.call-objection-wire-row--border {
+  padding-bottom: 9px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid var(--dew-border);
+}
+
+.call-record .pill.blue {
+  background: #e8f0fe;
+  color: #1d4fd8;
+}
+
+.call-record .pill.purple {
+  background: #efebfd;
+  color: var(--dew-brand);
+}
+
+.call-record .pill.green {
+  background: var(--green-bg, #e3f5ee);
+  color: var(--green, #127a56);
+}
+
+.call-record .pill.amber {
+  background: var(--amber-bg, #fdf3e2);
+  color: var(--amber, #b7791f);
+}
+
+.call-record .pill.red {
+  background: var(--danger-bg, #fdecef);
+  color: var(--danger, #d6455d);
 }
 
 .call-empty {
@@ -561,7 +843,9 @@
     margin-left: 0;
     width: 100%;
   }
+}
 
+@media (max-width: 640px) {
   .call-record .qip-line-summary.srow-hd {
     grid-template-columns: 1fr auto;
   }
