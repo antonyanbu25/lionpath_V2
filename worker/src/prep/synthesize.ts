@@ -6,6 +6,7 @@ import { getProvider } from "../providers";
 import { PREP_SCHEMA, type Prep } from "../schema";
 import { normalizePrepOutput } from "../word-limits";
 import { kbContextBlock } from "./extract-facts";
+import { applySeContextToPrep } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
 
 const PREP_GEMINI_SCHEMA = toPrepGeminiResponseSchema();
@@ -18,6 +19,7 @@ CRITICAL RULES:
 - Use ONLY the Freshworks KB for Freshworks product facts.
 - Where facts are missing or "unknown", output "unknown" or [] — never invent.
 - Every facts[]/signals[]/prospects[] sourceLabel MUST match sources[].label from facts.
+- Map SE-context signal facts (sourceLabel SE) into signals[] when present.
 - Enforce all word caps from the schema descriptions.
 
 ${kbContextBlock()}
@@ -140,7 +142,7 @@ export async function synthesizePrep(
   const result = await generateSynthesis(provider, input, facts, sources);
 
   try {
-    return normalizePrepOutput(extractJson<Prep>(result.text));
+    return applySeContextToPrep(normalizePrepOutput(extractJson<Prep>(result.text)), input.additionalContext);
   } catch (err) {
     const repaired = await provider.generate({
       system: "Repair malformed JSON. Output ONLY valid JSON matching the schema.",
@@ -152,6 +154,6 @@ export async function synthesizePrep(
       jsonSchema: PREP_GEMINI_SCHEMA,
       step: "prep/synthesize-repair",
     });
-    return normalizePrepOutput(extractJson<Prep>(repaired.text));
+    return applySeContextToPrep(normalizePrepOutput(extractJson<Prep>(repaired.text)), input.additionalContext);
   }
 }

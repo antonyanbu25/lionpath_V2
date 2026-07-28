@@ -13,6 +13,7 @@ import {
 } from "./linkedin-pdf";
 import { mergeEnrichmentsIntoPrep } from "./merge-enrichment";
 import { resolveKaiaForPrepInput } from "../kaia/prepKaia";
+import { factsFromSeContext } from "./se-context-facts";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
   Env,
@@ -53,6 +54,19 @@ function mergeSources(...groups: SourceRef[][]): SourceRef[] {
   return [...byLabel.values()];
 }
 
+function applySeContextFacts(
+  facts: ResearchFact[],
+  sources: SourceRef[],
+  additionalContext?: string,
+): { facts: ResearchFact[]; sources: SourceRef[] } {
+  const se = factsFromSeContext(additionalContext);
+  if (!se.facts.length) return { facts, sources };
+  return {
+    facts: mergeFacts(se.facts, facts),
+    sources: mergeSources(se.sources, sources),
+  };
+}
+
 async function gatherResearch(
   env: Env,
   input: PrepInput,
@@ -75,10 +89,12 @@ async function gatherResearch(
 
   const { cacheHit, bundle } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
+    const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
+    const withSe = applySeContextFacts(baseFacts, bundle.sources, input.additionalContext);
     return {
       snippets: bundle.snippets,
-      facts: input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts,
-      sources: bundle.sources,
+      facts: withSe.facts,
+      sources: withSe.sources,
       cacheHit: true,
       playbookSkipped: true,
       apolloCredits: 0,
@@ -129,11 +145,12 @@ async function gatherResearch(
 
   const facts = mergeFacts(apolloFacts, extracted.facts);
   const sources = mergeSources(apolloSources, extracted.sources);
+  const withSe = applySeContextFacts(facts, sources, additionalContext);
 
   return {
     snippets: allSnippets,
-    facts,
-    sources,
+    facts: withSe.facts,
+    sources: withSe.sources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,

@@ -57,6 +57,7 @@ export interface PostCallGapsResult {
   whatWorks: WhatWorksDraft[];
 }
 
+/** Optional nested object — omit from required; Gemini 3 rejects nullable+required combo. */
 const COMPETITOR_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -65,7 +66,6 @@ const COMPETITOR_SCHEMA = {
     name: { type: "string" },
     saidBetter: { type: "boolean" },
   },
-  nullable: true,
 };
 
 const GAP_ITEM_SCHEMA = {
@@ -79,7 +79,6 @@ const GAP_ITEM_SCHEMA = {
     "disposition",
     "dealImpact",
     "gapType",
-    "competitorNamed",
   ],
   properties: {
     productArea: { type: "string", enum: [...PRODUCT_AREAS] },

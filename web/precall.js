@@ -29,6 +29,7 @@ import {
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles } from "./prep-contact-enrich.js";
+import { applySeContextToPrep } from "./prep-se-context.js";
 import { esc, $, show } from "./shared.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
@@ -37,6 +38,28 @@ const BRIEFS_KEY = "lionpath_briefs";
 const MAX_BRIEFS = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
+
+function wireAdditionalContextMirror() {
+  const field = $("additionalContext");
+  if (!field || field.dataset.contextMirrorWired === "1") return;
+  field.dataset.contextMirrorWired = "1";
+  const mirror = (ev) => {
+    const value = String(ev?.detail?.value ?? field.value ?? "").trim();
+    field.dataset.liveContext = value;
+  };
+  field.addEventListener("fwInput", mirror);
+  field.addEventListener("fwChange", mirror);
+}
+
+async function readAdditionalContextForSubmit() {
+  const field = $("additionalContext");
+  if (!field) return undefined;
+  const live = String(field.dataset.liveContext || "").trim();
+  const fromField = String((await readFieldValueAsync(field)) || "").trim();
+  const shadowVal = String(field.shadowRoot?.querySelector("textarea")?.value || "").trim();
+  const merged = fromField || shadowVal || live;
+  return merged || undefined;
+}
 
 /** Parse comma/semicolon-separated prospect emails; dedupe; max 5. */
 export function parseProspectEmails(raw) {
@@ -229,7 +252,8 @@ function showResultView(prep, meta) {
 }
 
 export function displayPrepResult(prep, meta = {}) {
-  showResultView(prep, meta);
+  const context = meta.additionalContext || meta.seAdditionalContext;
+  showResultView(applySeContextToPrep(prep, context), meta);
 }
 
 function openSourcePopover(label, ev) {
@@ -308,7 +332,7 @@ function wireTabInteractions() {
     });
   });
 
-  root.querySelector(".prep-sources-card")?.addEventListener("toggle", (ev) => {
+  root.querySelector(".prep-research-extras")?.addEventListener("toggle", (ev) => {
     state.srcOpen = ev.target.open;
   });
 
@@ -387,7 +411,7 @@ async function buildPayload() {
     throw new Error("Company name is required.");
   }
 
-  const additionalContext = (await readFieldValueAsync($("additionalContext"))) || undefined;
+  const additionalContext = await readAdditionalContextForSubmit();
   const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
 
   const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash(), {
@@ -655,6 +679,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
   }
 
   state.pendingResearch = { payload, meta, research };
+
   setLoading(true, "Generating brief from research…");
 
   try {
@@ -666,6 +691,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
     const enrichedMeta = {
       ...meta,
+      additionalContext: payload.additionalContext || meta.additionalContext,
       kaiaFetched,
       researchMeta: data.researchMeta,
       researchBundle: data.researchBundle,
@@ -698,6 +724,7 @@ export async function generatePrep(e) {
 
   const status = $("prep-status");
   try {
+    $("additionalContext")?.blur?.();
     const { payload, meta, emails } = await buildPayload();
     await runPrepEndToEnd(payload, meta, emails);
   } catch (err) {
@@ -713,6 +740,7 @@ function emailDomain(email) {
 export function initPrecall(options) {
   deps = options;
   loadChecks();
+  wireAdditionalContextMirror();
   registerDisputeContextResolver(resolveDisputeContextFromButton);
 
   $("prep-tabs")?.addEventListener("fwChange", (ev) => {

@@ -24,7 +24,7 @@ import { getStore } from "./store.js";
 import { newId, now } from "./types.js";
 import { callIdentityKey } from "../call-identity.js";
 import { getAccountEngagementContext } from "./account-context.js";
-import { sessionUserId } from "./session.js";
+import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
   persistPass6ProductGaps,
   maybeRunGapClusteringAfterPass6,
@@ -38,7 +38,7 @@ import {
  * @param {object} meta { company, domain, additionalContext }
  */
 export async function linkPrepToLifecycle(session, payload, prep, meta) {
-  const ownerId = sessionUserId(session);
+  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
   if (!ownerId || !session?.teamId) return null;
 
   const { accountId, primaryContactId, account } = await upsertAccountFromPrep({
@@ -105,7 +105,7 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
  * @param {object} record history record from savePostCallHistory
  */
 export async function linkPostCallToLifecycle(session, payload, data, record) {
-  const ownerId = sessionUserId(session);
+  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
   if (!ownerId || !session?.teamId) return null;
 
   const summarise = data?.summarise || null;
@@ -128,6 +128,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     const { accountId } = await upsertAccountFromPrep({
       companyName: company,
       domain: payload?.companyDomain || null,
+      actorId: ownerId,
     });
     account = { id: accountId, name: company };
   }
@@ -337,13 +338,17 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     }
   }
 
-  await applyPostCallContactFrameworks(account.id, analysis, {
-    lifecycleId: lifecycle.id,
-    actorId: ownerId,
-    postCallId: postCall.id,
-    dealId: lifecycle.dealId || null,
-    qualification,
-  });
+  try {
+    await applyPostCallContactFrameworks(account.id, analysis, {
+      lifecycleId: lifecycle.id,
+      actorId: ownerId,
+      postCallId: postCall.id,
+      dealId: lifecycle.dealId || null,
+      qualification,
+    });
+  } catch (err) {
+    console.warn("[dual-write] contact frameworks failed:", err?.message || err);
+  }
 
   return { lifecycle, postCall, accountId: account.id };
 }

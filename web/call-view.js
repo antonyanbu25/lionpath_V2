@@ -934,22 +934,37 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
     </section>`;
 }
 
+/** Firestore reads are optional — local history analysis blob renders the wireframe. */
+async function safeEnrich(label, fn, fallback) {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err?.message || String(err);
+    if (err?.code === "permission-denied" || /permission/i.test(msg)) {
+      console.warn(`[call-view] ${label} skipped (permissions)`);
+    } else {
+      console.warn(`[call-view] ${label} skipped:`, msg);
+    }
+    return fallback;
+  }
+}
+
 async function loadCallBundle(session, record) {
   const email = session.email;
   const store = getStore();
   let dealId = resolveDealId(record);
   // Prefer domain postCall.dealId when history record was saved before dual-write stamped it.
   if (!dealId && store.getPostCall) {
-    const domainCall = await store.getPostCall(record.id);
+    const domainCall = await safeEnrich("getPostCall", () => store.getPostCall(record.id), null);
     if (domainCall?.dealId) dealId = domainCall.dealId;
   }
   let deal = null;
   let account = null;
 
   if (dealId) {
-    deal = await getDeal(dealId);
-    if (deal?.accountId) {
-      account = store.getAccount ? await store.getAccount(deal.accountId) : null;
+    deal = await safeEnrich("getDeal", () => getDeal(dealId), null);
+    if (deal?.accountId && store.getAccount) {
+      account = await safeEnrich("getAccount", () => store.getAccount(deal.accountId), null);
     }
   }
 
@@ -982,10 +997,10 @@ async function loadCallBundle(session, record) {
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
 
   let productGaps = store.listProductGapsByPostCall
-    ? await store.listProductGapsByPostCall(record.id)
+    ? await safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
     : [];
   let whatWorks = store.listWhatWorksByPostCall
-    ? await store.listWhatWorksByPostCall(record.id)
+    ? await safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
     : [];
   // Fallback: Pass 6 blob on the history record when dual-write collections are empty.
   const pass6 = record.pass6 || record.result?.pass6 || null;
@@ -999,7 +1014,9 @@ async function loadCallBundle(session, record) {
   const clusterLabels = {};
   for (const g of productGaps) {
     if (!g.clusterId || clusterLabels[g.clusterId]) continue;
-    const cluster = store.getGapCluster ? await store.getGapCluster(g.clusterId) : null;
+    const cluster = store.getGapCluster
+      ? await safeEnrich("getGapCluster", () => store.getGapCluster(g.clusterId), null)
+      : null;
     if (cluster?.label) clusterLabels[g.clusterId] = cluster.label;
   }
 
@@ -1009,14 +1026,18 @@ async function loadCallBundle(session, record) {
   let timelineFacts = null;
   let timelineSegments = [];
   const storedFacts = store.listVideoFactsByCall
-    ? await store.listVideoFactsByCall(record.id)
+    ? await safeEnrich("listVideoFactsByCall", () => store.listVideoFactsByCall(record.id), [])
     : [];
   if (storedFacts?.[0]) {
     timelineFacts = storedFacts[0];
   }
   // Segments are stored per call, not per videoFacts — transcript spines have no facts doc.
   if (store.listTimelineSegmentsByCall) {
-    timelineSegments = await store.listTimelineSegmentsByCall(record.id);
+    timelineSegments = await safeEnrich(
+      "listTimelineSegmentsByCall",
+      () => store.listTimelineSegmentsByCall(record.id),
+      [],
+    );
   }
   const draftVf = record.result?.videoFacts;
   if (!timelineSegments.length && Array.isArray(draftVf?.segments)) {
@@ -1025,7 +1046,7 @@ async function loadCallBundle(session, record) {
   }
 
   let timelineMarkers = store.listTimelineMarkersByCall
-    ? await store.listTimelineMarkersByCall(record.id)
+    ? await safeEnrich("listTimelineMarkersByCall", () => store.listTimelineMarkersByCall(record.id), [])
     : [];
   const draftTimeline = record.result?.timeline;
   if (!timelineSegments.length && Array.isArray(draftTimeline?.segments)) {
@@ -1048,34 +1069,44 @@ async function loadCallBundle(session, record) {
 
   let technicalCommit = null;
   if (dealId && store.getTechnicalCommitByDeal) {
-    technicalCommit = await store.getTechnicalCommitByDeal(dealId);
+    technicalCommit = await safeEnrich(
+      "getTechnicalCommitByDeal",
+      () => store.getTechnicalCommitByDeal(dealId),
+      null,
+    );
   }
   if (!technicalCommit) {
     technicalCommit = record.result?.technicalCommit || null;
   }
 
-  let tcDeltas = store.listTcDeltasByCall ? await store.listTcDeltasByCall(record.id) : [];
+  let tcDeltas = store.listTcDeltasByCall
+    ? await safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
+    : [];
   if (!tcDeltas.length && Array.isArray(record.result?.tcDeltas)) {
     tcDeltas = record.result.tcDeltas;
   }
 
   let meddpiccDeltas = store.listMeddpiccDeltasByCall
-    ? await store.listMeddpiccDeltasByCall(record.id)
+    ? await safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
     : [];
 
-  let objections = store.listObjectionsByCall ? await store.listObjectionsByCall(record.id) : [];
+  let objections = store.listObjectionsByCall
+    ? await safeEnrich("listObjectionsByCall", () => store.listObjectionsByCall(record.id), [])
+    : [];
   if (!objections.length && Array.isArray(record.result?.summarise?.objections)) {
     objections = record.result.summarise.objections;
   }
 
-  let followUps = store.listFollowUpsByCall ? await store.listFollowUpsByCall(record.id) : [];
+  let followUps = store.listFollowUpsByCall
+    ? await safeEnrich("listFollowUpsByCall", () => store.listFollowUpsByCall(record.id), [])
+    : [];
   if (!followUps.length && Array.isArray(record.result?.summarise?.followUps)) {
     followUps = record.result.summarise.followUps;
   }
 
   let momDraft = null;
   if (store.listMomDraftsByCall) {
-    const moms = await store.listMomDraftsByCall(record.id);
+    const moms = await safeEnrich("listMomDraftsByCall", () => store.listMomDraftsByCall(record.id), []);
     momDraft = moms?.[0] || null;
   }
   if (!momDraft) {
@@ -1084,7 +1115,7 @@ async function loadCallBundle(session, record) {
 
   let dealSignal = null;
   if (store.listDealSignalsByCall) {
-    const signals = await store.listDealSignalsByCall(record.id);
+    const signals = await safeEnrich("listDealSignalsByCall", () => store.listDealSignalsByCall(record.id), []);
     dealSignal = signals?.[0] || null;
   }
 

@@ -45,9 +45,10 @@ const FACTS_SCHEMA = {
 } as const;
 
 function extractSystemPrompt(): string {
-  return `Extract structured research facts from the provided web search snippets ONLY.
-Do NOT invent facts. Use "unknown" for value when not supported by snippets.
-Assign sourceLabel S1, S2… matching sources[].label.
+  return `Extract structured research facts from the provided web search snippets.
+When SE context is provided, also emit category "signal" facts from SE context only (sourceLabel "SE", sourceUrl "se-context", confidence 85–92).
+Do NOT invent facts beyond snippets and SE context. Use "unknown" for value when not supported.
+Assign snippet sourceLabel S1, S2… matching sources[].label.
 confidence: 0-100 based on source quality.
 categories: account | signal | prospect | support | news
 

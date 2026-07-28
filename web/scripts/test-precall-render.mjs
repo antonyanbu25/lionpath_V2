@@ -7,6 +7,8 @@ import {
   confidenceMeta,
   discInferredLabel,
   SIGNAL_TOOLTIPS,
+  isSeNotesSource,
+  countPopulatedSignals,
 } from "../precall-render.js";
 import { CUSTOMER_REFERENCE_BY_INDUSTRY } from "../customer-reference-links.js";
 
@@ -115,6 +117,24 @@ const sampleV8 = {
 const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
 
 const discovery = renderDiscoveryTab(sampleV8, false);
+const discoveryWithSeSignal = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    signals: [
+      { label: "Incumbent tool", value: "Zendesk", sourceLabel: "SE" },
+      ...sampleV8.signals.slice(1),
+    ],
+  },
+  false,
+);
+const discoveryWithEmptySignal = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    signals: [{ label: "Incumbent tool", value: "—", sourceLabel: "S1" }, ...sampleV8.signals.slice(1)],
+  },
+  false,
+);
+const discoverySourcesOpen = renderDiscoveryTab(sampleV8, true);
 const discoveryMulti = renderDiscoveryTab(
   { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
   false,
@@ -173,9 +193,32 @@ const checks = [
   ["header has company name", header.includes("Endurance Doors")],
   ["header no prospect chip", !header.includes("prep-contact-chip")],
   ["discovery has Account facts", discovery.includes("Account facts")],
-  ["discovery has Signals", discovery.includes("Signals")],
+  ["discovery has signals accordion", discovery.includes("prep-signals-details") && discovery.includes("Tech stack &amp; signals")],
   ["discovery people section", discovery.includes("People on this call") && discovery.includes("prep-people-section")],
   ["discovery 2-column account grid", discovery.includes("prep-grid-2") && !discovery.includes("prep-grid-3")],
+  [
+    "discovery people before signals",
+    discovery.indexOf("People on this call") >= 0 &&
+      discovery.indexOf("Tech stack &amp; signals") >= 0 &&
+      discovery.indexOf("People on this call") < discovery.indexOf("Tech stack &amp; signals"),
+  ],
+  ["discovery signals collapsed by default", discovery.includes("prep-signals-details") && !discovery.includes('class="prep-signals-details" open')],
+  ["discovery signals grid layout", discovery.includes("prep-signals-grid") && discovery.includes("prep-signal-cell")],
+  ["discovery signals full width below grid", discovery.includes("prep-signals-section")],
+  [
+    "discovery section order fit kit extras",
+    discovery.indexOf("prep-fit-grid") < discovery.indexOf("Discovery kit") &&
+      discovery.indexOf("Discovery kit") < discovery.indexOf("prep-research-extras"),
+  ],
+  ["discovery research extras collapsed", discovery.includes("prep-research-extras") && !discovery.includes('class="prep-research-extras" open')],
+  ["discovery research extras open when requested", discoverySourcesOpen.includes('class="prep-research-extras" open')],
+  ["discovery support JD in research extras", discovery.includes("prep-research-extras") && discovery.includes("prep-jd-full")],
+  ["discovery no standalone sources accordion", !discovery.includes("prep-sources-card")],
+  ["discovery about line clamp", discovery.includes("prep-line-clamp-2")],
+  ["discovery SE signal your notes badge", discoveryWithSeSignal.includes("prep-trust-notes") && discoveryWithSeSignal.includes("Your notes")],
+  ["discovery empty signal not found", discoveryWithEmptySignal.includes("prep-signal-empty") && discoveryWithEmptySignal.includes("Not found")],
+  ["isSeNotesSource SE", isSeNotesSource("SE")],
+  ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals) === 6],
   ["discovery DISC in hero before details", (() => {
     const hero = discovery.indexOf("prep-prospect-hero");
     const details = discovery.indexOf("prep-prospect-details");
@@ -198,10 +241,9 @@ const checks = [
   ["discovery kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
   ["discovery merged DISC label", discoveryMerged.includes("Inferred from LinkedIn + Kaia")],
   ["discovery merged source badge", discoveryMerged.includes("LinkedIn + Kaia")],
-  ["discovery prospect summary", discovery.includes("Seasoned support leader")],
+  ["discovery prospect summary in profile details", discovery.includes("prep-prospect-details") && discovery.includes("Seasoned support leader")],
   ["discovery people tabs when 2 prospects", discoveryMulti.includes("prep-people-tabs")],
   ["discovery people tab persists prospect-1", discoveryMultiTab1.includes('active-tab-name="prospect-1"')],
-  ["discovery support JD full width", discovery.includes("prep-jd-full")],
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has script", demo.includes("Demo script")],
   ["demo rows match likely pains", (demo.match(/prep-script-row/g) || []).length === sampleV8.likelyPains.length],

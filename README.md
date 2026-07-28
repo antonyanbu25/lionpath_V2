@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.0.7`** — multi-pass **post-call pipeline** (WIP), built on **`2.0.6`** CRM Accounts/Deals ([tree/2.0.7](https://github.com/skut264/lionpath/tree/2.0.7)) |
+| **Current branch** | **`2.0.7`** — multi-pass **post-call pipeline** (WIP), **Discovery tab call-ready layout** (Option A), built on **`2.0.6`** CRM Accounts/Deals ([tree/2.0.7](https://github.com/skut264/lionpath/tree/2.0.7)) |
 | **Previous release** | **`2.0.6`** — CRM **Accounts** / **Deals** nav, MEDDPICC on deal, compact command deck ([tree/2.0.6](https://github.com/skut264/lionpath/tree/2.0.6)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -27,6 +27,7 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
 
+<<<<<<< HEAD
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.
 
 ---
@@ -71,6 +72,9 @@ cd worker && npm run dev:node
 ```
 
 Pass 2 no longer requires ffmpeg locally when a transcript is present (Zoom resolve or pasted VTT). VPS deploy still benefits from ffmpeg for keyframe vision when available.
+=======
+**Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation** (Accounts / Deals, MEDDPICC on deals) plus a **call-ready Discovery tab** — account + people above the fold, collapsed signals grid, discovery kit closer to the top, and **Research extras** (Support JD + sources). See **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**.
+>>>>>>> 15d850e (Redesign Discovery tab (Option A) and map SE context into signals.)
 
 ---
 
@@ -98,7 +102,31 @@ Freshsales-style object nav in the sidebar:
 - Hash routes documented in **[docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md)** (`#deals`, `#deals/{dealId}`, account variants)
 - Wireframes: [account-record-v4-1b-compact-command.md](./docs/wireframes/account-record-v4-1b-compact-command.md)
 
-**Tests:** `cd web && npm test` — includes `test-account-view`, `test-deal-view`, `test-deal-meddpicc`, `check-meddpicc-writes`.
+**Tests:** `cd web && npm test` — includes `test-account-view`, `test-deal-view`, `test-deal-meddpicc`, `check-meddpicc-writes`, `test-precall-render`, `test-prep-se-context`.
+
+### Discovery tab — call-ready layout (Option A)
+
+Pre-call **Discovery** brief layout optimized for “who is this company and who am I talking to?” before the call:
+
+| Zone | Contents | Default |
+|------|----------|---------|
+| **Above the fold** | Account facts (2-line about, ICP in `<details>`) \| People hero (DISC, 1-line experience, top 4 skills) | Visible |
+| **Mid page** | **Tech stack & signals** — 2×3 grid, “N found” summary | Collapsed `<details>` |
+| **Actions** | Fit comparison strip \| Discovery kit + Likely pain points | Visible |
+| **Deep reference** | **Research extras** — Support agent JD + Sources & confidence | Collapsed `<details>` |
+
+**Trust tiers on facts and signals:**
+
+- **Verified** — cited web/LinkedIn source with confidence ≥ 55%
+- **Your notes** — values from SE **additional context** (`sourceLabel: SE`), not labeled Unverified
+- **Unverified** — research-only gaps that still need validation on the call
+
+**SE additional context → signals:**
+
+- Notes in the prep form (e.g. “they use Zendesk”, “50 agents”) map into the six canonical signal slots on **first generate** — client (`web/prep-se-context.js`) and worker (`worker/src/prep/se-context-facts.ts`)
+- Reliable `fw-textarea` read on submit (`web/crayons-ui.js`, `web/precall.js`)
+
+Empty signal slots stay visible as muted **Not found** (all six labels preserved for scan consistency).
 
 ---
 
@@ -195,9 +223,10 @@ Domain data lives under `web/domain/` (`account-service`, `contact-service`, `li
 - **`POST /api/contact/enrich`** — per-contact research profile, inferred DISC, merge into prep and account contacts
 - Prep UI injects enrichment progress; see **[docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md)**
 
-### Discovery prep layout (`2.0.3`)
+### Discovery prep layout
 
-- Two-row **Account facts** + **Signals**; full-width **People on this call** with hero DISC and prospect tabs when multiple emails
+- **`2.0.6` — Option A (call-ready scroll):** Account \| People grid first; collapsed signals accordion; fit; discovery kit \| pains; collapsed Research extras (JD + sources). See **Key features (branch `2.0.6`)** above.
+- **`2.0.3` — prior layout:** Two-row Account facts + Signals; full-width People with hero DISC and prospect tabs when multiple emails
 
 ### Org hierarchy & access (Freshworks seed)
 
@@ -299,6 +328,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Area | What changed |
 |------|--------------|
+| **`2.0.6` — Discovery UX** | Call-ready Discovery tab (Option A): account/people hero, collapsed 2×3 signals grid, kit/pains up, Research extras; SE context → signals on first generate; **Your notes** trust badge |
 | **`2.0.6` — CRM IA** | Accounts overview vs opportunity routes; **Deals** sidebar + `#deals/{id}`; Type in summary row; MEDDPICC on deal ([ADR 004](./docs/adr/004-account-record-crm-ia.md), [ADR 005](./docs/adr/005-meddpicc-on-deal.md)) |
 | **`2.0.5` — Kaia** | `POST /api/kaia/share-content`, research hash v2, per-prospect excerpts — [CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) |
 | **`2.0.4` — Kaia DISC** | Optional Kaia share URL fetch; source badges on DISC chips and prospect tabs |

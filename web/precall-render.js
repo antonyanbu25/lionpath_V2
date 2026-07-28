@@ -3,7 +3,12 @@
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { esc } from "./shared.js";
 
-const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
+const isUnknown = (v) => {
+  const s = String(v || "").trim();
+  if (!s) return true;
+  if (s.toLowerCase() === "unknown") return true;
+  return s === "-" || s === "—" || s === "–";
+};
 const dash = (v, unverified = false) => {
   if (isUnknown(v)) return '<span class="muted">—</span>';
   if (unverified) return `<span class="prep-unverified">${esc(v)} <span class="prep-unverified-tag">Unverified</span></span>`;
@@ -11,11 +16,30 @@ const dash = (v, unverified = false) => {
 };
 
 function isUnverifiedSource(sources, sourceLabel) {
+  if (isSeNotesSource(sourceLabel)) return false;
   const src = sources?.find((s) => s.label === sourceLabel);
   if (!src) return true;
   const url = String(src.url || "").trim().toLowerCase();
   if (!url || url === "unknown") return true;
   return Number(src.confidence) < 55;
+}
+
+/** SE additional-context source — show as "Your notes", not Unverified. */
+export function isSeNotesSource(sourceLabel) {
+  return String(sourceLabel || "").trim().toUpperCase() === "SE";
+}
+
+export function countPopulatedSignals(signals) {
+  return (signals || []).filter((s) => !isUnknown(s.value)).length;
+}
+
+function trustNotesBadge() {
+  return '<span class="prep-trust-badge prep-trust-notes">Your notes</span>';
+}
+
+function sourceOrTrustBadge(sourceLabel, conf, idx, sources) {
+  if (isSeNotesSource(sourceLabel)) return trustNotesBadge();
+  return sourceBadge(sourceLabel, conf, idx >= 0 ? idx : 0);
 }
 
 export const SIGNAL_TOOLTIPS = {
@@ -207,10 +231,12 @@ function renderFactRows(facts, sources) {
     .map((f, i) => {
       const src = sources.find((s) => s.label === f.sourceLabel) || sources[i % sources.length];
       const conf = src?.confidence ?? 50;
-      const unverified = isUnverifiedSource(sources, f.sourceLabel) || isUnknown(f.value);
+      const seNotes = isSeNotesSource(f.sourceLabel);
+      const unverified = !seNotes && (isUnverifiedSource(sources, f.sourceLabel) || isUnknown(f.value));
+      const srcIdx = Math.max(0, sources.indexOf(src));
       return `<div class="prep-kv-row${unverified && !isUnknown(f.value) ? " prep-kv-unverified" : ""}">
         <span class="prep-kv-key">${esc(f.key)}</span>
-        <span class="prep-kv-val">${dash(f.value, unverified && !isUnknown(f.value))} ${sourceBadge(f.sourceLabel, conf, sources.indexOf(src))}
+        <span class="prep-kv-val">${dash(f.value, unverified && !isUnknown(f.value))} ${sourceOrTrustBadge(f.sourceLabel, conf, srcIdx, sources)}
           <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="facts" data-dispute-idx="${i}" data-dispute-key="${esc(f.key)}">Report</button>
         </span>
       </div>`;
@@ -223,19 +249,39 @@ function renderSignalRows(signals, sources) {
     .map((s, i) => {
       const src = sources.find((x) => x.label === s.sourceLabel) || sources[i % sources.length];
       const conf = src?.confidence ?? 50;
-      const unverified = isUnverifiedSource(sources, s.sourceLabel) || isUnknown(s.value);
-      return `<div class="prep-signal-row${unverified && !isUnknown(s.value) ? " prep-kv-unverified" : ""}">
+      const seNotes = isSeNotesSource(s.sourceLabel);
+      const empty = isUnknown(s.value);
+      const unverified = !seNotes && !empty && isUnverifiedSource(sources, s.sourceLabel);
+      const srcIdx = Math.max(0, sources.indexOf(src));
+      const valueHtml =
+        empty ? '<span class="muted prep-signal-empty">Not found</span>'
+        : seNotes ? `<span class="prep-signal-val-text">${esc(s.value)}</span>`
+        : dash(s.value, unverified);
+      const actions =
+        empty ?
+          ""
+        : `<span class="prep-signal-actions">${sourceOrTrustBadge(s.sourceLabel, conf, srcIdx, sources)}
+            <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="signals" data-dispute-idx="${i}" data-dispute-key="${esc(s.label)}">Report</button>
+          </span>`;
+      return `<div class="prep-signal-cell${unverified ? " prep-kv-unverified" : ""}${empty ? " prep-signal-cell-empty" : ""}">
         <div class="prep-signal-top">
           <span class="prep-kv-key prep-signal-label">${signalLabelWithTooltip(s.label)}</span>
-          <span class="prep-signal-actions">
-            ${sourceBadge(s.sourceLabel, conf, sources.indexOf(src))}
-            <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="signals" data-dispute-idx="${i}" data-dispute-key="${esc(s.label)}">Report</button>
-          </span>
+          ${actions}
         </div>
-        <div class="prep-signal-val">${dash(s.value, unverified && !isUnknown(s.value))}</div>
+        <div class="prep-signal-val">${valueHtml}</div>
       </div>`;
     })
     .join("");
+}
+
+function renderSignalsSection(signals, sources) {
+  const found = countPopulatedSignals(signals);
+  return `<fw-card class="prep-card prep-signals-section">
+    <details class="prep-signals-details">
+      <summary class="prep-signals-summary dew-mono-label">Tech stack &amp; signals (${found} found)</summary>
+      <div class="prep-signals-grid">${renderSignalRows(signals, sources)}</div>
+    </details>
+  </fw-card>`;
 }
 
 function prospectTabLabel(name, index) {
@@ -296,11 +342,6 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
       </div>`
     : "";
 
-  const summaryPreview =
-    summary ?
-      `<p class="prep-prospect-summary prep-line-clamp">${esc(summary)}</p>`
-    : "";
-
   const detailsBlocks = [
     summary ?
       `<div class="prep-detail-block"><span class="prep-kv-key">Full summary</span><p>${esc(summary)}</p></div>`
@@ -336,8 +377,7 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
       </div>
       ${discHero}
       ${expLine ? `<p class="prep-prospect-exp-line muted">${esc(expLine)}</p>` : ""}
-      ${renderSkillChips(skills)}
-      ${summaryPreview}
+      ${renderSkillChips(skills, 4)}
     </div>
     ${
       hasDetails ?
@@ -444,8 +484,8 @@ function renderPains(pains) {
     .join("")}</ul>`;
 }
 
-function renderSourcesAccordion(sources, open) {
-  const rows = (sources || [])
+function renderSourcesRows(sources) {
+  return (sources || [])
     .map((s) => {
       const meta = confidenceMeta(s.confidence);
       const pct = Number.isFinite(meta.pct) ? meta.pct : 50;
@@ -459,10 +499,28 @@ function renderSourcesAccordion(sources, open) {
       </div>`;
     })
     .join("");
+}
+
+function renderSourcesAccordion(sources, open) {
   return `<details class="prep-sources-card" ${open ? "open" : ""}>
     <summary class="prep-sources-summary dew-mono-label">Sources &amp; confidence</summary>
-    <div class="prep-sources-body">${rows || '<p class="muted">—</p>'}</div>
+    <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">—</p>'}</div>
   </details>`;
+}
+
+function renderResearchExtras(supportJD, sources, open) {
+  return `<fw-card class="prep-card prep-research-extras-card">
+    <details class="prep-research-extras" ${open ? "open" : ""}>
+      <summary class="prep-research-extras-summary dew-mono-label">Research extras</summary>
+      <div class="prep-research-extras-body">
+        ${renderSupportJDBlock(supportJD, sources)}
+        <div class="prep-sources-inline">
+          <span class="dew-mono-label prep-sources-inline-label">Sources &amp; confidence</span>
+          <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">—</p>'}</div>
+        </div>
+      </div>
+    </details>
+  </fw-card>`;
 }
 
 function renderStoryline(pcv) {
@@ -590,17 +648,13 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
     <div class="prep-grid-2 prep-grid-account">
       <fw-card class="prep-card">
         ${sectionHead("Account facts", "var(--dew-primary)")}
-        <p class="prep-about muted">${dash(prep.about)}</p>
+        <p class="prep-about muted prep-line-clamp-2">${dash(prep.about)}</p>
         ${renderFactRows(prep.facts, sources)}
         ${renderIcpFitment(prep.icpFit, sources)}
       </fw-card>
-      <fw-card class="prep-card">
-        ${sectionHead("Signals", "var(--dew-purple)")}
-        ${renderSignalRows(prep.signals, sources)}
-      </fw-card>
+      ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
     </div>
-    ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
-    ${renderSupportJDBlock(prep.supportJD, sources)}
+    ${renderSignalsSection(prep.signals, sources)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}
       <div class="prep-fit-grid">${renderFitGrid(prep.fitSnapshot)}</div>
@@ -615,7 +669,7 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
         ${renderPains(prep.likelyPains)}
       </fw-card>
     </div>
-    ${renderSourcesAccordion(sources, sourcesOpen)}
+    ${renderResearchExtras(prep.supportJD, sources, sourcesOpen)}
   </div>`;
 }
 

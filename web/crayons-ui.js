@@ -13,19 +13,36 @@ export function readFieldValue(el) {
 /** @param {HTMLElement | null | undefined} el */
 export async function readFieldValueAsync(el) {
   if (!el) return "";
-  const sync = readFieldValue(el);
-  if (sync) return sync;
-  if (typeof el.getValue === "function") {
+  const tag = String(el.tagName || "").toLowerCase();
+  const isTextarea = tag === "fw-textarea";
+  const getValueTimeoutMs = isTextarea ? 800 : 300;
+
+  async function readViaGetValue() {
+    if (typeof el.getValue !== "function") return "";
     try {
       const v = await Promise.race([
         el.getValue(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("getValue timeout")), 300)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("getValue timeout")), getValueTimeoutMs)),
       ]);
-      if (v != null && v !== "") return String(v).trim();
+      return v != null ? String(v).trim() : "";
     } catch {
-      // fall through to sync read
+      return "";
     }
   }
+
+  // fw-textarea keeps typed text in component state until blur — prefer getValue() first.
+  if (isTextarea) {
+    const fromGet = await readViaGetValue();
+    if (fromGet) return fromGet;
+    const sync = readFieldValue(el);
+    if (sync) return sync;
+    return fromGet;
+  }
+
+  const sync = readFieldValue(el);
+  if (sync) return sync;
+  const fromGet = await readViaGetValue();
+  if (fromGet) return fromGet;
   return readFieldValue(el);
 }
 

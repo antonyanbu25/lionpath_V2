@@ -486,6 +486,132 @@
   color: var(--dew-text-muted);
 }
 
+.prep-signals-section {
+  margin-bottom: 16px;
+}
+
+.prep-signals-details {
+  border: none;
+}
+
+.prep-signals-details > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0 8px;
+  font-weight: 600;
+  color: var(--dew-text);
+}
+
+.prep-signals-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prep-signals-details > summary::before {
+  content: "▸ ";
+  color: var(--dew-primary);
+}
+
+.prep-signals-details[open] > summary::before {
+  content: "▾ ";
+}
+
+.prep-signals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+  padding-top: 4px;
+}
+
+.prep-signal-cell {
+  padding: 8px 10px;
+  border: 1px solid var(--dew-hairline);
+  border-radius: 8px;
+  background: var(--dew-surface);
+}
+
+.prep-signal-cell-empty {
+  opacity: 0.72;
+}
+
+.prep-signal-cell .prep-signal-top {
+  margin-bottom: 4px;
+}
+
+.prep-signal-empty {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.prep-trust-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.prep-trust-notes {
+  color: var(--dew-amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.prep-line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.prep-research-extras-card {
+  margin-top: 4px;
+}
+
+.prep-research-extras {
+  border: none;
+}
+
+.prep-research-extras > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0 8px;
+  font-weight: 600;
+  color: var(--dew-text);
+}
+
+.prep-research-extras > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prep-research-extras > summary::before {
+  content: "▸ ";
+  color: var(--dew-primary);
+}
+
+.prep-research-extras[open] > summary::before {
+  content: "▾ ";
+}
+
+.prep-research-extras-body {
+  padding-top: 4px;
+}
+
+.prep-sources-inline {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dew-border);
+}
+
+.prep-sources-inline-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
 .prep-grid-account {
   margin-bottom: 16px;
 }
@@ -1467,7 +1593,8 @@
   .prep-grid-3,
   .prep-grid-kit,
   .prep-grid-demo,
-  .prep-fit-grid {
+  .prep-fit-grid,
+  .prep-signals-grid {
     grid-template-columns: 1fr;
   }
   .prep-form-grid,
