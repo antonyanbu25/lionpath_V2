@@ -1557,26 +1557,6 @@ function parseDurationMinutesLabel(record, timeline) {
 
 function renderCallRecord(bundle) {
   const { record, callTypeLabel, account } = bundle;
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-    body: JSON.stringify({
-      sessionId: "72b8a2",
-      runId: "pre-fix",
-      hypothesisId: "H1-H3",
-      location: "call-view.js:renderCallRecord",
-      message: "call notes render shape",
-      data: {
-        notesLen: (bundle.callNotes || "").length,
-        bulletCount: formatCallNotesBullets(bundle.callNotes).length,
-        hasNewlines: /\n/.test(bundle.callNotes || ""),
-        hasBulletPrefix: /^[-•*]\s/m.test(bundle.callNotes || ""),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   const analysis = record.analysis || record.result?.analysis || {};
   const hdr = analysis.callHeader || {};
   const title = hdr.title || record.title || "Call";
@@ -1751,21 +1731,6 @@ function wireCallRecord(container, session, bundle, opts) {
       if (notesRead) notesRead.innerHTML = renderCallNotesBulletsHtml(notes);
       setNotesEditMode(false);
       flashSaveStatus(notesStatus, "Saved");
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-        body: JSON.stringify({
-          sessionId: "72b8a2",
-          runId: "pre-fix",
-          hypothesisId: "H4",
-          location: "call-view.js:saveNotes",
-          message: "call notes saved",
-          data: { bulletCount: formatCallNotesBullets(notes).length, notesLen: notes.length },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
     } else {
       flashSaveStatus(notesStatus, "Could not save", true);
     }
