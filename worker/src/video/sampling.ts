@@ -327,6 +327,49 @@ export function buildAttendeeCurveFromAggregated(
   return rows;
 }
 
+/** Merge talk-share from transcript inference into vision camera rows (by identity). */
+export function mergeAttendeeCurveTalk(
+  cameraRows: AttendeeCameraRow[] | null | undefined,
+  talkRows: AttendeeCameraRow[] | null | undefined,
+  identities: VisionIdentities = {},
+): AttendeeCameraRow[] | null {
+  if (!cameraRows?.length && !talkRows?.length) return null;
+  if (!talkRows?.length) return cameraRows?.length ? cameraRows : null;
+  if (!cameraRows?.length) return talkRows;
+
+  const talkByKey = new Map<string, AttendeeCameraRow>();
+  for (const row of talkRows) {
+    const name = String(row.name || "").trim();
+    if (!name) continue;
+    talkByKey.set(normalizePersonKey(name), row);
+  }
+
+  const findTalk = (canonicalName: string, role: string) => {
+    const key = normalizePersonKey(canonicalName);
+    const direct = talkByKey.get(key);
+    if (direct?.talkPct != null) return direct.talkPct;
+    for (const row of talkRows) {
+      if (row.talkPct == null) continue;
+      if (identityMatchesName(canonicalName, row.name)) return row.talkPct;
+    }
+    if (identities.seIdentity && /^(se|solution engineer)$/i.test(role)) {
+      const se = talkRows.find(
+        (r) =>
+          r.talkPct != null &&
+          (identityMatchesName(identities.seIdentity!, r.name) || /^se$/i.test(String(r.role || ""))),
+      );
+      if (se) return se.talkPct;
+    }
+    return null;
+  };
+
+  return cameraRows.map((row) => {
+    const role = String(row.role || "").trim();
+    const talkPct = row.talkPct ?? findTalk(row.name, role);
+    return talkPct == null ? row : { ...row, talkPct };
+  });
+}
+
 export function seCameraOnPctFromParticipants(
   participants: ParticipantCameraAggregate[],
   seIdentity?: string | null,

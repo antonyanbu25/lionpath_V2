@@ -589,7 +589,7 @@ function normalizeParticipantStats(raw) {
       seen.add(key);
       const talkRaw = p.talkPct ?? p.talkSharePct ?? p.talk_pct;
       const camRaw = p.cameraOn ?? p.camOn ?? p.camera;
-      let cameraOn = false;
+      let cameraOn = null;
       if (typeof camRaw === "boolean") cameraOn = camRaw;
       else if (typeof camRaw === "string") cameraOn = camRaw.toLowerCase() === "on";
       const camPctRaw = p.cameraOnPct ?? p.camera_on_pct;
@@ -678,7 +678,6 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
     if (cameraOn == null && cameraOnPct != null) {
       cameraOn = cameraOnPct >= 50;
     }
-    if (cameraOn == null) cameraOn = false;
     rows.push({
       key,
       name: label,
@@ -914,13 +913,15 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
           r.talkPct != null
             ? `<span class="pill call-stakeholder-pill">talk ${esc(String(r.talkPct))}%</span>`
             : "";
-        const camCls = r.cameraOn ? "green" : "";
+        const camCls = r.cameraOn === true ? "green" : "";
         const camLabel =
           r.cameraOnPct != null
             ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
-            : r.cameraOn
+            : r.cameraOn === true
               ? "On"
-              : "Off";
+              : r.cameraOn === false
+                ? "Off"
+                : "—";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">

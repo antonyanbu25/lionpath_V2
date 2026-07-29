@@ -10,6 +10,7 @@ import {
   buildAttendeeCurveFromAggregated,
   computeStrategicSampleWindows,
   identityMatchesName,
+  mergeAttendeeCurveTalk,
   parseVisionCameraResponse,
   seCameraOnPctFromParticipants,
 } from "../src/video/sampling.ts";
@@ -139,6 +140,27 @@ function testPickVisionKeyframesPerWindow() {
   assert.equal(labels.size, 5, "every strategic window represented");
 }
 
+function testMergeAttendeeCurveTalk() {
+  const camera = [
+    { name: "Sathish Kuttan", role: "se", cameraOn: true, cameraOnPct: 88, talkPct: null },
+    { name: "Priyal | AE @Freshworks", role: "ae", cameraOn: false, cameraOnPct: 0, talkPct: null },
+  ];
+  const talk = [
+    { name: "Sathish Kuttan", role: "se", talkPct: 70, cameraOn: false },
+    { name: "Priyal", role: "ae", talkPct: 5, cameraOn: false },
+    { name: "Harshveer", role: "customer", talkPct: 25, cameraOn: false },
+  ];
+  const merged = mergeAttendeeCurveTalk(camera, talk, {
+    seIdentity: "Sathish Kuttan",
+    aeIdentity: "Priyal | AE @Freshworks",
+  });
+  assert.ok(merged);
+  assert.equal(merged![0].talkPct, 70);
+  assert.equal(merged![0].cameraOnPct, 88);
+  assert.equal(merged![1].talkPct, 5);
+  assert.equal(merged![1].cameraOn, false);
+}
+
 testWindows();
 testAggregateCameraMajority();
 testAggregateCameraOffWins();
@@ -148,4 +170,5 @@ testParseVisionWindows();
 testParseVisionFlatParticipants();
 testBuildAttendeeCurveCanonicalNames();
 testPickVisionKeyframesPerWindow();
+testMergeAttendeeCurveTalk();
 console.log("test-video-sampling: ok");

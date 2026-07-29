@@ -11,9 +11,10 @@ import {
   type ZoomMediaStreamKind,
   type ZoomShareMedia,
 } from "../zoomShare";
-import { ffmpegAvailable, videoPassReady } from "./capability";
+import { ffmpegAvailable, isNodeRuntime, videoPassReady } from "./capability";
 import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickVisionKeyframes } from "./facts";
 import { cleanupStaging, sampleStrategicWindowsFromUrl } from "./ffmpeg";
+import { mergeAttendeeCurveTalk } from "./sampling";
 import { inferVideoFactsFromTranscript } from "./transcript-infer";
 import { analyzeKeyframes } from "./vision";
 
@@ -67,6 +68,43 @@ function pickStreamForConsent(
     if (share) return share;
   }
   return preferredMediaStream(media);
+}
+
+async function enrichFfmpegWithTranscriptTalk(
+  env: VideoPassEnv,
+  input: VideoPassInput,
+  result: VideoPassResult,
+): Promise<VideoPassResult> {
+  if (!result.ok || !input.transcript?.trim()) return result;
+  try {
+    const talkDraft = await inferVideoFactsFromTranscript(env, {
+      transcript: input.transcript,
+      durationSec: input.durationSec ?? input.media?.durationSec ?? null,
+      callType: input.callType,
+      visualAnalysisConsent: false,
+    });
+    if (talkDraft.status !== "ready" || !talkDraft.attendeeCurveJson) return result;
+    const merged = mergeAttendeeCurveTalk(
+      result.videoFacts.attendeeCurveJson,
+      talkDraft.attendeeCurveJson,
+      {
+        seIdentity: input.seIdentity,
+        aeIdentity: input.aeIdentity,
+        customerIdentities: input.customerIdentities,
+      },
+    );
+    if (!merged?.length) return result;
+    return {
+      ...result,
+      videoFacts: { ...result.videoFacts, attendeeCurveJson: merged },
+    };
+  } catch (err) {
+    console.warn(
+      "[video/pass2] transcript talk merge failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return result;
+  }
 }
 
 async function runTranscriptPass(
@@ -243,7 +281,16 @@ export async function runVideoPass(
   }
 
   const stream = pickStreamForConsent(media, consent);
-  const ffmpegOk = cap.mode === "ffmpeg" && (await ffmpegAvailable());
+  const ffmpegOk = isNodeRuntime() && (await ffmpegAvailable());
+
+  console.info("[video/pass2] route", {
+    callId,
+    consent,
+    ffmpegOk,
+    capMode: cap.mode,
+    hasStream: !!stream,
+    hasTranscript: !!input.transcript?.trim(),
+  });
 
   // Without face consent, transcript inference is faster and sufficient for PPT/share segments.
   if (!consent && input.transcript?.trim()) {
@@ -252,16 +299,31 @@ export async function runVideoPass(
 
   if (stream && ffmpegOk) {
     const ffmpegResult = await runFfmpegPass(env, input, media!, stream, consent);
-    if (ffmpegResult.ok) return ffmpegResult;
+    if (ffmpegResult.ok) {
+      return enrichFfmpegWithTranscriptTalk(env, input, ffmpegResult);
+    }
+    console.warn("[video/pass2] ffmpeg failed; consent=", consent, ffmpegResult.videoFacts.errorMessage);
     if (input.transcript?.trim()) {
       const fallback = await runTranscriptPass(env, input);
-      if (fallback.ok) return fallback;
+      if (fallback.ok) {
+        if (consent) {
+          console.warn(
+            "[video/pass2] visual consent set but ffmpeg failed — camera from transcript only (no frames)",
+          );
+        }
+        return fallback;
+      }
       return ffmpegResult;
     }
     return ffmpegResult;
   }
 
   if (input.transcript?.trim()) {
+    if (consent && stream) {
+      console.warn(
+        "[video/pass2] visual consent set but ffmpeg unavailable on this runtime — transcript fallback",
+      );
+    }
     return runTranscriptPass(env, input);
   }
 

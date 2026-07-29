@@ -220,7 +220,13 @@ export async function analyzeKeyframes(
     if (aggregated.length) {
       attendeeCurveJson = buildAttendeeCurveFromAggregated(aggregated, identities);
       cameraOnPct = seCameraOnPctFromParticipants(aggregated, identities.seIdentity);
+      console.info("[video/vision] camera aggregates", {
+        participants: aggregated.length,
+        seCameraOnPct: cameraOnPct,
+        curveRows: attendeeCurveJson?.length ?? 0,
+      });
     } else {
+      console.warn("[video/vision] consent=true but no participant camera windows parsed");
       const cameraRaw = parsed.cameraOnPct;
       if (typeof cameraRaw === "number" && Number.isFinite(cameraRaw)) {
         cameraOnPct = Math.max(0, Math.min(100, Math.round(cameraRaw)));

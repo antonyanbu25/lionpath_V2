@@ -78,6 +78,10 @@ export async function videoPassReady(env?: VideoPassEnv & ProviderEnv): Promise<
   if (!videoPassEnvEnabled(env)) {
     return { ready: false, reason: "VIDEO_PASS_ENABLED is off" };
   }
+  // VPS Node + ffmpeg must win over GEMINI_API_KEY so visual consent uses frame sampling.
+  if (isNodeRuntime() && (await ffmpegAvailable())) {
+    return { ready: true, mode: "ffmpeg" };
+  }
   if (geminiKey(env)) {
     return { ready: true, mode: "gemini" };
   }
@@ -86,9 +90,6 @@ export async function videoPassReady(env?: VideoPassEnv & ProviderEnv): Promise<
       ready: false,
       reason: "Pass 2 needs GEMINI_API_KEY (transcript inference) or VPS Node with ffmpeg",
     };
-  }
-  if (await ffmpegAvailable()) {
-    return { ready: true, mode: "ffmpeg" };
   }
   return {
     ready: false,
