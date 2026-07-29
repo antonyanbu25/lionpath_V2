@@ -521,6 +521,24 @@ export function createLocalStore() {
       return findMany("dealSignals", (s) => s.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
+    async listDealSignalsForDeals(dealIds, perDealLimit = 1) {
+      const idSet = new Set((dealIds || []).filter(Boolean));
+      /** @type {Map<string, object[]>} */
+      const byDeal = new Map();
+      if (!idSet.size) return byDeal;
+      const all = findMany(
+        "dealSignals",
+        (s) => idSet.has(s.dealId),
+        (a, b) => b.createdAt - a.createdAt,
+      );
+      for (const row of all) {
+        if (!byDeal.has(row.dealId)) byDeal.set(row.dealId, []);
+        const arr = byDeal.get(row.dealId);
+        if (arr.length < perDealLimit) arr.push(row);
+      }
+      return byDeal;
+    },
+
     async upsertArrLine(docData) {
       return upsertById("arrLines", docData);
     },
@@ -536,6 +554,23 @@ export function createLocalStore() {
 
     async listArrLinesByDeal(dealId, limitCount = 200) {
       return findMany("arrLines", (s) => s.dealId === dealId, (a, b) => b.computedAt - a.computedAt).slice(0, limitCount);
+    },
+
+    async listArrLinesForDeals(dealIds) {
+      const idSet = new Set((dealIds || []).filter(Boolean));
+      /** @type {Map<string, object[]>} */
+      const byDeal = new Map();
+      if (!idSet.size) return byDeal;
+      const all = findMany(
+        "arrLines",
+        (s) => idSet.has(s.dealId),
+        (a, b) => b.computedAt - a.computedAt,
+      );
+      for (const row of all) {
+        if (!byDeal.has(row.dealId)) byDeal.set(row.dealId, []);
+        byDeal.get(row.dealId).push(row);
+      }
+      return byDeal;
     },
 
     async upsertArrOverride(docData) {

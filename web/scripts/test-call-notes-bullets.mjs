@@ -14,4 +14,14 @@ const long = formatCallNotesBullets(
 );
 assert.ok(long.length >= 5 && long.length <= 7);
 
+const stacked = formatCallNotesBullets("- - Alpha thing.\n- - Beta thing.\n- - Gamma thing.");
+assert.ok(stacked.every((b) => !/^[-*•]/.test(b)), "no residual markers");
+assert.equal(stacked.length, 3);
+
+const inlineOne = formatCallNotesBullets(
+  "- Managing support via SharePoint. - Needs a 360 view. - Asked for the wrong product (Freshdesk vs. Freshservice), showing confusion.",
+);
+assert.equal(inlineOne.length, 3, "inline markers split, not periods");
+assert.ok(inlineOne[2].includes("Freshservice"), "vs. must not split");
+
 console.log("test-call-notes-bullets: ok");

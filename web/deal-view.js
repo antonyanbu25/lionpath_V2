@@ -41,6 +41,26 @@ const MEDDPICC_LETTERS = {
 
 const TRACTION_RANK = { hot: 0, warm: 1, cold: 2 };
 
+const DEAL_LIST_TTL_MS = 45_000;
+/** @type {{ key: string, at: number, rows: object[] } | null} */
+let dealListCache = null;
+
+export function invalidateDealListCache() {
+  dealListCache = null;
+}
+
+function dealListRowsChanged(prev, next) {
+  if (!prev || !next) return true;
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < next.length; i++) {
+    const a = prev[i]?.deal;
+    const b = next[i]?.deal;
+    if (a?.id !== b?.id) return true;
+    if ((a?.updatedAt || 0) !== (b?.updatedAt || 0)) return true;
+  }
+  return false;
+}
+
 /** @param {string|null|undefined} traction */
 export function tractionSortRank(traction) {
   return TRACTION_RANK[traction] ?? 2;
@@ -124,33 +144,62 @@ export function resolveDealAgentCount(deal, latestLines) {
 }
 
 /** @param {ReturnType<import("./domain/store.js").getStore>} store @param {object[]} rows */
-export async function enrichDealListRows(store, rows) {
+export async function enrichDealListRows(store, rows, opts = {}) {
+  const dealIds = rows.map((r) => r.deal.id);
+  const orgId = opts.orgId || rows[0]?.deal?.orgId || null;
+
+  const [tcList, signalsByDeal, arrByDeal] = await Promise.all([
+    orgId && store.listTechnicalCommitsByOrg
+      ? safeStoreOp("listTechnicalCommitsByOrg", () => store.listTechnicalCommitsByOrg(orgId, 500), [])
+      : Promise.resolve(null),
+    store.listDealSignalsForDeals
+      ? safeStoreOp("listDealSignalsForDeals", () => store.listDealSignalsForDeals(dealIds, 1), new Map())
+      : Promise.resolve(null),
+    store.listArrLinesForDeals
+      ? safeStoreOp("listArrLinesForDeals", () => store.listArrLinesForDeals(dealIds), new Map())
+      : Promise.resolve(null),
+  ]);
+
+  const tcByDeal = new Map();
+  for (const tc of tcList || []) {
+    if (tc?.dealId && !tcByDeal.has(tc.dealId)) tcByDeal.set(tc.dealId, tc);
+  }
+
   return Promise.all(
     rows.map(async (row) => {
       const { deal, account } = row;
       const med = resolveDealMeddpicc(deal, account);
       const meddpiccScore = med?.completionScore ?? computeMeddpiccScore(med);
 
-      const [tc, signals, arrLines] = await Promise.all([
-        safeStoreOp(
+      let tc = tcByDeal.get(deal.id) ?? null;
+      let signals = signalsByDeal ? (signalsByDeal.get(deal.id) || []) : null;
+      let arrLines = arrByDeal ? (arrByDeal.get(deal.id) || []) : null;
+
+      if (tcList === null && !tc) {
+        tc = await safeStoreOp(
           "getTechnicalCommitByDeal",
           () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
           null,
-        ),
-        safeStoreOp(
+        );
+      }
+      if (signalsByDeal === null) {
+        signals = await safeStoreOp(
           "listDealSignalsByDeal",
           () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
           [],
-        ),
-        safeStoreOp(
+        );
+      }
+      if (arrByDeal === null) {
+        arrLines = await safeStoreOp(
           "listArrLinesByDeal",
           () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
           [],
-        ),
-      ]);
-      const signal = signals[0] || null;
+        );
+      }
 
-      const latestLines = selectLatestArrLines(arrLines);
+      const signal = (signals || [])[0] || null;
+
+      const latestLines = selectLatestArrLines(arrLines || []);
       const arrConfidence = weightedArrConfidence(latestLines);
 
       const arrPoint = deal.arrEstimatePoint ?? null;
@@ -527,10 +576,10 @@ function renderDealListItem(row) {
         <span class="deal-list-col deal-list-col--mrr">${renderDealListMoneyCell(row, "MRR")}</span>
         <span class="deal-list-col deal-list-col--calls deal-list-num">${esc(String(row.callCount ?? 0))}</span>
         <span class="deal-list-col deal-list-col--meddpicc">${meddpiccListTag(row.meddpiccScore)}</span>
-        <span class="deal-list-col deal-list-col--tc">${tcStatusTag(row.tcStatus)}</span>
+        <span class="deal-list-col deal-list-col--tc">${row._pending ? `<span class="muted">·</span>` : tcStatusTag(row.tcStatus)}</span>
         <span class="deal-list-col deal-list-col--ai">${aiAttachListTag(row.aiAttach)}</span>
-        <span class="deal-list-col deal-list-col--traction">${row.traction ? tractionTag(row.traction) : `<span class="muted">—</span>`}</span>
-        <span class="deal-list-col deal-list-col--silent">${daysSilentCell(row.daysSilent, row.traction)}</span>
+        <span class="deal-list-col deal-list-col--traction">${row._pending ? `<span class="muted">·</span>` : row.traction ? tractionTag(row.traction) : `<span class="muted">—</span>`}</span>
+        <span class="deal-list-col deal-list-col--silent">${row._pending ? `<span class="muted">·</span>` : daysSilentCell(row.daysSilent, row.traction)}</span>
       </span>
     </button>`;
 }
@@ -1141,6 +1190,7 @@ function renderDealLoadingShell(preview) {
 
 /** @param {import("./domain/store.js").Store} store @param {object} deal */
 async function enrichDealRecordExtras(store, deal) {
+  const CALL_ROW_ENRICH_LIMIT = 12;
   const [
     technicalCommit,
     signals,
@@ -1183,8 +1233,12 @@ async function enrichDealRecordExtras(store, deal) {
     ),
   ]);
 
-  const callRows = await Promise.all(
-    postCalls.map(async (postCall) => {
+  const sortedCalls = [...postCalls].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const enrichHead = sortedCalls.slice(0, CALL_ROW_ENRICH_LIMIT);
+  const enrichTail = sortedCalls.slice(CALL_ROW_ENRICH_LIMIT);
+
+  const headRows = await Promise.all(
+    enrichHead.map(async (postCall) => {
       const [meddpiccDeltas, tcDeltas] = await Promise.all([
         safeStoreOp(
           "listMeddpiccDeltasByCall",
@@ -1205,6 +1259,13 @@ async function enrichDealRecordExtras(store, deal) {
       };
     }),
   );
+  const tailRows = enrichTail.map((postCall) => ({
+    postCall,
+    meddpiccDeltas: [],
+    tcDeltas: [],
+    movement: null,
+  }));
+  const callRows = [...headRows, ...tailRows];
 
   return {
     technicalCommit,
@@ -1285,6 +1346,20 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
     });
   } catch (err) {
     console.warn("[deal-view] store deal detail failed:", err?.message || err);
+  }
+
+  if (engagementDetail && opts.onPartialDetail) {
+    opts.onPartialDetail({
+      ...engagementDetail,
+      resolvedDealId,
+      technicalCommit: null,
+      latestSignal: null,
+      daysInStage: null,
+      stageMedianDays: null,
+      callRows: [],
+      arrLines: engagementDetail.arrLines || [],
+      dealSummary: null,
+    });
   }
 
   const extras = await extrasPromise;
@@ -1390,12 +1465,66 @@ function wireDealListSort(container, allRows, opts) {
   });
 }
 
+function paintDealList(container, opts, rows) {
+  if (opts.shouldApply && !opts.shouldApply()) return false;
+
+  const tractionFiltered = filterDealRowsForList(rows, opts.listTractionFilter);
+  const sortKey = opts.listSortKey || "traction";
+  const sortedRows = sortDealListRows(tractionFiltered, sortKey);
+  const listQuery = opts.listSearchQuery || "";
+  const filtered = filterDealRows(sortedRows, listQuery);
+  const openCount = rows.filter((row) => isOpenPipelineDeal(row.deal)).length;
+  const listMetrics = summarizeDealListMetrics(rows);
+
+  if (!filtered.length && !rows.length) {
+    return applyDealViewHtml(
+      container,
+      opts,
+      renderDealsEmptyState(
+        "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+      ),
+    );
+  }
+
+  const applied = applyDealViewHtml(
+    container,
+    opts,
+    `
+      <div class="lifecycle-list-view deal-list-view deal-list-view--compact">
+        <div class="deal-list-toolbar deal-list-toolbar--compact">
+          <div class="deal-list-title-group">
+            <h1 class="deal-list-heading">${opts.listTractionFilter === "cold" ? "Cold deals" : "Your deals"}</h1>
+            <p class="deal-list-subtitle muted">${esc(dealListSubtitle(openCount, opts))}</p>
+          </div>
+          <fw-input id="deal-list-search" class="deal-list-search" placeholder="Search deals" value="${esc(listQuery)}" clear-input></fw-input>
+        </div>
+        <div class="deal-list-metrics-host">${renderDealListMetrics(listMetrics)}</div>
+        <div class="deal-list-table-card card-wire">
+          ${renderDealListSortHeader(sortKey)}
+          <div class="lifecycle-list deal-list-compact">
+            ${filtered.length
+              ? filtered.map((row) => renderDealListItem(row)).join("")
+              : `<p class="muted deal-list-no-matches">No deals match “${esc(listQuery)}”</p>`}
+          </div>
+        </div>
+        <p class="deal-list-footnote muted">QIP grades you. MEDPICC grades the deal. When they diverge sharply, the gap is the story.</p>
+      </div>`,
+  );
+  if (!applied) return false;
+
+  wireDealListItemClicks(container, opts);
+  wireDealListFilter(container, rows, opts);
+  wireDealListSort(container, rows, opts);
+  return true;
+}
+
 function wireDealRecordEvents(container, session, opts, detail) {
   container.querySelector('[data-action="back-to-deal-list"]')?.addEventListener("fwClick", () => {
     opts.onBackToDealList?.();
   });
 
   const engage = (view) => {
+    invalidateDealListCache();
     const deal = detail.selectedDeal;
     setAccountEngagementContext({
       accountId: detail.account?.id,
@@ -1454,7 +1583,13 @@ export async function renderDealView(container, session, opts = {}) {
   if (opts.dealId) {
     applyDealViewHtml(container, opts, renderDealLoadingShell(resolveDealPreview(activeSession, opts.dealId)));
     try {
-      const detail = await loadDealRecordDetail(activeSession, opts.dealId, opts);
+      const detail = await loadDealRecordDetail(activeSession, opts.dealId, {
+        ...opts,
+        onPartialDetail: (partial) => {
+          if (opts.shouldApply && !opts.shouldApply()) return;
+          applyDealViewHtml(container, opts, renderDealRecord(partial));
+        },
+      });
       if (opts.shouldApply && !opts.shouldApply()) return;
       if (!detail) {
         if (opts.onInvalidDealId) {
@@ -1510,18 +1645,47 @@ export async function renderDealView(container, session, opts = {}) {
       baseRows = listDealsFromHistory(activeSession);
     }
 
-    const enrichedRows = await enrichDealListRows(store, baseRows);
-    const tractionFiltered = filterDealRowsForList(enrichedRows, opts.listTractionFilter);
-    const sortKey = opts.listSortKey || "traction";
-    const sortedRows = sortDealListRows(tractionFiltered, sortKey);
-    const listQuery = opts.listSearchQuery || "";
-    const filtered = filterDealRows(sortedRows, listQuery);
-    const openCount = enrichedRows.filter((row) => isOpenPipelineDeal(row.deal)).length;
-    const listMetrics = summarizeDealListMetrics(enrichedRows);
+    const cacheKey = sessionUserId(activeSession) || "";
+    const cacheFresh =
+      dealListCache?.key === cacheKey &&
+      Date.now() - dealListCache.at < DEAL_LIST_TTL_MS;
+    const prevCachedRows = cacheFresh ? dealListCache.rows : null;
+    if (cacheFresh && prevCachedRows?.length) {
+      paintDealList(container, opts, prevCachedRows);
+    }
+
+    const shellRows = baseRows.map((row) => ({
+      ...row,
+      meddpiccScore: resolveDealMeddpicc(row.deal, row.account)?.completionScore ?? null,
+      arrPoint: row.deal.arrEstimatePoint ?? null,
+      arrLow: row.deal.arrEstimateLow ?? row.deal.arrEstimatePoint ?? null,
+      arrHigh: row.deal.arrEstimateHigh ?? row.deal.arrEstimatePoint ?? null,
+      tcStatus: null,
+      aiAttach: null,
+      blocker: null,
+      traction: null,
+      daysSilent: null,
+      arrConfidence: null,
+      agentCount: resolveDealAgentCount(row.deal, []),
+      pendingActions: row.deal.openTaskCount || 0,
+      forecastMonth: row.deal.forecastMonth || null,
+      callCount: row.deal.postCallCount || 0,
+      subRegion: row.account?.metadata?.sub_region || row.account?.metadata?.subRegion || null,
+      _pending: true,
+    }));
+
+    if (!cacheFresh) {
+      paintDealList(container, opts, shellRows);
+    }
+
+    const enrichedRows = await enrichDealListRows(store, baseRows, {
+      orgId: activeSession?.orgId,
+    });
+    dealListCache = { key: cacheKey, at: Date.now(), rows: enrichedRows };
 
     if (opts.shouldApply && !opts.shouldApply()) return;
 
-    if (!filtered.length && !enrichedRows.length) {
+    if (!enrichedRows.length) {
       applyDealViewHtml(
         container,
         opts,
@@ -1532,38 +1696,18 @@ export async function renderDealView(container, session, opts = {}) {
       return;
     }
 
-    if (
-      !applyDealViewHtml(
-        container,
-        opts,
-        `
-      <div class="lifecycle-list-view deal-list-view deal-list-view--compact">
-        <div class="deal-list-toolbar deal-list-toolbar--compact">
-          <div class="deal-list-title-group">
-            <h1 class="deal-list-heading">${opts.listTractionFilter === "cold" ? "Cold deals" : "Your deals"}</h1>
-            <p class="deal-list-subtitle muted">${esc(dealListSubtitle(openCount, opts))}</p>
-          </div>
-          <fw-input id="deal-list-search" class="deal-list-search" placeholder="Search deals" value="${esc(listQuery)}" clear-input></fw-input>
-        </div>
-        <div class="deal-list-metrics-host">${renderDealListMetrics(listMetrics)}</div>
-        <div class="deal-list-table-card card-wire">
-          ${renderDealListSortHeader(sortKey)}
-          <div class="lifecycle-list deal-list-compact">
-            ${filtered.length
-              ? filtered.map((row) => renderDealListItem(row)).join("")
-              : `<p class="muted deal-list-no-matches">No deals match “${esc(listQuery)}”</p>`}
-          </div>
-        </div>
-        <p class="deal-list-footnote muted">QIP grades you. MEDPICC grades the deal. When they diverge sharply, the gap is the story.</p>
-      </div>`,
-      )
-    ) {
+    if (cacheFresh && prevCachedRows && !dealListRowsChanged(prevCachedRows, enrichedRows)) {
+      dealListCache = { key: cacheKey, at: Date.now(), rows: enrichedRows };
       return;
     }
 
-    wireDealListItemClicks(container, opts);
-    wireDealListFilter(container, enrichedRows, opts);
-    wireDealListSort(container, enrichedRows, opts);
+    const scrollHost =
+      typeof container.closest === "function"
+        ? container.closest(".view-panel") || container
+        : container;
+    const y = scrollHost.scrollTop || 0;
+    paintDealList(container, opts, enrichedRows);
+    if (typeof scrollHost.scrollTop === "number") scrollHost.scrollTop = y;
   } catch (err) {
     console.error("[deal-view] failed to render deals list:", err);
     if (opts.shouldApply && !opts.shouldApply()) return;

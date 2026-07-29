@@ -47,6 +47,27 @@ function formatDate(ts) {
   });
 }
 
+/**
+ * Real call date. hdr.date is LLM-generated and has produced dates years off,
+ * so it is only used when it agrees with the record within a week.
+ */
+function callDateLabel(record) {
+  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
+  const real =
+    record?.result?.resolve?.callTime ||
+    record?.result?.resolve?.media?.startTime ||
+    record?.timestamp ||
+    null;
+  const realMs = real ? new Date(real).getTime() : NaN;
+  if (Number.isFinite(realMs)) {
+    const hdrMs = hdr.date ? new Date(hdr.date).getTime() : NaN;
+    const WEEK = 7 * 24 * 60 * 60 * 1000;
+    if (Number.isFinite(hdrMs) && Math.abs(hdrMs - realMs) <= WEEK) return formatDate(hdrMs);
+    return formatDate(realMs);
+  }
+  return hdr.date || formatDate(record?.timestamp);
+}
+
 function formatDateTime(ts) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString(undefined, {
@@ -418,7 +439,7 @@ function renderMeddpiccList(meddpicc, meddpiccDeltas) {
     const value = filled ? slot.value : "Not surfaced";
     const delta = deltaByField[key];
     const deltaPill = delta?.changeType
-      ? `<span class="pill ${delta.changeType === "new" ? "red" : delta.changeType === "confirmed" ? "green" : "amber"}" style="margin-left:4px">${esc(delta.changeType === "new" ? "New this call" : delta.changeType === "confirmed" ? "Confirmed" : "Still unknown")}</span>`
+      ? `<span class="pill ${delta.changeType === "new" ? "red" : delta.changeType === "confirmed" ? "green" : "amber"}" style="margin-left:4px">${esc(delta.changeType === "new" ? "Surfaced in this conversation" : delta.changeType === "confirmed" ? "Confirmed" : "Still unknown")}</span>`
       : "";
     return `<div class="call-medp-row${i < MEDDPICC_FIELD_KEYS.length - 1 ? " call-medp-row--border" : ""}">
       <span class="call-medp-dot${filled ? " call-medp-dot--on" : ""}" aria-hidden="true"></span>
@@ -433,7 +454,7 @@ function renderMeddpiccList(meddpicc, meddpiccDeltas) {
 function tcFieldDeltaPill(field, tcDeltas) {
   const delta = (tcDeltas || []).find((d) => d.field === field);
   if (!delta?.changeType) return "";
-  if (delta.changeType === "new") return ' <span class="pill red">New this call</span>';
+  if (delta.changeType === "new") return ' <span class="pill red">Surfaced in this conversation</span>';
   if (delta.changeType === "still_unknown" || delta.changeType === "unknown") {
     return ' <span class="pill amber">Still unknown</span>';
   }
@@ -511,16 +532,35 @@ function renderSpineTimeAxis(durationSec) {
   return `<div class="call-spine-axis">${ticks.map((t) => `<span>${esc(t)}</span>`).join("")}</div>`;
 }
 
-function renderSpineMetrics(videoFacts, scorecard, record) {
+function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
   const metrics = [];
-  const curves = normalizeParticipantStats(videoFacts?.attendeeCurveJson);
-  const seCurve = curves.find((p) => /solution engineer|^se$/i.test(p.role || ""));
-  const customerCurves = curves.filter((p) => /customer/i.test(p.role || ""));
+  const rows = stakeholderRows?.length
+    ? stakeholderRows
+    : normalizeParticipantStats(videoFacts?.attendeeCurveJson);
 
-  if (seCurve?.talkPct != null) {
-    metrics.push(["SE talk ratio", `${seCurve.talkPct}%`, ""]);
+  const isSe = (r) => /solution engineer|sales engineer|^se$/i.test(String(r.role || ""));
+  const isAe = (r) => /account executive|account manager|^ae$/i.test(String(r.role || ""));
+  const isCustomer = (r) =>
+    /customer/i.test(String(r.role || "")) || String(r.side || "") === "customer";
+
+  const seRow = rows.find(isSe) || null;
+  const aeRow = rows.find(isAe) || null;
+  const customerRows = rows.filter((r) => isCustomer(r) && !isSe(r) && !isAe(r));
+
+  if (seRow?.talkPct != null) {
+    metrics.push(["SE talk ratio", `${seRow.talkPct}%`, ""]);
   } else {
-    metrics.push(["SE talk ratio", "—", ""]);
+    const internal = rows.filter((r) => String(r.side || "") === "internal");
+    const bestInternal = internal.reduce(
+      (best, r) =>
+        r.talkPct != null && (best == null || r.talkPct > best.talkPct) ? r : best,
+      null,
+    );
+    if (bestInternal?.talkPct != null) {
+      metrics.push(["SE talk ratio", `${bestInternal.talkPct}%`, ""]);
+    } else {
+      metrics.push(["SE talk ratio", "—", ""]);
+    }
   }
 
   const customerQuestions = parseCustomerQuestions(scorecard, record);
@@ -533,36 +573,38 @@ function renderSpineMetrics(videoFacts, scorecard, record) {
   const monologue = parseLongestMonologue(scorecard);
   metrics.push(["Longest monologue", monologue || "—", monologue ? "warn" : ""]);
 
-  if (videoFacts?.cameraOnPct != null) {
+  if (seRow?.cameraOnPct != null) {
+    metrics.push(["SE camera on", `${Math.round(Number(seRow.cameraOnPct))}%`, ""]);
+  } else if (seRow?.cameraOn != null) {
+    metrics.push(["SE camera on", seRow.cameraOn ? "On" : "Off", ""]);
+  } else if (videoFacts?.cameraOnPct != null) {
     metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`, ""]);
   } else {
     metrics.push(["SE camera on", "—", ""]);
   }
 
-  const aeCurve = customerCurves.find((p) => /^(ae|account executive)$/i.test(String(p.role || "")));
-  if (aeCurve?.cameraOnPct != null) {
-    metrics.push(["AE camera on", `${aeCurve.cameraOnPct}%`, ""]);
-  } else if (aeCurve?.cameraOn != null) {
-    metrics.push(["AE camera on", aeCurve.cameraOn ? "On" : "Off", ""]);
+  if (aeRow?.cameraOnPct != null) {
+    metrics.push(["AE camera on", `${aeRow.cameraOnPct}%`, ""]);
+  } else if (aeRow?.cameraOn != null) {
+    metrics.push(["AE camera on", aeRow.cameraOn ? "On" : "Off", ""]);
   } else {
     metrics.push(["AE camera on", "—", ""]);
   }
 
-  const customerCamRows = customerCurves.filter((p) => /customer/i.test(String(p.role || "")));
-  if (customerCamRows.length) {
-    const onCount = customerCamRows.filter((p) => p.cameraOn === true).length;
+  if (customerRows.length) {
+    const onCount = customerRows.filter((p) => p.cameraOn === true).length;
     const avgPct =
-      customerCamRows.filter((p) => p.cameraOnPct != null).length > 0
+      customerRows.filter((p) => p.cameraOnPct != null).length > 0
         ? Math.round(
-            customerCamRows
+            customerRows
               .filter((p) => p.cameraOnPct != null)
               .reduce((sum, p) => sum + Number(p.cameraOnPct), 0) /
-              customerCamRows.filter((p) => p.cameraOnPct != null).length,
+              customerRows.filter((p) => p.cameraOnPct != null).length,
           )
         : null;
     metrics.push([
       "Customer cameras",
-      avgPct != null ? `${onCount} on · avg ${avgPct}%` : `${onCount} of ${customerCamRows.length} on`,
+      avgPct != null ? `${onCount} on · avg ${avgPct}%` : `${onCount} of ${customerRows.length} on`,
       "",
     ]);
   } else {
@@ -855,29 +897,59 @@ function renderPhase2TabEmpty(title, detail) {
 }
 
 /** Split internal call notes into scannable bullets for the wireframe read view. */
+const BULLET_MARKER = /^\s*(?:[-–—•*·▪]|\d+[.)])\s+/;
+/** Abbreviations that must not end a sentence. */
+const ABBREV = /\b(?:vs|etc|e\.g|i\.e|approx|no|dept|inc|ltd|corp|mr|mrs|ms|dr|jr|sr|fig|vol|est|min|max|avg|q1|q2|q3|q4)\.$/i;
+
+/** Strip every stacked list marker: "- - x", "* - x", "1. - x" all become "x". */
+function stripBulletMarkers(line) {
+  let out = String(line || "").trim();
+  let guard = 0;
+  while (BULLET_MARKER.test(out) && guard++ < 4) out = out.replace(BULLET_MARKER, "").trim();
+  return out;
+}
+
+/** Sentence split that does not break on "vs." / "e.g." / "Inc.". */
+function splitSentences(text) {
+  const raw = String(text).match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [text];
+  const out = [];
+  for (const piece of raw) {
+    const prev = out[out.length - 1];
+    if (prev && ABBREV.test(prev.trim())) out[out.length - 1] = `${prev.trim()} ${piece.trim()}`;
+    else out.push(piece);
+  }
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+
 export function formatCallNotesBullets(notes) {
   const text = String(notes || "").trim();
   if (!text) return [];
 
+  const finish = (arr) =>
+    arr.map(stripBulletMarkers).filter(Boolean).slice(0, 8);
+
   const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-  const prefixed = lines.filter((l) => /^[-•*]\s/.test(l));
-  if (prefixed.length >= 2) {
-    return prefixed.map((l) => l.replace(/^[-•*]\s+/, "").trim()).filter(Boolean);
-  }
+  const prefixed = lines.filter((l) => BULLET_MARKER.test(l));
+  if (prefixed.length >= 2) return finish(prefixed);
 
   const paras = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-  if (paras.length >= 2) return paras.slice(0, 8);
+  if (paras.length >= 2) return finish(paras);
 
-  const sentences =
-    text.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()).filter(Boolean) || [text];
-  if (sentences.length <= 5) return sentences;
+  const inline = text
+    .split(/\s+(?=(?:[-–—•*·]|\d+[.)])\s+)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (inline.length >= 2) return finish(inline);
+
+  const sentences = splitSentences(text);
+  if (sentences.length <= 5) return finish(sentences);
 
   const bullets = [];
   const groupSize = sentences.length > 8 ? 2 : 1;
   for (let i = 0; i < sentences.length && bullets.length < 7; i += groupSize) {
     bullets.push(sentences.slice(i, i + groupSize).join(" "));
   }
-  return bullets;
+  return finish(bullets);
 }
 
 function renderCallNotesBulletsHtml(notes) {
@@ -913,8 +985,10 @@ function renderCallNotesSection(notes) {
     </section>`;
 }
 
-function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
-  const rows = buildStakeholderRows(identities, attendees, videoFacts);
+function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, stakeholderRows) {
+  const rows = stakeholderRows?.length
+    ? stakeholderRows
+    : buildStakeholderRows(identities, attendees, videoFacts);
 
   let body;
   if (rows.length) {
@@ -944,7 +1018,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
       .join("")}</div>
     ${
       hasVideo
-        ? `<p class="muted call-stakeholder-note">Talk-share and camera from Pass 2 (Gemini transcript/vision) when sampling succeeds.</p>`
+        ? ""
         : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
     }`;
   } else if (hasVideo) {
@@ -1027,7 +1101,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     body += renderVisualSpine(segments, markers, durationSec);
     body += renderSpineLegend();
     body += renderSpineTimeAxis(durationSec);
-    body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record);
+    body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record, opts.stakeholderRows);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored — those need Pass 2.</p>`;
     }
@@ -1056,14 +1130,14 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     : "How the call went";
   const subtitle = usingTranscript
     ? "Conversation phases from the transcript clock — evidence only, not scored"
-    : "From the screen-share track — feeds call flow scoring directly";
+    : "";
 
   return `
     <section class="call-section call-timeline-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="call-timeline-head">
           <h2 class="call-timeline-title">${esc(title)}</h2>
-          <span class="muted call-timeline-sub">${esc(subtitle)}</span>
+          ${subtitle ? `<span class="muted call-timeline-sub">${esc(subtitle)}</span>` : ""}
         </div>
         ${body}
       </div>
@@ -1255,7 +1329,7 @@ export function renderMinutesTab(record, opts = {}) {
 
   const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
   const title = hdr.title || record?.title || "Call recap";
-  const dateLabel = hdr.date || (record?.timestamp ? formatDate(record.timestamp) : "");
+  const dateLabel = callDateLabel(record);
 
   const nextStepsHtml = actionItems.length
     ? `<br><br><b>Next steps</b><br>${actionItems
@@ -1648,10 +1722,16 @@ async function loadCallBundle(session, record) {
 
   const dealSignal = parallel.dealSignals?.[0] || null;
 
+  let navigableDealId = dealId;
+  if (dealId && !deal?.accountId) {
+    const probe = await safeEnrich("getDeal:probe", () => getDeal(dealId), null);
+    if (!probe?.accountId) navigableDealId = null;
+  }
+
   return {
     record,
     deal,
-    dealId,
+    dealId: navigableDealId,
     account,
     sequence,
     callType,
@@ -1722,15 +1802,14 @@ function renderCallRecord(bundle) {
   const title = hdr.title || record.title || "Call";
   const attendeeCount = Array.isArray(hdr.attendees) ? hdr.attendees.length : null;
   const durationLabel = parseDurationMinutesLabel(record, bundle.timeline);
+  const stakeholderRows = buildStakeholderRows(bundle.identities, bundle.attendees, bundle.videoFacts);
   const metaBits = [
     account?.id
       ? `<a href="#accounts/${esc(account.id)}" class="call-meta-link">${esc(account.name)}</a>`
       : account?.name
         ? esc(account.name)
         : "",
-    hdr.date || formatDate(record.timestamp),
-    hdr.duration,
-    attendeeCount != null ? `${esc(String(attendeeCount))} participants` : "",
+    callDateLabel(record),
   ].filter(Boolean);
 
   return `
@@ -1746,7 +1825,7 @@ function renderCallRecord(bundle) {
             ${metaBits.length ? `<p class="call-record-meta-line muted">${metaBits.join(" · ")}</p>` : ""}
           </div>
           <div class="call-record-header-actions">
-            <fw-button color="secondary" fill="outline" size="small" data-action="rerun">Re-run</fw-button>
+            <fw-button color="secondary" fill="outline" size="small" data-action="new-postcall">New post call</fw-button>
             <fw-button color="secondary" fill="outline" size="small" data-action="open-deal" ${bundle.deal?.id || bundle.dealId ? "" : "disabled"}>Open deal</fw-button>
           </div>
         </header>
@@ -1754,12 +1833,13 @@ function renderCallRecord(bundle) {
         ${renderVerdictStrip(bundle)}
         <div class="call-record-notes-row">
           ${renderCallNotesSection(bundle.callNotes)}
-          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts)}
+          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows)}
         </div>
         ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
           videoFacts: bundle.videoFacts,
           scorecard: bundle.scorecard,
           record,
+          stakeholderRows,
         })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
@@ -1802,15 +1882,16 @@ function wireCallRecord(container, session, bundle, opts) {
 
   const openDeal = () => {
     const id = bundle.deal?.id || bundle.dealId;
-    if (id) opts.onOpenDeal?.(id);
+    const accountId = bundle.deal?.accountId || bundle.account?.id || null;
+    if (id) opts.onOpenDeal?.(id, { accountId });
   };
   container.querySelector('[data-action="open-deal"]')?.addEventListener("fwClick", openDeal);
   container.querySelector('[data-action="open-deal"]')?.addEventListener("click", openDeal);
-  const rerun = () => {
-    opts.onRerun?.();
+  const newPostCall = () => {
+    opts.onNewPostCall?.();
   };
-  container.querySelector('[data-action="rerun"]')?.addEventListener("fwClick", rerun);
-  container.querySelector('[data-action="rerun"]')?.addEventListener("click", rerun);
+  container.querySelector('[data-action="new-postcall"]')?.addEventListener("fwClick", newPostCall);
+  container.querySelector('[data-action="new-postcall"]')?.addEventListener("click", newPostCall);
   container.querySelectorAll('a[data-action="open-deal"]').forEach((link) => {
     link.addEventListener("click", (e) => {
       e.preventDefault();

@@ -65,6 +65,7 @@ import {
   setOnCallRecordReady,
   setOnCallRecordHydrated,
   resetPostCallView,
+  clearPostCallForm,
   isPostCallGenerationBusy,
 } from "./postcall.js";
 import {
@@ -88,6 +89,8 @@ const WORKER_DOWN_MSG =
   "Use the same hostname for both (localhost or 127.0.0.1 — not mixed). The banner clears automatically when the worker comes up.";
 
 let fb = null;
+/** Resolves once Firebase auth state is restored (dummy mode: already resolved). */
+let authReadyPromise = Promise.resolve();
 let currentSession = null;
 let currentView = "dashboard";
 let currentDashTab = "overview";
@@ -126,6 +129,8 @@ function accountDetailHash() {
 }
 /** Selected deal when Deals nav is active */
 let selectedDealNavId = null;
+/** Account to open when deal id from a call record is not navigable. */
+let pendingDealFallbackAccountId = null;
 /** Bumps on each deal panel render — stale async renders must not overwrite the DOM. */
 let dealPanelRenderGen = 0;
 /** Bumps on each call panel render — stale async renders must not overwrite the DOM. */
@@ -821,12 +826,22 @@ async function renderDealPanel() {
     shouldApply: () => gen === dealPanelRenderGen,
     onInvalidDealId: () => {
       if (gen !== dealPanelRenderGen) return;
+      const fallbackAccountId = pendingDealFallbackAccountId;
+      pendingDealFallbackAccountId = null;
       selectedDealNavId = null;
+      if (fallbackAccountId) {
+        console.warn("[app] deal id not navigable, falling back to account:", fallbackAccountId);
+        selectedAccountId = fallbackAccountId;
+        selectedAccountDealId = null;
+        switchView("accounts", { accountId: fallbackAccountId, drillDown: true });
+        return;
+      }
       history.replaceState(null, "", `#${dealDetailHash()}`);
       void renderDealPanel();
     },
     onResolvedDealId: (dealId) => {
       if (gen !== dealPanelRenderGen) return;
+      pendingDealFallbackAccountId = null;
       selectedDealNavId = dealId;
       history.replaceState(null, "", `#${dealDetailHash()}`);
     },
@@ -905,8 +920,9 @@ async function renderCallPanel() {
         callRecordOwnerEmail = undefined;
         switchView("calls", { drillDown: true });
       },
-      onOpenDeal: (dealId) => {
+      onOpenDeal: (dealId, meta = {}) => {
         selectedDealNavId = dealId;
+        pendingDealFallbackAccountId = meta.accountId || null;
         selectedCallId = null;
         callRecordTab = undefined;
         callExpandThemeKey = undefined;
@@ -922,11 +938,12 @@ async function renderCallPanel() {
         callRecordOwnerEmail = undefined;
         switchView("accounts", { accountId, drillDown: true });
       },
-      onRerun: () => {
+      onNewPostCall: () => {
         selectedCallId = null;
         callRecordTab = undefined;
         callExpandThemeKey = undefined;
         callRecordOwnerEmail = undefined;
+        clearPostCallForm();
         resetPostCallView();
         switchView("postcall");
       },
@@ -1566,14 +1583,41 @@ async function initFirebase() {
     catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
   });
 
+  // Explicit persistence — v9 defaults to IndexedDB, which Safari/private mode can refuse.
+  try {
+    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+  } catch (err) {
+    console.warn("[app] setPersistence failed, using default:", err?.message || err);
+  }
+
+  let authResolved = false;
+  const authReady = auth.authStateReady
+    ? auth.authStateReady().catch(() => {})
+    : new Promise((resolve) => {
+        const stop = authMod.onAuthStateChanged(auth, () => { stop(); resolve(); });
+      });
+  authReadyPromise = authReady.then(() => { authResolved = true; });
+
   authMod.onAuthStateChanged(auth, (user) => {
-    if (user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`))) {
+    const allowed =
+      user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`));
+    if (allowed) {
       void completeFirebaseLogin(user);
-    } else {
-      if (user) fb.signOut(auth);
-      logout();
+      return;
     }
+    if (user) {
+      fb.signOut(auth);
+      logout();
+      return;
+    }
+    // user === null. Before the first resolution this only means "not restored yet".
+    if (!authResolved) return;
+    logout();
   });
+
+  // Optimistic boot — show the app from the cached session so a refresh doesn't flash login.
+  const cached = getSession();
+  if (cached) handleSession(cached, { restored: true });
 
   onSessionChange(handleSession);
 }
@@ -1812,10 +1856,12 @@ async function boot() {
       googleBlockVisible: !$("firebase-signin-block")?.hidden,
       loginFormHidden: !!$("login-form")?.hidden,
     }, "B");
+    await authReadyPromise;
     if (!getSession()) showLogin();
   } else {
     initDummyAuth();
     agentBootLog("app.js:boot:dummyAuth", "dummy auth path", { handlersWired: loginHandlersWired }, "C");
+    await authReadyPromise;
     const existing = getSession();
     if (!existing) showLogin();
   }

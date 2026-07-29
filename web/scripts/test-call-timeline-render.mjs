@@ -51,7 +51,8 @@ function testVideoSpineWireframe() {
     { videoFacts, scorecard, record: {} },
   );
   assert.match(html, /Product walkthrough/);
-  assert.match(html, /feeds call flow scoring directly/);
+  assert.doesNotMatch(html, /feeds call flow scoring directly/);
+  assert.doesNotMatch(html, /call-timeline-sub/);
   assert.match(html, /call-spine-legend/);
   assert.match(html, /Product \/ CDE/);
   assert.match(html, /SE talk ratio/);

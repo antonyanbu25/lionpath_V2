@@ -770,6 +770,32 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    async listDealSignalsForDeals(dealIds, perDealLimit = 1) {
+      const ids = [...new Set((dealIds || []).filter(Boolean))];
+      /** @type {Map<string, object[]>} */
+      const byDeal = new Map();
+      if (!ids.length) return byDeal;
+      const chunkSize = 30;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const q = query(
+          collection(db, "dealSignals"),
+          where("dealId", "in", chunk),
+          orderBy("createdAt", "desc"),
+        );
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          const row = { id: d.id, ...d.data() };
+          const dealId = row.dealId;
+          if (!dealId) continue;
+          if (!byDeal.has(dealId)) byDeal.set(dealId, []);
+          const arr = byDeal.get(dealId);
+          if (arr.length < perDealLimit) arr.push(row);
+        }
+      }
+      return byDeal;
+    },
+
     async upsertArrLine(docData) {
       const ref = docData.id ? doc(db, "arrLines", docData.id) : doc(collection(db, "arrLines"));
       const data = { ...docData, id: ref.id };
@@ -797,6 +823,31 @@ export function createFirestoreStore(fb) {
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listArrLinesForDeals(dealIds) {
+      const ids = [...new Set((dealIds || []).filter(Boolean))];
+      /** @type {Map<string, object[]>} */
+      const byDeal = new Map();
+      if (!ids.length) return byDeal;
+      const chunkSize = 30;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const q = query(
+          collection(db, "arrLines"),
+          where("dealId", "in", chunk),
+          orderBy("computedAt", "desc"),
+        );
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          const row = { id: d.id, ...d.data() };
+          const dealId = row.dealId;
+          if (!dealId) continue;
+          if (!byDeal.has(dealId)) byDeal.set(dealId, []);
+          byDeal.get(dealId).push(row);
+        }
+      }
+      return byDeal;
     },
 
     async upsertArrOverride(docData) {

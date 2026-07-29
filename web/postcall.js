@@ -3,6 +3,7 @@ import { isFirebaseAuthEnabled } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach, formatTypeComposite, typeComposite } from "./quality-score.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext } from "./postcall-resolve-context.js";
+import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
 import {
@@ -79,6 +80,7 @@ const VIDEO_THEME_LABELS = {
 
 let linkedinParsing = false;
 let companyNameTouched = false;
+let suppressCompanyTouch = false;
 let pcResolvedAccount = null;
 let pcCreateNewAccount = false;
 let companyPrefillTimer = null;
@@ -332,6 +334,16 @@ function scheduleCompanyPrefill() {
   companyPrefillTimer = window.setTimeout(() => { void prefillCompanyFromEmails(); }, 300);
 }
 
+/** ISO yyyy-mm-dd for the actual recording, falling back to today. */
+function meetingDateFromResolve(resolve) {
+  const raw = resolve?.callTime || resolve?.media?.startTime || null;
+  if (raw) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function tryMatchEmail(ctx, email) {
   const domain = domainFromEmail(email);
   if (!domain) return null;
@@ -355,8 +367,14 @@ async function prefillCompanyFromEmails() {
   if (companyNameTouched) return;
   const companyEl = $("pc-company-name");
   if (!companyEl) return;
+  // Only an SE-typed company blocks the prefill. A value we filled ourselves is replaceable.
   const existing = (await readFieldValueAsync(companyEl))?.trim();
-  if (existing) return;
+  if (existing && companyNameTouched) return;
+  if (existing && pcResolvedAccount && existing === pcResolvedAccount.name) {
+    // fall through — emails may have changed to a different account
+  } else if (existing) {
+    return;
+  }
 
   const emails = parseProspectEmails(await readFieldValueAsync($("pc-prospect-emails")));
   if (!emails.length) return;
@@ -374,7 +392,9 @@ async function prefillCompanyFromEmails() {
       }
     }
     if (match) {
+      suppressCompanyTouch = true;
       companyEl.value = match.name;
+      window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
       if (match.account) {
         pcResolvedAccount = {
           id: match.account.id,
@@ -386,7 +406,11 @@ async function prefillCompanyFromEmails() {
       return;
     }
     const derived = companyNameFromEmail(primary);
-    if (derived) companyEl.value = derived;
+    if (derived) {
+      suppressCompanyTouch = true;
+      companyEl.value = derived;
+      window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
+    }
   } catch {
     /* prefills are best-effort */
   }
@@ -1655,14 +1679,11 @@ function renderIdentityConfirm(resolve) {
 }
 
 function renderDerivedFacts(resolve) {
-  const emails = resolve?.participantEmails || [];
   const domains = resolve?.participantDomains || [];
   const speakers = resolve?.transcriptMeta?.speakers || [];
   const duration = resolve?.durationMinutes ?? resolve?.transcriptMeta?.durationMinutes;
   const rows = [
-    ["Participants", emails.length ? emails.join(", ") : "—"],
     ["Domains", domains.length ? domains.join(", ") : "—"],
-    ["Call time", resolve?.callTime || "—"],
     ["Duration", formatDurationMinutes(duration)],
     ["Source", resolve?.sourceKind || "—"],
   ];
@@ -1734,7 +1755,7 @@ function renderConfirmationGate(resolve, classify) {
           </label>`;
         })
         .join("")
-    : `<p class="muted">No deals on this account yet — confirm to attach later from Accounts.</p>`;
+    : "";
 
   const accountMatchDetail = account ? formatMatchReasons(account.reasons) : "";
 
@@ -1778,10 +1799,10 @@ function renderConfirmationGate(resolve, classify) {
         <div class="postcall-confirm-block postcall-confirm-block--nested postcall-match-edit"${accountFieldsHidden}>
           ${accountFields}
         </div>
-        <div class="postcall-confirm-block postcall-confirm-block--nested postcall-deal-picker"${accountFieldsHidden}>
+        ${dealOptions ? `<div class="postcall-confirm-block postcall-confirm-block--nested postcall-deal-picker"${accountFieldsHidden}>
           <h3 class="postcall-confirm-subhead">Deal on account</h3>
           <div class="postcall-deal-list">${dealOptions}</div>
-        </div>
+        </div>` : ""}
       </div>`
     : `<div class="postcall-match-banner postcall-match-banner--neutral">
         <div class="postcall-match-banner-head">
@@ -1792,10 +1813,10 @@ function renderConfirmationGate(resolve, classify) {
           <p class="muted">Search or create from participant hints.</p>
           ${accountFields}
         </div>
-        <div class="postcall-confirm-block postcall-confirm-block--nested">
+        ${dealOptions ? `<div class="postcall-confirm-block postcall-confirm-block--nested">
           <h3 class="postcall-confirm-subhead">Deal on account</h3>
           <div class="postcall-deal-list">${dealOptions}</div>
-        </div>
+        </div>` : ""}
       </div>`;
 
   const freeMailBlock = resolve?.needsCompanyDomain
@@ -1977,6 +1998,7 @@ async function confirmAndGenerate(e) {
     meetingTitle: pipelineState.payload.meetingTitle || companyName,
     callType,
     additionalContext,
+    meetingDate: meetingDateFromResolve(pipelineState.resolve),
   };
   const summariseBody = {
     transcript: pipelineState.resolve.transcript,
@@ -1985,6 +2007,7 @@ async function confirmAndGenerate(e) {
     meetingTitle: pipelineState.payload.meetingTitle || companyName,
     callType,
     additionalContext,
+    meetingDate: meetingDateFromResolve(pipelineState.resolve),
   };
 
   const qualifyP = postJson(QUALIFY_URL, qualifyBody).catch((err) => {
@@ -2119,6 +2142,7 @@ async function confirmAndGenerate(e) {
       dealId,
       accountId,
       companyDomain: companyDomain || undefined,
+      meetingDate: meetingDateFromResolve(pipelineState.resolve),
       resolveSnapshot: {
         ...pipelineState.resolve,
         seIdentity,
@@ -2187,10 +2211,14 @@ async function confirmAndGenerate(e) {
           ]);
         }
         onCallRecordReady?.(record.id);
+        invalidatePostCallResolveContext();
+        invalidateDealListCache();
       }
     }
 
-    displayPostCall(data, meta);
+    // The call-record view is the canonical layout. Only fall back to the inline
+    // one-pager when there was no session/record to navigate to.
+    if (!record?.id) displayPostCall(data, meta);
 
     // Hydrate the slow passes after the SE is already looking at the analysis.
     void (async () => {
@@ -2269,14 +2297,51 @@ function restartPipeline(e) {
   resetPostCallView();
 }
 
-/** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
-export function resetPostCallView() {
-  pipelineState = null;
+const PC_TEXT_FIELD_IDS = [
+  "pc-recording-url",
+  "pc-recording-pwd",
+  "pc-prospect-emails",
+  "pc-company-name",
+  "pc-deck-link",
+  "pc-additional-context",
+  "pc-transcript",
+];
+
+/** Blank every post-call intake field so "New post call" starts genuinely empty. */
+export function clearPostCallForm() {
+  for (const id of PC_TEXT_FIELD_IDS) {
+    const el = $(id);
+    if (!el) continue;
+    try { el.value = ""; } catch { /* crayons guard */ }
+    setFieldError(el);
+  }
+
+  const suggest = $("pc-company-suggest");
+  if (suggest) { suggest.innerHTML = ""; suggest.hidden = true; }
+  const note = $("pc-company-lookup-note");
+  if (note) { note.textContent = ""; note.hidden = true; }
+
+  const fileInput = $("pc-transcript-file");
+  if (fileInput) fileInput.value = "";
+  const fileName = $("pc-transcript-file-name");
+  if (fileName) fileName.hidden = true;
+  const fileErr = $("pc-transcript-file-error");
+  if (fileErr) fileErr.hidden = true;
+
+  const fallback = $("pc-transcript-fallback");
+  if (fallback) fallback.open = false;
+
+  clearLinkedInAttachments("postcall");
   companyNameTouched = false;
   pcResolvedAccount = null;
   pcCreateNewAccount = false;
-  invalidatePostCallResolveContext();
-  clearLinkedInAttachments("postcall");
+  syncPasscodeVisibility();
+}
+
+/** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
+export function resetPostCallView() {
+  pipelineState = null;
+  clearPostCallForm();
   show($("postcall-confirm-view"), false);
   show($("postcall-progress"), false);
   show($("postcall-result"), false);
@@ -2500,8 +2565,8 @@ export function initPostcall() {
   transcriptFile?.addEventListener("change", (e) => { void handleTranscriptFileChange(e); });
 
   const companyEl = $("pc-company-name");
-  companyEl?.addEventListener("fwInput", () => { companyNameTouched = true; });
-  companyEl?.addEventListener("input", () => { companyNameTouched = true; });
+  companyEl?.addEventListener("fwInput", () => { if (!suppressCompanyTouch) companyNameTouched = true; });
+  companyEl?.addEventListener("input", () => { if (!suppressCompanyTouch) companyNameTouched = true; });
 
   const emailsEl = $("pc-prospect-emails");
   emailsEl?.addEventListener("fwBlur", () => { void prefillCompanyFromEmails(); });
@@ -2515,7 +2580,11 @@ export function initPostcall() {
     noteEl: $("pc-company-lookup-note"),
     onPick: (account, typedName) => {
       const companyEl = $("pc-company-name");
-      if (companyEl) companyEl.value = typedName;
+      if (companyEl) {
+        suppressCompanyTouch = true;
+        companyEl.value = typedName;
+        window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
+      }
       companyNameTouched = true;
     },
   });

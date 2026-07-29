@@ -178,8 +178,11 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
   if (!header.title && meetingTitle) {
     header.title = meetingTitle;
   }
-  if (!header.date && input.meetingDate) {
+  // The transcript often contains stale or invented dates. A supplied meetingDate is authoritative.
+  if (input.meetingDate) {
     header.date = input.meetingDate;
+  } else if (header.date && !/^\d{4}-\d{2}-\d{2}$/.test(header.date)) {
+    header.date = "";
   }
   if (!header.attendees?.length && parsed.speakers.length) {
     header.attendees = parsed.speakers.slice(0, 8).map((name) => ({
