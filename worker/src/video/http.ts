@@ -63,6 +63,7 @@ export async function handleVideoPassNode(
       unavailable: result.unavailable,
       reason: result.reason,
       videoFacts: result.videoFacts,
+      pass2Debug: result.pass2Debug,
     },
   };
 }

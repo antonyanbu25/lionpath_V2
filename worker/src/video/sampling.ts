@@ -195,6 +195,28 @@ function parseParticipantState(
   return { secondsOn, secondsOff };
 }
 
+/** Map generic Gemini labels (SE, AE, Customer) onto confirmed intake names. */
+export function canonicalVisionParticipantName(
+  rawName: string,
+  identities: VisionIdentities = {},
+): string {
+  const n = String(rawName || "").trim();
+  if (!n) return n;
+  if (/^(se|solution engineer|sales engineer)$/i.test(n) && identities.seIdentity?.trim()) {
+    return identities.seIdentity.trim();
+  }
+  if (/^(ae|account executive)$/i.test(n) && identities.aeIdentity?.trim()) {
+    return identities.aeIdentity.trim();
+  }
+  if (/^customer(\s|\d|$)/i.test(n)) {
+    const customers = (identities.customerIdentities || []).filter(Boolean);
+    const idx = /^customer\s*(\d+)$/i.exec(n);
+    if (idx && customers[Number(idx[1]) - 1]) return customers[Number(idx[1]) - 1].trim();
+    if (customers[0]) return customers[0].trim();
+  }
+  return n;
+}
+
 /**
  * Parse Gemini vision JSON into per-participant camera aggregates.
  * Accepts `windows[]` (preferred) or flat `participants[]` fallback shapes.
@@ -218,12 +240,28 @@ export function parseVisionCameraResponse(
     if (!participants || typeof participants !== "object") continue;
 
     for (const [rawName, rawState] of Object.entries(participants as Record<string, unknown>)) {
-      const name = String(rawName || "").trim();
+      const name = canonicalVisionParticipantName(rawName, identities);
       if (!name) continue;
       const { secondsOn, secondsOff } = parseParticipantState(rawState, windowDur);
       rows.push({
         name,
-        role: inferRoleFromName(name, identities),
+        role: inferRoleFromName(name, identities) || inferRoleFromName(rawName, identities),
+        secondsOn,
+        secondsOff,
+      });
+    }
+  }
+
+  const topParticipants = parsed.participants;
+  if (topParticipants && typeof topParticipants === "object" && !Array.isArray(topParticipants)) {
+    const fallbackDur = STRATEGIC_SAMPLE_DURATION_S;
+    for (const [rawName, rawState] of Object.entries(topParticipants as Record<string, unknown>)) {
+      const name = canonicalVisionParticipantName(rawName, identities);
+      if (!name) continue;
+      const { secondsOn, secondsOff } = parseParticipantState(rawState, fallbackDur);
+      rows.push({
+        name,
+        role: inferRoleFromName(name, identities) || inferRoleFromName(rawName, identities),
         secondsOn,
         secondsOff,
       });

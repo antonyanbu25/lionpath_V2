@@ -7,6 +7,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { extractJson } from "../json";
 import { effectiveGeminiModel } from "../providers/gemini";
 import type { ProviderEnv } from "../providers/types";
 import type { SampleFrame } from "./facts";
@@ -94,7 +95,6 @@ async function callGeminiJson(
       generationConfig: {
         temperature: 0,
         responseMimeType: "application/json",
-        thinkingConfig: { thinkingLevel: "minimal" },
       },
     }),
   });
@@ -108,9 +108,15 @@ async function callGeminiJson(
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
   const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+  if (!text.trim()) return null;
   try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
+    return extractJson<Record<string, unknown>>(text);
+  } catch (err) {
+    console.warn(
+      "[video/vision] JSON parse failed:",
+      err instanceof Error ? err.message : err,
+      text.slice(0, 200),
+    );
     return null;
   }
 }

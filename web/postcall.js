@@ -2184,12 +2184,14 @@ async function confirmAndGenerate(e) {
         seCameraOnPct: videoFacts?.cameraOnPct ?? null,
         ok: videoRes?.ok ?? null,
         pass2Error: videoFacts?.errorMessage || null,
+        pass2Debug: videoRes?.pass2Debug || null,
       }, "H1");
       console.warn("[DEBUG-064b3d] pass2 videoFacts", {
         streamKind: videoFacts?.streamKind,
         hasCamera: hasCam,
         status: videoFacts?.status,
         pass2Error: videoFacts?.errorMessage || null,
+        pass2Debug: videoRes?.pass2Debug || null,
       });
       // #endregion
     } catch (videoErr) {

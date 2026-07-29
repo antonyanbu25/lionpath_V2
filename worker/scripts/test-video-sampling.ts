@@ -161,6 +161,26 @@ function testMergeAttendeeCurveTalk() {
   assert.equal(merged![1].cameraOn, false);
 }
 
+function testParseVisionTopLevelParticipantsObject() {
+  const aggregated = parseVisionCameraResponse(
+    {
+      participants: {
+        SE: { secondsOn: 90, secondsOff: 30, cameraOn: true },
+        AE: { secondsOn: 0, secondsOff: 120, cameraOn: false },
+      },
+    },
+    { seIdentity: "Sathish Kuttan", aeIdentity: "Pradeep Solai" },
+  );
+  assert.equal(aggregated.length, 2);
+  const curve = buildAttendeeCurveFromAggregated(aggregated, {
+    seIdentity: "Sathish Kuttan",
+    aeIdentity: "Pradeep Solai",
+  });
+  assert.equal(curve[0].name, "Sathish Kuttan");
+  assert.equal(curve[0].cameraOn, true);
+  assert.equal(curve[1].cameraOn, false);
+}
+
 testWindows();
 testAggregateCameraMajority();
 testAggregateCameraOffWins();
@@ -168,6 +188,7 @@ testSeCameraPct();
 testIdentityFuzzyMatch();
 testParseVisionWindows();
 testParseVisionFlatParticipants();
+testParseVisionTopLevelParticipantsObject();
 testBuildAttendeeCurveCanonicalNames();
 testPickVisionKeyframesPerWindow();
 testMergeAttendeeCurveTalk();
