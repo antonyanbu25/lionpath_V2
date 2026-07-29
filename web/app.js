@@ -21,7 +21,7 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js?v=accounts-mock-v1";
+import { renderAccountView } from "./account-view.js?v=accounts-perf-1";
 import { renderDealView } from "./deal-view.js";
 import { renderCallView } from "./call-view.js?v=call-perf-1";
 import { renderCallsListView } from "./calls-list-view.js";
@@ -129,6 +129,8 @@ let selectedDealNavId = null;
 let dealPanelRenderGen = 0;
 /** Bumps on each call panel render — stale async renders must not overwrite the DOM. */
 let callPanelRenderGen = 0;
+/** Bumps on each account panel render — stale async renders must not overwrite the DOM. */
+let accountPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
 let pipelineQuarterFilter = "";
@@ -630,6 +632,7 @@ function switchView(name, opts = {}) {
 async function renderAccountPanel() {
   const panel = $("account-panel");
   if (!panel || !currentSession?.email) return;
+  const gen = ++accountPanelRenderGen;
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
@@ -661,6 +664,7 @@ async function renderAccountPanel() {
     lifecycleOwnerId: accountLifecycleOwnerId || undefined,
     listSearchQuery: accountListSearchQuery,
     detailSearchQuery: accountDetailSearchQuery,
+    shouldApply: () => gen === accountPanelRenderGen,
     onListSearchQueryChange: (q) => {
       accountListSearchQuery = q;
     },

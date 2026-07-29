@@ -464,4 +464,13 @@ raceContainer.innerHTML = "stale-marker";
 await racePromise;
 assert(raceContainer.innerHTML === "stale-marker", "stale deal list render does not overwrite DOM");
 
+const loadingContainer = mockContainer();
+const loadingPromise = renderDealView(loadingContainer, session, { dealId: "deal_globex_nb" });
+assert(
+  loadingContainer.innerHTML.includes("deal-record--loading"),
+  "deal detail shows loading shell before enrichments finish",
+);
+await loadingPromise;
+assert(loadingContainer.innerHTML.includes("deal-record"), "deal detail replaces shell with record");
+
 console.log("test-deal-view: ok");

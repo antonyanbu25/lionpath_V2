@@ -417,4 +417,20 @@ const signedOutContainer = mockContainer();
 await renderAccountView(signedOutContainer, {});
 assert(signedOutContainer.innerHTML.includes("Sign in to view accounts"), "unsigned session shows sign-in copy");
 
+const raceContainer = mockContainer();
+const racePromise = renderAccountView(raceContainer, session, { shouldApply: () => false });
+await new Promise((r) => setTimeout(r, 5));
+raceContainer.innerHTML = "stale-marker";
+await racePromise;
+assert(raceContainer.innerHTML === "stale-marker", "stale account list render does not overwrite DOM");
+
+const loadingContainer = mockContainer();
+const loadingPromise = renderAccountView(loadingContainer, session);
+assert(
+  loadingContainer.innerHTML.includes("account-list-view--loading"),
+  "accounts list shows loading shell before rows arrive",
+);
+await loadingPromise;
+assert(loadingContainer.innerHTML.includes("Acme Corp"), "accounts list replaces shell with rows");
+
 console.log("test-account-view: ok");

@@ -19,7 +19,7 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
 import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS, resolveDealMeddpicc } from "./domain/contact-service.js";
 import { filterAccountRows } from "./search-service.js";
-import { readFieldValueAsync } from "./crayons-ui.js";
+import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { formatCompactUsd, formatDealListMoneyBand } from "./deal-view.js";
 import { displayMrrFromArr } from "./deal-arr-module.js";
@@ -2004,18 +2004,87 @@ function renderAccountListItem(row) {
     </button>`;
 }
 
-async function enrichRowsWithContacts(rows) {
+/** @param {HTMLElement} container @param {object} opts @param {string} html @returns {boolean} */
+function applyAccountViewHtml(container, opts, html) {
+  if (opts.shouldApply && !opts.shouldApply()) return false;
+  container.innerHTML = html;
+  return true;
+}
+
+function renderAccountsListLoadingShell() {
+  return `
+    <div class="lifecycle-list-view account-list-view account-list-view--compact account-list-view--loading">
+      <div class="account-list-toolbar account-list-toolbar--compact">
+        <div class="account-list-title-group">
+          <h1 class="account-list-heading">Accounts</h1>
+          <p class="account-list-subtitle muted">Every account in the org. Deals roll up here, not the other way round.</p>
+        </div>
+      </div>
+      ${renderLoadingPanel("Loading accounts…")}
+    </div>`;
+}
+
+function renderAccountsListView(rows, opts) {
+  const listQuery = opts.listSearchQuery || "";
+  const filtered = filterAccountRows(rows, listQuery);
+  const metrics = summarizeAccountListMetrics(rows);
+
+  return `
+      <div class="lifecycle-list-view account-list-view account-list-view--compact">
+        <div class="account-list-toolbar account-list-toolbar--compact">
+          <div class="account-list-title-group">
+            <h1 class="account-list-heading">Accounts</h1>
+            <p class="account-list-subtitle muted">Every account in the org. Deals roll up here, not the other way round.</p>
+          </div>
+          <fw-input id="account-list-search" class="account-list-search" placeholder="Search accounts" value="${esc(listQuery)}" clear-input></fw-input>
+        </div>
+        ${renderAccountListMetrics(metrics)}
+        <div class="account-list-table-card card-wire">
+          <div class="account-list-grid-header" aria-hidden="true">
+            <span class="account-list-col account-list-col--company">Account</span>
+            <span class="account-list-col account-list-col--region">Region</span>
+            <span class="account-list-col account-list-col--deals">Deals</span>
+            <span class="account-list-col account-list-col--arr">Total ARR</span>
+            <span class="account-list-col account-list-col--mrr">Total MRR</span>
+            <span class="account-list-col account-list-col--products">Products</span>
+            <span class="account-list-col account-list-col--calls">Calls</span>
+            <span class="account-list-col account-list-col--health">Health</span>
+            <span class="account-list-col account-list-col--touch">Last touch</span>
+          </div>
+          <div class="lifecycle-list account-list-compact">
+            ${filtered.length
+              ? filtered.map((row) => renderAccountListItem(row)).join("")
+              : `<p class="muted account-list-no-matches">No accounts match “${esc(listQuery)}”</p>`}
+          </div>
+        </div>
+      </div>`;
+}
+
+async function loadAccountListRows(session, onPreview) {
+  const historyRows = listAccountRowsFromHistory(session);
   const store = getStore();
-  return Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      contacts: await safeStoreOp(
-        "listContactsByAccount",
-        () => store.listContactsByAccount(row.account.id),
-        [],
-      ),
-    })),
+
+  const storePromise = safeStoreOp(
+    "listAccountsForSession",
+    () => listAccountsForSession(session),
+    [],
   );
+
+  if (historyRows.length && onPreview) {
+    const previewRows = await Promise.all(historyRows.map((row) => enrichAccountListRow(store, row)));
+    onPreview(previewRows.filter((row) => row?.account?.id));
+  }
+
+  let storeRows = [];
+  try {
+    storeRows = await storePromise;
+  } catch (err) {
+    console.warn("[account-view] listAccountsForSession failed, using history:", err?.message || err);
+  }
+
+  const baseRows = storeRows.length ? storeRows : historyRows;
+  const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
+  return rows.filter((row) => row?.account?.id);
 }
 
 function renderAccountsEmptyState(message) {
@@ -2095,64 +2164,41 @@ export async function renderAccountView(container, session, opts = {}) {
       return;
     }
 
-    let baseRows = [];
-    try {
-      baseRows = await enrichRowsWithContacts(await listAccountsForSession(activeSession));
-    } catch (err) {
-      console.warn("[account-view] Firestore account list failed, using history:", err?.message || err);
-      baseRows = listAccountRowsFromHistory(activeSession);
-    }
+    applyAccountViewHtml(container, opts, renderAccountsListLoadingShell());
 
-    const store = getStore();
-    const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
+    const rows = await loadAccountListRows(activeSession, (previewRows) => {
+      if (!previewRows.length) return;
+      if (opts.shouldApply && !opts.shouldApply()) return;
+      applyAccountViewHtml(container, opts, renderAccountsListView(previewRows, opts));
+      wireAccountListItemClicks(container, opts);
+      wireListFilter(container, previewRows, opts);
+    });
+    if (opts.shouldApply && !opts.shouldApply()) return;
 
     if (!rows.length) {
-      container.innerHTML = renderAccountsEmptyState(
-        "No accounts yet — run a prep or post-call to add your first account.",
+      applyAccountViewHtml(
+        container,
+        opts,
+        renderAccountsEmptyState(
+          "No accounts yet — run a prep or post-call to add your first account.",
+        ),
       );
       return;
     }
 
-    const listQuery = opts.listSearchQuery || "";
-    const filtered = filterAccountRows(rows, listQuery);
-    const metrics = summarizeAccountListMetrics(rows);
-
-    container.innerHTML = `
-      <div class="lifecycle-list-view account-list-view account-list-view--compact">
-        <div class="account-list-toolbar account-list-toolbar--compact">
-          <div class="account-list-title-group">
-            <h1 class="account-list-heading">Accounts</h1>
-            <p class="account-list-subtitle muted">Every account in the org. Deals roll up here, not the other way round.</p>
-          </div>
-          <fw-input id="account-list-search" class="account-list-search" placeholder="Search accounts" value="${esc(listQuery)}" clear-input></fw-input>
-        </div>
-        ${renderAccountListMetrics(metrics)}
-        <div class="account-list-table-card card-wire">
-          <div class="account-list-grid-header" aria-hidden="true">
-            <span class="account-list-col account-list-col--company">Account</span>
-            <span class="account-list-col account-list-col--region">Region</span>
-            <span class="account-list-col account-list-col--deals">Deals</span>
-            <span class="account-list-col account-list-col--arr">Total ARR</span>
-            <span class="account-list-col account-list-col--mrr">Total MRR</span>
-            <span class="account-list-col account-list-col--products">Products</span>
-            <span class="account-list-col account-list-col--calls">Calls</span>
-            <span class="account-list-col account-list-col--health">Health</span>
-            <span class="account-list-col account-list-col--touch">Last touch</span>
-          </div>
-          <div class="lifecycle-list account-list-compact">
-            ${filtered.length
-              ? filtered.map((row) => renderAccountListItem(row)).join("")
-              : `<p class="muted account-list-no-matches">No accounts match “${esc(listQuery)}”</p>`}
-          </div>
-        </div>
-      </div>`;
+    if (!applyAccountViewHtml(container, opts, renderAccountsListView(rows, opts))) return;
 
     wireAccountListItemClicks(container, opts);
     wireListFilter(container, rows, opts);
   } catch (err) {
     console.error("[account-view] failed to render accounts:", err);
-    container.innerHTML = renderAccountsEmptyState(
-      "Could not load accounts right now. Refresh the page or try again in a moment.",
+    if (opts.shouldApply && !opts.shouldApply()) return;
+    applyAccountViewHtml(
+      container,
+      opts,
+      renderAccountsEmptyState(
+        "Could not load accounts right now. Refresh the page or try again in a moment.",
+      ),
     );
   }
 }

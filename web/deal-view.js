@@ -21,7 +21,7 @@ import { resolveCallType } from "./call-view.js";
 import { resolveDurationMinutes } from "./calls-list-view.js";
 import { filterDealRows } from "./search-service.js";
 import { filterDealRowsForList } from "./domain/se-access-service.js";
-import { readFieldValueAsync } from "./crayons-ui.js";
+import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { displayMrrFromArr, formatUsd, mountDealArrModule, renderDealArrModule } from "./deal-arr-module.js";
 import { selectLatestArrLines } from "./domain/arr-service.js";
 import { getWorkerAuthHeaders } from "./postcall.js";
@@ -130,24 +130,25 @@ export async function enrichDealListRows(store, rows) {
       const med = resolveDealMeddpicc(deal, account);
       const meddpiccScore = med?.completionScore ?? computeMeddpiccScore(med);
 
-      const tc = await safeStoreOp(
-        "getTechnicalCommitByDeal",
-        () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
-        null,
-      );
-
-      const signals = await safeStoreOp(
-        "listDealSignalsByDeal",
-        () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
-        [],
-      );
+      const [tc, signals, arrLines] = await Promise.all([
+        safeStoreOp(
+          "getTechnicalCommitByDeal",
+          () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
+          null,
+        ),
+        safeStoreOp(
+          "listDealSignalsByDeal",
+          () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
+          [],
+        ),
+        safeStoreOp(
+          "listArrLinesByDeal",
+          () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
+          [],
+        ),
+      ]);
       const signal = signals[0] || null;
 
-      const arrLines = await safeStoreOp(
-        "listArrLinesByDeal",
-        () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
-        [],
-      );
       const latestLines = selectLatestArrLines(arrLines);
       const arrConfidence = weightedArrConfidence(latestLines);
 
@@ -1096,6 +1097,47 @@ function applyDealViewHtml(container, opts, html) {
   return true;
 }
 
+/** Instant preview from local history before Firestore resolves. */
+function resolveDealPreview(session, dealId) {
+  if (!dealId) return null;
+  const histRows = listDealsFromHistory(session);
+  const histMatch =
+    histRows.find((r) => r.deal.id === dealId) ||
+    (dealId.startsWith("deal_hist_")
+      ? histRows.find((r) => {
+          const slug = dealId.slice("deal_hist_".length);
+          const acctSlug = String(r.account?.id || "").replace(/^hist_/, "");
+          return acctSlug === slug;
+        })
+      : null);
+  if (histMatch) {
+    return {
+      dealTitle: histMatch.deal.title || histMatch.account.name || "Deal",
+      accountLabel: histMatch.account.name || histMatch.account.domain || "Account",
+    };
+  }
+  return { dealTitle: "Deal", accountLabel: "Account" };
+}
+
+/** Immediate shell while engagement detail + store enrichments load. */
+function renderDealLoadingShell(preview) {
+  const dealTitle = preview?.dealTitle || "Deal";
+  const accountLabel = preview?.accountLabel || "Account";
+  return `
+    <div class="lifecycle-detail deal-detail deal-record deal-record--loading">
+      <div class="deal-record-top deal-record-top--wireframe">
+        <header class="account-record-header deal-record-header deal-record-header--wireframe">
+          <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back-to-deal-list">← All deals</fw-button>
+          <div class="deal-record-header-main">
+            <h2 class="deal-record-title">${esc(dealTitle)}</h2>
+            <p class="muted deal-record-subtitle">${esc(accountLabel)}</p>
+          </div>
+        </header>
+      </div>
+      ${renderLoadingPanel("Loading deal record…")}
+    </div>`;
+}
+
 /** @param {import("./domain/store.js").Store} store @param {object} deal */
 async function enrichDealRecordExtras(store, deal) {
   const [
@@ -1244,6 +1286,7 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
 
   const store = getStore();
   let engagementDetail = null;
+  const extrasPromise = enrichDealRecordExtras(store, deal);
   try {
     engagementDetail = await getAccountEngagementDetail(session, deal.accountId, {
       dealId: deal.id,
@@ -1253,7 +1296,7 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
     console.warn("[deal-view] store deal detail failed:", err?.message || err);
   }
 
-  const extras = await enrichDealRecordExtras(store, deal);
+  const extras = await extrasPromise;
   if (engagementDetail) {
     return { ...engagementDetail, resolvedDealId, ...extras };
   }
@@ -1398,6 +1441,7 @@ export async function renderDealView(container, session, opts = {}) {
   }
 
   if (opts.dealId) {
+    applyDealViewHtml(container, opts, renderDealLoadingShell(resolveDealPreview(activeSession, opts.dealId)));
     try {
       const detail = await loadDealRecordDetail(activeSession, opts.dealId, opts);
       if (opts.shouldApply && !opts.shouldApply()) return;

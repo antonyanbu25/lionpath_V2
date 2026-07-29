@@ -601,68 +601,85 @@ export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
  * @param {object} row
  */
 export async function enrichAccountListRow(store, row) {
-  const { account, deals, lastActivityAt, historyCallCount } = row;
-  const dealList = deals || [];
-  const activeDeals = dealList.filter((d) => d.status === "active");
-  const meta = account?.metadata || {};
+  if (!row?.account?.id) return row;
 
-  let totalArrLow = 0;
-  let totalArrHigh = 0;
-  let hasEstimates = false;
-  const products = new Set();
-  let callCount = historyCallCount || 0;
-  let worstTraction = null;
-  let maxDaysSilent = null;
+  try {
+    const { account, deals, lastActivityAt, historyCallCount } = row;
+    const dealList = deals || [];
+    const activeDeals = dealList.filter((d) => d.status === "active");
+    const meta = account?.metadata || {};
 
-  for (const deal of dealList) {
-    callCount += deal.postCallCount || 0;
-    if (deal.arrEstimatePoint != null) {
-      hasEstimates = true;
-      totalArrLow += deal.arrEstimateLow ?? deal.arrEstimatePoint ?? 0;
-      totalArrHigh += deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? 0;
-    }
-    if (store.listArrLinesByDeal) {
-      const lines = selectLatestArrLines(
-        await safeStoreOp("listArrLinesByDeal", () => store.listArrLinesByDeal(deal.id), []),
-      );
-      const base = lines.find((l) => l.kind === "base" && !l.excluded);
-      if (base?.product) products.add(formatProductLabel(base.product));
-    }
-    const signals = store.listDealSignalsByDeal
-      ? await safeStoreOp(
-          "listDealSignalsByDeal",
-          () => store.listDealSignalsByDeal(deal.id, 1),
-          [],
-        )
-      : [];
-    const signal = signals[0];
-    if (signal?.traction) {
-      if (!worstTraction || tractionSortRank(signal.traction) > tractionSortRank(worstTraction)) {
-        worstTraction = signal.traction;
+    let totalArrLow = 0;
+    let totalArrHigh = 0;
+    let hasEstimates = false;
+    const products = new Set();
+    let callCount = historyCallCount || 0;
+    let worstTraction = null;
+    let maxDaysSilent = null;
+
+    for (const deal of dealList) {
+      callCount += deal.postCallCount || 0;
+      if (deal.arrEstimatePoint != null) {
+        hasEstimates = true;
+        totalArrLow += deal.arrEstimateLow ?? deal.arrEstimatePoint ?? 0;
+        totalArrHigh += deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? 0;
       }
     }
-    if (signal?.daysSilent != null) {
-      maxDaysSilent = Math.max(maxDaysSilent ?? 0, signal.daysSilent);
+
+    const dealMetrics = await Promise.all(
+      dealList.map(async (deal) => {
+        const [lines, signals] = await Promise.all([
+          store.listArrLinesByDeal
+            ? safeStoreOp("listArrLinesByDeal", () => store.listArrLinesByDeal(deal.id), [])
+            : Promise.resolve([]),
+          store.listDealSignalsByDeal
+            ? safeStoreOp(
+                "listDealSignalsByDeal",
+                () => store.listDealSignalsByDeal(deal.id, 1),
+                [],
+              )
+            : Promise.resolve([]),
+        ]);
+
+        return { lines, signal: signals[0] || null };
+      }),
+    );
+
+    for (const { lines, signal } of dealMetrics) {
+      const latestLines = selectLatestArrLines(lines);
+      const base = latestLines.find((l) => l.kind === "base" && !l.excluded);
+      if (base?.product) products.add(formatProductLabel(base.product));
+      if (signal?.traction) {
+        if (!worstTraction || tractionSortRank(signal.traction) > tractionSortRank(worstTraction)) {
+          worstTraction = signal.traction;
+        }
+      }
+      if (signal?.daysSilent != null) {
+        maxDaysSilent = Math.max(maxDaysSilent ?? 0, signal.daysSilent);
+      }
     }
+
+    const region = meta.region || meta.sub_region || meta.subRegion || "—";
+    const health = deriveAccountHealth(worstTraction, maxDaysSilent, lastActivityAt);
+    const lastTouchDays = daysSince(lastActivityAt);
+
+    return {
+      ...row,
+      region,
+      dealCount: activeDeals.length || dealList.length,
+      totalArrLow: hasEstimates ? totalArrLow : null,
+      totalArrHigh: hasEstimates ? totalArrHigh : null,
+      totalArrPoint: hasEstimates ? (totalArrLow + totalArrHigh) / 2 : null,
+      productsInPlay: [...products].join(", ") || "—",
+      callCount,
+      health,
+      lastTouchDays,
+      worstTraction,
+    };
+  } catch (err) {
+    console.warn("[account-service] enrichAccountListRow skipped:", row?.account?.id, err?.message || err);
+    return row;
   }
-
-  const region = meta.region || meta.sub_region || meta.subRegion || "—";
-  const health = deriveAccountHealth(worstTraction, maxDaysSilent, lastActivityAt);
-  const lastTouchDays = daysSince(lastActivityAt);
-
-  return {
-    ...row,
-    region,
-    dealCount: activeDeals.length || dealList.length,
-    totalArrLow: hasEstimates ? totalArrLow : null,
-    totalArrHigh: hasEstimates ? totalArrHigh : null,
-    totalArrPoint: hasEstimates ? (totalArrLow + totalArrHigh) / 2 : null,
-    productsInPlay: [...products].join(", ") || "—",
-    callCount,
-    health,
-    lastTouchDays,
-    worstTraction,
-  };
 }
 
 /** @deprecated use listAccountsForSession */
