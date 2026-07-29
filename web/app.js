@@ -63,6 +63,8 @@ import {
   onSessionCleared,
   setOnAnalysisSaved,
   setOnCallRecordReady,
+  resetPostCallView,
+  isPostCallGenerationBusy,
 } from "./postcall.js";
 import {
   applyAutoCompanyDomain,
@@ -618,6 +620,9 @@ function switchView(name, opts = {}) {
   if (name === "precall") {
     syncPrepEngagementMotion();
   }
+  if (name === "postcall" && !isPostCallGenerationBusy()) {
+    resetPostCallView();
+  }
 }
 
 async function renderAccountPanel() {
@@ -905,6 +910,7 @@ async function renderCallPanel() {
         callRecordTab = undefined;
         callExpandThemeKey = undefined;
         callRecordOwnerEmail = undefined;
+        resetPostCallView();
         switchView("postcall");
       },
     });

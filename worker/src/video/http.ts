@@ -16,6 +16,9 @@ export interface VideoPassRequestBody {
   callType?: string | null;
   visualAnalysisConsent?: boolean;
   skipVision?: boolean;
+  seIdentity?: string | null;
+  aeIdentity?: string | null;
+  customerIdentities?: string[] | null;
 }
 
 export async function handleVideoPassNode(
@@ -48,6 +51,9 @@ export async function handleVideoPassNode(
     callType: body.callType,
     visualAnalysisConsent: !!body.visualAnalysisConsent,
     skipVision: !!body.skipVision,
+    seIdentity: body.seIdentity ?? null,
+    aeIdentity: body.aeIdentity ?? null,
+    customerIdentities: body.customerIdentities ?? null,
   });
 
   return {

@@ -1,15 +1,28 @@
 /**
- * Gemini vision over Pass 2 keyframes.
- * - camera_on_pct: never inferred from transcript
+ * Gemini vision over Pass 2 strategic keyframes.
+ * - Per-participant camera on/off from averaged strategic windows (SE, AE, Customer)
+ * - PPT/slides usage detection
  * - cde_customized: product tenant looks real vs stock seed data
  * Face/camera judgement requires visualAnalysisConsent === true.
  */
 
 import { readFile } from "node:fs/promises";
+import { effectiveGeminiModel } from "../providers/gemini";
 import type { ProviderEnv } from "../providers/types";
 import type { SampleFrame } from "./facts";
+import {
+  aggregateParticipantCamera,
+  seCameraOnPctFromParticipants,
+  type ParticipantCameraAggregate,
+} from "./sampling";
 
-const MAX_VISION_FRAMES = 16;
+const MAX_VISION_FRAMES = 24;
+
+export interface VisionIdentities {
+  seIdentity?: string | null;
+  aeIdentity?: string | null;
+  customerIdentities?: string[] | null;
+}
 
 export interface VisionAnalysis {
   cameraOnPct: number | null;
@@ -17,6 +30,21 @@ export interface VisionAnalysis {
   cdeEvidence: string | null;
   /** 0..100 rough share-of-screen estimate when detectable. */
   shareOnPct: number | null;
+  /** Whether slides/PPT/deck content appeared in sampled frames. */
+  pptUsed?: boolean | null;
+  pptEvidence?: string | null;
+  attendeeCurveJson?: Array<{
+    name: string;
+    talkPct?: number | null;
+    cameraOn?: boolean | null;
+    role?: string | null;
+  }> | null;
+  pptSegments?: Array<{
+    startS: number;
+    endS: number;
+    segmentType: "slides";
+    label?: string;
+  }>;
 }
 
 function apiKey(env: ProviderEnv): string | undefined {
@@ -24,19 +52,18 @@ function apiKey(env: ProviderEnv): string | undefined {
 }
 
 function modelId(env: ProviderEnv): string {
-  return (
-    env.POSTCALL_MODEL?.trim() ||
-    env.MODEL?.trim() ||
-    process.env.POSTCALL_MODEL?.trim() ||
-    "gemini-3.1-flash-lite"
-  );
+  return effectiveGeminiModel(env, env.POSTCALL_MODEL?.trim() || env.MODEL?.trim());
 }
 
-async function buildImageParts(keyframes: SampleFrame[]): Promise<Array<Record<string, unknown>>> {
+async function buildImageParts(
+  keyframes: SampleFrame[],
+): Promise<Array<Record<string, unknown>>> {
   const parts: Array<Record<string, unknown>> = [];
   for (const frame of keyframes.slice(0, MAX_VISION_FRAMES)) {
     try {
       const bytes = await readFile(frame.path);
+      const windowTag = frame.windowLabel ? ` [window=${frame.windowLabel}]` : "";
+      parts.push({ text: `Frame at ${Math.round(frame.atS)}s${windowTag}:` });
       parts.push({
         inlineData: {
           mimeType: "image/jpeg",
@@ -44,7 +71,7 @@ async function buildImageParts(keyframes: SampleFrame[]): Promise<Array<Record<s
         },
       });
     } catch {
-      // skip
+      // skip unreadable frame
     }
   }
   return parts;
@@ -69,6 +96,7 @@ async function callGeminiJson(
       generationConfig: {
         temperature: 0.1,
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: "minimal" },
       },
     }),
   });
@@ -89,20 +117,93 @@ async function callGeminiJson(
   }
 }
 
+function roleForName(name: string, identities: VisionIdentities): string | null {
+  const key = name.trim().toLowerCase();
+  if (identities.seIdentity && identities.seIdentity.trim().toLowerCase() === key) return "se";
+  if (identities.aeIdentity && identities.aeIdentity.trim().toLowerCase() === key) return "ae";
+  if (
+    (identities.customerIdentities || []).some((c) => c.trim().toLowerCase() === key)
+  ) {
+    return "customer";
+  }
+  return null;
+}
+
+function parseWindowParticipantRows(
+  parsed: Record<string, unknown>,
+  identities: VisionIdentities,
+): ParticipantCameraAggregate[] {
+  const rows: Array<{
+    name: string;
+    role?: string | null;
+    secondsOn: number;
+    secondsOff: number;
+  }> = [];
+
+  const windows = Array.isArray(parsed.windows) ? parsed.windows : [];
+  for (const win of windows) {
+    if (!win || typeof win !== "object") continue;
+    const w = win as Record<string, unknown>;
+    const windowDur =
+      typeof w.windowSeconds === "number" && Number.isFinite(w.windowSeconds)
+        ? Math.max(1, Math.round(w.windowSeconds))
+        : 15;
+    const participants = w.participants;
+    if (!participants || typeof participants !== "object") continue;
+
+    for (const [rawName, rawState] of Object.entries(participants as Record<string, unknown>)) {
+      const name = String(rawName || "").trim();
+      if (!name) continue;
+      let secondsOn = 0;
+      let secondsOff = 0;
+      if (typeof rawState === "boolean") {
+        secondsOn = rawState ? windowDur : 0;
+        secondsOff = rawState ? 0 : windowDur;
+      } else if (rawState && typeof rawState === "object") {
+        const st = rawState as Record<string, unknown>;
+        if (typeof st.secondsOn === "number" && Number.isFinite(st.secondsOn)) {
+          secondsOn = Math.max(0, st.secondsOn);
+        }
+        if (typeof st.secondsOff === "number" && Number.isFinite(st.secondsOff)) {
+          secondsOff = Math.max(0, st.secondsOff);
+        }
+        if (!secondsOn && !secondsOff && typeof st.cameraOn === "boolean") {
+          secondsOn = st.cameraOn ? windowDur : 0;
+          secondsOff = st.cameraOn ? 0 : windowDur;
+        }
+      }
+      rows.push({
+        name,
+        role: roleForName(name, identities),
+        secondsOn,
+        secondsOff,
+      });
+    }
+  }
+
+  return aggregateParticipantCamera(rows);
+}
+
 /**
- * Full Pass 2 vision. When consent is false, skips face/camera judgement;
- * still attempts CDE/share cues from screen content only.
+ * Full Pass 2 vision with strategic-window participant camera aggregation.
  */
 export async function analyzeKeyframes(
   env: ProviderEnv,
   keyframes: SampleFrame[],
-  opts?: { visualAnalysisConsent?: boolean },
+  opts?: {
+    visualAnalysisConsent?: boolean;
+    identities?: VisionIdentities;
+    durationSec?: number | null;
+  },
 ): Promise<VisionAnalysis> {
   const empty: VisionAnalysis = {
     cameraOnPct: null,
     cdeCustomized: null,
     cdeEvidence: null,
     shareOnPct: null,
+    pptUsed: null,
+    pptEvidence: null,
+    attendeeCurveJson: null,
   };
   if (!keyframes.length) return empty;
 
@@ -110,56 +211,110 @@ export async function analyzeKeyframes(
   if (!imageParts.length) return empty;
 
   const consent = !!opts?.visualAnalysisConsent;
+  const identities = opts?.identities || {};
+  const seName = identities.seIdentity?.trim() || "SE";
+  const aeName = identities.aeIdentity?.trim() || "AE";
+  const customers = (identities.customerIdentities || []).filter(Boolean);
+  const customerList = customers.length ? customers.join(", ") : "customer attendees";
+
   const prompt = consent
     ? [
-        "You are analyzing SE demo/call recording keyframes for coaching scorecards.",
-        "For each image consider: (1) human camera tile visible, (2) screen share region,",
-        "(3) whether a product CDE/tenant looks customized for a real customer vs stock seed data",
-        '(Acme Corp, demo@, placeholder logos, "Your Company").',
+        "You analyze SE demo/call recording keyframes sampled at strategic windows:",
+        "opening (first 10%), 30%, 60%, 90%, and closing minute.",
+        "Track camera/video tiles for these participants only:",
+        `- SE: ${seName}`,
+        `- AE: ${aeName}`,
+        `- Customer(s): ${customerList}`,
+        "For each participant in each window, estimate seconds camera ON vs OFF (out of ~15s per window, 60s for closing).",
+        "Also detect slides/PPT/deck usage and whether product CDE/tenant looks customized vs stock demo (Acme Corp, demo@, placeholders).",
         "Reply JSON only:",
         JSON.stringify({
-          cameraOnCount: "<int>",
-          total: "<int>",
-          cameraOnPct: "<0-100 int>",
-          shareOnPct: "<0-100 int estimated frames with screenshare>",
-          cdeCustomized: "<boolean|null if cannot tell>",
-          cdeEvidence: "<max 25 words or null>",
+          windows: [
+            {
+              label: "opening_10pct",
+              windowSeconds: 15,
+              participants: {
+                [seName]: { secondsOn: 12, secondsOff: 3, cameraOn: true },
+              },
+            },
+          ],
+          pptUsed: true,
+          pptEvidence: "Slide deck visible in opening window",
+          shareOnPct: 70,
+          cdeCustomized: true,
+          cdeEvidence: "Tenant branded for customer",
         }),
       ].join(" ")
     : [
-        "You are analyzing SE call screenshare keyframes. DO NOT identify or describe faces.",
-        "Judge only screen content: share-of-screen presence and whether a product CDE/tenant",
-        "looks customized for a real customer vs stock seed data (Acme Corp, demo@, placeholders).",
-        "Set cameraOnPct to null (consent not granted for face analysis).",
+        "You analyze SE call screenshare keyframes. DO NOT identify or describe faces.",
+        "Judge screen content only: slides/PPT/deck usage, share presence, CDE customization vs stock demo.",
+        "Set camera fields to null / omit participant camera states (no face consent).",
         "Reply JSON only:",
         JSON.stringify({
-          cameraOnPct: null,
-          shareOnPct: "<0-100 int>",
-          cdeCustomized: "<boolean|null>",
-          cdeEvidence: "<max 25 words or null>",
+          pptUsed: true,
+          pptEvidence: "Deck visible",
+          shareOnPct: 70,
+          cdeCustomized: null,
+          cdeEvidence: null,
         }),
       ].join(" ");
 
   const parsed = await callGeminiJson(env, prompt, imageParts);
   if (!parsed) return empty;
 
-  const cameraRaw = parsed.cameraOnPct;
   const shareRaw = parsed.shareOnPct;
   const cde = parsed.cdeCustomized;
   const evidence =
     typeof parsed.cdeEvidence === "string" ? parsed.cdeEvidence.trim().slice(0, 160) : null;
+  const pptUsed = typeof parsed.pptUsed === "boolean" ? parsed.pptUsed : null;
+  const pptEvidence =
+    typeof parsed.pptEvidence === "string" ? parsed.pptEvidence.trim().slice(0, 160) : null;
+
+  let cameraOnPct: number | null = null;
+  let attendeeCurveJson: VisionAnalysis["attendeeCurveJson"] = null;
+
+  if (consent) {
+    const aggregated = parseWindowParticipantRows(parsed, identities);
+    if (aggregated.length) {
+      attendeeCurveJson = aggregated.map((p) => ({
+        name: p.name,
+        cameraOn: p.cameraOn,
+        role: p.role,
+        talkPct: null,
+      }));
+      cameraOnPct = seCameraOnPctFromParticipants(aggregated, identities.seIdentity);
+    } else {
+      const cameraRaw = parsed.cameraOnPct;
+      if (typeof cameraRaw === "number" && Number.isFinite(cameraRaw)) {
+        cameraOnPct = Math.max(0, Math.min(100, Math.round(cameraRaw)));
+      }
+    }
+  }
+
+  const segmentsFromPpt =
+    pptUsed === true
+      ? [
+          {
+            startS: 0,
+            endS: Math.max(1, Math.round(opts?.durationSec ?? 60)),
+            segmentType: "slides" as const,
+            label: pptEvidence || "Slides/PPT",
+          },
+        ]
+      : undefined;
 
   return {
-    cameraOnPct:
-      consent && typeof cameraRaw === "number" && Number.isFinite(cameraRaw)
-        ? Math.max(0, Math.min(100, Math.round(cameraRaw)))
-        : null,
+    cameraOnPct,
     shareOnPct:
       typeof shareRaw === "number" && Number.isFinite(shareRaw)
         ? Math.max(0, Math.min(100, Math.round(shareRaw)))
         : null,
     cdeCustomized: typeof cde === "boolean" ? cde : null,
     cdeEvidence: evidence || null,
+    pptUsed,
+    pptEvidence,
+    attendeeCurveJson,
+    pptSegments: segmentsFromPpt,
   };
 }
 

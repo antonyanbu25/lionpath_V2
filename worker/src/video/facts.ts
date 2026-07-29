@@ -13,6 +13,8 @@ export interface SampleFrame {
   path: string;
   /** Mean absolute pixel delta vs previous sample (0..255-ish). */
   sceneDelta?: number;
+  /** Strategic window label when sampled from targeted clips. */
+  windowLabel?: string;
 }
 
 /** Collapse high-delta samples into coarse scene_change segments. */

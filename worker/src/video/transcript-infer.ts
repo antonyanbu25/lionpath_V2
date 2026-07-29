@@ -124,11 +124,15 @@ export function parseInferResponse(
 
   const partRaw = Array.isArray(parsed.participants) ? parsed.participants : [];
   const participants: ParticipantInferRow[] = [];
+  const seenNames = new Set<string>();
   for (const row of partRaw) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
     const name = typeof r.name === "string" ? r.name.trim().slice(0, 80) : "";
     if (!name) continue;
+    const nameKey = name.toLowerCase();
+    if (seenNames.has(nameKey)) continue;
+    seenNames.add(nameKey);
     const talkRaw = r.talkPct ?? r.talkSharePct;
     const talkPct =
       typeof talkRaw === "number" && Number.isFinite(talkRaw)

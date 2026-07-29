@@ -560,10 +560,14 @@ function renderSpineMetrics(videoFacts, scorecard, record) {
 
 function normalizeParticipantStats(raw) {
   if (!Array.isArray(raw)) return [];
+  const seen = new Set();
   return raw
     .map((p) => {
       const name = String(p?.name || p?.displayName || "").trim();
       if (!name) return null;
+      const key = normalizePersonKey(name);
+      if (seen.has(key)) return null;
+      seen.add(key);
       const talkRaw = p.talkPct ?? p.talkSharePct ?? p.talk_pct;
       const camRaw = p.cameraOn ?? p.camOn ?? p.camera;
       let cameraOn = false;
@@ -580,6 +584,17 @@ function normalizeParticipantStats(raw) {
     .filter(Boolean);
 }
 
+function normalizePersonKey(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\s*\|.*$/, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildStakeholderRows(identities, attendees, videoFacts) {
   const statsByName = new Map();
   for (const p of normalizeParticipantStats(videoFacts?.attendeeCurveJson)) {
@@ -590,7 +605,7 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
   const pushUnique = (name, role, side = "") => {
     const label = String(name || "").trim();
     if (!label) return;
-    const key = label.toLowerCase();
+    const key = normalizePersonKey(label);
     if (rows.some((r) => r.key === key)) return;
     const stat = statsByName.get(key);
     let talkPct = stat?.talkPct ?? null;

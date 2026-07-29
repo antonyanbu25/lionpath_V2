@@ -58,6 +58,10 @@ Implementation lives in `worker/src/postcall/` (17 modules) plus `worker/src/vid
 | Post-call not in sidebar history | Refresh sidebar immediately after save; await history sync (no fire-and-forget race) |
 | Call page “could not load your profile” | Re-sync session before `renderCallView`; stable `userId` fallback when Firestore upsert fails |
 | Pass 2 / Sample video fails without ffmpeg | Gemini transcript inference (`gemini-3.1-flash-lite`) — detects slides/PPT/product share segments; ffmpeg optional on VPS |
+| Post-call empty page after re-run / nav back | `resetPostCallView()` restores intake form when returning to Post-call (unless generation is in progress) |
+| Slow first post-call Pass 2 | Strategic ffmpeg windows (10%/30%/60%/90%/closing 1min) instead of full-call 10s scan; transcript path when no face consent |
+| Duplicate names in “Who was in the room” | Normalized person-key dedupe in call record + post-call identity pickers |
+| Camera on/off per SE/AE/Customer | Gemini vision on strategic windows; average on vs off seconds per participant |
 | Accounts / Deals “could not load” on SSO | `effectiveSessionUserId` + owner-scoped Firestore queries; `safeStoreOp` swallows permission errors; history fallback rows from localStorage |
 | Call timeline misaligned vs wireframe | Horizontal spine + legend + inline markers + 5-metric row (SE talk ratio, customer questions, longest monologue, SE camera, customer cameras); removed phase list |
 | Call record tabs / QIP grid misaligned | Wireframe v4 native tabs + 5-column scorecard grid (Theme / Score / Weighted / Conf) |
@@ -68,7 +72,7 @@ Implementation lives in `worker/src/postcall/` (17 modules) plus `worker/src/vid
 | Path | Model | Used for |
 |------|--------|----------|
 | Transcript inference (`transcript-infer.ts`) | `gemini-3.1-flash-lite` (default via `POSTCALL_MODEL`) | Slides/PPT segments, share %, per-participant talk/cam when no ffmpeg |
-| Keyframe vision (`vision.ts`) | Same Gemini model on up to 16 JPEG keyframes (VPS + ffmpeg) | SE camera %, CDE customization, screen-share % |
+| Keyframe vision (`vision.ts`) | Same Gemini model on strategic-window JPEG keyframes (VPS + ffmpeg) | SE/AE/customer camera on/off (averaged windows), PPT/deck detection, CDE customization |
 
 Participant **cam On/Off** defaults to **Off** when Pass 2 has no camera signal. PPT/slide detection runs on both paths via segment types `slides`, `product`, `cde`.
 

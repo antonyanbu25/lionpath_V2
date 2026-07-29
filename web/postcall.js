@@ -89,6 +89,32 @@ let getAuthToken = null;
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
 const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
 
+/** Collapse duplicate display names (case-insensitive; strip role/email suffixes). */
+function normalizePersonKey(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\s*\|.*$/, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function dedupePersonLabels(labels) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of labels || []) {
+    const label = String(raw || "").trim();
+    if (!label) continue;
+    const key = normalizePersonKey(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
+}
+
 function truncateWords(text, max) {
   const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
   if (words.length <= max) return esc(words.join(" "));
@@ -1264,8 +1290,8 @@ function identityOptionList(resolve) {
   for (const raw of [...extras, ...fromResolve, ...speakers, ...emails]) {
     const label = String(raw || "").trim();
     if (!label) continue;
-    const key = label.toLowerCase();
-    if (seen.has(key)) continue;
+    const key = normalizePersonKey(label);
+    if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(label);
   }
@@ -1391,7 +1417,7 @@ function renderDerivedFacts(resolve) {
     ["Source", resolve?.sourceKind || "—"],
   ];
   if (speakers.length) {
-    rows.push(["Speakers", speakers.join(", ")]);
+    rows.push(["Speakers", dedupePersonLabels(speakers).join(", ")]);
   }
   return `<div class="postcall-confirm-block">
     <h3>Derived from recording</h3>
@@ -1551,7 +1577,7 @@ function renderConfirmationGate(resolve, classify) {
       <fw-button id="postcall-confirm-btn" color="primary" class="prep-form-submit">Confirm and generate</fw-button>
       <fw-button id="postcall-restart-btn" color="secondary" fill="outline">Discard and start over</fw-button>
     </div>
-    <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>`;
+    <p class="prep-form-footnote">Analysis usually finishes in 20–45 seconds after confirm.</p>`;
 }
 
 function wireDealChangeToggle(card) {
@@ -1691,6 +1717,9 @@ async function confirmAndGenerate(e) {
         durationSec: pass2DurationSec,
         callType,
         visualAnalysisConsent: !!pipelineState.payload.visualAnalysisConsent,
+        seIdentity,
+        aeIdentity,
+        customerIdentities,
       });
       videoFacts = videoRes?.videoFacts || null;
       pipelineState.videoFacts = videoFacts;
@@ -1924,6 +1953,8 @@ async function confirmAndGenerate(e) {
         onCallRecordReady?.(record.id);
       }
     }
+
+    displayPostCall(data, meta);
   } catch (err) {
     showPipelineProgress([
       { label: "Resolve recording and match deal", status: "done" },
@@ -1940,7 +1971,14 @@ async function confirmAndGenerate(e) {
 
 function restartPipeline(e) {
   e?.preventDefault?.();
+  resetPostCallView();
+}
+
+/** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
+export function resetPostCallView() {
   pipelineState = null;
+  companyNameTouched = false;
+  clearLinkedInAttachments("postcall");
   show($("postcall-confirm-view"), false);
   show($("postcall-progress"), false);
   show($("postcall-result"), false);
@@ -1948,6 +1986,12 @@ function restartPipeline(e) {
   show($("postcall-form-view"), true);
   showInlineStatus($("postcall-status"), { open: false });
   setFormFieldsDisabled($("postcall-form"), false);
+  setButtonLoading($("analyze-call"), false);
+}
+
+export function isPostCallGenerationBusy() {
+  const loadingEl = $("postcall-loading");
+  return !!loadingEl && !loadingEl.hidden;
 }
 
 async function collectIntakePayload() {

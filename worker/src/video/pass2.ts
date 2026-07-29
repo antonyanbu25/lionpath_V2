@@ -13,7 +13,7 @@ import {
 } from "../zoomShare";
 import { ffmpegAvailable, videoPassReady } from "./capability";
 import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickKeyframes } from "./facts";
-import { cleanupStaging, sampleFramesFromUrl } from "./ffmpeg";
+import { cleanupStaging, sampleStrategicWindowsFromUrl } from "./ffmpeg";
 import { inferVideoFactsFromTranscript } from "./transcript-infer";
 import { analyzeKeyframes } from "./vision";
 
@@ -35,6 +35,9 @@ export interface VideoPassInput {
   visualAnalysisConsent?: boolean;
   /** Skip Gemini vision (tests / offline). */
   skipVision?: boolean;
+  seIdentity?: string | null;
+  aeIdentity?: string | null;
+  customerIdentities?: string[] | null;
 }
 
 export interface VideoPassResult {
@@ -98,13 +101,14 @@ async function runFfmpegPass(
   consent: boolean,
 ): Promise<VideoPassResult> {
   const callId = input.callId.trim();
+  const durationSec = media.durationSec ?? input.durationSec ?? null;
   try {
-    const { samples } = await sampleFramesFromUrl({
+    const { samples } = await sampleStrategicWindowsFromUrl({
       callId,
       mediaUrl: stream.url,
       referer: media.referer,
       authHeader: media.authHeader,
-      durationSec: media.durationSec,
+      durationSec: durationSec ?? undefined,
       sampleIntervalS: DEFAULT_SAMPLE_INTERVAL_S,
     });
 
@@ -128,15 +132,25 @@ async function runFfmpegPass(
     let cdeCustomized: boolean | null = null;
     let cdeEvidence: string | null = null;
     let shareOnPct: number | null = null;
+    let attendeeCurveJson: VideoFactsDraft["attendeeCurveJson"] = null;
+    let extraSegments: VideoFactsDraft["segments"] = [];
 
     if (!input.skipVision) {
       const vision = await analyzeKeyframes(env, keyframeSamples, {
         visualAnalysisConsent: consent,
+        identities: {
+          seIdentity: input.seIdentity,
+          aeIdentity: input.aeIdentity,
+          customerIdentities: input.customerIdentities,
+        },
+        durationSec: durationSec ?? media.durationSec,
       });
       cameraOnPct = vision.cameraOnPct;
       cdeCustomized = vision.cdeCustomized;
       cdeEvidence = vision.cdeEvidence;
       shareOnPct = vision.shareOnPct;
+      attendeeCurveJson = vision.attendeeCurveJson ?? null;
+      extraSegments = vision.pptSegments ?? [];
     }
 
     await cleanupStaging(callId);
@@ -151,6 +165,9 @@ async function runFfmpegPass(
       cdeEvidence,
       shareOnPct,
       visualAnalysisConsent: consent,
+      attendeeCurveJson,
+      segments: extraSegments.length ? extraSegments : undefined,
+      sampleIntervalS: 3,
     });
 
     return { ok: true, videoFacts: draft };
@@ -227,6 +244,11 @@ export async function runVideoPass(
 
   const stream = pickStreamForConsent(media, consent);
   const ffmpegOk = cap.mode === "ffmpeg" && (await ffmpegAvailable());
+
+  // Without face consent, transcript inference is faster and sufficient for PPT/share segments.
+  if (!consent && input.transcript?.trim()) {
+    return runTranscriptPass(env, input);
+  }
 
   if (stream && ffmpegOk) {
     const ffmpegResult = await runFfmpegPass(env, input, media!, stream, consent);

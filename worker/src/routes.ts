@@ -353,6 +353,11 @@ export async function handleVideoPass(
     callType: typeof body.callType === "string" ? body.callType : null,
     visualAnalysisConsent: !!body.visualAnalysisConsent,
     skipVision: !!body.skipVision,
+    seIdentity: typeof body.seIdentity === "string" ? body.seIdentity : null,
+    aeIdentity: typeof body.aeIdentity === "string" ? body.aeIdentity : null,
+    customerIdentities: Array.isArray(body.customerIdentities)
+      ? body.customerIdentities.filter((x): x is string => typeof x === "string")
+      : null,
   });
 
   return json(

@@ -10,6 +10,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_SAMPLE_INTERVAL_S, type SampleFrame } from "./facts";
 import { ffmpegBinary, videoDataRoot } from "./capability";
+import {
+  computeStrategicSampleWindows,
+  STRATEGIC_WINDOW_SAMPLE_INTERVAL_S,
+} from "./sampling";
 
 const execFileAsync = promisify(execFile);
 
@@ -118,6 +122,98 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
       path: filePath,
       sceneDelta: Math.round(delta * 10) / 10,
     });
+  }
+
+  return { samples, workDir, framesDir };
+}
+
+/**
+ * Extract JPEG frames only from strategic windows (opening 10%, 30/60/90%, closing 1min).
+ * Much faster than scanning the entire recording at a fixed interval.
+ */
+export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Promise<{
+  samples: SampleFrame[];
+  workDir: string;
+  framesDir: string;
+}> {
+  const durationSec = Math.max(60, Math.round(input.durationSec ?? 0));
+  const interval = STRATEGIC_WINDOW_SAMPLE_INTERVAL_S;
+  const windows = computeStrategicSampleWindows(durationSec);
+  const workDir = jobDir(input.callId);
+  const framesDir = path.join(workDir, "frames");
+  const stagingDir = path.join(workDir, "staging");
+  await rm(framesDir, { recursive: true, force: true }).catch(() => {});
+  await ensureDir(framesDir);
+  await ensureDir(stagingDir);
+
+  await writeFile(
+    path.join(stagingDir, "note.txt"),
+    `Pass 2 strategic sample for ${input.callId}\n`,
+  );
+
+  const headerStr =
+    `Referer: ${input.referer}\r\n` +
+    `User-Agent: Mozilla/5.0 (compatible; LionpathPass2/1.0)\r\n` +
+    (input.authHeader ? `Authorization: ${input.authHeader}\r\n` : "");
+
+  const bin = await ffmpegBinary();
+  const samples: SampleFrame[] = [];
+  let prev: Buffer | null = null;
+
+  for (const win of windows) {
+    const clipDur = win.endS - win.startS;
+    if (clipDur <= 0) continue;
+    const outPattern = path.join(framesDir, `win_${win.label}_%05d.jpg`);
+    const args = [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-headers",
+      headerStr,
+      "-ss",
+      String(win.startS),
+      "-t",
+      String(clipDur),
+      "-i",
+      input.mediaUrl,
+      "-vf",
+      `fps=1/${interval},scale=640:-2`,
+      "-q:v",
+      "5",
+      outPattern,
+    ];
+
+    try {
+      await execFileAsync(bin, args, {
+        timeout: 3 * 60 * 1000,
+        maxBuffer: 2 * 1024 * 1024,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`ffmpeg strategic sample failed (${win.label}): ${msg.slice(0, 300)}`);
+    }
+
+    const names = (await readdir(framesDir))
+      .filter((n) => n.startsWith(`win_${win.label}_`) && n.endsWith(".jpg"))
+      .sort();
+
+    for (let i = 0; i < names.length; i++) {
+      const filePath = path.join(framesDir, names[i]);
+      const buf = await readFile(filePath);
+      const delta = prev ? jpegSceneDelta(prev, buf) : 0;
+      prev = buf;
+      const atS = win.startS + i * interval;
+      samples.push({
+        atS,
+        path: filePath,
+        sceneDelta: Math.round(delta * 10) / 10,
+        windowLabel: win.label,
+      });
+    }
+  }
+
+  if (!samples.length) {
+    throw new Error("ffmpeg strategic sample produced no frames");
   }
 
   return { samples, workDir, framesDir };
