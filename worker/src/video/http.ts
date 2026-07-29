@@ -49,7 +49,7 @@ export async function handleVideoPassNode(
     transcript: body.transcript,
     durationSec: body.durationSec,
     callType: body.callType,
-    visualAnalysisConsent: !!body.visualAnalysisConsent,
+    visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
     seIdentity: body.seIdentity ?? null,
     aeIdentity: body.aeIdentity ?? null,

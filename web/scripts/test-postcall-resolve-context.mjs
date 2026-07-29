@@ -104,6 +104,8 @@ async function main() {
     err.code = "permission-denied";
     throw err;
   };
+  const { invalidatePostCallResolveContext } = await import("../postcall-resolve-context.js");
+  invalidatePostCallResolveContext(ownerId);
   const fallback = await buildPostCallResolveContext(ownerId);
   store.listLifecyclesByOwner = originalList;
   assert(

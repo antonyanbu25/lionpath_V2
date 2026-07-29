@@ -81,7 +81,7 @@ async function enrichFfmpegWithTranscriptTalk(
       transcript: input.transcript,
       durationSec: input.durationSec ?? input.media?.durationSec ?? null,
       callType: input.callType,
-      visualAnalysisConsent: false,
+      visualAnalysisConsent: input.visualAnalysisConsent,
     });
     if (talkDraft.status !== "ready" || !talkDraft.attendeeCurveJson) return result;
     const merged = mergeAttendeeCurveTalk(

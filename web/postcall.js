@@ -1417,6 +1417,8 @@ function wirePostCallNavigation(root, data) {
 let onAnalysisSaved = null;
 /** @type {((id: string) => void) | null} */
 let onCallRecordReady = null;
+/** @type {((id: string) => void) | null} */
+let onCallRecordHydrated = null;
 
 /** @param {(record: object) => void} fn */
 export function setOnAnalysisSaved(fn) {
@@ -1426,6 +1428,11 @@ export function setOnAnalysisSaved(fn) {
 /** @param {(id: string) => void} fn */
 export function setOnCallRecordReady(fn) {
   onCallRecordReady = fn;
+}
+
+/** @param {(id: string) => void} fn */
+export function setOnCallRecordHydrated(fn) {
+  onCallRecordHydrated = fn;
 }
 
 async function postJson(url, body) {
@@ -1837,6 +1844,9 @@ function wireDealChangeToggle(card) {
 }
 
 function showConfirmationGate(resolve, classify) {
+  import("./domain/store.js").catch(() => {});
+  import("./domain/arr-service.js").catch(() => {});
+
   const card = $("postcall-confirm-view");
   if (!card) return;
   card.innerHTML = renderConfirmationGate(resolve, classify);
@@ -1948,6 +1958,93 @@ async function confirmAndGenerate(e) {
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), true);
 
+  const companyName =
+    accountName ||
+    pipelineState.payload.companyName ||
+    pipelineState.resolve.account?.accountName;
+  const identityContext = formatConfirmedIdentitiesContext(
+    pipelineState.confirmedIdentities || { seIdentity, aeIdentity, customerIdentities },
+  );
+  const additionalContext = [identityContext, pipelineState.payload.additionalContext]
+    .filter(Boolean)
+    .join("\n\n");
+  const accountId =
+    pipelineState.resolve.account?.accountId || pipelineState.payload.accountId || null;
+  const qualifyBody = {
+    transcript: pipelineState.resolve.transcript,
+    dealId: dealId || null,
+    companyName,
+    meetingTitle: pipelineState.payload.meetingTitle || companyName,
+    callType,
+    additionalContext,
+  };
+  const summariseBody = {
+    transcript: pipelineState.resolve.transcript,
+    dealId: dealId || null,
+    companyName,
+    meetingTitle: pipelineState.payload.meetingTitle || companyName,
+    callType,
+    additionalContext,
+  };
+
+  const qualifyP = postJson(QUALIFY_URL, qualifyBody).catch((err) => {
+    console.warn("[postcall] qualify soft-fail:", err?.message || err);
+    return null;
+  });
+  const summariseP = postJson(SUMMARISE_URL, summariseBody).catch((err) => {
+    console.warn("[postcall] summarise soft-fail:", err?.message || err);
+    return null;
+  });
+  const arrInputsP =
+    dealId && accountId
+      ? postJson(ARR_INPUTS_URL, {
+          transcript: pipelineState.resolve.transcript,
+          dealId,
+          callId: pipelineState.recordId || null,
+          companyName,
+          meetingTitle: pipelineState.payload.meetingTitle || companyName,
+          callType,
+          additionalContext,
+        }).catch((err) => {
+          console.warn("[postcall] arr-inputs soft-fail:", err?.message || err);
+          return null;
+        })
+      : Promise.resolve(null);
+  const prevCommitP = dealId
+    ? import("./domain/store.js")
+        .then(({ getStore }) => {
+          const store = getStore();
+          return store.getTechnicalCommitByDeal
+            ? store.getTechnicalCommitByDeal(dealId)
+            : null;
+        })
+        .catch((err) => {
+          console.warn("[postcall] prior technical commit lookup failed:", err?.message || err);
+          return null;
+        })
+    : Promise.resolve(null);
+  const allowanceP =
+    dealId && accountId
+      ? Promise.all([import("./domain/store.js"), import("./domain/arr-service.js")])
+          .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
+            accountAllowanceConsumedForDeal(getStore(), accountId, dealId),
+          )
+          .catch((err) => {
+            console.warn("[postcall] allowance lookup failed:", err?.message || err);
+            return null;
+          })
+      : Promise.resolve(null);
+  const commitP = prevCommitP.then((previousCommit) =>
+    postJson(COMMIT_URL, {
+      ...qualifyBody,
+      callId: pipelineState.recordId || null,
+      previous: previousCommit,
+    }).catch((err) => {
+      console.warn("[postcall] commit soft-fail:", err?.message || err);
+      return null;
+    }),
+  );
+
   let videoFacts = null;
   const pass2Transcript = pipelineState.resolve.transcript?.trim() || "";
   const pass2DurationSec =
@@ -1963,8 +2060,7 @@ async function confirmAndGenerate(e) {
     showPipelineProgress([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
-      { label: "Sample video (Pass 2)", status: "active" },
-      { label: "Generate analysis", status: "pending" },
+      { label: "Generate analysis + qualification + commitments", status: "active" },
     ]);
     showInlineStatus(status, {
       type: "info",
@@ -1994,21 +2090,14 @@ async function confirmAndGenerate(e) {
       console.warn("[postcall] video-pass soft-fail:", videoErr?.message || videoErr);
       videoFacts = null;
     }
+  } else {
+    showPipelineProgress([
+      { label: "Resolve recording and match deal", status: "done" },
+      { label: "Classify call type", status: "done" },
+      { label: "Generate analysis + qualification + commitments", status: "active" },
+    ]);
   }
 
-  showPipelineProgress([
-    { label: "Resolve recording and match deal", status: "done" },
-    { label: "Classify call type", status: "done" },
-    {
-      label: "Sample video (Pass 2)",
-      status: canRunPass2
-        ? videoFacts?.status === "ready"
-          ? "done"
-          : "error"
-        : "done",
-    },
-    { label: "Generate analysis + qualification + commitments", status: "active" },
-  ]);
   showInlineStatus(status, {
     type: "info",
     message: "Generating analysis, qualification, and commitments… usually 15–40 seconds.",
@@ -2016,16 +2105,6 @@ async function confirmAndGenerate(e) {
   });
 
   try {
-    const companyName =
-      accountName ||
-      pipelineState.payload.companyName ||
-      pipelineState.resolve.account?.accountName;
-    const identityContext = formatConfirmedIdentitiesContext(
-      pipelineState.confirmedIdentities || { seIdentity, aeIdentity, customerIdentities },
-    );
-    const additionalContext = [identityContext, pipelineState.payload.additionalContext]
-      .filter(Boolean)
-      .join("\n\n");
     const body = {
       transcript: pipelineState.resolve.transcript,
       recordingUrl: pipelineState.payload.recordingUrl,
@@ -2038,7 +2117,7 @@ async function confirmAndGenerate(e) {
       confirmed: true,
       callType,
       dealId,
-      accountId: pipelineState.resolve.account?.accountId || pipelineState.payload.accountId || null,
+      accountId,
       companyDomain: companyDomain || undefined,
       resolveSnapshot: {
         ...pipelineState.resolve,
@@ -2051,52 +2130,12 @@ async function confirmAndGenerate(e) {
       dealMatchOverride,
       videoFacts: videoFacts || undefined,
     };
-    const summariseBody = {
-      transcript: pipelineState.resolve.transcript,
-      dealId: dealId || null,
-      companyName,
-      meetingTitle: pipelineState.payload.meetingTitle || companyName,
-      callType,
-      additionalContext,
-    };
-    const qualifyBody = {
-      transcript: pipelineState.resolve.transcript,
-      dealId: dealId || null,
-      companyName,
-      meetingTitle: pipelineState.payload.meetingTitle || companyName,
-      callType,
-      additionalContext,
-    };
-    // Pass 5 measures movement against the deal's prior commit snapshot.
-    let previousCommit = null;
-    if (dealId) {
-      try {
-        const { getStore } = await import("./domain/store.js");
-        const store = getStore();
-        previousCommit = store.getTechnicalCommitByDeal
-          ? await store.getTechnicalCommitByDeal(dealId)
-          : null;
-      } catch (err) {
-        console.warn("[postcall] prior technical commit lookup failed:", err?.message || err);
-      }
-    }
-    const commitBody = { ...qualifyBody, callId: pipelineState.recordId || null, previous: previousCommit };
 
-    // Pass 3 generate + Pass 4 qualify + Pass 5 commit + Pass 7 summarise in parallel.
     const [data, qualify, commit, summarise] = await Promise.all([
       postJson(GENERATE_URL, body),
-      postJson(QUALIFY_URL, qualifyBody).catch((err) => {
-        console.warn("[postcall] qualify soft-fail:", err?.message || err);
-        return null;
-      }),
-      postJson(COMMIT_URL, commitBody).catch((err) => {
-        console.warn("[postcall] commit soft-fail:", err?.message || err);
-        return null;
-      }),
-      postJson(SUMMARISE_URL, summariseBody).catch((err) => {
-        console.warn("[postcall] summarise soft-fail:", err?.message || err);
-        return null;
-      }),
+      qualifyP,
+      commitP,
+      summariseP,
     ]);
     if (qualify?.qualification) {
       data.qualification = qualify.qualification;
@@ -2113,78 +2152,6 @@ async function confirmAndGenerate(e) {
       }
     }
 
-    const accountId = pipelineState.resolve.account?.accountId || null;
-    if (dealId && accountId) {
-      try {
-        const arrInputsBody = {
-          transcript: pipelineState.resolve.transcript,
-          dealId,
-          callId: pipelineState.recordId || null,
-          companyName,
-          meetingTitle: pipelineState.payload.meetingTitle || companyName,
-          callType,
-          additionalContext,
-        };
-        const arrInputs = await postJson(ARR_INPUTS_URL, arrInputsBody).catch((err) => {
-          console.warn("[postcall] arr-inputs soft-fail:", err?.message || err);
-          return null;
-        });
-        if (arrInputs) {
-          data.arrInputs = arrInputs;
-          const { getStore } = await import("./domain/store.js");
-          const { accountAllowanceConsumedForDeal } = await import("./domain/arr-service.js");
-          const store = getStore();
-          const allowanceConsumed = await accountAllowanceConsumedForDeal(store, accountId, dealId);
-          data.arrCompute = await postJson(ARR_COMPUTE_URL, {
-            ...arrInputs,
-            accountAllowanceConsumed: allowanceConsumed,
-          }).catch((err) => {
-            console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
-            return null;
-          });
-        }
-      } catch (err) {
-        console.warn("[postcall] arr pipeline soft-fail:", err?.message || err);
-      }
-    }
-
-    try {
-      const arrPoint =
-        data.arrCompute?.arrPoint ?? data.arrCompute?.arrEstimatePoint ?? null;
-      const callNotes =
-        typeof data.summarise?.callNotes === "string" ? data.summarise.callNotes.trim() : "";
-      const gapsContext = [
-        additionalContext,
-        callNotes
-          ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      data.pass6 = await postJson(GAPS_URL, {
-        transcript: pipelineState.resolve.transcript,
-        dealId: dealId || null,
-        accountId: pipelineState.resolve.account?.accountId || null,
-        companyName,
-        meetingTitle: pipelineState.payload.meetingTitle || companyName,
-        callType,
-        arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
-        additionalContext: gapsContext || undefined,
-      });
-    } catch (err) {
-      console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
-      data.pass6 = null;
-    }
-
-    // Timeline last — it pins the other passes' findings onto the transcript clock.
-    data.timeline = await deriveCallTimeline({
-      transcript: pipelineState.resolve.transcript,
-      gaps: data.pass6?.productGaps || [],
-      whatWorks: data.pass6?.whatWorks || [],
-      objections: data.summarise?.objections || [],
-      scorecardLines: data.scorecard?.lines || [],
-    });
-
     pipelineState.generated = true;
 
     const meta = { title: "" };
@@ -2193,6 +2160,7 @@ async function confirmAndGenerate(e) {
     show($("postcall-loading"), false);
     showInlineStatus(status, { open: false });
 
+    let record = null;
     if (currentSession?.email) {
       const email = normalizeUserEmail(currentSession.email);
       const savePayload = {
@@ -2206,22 +2174,82 @@ async function confirmAndGenerate(e) {
           customerIdentities,
         },
       };
-      const record = await savePostCallHistory(email, savePayload, data);
+      record = await savePostCallHistory(email, savePayload, data);
       if (record) {
         pipelineState.recordId = record.id;
-        // Await dual-write so deal / Pass 6 / video facts exist before the call view opens.
+        const DUAL_WRITE_BUDGET_MS = 2000;
         if (onAnalysisSaved) {
-          try {
-            await onAnalysisSaved(record, savePayload, data);
-          } catch (err) {
-            console.warn("[postcall] analysis-saved hook failed:", err?.message || err);
-          }
+          await Promise.race([
+            onAnalysisSaved(record, savePayload, data).catch((err) =>
+              console.warn("[postcall] analysis-saved hook failed:", err?.message || err),
+            ),
+            new Promise((r) => window.setTimeout(r, DUAL_WRITE_BUDGET_MS)),
+          ]);
         }
         onCallRecordReady?.(record.id);
       }
     }
 
     displayPostCall(data, meta);
+
+    // Hydrate the slow passes after the SE is already looking at the analysis.
+    void (async () => {
+      try {
+        const arrInputs = await arrInputsP;
+        let arrCompute = null;
+        if (arrInputs && dealId && accountId) {
+          arrCompute = await postJson(ARR_COMPUTE_URL, {
+            ...arrInputs,
+            accountAllowanceConsumed: await allowanceP,
+          }).catch((err) => {
+            console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
+            return null;
+          });
+        }
+        const arrPoint =
+          arrCompute?.arrPoint ?? arrCompute?.arrEstimatePoint ?? null;
+        const callNotes =
+          typeof data.summarise?.callNotes === "string" ? data.summarise.callNotes.trim() : "";
+        const gapsContext = [
+          additionalContext,
+          callNotes
+            ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        const pass6 = await postJson(GAPS_URL, {
+          transcript: pipelineState.resolve.transcript,
+          dealId: dealId || null,
+          accountId,
+          companyName,
+          meetingTitle: pipelineState.payload.meetingTitle || companyName,
+          callType,
+          arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
+          additionalContext: gapsContext || undefined,
+        }).catch((err) => {
+          console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
+          return null;
+        });
+        const timeline = await deriveCallTimeline({
+          transcript: pipelineState.resolve.transcript,
+          gaps: pass6?.productGaps || [],
+          whatWorks: pass6?.whatWorks || [],
+          objections: data.summarise?.objections || [],
+          scorecardLines: data.scorecard?.lines || [],
+        });
+        if (!record?.id || !currentSession?.email) return;
+        const { updatePostCallAnalysis } = await import("./history.js");
+        await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
+          rec.pass6 = pass6 || rec.pass6 || null;
+          rec.result = { ...(rec.result || {}), arrInputs, arrCompute, pass6, timeline };
+          return rec;
+        });
+        onCallRecordHydrated?.(record.id);
+      } catch (err) {
+        console.warn("[postcall] background hydration failed:", err?.message || err);
+      }
+    })();
   } catch (err) {
     showPipelineProgress([
       { label: "Resolve recording and match deal", status: "done" },

@@ -205,7 +205,7 @@ export async function inferVideoFactsFromTranscript(
     `Call type: ${callType}.`,
     consent
       ? "You may estimate camera_on_pct from whether the SE references being on camera. Infer per-participant talkPct and cameraOn when names appear in the transcript."
-      : "Set cameraOnPct to null (no face consent). Still infer talkPct per named speaker; set cameraOn false for everyone.",
+      : "Set cameraOnPct to null (no face consent). Still infer talkPct per named speaker; set cameraOn to null for everyone — do NOT guess false.",
     "Reply JSON only:",
     JSON.stringify({
       shareOnPct: "<0-100 int — estimated % of call with screenshare>",
@@ -216,7 +216,7 @@ export async function inferVideoFactsFromTranscript(
         {
           name: "First Last",
           talkPct: 24,
-          cameraOn: consent ? true : false,
+          cameraOn: consent ? true : null,
           role: "se|customer|ae",
         },
       ],

@@ -63,6 +63,7 @@ import {
   onSessionCleared,
   setOnAnalysisSaved,
   setOnCallRecordReady,
+  setOnCallRecordHydrated,
   resetPostCallView,
   isPostCallGenerationBusy,
 } from "./postcall.js";
@@ -1699,6 +1700,11 @@ async function boot() {
   });
   initPostcall();
   setOnCallRecordReady((id) => openCallRecord(id));
+  setOnCallRecordHydrated((id) => {
+    if (selectedCallId === id && currentView === "calls") {
+      void renderCallPanel();
+    }
+  });
 
   $("prospectEmail")?.addEventListener("fwInput", () => {
     syncAutoCompanyDomain();

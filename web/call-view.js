@@ -11,7 +11,11 @@ import { getPostCallForSession, normalizeSeEmail } from "./domain/se-access-serv
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { formatTypeComposite, isEligibleForAggregate, typeComposite } from "./quality-score.js";
 import { renderQipScorecard } from "./postcall.js";
-import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
+import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
+import {
+  enrichDealFromHistoryRecords,
+  rollupMeddpiccFromHistoryRecords,
+} from "./domain/history-deal-enrichment.js";
 import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
@@ -350,10 +354,6 @@ function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus
   if (momentumStatus === "Advancing") parts.push("momentum is advancing");
   else if (momentumStatus === "At risk") parts.push("momentum is at risk");
   else if (momentumStatus === "Stalled") parts.push("momentum has stalled");
-
-  if (confidencePct != null && confidencePct < 70) {
-    parts.push("read scores with lower confidence — sparse evidence");
-  }
 
   if (!parts.length) {
     return "Scores tell different stories — use the scorecard evidence before coaching or forecasting.";
@@ -709,44 +709,56 @@ function contextItem(label, valueHtml) {
 
 function renderDealContextStrip(ctx) {
   const { deal, account, sequence, momentumStatus, arrLabel, technicalCommit } = ctx;
-  const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "—";
-  const dealLabel = account?.name ? `${account.name} — ${dealTitle}` : dealTitle;
-  const dealLink = deal?.id
-    ? `<a href="#deals/${esc(deal.id)}" class="call-deal-link" data-action="open-deal">${esc(dealLabel)}</a>`
-    : esc(dealLabel);
-  const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : "—";
-  const stageHtml = stage !== "—" ? `<span class="pill">${esc(stage)}</span>` : `<span class="muted">—</span>`;
-  const tractionClass = tractionPillClass(momentumStatus);
-  const traction =
-    momentumStatus && momentumStatus !== "—"
-      ? `<span class="pill${tractionClass ? ` ${tractionClass}` : ""}">${esc(momentumStatus)}</span>`
-      : '<span class="muted">—</span>';
-  const arrHtml = arrLabel ? `<span class="num">${esc(arrLabel)}</span>` : '<span class="muted">—</span>';
+  const items = [];
+
+  if (deal?.id || deal?.title || account?.name) {
+    const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "";
+    const dealLabel = account?.name && dealTitle
+      ? `${account.name} — ${dealTitle}`
+      : account?.name || dealTitle;
+    if (dealLabel) {
+      const dealLink = deal?.id
+        ? `<a href="#deals/${esc(deal.id)}" class="call-deal-link" data-action="open-deal">${esc(dealLabel)}</a>`
+        : esc(dealLabel);
+      items.push(contextItem("Deal", dealLink));
+    }
+  }
+
+  const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : null;
+  if (stage) items.push(contextItem("Stage", `<span class="pill">${esc(stage)}</span>`));
+
+  if (arrLabel) items.push(contextItem("ARR", `<span class="num">${esc(arrLabel)}</span>`));
+
   const tcStatus = technicalCommit?.status;
-  const tcHtml = tcStatus
-    ? `<span class="pill ${tcStatusPillClass(tcStatus)}">${esc(tcStatusLabel(tcStatus))}</span>`
-    : '<span class="muted">—</span>';
+  if (tcStatus) {
+    items.push(contextItem("TC",
+      `<span class="pill ${tcStatusPillClass(tcStatus)}">${esc(tcStatusLabel(tcStatus))}</span>`));
+  }
+
   const aiVal = formatTcFieldValue(technicalCommit?.aiAttach);
-  const aiHtml = aiVal
-    ? `<span class="pill purple">${esc(aiVal)}</span>`
-    : '<span class="muted">—</span>';
+  if (aiVal) items.push(contextItem("AI attach", `<span class="pill purple">${esc(aiVal)}</span>`));
+
+  if (momentumStatus && momentumStatus !== "—") {
+    const cls = tractionPillClass(momentumStatus);
+    items.push(contextItem("Traction",
+      `<span class="pill${cls ? ` ${cls}` : ""}">${esc(momentumStatus)}</span>`));
+  }
+
+  // Nothing resolved — no empty-dash rail.
+  if (!items.length) return "";
+
   const seqLabel =
     sequence.position && sequence.total
       ? `Call ${sequence.position} of ${sequence.total} on this deal`
       : sequence.total
         ? `${sequence.total} call${sequence.total === 1 ? "" : "s"} on deal`
-        : "—";
+        : "";
 
   return `
     <div class="call-deal-context card-wire" aria-label="Deal context">
       <div class="call-deal-context-inner">
-        ${contextItem("Deal", dealLink)}
-        ${contextItem("Stage", stageHtml)}
-        ${contextItem("ARR", arrHtml)}
-        ${contextItem("TC", tcHtml)}
-        ${contextItem("AI attach", aiHtml)}
-        ${contextItem("Traction", traction)}
-        <div class="call-deal-context-seq muted">${esc(seqLabel)}</div>
+        ${items.join("")}
+        ${seqLabel ? `<div class="call-deal-context-seq muted">${esc(seqLabel)}</div>` : ""}
       </div>
     </div>`;
 }
@@ -778,8 +790,8 @@ function renderVerdictStrip(ctx) {
         ? "call-verdict-big--bad"
         : "call-verdict-big--warn";
   const confLabel = confidenceBandLabel(confidencePct);
-  const confSub =
-    confidencePct != null ? `${esc(String(confidencePct))}% clean signals` : "—";
+  // Percentage removed — the band label alone is the signal.
+  const confSub = "";
   const profileMeta =
     scorecard?.rubricVersion || scorecard?.callType || callType
       ? `${esc(CALL_TYPE_LABELS[scorecard?.callType || callType] || callType || "call")} profile v${esc(scorecard?.rubricVersion || "1.0")}`
@@ -789,7 +801,7 @@ function renderVerdictStrip(ctx) {
     <div class="call-verdict-card card-wire" aria-label="Verdict">
       <div class="call-verdict-grid">
         <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">QIP · the SE</div>
+          <div class="prep-form-eyebrow">QIP Score</div>
           <div class="call-verdict-value-row">
             <span class="call-verdict-big num call-verdict-big--good">${qipNum}</span>
             <span class="muted call-verdict-denom">/ 100</span>
@@ -798,7 +810,7 @@ function renderVerdictStrip(ctx) {
           <div class="call-verdict-mono">${profileMeta}</div>
         </div>
         <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">MEDPICC · the deal</div>
+          <div class="prep-form-eyebrow">Qualification MEDDPICC</div>
           <div class="call-verdict-value-row">
             <span class="call-verdict-big num call-verdict-big--warn">${medNum}</span>
             <span class="muted call-verdict-denom">/ 100</span>
@@ -806,18 +818,18 @@ function renderVerdictStrip(ctx) {
           <div class="call-verdict-mono">${medSub}</div>
         </div>
         <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">Traction</div>
+          <div class="prep-form-eyebrow">Overall Call sentiment</div>
           <div class="call-verdict-value-row">
             <span class="call-verdict-mid num ${tractionClass}">${traction}</span>
           </div>
           <div class="call-verdict-mono muted">from call momentum</div>
         </div>
         <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">Confidence</div>
+          <div class="prep-form-eyebrow">Confidence to Closure</div>
           <div class="call-verdict-value-row">
             <span class="call-verdict-mid">${esc(confLabel)}</span>
           </div>
-          <div class="call-verdict-mono">${confSub}</div>
+          ${confSub ? `<div class="call-verdict-mono">${confSub}</div>` : ""}
         </div>
       </div>
       <div class="call-verdict-tension-band">${renderTensionBand(tensionLine)}</div>
@@ -913,15 +925,13 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
           r.talkPct != null
             ? `<span class="pill call-stakeholder-pill">talk ${esc(String(r.talkPct))}%</span>`
             : "";
-        const camCls = r.cameraOn === true ? "green" : "";
-        const camLabel =
-          r.cameraOnPct != null
+        const camKnown = r.cameraOn === true || r.cameraOn === false;
+        const camCls = r.cameraOn === true ? "green" : r.cameraOn === false ? "amber" : "";
+        const camLabel = !camKnown
+          ? "—"
+          : r.cameraOnPct != null
             ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
-            : r.cameraOn === true
-              ? "On"
-              : r.cameraOn === false
-                ? "Off"
-                : "—";
+            : r.cameraOn ? "On" : "Off";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">
@@ -935,7 +945,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
     ${
       hasVideo
         ? `<p class="muted call-stakeholder-note">Talk-share and camera from Pass 2 (Gemini transcript/vision) when sampling succeeds.</p>`
-        : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake; camera defaults to Off without video.</p>`
+        : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
     }`;
   } else if (hasVideo) {
     body = renderVideoEmptySection(
@@ -1182,9 +1192,9 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
   return `<div class="call-health-tab call-health-tab--wireframe">
     <div class="call-health-grid">
       <div class="card-wire card-wire--tight">
-        <h3>MEDPICC</h3>
+        <h3>MEDDPICC</h3>
         <p class="sub">${meddpiccFilled != null ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced on this call` : "Deal qualification"}</p>
-        <div class="call-medp-list">${medList || '<p class="muted">No MEDPICC rollup on this deal yet.</p>'}</div>
+        <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet — run Pass 4 qualification on a linked deal.</p>'}</div>
       </div>
       <div class="call-health-aside">${objHtml}${tractionHtml}</div>
     </div>
@@ -1496,6 +1506,28 @@ async function loadCallBundle(session, record) {
 
   if (!dealId && parallel.domainCall?.dealId) dealId = parallel.domainCall.dealId;
 
+  // Tier 3 — the record never got a dealId stamped (dual-write skipped, or confirm
+  // had no deals on the account). Recover it from the account's deal list.
+  if (!dealId) {
+    const accountId =
+      record?.result?.confirmed?.accountId ||
+      record?.result?.resolve?.account?.accountId ||
+      parallel.domainCall?.accountId ||
+      null;
+    if (accountId && store.listDealsByAccount) {
+      const ownerId = record?.ownerId || session?.userId || undefined;
+      const accountDeals = await safeEnrich(
+        "listDealsForAccount",
+        () => listDealsForAccount(accountId, ownerId),
+        [],
+      );
+      // Newest open deal wins; archived last.
+      const pick =
+        accountDeals.find((d) => d.status !== "archived") || accountDeals[0] || null;
+      if (pick?.id) dealId = pick.id;
+    }
+  }
+
   let deal = null;
   let account = null;
   let technicalCommit = resultBlob.technicalCommit || null;
@@ -1514,7 +1546,22 @@ async function loadCallBundle(session, record) {
     }
   }
 
-  const med = resolveDealMeddpicc(deal, account);
+  // Same enrichment the deal record uses — Firestore metadata.meddpicc lags behind
+  // the Pass 4 qualification blobs sitting in local history.
+  if (deal) {
+    const dealRecords = listPostCallAnalyses(email).filter(
+      (r) => resolveDealId(r) === dealId,
+    );
+    if (dealRecords.length) deal = enrichDealFromHistoryRecords(deal, dealRecords);
+  }
+
+  let med = resolveDealMeddpicc(deal, account);
+  if (!med) {
+    const own = record?.result?.qualification
+      ? rollupMeddpiccFromHistoryRecords([record])
+      : null;
+    med = own || null;
+  }
   const meddpiccScore = med ? computeMeddpiccScore(med) : null;
   const meddpiccFilled = countMeddpiccFilled(med);
   const sequence = dealSequencePosition(email, dealId, record.id);
@@ -1604,6 +1651,7 @@ async function loadCallBundle(session, record) {
   return {
     record,
     deal,
+    dealId,
     account,
     sequence,
     callType,
@@ -1699,7 +1747,7 @@ function renderCallRecord(bundle) {
           </div>
           <div class="call-record-header-actions">
             <fw-button color="secondary" fill="outline" size="small" data-action="rerun">Re-run</fw-button>
-            <fw-button color="secondary" fill="outline" size="small" data-action="open-deal" ${bundle.deal?.id ? "" : "disabled"}>Open deal</fw-button>
+            <fw-button color="secondary" fill="outline" size="small" data-action="open-deal" ${bundle.deal?.id || bundle.dealId ? "" : "disabled"}>Open deal</fw-button>
           </div>
         </header>
         ${renderDealContextStrip(bundle)}
@@ -1753,7 +1801,8 @@ function wireCallRecord(container, session, bundle, opts) {
   });
 
   const openDeal = () => {
-    if (bundle.deal?.id) opts.onOpenDeal?.(bundle.deal.id);
+    const id = bundle.deal?.id || bundle.dealId;
+    if (id) opts.onOpenDeal?.(id);
   };
   container.querySelector('[data-action="open-deal"]')?.addEventListener("fwClick", openDeal);
   container.querySelector('[data-action="open-deal"]')?.addEventListener("click", openDeal);

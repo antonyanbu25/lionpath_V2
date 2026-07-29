@@ -351,7 +351,7 @@ export async function handleVideoPass(
     transcript: typeof body.transcript === "string" ? body.transcript : undefined,
     durationSec: typeof body.durationSec === "number" ? body.durationSec : null,
     callType: typeof body.callType === "string" ? body.callType : null,
-    visualAnalysisConsent: !!body.visualAnalysisConsent,
+    visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
     seIdentity: typeof body.seIdentity === "string" ? body.seIdentity : null,
     aeIdentity: typeof body.aeIdentity === "string" ? body.aeIdentity : null,
