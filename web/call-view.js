@@ -585,7 +585,7 @@ function normalizeParticipantStats(raw) {
 }
 
 function normalizePersonKey(label) {
-  return String(label || "")
+  let key = String(label || "")
     .trim()
     .toLowerCase()
     .replace(/\s*\([^)]*\)\s*/g, " ")
@@ -593,11 +593,35 @@ function normalizePersonKey(label) {
     .replace(/<[^>]+>/g, "")
     .replace(/\s+/g, " ")
     .trim();
+  const at = key.indexOf("@");
+  if (at >= 0) {
+    key = key
+      .slice(0, at)
+      .replace(/[._-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return key;
+}
+
+function preferPersonLabel(a, b) {
+  const score = (s) => {
+    const t = String(s || "").trim();
+    if (!t) return -1;
+    if (/@/.test(t)) return 0;
+    if (/\s/.test(t)) return 3;
+    return 2;
+  };
+  const sa = score(a);
+  const sb = score(b);
+  if (sa !== sb) return sa > sb ? a : b;
+  return String(a).trim().length <= String(b).trim().length ? a : b;
 }
 
 function buildStakeholderRows(identities, attendees, videoFacts) {
   const statsByName = new Map();
   for (const p of normalizeParticipantStats(videoFacts?.attendeeCurveJson)) {
+    statsByName.set(normalizePersonKey(p.name), p);
     statsByName.set(p.name.toLowerCase(), p);
   }
 
@@ -606,8 +630,12 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
     const label = String(name || "").trim();
     if (!label) return;
     const key = normalizePersonKey(label);
-    if (rows.some((r) => r.key === key)) return;
-    const stat = statsByName.get(key);
+    const existing = rows.find((r) => r.key === key);
+    if (existing) {
+      existing.name = preferPersonLabel(existing.name, label);
+      return;
+    }
+    const stat = statsByName.get(key) ?? statsByName.get(label.toLowerCase());
     let talkPct = stat?.talkPct ?? null;
     let cameraOn = stat?.cameraOn;
     if (cameraOn == null && /solution engineer|^se$/i.test(role)) {

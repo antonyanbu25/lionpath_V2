@@ -89,9 +89,9 @@ let getAuthToken = null;
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
 const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
 
-/** Collapse duplicate display names (case-insensitive; strip role/email suffixes). */
+/** Collapse duplicate display names (case-insensitive; strip role suffixes; email → local part). */
 function normalizePersonKey(label) {
-  return String(label || "")
+  let key = String(label || "")
     .trim()
     .toLowerCase()
     .replace(/\s*\([^)]*\)\s*/g, " ")
@@ -99,21 +99,46 @@ function normalizePersonKey(label) {
     .replace(/<[^>]+>/g, "")
     .replace(/\s+/g, " ")
     .trim();
+  const at = key.indexOf("@");
+  if (at >= 0) {
+    key = key
+      .slice(0, at)
+      .replace(/[._-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return key;
+}
+
+/** Prefer a spoken name over an email or noisier variant when merging duplicates. */
+function preferPersonLabel(a, b) {
+  const score = (s) => {
+    const t = String(s || "").trim();
+    if (!t) return -1;
+    if (/@/.test(t)) return 0;
+    if (/\s/.test(t)) return 3;
+    return 2;
+  };
+  const sa = score(a);
+  const sb = score(b);
+  if (sa !== sb) return sa > sb ? a : b;
+  return String(a).trim().length <= String(b).trim().length ? a : b;
 }
 
 function dedupePersonLabels(labels) {
-  const seen = new Set();
-  const out = [];
+  const byKey = new Map();
   for (const raw of labels || []) {
     const label = String(raw || "").trim();
     if (!label) continue;
     const key = normalizePersonKey(label);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(label);
+    if (!key) continue;
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? preferPersonLabel(prev, label) : label);
   }
-  return out;
+  return [...byKey.values()];
 }
+
+export { normalizePersonKey, dedupePersonLabels, preferPersonLabel };
 
 function truncateWords(text, max) {
   const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
@@ -1284,18 +1309,8 @@ function identityOptionList(resolve) {
     currentSession?.displayName,
     currentSession?.email,
   ].filter(Boolean);
-  const seen = new Set();
-  const out = [];
   // Session SE first so dropdown default never collapses to speaker[0] (often the AE).
-  for (const raw of [...extras, ...fromResolve, ...speakers, ...emails]) {
-    const label = String(raw || "").trim();
-    if (!label) continue;
-    const key = normalizePersonKey(label);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(label);
-  }
-  return out;
+  return dedupePersonLabels([...extras, ...fromResolve, ...speakers, ...emails]);
 }
 
 function pickIdentityDefaults(resolve) {
@@ -1326,34 +1341,41 @@ function pickIdentityDefaults(resolve) {
     ae = speakers.find((s) => looksLikeAeIdentity(s) && s.trim().toLowerCase() !== se.trim().toLowerCase()) || "";
   }
 
-  const used = new Set([se, ae].filter(Boolean).map((s) => s.trim().toLowerCase()));
-  const customers = (resolve?.customerIdentities || [])
-    .filter((c) => {
-      const key = String(c).trim().toLowerCase();
-      if (!key || used.has(key) || isInternalIdentity(c) || looksLikeAeIdentity(c) || looksLikeSeIdentity(c)) {
-        return false;
-      }
-      return true;
-    });
-  if (!customers.length) {
-    for (const s of speakers) {
-      const key = s.trim().toLowerCase();
-      if (used.has(key) || looksLikeAeIdentity(s) || looksLikeSeIdentity(s) || isInternalIdentity(s)) continue;
-      customers.push(s);
+  const used = new Set([se, ae].filter(Boolean).map((s) => normalizePersonKey(s)));
+  const customerCandidates = (resolve?.customerIdentities || []).filter((c) => {
+    const key = normalizePersonKey(c);
+    if (!key || used.has(key) || isInternalIdentity(c) || looksLikeAeIdentity(c) || looksLikeSeIdentity(c)) {
+      return false;
     }
+    return true;
+  });
+  let customers = dedupePersonLabels(customerCandidates);
+  if (!customers.length) {
+    customers = dedupePersonLabels(
+      speakers.filter((s) => {
+        const key = normalizePersonKey(s);
+        return (
+          key &&
+          !used.has(key) &&
+          !looksLikeAeIdentity(s) &&
+          !looksLikeSeIdentity(s) &&
+          !isInternalIdentity(s)
+        );
+      }),
+    );
   }
   return { seDefault: se, aeDefault: ae, customers, options };
 }
 
 function renderIdentitySelect(id, label, selected, options, { required = false, allowEmpty = false } = {}) {
-  const selectedKey = String(selected || "").trim().toLowerCase();
+  const selectedKey = normalizePersonKey(selected);
   const opts = [];
   if (allowEmpty) {
     opts.push(`<option value="">— None —</option>`);
   }
   let hasSelected = false;
   for (const opt of options) {
-    const isSel = opt.trim().toLowerCase() === selectedKey;
+    const isSel = normalizePersonKey(opt) === selectedKey;
     if (isSel) hasSelected = true;
     opts.push(`<option value="${esc(opt)}"${isSel ? " selected" : ""}>${esc(opt)}</option>`);
   }
@@ -1370,7 +1392,7 @@ function renderIdentitySelect(id, label, selected, options, { required = false, 
 
 function renderCustomerChecks(selected, options) {
   const selectedKeys = new Set(
-    (selected || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean),
+    (selected || []).map((s) => normalizePersonKey(s)).filter(Boolean),
   );
   if (!options.length) {
     return `<p class="muted">No speakers/emails to pick — type names into AE notes if needed.</p>`;
@@ -1378,7 +1400,7 @@ function renderCustomerChecks(selected, options) {
   return `<div class="postcall-customer-checks" role="group" aria-label="Customer identities">
     ${options
       .map((opt, i) => {
-        const checked = selectedKeys.has(opt.trim().toLowerCase()) ? " checked" : "";
+        const checked = selectedKeys.has(normalizePersonKey(opt)) ? " checked" : "";
         const id = `pc-confirm-customer-${i}`;
         return `<label class="postcall-customer-option" for="${esc(id)}">
           <input id="${esc(id)}" type="checkbox" name="postcall-customer" value="${esc(opt)}"${checked} />
@@ -1391,7 +1413,7 @@ function renderCustomerChecks(selected, options) {
 
 function renderIdentityConfirm(resolve) {
   const { seDefault, aeDefault, customers, options } = pickIdentityDefaults(resolve);
-  const customerOptions = options.filter((o) => !isInternalIdentity(o));
+  const customerOptions = dedupePersonLabels(options.filter((o) => !isInternalIdentity(o)));
   return `<div class="postcall-confirm-block postcall-identity-block">
     <h3>Call identities</h3>
     <p class="muted">Confirm SE, AE, and customer before analysis — guesses are often wrong.</p>
