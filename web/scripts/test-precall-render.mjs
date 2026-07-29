@@ -6,6 +6,7 @@ import {
   renderResultHeader,
   confidenceMeta,
   discInferredLabel,
+  discConfidenceLabel,
   SIGNAL_TOOLTIPS,
   isSeNotesSource,
   countPopulatedSignals,
@@ -249,13 +250,15 @@ const checks = [
   ["discovery signals grid layout", discovery.includes("prep-signals-grid") && discovery.includes("prep-signal-cell")],
   ["discovery signals full width below grid", discovery.includes("prep-signals-section")],
   [
-    "discovery section order fit kit extras",
-    discovery.indexOf("prep-fit-grid") < discovery.indexOf("Discovery kit") &&
+    "discovery section order jd fit kit extras",
+    discovery.indexOf("prep-jd-full") < discovery.indexOf("prep-fit-grid") &&
+      discovery.indexOf("prep-fit-grid") < discovery.indexOf("Discovery kit") &&
       discovery.indexOf("Discovery kit") < discovery.indexOf("prep-research-extras"),
   ],
+  ["discovery support JD above fit", discovery.indexOf("prep-jd-full") < discovery.indexOf("prep-fit-grid")],
   ["discovery research extras collapsed", discovery.includes("prep-research-extras") && !discovery.includes('class="prep-research-extras" open')],
   ["discovery research extras open when requested", discoverySourcesOpen.includes('class="prep-research-extras" open')],
-  ["discovery support JD in research extras", discovery.includes("prep-research-extras") && discovery.includes("prep-jd-full")],
+  ["discovery no verbatim notes card", !renderDiscoveryTab(sampleV8, false, { additionalContext: "AE says Zendesk incumbent" }).includes("prep-se-notes-card")],
   ["discovery no standalone sources accordion", !discovery.includes("prep-sources-card")],
   ["discovery about expandable", discovery.includes("prep-about") && !discovery.includes("prep-line-clamp-2")],
   ["discovery fact fallback from businessContext", (() => {
@@ -303,7 +306,10 @@ const checks = [
   ["discovery new AI signal label", discovery.includes("AI in their current tech stack")],
   ["discovery has source badges", discovery.includes("prep-src-badge")],
   ["discovery has Fit grid", discovery.includes("prep-fit-grid")],
-  ["discovery prospect DISC inferred label fallback", discovery.includes("Inferred from LinkedIn — not a formal assessment")],
+  ["discovery kit reason without because prefix", !discovery.includes("prep-kit-because muted\">because ")],
+  ["discovery prospect DISC inferred label fallback", discovery.includes("Inferred from LinkedIn, not a formal assessment")],
+  ["discovery DISC confident label", discovery.includes("Confident - Medium")],
+  ["discConfidenceLabel low", discConfidenceLabel("low") === "Confident - Low"],
   ["discInferredLabel linkedin_pdf", discInferredLabel("linkedin_pdf").includes("LinkedIn PDF")],
   ["discInferredLabel kaia", discInferredLabel("kaia").includes("Kaia meeting")],
   ["discInferredLabel merged", discInferredLabel("merged").includes("LinkedIn + Kaia")],

@@ -61,7 +61,7 @@ export function mergeMeddpiccIntoMeta(existingMeta, signals, source) {
   return meta;
 }
 
-/** @deprecated Migration only — use mergeDealMeddpicc for writes (ADR 005). */
+/** @deprecated Migration only. use mergeDealMeddpicc for writes (ADR 005). */
 export function mergeAccountMeddpicc(existingMeta, signals, source) {
   return mergeMeddpiccIntoMeta(existingMeta, signals, source);
 }
@@ -248,7 +248,7 @@ export function meddpiccSignalsFromProspectInfluence(prospectMeta, contactId) {
   if (!prospectMeta?.influence || prospectMeta.influence.level !== "high") return {};
   const name = prospectMeta.name || "Prospect";
   const role = prospectMeta.role || prospectMeta.influence.decisionRole || "";
-  const value = role ? `${name} — ${role}` : name;
+  const value = role ? `${name}. ${role}` : name;
   const out = {};
   const dr = String(prospectMeta.influence.decisionRole || "").toLowerCase();
   if (dr.includes("economic") || dr.includes("buyer")) {
@@ -425,7 +425,7 @@ export function buildMeddpiccDeltaDrafts(dealId, callId, previousMeddpicc, quali
   return deltas;
 }
 
-/** Extract MEDDPICC signals from post-call analysis (legacy — prefer Pass 4 qualification). */
+/** Extract MEDDPICC signals from post-call analysis (legacy. prefer Pass 4 qualification). */
 export function meddpiccSignalsFromPostCall(analysis) {
   const qualification = analysis?.qualification;
   if (qualification && typeof qualification === "object") {

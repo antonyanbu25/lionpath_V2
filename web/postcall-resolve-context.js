@@ -153,7 +153,7 @@ export async function buildPostCallResolveContext(ownerId) {
     if (isFirestorePermissionError(err)) {
       contextCache.delete(ownerId);
       console.warn(
-        "[postcall] Firestore resolve context denied — continuing without domain match:",
+        "[postcall] Firestore resolve context denied. continuing without domain match:",
         err?.message || err,
       );
       return empty;

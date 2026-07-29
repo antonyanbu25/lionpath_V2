@@ -24,7 +24,7 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { esc } from "./shared.js";
 import { renderLoadingPanel } from "./crayons-ui.js";
 
-/** Bumped with call perf + loading shell — grep console for [DEBUG-72b8a2] on portal. */
+/** Bumped with call perf + loading shell. grep console for [DEBUG-72b8a2] on portal. */
 const CALL_VIEW_MODULE_VERSION = "call-perf-1";
 
 const CALL_TYPE_LABELS = {
@@ -39,7 +39,7 @@ const CALL_TYPE_LABELS = {
 };
 
 function formatDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -69,7 +69,7 @@ function callDateLabel(record) {
 }
 
 function formatDateTime(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -375,7 +375,7 @@ function callTypePill(label) {
 }
 
 function confidenceBandLabel(pct) {
-  if (pct == null) return "—";
+  if (pct == null) return "-";
   if (pct >= 80) return "High";
   if (pct >= 50) return "Medium";
   return "Low";
@@ -394,9 +394,9 @@ function countMeddpiccFilled(meddpicc) {
 function renderTensionBand(line) {
   const text = String(line || "").trim();
   if (!text) return "";
-  const split = text.split(" — ");
+  const split = text.split(". ");
   if (split.length >= 2) {
-    return `<b class="call-verdict-tension-lead">${esc(split[0])}.</b> ${esc(split.slice(1).join(" — "))}`;
+    return `<b class="call-verdict-tension-lead">${esc(split[0])}.</b> ${esc(split.slice(1).join(". "))}`;
   }
   return esc(text);
 }
@@ -427,14 +427,14 @@ function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus
   else if (momentumStatus === "Stalled") parts.push("momentum has stalled");
 
   if (!parts.length) {
-    return "Scores tell different stories — use the scorecard evidence before coaching or forecasting.";
+    return "Scores tell different stories. Use the scorecard evidence before coaching or forecasting.";
   }
 
   const lead =
     qipScore != null && meddpiccScore != null && qipScore >= 75 && meddpiccScore < 45
-      ? "Flawless call on a thin deal — "
+      ? "Flawless call on a thin deal. "
       : qipScore != null && meddpiccScore != null && qipScore < 55 && meddpiccScore >= 60
-        ? "Qualified deal, weak call — "
+        ? "Qualified deal, weak call. "
         : "";
 
   return `${lead}${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${
@@ -451,7 +451,7 @@ function tractionPillClass(status) {
 
 function tcStatusLabel(status) {
   const labels = { yes: "Yes", no: "No", pending: "Pending", at_risk: "At risk" };
-  return labels[status] || status || "—";
+  return labels[status] || status || "-";
 }
 
 function tcStatusPillClass(status) {
@@ -520,7 +520,7 @@ function renderFitmentCard(deal) {
     const pct = n != null ? Math.min(100, Math.max(0, n)) : null;
     return `<div class="call-fitment-metric">
       <div class="sub">${esc(label)}</div>
-      <div class="call-fitment-value num">${pct != null ? `${pct}%` : "—"}</div>
+      <div class="call-fitment-value num">${pct != null ? `${pct}%` : "-"}</div>
       <div class="bar"><span style="width:${pct ?? 0}%;background:var(--green)"></span></div>
     </div>`;
   };
@@ -609,19 +609,19 @@ function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
     if (bestInternal?.talkPct != null) {
       metrics.push(["SE talk ratio", `${bestInternal.talkPct}%`, ""]);
     } else {
-      metrics.push(["SE talk ratio", "—", ""]);
+      metrics.push(["SE talk ratio", "-", ""]);
     }
   }
 
   const customerQuestions = parseCustomerQuestions(scorecard, record);
   metrics.push([
     "Customer questions",
-    customerQuestions != null ? String(customerQuestions) : "—",
+    customerQuestions != null ? String(customerQuestions) : "-",
     "",
   ]);
 
   const monologue = parseLongestMonologue(scorecard);
-  metrics.push(["Longest monologue", monologue || "—", monologue ? "warn" : ""]);
+  metrics.push(["Longest monologue", monologue || "-", monologue ? "warn" : ""]);
 
   if (seRow?.cameraOnPct != null) {
     metrics.push(["SE camera on", `${Math.round(Number(seRow.cameraOnPct))}%`, ""]);
@@ -630,7 +630,7 @@ function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
   } else if (videoFacts?.cameraOnPct != null) {
     metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`, ""]);
   } else {
-    metrics.push(["SE camera on", "—", ""]);
+    metrics.push(["SE camera on", "-", ""]);
   }
 
   if (aeRow?.cameraOnPct != null) {
@@ -638,7 +638,7 @@ function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
   } else if (aeRow?.cameraOn != null) {
     metrics.push(["AE camera on", aeRow.cameraOn ? "On" : "Off", ""]);
   } else {
-    metrics.push(["AE camera on", "—", ""]);
+    metrics.push(["AE camera on", "-", ""]);
   }
 
   if (customerRows.length) {
@@ -658,7 +658,7 @@ function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
       "",
     ]);
   } else {
-    metrics.push(["Customer cameras", "—", ""]);
+    metrics.push(["Customer cameras", "-", ""]);
   }
 
   return `<div class="call-spine-metrics">${metrics
@@ -812,7 +812,7 @@ function renderDealContextStrip(ctx) {
   if (deal?.id || deal?.title || account?.name) {
     const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "";
     const dealLabel = account?.name && dealTitle
-      ? `${account.name} — ${dealTitle}`
+      ? `${account.name}. ${dealTitle}`
       : account?.name || dealTitle;
     if (dealLabel) {
       const dealLink = deal?.id
@@ -836,7 +836,7 @@ function renderDealContextStrip(ctx) {
   const aiVal = formatTcFieldValue(technicalCommit?.aiAttach);
   if (aiVal) items.push(contextItem("AI attach", `<span class="pill purple">${esc(aiVal)}</span>`));
 
-  if (momentumStatus && momentumStatus !== "—") {
+  if (momentumStatus && momentumStatus !== "-") {
     const cls = tractionPillClass(momentumStatus);
     items.push(contextItem("Traction",
       `<span class="pill${cls ? ` ${cls}` : ""}">${esc(momentumStatus)}</span>`));
@@ -873,14 +873,14 @@ function renderVerdictStrip(ctx) {
     scorecard,
     callType,
   } = ctx;
-  const qipNum = qipScore != null ? esc(String(Math.round(qipScore))) : "—";
-  const medNum = meddpiccScore != null ? esc(String(meddpiccScore)) : "—";
+  const qipNum = qipScore != null ? esc(String(Math.round(qipScore))) : "-";
+  const medNum = meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
   const medSub =
     meddpiccFilled != null
       ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced`
-      : "—";
+      : "-";
   const traction =
-    momentumStatus && momentumStatus !== "—" ? esc(momentumStatus) : "—";
+    momentumStatus && momentumStatus !== "-" ? esc(momentumStatus) : "-";
   const tractionClass =
     momentumStatus === "Advancing"
       ? "call-verdict-big--good"
@@ -893,7 +893,7 @@ function renderVerdictStrip(ctx) {
   const profileMeta =
     scorecard?.rubricVersion || scorecard?.callType || callType
       ? `${esc(CALL_TYPE_LABELS[scorecard?.callType || callType] || callType || "call")} profile v${esc(scorecard?.rubricVersion || "1.0")}`
-      : "—";
+      : "-";
 
   return `
     <div class="call-verdict-card card-wire" aria-label="Verdict">
@@ -1011,7 +1011,7 @@ export function formatCallNotesBullets(notes) {
 function renderCallNotesBulletsHtml(notes) {
   const bullets = formatCallNotesBullets(notes);
   if (!bullets.length) {
-    return '<p class="muted call-notes-empty">No call notes yet — re-run post-call analysis or edit to add.</p>';
+    return '<p class="muted call-notes-empty">No call notes yet. Re-run post-call analysis or edit to add.</p>';
   }
   return `<ul class="call-notes-bullets">${bullets
     .map((b) => `<li>${esc(b)}</li>`)
@@ -1020,7 +1020,7 @@ function renderCallNotesBulletsHtml(notes) {
 
 function renderCallNotesEditPanelHtml(notes) {
   return `
-          <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
+          <p class="muted call-notes-hint">Internal: blunt coaching narrative. Not the customer MoM.</p>
           <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>`;
 }
 
@@ -1058,7 +1058,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
         const camKnown = r.cameraOn === true || r.cameraOn === false;
         const camCls = r.cameraOn === true ? "green" : r.cameraOn === false ? "amber" : "";
         const camLabel = !camKnown
-          ? "—"
+          ? "-"
           : r.cameraOnPct != null
             ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
             : r.cameraOn ? "On" : "Off";
@@ -1075,7 +1075,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
     ${
       hasVideo
         ? ""
-        : `<p class="muted call-stakeholder-note">Transcript-only call — roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
+        : `<p class="muted call-stakeholder-note">Transcript-only call. roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
     }`;
   } else if (hasVideo) {
     body = renderVideoEmptySection(
@@ -1159,7 +1159,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     body += renderSpineTimeAxis(durationSec);
     body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record, opts.stakeholderRows);
     if (usingTranscript) {
-      body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored — those need Pass 2.</p>`;
+      body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored; those need Pass 2.</p>`;
     }
   } else if (markers.length) {
     body = renderTimelineMarkers(markers);
@@ -1177,7 +1177,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   } else {
     body = renderVideoEmptySection(
       "No timeline",
-      "A timeline needs timestamps — either Pass 2 video or a VTT transcript. A plain-text transcript has no clock to place moments on.",
+      "A timeline needs timestamps: either Pass 2 video or a VTT transcript. A plain-text transcript has no clock to place moments on.",
     );
   }
 
@@ -1185,7 +1185,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     ? `How the ${durationLabel} went`
     : "How the call went";
   const subtitle = usingTranscript
-    ? "Conversation phases from the transcript clock — evidence only, not scored"
+    ? "Conversation phases from the transcript clock (evidence only, not scored)"
     : "";
 
   return `
@@ -1206,7 +1206,7 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
   if (!tc && !deltas.length) {
     return renderPhase2TabEmpty(
       "No technical commit yet",
-      "Pass 5 did not return a commit snapshot for this call. Link a deal and re-run analysis — the whiteboard decomposition lands here.",
+      "Pass 5 did not return a commit snapshot for this call. Link a deal and re-run analysis; the whiteboard decomposition lands here.",
     );
   }
 
@@ -1299,7 +1299,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
           .map(
             (o, i) => `<div class="call-objection-wire-row${i < objs.length - 1 ? " call-objection-wire-row--border" : ""}">
               <div class="call-objection-wire-text">${esc(o.objectionText || "")}</div>
-              <div class="sub">${esc(o.handling || "—")} · <span class="${o.landed ? "call-landed" : "call-open"}">${o.landed ? "landed" : "open"}</span></div>
+              <div class="sub">${esc(o.handling || "-")} · <span class="${o.landed ? "call-landed" : "call-open"}">${o.landed ? "landed" : "open"}</span></div>
             </div>`,
           )
           .join("")}
@@ -1324,7 +1324,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
       <div class="card-wire card-wire--tight">
         <h3>MEDDPICC</h3>
         <p class="sub">${meddpiccFilled != null ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced on this call` : "Deal qualification"}</p>
-        <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet — run Pass 4 qualification on a linked deal.</p>'}</div>
+        <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet. Run Pass 4 qualification on a linked deal.</p>'}</div>
       </div>
       <div class="call-health-aside">${objHtml}${tractionHtml}</div>
     </div>
@@ -1391,7 +1391,7 @@ export function renderMinutesTab(record, opts = {}) {
     ? `<br><br><b>Next steps</b><br>${actionItems
         .map((a) => {
           const owner = ownerLabel(a.owner);
-          const due = a.dueDate ? ` — <i>${esc(owner || "Owner")}, by ${esc(a.dueDate)}</i>` : owner ? ` — <i>${esc(owner)}</i>` : "";
+          const due = a.dueDate ? `. <i>${esc(owner || "Owner")}, by ${esc(a.dueDate)}</i>` : owner ? `. <i>${esc(owner)}</i>` : "";
           return `· ${esc(a.text)}${due}`;
         })
         .join("<br>")}`
@@ -1412,7 +1412,7 @@ export function renderMinutesTab(record, opts = {}) {
       </div>
       <p class="sub call-mom-wire-sub">Drafted from commitments made aloud, with timestamps kept underneath.</p>
       <div class="call-mom-wire-body">
-        <div class="call-mom-wire-title">${esc(title)}${dateLabel ? ` — ${esc(dateLabel)}` : ""}</div>
+        <div class="call-mom-wire-title">${esc(title)}${dateLabel ? `. ${esc(dateLabel)}` : ""}</div>
         ${recapHtml}
       </div>
       <details class="call-mom-edit-wrap">
@@ -1431,7 +1431,7 @@ function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
   const gaps = productGaps || [];
   const wins = whatWorks || [];
   if (!gaps.length && !wins.length) {
-    return `<p class="muted">No product gaps or wins recorded for this call yet. Re-run post-call analysis — Pass 6 extracts gaps from the transcript and call notes.</p>`;
+    return `<p class="muted">No product gaps or wins recorded for this call yet. Re-run post-call analysis. Pass 6 extracts gaps from the transcript and call notes.</p>`;
   }
 
   const gapRows = gaps.map((g) => {
@@ -1443,7 +1443,7 @@ function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
     return `<div class="call-product-unified-row">
       <div class="call-product-unified-main">
         <div class="call-product-unified-title">${esc(g.title || g.productArea || "Product gap")}</div>
-        ${g.verbatim ? `<div class="ev bad"><div class="ts">${ts ? esc(ts) : "—"}</div>${esc(g.verbatim)}</div>` : ""}
+        ${g.verbatim ? `<div class="ev bad"><div class="ts">${ts ? esc(ts) : "-"}</div>${esc(g.verbatim)}</div>` : ""}
         <div class="sub call-product-unified-meta">${esc(formatProductAreaLabel(g))}${cluster ? ` · ${esc(cluster)}` : ""} · <span class="pill ${typeCls}">${esc(typeLabel)}</span></div>
       </div>
       <span class="pill blue">${esc(statusLabel)}</span>
@@ -1455,7 +1455,7 @@ function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
     return `<div class="call-product-unified-row call-product-unified-row--win">
       <div class="call-product-unified-main">
         <div class="call-product-unified-title">${esc(w.title || w.productArea || "What landed")}</div>
-        ${w.verbatim ? `<div class="ev good"><div class="ts">${ts ? esc(ts) : "—"}</div>${esc(w.verbatim)}</div>` : `<div class="sub">${esc(w.summary || "")}</div>`}
+        ${w.verbatim ? `<div class="ev good"><div class="ts">${ts ? esc(ts) : "-"}</div>${esc(w.verbatim)}</div>` : `<div class="sub">${esc(w.summary || "")}</div>`}
       </div>
       <span class="pill green">What's working</span>
     </div>`;
@@ -1537,7 +1537,7 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
     </section>`;
 }
 
-/** Firestore reads are optional — local history analysis blob renders the wireframe. */
+/** Firestore reads are optional. local history analysis blob renders the wireframe. */
 async function safeEnrich(label, fn, fallback) {
   try {
     return await fn();
@@ -1715,7 +1715,7 @@ async function loadCallBundle(session, record) {
   const qipLabel = composite ? formatTypeComposite(composite) : null;
   const deltaInfo = qipDeltaForType(email, callType, qipScore, record.id);
   const analysis = record.analysis || resultBlob.analysis || {};
-  const momentumStatus = analysis?.momentum?.status || "—";
+  const momentumStatus = analysis?.momentum?.status || "-";
   const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
 
@@ -2228,7 +2228,7 @@ export async function renderCallView(container, session, opts = {}) {
     const resolvedRecord =
       record || (await getPostCallForSession(activeSession, opts.callId, ownerEmail));
     if (!resolvedRecord) {
-      container.innerHTML = renderCallEmptyState("Call not found — it may have been cleared from this browser.");
+      container.innerHTML = renderCallEmptyState("Call not found. It may have been cleared from this browser.");
       return;
     }
 

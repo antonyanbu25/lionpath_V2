@@ -144,7 +144,7 @@ export function aggregateFollowUps(email, opts = {}) {
         callId: record.id,
         company,
         action: step.action,
-        due: step.due || "—",
+        due: step.due || "-",
         dueDate,
         urgency,
         owner: step.owner,

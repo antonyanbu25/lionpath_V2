@@ -78,6 +78,14 @@ Server setup: see `docs/VPS_DEPLOY.md`.
 
 **Typical wait:** 15–45 seconds.
 
+**Research sub-phases** (inside `gatherResearch`, tracked as `timings.research`):
+
+1. **Orchestrator** — one optional web-research call (skipped on error).
+2. **Playbook queries** — ~5 parallel Gemini+google_search calls (+1 per prospect email for LinkedIn).
+3. **Extract facts** — one structured JSON call over merged snippets.
+4. **Gap fill** — up to 3 parallel follow-up queries for missing signals, then another extractFacts if any succeed.
+5. **Synthesize** — separate timed step; one JSON call to build the brief.
+
 ### 2. Post-call analysis
 
 1. SE pastes a Zoom recording URL in **the post-call UI** (`web/postcall.js`).

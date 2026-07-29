@@ -53,7 +53,7 @@ export function buildInputHashPayload(input: PrepInput, emails: string[]): Input
   const exports = normalizeLinkedInExports(input.linkedinProfileExports);
   return {
     companyDomain: input.companyDomain,
-    companyName: input.companyName.toLowerCase(),
+    companyName: String(input.companyName || "").toLowerCase(),
     emails: [...emails].sort(),
     playbookVersion: PLAYBOOK_VERSION,
     linkedin: exports.length ? linkedInFingerprint(exports) : "",

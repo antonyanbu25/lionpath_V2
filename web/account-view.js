@@ -43,17 +43,17 @@ const MEDDPICC_LETTERS = {
 };
 
 function formatDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatShortDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function formatGeneratedSummaryMeta(generatedAt, sourceCallIds, dealCount = null) {
-  const when = generatedAt ? formatDate(generatedAt) : "—";
+  const when = generatedAt ? formatDate(generatedAt) : "-";
   const count = Array.isArray(sourceCallIds) ? sourceCallIds.length : 0;
   const callLabel = count === 1 ? "1 call" : `${count} calls`;
   if (dealCount != null) {
@@ -119,7 +119,7 @@ function dealTypeTag(type) {
 }
 
 function listMotionBadge(type) {
-  const label = DEAL_TYPE_LABELS[type] || type || "—";
+  const label = DEAL_TYPE_LABELS[type] || type || "-";
   const mod = type === "expansion" ? "expansion" : "new-business";
   return `<span class="account-list-motion-badge account-list-motion-badge--${mod}">${esc(label)}</span>`;
 }
@@ -243,7 +243,7 @@ function renderDealTeamCard(detail) {
     return `
       <section class="account-record-section account-deal-team-section">
         <h3 class="account-record-section-title">Deal team</h3>
-        <p class="muted">No SEs assigned yet — run prep to claim primary.</p>
+        <p class="muted">No SEs assigned yet. Run prep to claim primary.</p>
       </section>`;
   }
 
@@ -346,7 +346,7 @@ function eventTitleSubtitle(ev, seNameById = {}) {
     case "stage_changed":
       return {
         title: "Stage updated",
-        subtitle: `${STAGE_LABELS[p.fromStage] || p.fromStage || "—"} → ${STAGE_LABELS[p.toStage] || p.toStage || "—"}`,
+        subtitle: `${STAGE_LABELS[p.fromStage] || p.fromStage || "-"} → ${STAGE_LABELS[p.toStage] || p.toStage || "-"}`,
       };
     case "prep_generated":
       return { title: "Prep generated", subtitle: p.company ? String(p.company) : "Prep brief" };
@@ -494,7 +494,7 @@ function discAbbrev(contact) {
   if (primary && primary !== "unknown") {
     return `<span class="contact-meta-abbrev contact-meta-abbrev--disc" title="DISC ${esc(primary)}">${esc(primary)}</span>`;
   }
-  return `<span class="contact-meta-abbrev contact-meta-abbrev--empty muted" title="DISC not assessed">—</span>`;
+  return `<span class="contact-meta-abbrev contact-meta-abbrev--empty muted" title="DISC not assessed">-</span>`;
 }
 
 function influenceAbbrev(contact) {
@@ -504,7 +504,7 @@ function influenceAbbrev(contact) {
     const full = level.charAt(0).toUpperCase() + level.slice(1);
     return `<span class="contact-meta-abbrev contact-meta-abbrev--influence contact-meta-abbrev--${esc(level)}" title="${esc(full)} influence">${esc(letter)}</span>`;
   }
-  return `<span class="contact-meta-abbrev contact-meta-abbrev--empty muted" title="Influence not assessed">—</span>`;
+  return `<span class="contact-meta-abbrev contact-meta-abbrev--empty muted" title="Influence not assessed">-</span>`;
 }
 
 function primaryContactMark(isPrimary) {
@@ -669,7 +669,7 @@ function renderContactSelectedDetail(contact, events, isPrimary) {
 }
 
 function healthTag(health) {
-  if (!health?.label) return `<span class="muted">—</span>`;
+  if (!health?.label) return `<span class="muted">-</span>`;
   const color = health.tone === "green" ? "green" : health.tone === "red" ? "red" : "yellow";
   return `<fw-tag text="${esc(health.label)}" color="${color}"></fw-tag>`;
 }
@@ -690,12 +690,12 @@ function meddpiccListTag(score) {
 function qipListTag(postCall, scorecard) {
   const record = { scorecard, analysis: postCall?.analysis, qualityScore: postCall?.qualityScore };
   const qip = resolveQipDisplay(record);
-  if (qip.label === "—" && postCall?.qualityScore != null) {
+  if (qip.label === "-" && postCall?.qualityScore != null) {
     const s = postCall.qualityScore;
     const color = s >= 70 ? "green" : s >= 50 ? "yellow" : "red";
     return `<fw-tag text="${esc(String(s))}" color="${color}"></fw-tag>`;
   }
-  if (qip.label === "—") return `<span class="muted">—</span>`;
+  if (qip.label === "-") return `<span class="muted">-</span>`;
   const num = parseInt(String(qip.label).replace(/[^\d]/g, ""), 10);
   const color = num >= 70 ? "green" : num >= 50 ? "yellow" : "red";
   return `<fw-tag text="${esc(qip.label)}" color="${color}"></fw-tag>`;
@@ -729,7 +729,7 @@ function renderFirmographicsGrid(firmographics) {
   return rows
     .map(
       ([label, value]) =>
-        `<div class="account-firmographics-row"><span class="muted">${esc(label)}</span><span>${esc(String(value ?? "—"))}</span></div>`,
+        `<div class="account-firmographics-row"><span class="muted">${esc(label)}</span><span>${esc(String(value ?? "-"))}</span></div>`,
     )
     .join("");
 }
@@ -747,7 +747,7 @@ function renderAccountDealsTable(dealRows, tableOpts = {}) {
             ? `<p class="prep-form-eyebrow account-section-eyebrow">Deals on this account</p>`
             : `<h3 class="account-record-section-title">Deals on this account</h3>`
         }
-        <p class="muted">No deals yet — start with New prep.</p>
+        <p class="muted">No deals yet. Start with New prep.</p>
         ${crossSellHint}
       </section>`;
   }
@@ -769,7 +769,7 @@ function renderAccountDealsTable(dealRows, tableOpts = {}) {
           <td class="account-list-num">${esc(arrCell)}</td>
           <td class="account-list-num">${esc(mrrCell)}</td>
           <td class="muted">${esc(primarySeName)}</td>
-          <td>${traction ? tractionTag(traction) : `<span class="muted">—</span>`}</td>
+          <td>${traction ? tractionTag(traction) : `<span class="muted">-</span>`}</td>
         </tr>`;
     })
     .join("");
@@ -816,7 +816,7 @@ function renderAccountCallsTable(accountCalls, tableOpts = {}) {
             ? `<p class="prep-form-eyebrow account-section-eyebrow">All calls on this account</p>`
             : `<h3 class="account-record-section-title">All calls on this account</h3>`
         }
-        <p class="muted">No calls yet — run post-call to add the first one.</p>
+        <p class="muted">No calls yet. Run post-call to add the first one.</p>
       </section>`;
   }
 
@@ -836,7 +836,7 @@ function renderAccountCallsTable(accountCalls, tableOpts = {}) {
           <td class="muted">${esc(dealLabel)}</td>
           <td class="muted">${esc(ownerName)}</td>
           <td>${qipListTag(postCall, scorecard)}</td>
-          <td>${meddpiccScore != null ? meddpiccListTag(meddpiccScore) : `<span class="muted">—</span>`}</td>
+          <td>${meddpiccScore != null ? meddpiccListTag(meddpiccScore) : `<span class="muted">-</span>`}</td>
         </tr>`;
     })
     .join("");
@@ -881,7 +881,7 @@ function renderAccountGapsPlaceholder(sectionOpts = {}) {
           : `<h3 class="account-record-section-title">Product gaps raised by this account</h3>`
       }
       <div class="account-gaps-placeholder">
-        <p class="muted">Gap clustering arrives in Phase 3 — product signal roll-up across calls.</p>
+        <p class="muted">Gap clustering arrives in Phase 3. product signal roll-up across calls.</p>
       </div>
     </section>`;
 }
@@ -899,12 +899,12 @@ function renderEvaluationPanels(rollup, panelOpts = {}) {
     return `
       <section class="account-record-section account-reason-section account-record-section--card account-record-section--tight">
         <p class="prep-form-eyebrow account-section-eyebrow">Reason for evaluation</p>
-        ${reasonText ? `<p class="account-reason-body">${esc(reasonText)}</p>` : `<p class="muted">Not captured yet — surfaces from technical commit after post-call.</p>`}
+        ${reasonText ? `<p class="account-reason-body">${esc(reasonText)}</p>` : `<p class="muted">Not captured yet; surfaces from technical commit after post-call.</p>`}
         ${reasonText ? `<p class="muted account-eval-footnote">Compelling event · from post-call analysis</p>` : ""}
       </section>
       <section class="account-record-section account-why-ai-section account-record-section--card account-record-section--tight">
         <p class="prep-form-eyebrow account-section-eyebrow">Why AI</p>
-        ${whyAiText ? `<p class="account-why-ai-body">${esc(whyAiText)}</p>` : `<p class="muted">Not captured yet — AI attach narrative appears after a demo or discovery call.</p>`}
+        ${whyAiText ? `<p class="account-why-ai-body">${esc(whyAiText)}</p>` : `<p class="muted">Not captured yet; AI attach narrative appears after a demo or discovery call.</p>`}
         ${whyAiText ? `<p class="muted account-eval-footnote">AI attach narrative · from post-call analysis</p>` : ""}
       </section>`;
   }
@@ -912,11 +912,11 @@ function renderEvaluationPanels(rollup, panelOpts = {}) {
   return `
     <section class="account-record-section account-reason-section">
       <h3 class="account-record-section-title">Reason for evaluation</h3>
-      ${reasonText ? `<p class="account-reason-body">${esc(reasonText)}</p>` : `<p class="muted">Not captured yet — surfaces from technical commit after post-call.</p>`}
+      ${reasonText ? `<p class="account-reason-body">${esc(reasonText)}</p>` : `<p class="muted">Not captured yet; surfaces from technical commit after post-call.</p>`}
     </section>
     <section class="account-record-section account-why-ai-section">
       <h3 class="account-record-section-title">Why AI</h3>
-      ${whyAiText ? `<p class="account-why-ai-body">${esc(whyAiText)}</p>` : `<p class="muted">Not captured yet — AI attach narrative appears after a demo or discovery call.</p>`}
+      ${whyAiText ? `<p class="account-why-ai-body">${esc(whyAiText)}</p>` : `<p class="muted">Not captured yet. AI attach narrative appears after a demo or discovery call.</p>`}
     </section>`;
 }
 
@@ -934,7 +934,7 @@ function renderCrossSellEmptyHint(detail, wireframe = false) {
   if (wireframe) {
     return `<div class="account-cross-sell-hint account-cross-sell-hint--wire"><p class="muted">No second deal yet. ${esc(hint)}</p></div>`;
   }
-  return `<div class="account-cross-sell-hint"><p class="muted">No second deal yet. ${esc(hint)} — worth a cross-sell conversation.</p></div>`;
+  return `<div class="account-cross-sell-hint"><p class="muted">No second deal yet. ${esc(hint)}; worth a cross-sell conversation.</p></div>`;
 }
 
 function renderAccountHeaderArr(detail) {
@@ -968,7 +968,7 @@ function renderContactsPanel(
             ? `<p class="prep-form-eyebrow account-section-eyebrow">Contacts</p>`
             : `<h3 class="account-record-section-title">Contacts</h3>`
         }
-        <p class="muted account-detail-empty-contacts">No contacts yet — add prospect emails in prep.</p>
+        <p class="muted account-detail-empty-contacts">No contacts yet. Add prospect emails in prep.</p>
       </section>`;
   }
 
@@ -1174,14 +1174,14 @@ function renderAccountOpportunitiesSection(detail) {
     return `
       <section class="account-record-section account-opportunities-section">
         <h3 class="account-record-section-title">Opportunities</h3>
-        <p class="muted">No deals yet — start with New prep on an active pursuit.</p>
+        <p class="muted">No deals yet. Start with New prep on an active pursuit.</p>
       </section>`;
   }
 
   const rows = sorted
     .map((d) => {
       const typeLabel = DEAL_TYPE_LABELS[d.type] || d.type || "Deal";
-      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "—";
+      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "-";
       const statusLabel = d.status === "archived" ? "Archived" : d.status === "paused" ? "Paused" : "Active";
       const title = d.title ? esc(d.title) : typeLabel;
       const searchText = `${title} ${typeLabel} ${stageLabel} ${statusLabel}`.toLowerCase();
@@ -1239,7 +1239,7 @@ function renderDealsListSection(detail) {
   const rows = sorted
     .map((d) => {
       const typeLabel = DEAL_TYPE_LABELS[d.type] || d.type || "Deal";
-      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "—";
+      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "-";
       const statusLabel = d.status === "archived" ? "Archived" : d.status === "paused" ? "Paused" : "Active";
       const selected = d.id === selectedDealId;
       const searchText = `${typeLabel} ${stageLabel} ${statusLabel}`.toLowerCase();
@@ -1385,7 +1385,7 @@ function renderArtifactTabs(detail) {
         .slice(0, 5)
         .map((g) => {
           const suffix = g.count > 1 ? ` (${g.count} preps)` : "";
-          const label = `${formatDate(g.createdAt)} — ${g.company}${suffix}`;
+          const label = `${formatDate(g.createdAt)}. ${g.company}${suffix}`;
           return artifactRow(label);
         })
         .join("") +
@@ -1396,12 +1396,12 @@ function renderArtifactTabs(detail) {
 
   const callRows = (postCalls || []).map((c) => {
     const score = c.qualityScore != null ? ` (${c.qualityScore}/10)` : "";
-    const label = `${formatDate(c.createdAt)} — ${c.title || "Call"}${score}`;
+    const label = `${formatDate(c.createdAt)}. ${c.title || "Call"}${score}`;
     return artifactRow(label);
   }).join("") || `<li class="muted account-detail-empty-artifacts" data-search-text="">No post-calls yet</li>`;
 
   const taskRows = (tasks || []).map((t) => {
-    const label = `${t.status} — ${t.title}`;
+    const label = `${t.status}. ${t.title}`;
     return artifactRow(label);
   }).join("") || `<li class="muted account-detail-empty-artifacts" data-search-text="">No tasks yet</li>`;
 
@@ -1423,7 +1423,7 @@ function renderPursuitBar(detail, lensOptions, lifecycleOwnerId) {
 
   const typeHint =
     !activeForType ?
-      `<p class="muted account-deal-type-empty-hint">No active ${esc(DEAL_TYPE_LABELS[typeValue] || typeValue)} deal — run New prep to create one.</p>`
+      `<p class="muted account-deal-type-empty-hint">No active ${esc(DEAL_TYPE_LABELS[typeValue] || typeValue)} deal. Run New prep to create one.</p>`
     : "";
 
   const lensSelect =
@@ -1436,7 +1436,7 @@ function renderPursuitBar(detail, lensOptions, lifecycleOwnerId) {
   const pipelineHtml =
     selected || activeForType ?
       renderLifecyclePipeline(lifecycle.stage, [], lifecycleOwnerId || lifecycle.ownerId, true)
-    : `<p class="muted account-deal-type-empty-hint account-deal-type-empty-hint--pipeline">No active deal for this type — stage updates apply after a deal exists.</p>`;
+    : `<p class="muted account-deal-type-empty-hint account-deal-type-empty-hint--pipeline">No active deal for this type. stage updates apply after a deal exists.</p>`;
 
   return `
     <div class="account-pursuit-band account-pursuit-bar account-pursuit-bar--pipeline-only" aria-label="Pipeline">
@@ -1463,10 +1463,10 @@ function renderCommandChrome(detail, chromeOpts = {}) {
   const firmo = detail.accountRollup?.firmographics;
   const subtitleParts = [
     account?.domain,
-    firmo?.region !== "—" ? firmo?.region : null,
-    firmo?.subRegion !== "—" ? firmo?.subRegion : null,
-    firmo?.hq !== "—" ? firmo?.hq : null,
-    firmo?.supportAgents !== "—" ? `${firmo?.supportAgents} support agents` : null,
+    firmo?.region !== "-" ? firmo?.region : null,
+    firmo?.subRegion !== "-" ? firmo?.subRegion : null,
+    firmo?.hq !== "-" ? firmo?.hq : null,
+    firmo?.supportAgents !== "-" ? `${firmo?.supportAgents} support agents` : null,
   ].filter(Boolean);
   const domainLine = subtitleParts.length
     ? `<p class="account-command-header-domain muted">${esc(subtitleParts.join(" · "))}</p>`
@@ -1540,7 +1540,7 @@ function renderAccountOverview(detail, viewOpts = {}) {
           ${renderGeneratedSummarySection(
             "Account summary",
             detail.accountSummary,
-            "Generated after the first post-call on this account — spans every deal and call.",
+            "Generated after the first post-call on this account. spans every deal and call.",
             {
               wireframe: true,
               dealCount: rollup.dealCount ?? (detail.deals || []).length,
@@ -1632,7 +1632,7 @@ function renderOpportunityRecord(detail, detailSearchQuery = "", viewOpts = {}) 
             ${renderGeneratedSummarySection(
               "Deal summary",
               detail.dealSummary,
-              "Generated after the first post-call on this deal — rewritten after every call.",
+              "Generated after the first post-call on this deal. rewritten after every call.",
             )}
             ${renderRightTabs(detail, events, seNameById, viewOpts, detailSearchQuery)}
           </div>
@@ -1953,8 +1953,8 @@ function renderAccountListMetricCard(label, value, sub = "", valueClass = "") {
 
 /** @param {ReturnType<typeof summarizeAccountListMetrics>} metrics */
 function renderAccountListMetrics(metrics) {
-  const arrVal = metrics.totalArr != null ? formatCompactUsd(metrics.totalArr) : "—";
-  const atRiskArr = metrics.atRiskArr != null ? formatCompactUsd(metrics.atRiskArr) : "—";
+  const arrVal = metrics.totalArr != null ? formatCompactUsd(metrics.totalArr) : "-";
+  const atRiskArr = metrics.atRiskArr != null ? formatCompactUsd(metrics.atRiskArr) : "-";
   const openHint =
     metrics.withOpenDeals === 1 ? "1 with open deals" : `${metrics.withOpenDeals} with open deals`;
 
@@ -1983,7 +1983,7 @@ function renderAccountListItem(row) {
     totalArrHigh != null ? displayMrrFromArr(totalArrHigh) : null,
     totalArrPoint != null ? displayMrrFromArr(totalArrPoint) : null,
   );
-  const lastTouch = lastTouchDays != null ? `${lastTouchDays}d` : "—";
+  const lastTouch = lastTouchDays != null ? `${lastTouchDays}d` : "-";
 
   return `
     <button type="button" class="lifecycle-list-item account-list-item account-list-row" data-account-id="${esc(account.id)}">
@@ -1993,11 +1993,11 @@ function renderAccountListItem(row) {
           ${domain ? `<span class="account-list-domain muted">${domain}</span>` : ""}
           <span class="account-list-row-mobile-meta muted">${esc(lastTouch)} · ${esc(String(dealCount ?? 0))} deals</span>
         </span>
-        <span class="account-list-col account-list-col--region muted">${esc(region || "—")}</span>
+        <span class="account-list-col account-list-col--region muted">${esc(region || "-")}</span>
         <span class="account-list-col account-list-col--deals account-list-num">${esc(String(dealCount ?? 0))}</span>
         <span class="account-list-col account-list-col--arr account-list-num">${esc(arrBand)}</span>
         <span class="account-list-col account-list-col--mrr account-list-num">${esc(mrrBand)}</span>
-        <span class="account-list-col account-list-col--products muted">${esc(productsInPlay || "—")}</span>
+        <span class="account-list-col account-list-col--products muted">${esc(productsInPlay || "-")}</span>
         <span class="account-list-col account-list-col--calls account-list-num">${esc(String(callCount ?? 0))}</span>
         <span class="account-list-col account-list-col--health">${healthTag(health)}</span>
         <span class="account-list-col account-list-col--touch account-list-num muted">${esc(lastTouch)}</span>
@@ -2195,7 +2195,7 @@ export async function renderAccountView(container, session, opts = {}) {
         container,
         opts,
         renderAccountsEmptyState(
-          "No accounts yet — run a prep or post-call to add your first account.",
+          "No accounts yet. run a prep or post-call to add your first account.",
         ),
       );
       return;

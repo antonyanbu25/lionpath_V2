@@ -12,12 +12,18 @@ import {
   normalizeLinkedInExports,
 } from "./linkedin-pdf";
 import { mergeEnrichmentsIntoPrep } from "./merge-enrichment";
-import { resolveKaiaForPrepInput } from "../kaia/prepKaia";
+import { applyPdfNameFallbacks } from "./pdf-name-fallback";
+import { runResearch } from "../research-orchestrator";
+import { resolveMergedAdditionalContext } from "./merged-context";
+import { orchestratorToFacts, orchestratorToSnippets } from "./orchestrator-bridge";
+import { extractSeContextFacts } from "./se-context-extract";
+import { fillResearchGaps } from "./gap-research";
 import { factsFromSeContext } from "./se-context-facts";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
   Env,
   PrepInput,
+  NormalizedPrepInput,
   PrepResult,
   ResearchFact,
   ResearchMeta,
@@ -25,7 +31,7 @@ import type {
   SourceRef,
 } from "./types";
 
-export { resolveProspectEmails, deriveDomain, normalizePrepInput, computeInputHash } from "./normalize-input";
+export { resolveProspectEmails, deriveDomain, normalizePrepInput, computeInputHash, deriveCompanyNameFromEmail, deriveCompanyNameFromDomain, resolveCompanyName } from "./normalize-input";
 export type { PrepInput, PrepResult, ResearchOnlyResult, Env } from "./types";
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -69,7 +75,7 @@ function applySeContextFacts(
 
 async function gatherResearch(
   env: Env,
-  input: PrepInput,
+  input: NormalizedPrepInput,
   emails: string[],
 ): Promise<{
   snippets: import("./types").ResearchSnippet[];
@@ -79,6 +85,8 @@ async function gatherResearch(
   playbookSkipped: boolean;
   apolloCredits: number;
   linkedinMatchedEmails: string[];
+  mergedContext: string;
+  kaiaFetched: boolean;
 }> {
   const linkedinExports = normalizeLinkedInExports(input.linkedinProfileExports);
   const { matchedEmails } = assignExportsToProspects(
@@ -89,8 +97,9 @@ async function gatherResearch(
 
   const { cacheHit, bundle } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
+    const { text: mergedContext } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
-    const withSe = applySeContextFacts(baseFacts, bundle.sources, input.additionalContext);
+    const withSe = applySeContextFacts(baseFacts, bundle.sources, mergedContext);
     return {
       snippets: bundle.snippets,
       facts: withSe.facts,
@@ -99,6 +108,8 @@ async function gatherResearch(
       playbookSkipped: true,
       apolloCredits: 0,
       linkedinMatchedEmails,
+      mergedContext,
+      kaiaFetched: mergedContext !== (input.additionalContext || "").trim(),
     };
   }
 
@@ -116,7 +127,28 @@ async function gatherResearch(
     void firmographics;
   }
 
-  const snippets = await runPlaybookResearch(
+  const pdfSnippets = linkedInPdfSnippets(linkedinExports);
+
+  const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
+
+  let orchestratorSnippets: import("./types").ResearchSnippet[] = [];
+  let orchestratorFacts: ResearchFact[] = [];
+  let orchestratorSources: SourceRef[] = [];
+  try {
+    const orchestratorCtx = await runResearch(env, {
+      companyName: input.companyName,
+      domain: input.companyDomain,
+      emails,
+    });
+    orchestratorSnippets = orchestratorToSnippets(orchestratorCtx);
+    const orch = orchestratorToFacts(orchestratorCtx);
+    orchestratorFacts = orch.facts;
+    orchestratorSources = orch.sources;
+  } catch (err) {
+    console.warn("prep/research-orchestrator skipped:", (err as Error).message);
+  }
+
+  const playbookSnippets = await runPlaybookResearch(
     env,
     {
       companyName: input.companyName,
@@ -126,35 +158,48 @@ async function gatherResearch(
     { skipLinkedInForEmails: matchedEmails },
   );
 
-  const pdfSnippets = linkedInPdfSnippets(linkedinExports);
-  const allSnippets = [...snippets, ...pdfSnippets];
-
-  const { researchContext } = await resolveKaiaForPrepInput(input);
-  let additionalContext = input.additionalContext || "";
-  if (researchContext) {
-    const block = `Kaia meeting context:\n${researchContext}`;
-    additionalContext = additionalContext ? `${additionalContext}\n\n${block}` : block;
-  }
+  const allSnippets = [...orchestratorSnippets, ...playbookSnippets, ...pdfSnippets];
 
   const extracted = await extractFacts(env, allSnippets, {
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     emails,
-    additionalContext,
+    additionalContext: mergedContext,
   });
 
-  const facts = mergeFacts(apolloFacts, extracted.facts);
-  const sources = mergeSources(apolloSources, extracted.sources);
-  const withSe = applySeContextFacts(facts, sources, additionalContext);
+  const seExtracted = await extractSeContextFacts(env, mergedContext);
+  let facts = mergeFacts(apolloFacts, orchestratorFacts, extracted.facts, seExtracted.facts);
+  let sources = mergeSources(apolloSources, orchestratorSources, extracted.sources, seExtracted.sources);
+  let snippets = allSnippets;
+
+  const withSe = applySeContextFacts(facts, sources, mergedContext);
+  facts = withSe.facts;
+  sources = withSe.sources;
+
+  const gapFilled = await fillResearchGaps(
+    env,
+    {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+      additionalContext: mergedContext,
+    },
+    snippets,
+    facts,
+    sources,
+  );
+  const afterGap = applySeContextFacts(gapFilled.facts, gapFilled.sources, mergedContext);
 
   return {
-    snippets: allSnippets,
-    facts: withSe.facts,
-    sources: withSe.sources,
+    snippets: gapFilled.snippets,
+    facts: afterGap.facts,
+    sources: afterGap.sources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,
     linkedinMatchedEmails,
+    mergedContext,
+    kaiaFetched,
   };
 }
 
@@ -211,7 +256,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       emails,
-      additionalContext: input.additionalContext,
+      additionalContext: research.mergedContext || input.additionalContext,
       meetingType: input.meetingType,
       ae: input.ae,
       effort,
@@ -225,6 +270,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   const t2 = Date.now();
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
+  prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -333,13 +379,14 @@ export async function runPrepSynthesize(
   const sources = rawInput.researchBundle?.sources || [];
 
   const effort = ALLOWED_EFFORT.includes(input.effort || "") ? input.effort! : env.EFFORT || "medium";
+  const { text: mergedContext } = await resolveMergedAdditionalContext(input);
   const prepRaw = await synthesizePrep(
     env,
     {
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       emails,
-      additionalContext: input.additionalContext,
+      additionalContext: mergedContext,
       meetingType: input.meetingType,
       ae: input.ae,
       effort,

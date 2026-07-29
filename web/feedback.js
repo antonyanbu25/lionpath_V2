@@ -1,4 +1,4 @@
-/** Sidebar feedback — local queue + worker POST /api/feedback. */
+/** Sidebar feedback. local queue + worker POST /api/feedback. */
 
 import {
   readFieldValueAsync,
@@ -119,7 +119,7 @@ export function initFeedback(deps = {}) {
       }
     }
 
-    showMsg("Thanks — your feedback was saved.");
+    showMsg("Thanks. Your feedback was saved.");
     setButtonLoading(submitBtn, false);
     setTimeout(close, 1200);
   };

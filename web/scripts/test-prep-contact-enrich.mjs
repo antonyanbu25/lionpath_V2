@@ -6,6 +6,7 @@ import {
   matchPdfToEmail,
   matchPdfToProspect,
   mergeEnrichmentsIntoPrep,
+  applyPdfNameFallbacks,
 } from "../prep-contact-enrich.js";
 
 const saraPdf = `
@@ -40,6 +41,37 @@ const map = assignPdfsToEmails(
 );
 
 assert.equal(map.get("sara.cuervo@einhell.com")?.fileName, "Profile (1).pdf");
+assert.equal(map.get("diamelsys.villarroel@einhell.com")?.fileName, "Profile (2).pdf");
+
+const annaPdf = `
+Contact
+www.linkedin.com/in/anna-thys-123 (LinkedIn)
+Anna Thys
+Project Manager
+`;
+const bobPdf = `
+Contact
+www.linkedin.com/in/bob-smith-456 (LinkedIn)
+Bob Smith
+Engineer
+`;
+const carolPdf = `
+Contact
+www.linkedin.com/in/carol-jones-789 (LinkedIn)
+Carol Jones
+Director
+`;
+const threeEmails = ["a@co.com", "b@co.com", "c@co.com"];
+const threePdfs = [
+  { fileName: "p1.pdf", text: annaPdf },
+  { fileName: "p2.pdf", text: bobPdf },
+  { fileName: "p3.pdf", text: carolPdf },
+];
+const positionalMap = assignPdfsToEmails(threePdfs, threeEmails);
+assert.equal(positionalMap.size, 3, "positional fallback assigns all PDFs");
+assert.ok(positionalMap.get("a@co.com"), "email a gets pdf");
+assert.ok(positionalMap.get("b@co.com"), "email b gets pdf");
+assert.ok(positionalMap.get("c@co.com"), "email c gets pdf");
 
 const singleMap = assignPdfsToEmails([{ fileName: "profile.pdf", text: luizPdf }], [
   "diamelsys.villarroel@einhell.com",
@@ -92,5 +124,16 @@ const mergedCompetitors = mergeEnrichmentsIntoPrep(
   ],
 );
 assert.deepEqual(mergedCompetitors.prospects[0].competitorTouchpoints, [], "enrichment clears synthesis competitors");
+
+const fallback = applyPdfNameFallbacks(
+  { prospects: [{ name: "unknown", role: "unknown", sourceLabel: "S1" }, { name: "unknown", role: "unknown" }], sources: [] },
+  ["a@co.com", "b@co.com"],
+  [
+    { fileName: "p1.pdf", text: annaPdf },
+    { fileName: "p2.pdf", text: bobPdf },
+  ],
+);
+assert.equal(fallback.prospects[0].name, "Anna Thys");
+assert.equal(fallback.prospects[1].name, "Bob Smith");
 
 console.log("test-prep-contact-enrich.mjs: ok");

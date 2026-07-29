@@ -1,4 +1,4 @@
-/** Pre-call research disputes — local log + optional worker feedback sync. */
+/** Pre-call research disputes. local log + optional worker feedback sync. */
 
 import {
   showInlineStatus,
@@ -38,7 +38,7 @@ const DISPUTE_NOTE_FIELD_HTML = `
             id="prep-dispute-note"
             class="prep-dispute-textarea"
             rows="4"
-            placeholder="Describe the issue — include the correct value or what's missing…"
+            placeholder="Describe the issue. include the correct value or what's missing…"
             required
           ></textarea>
         </label>`;
@@ -341,7 +341,7 @@ function formatFeedbackMessage(entry) {
   if (entry.factsSnapshot?.length) {
     lines.push(
       "Snapshot:",
-      ...entry.factsSnapshot.map((f) => `- ${f.key}: ${f.value} (${f.sourceLabel || "—"})`),
+      ...entry.factsSnapshot.map((f) => `- ${f.key}: ${f.value} (${f.sourceLabel || "-"})`),
     );
   }
   return lines.join("\n").slice(0, 4000);
@@ -384,7 +384,7 @@ function renderTargetDetails(ctx) {
   if (rows.length) {
     return `<ul class="prep-dispute-target-list">${rows
       .map(
-        (f) => `<li><span class="prep-dispute-target-key">${esc(f.key)}</span> — ${esc(String(f.value || "").slice(0, 240))}</li>`,
+        (f) => `<li><span class="prep-dispute-target-key">${esc(f.key)}</span>. ${esc(String(f.value || "").slice(0, 240))}</li>`,
       )
       .join("")}</ul>`;
   }
@@ -493,7 +493,7 @@ async function submitDispute(ev) {
 
   try {
     await syncDisputeToWorker(entry);
-    showInlineStatus(status, { type: "success", message: "Issue logged — thanks for the feedback.", open: true });
+    showInlineStatus(status, { type: "success", message: "Issue logged. thanks for the feedback.", open: true });
   } catch (err) {
     showInlineStatus(status, {
       type: "success",

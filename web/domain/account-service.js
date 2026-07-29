@@ -458,8 +458,8 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
       dealLabel: account.name,
       meddpiccScore: med?.completionScore ?? null,
       scorecard: postCall.scorecard || null,
-      ownerName: session?.name || user.displayName || "—",
-      movement: historyExtras.callRows.find((r) => r.postCall.id === postCall.id)?.movement || "—",
+      ownerName: session?.name || user.displayName || "-",
+      movement: historyExtras.callRows.find((r) => r.postCall.id === postCall.id)?.movement || "-",
     };
   });
 
@@ -473,12 +473,12 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     dealRows: [],
     accountCalls,
     firmographics: {
-      industry: "—",
-      region: "—",
-      subRegion: "—",
-      hq: "—",
-      supportAgents: "—",
-      incumbent: "—",
+      industry: "-",
+      region: "-",
+      subRegion: "-",
+      hq: "-",
+      supportAgents: "-",
+      incumbent: "-",
       competitor: "Unknown",
     },
     reasonForEvaluation: null,
@@ -686,7 +686,7 @@ export async function enrichAccountListRow(store, row) {
       }
     }
 
-    const region = meta.region || meta.sub_region || meta.subRegion || "—";
+    const region = meta.region || meta.sub_region || meta.subRegion || "-";
     const health = deriveAccountHealth(worstTraction, maxDaysSilent, lastActivityAt);
     const lastTouchDays = daysSince(lastActivityAt);
 
@@ -697,7 +697,7 @@ export async function enrichAccountListRow(store, row) {
       totalArrLow: hasEstimates ? totalArrLow : null,
       totalArrHigh: hasEstimates ? totalArrHigh : null,
       totalArrPoint: hasEstimates ? (totalArrLow + totalArrHigh) / 2 : null,
-      productsInPlay: [...products].join(", ") || "—",
+      productsInPlay: [...products].join(", ") || "-",
       callCount,
       health,
       lastTouchDays,
@@ -1123,7 +1123,7 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
   const seNameByDealId = new Map();
   for (const deal of deals || []) {
     const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
-    seNameByDealId.set(deal.id, primary?.user?.displayName || "—");
+    seNameByDealId.set(deal.id, primary?.user?.displayName || "-");
   }
 
   const dealRows = await Promise.all(
@@ -1139,7 +1139,7 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
         arrHigh: deal.arrEstimateHigh ?? deal.arrEstimatePoint ?? null,
         productLabel: formatProductLabel(base?.product || deal.product),
         traction: signal?.traction || null,
-        primarySeName: seNameByDealId.get(deal.id) || "—",
+        primarySeName: seNameByDealId.get(deal.id) || "-",
       };
     }),
   );
@@ -1154,11 +1154,11 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
       const ownerName =
         seTeamDisplay.find((m) => m.seUserId === postCall.ownerId)?.user?.displayName ||
         seTeamDisplay[0]?.user?.displayName ||
-        "—";
+        "-";
       return {
         postCall,
         deal,
-        dealLabel: deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "—"),
+        dealLabel: deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "-"),
         meddpiccScore: med?.completionScore ?? null,
         scorecard,
         ownerName,
@@ -1170,12 +1170,12 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
 
   const meta = account.metadata || {};
   const firmographics = {
-    industry: account.industry || meta.industry || "—",
-    region: meta.region || "—",
-    subRegion: meta.sub_region || meta.subRegion || "—",
-    hq: meta.hq || meta.headquarters || "—",
-    supportAgents: meta.support_agent_count ?? meta.supportAgentCount ?? "—",
-    incumbent: meta.incumbent || "—",
+    industry: account.industry || meta.industry || "-",
+    region: meta.region || "-",
+    subRegion: meta.sub_region || meta.subRegion || "-",
+    hq: meta.hq || meta.headquarters || "-",
+    supportAgents: meta.support_agent_count ?? meta.supportAgentCount ?? "-",
+    incumbent: meta.incumbent || "-",
     competitor: meta.competitor || "Unknown",
   };
 

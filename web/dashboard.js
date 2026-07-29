@@ -347,7 +347,7 @@ export function aggregateQualityMetrics(analyses) {
       const company = companyFromRecord(r);
       const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
         || mom.topAction
-        || "—";
+        || "-";
       return {
         id: r.id,
         title: r.title,
@@ -397,7 +397,7 @@ export function aggregateQualityMetrics(analyses) {
     const company = companyFromRecord(r);
     const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
       || mom.topAction
-      || "—";
+      || "-";
     return {
       id: r.id,
       title: r.title,
@@ -511,7 +511,7 @@ function renderScoreGauge(score, max = QIP_SCORE_MAX, title = "Spine composite")
   const pct = max && score != null ? score / max : 0;
   const dash = c * pct;
   const cls = score != null ? barClass(score, max) : "";
-  const display = Number.isFinite(score) ? score.toFixed(1) : "—";
+  const display = Number.isFinite(score) ? score.toFixed(1) : "-";
   return `
     <div class="dash-gauge-wrap">
       <p class="dash-chart-title">${esc(title)}</p>
@@ -754,7 +754,7 @@ function renderCoachingThemeStat(label, dimension, legacy, toneCls) {
     return `
       <div class="dash-stat prep-action-block coaching-metric-card">
         <span class="dash-stat-label">${esc(label)}</span>
-        <span class="dash-stat-value coaching-metric-theme">—</span>
+        <span class="dash-stat-value coaching-metric-theme">-</span>
       </div>`;
   }
   return `
@@ -888,7 +888,7 @@ function renderCoachingReceipts(worstDimension, receipts, legacy) {
       if (ts) metaParts.push(ts);
       const meta = metaParts.map((p) => esc(String(p))).join(" · ");
       const prov = r.provisional
-        ? ' <span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span>'
+        ? ' <span class="qip-provisional-badge" title="Shadow mode (excluded from averages)">Provisional</span>'
         : "";
       return `
         <article class="coaching-ev coaching-ev--bad${r.lineScore < 55 ? " coaching-ev--weak" : ""}">
@@ -913,9 +913,9 @@ function renderCoachingScoredCallsTable(scoredCalls) {
   if (!scoredCalls?.length) return "";
   const rows = scoredCalls
     .map((c) => {
-      const conf = c.confidencePct != null ? `${c.confidencePct}%` : "—";
+      const conf = c.confidencePct != null ? `${c.confidencePct}%` : "-";
       const scoreCell = c.provisional
-        ? `<span class="coaching-call-score">${esc(c.scoreLabel)} <span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span></span>`
+        ? `<span class="coaching-call-score">${esc(c.scoreLabel)} <span class="qip-provisional-badge" title="Shadow mode (excluded from averages)">Provisional</span></span>`
         : `<span class="coaching-call-score">${esc(c.scoreLabel)}</span>`;
       return `
         <tr class="coaching-call-row">
@@ -1001,7 +1001,7 @@ export function renderCoachingCharts(metrics) {
     </div>
     <div class="coaching-two-averages-note">
       <strong>Why two averages.</strong> Each call type uses its own weight profile, so a single blended QIP would be meaningless. Theme scores compare across every type; composites only compare within one.
-      <span class="coaching-spine-note">Shared themes (core four) compare call_flow, engagement, objections, and camera_on across every type — not your overall grade.</span>
+      <span class="coaching-spine-note">Shared themes (core four) compare call_flow, engagement, objections, and camera_on across every type, not your overall grade.</span>
     </div>
     <div class="coaching-charts-grid">
       ${renderCoachingTrendByType(metrics.trendByType, false)}
@@ -1030,7 +1030,7 @@ function renderRecentCallRow(c, { compact = false, usesLegacyCoach = false } = {
   const scoreMax = usesLegacyCoach ? 10 : QIP_SCORE_MAX;
   const score = c.overallScore;
   const scoreCls = score != null ? barClass(score, scoreMax) : "";
-  const scoreLabel = score != null ? `${score}/${scoreMax}` : "—";
+  const scoreLabel = score != null ? `${score}/${scoreMax}` : "-";
   const innerCls = compact ? " launch-recent-inner-side" : "";
   const nextCol = compact
     ? ""
@@ -1080,8 +1080,8 @@ function renderSideStats(taskMetrics, callMetrics, prepsCount = 0) {
   const legacy = callMetrics.usesLegacyCoach;
   const scoreMax = legacy ? 10 : QIP_SCORE_MAX;
   const headline = legacy ? null : callMetrics.spine?.score;
-  const avgScore = headline != null ? headline.toFixed(1) : "—";
-  const avgLabel = avgScore !== "—" ? `${avgScore}/${scoreMax} spine` : "No coaching data";
+  const avgScore = headline != null ? headline.toFixed(1) : "-";
+  const avgLabel = avgScore !== "-" ? `${avgScore}/${scoreMax} spine` : "No coaching data";
   return `
     <section class="dash-section dash-side-stats" aria-labelledby="side-stats-heading">
       <h2 id="side-stats-heading" class="dash-section-title">Snapshot</h2>
@@ -1296,7 +1296,7 @@ async function buildTeamMetrics(session) {
       avgScore: metrics.avgOverall,
       focusArea: metrics.worstDimension
         ? dimensionDisplayLabel(metrics.worstDimension.name, metrics.usesLegacyCoach)
-        : "—",
+        : "-",
       overdue: followUps.overdue,
     });
   }
@@ -1313,7 +1313,7 @@ async function buildTeamMetrics(session) {
 }
 
 function formatCompactUsd(n) {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
   return `$${Math.round(n)}`;
@@ -1327,7 +1327,7 @@ function formatArrBand(low, high, point) {
 }
 
 function heatmapShade(score) {
-  if (score == null) return { bg: "var(--surface-muted)", fg: "var(--muted)", label: "—" };
+  if (score == null) return { bg: "var(--surface-muted)", fg: "var(--muted)", label: "-" };
   const v = score;
   if (v < 55) return { bg: "#F5CDD5", fg: "#8C2237", label: String(Math.round(v)) };
   if (v < 65) return { bg: "#FBE3C8", fg: "#8A5A11", label: String(Math.round(v)) };
@@ -1416,7 +1416,7 @@ function buildTeamCoachingQueue(allDeduped) {
     items.push({
       callId: rec.id,
       company: companyFromRecord(rec),
-      seName: rec._seName || "—",
+      seName: rec._seName || "-",
       seEmail: rec._seEmail || null,
       timestamp: rec.timestamp,
       callType: sc.callType,
@@ -1522,12 +1522,12 @@ function renderManagerFilterBanner(filter) {
       <div class="manager-filter-banner manager-filter-banner--spine" role="status">
         <span class="manager-filter-eyebrow">Active filter</span>
         <strong class="manager-filter-label">Shared spine</strong>
-        <span class="manager-filter-detail muted">call_flow · customer_engagement · objections · camera_on — comparable across every eligible call type. Provisional profiles excluded.</span>
+        <span class="manager-filter-detail muted">call_flow · customer_engagement · objections · camera_on; comparable across every eligible call type. Provisional profiles excluded.</span>
       </div>`;
   }
   const typeLabel = CALL_TYPE_LABELS[filter] || filter;
   const prov = isProvisionalCallType(filter)
-    ? `<span class="manager-filter-provisional">Provisional profile — no scored calls in heatmap yet</span>`
+    ? `<span class="manager-filter-provisional">Provisional profile (no scored calls in heatmap yet)</span>`
     : "";
   return `
     <div class="manager-filter-banner" role="status">
@@ -1541,13 +1541,13 @@ function renderManagerFilterBanner(filter) {
 function renderManagerHeatmapFilter(filter) {
   const typeOptions = CALL_TYPES.map(
     (ct) =>
-      `<option value="${esc(ct)}"${filter === ct ? " selected" : ""}>${esc(CALL_TYPE_LABELS[ct] || ct)} — full profile${isProvisionalCallType(ct) ? " (provisional)" : ""}</option>`,
+      `<option value="${esc(ct)}"${filter === ct ? " selected" : ""}>${esc(CALL_TYPE_LABELS[ct] || ct)}: full profile${isProvisionalCallType(ct) ? " (provisional)" : ""}</option>`,
   ).join("");
   return `
     <div class="manager-heatmap-controls">
       <label class="manager-heatmap-filter-label" for="manager-heatmap-filter">Score view</label>
       <select id="manager-heatmap-filter" class="manager-heatmap-filter">
-        <option value="spine"${filter === "spine" ? " selected" : ""}>Shared spine — core four (all types)</option>
+        <option value="spine"${filter === "spine" ? " selected" : ""}>Shared spine: core four (all types)</option>
         <optgroup label="One call type">
           ${typeOptions}
         </optgroup>
@@ -1642,9 +1642,9 @@ function renderManagerHeatmap(view, filter) {
 function renderManagerMetricCards(summary, legacy) {
   const teamAvg = summary.spineScore;
   const teamCls = teamAvg != null ? barClass(teamAvg, QIP_SCORE_MAX) : "";
-  const teamVal = legacy || teamAvg == null ? "—" : String(Math.round(teamAvg));
+  const teamVal = legacy || teamAvg == null ? "-" : String(Math.round(teamAvg));
   const coldArr = formatCompactUsd(summary.coldArr);
-  const aiVal = summary.aiAttachPct != null ? `${summary.aiAttachPct}%` : "—";
+  const aiVal = summary.aiAttachPct != null ? `${summary.aiAttachPct}%` : "-";
   return `
     <div class="dash-stats prep-action-grid manager-stats manager-team-stats manager-metrics-wire">
       <div class="dash-stat prep-action-block manager-metric-card">
@@ -1680,25 +1680,25 @@ function renderDealsNeedingAttention(deals) {
     return `
       <section class="dash-section manager-deals-section">
         <h2 class="dash-section-title">Deals needing attention</h2>
-        <fw-card><p class="muted">No cold or stalled deals in scope — sorted by ARR when they appear.</p></fw-card>
+        <fw-card><p class="muted">No cold or stalled deals in scope; sorted by ARR when they appear.</p></fw-card>
       </section>`;
   }
   const rows = deals
     .map((row) => {
-      const traction = row.traction || "—";
+      const traction = row.traction || "-";
       const tractionCls = traction === "cold" ? "weak" : "good";
       const arr = formatArrBand(row.arrLow, row.arrHigh, row.arrPoint);
       const silent =
-        row.daysSilent != null ? `${row.daysSilent}d silent` : "—";
+        row.daysSilent != null ? `${row.daysSilent}d silent` : "-";
       return `
         <tr>
           <td>
             <div class="manager-deal-title">${esc(row.deal?.title || "Deal")}</div>
-            <div class="muted manager-deal-account">${esc(row.account?.name || row.account?.domain || "—")}</div>
+            <div class="muted manager-deal-account">${esc(row.account?.name || row.account?.domain || "-")}</div>
           </td>
           <td class="num">${esc(arr)}</td>
           <td><span class="qc-dim-score ${tractionCls}">${esc(String(traction))}</span></td>
-          <td>${esc(row.primarySeName || "—")}</td>
+          <td>${esc(row.primarySeName || "-")}</td>
           <td class="muted num">${esc(silent)}</td>
         </tr>`;
     })
@@ -1738,9 +1738,9 @@ function renderManagerCoachingQueue(queue) {
     .map((item) => {
       const theme =
         item.weakestTheme != null
-          ? `${themeLabel(item.weakestTheme)} · ${item.weakestScore ?? "—"}`
-          : "—";
-      const conf = item.confidencePct != null ? `${item.confidencePct}%` : "—";
+          ? `${themeLabel(item.weakestTheme)} · ${item.weakestScore ?? "-"}`
+          : "-";
+      const conf = item.confidencePct != null ? `${item.confidencePct}%` : "-";
       return `
         <tr>
           <td>
@@ -1857,12 +1857,12 @@ function renderManagerSeTable(seRows, isOrgView = false) {
   }
   const rows = seRows.map((se) => {
     const avgCls = se.avgScore != null ? barClass(se.avgScore, QIP_SCORE_MAX) : "";
-    const avg = se.avgScore != null ? `${se.avgScore.toFixed(1)}/100` : "—";
+    const avg = se.avgScore != null ? `${se.avgScore.toFixed(1)}/100` : "-";
     const overdueCls = se.overdue > 0 ? "weak" : "good";
     return `
       <tr>
         <td><button type="button" class="manager-se-link dash-drill-link" data-drill="se" data-se-email="${esc(se.email)}">${esc(se.name)}</button></td>
-        ${isOrgView ? `<td>${esc(se.teamName || "—")}</td>` : ""}
+        ${isOrgView ? `<td>${esc(se.teamName || "-")}</td>` : ""}
         <td>${se.calls}</td>
         <td><span class="qc-dim-score ${avgCls}">${esc(avg)}</span></td>
         <td>${esc(se.focusArea)}</td>

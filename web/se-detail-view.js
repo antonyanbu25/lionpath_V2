@@ -33,7 +33,7 @@ const CALL_TYPE_LABELS = {
 };
 
 function formatCompactUsd(n) {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
   return `$${Math.round(n)}`;
@@ -47,7 +47,7 @@ function formatArrBand(low, high) {
 }
 
 function formatShortDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -60,14 +60,14 @@ function formatEvidenceTimestamp(atS) {
 
 function renderPerTypeMetrics(byType) {
   if (!byType?.length) {
-    return `<div class="dash-stat prep-action-block"><span class="dash-stat-label">Call types</span><span class="dash-stat-value dash-stat-text">—</span></div>`;
+    return `<div class="dash-stat prep-action-block"><span class="dash-stat-label">Call types</span><span class="dash-stat-value dash-stat-text">-</span></div>`;
   }
   return byType
     .map((t) => {
       const label = CALL_TYPE_LABELS[t.callType] || t.callType;
       const score = t.score;
       const cls = score != null ? barClass(score, QIP_SCORE_MAX) : "";
-      const display = score != null ? String(Math.round(score)) : "—";
+      const display = score != null ? String(Math.round(score)) : "-";
       const count = t.callCount || 0;
       return `
         <div class="dash-stat prep-action-block se-metric-card se-type-stat">
@@ -100,7 +100,7 @@ function renderSummaryMetrics(summary) {
 
 function renderThemeRows(themeRows, expandThemeKey, onThemeClick) {
   if (!themeRows.length) {
-    return `<p class="muted">No theme scores yet — analyze calls to populate this panel.</p>`;
+    return `<p class="muted">No theme scores yet. analyze calls to populate this panel.</p>`;
   }
   const sorted = [...themeRows].sort((a, b) => a.avgScore - b.avgScore);
   return sorted
@@ -160,7 +160,7 @@ function renderAccountsTable(accounts) {
         <td class="num">${esc(formatArrBand(a.arrLow, a.arrHigh))}</td>
         <td class="num">${a.callCount}</td>
         <td><span class="health-pill health-pill--${esc(a.health.tone)}">${esc(a.health.label)}</span></td>
-        <td class="muted num">${a.lastTouchDays != null ? `${a.lastTouchDays}d` : "—"}</td>
+        <td class="muted num">${a.lastTouchDays != null ? `${a.lastTouchDays}d` : "-"}</td>
       </tr>`,
     )
     .join("");
@@ -189,7 +189,7 @@ function renderCallsTable(calls, ownerEmail) {
   const rows = calls
     .slice(0, 20)
     .map((c) => {
-      const conf = c.confidencePct != null ? `${c.confidencePct}%` : "—";
+      const conf = c.confidencePct != null ? `${c.confidencePct}%` : "-";
       return `
         <tr>
           <td class="se-table-col-name">
@@ -199,7 +199,7 @@ function renderCallsTable(calls, ownerEmail) {
           <td class="muted">${esc(c.company)}</td>
           <td class="muted se-table-col-date">${esc(formatShortDate(c.timestamp))}</td>
           <td>${esc(conf)}</td>
-          <td><span class="qc-dim-score">${esc(c.scoreLabel || "—")}</span></td>
+          <td><span class="qc-dim-score">${esc(c.scoreLabel || "-")}</span></td>
         </tr>`;
     })
     .join("");
@@ -386,7 +386,7 @@ export async function renderSeDetailView(container, session, opts = {}) {
       teamThemeAverages: opts.teamThemeAverages,
     });
 
-    const themeLabelText = view.receiptsTheme ? themeLabel(view.receiptsTheme) : "—";
+    const themeLabelText = view.receiptsTheme ? themeLabel(view.receiptsTheme) : "-";
     const receiptSub =
       view.metrics.worstDimension && view.receiptsTheme
         ? `${themeLabelText} · ${view.metrics.worstDimension.avgScore.toFixed(0)} · scored on ${view.metrics.worstDimension.count} calls`

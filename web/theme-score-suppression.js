@@ -6,7 +6,7 @@
 import { themeSuppressionManifest as bundledManifest } from "./theme-suppression-data.js";
 
 export const THEME_SCORE_SUPPRESSION_MESSAGE =
-  "Not shown — this theme's scoring is still stabilising.";
+  "Not shown: this theme's scoring is still stabilising.";
 
 /** @type {Set<string>} */
 let suppressedThemes = new Set();
@@ -30,7 +30,7 @@ applyManifest(bundledManifest);
 export function assertThemeScoreSuppressionReady() {
   if (!activeManifest?.runId) {
     throw new Error(
-      "QIP theme score suppression is not configured — no consistency run bundled. " +
+      "QIP theme score suppression is not configured. no consistency run bundled. " +
         "Run: npx tsx web/scripts/generate-theme-suppression.mjs",
     );
   }
@@ -46,7 +46,7 @@ export function getThemeScoreSuppressionMeta() {
   return activeManifest;
 }
 
-/** @internal Tests only — restore bundled manifest with __resetThemeSuppressionForTests(). */
+/** @internal Tests only. restore bundled manifest with __resetThemeSuppressionForTests(). */
 export function __setThemeSuppressionForTests(manifest) {
   applyManifest(manifest);
 }

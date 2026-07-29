@@ -19,7 +19,7 @@ export const STAGE_MEDIAN_DAYS_DEFAULT = {
   nurture: 45,
 };
 
-/** Video-only signals — report as gaps, never approximate (spec §5 Pass 2). */
+/** Video-only signals. report as gaps, never approximate (spec §5 Pass 2). */
 export const VIDEO_SIGNAL_GAPS = [
   { key: "talk_ratio", label: "Talk ratio" },
   { key: "attendee_dropoff", label: "Attendee drop-off mid-call" },
@@ -206,7 +206,7 @@ export function pickRecommendedAction(ctx) {
     return `Resolve open objection: ${ctx.firstObjection}`;
   }
   if (daysSilent >= 14) {
-    return `Re-engage the customer — ${daysSilent} days since last activity`;
+    return `Re-engage the customer. ${daysSilent} days since last activity`;
   }
   if (technicalCommitPending) {
     return "Complete Pass 5 technical commit assessment on this deal";
@@ -214,8 +214,8 @@ export function pickRecommendedAction(ctx) {
   if (momentumTopAction) {
     return momentumTopAction;
   }
-  if (traction === "hot") return "Maintain cadence — confirm next milestone on calendar";
-  if (traction === "cold") return "Reset deal plan with AE — agree a dated re-engagement or close out";
+  if (traction === "hot") return "Maintain cadence. confirm next milestone on calendar";
+  if (traction === "cold") return "Reset deal plan with AE. agree a dated re-engagement or close out";
   return "Confirm owner and date for the next customer touchpoint";
 }
 
@@ -313,7 +313,7 @@ export function computeDealTraction(input) {
     reasonsJson.push(`${daysSilent} days since last deal activity`);
   } else if (daysSilent >= 7) {
     score -= 1;
-    reasonsJson.push(`${daysSilent} days since last activity — cadence slipping`);
+    reasonsJson.push(`${daysSilent} days since last activity. cadence slipping`);
   } else if (daysSilent <= 2 && momentumAvg > 0) {
     score += 1;
     reasonsJson.push("Recent activity on the deal");
@@ -350,7 +350,7 @@ export function computeDealTraction(input) {
   } else if (daysInStage > stageMedianDays) {
     score -= 1;
     reasonsJson.push(
-      `${daysInStage} days in stage — above ${stageMedianDays}d median`,
+      `${daysInStage} days in stage. above ${stageMedianDays}d median`,
     );
   }
 

@@ -127,4 +127,68 @@ export function isPersonalEmailDomain(domain) {
   return d ? PERSONAL_EMAIL_DOMAINS.has(d) : false;
 }
 
+/** Mail-infra labels that are never the company name. */
+const DOMAIN_LABEL_NOISE = new Set([
+  "mail",
+  "email",
+  "smtp",
+  "mx",
+  "corp",
+  "corporate",
+  "internal",
+  "www",
+  "info",
+  "go",
+  "my",
+  "app",
+  "get",
+]);
+
+const NON_PROSPECT_DOMAINS = new Set([
+  ...PERSONAL_EMAIL_DOMAINS,
+  "freshworks.com",
+  "freshdesk.com",
+  "freshservice.com",
+]);
+
+function labelToCompanyName(label) {
+  if (!label || label.length < 2) return null;
+  return label
+    .replace(/[-_]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function companyNameFromDomainLabels(domain) {
+  const d = normalizeCompanyDomain(domain);
+  if (!d || !DOMAIN_RE.test(d) || NON_PROSPECT_DOMAINS.has(d)) return null;
+  const labels = d.split(".").filter(Boolean);
+  if (labels.length < 2) return null;
+  let label = labels[0];
+  if (DOMAIN_LABEL_NOISE.has(label) && labels.length > 2) label = labels[1];
+  return labelToCompanyName(label);
+}
+
+/**
+ * "alex@acme.com" -> "Acme". Returns null for free-mail domains.
+ * @param {string} email
+ */
+export function companyNameFromEmail(email) {
+  const domain = emailDomain(email);
+  return companyNameFromDomainLabels(domain);
+}
+
+/** @param {string} domain */
+export function companyNameFromDomain(domain) {
+  return companyNameFromDomainLabels(domain);
+}
+
+/** Derive display company name from first prospect email, or null. */
+export function companyNameFromPrimaryEmail(rawEmails) {
+  const emails = parseProspectEmailsForDomain(rawEmails);
+  return companyNameFromEmail(emails[0] || "") || null;
+}
+
 export { DOMAIN_RE };

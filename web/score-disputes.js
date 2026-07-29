@@ -1,4 +1,4 @@
-/** Score dispute log — local calibration feedback (spec §6 / score_overrides precursor). */
+/** Score dispute log. local calibration feedback (spec §6 / score_overrides precursor). */
 
 import { esc } from "./shared.js";
 
@@ -98,7 +98,7 @@ export function openScoreDisputeModal(ctx = {}) {
   const scoreBit = ctx.score != null ? ` · scored ${ctx.score}/100` : "";
   const company = ctx.company ? `${ctx.company} · ` : "";
   if (intro) {
-    intro.textContent = `${company}${theme}${scoreBit}. Your manager can review disputes for calibration — this does not change the displayed score yet.`;
+    intro.textContent = `${company}${theme}${scoreBit}. Your manager can review disputes for calibration; this does not change the displayed score yet.`;
   }
   if (note) note.value = "";
   if (cat) cat.selectedIndex = 0;
@@ -135,7 +135,7 @@ async function submitDispute(ev) {
 
   if (status) {
     status.hidden = false;
-    status.textContent = "Dispute logged — thank you.";
+    status.textContent = "Dispute logged. Thank you.";
   }
   window.setTimeout(() => {
     submitBtn && (submitBtn.disabled = false);

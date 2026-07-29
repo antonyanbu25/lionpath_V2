@@ -1,4 +1,4 @@
-/* Call record — wireframe #call, spec §11.4 */
+/* Call record. wireframe #call, spec §11.4 */
 
 #view-calls:has(.call-record) {
   max-width: none;
@@ -500,7 +500,7 @@
   background: transparent;
 }
 
-/* Wireframe v4 QIP — scoped to call record only (postcall.css handles #postcall-result) */
+/* Wireframe v4 QIP. scoped to call record only (postcall.css handles #postcall-result) */
 .call-record .qip-scorecard {
   display: flex;
   flex-direction: column;
@@ -917,7 +917,7 @@
   }
 }
 
-/* All calls list — wireframe v4 (#calls) */
+/* All calls list. wireframe v4 (#calls) */
 
 .call-list-view,
 .call-list-view--compact {
@@ -1366,7 +1366,7 @@
   font-size: 12.5px;
 }
 
-/* Visual timeline spine — wireframe #call */
+/* Visual timeline spine. wireframe #call */
 .call-spine.spine {
   position: relative;
   height: 56px;

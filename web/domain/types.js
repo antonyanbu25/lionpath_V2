@@ -83,7 +83,7 @@ export const CONTACT_EVENT_LABELS = {
   linked_from_postcall: "Linked from post-call",
 };
 
-/** Normalize company name to lookup slug — prefers corporate domain; ignores free-mail. */
+/** Normalize company name to lookup slug. prefers corporate domain; ignores free-mail. */
 export function normalizeAccountSlug(name, domain) {
   if (domain && !isFreeMailDomain(domain)) {
     const fromDomain = String(domain)

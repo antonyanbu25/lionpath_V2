@@ -1,4 +1,4 @@
-/* Post-call wireframe — Dew tokens from dew-theme.css */
+/* Post-call wireframe. Dew tokens from dew-theme.css */
 
 #view-postcall {
   display: flex;
@@ -520,7 +520,7 @@
   color: var(--dew-text-muted);
 }
 
-/* Momentum summary — semantic Dew tints, no animated gradient */
+/* Momentum summary. semantic Dew tints, no animated gradient */
 #postcall-result .outcome-bar {
   display: grid;
   grid-template-columns: auto 1fr;

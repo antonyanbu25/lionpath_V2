@@ -16,7 +16,7 @@ export { DUMMY_USERS };
 const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
 
-/** Domain user id from session (internal usr_* — not Firebase auth uid). */
+/** Domain user id from session (internal usr_*. not Firebase auth uid). */
 export {
   sessionUserId,
   effectiveSessionUserId,
@@ -27,7 +27,7 @@ export function authMode() {
   return firebaseConfig.projectId ? "firebase" : "dummy";
 }
 
-/** Canonical auth flag — import from auth.js so stale firebase-config.js cannot break app boot. */
+/** Canonical auth flag. import from auth.js so stale firebase-config.js cannot break app boot. */
 export function isFirebaseAuthEnabled() {
   return !!firebaseConfig.projectId;
 }
@@ -119,7 +119,7 @@ export function loginDummy(email, password, opts = {}) {
   return { ok: true, session };
 }
 
-/** Clears auth session only — post-call history stays in localStorage per email. */
+/** Clears auth session only. post-call history stays in localStorage per email. */
 export function logout() {
   sessionStorage.removeItem(SESSION_KEY);
   try {

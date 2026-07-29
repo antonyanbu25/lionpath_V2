@@ -389,7 +389,7 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
   const teamId = user.teamId || session.teamId;
   const orgId = user.orgId || session.orgId || null;
   const expansionDeal = await createExpansionDeal(accountId, targetOwnerId, teamId, orgId, {
-    title: `${account.name || "Account"} — Expansion`,
+    title: `${account.name || "Account"}. Expansion`,
     primaryContactId: nbDeal?.primaryContactId ?? null,
   });
 

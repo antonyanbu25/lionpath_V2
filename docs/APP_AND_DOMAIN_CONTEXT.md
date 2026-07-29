@@ -97,6 +97,19 @@ API keys stay server-side; one pipeline keeps schema, scoring, and prompts consi
 | Pre-call (research) | `gemini-3.1-flash-lite` + web search | 15–45s |
 | Post-call (transcript) | `gemini-3.1-flash-lite` | 8–20s |
 
+**Pre-call research pipeline** (`worker/src/prep/index.ts` → `gatherResearch`):
+
+| Phase | Typical LLM calls | Parallelism |
+|-------|-------------------|-------------|
+| Research orchestrator | 1 | Sequential (before playbook; skipped on error) |
+| Playbook web search | ~5 (+1 per prospect email) | All queries in parallel |
+| Extract facts | 1 | After snippets merged |
+| SE context extract | 1 | If additional context present |
+| Gap fill | Up to 3 | Parallel; +1 extractFacts when gaps found |
+| Synthesize brief | 1 | Separate step (`timings.synthesize`) |
+
+Wall-clock for research + synthesize is usually **15–45s**, dominated by parallel playbook queries and the final synthesize call. Individual LinkedIn queries may fail (`MALFORMED_FUNCTION_CALL`) without aborting the run as long as other queries return snippets.
+
 ---
 
 ## Authentication

@@ -31,7 +31,7 @@ async function authHeaders() {
       const token = await getAuthToken();
       if (token) headers.Authorization = `Bearer ${token}`;
     } catch {
-      /* dummy mode — worker may allow unauthenticated local dev */
+      /* dummy mode. worker may allow unauthenticated local dev */
     }
   }
   return headers;

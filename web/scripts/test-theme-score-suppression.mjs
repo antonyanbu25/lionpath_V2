@@ -79,7 +79,7 @@ try {
   assert("composite applicable weight unchanged", composite.applicableWeight === 20);
 
   const html = renderQipScorecard(scorecard, { callType: "demo", provisional: false });
-  assert("suppressed message shown", html.includes("Not shown — this theme&#39;s scoring is still stabilising."));
+  assert("suppressed message shown", html.includes("Not shown: this theme&#39;s scoring is still stabilising."));
   assert("suppressed keeps evidence", html.includes("Maya through her shift"));
   assert("suppressed keeps coaching", html.includes("Name a persona"));
   assert("suppressed css class", html.includes("qip-line-suppressed"));

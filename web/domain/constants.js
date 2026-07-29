@@ -32,14 +32,14 @@ export const SQUAD_TEAM_IDS = [
   TEAM_PREETHI_SRIRAM_ID,
 ];
 
-/** @deprecated Use TEAM_AJAY_ID — kept for imports during transition */
+/** @deprecated Use TEAM_AJAY_ID. kept for imports during transition */
 export const TEAM_ANTONY_ID = TEAM_AJAY_ID;
 /** @deprecated Use TEAM_AJAY_ID */
 export const DEMO_TEAM_A_ID = TEAM_AJAY_ID;
 /** @deprecated Use TEAM_AJAY_ID */
 export const DEMO_TEAM_ID = TEAM_AJAY_ID;
 
-/** Consumer / webmail domains — must not become account slugs or stored account domains. */
+/** Consumer / webmail domains. must not become account slugs or stored account domains. */
 export const FREE_MAIL_DOMAINS = new Set([
   "gmail.com",
   "googlemail.com",

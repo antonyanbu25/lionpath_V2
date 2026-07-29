@@ -21,7 +21,7 @@ import {
 } from "./deal-view.js";
 import { esc } from "./shared.js";
 
-/** Freshworks FY starts February — map YYYY-MM to Qn FYyy label. */
+/** Freshworks FY starts February. map YYYY-MM to Qn FYyy label. */
 export function fiscalQuarterLabelFromMonth(forecastMonth) {
   const m = /^(\d{4})-(\d{2})$/.exec(String(forecastMonth || "").trim());
   if (!m) return null;
@@ -67,7 +67,7 @@ export function filterPipelineRows(rows, filters = {}) {
 /** @param {number|null|undefined} confidence */
 function arrConfidenceBadge(confidence) {
   if (confidence == null) {
-    return `<span class="deal-arr-confidence deal-arr-confidence--unknown" title="Estimate — confidence not established yet">—</span>`;
+    return `<span class="deal-arr-confidence deal-arr-confidence--unknown" title="Estimate. confidence not established yet">-</span>`;
   }
   const pct = Math.round(confidence * 100);
   let band = "medium";
@@ -75,7 +75,7 @@ function arrConfidenceBadge(confidence) {
   else if (pct < 50) band = "low";
   const note =
     pct < 50
-      ? `${pct}% confidence — estimate, not a firm number`
+      ? `${pct}% confidence. estimate, not a firm number`
       : `${pct}% confidence`;
   return `<span class="deal-arr-confidence deal-arr-confidence--${band}" title="${esc(note)}">${esc(String(pct))}%</span>`;
 }
@@ -83,7 +83,7 @@ function arrConfidenceBadge(confidence) {
 /** @param {object} row @param {"ARR"|"MRR"} unit */
 function renderPipelineMoneyCell(row, unit) {
   const { arrPoint, arrConfidence } = row;
-  if (arrPoint == null) return `<span class="muted">—</span>`;
+  if (arrPoint == null) return `<span class="muted">-</span>`;
   const amount = unit === "MRR" ? formatCompactUsd(displayMrrFromArr(arrPoint)) : formatCompactUsd(arrPoint);
   const lowConf = isLowConfidenceArr(arrConfidence);
   return `<span class="pipeline-money${lowConf ? " pipeline-money--low-confidence" : ""}"><span class="pipeline-money-amount">${esc(amount)}</span>${arrConfidenceBadge(arrConfidence)}</span>`;
@@ -105,7 +105,7 @@ function tractionTag(traction) {
 
 function pipelineAiAttachCell(aiAttach) {
   const summary = formatTcValue(aiAttach);
-  if (!summary) return `<span class="muted pipeline-ai-attach">—</span>`;
+  if (!summary) return `<span class="muted pipeline-ai-attach">-</span>`;
   return `<fw-tag class="pipeline-ai-attach" text="${esc(summary)}" color="purple"></fw-tag>`;
 }
 
@@ -113,7 +113,7 @@ function renderPipelineRow(row) {
   const { deal, account } = row;
   const dealTitle = deal.title || DEAL_TYPE_LABELS[deal.type] || "Deal";
   const accountTitle = account?.name || account?.domain || "Account";
-  const blocker = row.blocker || "—";
+  const blocker = row.blocker || "-";
 
   return `
     <button type="button" class="lifecycle-list-item pipeline-list-item pipeline-row" data-deal-id="${esc(deal.id)}">
@@ -122,12 +122,12 @@ function renderPipelineRow(row) {
           <span class="pipeline-deal-title">${esc(dealTitle)}</span>
         </span>
         <span class="pipeline-col pipeline-col--account muted">${esc(accountTitle)}</span>
-        <span class="pipeline-col pipeline-col--agents pipeline-num">${row.agentCount != null ? esc(String(row.agentCount)) : "—"}</span>
+        <span class="pipeline-col pipeline-col--agents pipeline-num">${row.agentCount != null ? esc(String(row.agentCount)) : "-"}</span>
         <span class="pipeline-col pipeline-col--arr">${renderPipelineMoneyCell(row, "ARR")}</span>
         <span class="pipeline-col pipeline-col--mrr">${renderPipelineMoneyCell(row, "MRR")}</span>
         <span class="pipeline-col pipeline-col--tc">${tcYesNoTag(row.tcStatus)}</span>
         <span class="pipeline-col pipeline-col--blockers muted pipeline-blocker">${esc(blocker)}</span>
-        <span class="pipeline-col pipeline-col--traction">${row.traction ? tractionTag(row.traction) : `<span class="muted">—</span>`}</span>
+        <span class="pipeline-col pipeline-col--traction">${row.traction ? tractionTag(row.traction) : `<span class="muted">-</span>`}</span>
         <span class="pipeline-col pipeline-col--pending pipeline-num">${esc(String(row.pendingActions ?? 0))}</span>
         <span class="pipeline-col pipeline-col--ai">${pipelineAiAttachCell(row.aiAttach)}</span>
       </span>
@@ -187,7 +187,7 @@ export function summarizePipelineRows(rows) {
 }
 
 function renderPipelineMetrics(summary) {
-  const aiVal = summary.aiAttachPct != null ? `${summary.aiAttachPct}%` : "—";
+  const aiVal = summary.aiAttachPct != null ? `${summary.aiAttachPct}%` : "-";
   const aiSub =
     summary.aiAttachCount != null && summary.dealCount
       ? `${summary.aiAttachCount} of ${summary.dealCount}`

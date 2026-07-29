@@ -86,15 +86,30 @@ export function assignExportsToProspects(
   const assignments = new Map<string, string | null>();
   const matchedEmails = new Set<string>();
   const usedEmails = new Set<string>();
+  const unmatched: LinkedInProfileExport[] = [];
 
   for (const exp of exports) {
-    let matched = matchPdfToProspect(exp.text, prospectEmails);
+    let matched = matchPdfToProspect(exp.text, prospectEmails.filter((e) => !usedEmails.has(e)));
     if (matched && usedEmails.has(matched)) matched = null;
     if (matched) {
       usedEmails.add(matched);
       matchedEmails.add(matched);
+      assignments.set(exp.fileName, matched);
+    } else {
+      unmatched.push(exp);
     }
-    assignments.set(exp.fileName, matched);
+  }
+
+  const remainingEmails = prospectEmails.filter((e) => !usedEmails.has(e));
+  for (let i = 0; i < unmatched.length && i < remainingEmails.length; i++) {
+    const email = remainingEmails[i].toLowerCase();
+    usedEmails.add(email);
+    matchedEmails.add(email);
+    assignments.set(unmatched[i].fileName, email);
+  }
+
+  for (const exp of exports) {
+    if (!assignments.has(exp.fileName)) assignments.set(exp.fileName, null);
   }
 
   return { assignments, matchedEmails };

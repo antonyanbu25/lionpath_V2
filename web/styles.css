@@ -1,4 +1,4 @@
-/* Layout tokens only — colors live in dew-theme.css */
+/* Layout tokens only. colors live in dew-theme.css */
 :root,
 [data-theme="light"],
 [data-theme="dark"] {
@@ -567,7 +567,7 @@ fw-button.sidebar-history-item.active {
   overflow: hidden;
 }
 
-/* Collapsed sidebar (desktop) — icon rail only */
+/* Collapsed sidebar (desktop). icon rail only */
 .sidebar-collapsed {
   width: var(--sidebar-w-collapsed);
   overflow: hidden;
@@ -1129,7 +1129,7 @@ fw-button.sidebar-history-item.active {
   z-index: 90;
 }
 
-/* Dashboard — one-pager flow */
+/* Dashboard. one-pager flow */
 .dash-one-pager {
   padding: 0;
   margin-bottom: 0;
@@ -1236,7 +1236,7 @@ fw-button.sidebar-history-item.active {
 }
 .dash-bar { min-width: 120px; }
 
-/* Recent calls — fluid list */
+/* Recent calls. fluid list */
 .dash-recent-list {
   display: flex;
   flex-direction: column;
@@ -1418,7 +1418,7 @@ fw-button.sidebar-history-item.active {
 .dash-recent-compact .dash-recent-table th,
 .dash-recent-compact .dash-recent-table td { padding: 6px 8px; }
 
-/* Form panels — match dashboard chrome */
+/* Form panels. match dashboard chrome */
 .form-panel {
   border: 1px solid var(--dew-border);
   border-radius: var(--dew-radius-lg);
@@ -1515,7 +1515,7 @@ button { cursor: pointer; font-size: 14px; transition: background var(--transiti
 .status.err { background: var(--danger-bg); color: var(--danger); border-color: rgba(196, 74, 74, 0.2); }
 .error { color: var(--danger); }
 
-/* Result rendering — one-pager (pre + post) */
+/* Result rendering. one-pager (pre + post) */
 .one-pager { padding: 28px 30px; }
 .result section { margin: 0 0 32px; }
 .result h2 {
@@ -1576,7 +1576,7 @@ details.sources summary {
 details.sources summary:hover { color: var(--accent-hover); }
 details.sources ul { margin-top: 10px; }
 
-/* Account Snapshot — single table (v6) */
+/* Account Snapshot. single table (v6) */
 .account-snapshot-wrap {
   margin-bottom: 12px;
 }
@@ -1896,7 +1896,7 @@ details.sources ul { margin-top: 10px; }
 }
 .chip-role { color: var(--muted); }
 
-/* Status dots — semantic left-border accents */
+/* Status dots. semantic left-border accents */
 .power-dot, .gap-dot {
   display: inline-block;
   width: 9px;
@@ -2117,7 +2117,7 @@ details.good-to-see .demo-prep-section[open] > summary { margin-bottom: 8px; }
   opacity: 0.75;
 }
 
-/* Post-call momentum hero — first focal block after header strip */
+/* Post-call momentum hero. first focal block after header strip */
 .header-strip + .momentum-hero {
   margin-top: 0;
 }
@@ -2195,7 +2195,7 @@ details.good-to-see .demo-prep-section[open] > summary { margin-bottom: 8px; }
 .flow-cell.val { border-left: 4px solid var(--green); }
 .flow-arrow { color: var(--muted); font-weight: 700; font-size: 16px; text-align: center; opacity: 0.5; }
 
-/* Outcome bar — post-call focal */
+/* Outcome bar. post-call focal */
 .outcome-bar {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -2279,7 +2279,7 @@ details.good-to-see .demo-prep-section[open] > summary { margin-bottom: 8px; }
 .signal-list { margin: 0; padding-left: 16px; }
 .signal-list li { margin: 3px 0; line-height: 1.35; }
 
-/* Next steps — compact table sized to content */
+/* Next steps. compact table sized to content */
 .next-steps-section { margin-top: 0; }
 .result .next-steps-table {
   width: auto;
@@ -2358,7 +2358,7 @@ a { color: var(--accent); }
   line-height: 1.55;
 }
 
-/* Quality coach scorecard — nested inside .result section like pre-call subsections */
+/* Quality coach scorecard. nested inside .result section like pre-call subsections */
 .result section .qc-dashboard {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
@@ -2684,7 +2684,7 @@ a { color: var(--accent); }
   .dash-recent-meta { width: 100%; justify-content: space-between; }
 }
 
-/* Motion — staggered entrances, dial, radar, flowchart */
+/* Motion. staggered entrances, dial, radar, flowchart */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
@@ -3741,7 +3741,7 @@ fw-button.launch-recent-row {
   .dash-stats { grid-template-columns: 1fr; }
 }
 
-/* Crayons integration — layout shell; button colors from dew-theme.css */
+/* Crayons integration. layout shell; button colors from dew-theme.css */
 fw-button.theme-toggle,
 fw-button.sidebar-toggle,
 fw-button.sidebar-close {
@@ -3784,7 +3784,7 @@ fw-button.nav-item.active {
   margin-bottom: 8px;
 }
 
-/* Task board — ClickUp / Monday inspired */
+/* Task board. ClickUp / Monday inspired */
 .task-board-section { margin-bottom: 24px; }
 .task-board-card {
   display: block;
@@ -4120,7 +4120,7 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
   }
 }
 
-/* Crayons — Dew theme alignment (tokens in dew-theme.css) */
+/* Crayons. Dew theme alignment (tokens in dew-theme.css) */
 
 fw-card.launch-recent-list,
 fw-card.launch-followup-list,

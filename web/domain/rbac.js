@@ -1,4 +1,4 @@
-/** Client-side RBAC guards — mirror Firestore security rules. */
+/** Client-side RBAC guards. mirror Firestore security rules. */
 
 import { can, isManagerRole } from "./types.js";
 import { sessionUserId } from "./session.js";

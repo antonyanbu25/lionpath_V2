@@ -1,4 +1,4 @@
-/** Dark / light theme — persisted in localStorage (lionpath_theme). */
+/** Dark / light theme. persisted in localStorage (lionpath_theme). */
 
 const THEME_KEY = "lionpath_theme";
 

@@ -45,7 +45,7 @@ const SESSIONS_ADDON = "freddy_ai_agent_sessions";
 
 /** @param {number|null|undefined} amount */
 export function formatUsd(amount) {
-  if (amount == null || !Number.isFinite(amount)) return "—";
+  if (amount == null || !Number.isFinite(amount)) return "-";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -60,13 +60,13 @@ export function displayMrrFromArr(arr) {
 
 /** @param {number|null|undefined} n */
 function formatNumber(n) {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
 }
 
 /** @param {number|null|undefined} arr @param {"ARR"|"MRR"} [displayUnit] */
 function formatMoneyDual(arr, displayUnit = "ARR") {
-  if (arr == null || !Number.isFinite(arr)) return "—";
+  if (arr == null || !Number.isFinite(arr)) return "-";
   const primary = displayUnit === "MRR" ? displayMrrFromArr(arr) : arr;
   const secondary = displayUnit === "MRR" ? arr : displayMrrFromArr(arr);
   const primaryLabel = displayUnit;
@@ -213,7 +213,7 @@ function exclusionPhrase(line) {
     case "tier_conflict":
       return "tier conflict";
     case "peak_basis_unresolved":
-      return "peak basis — unresolved";
+      return "peak basis. unresolved";
     case "product_not_applicable":
       return "not applicable to product";
     default:
@@ -268,7 +268,7 @@ function summarizeArrLines(lines) {
 /** @param {number|null} confidence */
 function confidenceBadge(confidence) {
   if (confidence == null) {
-    return `<span class="deal-arr-confidence deal-arr-confidence--unknown">Confidence —</span>`;
+    return `<span class="deal-arr-confidence deal-arr-confidence--unknown">Confidence unknown</span>`;
   }
   const pct = Math.round(confidence * 100);
   let band = "medium";
@@ -314,7 +314,7 @@ function formatDerivationStep(step) {
 
 /** @param {object} line @param {object|null} inputs */
 function renderQuantityCell(line, inputs) {
-  if (line.quantity == null) return `<span class="muted">—</span>`;
+  if (line.quantity == null) return `<span class="muted">-</span>`;
   const unitLabel = quantityUnitLabel(line.unit, line.addonKey);
   const price = line.unitPrice != null ? ` × ${formatUsd(line.unitPrice)}` : "";
   if (line.kind === "base") {
@@ -345,7 +345,7 @@ function renderBaseRow(line, inputs, ctx = {}) {
     return `
       <div class="${rowClass}">
         <div class="deal-arr-row-main">
-          <span class="deal-arr-row-label">${esc(title)} — ${esc(exclusionPhrase(line))} — excluded</span>
+          <span class="deal-arr-row-label">${esc(title)}. ${esc(exclusionPhrase(line))}. excluded</span>
           ${renderMoneyCell(line, displayUnit)}
         </div>
       </div>`;
@@ -360,7 +360,7 @@ function renderBaseRow(line, inputs, ctx = {}) {
     !editable && evidence
       ? `<p class="deal-arr-evidence muted">"${esc(evidence)}"</p>`
       : !editable && !line.stated
-        ? `<p class="deal-arr-evidence muted">Agent count inferred — not directly quoted</p>`
+        ? `<p class="deal-arr-evidence muted">Agent count inferred. not directly quoted</p>`
         : "";
 
   return `
@@ -415,7 +415,7 @@ function renderAddonRow(line, inputs, ctx = {}) {
     return `
       <div class="${rowMods}">
         <div class="deal-arr-row-main">
-          <span class="deal-arr-row-label">${esc(title)} — ${esc(exclusionPhrase(line))} — excluded</span>
+          <span class="deal-arr-row-label">${esc(title)}. ${esc(exclusionPhrase(line))}. excluded</span>
           ${conflictBadge}
           ${line.evidence ? `<span class="deal-arr-chain-quote muted">"${esc(line.evidence)}"</span>` : ""}
           ${renderMoneyCell(line, displayUnit)}
@@ -525,7 +525,7 @@ export function renderDealArrModule(deal, allLines, opts = {}) {
       return `
         <section class="account-record-section deal-record-section deal-arr-module deal-arr-module--empty">
           <h3 class="account-record-section-title">ARR derivation</h3>
-          <p class="muted">Pricing inputs have not been computed for this deal yet — run post-call analysis with ARR extraction.</p>
+          <p class="muted">Pricing inputs have not been computed for this deal yet. run post-call analysis with ARR extraction.</p>
         </section>`;
     }
     return "";
@@ -579,10 +579,10 @@ export function renderDealArrModule(deal, allLines, opts = {}) {
         hour: "numeric",
         minute: "2-digit",
       })
-    : "—";
+    : "-";
 
   const statusNote = editable
-    ? `<p class="deal-arr-live-note muted" data-arr-live-status>Edits recompute via price book — ARR is stored; MRR is display-only.</p>`
+    ? `<p class="deal-arr-live-note muted" data-arr-live-status>Edits recompute via price book. ARR is stored; MRR is display-only.</p>`
     : "";
 
   return `
@@ -605,7 +605,7 @@ export function renderDealArrModule(deal, allLines, opts = {}) {
       ${statusNote}
 
       <div class="deal-arr-body" data-arr-body>
-        ${bodyParts.join("") || `<p class="muted">No line breakdown stored — point estimate only.</p>`}
+        ${bodyParts.join("") || `<p class="muted">No line breakdown stored. point estimate only.</p>`}
       </div>
 
       ${subtotals}
@@ -729,7 +729,7 @@ export function mountDealArrModule(container, deal, lines, opts = {}) {
         fieldState,
       });
 
-      if (statusEl) statusEl.textContent = "Live total updated — saving…";
+      if (statusEl) statusEl.textContent = "Live total updated. saving…";
       schedulePersist(result, nextState);
     } catch (err) {
       if (statusEl) {
@@ -804,7 +804,7 @@ export function mountDealArrModule(container, deal, lines, opts = {}) {
         onDealUpdated?.(currentDeal, currentLines);
 
         const statusEl = container.querySelector("[data-arr-live-status]");
-        if (statusEl) statusEl.textContent = "Saved — deal override applied (this deal only).";
+        if (statusEl) statusEl.textContent = "Saved. deal override applied (this deal only).";
       } catch (err) {
         const statusEl = container.querySelector("[data-arr-live-status]");
         if (statusEl) statusEl.textContent = err?.message || "Save failed";

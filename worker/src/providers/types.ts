@@ -9,6 +9,9 @@ export interface ProviderEnv {
   POSTCALL_LLM_PROVIDER?: string;
   POSTCALL_MODEL?: string;
   POSTCALL_EFFORT?: string;
+  RESEARCH_MODEL?: string;
+  RESEARCH_THINKING_LEVEL?: string;
+  SYNTHESIZE_MODEL?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
   GOOGLE_CLOUD_PROJECT?: string;

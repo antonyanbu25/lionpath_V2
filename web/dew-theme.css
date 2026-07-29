@@ -180,7 +180,7 @@
   --fw-button--lg-focus-border: var(--dew-primary);
 }
 
-/* fw-button variants — primary / secondary / link (Dew flat, no mint gradients) */
+/* fw-button variants. primary / secondary / link (Dew flat, no mint gradients) */
 fw-button[color="primary"] {
   --color-fill-brand: var(--dew-primary);
   --fw-button-hover-background-color: var(--dew-primary-hover);
@@ -250,7 +250,7 @@ fw-tooltip {
   --fw-tooltip-color: var(--dew-surface);
 }
 
-/* Sidebar rail collapse pill — neutral surface, no primary blue outline */
+/* Sidebar rail collapse pill. neutral surface, no primary blue outline */
 fw-button.sidebar-collapse[color="secondary"][fill="clear"] {
   --color-fill-surface: var(--dew-surface);
   --color-boundary-border-mildest: var(--dew-border);

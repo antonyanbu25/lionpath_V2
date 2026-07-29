@@ -133,7 +133,7 @@ export function historyCallMovement(rec) {
     }),
     ...(blob.tcDeltas || []).map(formatTcDeltaMovement).filter(Boolean),
   ];
-  return phrases.length ? phrases.join(" · ") : "—";
+  return phrases.length ? phrases.join(" · ") : "-";
 }
 
 /** @param {import("./types.js").Deal|null|undefined} deal @param {object[]} records */

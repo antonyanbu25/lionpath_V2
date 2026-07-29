@@ -5,7 +5,7 @@
 // (form works against the Worker, no sign-in, no history). Fill it in via
 // firebase-config.local.js to turn on Google sign-in and Firestore history.
 
-/** Shipped for production hosts (client config — auth enforced by Firebase + Worker). */
+/** Shipped for production hosts (client config. auth enforced by Firebase + Worker). */
 const PRODUCTION_FIREBASE = {
   apiKey: "AIzaSyCtV1K1h3kwcsObxSyBi0qDTxaivArn8HE",
   authDomain: "se-singha-paathi.firebaseapp.com",

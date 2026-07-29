@@ -95,7 +95,7 @@ export function sortDealListRows(rows, sortKey = "traction") {
 
 /** @param {number|null|undefined} amount */
 export function formatCompactUsd(amount) {
-  if (amount == null || !Number.isFinite(amount)) return "—";
+  if (amount == null || !Number.isFinite(amount)) return "-";
   if (amount >= 1_000_000) {
     const m = amount / 1_000_000;
     return `$${m >= 10 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, "")}M`;
@@ -121,7 +121,7 @@ function weightedArrConfidence(lines) {
 export function formatDealListMoneyBand(low, high, point) {
   const lo = low ?? point;
   const hi = high ?? point;
-  if (lo == null && hi == null) return "—";
+  if (lo == null && hi == null) return "-";
   if (lo != null && hi != null && lo !== hi) {
     return `${formatCompactUsd(lo)}–${formatCompactUsd(hi)}`;
   }
@@ -284,21 +284,21 @@ const TC_FIELD_LABELS = {
 };
 
 function formatDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatShortDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function dealListSubtitle(openCount, opts) {
   if (opts.listTractionFilter === "cold") {
-    return "Deals flagged cold across your team — sorted by traction then ARR.";
+    return "Deals flagged cold across your team, sorted by traction then ARR.";
   }
   const openLabel = openCount === 1 ? "1 open" : `${openCount} open`;
-  return `${openLabel}. Sorted by traction, not close date — close date is what you typed in April.`;
+  return `${openLabel}. Sorted by traction, not close date; close date is what you typed in April.`;
 }
 
 /** @param {object[]} rows */
@@ -358,11 +358,11 @@ function renderDealListMetricCard(label, value, sub = "", valueClass = "") {
 
 /** @param {ReturnType<typeof summarizeDealListMetrics>} metrics */
 function renderDealListMetrics(metrics) {
-  const arrVal = metrics.arrInPlay != null ? formatCompactUsd(metrics.arrInPlay) : "—";
+  const arrVal = metrics.arrInPlay != null ? formatCompactUsd(metrics.arrInPlay) : "-";
   const openSub = metrics.openCount === 1 ? "1 open deal" : `${metrics.openCount} open deals`;
-  const tcVal = metrics.openCount ? `${metrics.tcYes} / ${metrics.openCount}` : "—";
+  const tcVal = metrics.openCount ? `${metrics.tcYes} / ${metrics.openCount}` : "-";
   const tcSub = metrics.tcYesArr != null ? `${formatCompactUsd(metrics.tcYesArr)} committed` : "";
-  const aiVal = metrics.openCount ? `${metrics.aiAttachCount} / ${metrics.openCount}` : "—";
+  const aiVal = metrics.openCount ? `${metrics.aiAttachCount} / ${metrics.openCount}` : "-";
   const coldSub = metrics.coldArr != null ? `${formatCompactUsd(metrics.coldArr)} at risk` : "";
   const followSub = metrics.openFollowUps > 0 ? `${metrics.openFollowUps} open tasks` : "none tracked";
 
@@ -377,7 +377,7 @@ function renderDealListMetrics(metrics) {
 }
 
 function formatGeneratedSummaryMeta(generatedAt, sourceCallIds) {
-  const when = generatedAt ? formatDate(generatedAt) : "—";
+  const when = generatedAt ? formatDate(generatedAt) : "-";
   const count = sourceCallIds?.length || 0;
   const callLabel = count === 1 ? "1 call" : `${count} calls`;
   return `Updated ${when} · from ${callLabel}`;
@@ -389,7 +389,7 @@ function stageBadge(stage) {
 }
 
 function listMotionBadge(type) {
-  const label = DEAL_TYPE_LABELS[type] || type || "—";
+  const label = DEAL_TYPE_LABELS[type] || type || "-";
   const mod = type === "expansion" ? "expansion" : "new-business";
   return `<span class="account-list-motion-badge account-list-motion-badge--${mod}">${esc(label)}</span>`;
 }
@@ -484,11 +484,11 @@ export function formatCallMovement(meddpiccDeltas, tcDeltas) {
   for (const d of tcDeltas || []) {
     phrases.push(formatTcDeltaPhrase(d));
   }
-  return phrases.length ? phrases.join(" · ") : "—";
+  return phrases.length ? phrases.join(" · ") : "-";
 }
 
 function formatLength(minutes) {
-  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  if (minutes == null || !Number.isFinite(minutes)) return "-";
   if (minutes < 60) return `${Math.round(minutes)}m`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
@@ -513,7 +513,7 @@ function meddpiccListTag(score) {
 
 function aiAttachListTag(aiAttach) {
   const summary = formatTcValue(aiAttach);
-  if (!summary) return `<span class="muted deal-list-ai-attach">—</span>`;
+  if (!summary) return `<span class="muted deal-list-ai-attach">-</span>`;
   const attached =
     aiAttach?.agentCount > 0 ||
     aiAttach?.optedInAfterDemo === true ||
@@ -536,15 +536,15 @@ function renderDealListMoneyCell(row, unit) {
       : formatDealListMoneyBand(arrLow, arrHigh, arrPoint);
   const confNote =
     lowConf && arrConfidence != null
-      ? `${Math.round(arrConfidence * 100)}% confidence — estimate, not a firm number`
-      : "Estimate — confidence not established yet";
+      ? `${Math.round(arrConfidence * 100)}% confidence (estimate, not a firm number)`
+      : "Estimate: confidence not established yet";
   return `<span class="deal-list-money${lowConf ? " deal-list-money--low-confidence" : ""}"${
     lowConf ? ` title="${esc(confNote)}"` : ""
   }>${esc(band)}${lowConf ? '<span class="deal-list-money-mark" aria-hidden="true">*</span>' : ""}</span>`;
 }
 
 function daysSilentCell(daysSilent, traction) {
-  if (daysSilent == null) return `<span class="muted deal-list-silent">—</span>`;
+  if (daysSilent == null) return `<span class="muted deal-list-silent">-</span>`;
   const t = traction || "warm";
   const tone = t === "cold" ? "deal-list-silent--cold" : t === "hot" ? "deal-list-silent--hot" : "deal-list-silent--warm";
   return `<span class="deal-list-silent ${tone}">${esc(String(daysSilent))}d</span>`;
@@ -554,7 +554,7 @@ function renderDealListItem(row) {
   const { deal, account } = row;
   const accountTitle = account?.name || account?.domain || "Account";
   const dealTitle = deal.title || DEAL_TYPE_LABELS[deal.type] || "Deal";
-  const tractionLabel = row.traction ? row.traction.charAt(0).toUpperCase() + row.traction.slice(1) : "—";
+  const tractionLabel = row.traction ? row.traction.charAt(0).toUpperCase() + row.traction.slice(1) : "-";
   const mobileMeta = [
     row.traction ? tractionLabel : null,
     row.arrPoint != null ? formatDealListMoneyBand(row.arrLow, row.arrHigh, row.arrPoint) : null,
@@ -578,7 +578,7 @@ function renderDealListItem(row) {
         <span class="deal-list-col deal-list-col--meddpicc">${meddpiccListTag(row.meddpiccScore)}</span>
         <span class="deal-list-col deal-list-col--tc">${row._pending ? `<span class="muted">·</span>` : tcStatusTag(row.tcStatus)}</span>
         <span class="deal-list-col deal-list-col--ai">${aiAttachListTag(row.aiAttach)}</span>
-        <span class="deal-list-col deal-list-col--traction">${row._pending ? `<span class="muted">·</span>` : row.traction ? tractionTag(row.traction) : `<span class="muted">—</span>`}</span>
+        <span class="deal-list-col deal-list-col--traction">${row._pending ? `<span class="muted">·</span>` : row.traction ? tractionTag(row.traction) : `<span class="muted">-</span>`}</span>
         <span class="deal-list-col deal-list-col--silent">${row._pending ? `<span class="muted">·</span>` : daysSilentCell(row.daysSilent, row.traction)}</span>
       </span>
     </button>`;
@@ -871,7 +871,7 @@ function renderCallsSection(callRows, sectionOpts = {}) {
 
   const rows = (callRows || []).map(({ postCall, movement }) => {
     const callType = resolveCallType({ ...postCall, timestamp: postCall.createdAt });
-    const typeLabel = CALL_TYPE_LABELS[callType] || callType || "—";
+    const typeLabel = CALL_TYPE_LABELS[callType] || callType || "-";
     return `
       <tr class="deal-calls-row" data-call-id="${esc(postCall.id)}" tabindex="0" role="button">
         <td class="deal-calls-col deal-calls-col--title">${esc(callTitle(postCall))}</td>
@@ -911,7 +911,7 @@ function renderCallsSection(callRows, sectionOpts = {}) {
   return `
     <section class="account-record-section deal-record-section deal-record-calls">
       <h3 class="account-record-section-title">Calls on this deal</h3>
-      <p class="muted deal-record-calls-note">What each call moved — from MEDDPICC and technical commit deltas.</p>
+      <p class="muted deal-record-calls-note">What each call moved, from MEDDPICC and technical commit deltas.</p>
       <div class="deal-calls-table-wrap">
         <table class="deal-calls-table">
           <thead>
@@ -947,9 +947,9 @@ function renderDealDetailsCard(deal, account) {
   const rows = [
     ["Created", formatDate(deal.createdAt)],
     ["Updated", formatDate(deal.updatedAt)],
-    ["Sub region", meta.sub_region || meta.subRegion || "—"],
-    ["Forecast month", deal.forecastMonth || "—"],
-    ["SF opportunity", deal.sfOpportunityId || "—"],
+    ["Sub region", meta.sub_region || meta.subRegion || "-"],
+    ["Forecast month", deal.forecastMonth || "-"],
+    ["SF opportunity", deal.sfOpportunityId || "-"],
   ];
 
   const body = rows
@@ -974,12 +974,12 @@ function renderReportingFields(deal, account) {
     ["Status", dealStatusLabel(deal.status)],
     ["Stage", STAGE_LABELS[deal.stage] || deal.stage],
     ["Motion", DEAL_TYPE_LABELS[deal.type] || deal.type],
-    ["Region", meta.region || "—"],
-    ["Sub region", meta.sub_region || meta.subRegion || "—"],
-    ["Forecast month", deal.forecastMonth || "—"],
-    ["Competitive position", deal.competitivePosition || "—"],
-    ["Copilot", deal.copilotFlag != null ? String(deal.copilotFlag) : "—"],
-    ["SF opportunity", deal.sfOpportunityId || "—"],
+    ["Region", meta.region || "-"],
+    ["Sub region", meta.sub_region || meta.subRegion || "-"],
+    ["Forecast month", deal.forecastMonth || "-"],
+    ["Competitive position", deal.competitivePosition || "-"],
+    ["Copilot", deal.copilotFlag != null ? String(deal.copilotFlag) : "-"],
+    ["SF opportunity", deal.sfOpportunityId || "-"],
   ];
 
   const body = rows
@@ -1000,7 +1000,7 @@ function renderReportingFields(deal, account) {
 
 function renderDealHeaderArr(deal) {
   const band = formatDealListMoneyBand(deal?.arrEstimateLow, deal?.arrEstimateHigh, deal?.arrEstimatePoint);
-  if (band === "—") return "";
+  if (band === "-") return "";
   const agents = deal?.arrInputsJson?.agents;
   const agentNote = agents != null ? `${agents} agents` : "estimate";
   return `
@@ -1074,7 +1074,7 @@ function renderDealRecord(detail) {
           ${renderGeneratedSummarySection(
             "Deal summary",
             detail.dealSummary,
-            "Generated after the first post-call on this deal — rewritten after every call.",
+            "Generated after the first post-call on this deal; rewritten after every call.",
             { wireframe: true },
           )}
           <div class="deal-record-metrics-grid">
@@ -1481,7 +1481,7 @@ function paintDealList(container, opts, rows) {
       container,
       opts,
       renderDealsEmptyState(
-        "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+        "No deals yet. Run a prep or post-call on an account to create your first opportunity.",
       ),
     );
   }
@@ -1690,7 +1690,7 @@ export async function renderDealView(container, session, opts = {}) {
         container,
         opts,
         renderDealsEmptyState(
-          "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+          "No deals yet. Run a prep or post-call on an account to create your first opportunity.",
         ),
       );
       return;

@@ -15,16 +15,16 @@ const SESSIONS_ADDON = "freddy_ai_agent_sessions";
 
 /** @param {number|null|undefined} amount @param {"ARR"|"MRR"} unit */
 function formatMoney(amount, unit = "ARR") {
-  if (amount == null || !Number.isFinite(amount)) return "—";
+  if (amount == null || !Number.isFinite(amount)) return "-";
   const value = unit === "MRR" ? displayMrrFromArr(amount) : amount;
   return `${formatUsd(value)} ${unit}`;
 }
 
 /** @param {number|null|undefined} low @param {number|null|undefined} high */
 function formatCompactBand(low, high) {
-  if (low == null && high == null) return "—";
+  if (low == null && high == null) return "-";
   const fmt = (n) => {
-    if (n == null) return "—";
+    if (n == null) return "-";
     if (n >= 1_000_000) return `$${Math.round(n / 1_000_000)}M`;
     if (n >= 1000) return `$${Math.round(n / 1000)}K`;
     return formatUsd(n);
@@ -47,12 +47,12 @@ function renderMatrixCell(cell, allowanceDealId, dealId, addonKey) {
     return `<span class="account-attach-cell account-attach-cell--attached" title="${esc(qty ? `${qty} · ${money}` : money)}">${esc(money)}</span>`;
   }
   if (state === "discussed") {
-    return `<span class="account-attach-cell account-attach-cell--discussed" title="Discussed — not quantified">…</span>`;
+    return `<span class="account-attach-cell account-attach-cell--discussed" title="Discussed. not quantified">…</span>`;
   }
   if (addonKey === SESSIONS_ADDON && allowanceDealId && allowanceDealId !== dealId) {
     return `<span class="account-attach-cell account-attach-cell--no-allowance muted" title="500-session allowance applied to another deal on this account">no free tier</span>`;
   }
-  return `<span class="account-attach-cell account-attach-cell--absent muted">—</span>`;
+  return `<span class="account-attach-cell account-attach-cell--absent muted">-</span>`;
 }
 
 /**
@@ -163,7 +163,7 @@ export function renderAccountArrModule(rollup, opts = {}) {
       ? `
     <div class="account-attach-matrix-wrap">
       <h4 class="account-attach-matrix-title">Add-on attach matrix</h4>
-      <p class="muted account-attach-matrix-hint">Add-ons down, deals across — cross-sell only visible at account level.</p>
+      <p class="muted account-attach-matrix-hint">Add-ons down, deals across. cross-sell only visible at account level.</p>
       <table class="account-attach-matrix">
         <thead>
           <tr>
@@ -174,18 +174,18 @@ export function renderAccountArrModule(rollup, opts = {}) {
         <tbody>${matrixRows.join("")}</tbody>
       </table>
     </div>`
-      : `<p class="muted account-attach-matrix-empty">No add-on lines yet — attach states appear after post-call ARR compute.</p>`;
+      : `<p class="muted account-attach-matrix-empty">No add-on lines yet. attach states appear after post-call ARR compute.</p>`;
 
   const allowanceNote =
     allowanceConsumerDealId && deals.length > 1
-      ? `<p class="account-arr-allowance-note muted">500-session account allowance consumed by <strong>${esc(dealLabel(deals, allowanceConsumerDealId))}</strong> — other deals bill from session one.</p>`
+      ? `<p class="account-arr-allowance-note muted">500-session account allowance consumed by <strong>${esc(dealLabel(deals, allowanceConsumerDealId))}</strong>. other deals bill from session one.</p>`
       : "";
 
   const crossSellRows = (rollup.crossSellGaps || [])
     .map((gap) => {
       const attached = gap.attachedDealIds.map((id) => dealLabel(deals, id)).join(", ");
       const missing = gap.absentDealIds.map((id) => dealLabel(deals, id)).join(", ");
-      return `<li><strong>${esc(gap.label)}</strong> on ${esc(attached)} — absent from ${esc(missing)}</li>`;
+      return `<li><strong>${esc(gap.label)}</strong> on ${esc(attached)}. absent from ${esc(missing)}</li>`;
     })
     .join("");
 
@@ -197,7 +197,7 @@ export function renderAccountArrModule(rollup, opts = {}) {
   const unquantRows = (rollup.discussedUnquantified || [])
     .map(
       (item) =>
-        `<li><strong>${esc(item.label)}</strong> on ${esc(dealLabel(deals, item.dealId))}${item.evidence ? ` — <span class="muted">"${esc(item.evidence)}"</span>` : ""}</li>`,
+        `<li><strong>${esc(item.label)}</strong> on ${esc(dealLabel(deals, item.dealId))}${item.evidence ? `. <span class="muted">"${esc(item.evidence)}"</span>` : ""}</li>`,
     )
     .join("");
 

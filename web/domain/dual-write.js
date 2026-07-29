@@ -120,7 +120,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     payload?.companyName ||
     analysis?.callHeader?.company ||
     analysis?.callHeader?.account ||
-    record?.title?.split("—")[0]?.trim() ||
+    record?.title?.split("-")[0]?.trim() ||
     "";
 
   let account = company ? await findAccountByCompanyName(company) : null;
@@ -133,7 +133,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     account = { id: accountId, name: company };
   }
   if (!account) {
-    console.warn("[dual-write] post-call skipped — no company/account to attach");
+    console.warn("[dual-write] post-call skipped. no company/account to attach");
     return null;
   }
 

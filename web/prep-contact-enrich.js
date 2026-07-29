@@ -119,36 +119,45 @@ export function matchPdfToEmail(pdf, emails, hintName) {
   return null;
 }
 
-/** Assign each PDF to at most one prospect email. */
+/** Assign each PDF to at most one prospect email (email/slug match, then positional fallback). */
 export function assignPdfsToEmails(pdfs, emails) {
   const map = new Map();
-  const used = new Set();
+  const usedEmails = new Set();
+  /** @type {typeof pdfs} */
+  const unmatchedPdfs = [];
+
   for (const pdf of pdfs || []) {
     let email = null;
     for (const e of emails) {
-      if (used.has(e)) continue;
+      if (usedEmails.has(e)) continue;
       if (matchPdfToEmail(pdf, [e]) === e) {
         email = e;
         break;
       }
     }
     if (!email) {
-      email = matchPdfToProspect(pdf.text, emails.filter((e) => !used.has(e)));
+      email = matchPdfToProspect(pdf.text, emails.filter((e) => !usedEmails.has(e)));
     }
-    if (!email) {
-      const remaining = emails.filter((e) => !used.has(e));
-      if (remaining.length === 1) email = remaining[0];
-    }
-    if (email && !used.has(email)) {
-      used.add(email);
+    if (email && !usedEmails.has(email)) {
+      usedEmails.add(email);
       map.set(email.toLowerCase(), pdf);
+    } else {
+      unmatchedPdfs.push(pdf);
     }
   }
+
+  const remainingEmails = emails.filter((e) => !usedEmails.has(e));
+  for (let i = 0; i < unmatchedPdfs.length && i < remainingEmails.length; i++) {
+    const email = remainingEmails[i];
+    usedEmails.add(email);
+    map.set(email.toLowerCase(), unmatchedPdfs[i]);
+  }
+
   return map;
 }
 
 /**
- * Run enrich API for each prospect that has sources.
+ * Run enrich API for each prospect that has sources (sequential to avoid Gemini rate limits).
  * @param {{ enrichUrl: string, getToken?: () => Promise<string>, authEnabled?: boolean }} deps
  */
 export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onProgress }) {
@@ -157,8 +166,10 @@ export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onP
   const kaiaContent = payload.kaiaContent;
   const kaiaSummaryFallback = payload.kaiaSummary || "";
   const notes = seNotesForEnrich(payload);
+  const results = [];
 
-  const tasks = emails.map(async (email, idx) => {
+  for (let idx = 0; idx < emails.length; idx++) {
+    const email = emails[idx];
     const pdf = pdfMap.get(email.toLowerCase());
     const sources = {};
     if (pdf?.text) sources.linkedinPdf = { fileName: pdf.fileName, text: pdf.text };
@@ -181,7 +192,7 @@ export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onP
       sources.zoomTranscriptExcerpt?.trim() ||
       sources.kaiaSummary?.trim() ||
       sources.additionalNotes?.trim();
-    if (!hasSource) return null;
+    if (!hasSource) continue;
 
     onProgress?.(idx + 1, emails.length);
 
@@ -189,23 +200,29 @@ export async function enrichProspectsParallel(deps, { emails, pdfs, payload, onP
     if (deps.authEnabled && deps.getToken) {
       headers.Authorization = `Bearer ${await deps.getToken()}`;
     }
-    const res = await fetch(deps.enrichUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        email,
-        companyName: payload.companyName,
-        companyDomain: payload.companyDomain,
-        sources,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Enrich failed (${res.status})`);
-    return data;
-  });
+    try {
+      const res = await fetch(deps.enrichUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email,
+          companyName: payload.companyName,
+          companyDomain: payload.companyDomain,
+          sources,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn(`[prep] enrich failed for ${email}:`, data.error || res.statusText);
+        continue;
+      }
+      results.push(data);
+    } catch (err) {
+      console.warn(`[prep] enrich error for ${email}:`, err?.message || err);
+    }
+  }
 
-  const results = await Promise.all(tasks);
-  return results.filter(Boolean);
+  return results;
 }
 
 /** Map enrich API responses to worker confirmedProspectProfiles shape. */
@@ -289,6 +306,43 @@ export function mergeEnrichmentsIntoPrep(prep, emails, enrichments) {
         : p.discHint,
       influence: en.influence || p.influence,
     };
+  }
+
+  return { ...prep, prospects };
+}
+
+/** When enrich missed a contact, use the matched PDF name for tab labels. */
+export function applyPdfNameFallbacks(prep, emails, pdfs) {
+  if (!prep || !emails?.length || !pdfs?.length) return prep;
+  const pdfMap = assignPdfsToEmails(pdfs, emails);
+  const prospects = [...(prep.prospects || [])];
+  const liLabel =
+    (prep.sources || []).find((s) => /linkedin/i.test(s.label))?.label || "LinkedIn PDF";
+
+  while (prospects.length < emails.length) {
+    prospects.push({
+      name: "unknown",
+      role: "unknown",
+      totalExperience: "unknown",
+      priorEmployers: [],
+      competitorTouchpoints: [],
+      sourceLabel: liLabel,
+    });
+  }
+
+  for (let i = 0; i < emails.length; i++) {
+    const pdf = pdfMap.get(String(emails[i]).toLowerCase());
+    if (!pdf) continue;
+    const p = prospects[i] || {};
+    const pdfName = extractNameFromPdfText(pdf.text);
+    const nameUnknown = !p.name || String(p.name).trim().toLowerCase() === "unknown";
+    if (pdfName && nameUnknown) {
+      prospects[i] = {
+        ...p,
+        name: pdfName,
+        sourceLabel: /linkedin/i.test(String(p.sourceLabel || "")) ? p.sourceLabel : liLabel,
+      };
+    }
   }
 
   return { ...prep, prospects };

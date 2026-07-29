@@ -1,4 +1,4 @@
-/** Session helpers — no auth imports to avoid cycles with domain layer. */
+/** Session helpers. no auth imports to avoid cycles with domain layer. */
 
 import { stableUserIdForEmail } from "./id.js";
 

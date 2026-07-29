@@ -22,7 +22,9 @@ import {
   linkedinProfileExportsForPayload,
   linkedinProfileExportsForStorage,
 } from "./prep-linkedin-pdf.js";
-import { esc, $, show } from "./shared.js";
+import { esc, $, show, EMPTY_DISPLAY } from "./shared.js";
+import { companyNameFromEmail } from "./prep-domain.js";
+export { companyNameFromEmail };
 import { deriveCallTimeline } from "./domain/timeline-service.js";
 import {
   barClass,
@@ -108,8 +110,12 @@ function agentDebugLog(location, message, data, hypothesisId) {
 }
 // #endregion
 
-const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
-const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
+const isUnknown = (v) => {
+  const s = String(v ?? "").trim();
+  if (!s || s.toLowerCase() === "unknown") return true;
+  return s === "-" || s === "—" || s === "–";
+};
+const dash = (v) => (isUnknown(v) ? `<span class="muted">${EMPTY_DISPLAY}</span>` : esc(v));
 
 /** Collapse duplicate display names (case-insensitive; strip role suffixes; email → local part). */
 function normalizePersonKey(label) {
@@ -183,7 +189,7 @@ export async function getWorkerAuthHeaders() {
 }
 
 /** Parse "https://…/rec/share/… Passcode: abc" from one paste field. */
-/** Zoom `?pwd=` query (API play passcode) — NOT the `.token` path suffix. */
+/** Zoom `?pwd=` query (API play passcode). NOT the `.token` path suffix. */
 function extractZoomQueryPasscode(rawUrl) {
   try {
     const href = String(rawUrl || "").trim().split(/\s/)[0];
@@ -262,7 +268,7 @@ const TRANSCRIPT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export async function readTranscriptFile(file) {
   if (!file) return { ok: false, error: "No file selected." };
   if (file.size > TRANSCRIPT_FILE_MAX_BYTES) {
-    return { ok: false, error: "That file is over 5 MB. Transcripts are text — check the file." };
+    return { ok: false, error: "That file is over 5 MB. Transcripts are text; check the file." };
   }
   if (!/\.(vtt|srt|txt)$/i.test(file.name || "")) {
     return { ok: false, error: "Use the .vtt transcript from Zoom (or a .txt / .srt)." };
@@ -311,39 +317,6 @@ function parseProspectEmails(raw) {
     .split(/[,;\s]+/)
     .map((e) => e.trim().toLowerCase())
     .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-}
-
-/** Mail-infra labels that are never the company name. */
-const DOMAIN_LABEL_NOISE = new Set([
-  "mail", "email", "smtp", "mx", "corp", "corporate", "internal",
-  "www", "info", "go", "my", "app", "get",
-]);
-
-const NON_PROSPECT_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com",
-  "live.com", "icloud.com", "aol.com", "proton.me", "protonmail.com",
-  "freshworks.com", "freshdesk.com", "freshservice.com",
-]);
-
-/**
- * "alex@acme.com" -> "Acme". Takes the label after @ and before the first dot,
- * skipping mail-infra prefixes ("mail.acme.com" -> "Acme").
- * Returns null for free-mail and internal Freshworks domains.
- */
-export function companyNameFromEmail(email) {
-  const domain = domainFromEmail(email);
-  if (!domain || NON_PROSPECT_DOMAINS.has(domain)) return null;
-  const labels = domain.split(".").filter(Boolean);
-  if (labels.length < 2) return null;
-  let label = labels[0];
-  if (DOMAIN_LABEL_NOISE.has(label) && labels.length > 2) label = labels[1];
-  if (!label || label.length < 2) return null;
-  return label
-    .replace(/[-_]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
 }
 
 function scheduleCompanyPrefill() {
@@ -505,7 +478,7 @@ function attachAccountLookup(cfg) {
       pcCreateNewAccount = true;
       pcResolvedAccount = null;
       if (noteEl) {
-        noteEl.textContent = "New account — will be created on confirm";
+        noteEl.textContent = "New account (will be created on confirm)";
         noteEl.hidden = false;
       }
     } else {
@@ -727,7 +700,7 @@ function renderQualityCoach(qc) {
         ${renderScoreGauge(normalized.overallScore, 10)}
         <div class="qc-hero-meta">
           <span class="qc-overall-label">${esc(normalized.overallLabel)}</span>
-          <p class="muted qc-hero-hint">Quality score — separate from deal momentum above.</p>
+          <p class="muted qc-hero-hint">Quality score (separate from deal momentum above).</p>
         </div>
       </div>
       ${renderRadarChart(dims)}
@@ -738,7 +711,7 @@ function renderQualityCoach(qc) {
       ${renderInsightList(normalized.missedOpportunities?.slice(0, 1), "Missed opportunity", "weak")}
     </div>
     <details class="qc-details sources">
-      <summary>Details — full scorecard</summary>
+      <summary>Details: full scorecard</summary>
       <div class="qc-scorecard">
         <div class="qc-dim-list">${renderDimensionRows(dims)}</div>
       </div>
@@ -961,7 +934,7 @@ function renderQipEvidence(evidence) {
     .map((e) => {
       const ts = formatEvidenceAt(e.atS);
       return `<li class="qip-evidence">
-        ${ts != null ? `<span class="qip-evidence-ts">${esc(ts)}</span>` : '<span class="qip-evidence-ts muted">—</span>'}
+        ${ts != null ? `<span class="qip-evidence-ts">${esc(ts)}</span>` : '<span class="qip-evidence-ts muted">-</span>'}
         <blockquote class="qip-evidence-quote">${truncateWords(e.quote, 40)}</blockquote>
       </li>`;
     })
@@ -971,7 +944,7 @@ function renderQipEvidence(evidence) {
 function qipLineConfidencePill(line, fallbackConf) {
   if (!line.applicable) return "";
   const c = line.confidence ?? fallbackConf;
-  if (c == null) return `<span class="pill">—</span>`;
+  if (c == null) return `<span class="pill">-</span>`;
   if (c >= 0.65) return '<span class="pill green">High</span>';
   if (c >= 0.4) return '<span class="pill amber">Med</span>';
   return '<span class="pill red">Low</span>';
@@ -995,7 +968,7 @@ function qipScoreColor(pct) {
   return "var(--red)";
 }
 
-/** v2 QIP scorecard — wireframe srow layout: theme, score, weighted bar, confidence. */
+/** v2 QIP scorecard. wireframe srow layout: theme, score, weighted bar, confidence. */
 export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   if (!scorecard?.lines?.length) {
     return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
@@ -1055,7 +1028,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
     const barColor =
       barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
     const barCol = na || suppressed
-      ? `<span class="muted">—</span>`
+      ? `<span class="muted">-</span>`
       : `<div class="bar qip-weight-bar"><span style="width:${Math.max(pct, line.score === 0 ? 0 : 4)}%;background:${barColor}"></span></div>`;
     const reason = na && line.notApplicableReason
       ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
@@ -1102,8 +1075,8 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
 
   const actionsHtml = wireframe
     ? `<div class="qip-scorecard-actions">
-        <button type="button" class="btn-wire sm" disabled title="Score override — coming soon">Override a score</button>
-        <button type="button" class="btn-wire sm" disabled title="Compare to your average — coming soon">Compare to my average</button>
+        <button type="button" class="btn-wire sm" disabled title="Score override (coming soon)">Override a score</button>
+        <button type="button" class="btn-wire sm" disabled title="Compare to your average (coming soon)">Compare to my average</button>
       </div>`
     : "";
 
@@ -1116,7 +1089,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
         </div>
         <span class="pill qip-total-pill">${esc(totalLabel)} · weighted</span>
       </div>
-      ${provisional ? '<span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span>' : ""}
+      ${provisional ? '<span class="qip-provisional-badge" title="Shadow mode (excluded from averages)">Provisional</span>' : ""}
       ${confPct != null ? `<p class="muted qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
       <div class="qip-grid-header eyebrow">
         <div>Theme</div><div>Score</div><div>Weighted</div><div>Conf</div><div></div>
@@ -1149,15 +1122,15 @@ function renderConfirmedReadOnlyBanner(data) {
   const am = data?.analysisMeta;
   if (!c && !am) return "";
   const callType = c?.callType || am?.callType;
-  const callLabel = CALL_TYPE_LABELS[callType] || callType || "—";
+  const callLabel = CALL_TYPE_LABELS[callType] || callType || "-";
   const accountName =
     data?.resolve?.account?.accountName ||
     data?.analysis?.callHeader?.company ||
-    "—";
+    "-";
   const deal =
     data?.resolve?.deals?.find((d) => d.dealId === c?.dealId) ||
     data?.resolve?.deals?.find((d) => d.preselected);
-  const dealLabel = deal?.title || c?.dealId || "—";
+  const dealLabel = deal?.title || c?.dealId || "-";
   const accountId = data?.resolve?.account?.accountId || c?.accountId || null;
   const dealId = c?.dealId || deal?.dealId || null;
   const accountLink = accountId
@@ -1176,7 +1149,7 @@ function renderConfirmedReadOnlyBanner(data) {
     overrideNotes.push("Deal selection corrected");
   }
   return `<div class="postcall-confirmed-banner" aria-label="Confirmed match summary">
-    <strong>Confirmed</strong> — Account: ${accountLink} · Deal: ${dealLink} · Call type: ${esc(callLabel)}
+    <strong>Confirmed</strong>. Account: ${accountLink} · Deal: ${dealLink} · Call type: ${esc(callLabel)}
     ${overrideNotes.length ? `<span class="muted"> (${esc(overrideNotes.join("; "))})</span>` : ""}
   </div>${renderVideoNaBanner(data)}`;
 }
@@ -1211,7 +1184,7 @@ export function renderPostCall(data, meta = {}) {
           return parts.join(" · ");
         })
         .join("")
-    : '<span class="muted">—</span>';
+    : '<span class="muted">-</span>';
 
   const metaLine = [hdr.duration, hdr.date].filter((x) => !isUnknown(x)).map(esc).join(" · ");
 
@@ -1231,13 +1204,13 @@ export function renderPostCall(data, meta = {}) {
         <thead><tr><th></th><th>This call</th><th>Follow-up</th></tr></thead>
         <tbody>${followRows}</tbody>
       </table>`
-    : '<p class="muted">—</p>';
+    : '<p class="muted">-</p>';
 
   const signalCol = (items) => {
     const list = (items || []).filter((x) => !isUnknown(x)).slice(0, 4);
     return list.length
       ? `<ul class="signal-list">${list.map((x) => `<li>${truncateWords(x, 12)}</li>`).join("")}</ul>`
-      : '<p class="muted">—</p>';
+      : '<p class="muted">-</p>';
   };
 
   const nextRows = (a.nextSteps || [])
@@ -1257,7 +1230,7 @@ export function renderPostCall(data, meta = {}) {
         <thead><tr><th>Owner</th><th>Action</th><th>Due</th><th>Why</th></tr></thead>
         <tbody>${nextRows}</tbody>
       </table>`
-    : '<p class="muted">—</p>';
+    : '<p class="muted">-</p>';
 
   const followUpEmail = arts.suggestedFollowUpEmail?.subject || arts.suggestedFollowUpEmail?.body
     ? `<details class="sources email-sources">
@@ -1276,7 +1249,7 @@ export function renderPostCall(data, meta = {}) {
   const callNotes = a.callNotes && !isUnknown(a.callNotes)
     ? `<section class="call-notes-section">
         <h2>Call notes</h2>
-        <p class="muted call-notes-hint">Internal — blunt coaching narrative. Not the customer MoM.</p>
+        <p class="muted call-notes-hint">Internal: blunt coaching narrative. Not the customer MoM.</p>
         <div class="call-notes-body">${esc(a.callNotes)}</div>
       </section>`
     : "";
@@ -1286,7 +1259,7 @@ export function renderPostCall(data, meta = {}) {
   const momBlock = momBody && !isUnknown(momBody)
     ? `<section class="mom-draft-section">
         <h2>Minutes draft</h2>
-        <p class="muted mom-hint">Customer-facing — edit before send. Never auto-sent.${
+        <p class="muted mom-hint">Customer-facing: edit before send. Never auto-sent.${
           momDraft?.sentAt
             ? ` Sent ${esc(new Date(momDraft.sentAt).toLocaleString())}.`
             : " Not sent yet."
@@ -1302,7 +1275,7 @@ export function renderPostCall(data, meta = {}) {
       (f) => `<tr>
         <td>${esc(f.owner || "se")}</td>
         <td>${truncateWords(f.description, 25)}</td>
-        <td>${truncateWords(f.dueDate || "—", 8)}</td>
+        <td>${truncateWords(f.dueDate || "-", 8)}</td>
         <td>${esc(f.status || "open")}</td>
       </tr>`,
     )
@@ -1323,9 +1296,9 @@ export function renderPostCall(data, meta = {}) {
     .map(
       (o) => `<tr class="${o.landed ? "" : "risk-row"}">
         <td>${truncateWords(o.objectionText, 30)}</td>
-        <td>${truncateWords(o.handling || "—", 30)}</td>
+        <td>${truncateWords(o.handling || "-", 30)}</td>
         <td>${o.landed ? "Landed" : "Open"}</td>
-        <td>${esc(o.theme || "—")}</td>
+        <td>${esc(o.theme || "-")}</td>
       </tr>`,
     )
     .join("");
@@ -1413,7 +1386,7 @@ export function hidePostCallLegacyResult() {
   }
 }
 
-/** Route to the call-record view — never leave the legacy one-pager visible. */
+/** Route to the call-record view. never leave the legacy one-pager visible. */
 function navigateToCallRecord(recordId) {
   if (!recordId) return;
   hidePostCallLegacyResult();
@@ -1588,7 +1561,7 @@ function matchConfidencePill(score) {
 }
 
 function formatDurationMinutes(mins) {
-  if (mins == null || !Number.isFinite(Number(mins))) return "—";
+  if (mins == null || !Number.isFinite(Number(mins))) return "-";
   const n = Number(mins);
   if (n < 1) return "< 1 min";
   return `${Math.round(n * 10) / 10} min`;
@@ -1686,7 +1659,7 @@ function renderIdentitySelect(id, label, selected, options, { required = false, 
   const selectedKey = normalizePersonKey(selected);
   const opts = [];
   if (allowEmpty) {
-    opts.push(`<option value="">— None —</option>`);
+    opts.push(`<option value="">(None)</option>`);
   }
   let hasSelected = false;
   for (const opt of options) {
@@ -1710,7 +1683,7 @@ function renderCustomerChecks(selected, options) {
     (selected || []).map((s) => normalizePersonKey(s)).filter(Boolean),
   );
   if (!options.length) {
-    return `<p class="muted">No speakers/emails to pick — type names into AE notes if needed.</p>`;
+    return `<p class="muted">No speakers/emails to pick; type names into AE notes if needed.</p>`;
   }
   return `<div class="postcall-customer-checks" role="group" aria-label="Customer identities">
     ${options
@@ -1731,7 +1704,7 @@ function renderIdentityConfirm(resolve) {
   const customerOptions = dedupePersonLabels(options.filter((o) => !isInternalIdentity(o)));
   return `<div class="postcall-confirm-block postcall-identity-block">
     <h3>Call identities</h3>
-    <p class="muted">Confirm SE, AE, and customer before analysis — guesses are often wrong.</p>
+    <p class="muted">Confirm SE, AE, and customer before analysis. guesses are often wrong.</p>
     ${renderIdentitySelect("pc-confirm-se", "SE", seDefault, options, { required: true })}
     ${renderIdentitySelect("pc-confirm-ae", "AE", aeDefault, options, { allowEmpty: true })}
     <div class="postcall-identity-field">
@@ -1746,16 +1719,16 @@ function renderDerivedFacts(resolve) {
   const speakers = resolve?.transcriptMeta?.speakers || [];
   const duration = resolve?.durationMinutes ?? resolve?.transcriptMeta?.durationMinutes;
   const rows = [
-    ["Domains", domains.length ? domains.join(", ") : "—"],
+    ["Domains", domains.length ? domains.join(", ") : "-"],
     ["Duration", formatDurationMinutes(duration)],
-    ["Source", resolve?.sourceKind || "—"],
+    ["Source", resolve?.sourceKind || "-"],
   ];
   if (speakers.length) {
     rows.push(["Speakers", dedupePersonLabels(speakers).join(", ")]);
   }
   return `<div class="postcall-confirm-block">
     <h3>Derived from recording</h3>
-    <p class="muted">Confirm these — we don't ask for them again.</p>
+    <p class="muted">Confirm these; we don't ask for them again.</p>
     <dl class="postcall-derived-facts">
       ${rows
         .map(
@@ -1774,12 +1747,12 @@ function renderVideoThemeWarning(resolve) {
   const items = themes
     .map((t) => {
       const label = VIDEO_THEME_LABELS[t.themeKey] || t.themeKey;
-      return `<li><strong>${esc(label)}</strong> — ${esc(t.reason || "Not applicable without video.")}</li>`;
+      return `<li><strong>${esc(label)}</strong>. ${esc(t.reason || "Not applicable without video.")}</li>`;
     })
     .join("");
   return `<div class="postcall-confirm-block postcall-video-na">
     <h3>Video themes not scored</h3>
-    <p class="muted">No video stream — denominator will renormalise. Analysis confidence: ${esc(confPct)}%.</p>
+    <p class="muted">No video stream. denominator will renormalise. Analysis confidence: ${esc(confPct)}%.</p>
     <ul class="postcall-video-na-list">${items}</ul>
   </div>`;
 }
@@ -1894,7 +1867,7 @@ function renderConfirmationGate(resolve, classify) {
   return `
     <header class="postcall-confirm-header">
       <h2>Confirm before analysis</h2>
-      <p class="muted">Review identities, match, and call type — nothing runs until you confirm.</p>
+      <p class="muted">Review identities, match, and call type. Nothing runs until you confirm.</p>
     </header>
     ${renderDerivedFacts(resolve)}
     ${renderIdentityConfirm(resolve)}
@@ -1908,7 +1881,7 @@ function renderConfirmationGate(resolve, classify) {
       </div>
       <label class="postcall-confirm-sr" for="pc-confirm-call-type">Call type</label>
       <select id="pc-confirm-call-type" class="postcall-confirm-select">${callTypeOptions}</select>
-      <p class="muted postcall-type-hint">Pick the primary — the rubric and its weights follow from this.</p>
+      <p class="muted postcall-type-hint">Pick the primary; the rubric and its weights follow from this.</p>
     </div>
     <div class="postcall-confirm-actions">
       <fw-button id="postcall-confirm-btn" color="primary" class="prep-form-submit">Confirm and generate</fw-button>
@@ -1988,7 +1961,7 @@ function readConfirmationSelections() {
 }
 
 function formatConfirmedIdentitiesContext({ seIdentity, aeIdentity, customerIdentities }) {
-  const lines = ["Confirmed call identities (authoritative — use these for attendees/roles):"];
+  const lines = ["Confirmed call identities (authoritative; use these for attendees/roles):"];
   if (seIdentity) lines.push(`- SE: ${seIdentity}`);
   if (aeIdentity) lines.push(`- AE: ${aeIdentity}`);
   if (customerIdentities?.length) {
@@ -2556,7 +2529,7 @@ async function startPipeline(e) {
   ]);
   showInlineStatus(status, {
     type: "info",
-    message: "Pass 0 — fetching transcript and matching account…",
+    message: "Pass 0: fetching transcript and matching account…",
     loading: true,
   });
 
@@ -2592,7 +2565,7 @@ async function startPipeline(e) {
     ]);
     showInlineStatus(status, {
       type: "info",
-      message: "Pass 1 — classifying call type from transcript…",
+      message: "Pass 1: classifying call type from transcript…",
       loading: true,
     });
 

@@ -11,8 +11,50 @@ import type { LlmProvider, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
 
+const RESEARCH_MODEL_FALLBACKS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+];
+
+export function resolveResearchModel(env: ProviderEnv): string {
+  const explicit = env.RESEARCH_MODEL?.trim();
+  if (explicit) return explicit;
+  const model = env.MODEL?.trim();
+  if (model && /^gemini-3\.[56]/i.test(model)) return model;
+  return RESEARCH_MODEL_FALLBACKS[1];
+}
+
+export function resolveSynthesizeModel(env: ProviderEnv): string {
+  const explicit = env.SYNTHESIZE_MODEL?.trim();
+  if (explicit) return explicit;
+  const research = env.RESEARCH_MODEL?.trim();
+  if (research) return research;
+  const model = env.MODEL?.trim();
+  if (model) return model;
+  return RESEARCH_MODEL_FALLBACKS[0];
+}
+
 export function getProvider(env: ProviderEnv): LlmProvider {
   const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
+  return resolveProvider(provider, env);
+}
+
+/** Pre-call brief synthesis — may use a heavier Gemini model than extract/repair. */
+export function getSynthesizeProvider(env: ProviderEnv): LlmProvider {
+  const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
+  if (provider === "gemini") {
+    return geminiProvider(env, resolveSynthesizeModel(env));
+  }
+  return resolveProvider(provider, env);
+}
+
+/** Pre-call web research — may use a heavier Gemini model than synthesize/post-call. */
+export function getResearchProvider(env: ProviderEnv): LlmProvider {
+  const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
+  if (provider === "gemini") {
+    return geminiProvider(env, resolveResearchModel(env));
+  }
   return resolveProvider(provider, env);
 }
 

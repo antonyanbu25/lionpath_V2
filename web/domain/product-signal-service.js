@@ -520,7 +520,7 @@ export function buildAiResidencyJoinInsight(topCluster, declineThemes, residency
   if (!hasResidencyDecline || (!clusterHasResidency && !residencyGaps.length)) return null;
 
   const arrText = residencyArr ? formatUsd(residencyArr) : "significant ARR";
-  return `Residency alone is ${arrText} blocked — same root cause as the top gap above. Two axes in the taxonomy is what lets those two facts meet.`;
+  return `Residency alone is ${arrText} blocked. same root cause as the top gap above. Two axes in the taxonomy is what lets those two facts meet.`;
 }
 
 /**

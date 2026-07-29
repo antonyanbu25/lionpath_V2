@@ -2,10 +2,11 @@ import { CUSTOMER_SERVICE_BENCHMARK_KB } from "../benchmark-kb";
 import { toPrepGeminiResponseSchema } from "../gemini-schema";
 import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } from "../icp-kb";
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getSynthesizeProvider } from "../providers";
 import { PREP_SCHEMA, type Prep } from "../schema";
 import { normalizePrepOutput } from "../word-limits";
 import { kbContextBlock } from "./extract-facts";
+import { applySeContextToDiscovery } from "./se-discovery-hints";
 import { applySeContextToPrep } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
 
@@ -17,6 +18,10 @@ function synthesizeSystemPrompt(): string {
 CRITICAL RULES:
 - Use ONLY the provided research facts for prospect/account claims — do NOT web search.
 - Use ONLY the Freshworks KB for Freshworks product facts.
+- SE-context facts (sourceLabel SE) and verbatim SE notes may fill signals, discovery kit, and likely pains — do NOT overwrite SE values with unknown.
+- When Additional context is present: at least 2 of 3 discoveryKit questions MUST reference concrete SE-stated facts (channels, inquiry types, team size, tools).
+- Each discoveryKit "because" line MUST cite which SE fact the question probes.
+- likelyPains MUST prioritize pains implied by SE notes before generic industry pains.
 - Where facts are missing or "unknown", output "unknown" or [] — never invent.
 - Every facts[]/signals[]/prospects[] sourceLabel MUST match sources[].label from facts.
 - Map SE-context signal facts (sourceLabel SE) into signals[] when present.
@@ -72,6 +77,9 @@ function synthesizeUserPrompt(
     "Fill the full prep brief. prospects[] must have one entry per email.",
     "Prefer LinkedIn PDF facts (sourceLabel LinkedIn PDF) for prospect name, role, experience when present.",
     "If a fact is unknown in research, use unknown in output.",
+    input.additionalContext
+      ? "Anchor discoveryKit and likelyPains to Additional context first; do not produce generic questions unrelated to SE notes when context exists."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -83,7 +91,7 @@ function isGeminiInvalidSchemaError(err: unknown): boolean {
 }
 
 async function generateSynthesis(
-  provider: ReturnType<typeof getProvider>,
+  provider: ReturnType<typeof getSynthesizeProvider>,
   input: {
     companyName: string;
     companyDomain: string;
@@ -137,12 +145,18 @@ export async function synthesizePrep(
   facts: ResearchFact[],
   sources: SourceRef[],
 ): Promise<Prep> {
-  const provider = getProvider(env);
+  const provider = getSynthesizeProvider(env);
 
   const result = await generateSynthesis(provider, input, facts, sources);
 
+  function finalizePrep(raw: Prep): Prep {
+    const normalized = normalizePrepOutput(raw);
+    const withSignals = applySeContextToPrep(normalized, input.additionalContext);
+    return applySeContextToDiscovery(withSignals, input.additionalContext);
+  }
+
   try {
-    return applySeContextToPrep(normalizePrepOutput(extractJson<Prep>(result.text)), input.additionalContext);
+    return finalizePrep(extractJson<Prep>(result.text));
   } catch (err) {
     const repaired = await provider.generate({
       system: "Repair malformed JSON. Output ONLY valid JSON matching the schema.",
@@ -154,6 +168,6 @@ export async function synthesizePrep(
       jsonSchema: PREP_GEMINI_SCHEMA,
       step: "prep/synthesize-repair",
     });
-    return applySeContextToPrep(normalizePrepOutput(extractJson<Prep>(repaired.text)), input.additionalContext);
+    return finalizePrep(extractJson<Prep>(repaired.text));
   }
 }

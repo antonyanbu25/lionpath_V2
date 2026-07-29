@@ -8,7 +8,7 @@ import { STAGE_LABELS, EVENT_LABELS, LIFECYCLE_STAGES } from "./domain/types.js"
 import { esc } from "./shared.js";
 
 function formatDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -45,16 +45,16 @@ function renderTimeline(events) {
 function renderArtifactTabs(detail) {
   const { preps, postCalls, tasks } = detail;
   const prepRows = (preps || []).map((p) =>
-    `<li><span>${esc(formatDate(p.createdAt))}</span> — ${esc(p.meta?.company || "Prep")}</li>`
+    `<li><span>${esc(formatDate(p.createdAt))}</span>. ${esc(p.meta?.company || "Prep")}</li>`
   ).join("") || `<li class="muted">No preps yet</li>`;
 
   const callRows = (postCalls || []).map((c) => {
     const score = c.qualityScore != null ? ` (${c.qualityScore}/10)` : "";
-    return `<li><span>${esc(formatDate(c.createdAt))}</span> — ${esc(c.title || "Call")}${esc(score)}</li>`;
+    return `<li><span>${esc(formatDate(c.createdAt))}</span>. ${esc(c.title || "Call")}${esc(score)}</li>`;
   }).join("") || `<li class="muted">No post-calls yet</li>`;
 
   const taskRows = (tasks || []).map((t) =>
-    `<li><span class="task-status-${esc(t.status)}">${esc(t.status)}</span> — ${esc(t.title)}</li>`
+    `<li><span class="task-status-${esc(t.status)}">${esc(t.status)}</span>. ${esc(t.title)}</li>`
   ).join("") || `<li class="muted">No tasks yet</li>`;
 
   return `
@@ -137,7 +137,7 @@ export async function renderLifecycleView(container, session, opts = {}) {
   container.innerHTML = `
     <div class="lifecycle-list-view">
         <h2>Accounts</h2>
-        <p class="muted lifecycle-list-sub">Engagements now live under <strong>Accounts</strong> — open an account to switch deals (new business vs expansion).</p>
+        <p class="muted lifecycle-list-sub">Engagements now live under <strong>Accounts</strong>. open an account to switch deals (new business vs expansion).</p>
       <div class="lifecycle-list">
         ${lifecycles.map((lc, i) => renderLifecycleListItem(lc, accounts[i])).join("")}
       </div>

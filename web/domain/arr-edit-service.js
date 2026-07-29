@@ -103,7 +103,7 @@ export function buildArrFieldState(deal, lines) {
       sourceLabel: inputs.agentsEvidence
         ? `"${inputs.agentsEvidence}"`
         : inputs.agents != null
-          ? "Inferred from call — not directly quoted"
+          ? "Inferred from call. not directly quoted"
           : "Not extracted",
       sourceDetail: inputs.agentsEvidence || null,
     }),

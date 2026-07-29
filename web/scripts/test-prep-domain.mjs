@@ -5,7 +5,16 @@ import {
   applyAutoCompanyDomain,
   PERSONAL_EMAIL_DOMAINS,
   normalizeCompanyDomain,
+  companyNameFromEmail,
+  companyNameFromPrimaryEmail,
+  companyNameFromDomain,
 } from "../prep-domain.js";
+
+assert.equal(companyNameFromEmail("alex@acme.com"), "Acme");
+assert.equal(companyNameFromEmail("x@gmail.com"), null);
+assert.equal(companyNameFromPrimaryEmail("pat@einhell.com, other@gmail.com"), "Einhell");
+assert.equal(companyNameFromDomain("einhell.com"), "Einhell");
+assert.equal(companyNameFromDomain("mail.acme.co.uk"), "Acme");
 
 assert.equal(domainFromFirstProspectEmail("diamelsys.villarroel@einhell.com"), "einhell.com");
 assert.equal(domainFromFirstProspectEmail("a@gmail.com, b@einhell.com"), null, "first email personal → no infer");

@@ -66,7 +66,7 @@ export function stableUserIdForEmail(email) {
   return `usr_dummy_${key || "user"}`;
 }
 
-/** @deprecated Use stableUserIdForEmail — kept for imports during transition */
+/** @deprecated Use stableUserIdForEmail. kept for imports during transition */
 export function dummyUidForEmail(email) {
   return stableUserIdForEmail(email);
 }

@@ -153,7 +153,7 @@ export async function fetchHistoryFromWorker(email) {
     const err = await res.json().catch(() => ({}));
     const msg = err.error || `History fetch failed (${res.status})`;
     if (res.status === 404) {
-      console.error("[history] GET /api/history returned 404 — redeploy worker with history endpoints");
+      console.error("[history] GET /api/history returned 404. redeploy worker with history endpoints");
     } else {
       console.error(`[history] GET /api/history failed (${res.status}):`, msg);
     }
@@ -247,7 +247,7 @@ export async function syncHistoryOnLogin(email) {
 export async function savePostCallAnalysis(email, input, result) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) {
-    console.warn("[history] save skipped — missing email");
+    console.warn("[history] save skipped. missing email");
     return null;
   }
 
@@ -274,7 +274,7 @@ export async function savePostCallAnalysis(email, input, result) {
   const trimmed = list.slice(0, MAX_ENTRIES);
   const ok = writeAll(normalized, trimmed);
   if (!ok) {
-    console.warn(`[history] save failed for ${storageKey(normalized)} — using emergency stash`);
+    console.warn(`[history] save failed for ${storageKey(normalized)}. using emergency stash`);
     stashEmergencyRecord(normalized, record);
     return record;
   }
@@ -333,7 +333,7 @@ export async function updatePostCallAnalysis(email, id, updater) {
   return updated;
 }
 
-/** For tests and dashboard — analyses with qualityCoach or QIP scorecard. */
+/** For tests and dashboard. analyses with qualityCoach or QIP scorecard. */
 export function listAnalysesWithQuality(email) {
   return listPostCallAnalyses(email).filter(
     (r) => r.analysis?.qualityCoach || r.scorecard?.lines?.length || r.result?.scorecard?.lines?.length,

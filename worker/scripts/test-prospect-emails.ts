@@ -1,6 +1,16 @@
-/** Smoke test for resolveProspectEmails. */
+/** Smoke test for resolveProspectEmails and company name derivation. */
 
-import { resolveProspectEmails } from "../src/prep.ts";
+import assert from "node:assert/strict";
+import { resolveProspectEmails, normalizePrepInput, deriveCompanyNameFromEmail } from "../src/prep.ts";
+
+assert.equal(deriveCompanyNameFromEmail("alex@acme.com"), "Acme");
+assert.equal(deriveCompanyNameFromEmail("x@gmail.com"), null);
+
+const normalized = normalizePrepInput({
+  companyDomain: "acme.com",
+  prospectEmail: "alex@acme.com",
+});
+assert.equal(normalized.companyName, "Acme");
 
 const cases: [string, Parameters<typeof resolveProspectEmails>[0], number][] = [
   ["single", { companyName: "Acme", prospectEmail: "a@x.com" }, 1],

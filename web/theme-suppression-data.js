@@ -1,4 +1,4 @@
-/** Auto-generated — do not edit. Run: npx tsx web/scripts/generate-theme-suppression.mjs */
+/** Auto-generated. do not edit. Run: npx tsx web/scripts/generate-theme-suppression.mjs */
 export const themeSuppressionManifest = {
   "runId": "2026-07-24T13-09-49-740Z",
   "runDir": "../worker/consistency-runs/2026-07-24T13-09-49-740Z",

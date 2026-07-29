@@ -11,7 +11,7 @@
 
 const CORE_FOUR_THEME_KEYS = ["call_flow", "customer_engagement", "objections", "camera_on"];
 
-/** Spec §9 — only high-confidence calls feed the coaching queue. */
+/** Spec §9. only high-confidence calls feed the coaching queue. */
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
 /**
@@ -198,7 +198,7 @@ export function computeOverallScore(dimensions) {
   return Math.round((ratioSum / count) * 10 * 10) / 10;
 }
 
-/** @param {number} score — 0–10 (strict MVP calibration) */
+/** @param {number} score. 0–10 (strict MVP calibration) */
 export function overallLabelFromScore(score) {
   if (score >= 9) return "Excellent";
   if (score >= 7) return "Strong";
@@ -229,7 +229,7 @@ export function normalizeQualityCoach(qc) {
   };
 }
 
-/** @param {number} overall — 0–10 */
+/** @param {number} overall. 0–10 */
 export function scoreBand(overall) {
   if (overall >= 9) return "excellent";
   if (overall >= 7) return "strong";
@@ -238,7 +238,7 @@ export function scoreBand(overall) {
   return "needsFocus";
 }
 
-/** @param {number} score — 0–100 QIP raw / composite scale */
+/** @param {number} score. 0–100 QIP raw / composite scale */
 export function qipScoreBand(score) {
   if (score >= 90) return "excellent";
   if (score >= 70) return "strong";

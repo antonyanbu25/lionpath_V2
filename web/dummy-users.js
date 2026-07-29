@@ -12,7 +12,7 @@ export const DUMMY_USERS = {
     password: "pm123",
     role: "pm",
     name: "Maya Chen",
-    jobTitle: "Product Manager — CX Platform",
+    jobTitle: "Product Manager. CX Platform",
     teamId: null,
     orgId: DEMO_ORG_ID,
     managerEmail: "vipin.thomas@freshworks.com",

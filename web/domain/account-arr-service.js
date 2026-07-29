@@ -154,7 +154,7 @@ export function findDiscussedUnquantifiedAddons(deals, linesByDealId) {
 
 /** @param {string|null|undefined} product */
 export function formatProductLabel(product) {
-  if (!product) return "—";
+  if (!product) return "-";
   return PRODUCT_LABELS[product] || String(product).replace(/_/g, " ");
 }
 

@@ -8,6 +8,11 @@ compatibility_date = "2024-11-01"
 LLM_PROVIDER = "gemini"
 # Model id (provider-specific). gemini-3.1-flash-lite = GA on AI Studio keys + google_search grounding.
 MODEL = "gemini-3.1-flash-lite"
+# Pre-call web research model — run: tsx scripts/probe-gemini-research-models.ts
+RESEARCH_MODEL = "gemini-3.6-flash"
+RESEARCH_THINKING_LEVEL = "medium"
+# Pre-call brief synthesis (discovery kit, pains, full JSON) — heavier than extract/repair.
+SYNTHESIZE_MODEL = "gemini-3.6-flash"
 # Reasoning depth: low | medium | high | xhigh | max. medium = balanced prep quality/speed.
 EFFORT = "medium"
 # Post-call: structured JSON scorecard — no web search; lite model is enough and ~2× faster.

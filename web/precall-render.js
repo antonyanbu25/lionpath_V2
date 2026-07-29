@@ -2,15 +2,16 @@
 
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { esc } from "./shared.js";
+import { EMPTY_DISPLAY } from "./shared.js";
 
 const isUnknown = (v) => {
   const s = String(v || "").trim();
   if (!s) return true;
   if (s.toLowerCase() === "unknown") return true;
-  return s === "-" || s === "—" || s === "–";
+  return s === "-" || s === "-" || s === "–";
 };
 const dash = (v, unverified = false) => {
-  if (isUnknown(v)) return '<span class="muted">—</span>';
+  if (isUnknown(v)) return `<span class="muted">${EMPTY_DISPLAY}</span>`;
   if (unverified) return `<span class="prep-unverified">${esc(v)} <span class="prep-unverified-tag">Unverified</span></span>`;
   return esc(v);
 };
@@ -24,7 +25,7 @@ function isUnverifiedSource(sources, sourceLabel) {
   return Number(src.confidence) < 55;
 }
 
-/** SE additional-context source — show as "Your notes", not Unverified. */
+/** SE additional-context source. show as "Your notes", not Unverified. */
 export function isSeNotesSource(sourceLabel) {
   return String(sourceLabel || "").trim().toUpperCase() === "SE";
 }
@@ -51,15 +52,15 @@ export const SIGNAL_TOOLTIPS = {
   "Incumbent tool":
     "Current helpdesk or CX platform inferred from help center URLs, job posts, or public stack mentions.",
   Integrations:
-    "CRM, billing, or ops tools the support team likely connects to — probe integration pain in discovery.",
+    "CRM, billing, or ops tools the support team likely connects to. Probe integration pain in discovery.",
   "Web chat widget":
-    "Whether live chat or messaging is exposed on their site — signals omnichannel maturity and widget swap opportunity.",
+    "Whether live chat or messaging is exposed on their site. Signals omnichannel maturity and widget swap opportunity.",
   "AI in their current tech stack":
-    "Existing AI bots, copilots, or automation in their support stack — not Freshworks; use to position Freddy differentiation.",
+    "Existing AI bots, copilots, or automation in their support stack (not Freshworks). Use to position Freddy differentiation.",
   "Support portal":
-    "Self-service KB or customer portal vendor — indicates deflection motion and content migration scope.",
+    "Self-service KB or customer portal vendor. Indicates deflection motion and content migration scope.",
   "Hiring support roles":
-    "Open support or CX hiring — often signals growth, turnover, or tooling change windows.",
+    "Open support or CX hiring. Often signals growth, turnover, or tooling change windows.",
 };
 
 export function isV7Prep(p) {
@@ -130,19 +131,25 @@ function sourceBadge(label, conf, idx) {
   </button>`;
 }
 
+/** Map discHint.confidence to hero chip suffix (e.g. "Confident - Low"). */
+export function discConfidenceLabel(confidence) {
+  const tier = { low: "Low", medium: "Medium", high: "High" }[confidence] || "Low";
+  return `Confident - ${tier}`;
+}
+
 /** Friendly DISC inference line from enrichment source (discHint.source). */
 export function discInferredLabel(source) {
   switch (source) {
     case "linkedin_pdf":
-      return "Inferred from LinkedIn PDF — not a formal assessment";
+      return "Inferred from LinkedIn PDF, not a formal assessment";
     case "kaia":
-      return "Inferred from Kaia meeting — not a formal assessment";
+      return "Inferred from Kaia meeting, not a formal assessment";
     case "merged":
-      return "Inferred from LinkedIn + Kaia — not a formal assessment";
+      return "Inferred from LinkedIn + Kaia, not a formal assessment";
     case "zoom":
-      return "Inferred from Zoom transcript — not a formal assessment";
+      return "Inferred from Zoom transcript, not a formal assessment";
     default:
-      return "Inferred from LinkedIn — not a formal assessment";
+      return "Inferred from LinkedIn, not a formal assessment";
   }
 }
 
@@ -398,7 +405,7 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
 
   const discHero = discPrimary
     ? `<div class="prep-prospect-disc-row">
-        <span class="prep-disc-chip">DISC ${esc(discPrimary)}${disc.secondary && disc.secondary !== "unknown" ? `<span class="prep-disc-chip-sec"> / ${esc(disc.secondary)}</span>` : ""}${disc.confidence ? `<span class="prep-disc-chip-conf"> · ${esc(disc.confidence)}</span>` : ""}</span>
+        <span class="prep-disc-chip">DISC ${esc(discPrimary)}${disc.secondary && disc.secondary !== "unknown" ? `<span class="prep-disc-chip-sec"> / ${esc(disc.secondary)}</span>` : ""}${disc.confidence ? `<span class="prep-disc-chip-conf"> · ${esc(discConfidenceLabel(disc.confidence))}</span>` : ""}</span>
         <p class="prep-disc-inferred muted">${esc(discInferredLabel(disc?.source))}</p>
       </div>`
     : "";
@@ -471,7 +478,7 @@ function renderProspectSection(prospects, sources, sectionNotes = "", peoplePros
   const head = `${sectionHead("People on this call", "var(--dew-amber)")}${sectionNotes}`;
 
   if (!list.length) {
-    return `<fw-card class="prep-card prep-people-section">${head}<p class="muted">No prospect profiles yet — regenerate the brief.</p></fw-card>`;
+    return `<fw-card class="prep-card prep-people-section">${head}<p class="muted">No prospect profiles yet. regenerate the brief.</p></fw-card>`;
   }
 
   if (list.length === 1) {
@@ -508,8 +515,16 @@ function renderSupportJDBlock(supportJD, sources) {
     <p class="muted prep-jd-role">${dash(supportJD?.title)}</p>
     <ul class="prep-jd-bullets">${(supportJD?.bullets || [])
       .map((b) => `<li>${dash(b)}</li>`)
-      .join("") || '<li class="muted">—</li>'}</ul>
+      .join("") || '<li class="muted">-</li>'}</ul>
   </div>`;
+}
+
+function renderSupportJDCard(supportJD, sources) {
+  const hasContent =
+    supportJD &&
+    (!isUnknown(supportJD.title) || (supportJD.bullets || []).some((b) => !isUnknown(b)));
+  if (!hasContent) return "";
+  return `<fw-card class="prep-card prep-jd-card">${renderSupportJDBlock(supportJD, sources)}</fw-card>`;
 }
 
 function renderFitGrid(fitSnapshot) {
@@ -531,6 +546,12 @@ function renderFitGrid(fitSnapshot) {
     .join("");
 }
 
+function formatKitReason(because) {
+  const raw = String(because || "").trim();
+  if (!raw || raw === "-") return dash(raw);
+  return dash(raw.replace(/^because\s+/i, ""));
+}
+
 function renderDiscoveryKit(kit) {
   return (kit || [])
     .map(
@@ -538,7 +559,7 @@ function renderDiscoveryKit(kit) {
         <div class="prep-kit-num">${i + 1}</div>
         <div>
           <div class="prep-kit-ask">${dash(item.question)}</div>
-          <div class="prep-kit-because muted">because ${dash(item.because)}</div>
+          <div class="prep-kit-because muted">${formatKitReason(item.because)}</div>
         </div>
       </div>`,
     )
@@ -546,7 +567,7 @@ function renderDiscoveryKit(kit) {
 }
 
 function renderPains(pains) {
-  if (!(pains || []).length) return '<p class="muted">—</p>';
+  if (!(pains || []).length) return '<p class="muted">-</p>';
   return `<ul class="prep-pain-list">${pains
     .map((p) => `<li><span class="prep-pain-dot"></span>${dash(p)}</li>`)
     .join("")}</ul>`;
@@ -572,19 +593,18 @@ function renderSourcesRows(sources) {
 function renderSourcesAccordion(sources, open) {
   return `<details class="prep-sources-card" ${open ? "open" : ""}>
     <summary class="prep-sources-summary dew-mono-label">Sources &amp; confidence</summary>
-    <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">—</p>'}</div>
+    <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">-</p>'}</div>
   </details>`;
 }
 
-function renderResearchExtras(supportJD, sources, open) {
+function renderResearchExtras(sources, open) {
   return `<fw-card class="prep-card prep-research-extras-card">
     <details class="prep-research-extras" ${open ? "open" : ""}>
       <summary class="prep-research-extras-summary dew-mono-label">Research extras</summary>
       <div class="prep-research-extras-body">
-        ${renderSupportJDBlock(supportJD, sources)}
         <div class="prep-sources-inline">
           <span class="dew-mono-label prep-sources-inline-label">Sources &amp; confidence</span>
-          <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">—</p>'}</div>
+          <div class="prep-sources-body">${renderSourcesRows(sources) || '<p class="muted">-</p>'}</div>
         </div>
       </div>
     </details>
@@ -605,7 +625,7 @@ function renderStoryline(pcv) {
       const valueList =
         valueItems.length > 0
           ? `<ul class="prep-script-values">${valueItems.map((v) => `<li>${dash(v)}</li>`).join("")}</ul>`
-          : '<p class="muted">—</p>';
+          : '<p class="muted">-</p>';
       return `<div class="prep-script-row">
         <div>${dash(row.pain)}</div>
         <div class="prep-script-cap">${dash(row.capability)}</div>
@@ -613,7 +633,7 @@ function renderStoryline(pcv) {
       </div>`;
     })
     .join("");
-  return header + (rows || '<p class="muted">—</p>');
+  return header + (rows || '<p class="muted">-</p>');
 }
 
 function renderChecklist(checklist, checks, accountId) {
@@ -636,7 +656,7 @@ function renderChecklist(checklist, checks, accountId) {
 }
 
 function renderAssets(assets, prep) {
-  if (!(assets || []).length) return '<p class="muted">—</p>';
+  if (!(assets || []).length) return '<p class="muted">-</p>';
   const customerRefUrl = resolveCustomerReferenceUrl(prep);
   return (assets || [])
     .map((a) => {
@@ -711,7 +731,7 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
   const peopleNotes = `${linkedinNote}${kaiaNote}`;
   return `<div class="prep-tab-body prep-rise">
     <fw-inline-message type="warning" open class="prep-ai-banner">
-      Generated by AI — prone to error. Please validate before customer conversations.
+      Generated by AI, prone to error. Please validate before customer conversations.
     </fw-inline-message>
     <div class="prep-grid-2 prep-grid-account">
       <fw-card class="prep-card">
@@ -723,6 +743,7 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
       ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
     </div>
     ${renderSignalsSection(prep.signals, sources)}
+    ${renderSupportJDCard(prep.supportJD, sources)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}
       <div class="prep-fit-grid">${renderFitGrid(prep.fitSnapshot)}</div>
@@ -737,7 +758,7 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
         ${renderPains(prep.likelyPains)}
       </fw-card>
     </div>
-    ${renderResearchExtras(prep.supportJD, sources, sourcesOpen)}
+    ${renderResearchExtras(sources, sourcesOpen)}
   </div>`;
 }
 

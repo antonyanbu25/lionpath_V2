@@ -58,7 +58,7 @@ function isAggregateEligible(record) {
 }
 
 function formatDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -67,7 +67,7 @@ function formatDate(ts) {
 }
 
 function formatShortDate(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -81,7 +81,7 @@ function windowLabel(windowId) {
 }
 
 function formatLength(minutes) {
-  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  if (minutes == null || !Number.isFinite(minutes)) return "-";
   if (minutes < 60) return `${Math.round(minutes * 10) / 10}m`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
@@ -111,7 +111,7 @@ export function resolveDurationMinutes(record) {
 
 function isBlankAction(v) {
   const s = String(v ?? "").trim();
-  return !s || s === "—" || /^unknown$/i.test(s) || /^n\/a$/i.test(s);
+  return !s || s === "-" || /^unknown$/i.test(s) || /^n\/a$/i.test(s);
 }
 
 export function hasNextStep(record) {
@@ -131,7 +131,7 @@ export function resolveMomSent(record) {
   if (String(body).trim()) {
     return { sent: false, label: "Draft", at: null };
   }
-  return { sent: false, label: "—", at: null };
+  return { sent: false, label: "-", at: null };
 }
 
 export function resolveTcMovement(record) {
@@ -144,7 +144,7 @@ export function resolveTcMovement(record) {
   }
   const summary = record?.result?.tcDeltaSummary || record?.tcDeltaSummary;
   if (typeof summary === "string" && summary.trim()) return summary.trim();
-  return "—";
+  return "-";
 }
 
 export function countProductGaps(record) {
@@ -158,7 +158,7 @@ export function resolveQipDisplay(record) {
   const meta = resolveAnalysisMeta(record);
   const callType = scorecard?.callType || resolveCallType(record);
   if (!scorecard?.lines?.length) {
-    return { label: "—", provisional: isProvisional(record) };
+    return { label: "-", provisional: isProvisional(record) };
   }
   const composite = typeComposite(
     [{
@@ -254,7 +254,7 @@ export function buildCallListRow(record, deals, accounts) {
     callTypeLabel: CALL_TYPE_LABELS[callType] || callType,
     callTitle: resolveCallTitle(record),
     accountName: account?.name || account?.domain || companyFromRecord(record),
-    dealTitle: deal?.title || DEAL_TYPE_LABELS[deal?.type] || "—",
+    dealTitle: deal?.title || DEAL_TYPE_LABELS[deal?.type] || "-",
     dateLabel: formatDate(record.timestamp),
     dateShortLabel: formatShortDate(record.timestamp),
     lengthLabel: formatLength(resolveDurationMinutes(record)),
@@ -284,7 +284,7 @@ function renderMetrics(metrics, filters = {}) {
       ? `${metrics.provisionalExcluded} provisional excluded · ${windowHint}`
       : windowHint;
   const hoursSub = metrics.avgMinutes != null ? `avg ${metrics.avgMinutes} min` : "";
-  const momValue = metrics.callCount ? `${metrics.momSent} / ${metrics.callCount}` : "—";
+  const momValue = metrics.callCount ? `${metrics.momSent} / ${metrics.callCount}` : "-";
   const momSub =
     metrics.callCount && metrics.callCount > metrics.momSent
       ? `${metrics.callCount - metrics.momSent} never sent`
@@ -321,7 +321,7 @@ function callListSubtitle(opts) {
 
 function renderCallListItem(row) {
   const qipHtml = row.qipProvisional
-    ? `<span class="call-list-qip">${esc(row.qipLabel)} <span class="qip-provisional-badge" title="Shadow mode — excluded from averages">Provisional</span></span>`
+    ? `<span class="call-list-qip">${esc(row.qipLabel)} <span class="qip-provisional-badge" title="Shadow mode (excluded from averages)">Provisional</span></span>`
     : `<span class="call-list-qip">${esc(row.qipLabel)}</span>`;
   const momCls = row.momSent ? "call-list-mom--sent" : row.momLabel === "Draft" ? "call-list-mom--draft" : "muted";
 
@@ -454,7 +454,7 @@ export async function renderCallsListView(container, session, opts = {}) {
       container.innerHTML = renderCallsEmptyState(
         opts.listFilter
           ? "No calls match this filter."
-          : "No calls yet — analyze a recording from Post-call to populate this list.",
+          : "No calls yet. Analyze a recording from Post-call to populate this list.",
       );
       return;
     }
@@ -534,7 +534,7 @@ export async function renderCallsListView(container, session, opts = {}) {
               .join("")}
           </div>
         </div>
-        <p class="call-list-footnote muted">QIP lives here because it grades the call. Scores are only comparable within a call type — demo against demo, discovery against discovery.</p>
+        <p class="call-list-footnote muted">QIP lives here because it grades the call. Scores are only comparable within a call type. demo against demo, discovery against discovery.</p>
       </div>`;
 
     wireCallListClicks(container, opts);

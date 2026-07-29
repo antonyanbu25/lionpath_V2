@@ -26,6 +26,9 @@ function buildEnv(): NodeEnv {
   const env: NodeEnv = {
     LLM_PROVIDER: process.env.LLM_PROVIDER || "gemini",
     MODEL: process.env.MODEL || "gemini-3.1-flash-lite",
+    RESEARCH_MODEL: process.env.RESEARCH_MODEL || "",
+    RESEARCH_THINKING_LEVEL: process.env.RESEARCH_THINKING_LEVEL || "medium",
+    SYNTHESIZE_MODEL: process.env.SYNTHESIZE_MODEL || "",
     EFFORT: process.env.EFFORT || "medium",
     POSTCALL_LLM_PROVIDER: process.env.POSTCALL_LLM_PROVIDER || "gemini",
     POSTCALL_MODEL: process.env.POSTCALL_MODEL || "gemini-3.1-flash-lite",

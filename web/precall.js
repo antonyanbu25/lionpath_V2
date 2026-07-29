@@ -1,4 +1,4 @@
-/** Pre-call wireframe — state, generate flow, interactions. */
+/** Pre-call wireframe. state, generate flow, interactions. */
 
 import {
   readFieldValueAsync,
@@ -20,15 +20,15 @@ import {
 } from "./precall-render.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js?v=dispute-static-v11";
-import { resolveCompanyDomainForSubmit } from "./prep-domain.js";
+import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
 import {
   linkedinProfileExportsForPayload,
   initLinkedInPdfUpload,
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
-import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep } from "./prep-contact-enrich.js";
-import { applySeContextToPrep } from "./prep-se-context.js";
+import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks } from "./prep-contact-enrich.js";
+import { applySeContextToDiscovery, applySeContextToPrep } from "./prep-se-context.js";
 import { esc, $, show } from "./shared.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
@@ -305,6 +305,7 @@ function renderActiveTab() {
     disc.innerHTML = renderDiscoveryTab(prep, state.srcOpen, {
       linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
       kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
+      additionalContext: meta?.additionalContext || meta?.seAdditionalContext,
       peopleProspectTab: state.peopleProspectTab,
       prospectEmails: meta?.prospectEmails || meta?.researchMeta?.prospectEmails,
     });
@@ -370,7 +371,8 @@ export function displayPrepResult(prep, meta = {}) {
   } else if (storedProfiles?.length && prep?.prospects?.length && emails.length) {
     merged = mergeEnrichmentsIntoPrep(prep, emails, storedProfiles);
   }
-  showResultView(applySeContextToPrep(merged, context), meta);
+  merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
+  showResultView(applySeContextToDiscovery(applySeContextToPrep(merged, context), context), meta);
 }
 
 function openSourcePopover(label, ev) {
@@ -488,6 +490,7 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
     additionalContext: input.additionalContext,
     meetingZoomUrl: input.meetingZoomUrl,
     kaiaMeetingUrl: input.kaiaMeetingUrl,
+    linkedinProfileExports: meta.linkedinProfileExports || input.linkedinProfileExports,
   };
   pushBriefRecord({
     id,
@@ -520,7 +523,7 @@ async function buildPayload() {
   );
   if (!companyDomain || !DOMAIN_RE.test(companyDomain)) {
     const message =
-      "Enter a valid company domain (e.g. acme.com). We auto-fill from corporate prospect emails — not from Gmail or Outlook.";
+      "Enter a valid company domain (e.g. acme.com). We auto-fill from corporate prospect emails, not from Gmail or Outlook.";
     setFieldError(domainField, message);
     throw new Error(message);
   }
@@ -533,9 +536,12 @@ async function buildPayload() {
     }
   }
 
-  const companyName = await readFieldValueAsync($("companyName"));
-  if (!String(companyName || "").trim()) {
-    throw new Error("Company name is required.");
+  const companyName =
+    companyNameFromPrimaryEmail(rawEmails) || companyNameFromDomain(companyDomain);
+  if (!companyName) {
+    throw new Error(
+      "Enter a corporate prospect email (not Gmail/Outlook) or a company domain we can derive a name from.",
+    );
   }
 
   const additionalContext = await readAdditionalContextForSubmit();
@@ -769,7 +775,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
     } catch (err) {
       showInlineStatus(status, {
         type: "warn",
-        message: `Prospect enrichment skipped: ${err.message || "error"}. Continuing with research…`,
+        message: `Some prospect enrichments failed: ${err.message || "error"}. Continuing with available data…`,
       });
     }
   }
@@ -799,7 +805,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
   if (!confirmedFacts.length) {
     showInlineStatus(status, {
       type: "error",
-      message: "No verified research facts found — check company domain and emails, then try again.",
+      message: "No verified research facts found. Check company domain and emails, then try again.",
     });
     clearLoading();
     return;
@@ -825,6 +831,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
       linkedinMatchedEmails: data.researchMeta?.linkedinMatchedEmails,
       prospectEmails: emails,
       contactEnrichmentsByEmail: state.contactEnrichmentsByEmail,
+      linkedinProfileExports: pdfs,
     };
 
     displayPrepResult(data.prep, enrichedMeta);

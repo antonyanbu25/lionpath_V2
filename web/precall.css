@@ -1,4 +1,4 @@
-/* Pre-call wireframe — uses Dew tokens from dew-theme.css */
+/* Pre-call wireframe. uses Dew tokens from dew-theme.css */
 
 #view-precall {
   display: flex;
@@ -42,8 +42,7 @@
   font-size: 13px;
 }
 
-#view-precall fw-card.prep-form-card,
-#view-precall fw-card.prep-loop-card {
+#view-precall fw-card.prep-form-card {
   padding: 22px;
   border: 1px solid var(--dew-border);
   border-radius: var(--dew-radius-lg);
@@ -52,14 +51,9 @@
   transition: none;
 }
 
-#view-precall fw-card.prep-form-card:hover,
-#view-precall fw-card.prep-loop-card:hover {
+#view-precall fw-card.prep-form-card:hover {
   box-shadow: none;
   transform: none;
-}
-
-#view-precall fw-card.prep-loop-card {
-  margin-top: 14px;
 }
 
 .prep-form-grid {
@@ -115,26 +109,6 @@
   padding: 11px 14px;
 }
 
-.prep-loop-rows {
-  display: grid;
-  gap: 9px;
-  font-size: 13px;
-}
-
-.prep-loop-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--dew-border);
-}
-
-.prep-loop-row--last {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
 #view-precall .pill.purple {
   display: inline-flex;
   align-items: center;
@@ -147,12 +121,6 @@
   color: var(--dew-brand);
   text-transform: none;
   white-space: nowrap;
-}
-
-.prep-loop-note {
-  font-size: 12px;
-  margin: 12px 0 0;
-  line-height: 1.55;
 }
 
 .prep-linkedin-upload {
@@ -561,6 +529,10 @@
   color: var(--dew-amber);
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.prep-jd-card {
+  margin-bottom: 16px;
 }
 
 .prep-line-clamp-2 {
@@ -1632,10 +1604,6 @@
   .prep-form-grid,
   .prep-optional-grid {
     grid-template-columns: 1fr;
-  }
-  .prep-loop-row {
-    flex-direction: column;
-    align-items: flex-start;
   }
   .prep-result-header-inner {
     flex-direction: column;

@@ -170,6 +170,7 @@ export function linkedinFingerprintForHash(bag = "prep") {
  */
 export function initLinkedInPdfUpload(opts = {}) {
   const bag = opts.bag || "prep";
+  loadPdfJs().catch(() => {});
   const fileInput = document.getElementById(opts.fileInputId || "prep-linkedin-pdfs");
   const addBtn = document.getElementById(opts.addBtnId || "prep-linkedin-add-btn");
   const listEl = document.getElementById(opts.listElId || "prep-linkedin-file-list");

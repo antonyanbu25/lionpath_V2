@@ -49,7 +49,7 @@ export function renderProfileSettings(container, session, opts = {}) {
   if (!container || !session) return;
 
   let currentSession = { ...session };
-  const managerDisplay = currentSession.managerName || "—";
+  const managerDisplay = currentSession.managerName || "-";
   const role = roleLabel(currentSession.role);
   const hasAvatar = !!currentSession.avatarDataUrl;
 
@@ -98,7 +98,7 @@ export function renderProfileSettings(container, session, opts = {}) {
           <div class="profile-readonly-field">
             <span class="profile-field-label">Role</span>
             <span class="profile-field-value profile-field-badge">${esc(role)}</span>
-            <span class="profile-field-hint muted">Assigned by your administrator — not editable here.</span>
+            <span class="profile-field-hint muted">Assigned by your administrator. not editable here.</span>
           </div>
           ${currentSession.jobTitle ? `
           <div class="profile-readonly-field">

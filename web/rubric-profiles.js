@@ -15,7 +15,7 @@ export const CALL_TYPES = [
   "qa_session",
 ];
 
-/** Core-four themes — spine composite and default heatmap columns. */
+/** Core-four themes. spine composite and default heatmap columns. */
 export const CORE_FOUR_THEME_KEYS = [
   "call_flow",
   "customer_engagement",

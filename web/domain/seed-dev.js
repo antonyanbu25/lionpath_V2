@@ -317,7 +317,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       productArea: "ai_agent",
-      verbatim: "That would save my team the whole morning — Pioneer Metering",
+      verbatim: "That would save my team the whole morning. Pioneer Metering",
       referenceCandidate: true,
       taxonomyVersion: "1.0",
       createdAt: ts,
@@ -331,7 +331,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       productArea: "channels",
-      verbatim: "Unified inbox across email and WhatsApp — consistently the moment the room leans in",
+      verbatim: "Unified inbox across email and WhatsApp. consistently the moment the room leans in",
       referenceCandidate: true,
       taxonomyVersion: "1.0",
       createdAt: ts,
@@ -345,7 +345,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       productArea: "admin_config",
-      verbatim: "Setup speed vs incumbent — named unprompted in competitive deals",
+      verbatim: "Setup speed vs incumbent. named unprompted in competitive deals",
       referenceCandidate: true,
       taxonomyVersion: "1.0",
       createdAt: ts,
@@ -366,7 +366,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       status: "yes",
-      reasonForEvaluation: { value: "Deflection — ticket volume they can't staff for" },
+      reasonForEvaluation: { value: "Deflection. ticket volume they can't staff for" },
       whyAi: { value: "Copilot drafting shown in demo" },
       aiAttach: { product: "Copilot", agentCount: 40, agentTotal: 40, summary: "Copilot 40/40" },
       createdAt: ts,
@@ -380,7 +380,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       status: "yes",
-      reasonForEvaluation: { value: "Consolidation — channels fragmented across tools" },
+      reasonForEvaluation: { value: "Consolidation. channels fragmented across tools" },
       aiAttach: { product: "Copilot", agentCount: 20, agentTotal: 20, summary: "Copilot 20/20" },
       createdAt: ts,
       updatedAt: ts,
@@ -393,8 +393,8 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       ownerId,
       teamId,
       status: "pending",
-      whyAi: { value: "Data residency — regulator won't allow data outside Singapore" },
-      aiAttach: { product: "Copilot", agentCount: 0, agentTotal: 14, summary: "Copilot shown — declined 0/14" },
+      whyAi: { value: "Data residency. regulator won't allow data outside Singapore" },
+      aiAttach: { product: "Copilot", agentCount: 0, agentTotal: 14, summary: "Copilot shown. declined 0/14" },
       createdAt: ts,
       updatedAt: ts,
     },
@@ -407,7 +407,7 @@ async function seedProductSignalDemoIfNeeded(store, ts) {
       teamId,
       status: "no",
       whyAi: { value: "Knowledge base isn't ready for AI Agent" },
-      aiAttach: { product: "AI Agent", summary: "AI shown — KB not ready" },
+      aiAttach: { product: "AI Agent", summary: "AI shown. KB not ready" },
       createdAt: ts,
       updatedAt: ts,
     },
@@ -493,7 +493,7 @@ export async function enrichSessionFromStore(session) {
     try {
       await store.upsertUser(user);
     } catch (err) {
-      console.warn("[seed-dev] upsertUser failed — using stable id fallback:", err?.message || err);
+      console.warn("[seed-dev] upsertUser failed. using stable id fallback:", err?.message || err);
       return {
         ...session,
         userId: session.userId || session.uid || userId,
@@ -546,7 +546,7 @@ export async function enrichSessionFromStore(session) {
   };
 }
 
-/** Upsert Firebase user on login — internal User.id + authIndex. */
+/** Upsert Firebase user on login. internal User.id + authIndex. */
 export async function upsertFirebaseUser(fbUser, roleHint) {
   const store = getStore();
   const ts = now();

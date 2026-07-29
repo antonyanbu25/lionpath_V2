@@ -42,7 +42,7 @@ const DISPOSITION_LABELS = {
 };
 
 function formatUsd(n) {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   return formatCompactUsd(n);
 }
 
@@ -58,7 +58,7 @@ function statusTag(label, color = "grey") {
 
 function renderThemeBars(themes, barClass) {
   if (!themes.length) {
-    return `<p class="muted">Not enough TC data yet — reason-for-evaluation and why-AI populate after discovery and demo calls.</p>`;
+    return `<p class="muted">Not enough TC data yet; reason-for-evaluation and why-AI populate after discovery and demo calls.</p>`;
   }
   return themes
     .map(
@@ -137,7 +137,7 @@ function renderNotWorkingRow({ cluster, members, sampleVerbatim, meta }) {
         ${competitorNote}
       </td>
       <td>${statusTag(areaLabel, "blue")}</td>
-      <td class="ps-col-tags">${tags || `<span class="muted">—</span>`}</td>
+      <td class="ps-col-tags">${tags || `<span class="muted">-</span>`}</td>
       <td class="ps-col-num">${esc(String(cluster.dealCount ?? 0))}</td>
       <td class="ps-col-num ps-col-arr">${esc(formatUsd(cluster.arrTotal))}</td>
       <td class="ps-col-type">
@@ -149,7 +149,7 @@ function renderNotWorkingRow({ cluster, members, sampleVerbatim, meta }) {
         ${
           cluster.status === "draft"
             ? `<fw-button class="ps-publish-btn" size="small" color="primary" data-cluster-id="${esc(cluster.id)}">Publish</fw-button>`
-            : `<span class="muted">—</span>`
+            : `<span class="muted">-</span>`
         }
       </td>
     </tr>`;
@@ -159,7 +159,7 @@ function renderWorkingRow(row) {
   const refLabel =
     row.referenceCount > 0
       ? `<fw-tag text="${esc(String(row.referenceCount))} account${row.referenceCount === 1 ? "" : "s"}" color="green"></fw-tag>`
-      : `<span class="muted">—</span>`;
+      : `<span class="muted">-</span>`;
   return `
     <tr>
       <td class="ps-col-gap">
@@ -213,7 +213,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
     const enablementNote =
       summary.enablementCount > 0 && summary.distinctClusters > 0
         ? `<div class="product-signal-note card-wire card-wire--tight">
-            <strong>${esc(String(summary.enablementCount))} of ${esc(String(summary.distinctClusters))} are enablement gaps</strong> — the product already does it and the SE didn't know. Those route to enablement, not a PM's backlog. Sorting them out is most of the value on this screen.
+            <strong>${esc(String(summary.enablementCount))} of ${esc(String(summary.distinctClusters))} are enablement gaps</strong>. the product already does it and the SE didn't know. Those route to enablement, not a PM's backlog. Sorting them out is most of the value on this screen.
           </div>`
         : "";
 
@@ -221,7 +221,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
     const lastRun = clusteringState?.lastFullRunAt || clusteringState?.lastIncrementalAt;
     const callSubtitle = summary.callCount
       ? `Clustered from ${summary.callCount} calls across your org. Every row is a theme, not a ticket.`
-      : "Clustered from verbatim embeddings — not taxonomy labels.";
+      : "Clustered from verbatim embeddings, not taxonomy labels.";
 
     container.innerHTML = `
       <div class="product-signal-view product-signal-view--wireframe">
@@ -258,7 +258,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
                   <th></th>
                 </tr>
               </thead>
-              <tbody>${notWorkingRows || `<tr><td colspan="8" class="muted">No clusters yet — run post-call analysis to create gaps, then recluster.</td></tr>`}</tbody>
+              <tbody>${notWorkingRows || `<tr><td colspan="8" class="muted">No clusters yet. Run post-call analysis to create gaps, then recluster.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -275,7 +275,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
                   <th>Reference candidate</th>
                 </tr>
               </thead>
-              <tbody>${workingTableRows || `<tr><td colspan="4" class="muted">No positive signal yet — what landed rows appear after Pass 6 analysis.</td></tr>`}</tbody>
+              <tbody>${workingTableRows || `<tr><td colspan="4" class="muted">No positive signal yet. What landed rows appear after Pass 6 analysis.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -287,7 +287,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
             <div class="ps-theme-bars">${renderThemeBars(aiThemes.optIn, "ps-bar-opt-in")}</div>
             ${
               aiThemes.optIn.some((t) => t.label.includes("Copilot"))
-                ? `<p class="muted ps-ai-footnote">Copilot shown in demo is a leading opt-in driver — that number is an enablement argument.</p>`
+                ? `<p class="muted ps-ai-footnote">Copilot shown in demo is a leading opt-in driver; that number is an enablement argument.</p>`
                 : ""
             }
           </div>
@@ -319,7 +319,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
           if (result.skipped) {
             setStatus(`Skipped: ${result.reason || "unknown"}`);
           } else {
-            setStatus(`Done — ${result.mode} run, ${result.clusterCount} clusters updated.`);
+            setStatus(`Done. ${result.mode} run, ${result.clusterCount} clusters updated.`);
             opts.onRefresh?.();
             await renderProductSignalView(session, container, opts);
           }
@@ -361,8 +361,8 @@ export function renderCallProductGapRow(gap, clusterLabel, loopNote) {
   const typeColor = gap.gapType === "enablement_gap" ? "orange" : "red";
   const closed = ["published", "published_enablement", "dismissed", "merged"].includes(gap.status);
   const loopHtml = closed
-    ? `<p class="muted call-product-gap-loop"><strong>Outcome:</strong> ${esc(loopNote || status)}${gap.arbitrationNote ? ` — ${esc(gap.arbitrationNote)}` : ""}</p>`
-    : `<p class="muted call-product-gap-loop">Status: ${esc(status)} — PM triage in progress.</p>`;
+    ? `<p class="muted call-product-gap-loop"><strong>Outcome:</strong> ${esc(loopNote || status)}${gap.arbitrationNote ? `. ${esc(gap.arbitrationNote)}` : ""}</p>`
+    : `<p class="muted call-product-gap-loop">Status: ${esc(status)}. PM triage in progress.</p>`;
 
   return `
     <div class="call-product-gap-row">

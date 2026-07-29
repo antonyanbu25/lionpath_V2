@@ -7,6 +7,9 @@ export const $ = (id) => document.getElementById(id);
 
 export const show = (el, on = true) => { if (el) el.hidden = !on; };
 
+/** Empty field placeholder in UI (plain hyphen). */
+export const EMPTY_DISPLAY = "-";
+
 /** @param {string} email */
 export function normalizeUserEmail(email) {
   return String(email || "").trim().toLowerCase();

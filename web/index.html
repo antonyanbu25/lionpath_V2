@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>SE Singha Paathai — Freshworks</title>
+    <title>SE Singha Paathai | Freshworks</title>
     <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -127,8 +127,8 @@
           <div class="sidebar-user" id="sidebar-user">
             <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
             <div class="sidebar-user-text">
-              <span class="sidebar-user-name" id="sidebar-user-name">—</span>
-              <span class="sidebar-user-role muted" id="sidebar-user-role">—</span>
+              <span class="sidebar-user-name" id="sidebar-user-name">-</span>
+              <span class="sidebar-user-role muted" id="sidebar-user-role">-</span>
             </div>
           </div>
         <nav class="sidebar-nav" role="navigation">
@@ -323,15 +323,14 @@
                 <fw-card class="prep-form-card">
                   <form id="prep-form">
                     <div class="prep-form-grid">
-                      <fw-input id="companyName" label="Company" type="text" placeholder="Acme Corp" required clear-input></fw-input>
-                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible — edit if the customer uses a different website" required clear-input></fw-input>
                       <div class="prep-email-field prep-form-full">
-                        <fw-input id="prospectEmail" label="Prospect emails" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="Comma separated — we research each contact, and these become the matching keys for post-call." required clear-input></fw-input>
-                        <fw-tooltip content="Add everyone on the call, e.g. alex@acme.com, sam@acme.com. Each person appears in the Prospect information column.">
-                          <span class="prep-email-tip muted">Multiple emails supported</span>
+                        <fw-input id="prospectEmail" label="Prospect email" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="First email is the primary contact. Add more with commas." required clear-input></fw-input>
+                        <fw-tooltip content="First email is the primary contact. Add more with commas, e.g. alex@acme.com, sam@acme.com">
+                          <span class="prep-email-tip muted">Primary + comma-separated</span>
                         </fw-tooltip>
-                        <span id="domain-hint" class="field-hint" hidden></span>
                       </div>
+                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible. Edit if the customer uses a different website." required clear-input></fw-input>
+                      <span id="domain-hint" class="field-hint prep-form-full" hidden></span>
                     </div>
                     <div class="prep-form-optional">
                       <div class="prep-form-eyebrow">Optional</div>
@@ -367,28 +366,6 @@
                     <fw-button id="generate" color="primary" type="submit" class="prep-form-submit">Generate brief</fw-button>
                     <p class="prep-form-footnote">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
                   </form>
-                </fw-card>
-                <fw-card class="prep-loop-card">
-                  <div class="prep-form-eyebrow">What the brief produces — and what post-call grades against it</div>
-                  <div class="prep-loop-rows">
-                    <div class="prep-loop-row">
-                      <span>Suggested agenda</span>
-                      <span class="pill purple">→ Research &amp; agenda</span>
-                    </div>
-                    <div class="prep-loop-row">
-                      <span>Discovery questions to ask</span>
-                      <span class="pill purple">→ Questions</span>
-                    </div>
-                    <div class="prep-loop-row">
-                      <span>Likely incumbent and competitor</span>
-                      <span class="pill purple">→ Incumbent &amp; competition</span>
-                    </div>
-                    <div class="prep-loop-row prep-loop-row--last">
-                      <span>Stakeholder profiles and likely roles</span>
-                      <span class="pill purple">→ MEDPICC · champion</span>
-                    </div>
-                  </div>
-                  <p class="prep-loop-note muted">This is the loop nothing else closes. Research &amp; agenda is the weakest theme to score from a transcript alone — with a brief on file it becomes a diff against a document we already wrote.</p>
                 </fw-card>
               </div>
             </div>
@@ -566,7 +543,7 @@
           </label>
           <label class="prep-dispute-field" for="prep-dispute-note">
             <span class="prep-dispute-label">What is wrong? (required for review)</span>
-            <textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what's missing…" required style="display:block;width:100%;min-height:96px;"></textarea>
+            <textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue. Include the correct value or what's missing…" required style="display:block;width:100%;min-height:96px;"></textarea>
           </label>
           <div class="prep-dispute-actions">
             <button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button>
@@ -630,7 +607,7 @@
           modal.setAttribute("role", "dialog");
           modal.setAttribute("aria-labelledby", "prep-dispute-title");
           var tpl = document.getElementById("prep-dispute-modal-template");
-          modal.innerHTML = tpl ? tpl.innerHTML : '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">\u00d7</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue — include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
+          modal.innerHTML = tpl ? tpl.innerHTML : '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">\u00d7</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue. include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
           document.body.appendChild(modal);
         }
 

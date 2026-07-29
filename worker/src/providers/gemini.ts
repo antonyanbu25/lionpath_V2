@@ -95,11 +95,16 @@ function shouldReduceThinking(req: LlmRequest): boolean {
   );
 }
 
-function buildThinkingConfig(req: LlmRequest, model: string): Record<string, unknown> | undefined {
+function buildThinkingConfig(req: LlmRequest, model: string, env?: ProviderEnv): Record<string, unknown> | undefined {
   // Gemini 3.x requires explicit thinkingLevel on every request (especially with tools).
-  // Flash-Lite on AI Studio: always minimal — same as post-call (thinkingBudget:0).
-  // Omitting thinkingLevel 400s with google_search; thinkingLevel "low" also 400s there.
   if (isGemini3Model(model)) {
+    if (req.research) {
+      if (/flash-lite/i.test(model)) {
+        return { thinkingLevel: "minimal" };
+      }
+      const level = env?.RESEARCH_THINKING_LEVEL?.trim() || "medium";
+      return { thinkingLevel: level };
+    }
     return { thinkingLevel: "minimal" };
   }
 
@@ -107,7 +112,7 @@ function buildThinkingConfig(req: LlmRequest, model: string): Record<string, unk
   return { thinkingBudget: 0 };
 }
 
-function buildGenerationConfig(req: LlmRequest, model: string): Record<string, unknown> {
+function buildGenerationConfig(req: LlmRequest, model: string, env?: ProviderEnv): Record<string, unknown> {
   const generationConfig: Record<string, unknown> = {
     maxOutputTokens: req.maxTokens,
     temperature: req.temperature ?? (req.research ? 0.4 : 0.2),
@@ -120,7 +125,7 @@ function buildGenerationConfig(req: LlmRequest, model: string): Record<string, u
     generationConfig.responseMimeType = "application/json";
   }
 
-  const thinkingConfig = buildThinkingConfig(req, model);
+  const thinkingConfig = buildThinkingConfig(req, model, env);
   if (thinkingConfig) {
     generationConfig.thinkingConfig = thinkingConfig;
   }
@@ -128,11 +133,11 @@ function buildGenerationConfig(req: LlmRequest, model: string): Record<string, u
   return generationConfig;
 }
 
-function buildRequestBody(req: LlmRequest, model: string): Record<string, unknown> {
+function buildRequestBody(req: LlmRequest, model: string, env?: ProviderEnv): Record<string, unknown> {
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: req.system }] },
     contents: [{ role: "user", parts: [{ text: req.user }] }],
-    generationConfig: buildGenerationConfig(req, model),
+    generationConfig: buildGenerationConfig(req, model, env),
   };
 
   // google_search grounding — supported on gemini-3.x with AI Studio keys.
@@ -223,13 +228,14 @@ async function generateViaAiStudio(
   req: LlmRequest,
   backend: GeminiBackend,
   requestedModel: string,
+  env: ProviderEnv,
 ): Promise<LlmResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(buildRequestBody(req, model)),
+    body: JSON.stringify(buildRequestBody(req, model, env)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -246,6 +252,7 @@ async function generateViaVertex(
   location: string,
   model: string,
   req: LlmRequest,
+  env: ProviderEnv,
 ): Promise<LlmResult> {
   const token = await getVertexAccessToken();
   const url =
@@ -258,7 +265,7 @@ async function generateViaVertex(
       "content-type": "application/json",
       authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(buildRequestBody(req, model)),
+    body: JSON.stringify(buildRequestBody(req, model, env)),
   });
   if (!res.ok) {
     const errBody = await res.text();
@@ -280,12 +287,32 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
     );
   }
 
+  const generateWithModel = async (useModel: string, req: LlmRequest): Promise<LlmResult> => {
+    if (backend.mode === "aistudio") {
+      return generateViaAiStudio(backend.apiKey, useModel, req, backend, requestedModel, env);
+    }
+    return generateViaVertex(backend.project, backend.location, useModel, req, env);
+  };
+
   return {
     async generate(req: LlmRequest): Promise<LlmResult> {
-      if (backend.mode === "aistudio") {
-        return generateViaAiStudio(backend.apiKey, model, req, backend, requestedModel);
+      try {
+        return await generateWithModel(model, req);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (
+          req.research &&
+          /MALFORMED_FUNCTION_CALL/.test(msg) &&
+          model !== DEFAULT_MODEL
+        ) {
+          console.warn(
+            `[gemini] ${req.step ?? "research"}: MALFORMED_FUNCTION_CALL on ${model}; ` +
+              `retrying once with ${DEFAULT_MODEL}`,
+          );
+          return generateWithModel(DEFAULT_MODEL, req);
+        }
+        throw err;
       }
-      return generateViaVertex(backend.project, backend.location, model, req);
     },
   };
 }

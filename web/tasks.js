@@ -217,7 +217,7 @@ export function importRecommendedTasks(email, opts = {}) {
       callId: item.callId,
       company: item.company,
       callTitle: item.company ? `${item.company} · call` : undefined,
-      due: item.due !== "—" ? item.due : "",
+      due: item.due !== "-" ? item.due : "",
       dueDate: item.dueDate ? item.dueDate.getTime() : null,
       createdAt: Date.now(),
     });
@@ -272,7 +272,7 @@ export function extractPrepRecommendations(prep, company) {
     const capability = String(row.capability || row.demoFocus || "demo").trim();
     const pain = String(row.pain || row.customerPain || "prep focus").trim();
     return {
-      title: `Configure ${capability} — ${pain}`,
+      title: `Configure ${capability}. ${pain}`,
       sourceKey: `prep:${company}:${capability}:${i}`,
       company,
     };
@@ -452,7 +452,7 @@ function renderRecommendedSection(recommended, opts, expanded) {
     ? recommended.slice(0, MAX_RECOMMENDED_VISIBLE)
     : recommended;
   const rowsHtml = visible.map((t) => renderTaskRow(t, opts)).join("");
-  const body = rowsHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations — analyze a call or run prep.</span></div>`;
+  const body = rowsHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations. Analyze a call or run prep.</span></div>`;
   const toggle = showToggle
     ? `<div class="task-show-more-wrap">
          <fw-button class="task-show-more" color="link" size="small" data-toggle-recommended>
@@ -514,7 +514,7 @@ function renderQuickAddRow(calls) {
 }
 
 function renderEmptyBoard() {
-  return `<div class="task-empty muted task-board-empty dew-empty-copy"><fw-icon name="add-note" size="18" aria-hidden="true"></fw-icon><span>No tasks yet — add one above or analyze a call for recommendations.</span></div>`;
+  return `<div class="task-empty muted task-board-empty dew-empty-copy"><fw-icon name="add-note" size="18" aria-hidden="true"></fw-icon><span>No tasks yet. Add one above or analyze a call for recommendations.</span></div>`;
 }
 
 async function readSelectValue(el) {
@@ -730,7 +730,7 @@ export function renderTaskBoard(container, email, opts = {}) {
           ${
             hasAnyTasks
               ? `${renderRecommendedSection(recommended, opts, recommendedExpanded)}
-                 ${renderSection("Active", active.length, activeRows, "Nothing active — accept a recommendation or add a task.")}
+                 ${renderSection("Active", active.length, activeRows, "Nothing active. Accept a recommendation or add a task.")}
                  ${
                    completed.length
                      ? `<details class="task-completed-accordion">

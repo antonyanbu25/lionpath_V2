@@ -72,6 +72,8 @@ import {
 import {
   applyAutoCompanyDomain,
   domainFromFirstProspectEmail,
+  companyNameFromPrimaryEmail,
+  companyNameFromDomain,
   PERSONAL_EMAIL_DOMAINS,
   normalizeCompanyDomain as normalizePrepDomain,
 } from "./prep-domain.js";
@@ -87,7 +89,7 @@ const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
   "Start the worker: from the web folder run `npm run dev:all` (worker + web), or open a second terminal: `cd worker && npm run dev` (wait for Ready on port 8787). " +
-  "Use the same hostname for both (localhost or 127.0.0.1 — not mixed). The banner clears automatically when the worker comes up.";
+  "Use the same hostname for both (localhost or 127.0.0.1, not mixed). The banner clears automatically when the worker comes up.";
 
 let fb = null;
 /** Resolves once Firebase auth state is restored (dummy mode: already resolved). */
@@ -132,11 +134,11 @@ function accountDetailHash() {
 let selectedDealNavId = null;
 /** Account to open when deal id from a call record is not navigable. */
 let pendingDealFallbackAccountId = null;
-/** Bumps on each deal panel render — stale async renders must not overwrite the DOM. */
+/** Bumps on each deal panel render. stale async renders must not overwrite the DOM. */
 let dealPanelRenderGen = 0;
-/** Bumps on each call panel render — stale async renders must not overwrite the DOM. */
+/** Bumps on each call panel render. stale async renders must not overwrite the DOM. */
 let callPanelRenderGen = 0;
-/** Bumps on each account panel render — stale async renders must not overwrite the DOM. */
+/** Bumps on each account panel render. stale async renders must not overwrite the DOM. */
 let accountPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
@@ -243,7 +245,7 @@ function validateProspectDomain(emailRaw, companyName) {
   if (domain && !DOMAIN_RE.test(domain)) hints.push("Email domain format looks invalid.");
   if (domain && DOMAIN_TYPO_MARKERS.some((p) => p.test(domain))) {
     const suggested = suggestDomainFromCompany(companyName) || "khanacademy.org";
-    hints.push(`Possible typo — did you mean ${suggested}?`);
+    hints.push(`Possible typo. Did you mean ${suggested}?`);
   }
   const suggested = suggestDomainFromCompany(companyName);
   if (suggested && domain && domain !== suggested) {
@@ -288,16 +290,17 @@ function onCompanyDomainInput() {
 function updateDomainHint() {
   const hint = $("domain-hint");
   if (!hint) return;
-  const companyName = readFieldValue($("companyName"));
   const companyDomain = normalizeCompanyDomainField(readFieldValue($("companyDomain")));
   const emailsRaw = readFieldValue($("prospectEmail"));
+  const companyName =
+    companyNameFromPrimaryEmail(emailsRaw) || companyNameFromDomain(companyDomain) || "";
   const emailMsg = validateProspectDomain(emailsRaw, companyName);
   const hints = [];
   if (emailMsg) hints.push(emailMsg);
   const inferred = domainFromFirstProspectEmail(emailsRaw);
   const firstDomain = normalizePrepDomain(emailDomain(emailsRaw));
   if (!companyDomain && firstDomain && PERSONAL_EMAIL_DOMAINS.has(firstDomain)) {
-    hints.push("Enter company website — we can't infer it from a personal email (Gmail, Outlook, etc.).");
+    hints.push("Enter company website; we can't infer it from a personal email (Gmail, Outlook, etc.).");
   } else if (!companyDomain && emailsRaw.trim() && !inferred) {
     hints.push("Enter company website if prospect email doesn't use a corporate domain.");
   }
@@ -1774,8 +1777,6 @@ async function boot() {
     syncAutoCompanyDomain();
     updateDomainHint();
   });
-  $("companyName")?.addEventListener("fwInput", updateDomainHint);
-  $("companyName")?.addEventListener("input", updateDomainHint);
   $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
   $("companyDomain")?.addEventListener("input", onCompanyDomainInput);
 

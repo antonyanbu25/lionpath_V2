@@ -66,7 +66,7 @@ export interface ContactResearchMetadata {
 }
 
 export interface PrepInput {
-  companyName: string;
+  companyName?: string;
   companyDomain: string;
   prospectEmail: string;
   prospectEmails?: string[];
@@ -90,6 +90,9 @@ export interface PrepInput {
   lifecycleId?: string;
   dealId?: string | null;
 }
+
+/** Prep input after normalizePrepInput — companyName is always resolved. */
+export type NormalizedPrepInput = PrepInput & { companyName: string };
 
 export interface ResearchMeta {
   cacheHit: boolean;

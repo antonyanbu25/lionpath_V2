@@ -165,9 +165,6 @@ export async function handleGeneratePrep(
 ): Promise<Response> {
   await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput>;
-  if (!input.companyName) {
-    return json({ error: "companyName is required." }, 400, cors);
-  }
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
     return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
@@ -217,8 +214,12 @@ export async function handleContactEnrich(
 ): Promise<Response> {
   await requireUser(request, env);
   const body = (await request.json()) as ContactEnrichRequest;
+  console.warn(
+    `[prep/enrich] ${body.email} linkedinPdf=${body.sources?.linkedinPdf?.fileName || "none"}`,
+  );
   try {
     const result = await enrichContact(env, body);
+    console.warn(`[prep/enrich] ok ${result.email} name=${result.profile?.name || "unknown"}`);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -237,9 +238,6 @@ export async function handlePrepResearch(
 ): Promise<Response> {
   await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput>;
-  if (!input.companyName) {
-    return json({ error: "companyName is required." }, 400, cors);
-  }
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
     return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
@@ -269,8 +267,8 @@ export async function handlePrepSynthesize(
     confirmedFacts?: unknown[];
     researchBundle?: unknown;
   };
-  if (!input.companyName || !input.confirmedFacts?.length) {
-    return json({ error: "companyName and confirmedFacts are required." }, 400, cors);
+  if (!input.confirmedFacts?.length) {
+    return json({ error: "confirmedFacts are required." }, 400, cors);
   }
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {

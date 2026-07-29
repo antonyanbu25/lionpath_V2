@@ -192,7 +192,7 @@ for (const [name, data] of cases) {
       if (!html.includes("Objections")) throw new Error("missing Objections section");
       if (!html.includes("Price vs Zendesk")) throw new Error("missing objection text");
       // Call notes ≠ MoM — both present independently
-      if (!html.includes("Internal — blunt")) throw new Error("missing internal call-notes hint");
+      if (!html.includes("Internal: blunt")) throw new Error("missing internal call-notes hint");
       if (!html.includes("Customer-facing")) throw new Error("missing MoM customer-facing hint");
     }
     if (name === "v2 QIP scorecard render") {

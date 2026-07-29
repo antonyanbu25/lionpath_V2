@@ -1,6 +1,7 @@
 import { FRESHWORKS_KB } from "../kb";
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
+import { factsFromSeContext } from "./se-context-facts";
 import type { Env, ResearchFact, ResearchSnippet } from "./types";
 
 const FACTS_SCHEMA = {
@@ -89,8 +90,12 @@ export async function extractFacts(
     additionalContext?: string;
   },
 ): Promise<{ facts: ResearchFact[]; sources: import("./types").SourceRef[] }> {
+  const seOnly = factsFromSeContext(input.additionalContext);
+  const hasContext = !!String(input.additionalContext || "").trim();
+
   if (!snippets.length) {
-    return { facts: [], sources: [] };
+    if (!hasContext) return { facts: [], sources: [] };
+    return { facts: seOnly.facts, sources: seOnly.sources };
   }
 
   const provider = getProvider(env);
@@ -113,10 +118,22 @@ export async function extractFacts(
   const parsed = extractJson<{ facts: ResearchFact[]; sources: import("./types").SourceRef[] }>(
     result.text,
   );
-  return {
-    facts: parsed.facts || [],
-    sources: parsed.sources || [],
-  };
+  const facts = parsed.facts || [];
+  const sources = parsed.sources || [];
+  if (!seOnly.facts.length) {
+    return { facts, sources };
+  }
+  const seen = new Set(facts.map((f) => `${f.category}:${f.key}:${f.value}`));
+  for (const f of seOnly.facts) {
+    const key = `${f.category}:${f.key}:${f.value}`;
+    if (seen.has(key)) continue;
+    facts.unshift(f);
+  }
+  const mergedSources = [...seOnly.sources];
+  for (const s of sources) {
+    if (!mergedSources.some((x) => x.label === s.label)) mergedSources.push(s);
+  }
+  return { facts, sources: mergedSources };
 }
 
 /** KB context string for synthesis (Freshworks facts only from KB). */
