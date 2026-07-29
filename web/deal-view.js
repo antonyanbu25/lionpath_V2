@@ -1096,6 +1096,99 @@ function applyDealViewHtml(container, opts, html) {
   return true;
 }
 
+/** @param {import("./domain/store.js").Store} store @param {object} deal */
+async function enrichDealRecordExtras(store, deal) {
+  const [
+    technicalCommit,
+    signals,
+    daysInStage,
+    stageMedianDays,
+    postCalls,
+    arrLines,
+    dealSummary,
+  ] = await Promise.all([
+    safeStoreOp(
+      "getTechnicalCommitByDeal",
+      () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
+      null,
+    ),
+    safeStoreOp(
+      "listDealSignalsByDeal",
+      () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
+      [],
+    ),
+    safeStoreOp("computeDaysInStage", () => computeDaysInStage(store, deal), 0),
+    safeStoreOp(
+      "computeStageMedianDays",
+      () => computeStageMedianDays(store, deal.accountId, deal.stage),
+      34,
+    ),
+    safeStoreOp(
+      "listPostCallsByDeal",
+      () => (store.listPostCallsByDeal ? store.listPostCallsByDeal(deal.id, 50) : []),
+      [],
+    ),
+    safeStoreOp(
+      "listArrLinesByDeal",
+      () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
+      [],
+    ),
+    safeStoreOp(
+      "getDealSummaryByDeal",
+      () => (store.getDealSummaryByDeal ? store.getDealSummaryByDeal(deal.id) : null),
+      null,
+    ),
+  ]);
+
+  const callRows = await Promise.all(
+    postCalls.map(async (postCall) => {
+      const [meddpiccDeltas, tcDeltas] = await Promise.all([
+        safeStoreOp(
+          "listMeddpiccDeltasByCall",
+          () => (store.listMeddpiccDeltasByCall ? store.listMeddpiccDeltasByCall(postCall.id) : []),
+          [],
+        ),
+        safeStoreOp(
+          "listTcDeltasByCall",
+          () => (store.listTcDeltasByCall ? store.listTcDeltasByCall(postCall.id) : []),
+          [],
+        ),
+      ]);
+      return {
+        postCall,
+        meddpiccDeltas,
+        tcDeltas,
+        movement: formatCallMovement(meddpiccDeltas, tcDeltas),
+      };
+    }),
+  );
+
+  return {
+    technicalCommit,
+    latestSignal: signals[0] || null,
+    daysInStage,
+    stageMedianDays,
+    callRows,
+    arrLines,
+    dealSummary,
+  };
+}
+
+/** Deal record shell when engagement detail lacks a lifecycle (deals nav). */
+async function buildDealRecordDetailFromStore(session, deal, resolvedDealId, extras) {
+  const store = getStore();
+  const account = await safeStoreOp("getAccount", () => store.getAccount(deal.accountId), null);
+  if (!account) return null;
+  return {
+    account,
+    selectedDeal: deal,
+    selectedDealId: deal.id,
+    dealSummary: extras.dealSummary,
+    ...extras,
+    resolvedDealId,
+  };
+}
+
 /** @param {object} session @param {string} dealId @param {object} [opts] */
 async function loadDealRecordDetail(session, dealId, opts = {}) {
   const resolvedDealId = await resolveDealNavId(session, dealId);
@@ -1113,108 +1206,59 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
         });
       } catch (err) {
         console.warn("[deal-view] history deal detail failed:", err?.message || err);
-        return null;
       }
-      if (!detail) return null;
-      const callRows = (detail.accountRollup?.accountCalls || []).map(({ postCall, movement }) => ({
-        postCall,
-        meddpiccDeltas: [],
-        tcDeltas: [],
-        movement: movement || "—",
-      }));
+      if (detail) {
+        const callRows = (detail.accountRollup?.accountCalls || []).map(({ postCall, movement }) => ({
+          postCall,
+          meddpiccDeltas: [],
+          tcDeltas: [],
+          movement: movement || "—",
+        }));
+        return {
+          ...detail,
+          resolvedDealId,
+          technicalCommit: null,
+          latestSignal: null,
+          daysInStage: 0,
+          stageMedianDays: 34,
+          callRows,
+          arrLines: [],
+        };
+      }
       return {
-        ...detail,
+        account: histRow.account,
+        selectedDeal: histRow.deal,
+        selectedDealId: histRow.deal.id,
+        dealSummary: null,
         resolvedDealId,
         technicalCommit: null,
         latestSignal: null,
         daysInStage: 0,
         stageMedianDays: 34,
-        callRows,
+        callRows: [],
         arrLines: [],
       };
     }
     return null;
   }
 
-  let detail = null;
+  const store = getStore();
+  let engagementDetail = null;
   try {
-    detail = await getAccountEngagementDetail(session, deal.accountId, {
+    engagementDetail = await getAccountEngagementDetail(session, deal.accountId, {
       dealId: deal.id,
       lifecycleOwnerId: opts.lifecycleOwnerId,
     });
   } catch (err) {
     console.warn("[deal-view] store deal detail failed:", err?.message || err);
-    return null;
   }
-  if (!detail) return null;
 
-  const store = getStore();
-  const technicalCommit = await safeStoreOp(
-    "getTechnicalCommitByDeal",
-    () => (store.getTechnicalCommitByDeal ? store.getTechnicalCommitByDeal(deal.id) : null),
-    null,
-  );
+  const extras = await enrichDealRecordExtras(store, deal);
+  if (engagementDetail) {
+    return { ...engagementDetail, resolvedDealId, ...extras };
+  }
 
-  const signals = await safeStoreOp(
-    "listDealSignalsByDeal",
-    () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
-    [],
-  );
-  const latestSignal = signals[0] || null;
-
-  const daysInStage = await safeStoreOp(
-    "computeDaysInStage",
-    () => computeDaysInStage(store, deal),
-    0,
-  );
-  const stageMedianDays = await safeStoreOp(
-    "computeStageMedianDays",
-    () => computeStageMedianDays(store, deal.accountId, deal.stage),
-    34,
-  );
-
-  const postCalls = await safeStoreOp(
-    "listPostCallsByDeal",
-    () => (store.listPostCallsByDeal ? store.listPostCallsByDeal(deal.id, 50) : []),
-    [],
-  );
-  const callRows = await Promise.all(
-    postCalls.map(async (postCall) => {
-      const meddpiccDeltas = await safeStoreOp(
-        "listMeddpiccDeltasByCall",
-        () => (store.listMeddpiccDeltasByCall ? store.listMeddpiccDeltasByCall(postCall.id) : []),
-        [],
-      );
-      const tcDeltas = await safeStoreOp(
-        "listTcDeltasByCall",
-        () => (store.listTcDeltasByCall ? store.listTcDeltasByCall(postCall.id) : []),
-        [],
-      );
-      return {
-        postCall,
-        meddpiccDeltas,
-        tcDeltas,
-        movement: formatCallMovement(meddpiccDeltas, tcDeltas),
-      };
-    }),
-  );
-
-  const arrLines = await safeStoreOp(
-    "listArrLinesByDeal",
-    () => (store.listArrLinesByDeal ? store.listArrLinesByDeal(deal.id) : []),
-    [],
-  );
-
-  return {
-    ...detail,
-    resolvedDealId,
-    technicalCommit,
-    latestSignal,
-    daysInStage,
-    stageMedianDays,
-    callRows,
-    arrLines,
-  };
+  return buildDealRecordDetailFromStore(session, deal, resolvedDealId, extras);
 }
 
 function wireDealListItemClicks(container, opts) {

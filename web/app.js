@@ -23,7 +23,7 @@ import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=accounts-mock-v1";
 import { renderDealView } from "./deal-view.js";
-import { renderCallView } from "./call-view.js?v=call-notes-bullets-4";
+import { renderCallView } from "./call-view.js?v=call-perf-1";
 import { renderCallsListView } from "./calls-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
@@ -127,6 +127,8 @@ function accountDetailHash() {
 let selectedDealNavId = null;
 /** Bumps on each deal panel render — stale async renders must not overwrite the DOM. */
 let dealPanelRenderGen = 0;
+/** Bumps on each call panel render — stale async renders must not overwrite the DOM. */
+let callPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
 let pipelineQuarterFilter = "";
@@ -859,6 +861,7 @@ async function renderDealPanel() {
 async function renderCallPanel() {
   const panel = $("call-panel");
   if (!panel || !currentSession?.email) return;
+  const gen = ++callPanelRenderGen;
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
@@ -881,6 +884,7 @@ async function renderCallPanel() {
       ownerEmail,
       initialTab,
       expandThemeKey: expandTheme,
+      shouldApply: () => gen === callPanelRenderGen,
       onBack: () => {
         selectedCallId = null;
         callRecordTab = undefined;

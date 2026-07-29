@@ -402,6 +402,59 @@ assert(
   "resolveDealNavId returns store deal id",
 );
 
+// Deal without lifecycle — list shows it; detail must not bounce to #deals.
+const orphanAccountId = "account_orphan_deal";
+await store.createAccount({
+  id: orphanAccountId,
+  name: "Orphan Co",
+  domain: "orphan.co",
+  slug: "orphan-orphan-co",
+  seTeam: [{ seUserId: session.uid, role: "primary", addedAt: ts }],
+  primarySeUserId: session.uid,
+  createdAt: ts,
+  updatedAt: ts,
+});
+await store.createLifecycle({
+  id: "lc_orphan",
+  accountId: orphanAccountId,
+  ownerId: session.uid,
+  teamId: session.teamId,
+  primaryContactId: null,
+  title: "Orphan Co",
+  stage: "discovery",
+  status: "active",
+  prepCount: 0,
+  postCallCount: 0,
+  openTaskCount: 0,
+  lastActivityAt: ts,
+  createdAt: ts,
+  updatedAt: ts,
+});
+await store.createDeal({
+  id: "deal_orphan_nb",
+  accountId: orphanAccountId,
+  type: "new_business",
+  stage: "discovery",
+  status: "active",
+  ownerId: session.uid,
+  teamId: session.teamId,
+  orgId: null,
+  title: "Orphan NB",
+  prepCount: 0,
+  postCallCount: 0,
+  openTaskCount: 0,
+  latestQualityScore: null,
+  createdAt: ts,
+  updatedAt: ts,
+  lastActivityAt: ts,
+});
+const orphanRows = await listDealsForSession(session);
+assert(orphanRows.some((r) => r.deal.id === "deal_orphan_nb"), "orphan deal appears in list");
+const orphanDetailContainer = mockContainer();
+await renderDealView(orphanDetailContainer, session, { dealId: "deal_orphan_nb", surface: "deals" });
+assert(orphanDetailContainer.innerHTML.includes("deal-record"), "orphan deal opens without lifecycle");
+assert(orphanDetailContainer.innerHTML.includes("Orphan NB"), "orphan deal title shown");
+
 const raceContainer = mockContainer();
 const racePromise = renderDealView(raceContainer, session, {
   shouldApply: () => false,

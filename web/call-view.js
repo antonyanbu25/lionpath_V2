@@ -7,7 +7,7 @@ import {
   listPostCallAnalyses,
   updatePostCallAnalysis,
 } from "./history.js";
-import { getPostCallForSession } from "./domain/se-access-service.js";
+import { getPostCallForSession, normalizeSeEmail } from "./domain/se-access-service.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { formatTypeComposite, isEligibleForAggregate, typeComposite } from "./quality-score.js";
 import { renderQipScorecard } from "./postcall.js";
@@ -18,9 +18,10 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc } from "./shared.js";
+import { renderLoadingPanel } from "./crayons-ui.js";
 
-/** Bumped with call-notes read/edit UI — grep console for [DEBUG-72b8a2] on portal. */
-const CALL_VIEW_MODULE_VERSION = "call-notes-bullets-4";
+/** Bumped with call perf + loading shell — grep console for [DEBUG-72b8a2] on portal. */
+const CALL_VIEW_MODULE_VERSION = "call-perf-1";
 
 const CALL_TYPE_LABELS = {
   demo: "Demo",
@@ -1370,20 +1371,103 @@ async function safeEnrich(label, fn, fallback) {
   }
 }
 
+/** @param {Record<string, Promise<any>>} tasks */
+async function promiseAllValues(tasks) {
+  const entries = await Promise.all(
+    Object.entries(tasks).map(async ([key, task]) => [key, await task]),
+  );
+  return Object.fromEntries(entries);
+}
+
+/** Immediate shell while Firestore enrichments load. */
+function renderCallLoadingShell(record) {
+  const analysis = record?.analysis || record?.result?.analysis || {};
+  const title = analysis.callHeader?.title || record?.title || "Call";
+  return `
+    <div class="lifecycle-detail call-record call-record--loading">
+      <div class="call-record-page">
+        <header class="call-record-hero">
+          <h1 class="call-record-title">${esc(title)}</h1>
+        </header>
+        ${renderLoadingPanel("Loading call record…")}
+      </div>
+    </div>`;
+}
+
 async function loadCallBundle(session, record) {
   const email = session.email;
   const store = getStore();
   let dealId = resolveDealId(record);
-  // Prefer domain postCall.dealId when history record was saved before dual-write stamped it.
-  if (!dealId && store.getPostCall) {
-    const domainCall = await safeEnrich("getPostCall", () => store.getPostCall(record.id), null);
-    if (domainCall?.dealId) dealId = domainCall.dealId;
-  }
+  const resultBlob = record.result || {};
+  const pass6 = record.pass6 || resultBlob.pass6 || null;
+  const draftVf = resultBlob.videoFacts;
+  const draftTimeline = resultBlob.timeline;
+  const summarise = resultBlob.summarise || {};
+
+  const parallel = await promiseAllValues({
+    domainCall:
+      !dealId && store.getPostCall
+        ? safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
+        : Promise.resolve(null),
+    productGaps:
+      !pass6?.productGaps?.length && store.listProductGapsByPostCall
+        ? safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
+        : Promise.resolve([]),
+    whatWorks:
+      !pass6?.whatWorks?.length && store.listWhatWorksByPostCall
+        ? safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
+        : Promise.resolve([]),
+    storedFacts:
+      !draftVf && store.listVideoFactsByCall
+        ? safeEnrich("listVideoFactsByCall", () => store.listVideoFactsByCall(record.id), [])
+        : Promise.resolve([]),
+    timelineSegments:
+      !draftVf?.segments?.length && !draftTimeline?.segments?.length && store.listTimelineSegmentsByCall
+        ? safeEnrich("listTimelineSegmentsByCall", () => store.listTimelineSegmentsByCall(record.id), [])
+        : Promise.resolve([]),
+    timelineMarkers:
+      !draftTimeline?.markers?.length && store.listTimelineMarkersByCall
+        ? safeEnrich("listTimelineMarkersByCall", () => store.listTimelineMarkersByCall(record.id), [])
+        : Promise.resolve([]),
+    tcDeltas:
+      !resultBlob.tcDeltas?.length && store.listTcDeltasByCall
+        ? safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
+        : Promise.resolve([]),
+    meddpiccDeltas: store.listMeddpiccDeltasByCall
+      ? safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
+      : Promise.resolve([]),
+    objections:
+      !summarise.objections?.length && store.listObjectionsByCall
+        ? safeEnrich("listObjectionsByCall", () => store.listObjectionsByCall(record.id), [])
+        : Promise.resolve([]),
+    followUps:
+      !summarise.followUps?.length && store.listFollowUpsByCall
+        ? safeEnrich("listFollowUpsByCall", () => store.listFollowUpsByCall(record.id), [])
+        : Promise.resolve([]),
+    momDrafts:
+      !summarise.momDraft && !resultBlob.momDraft && store.listMomDraftsByCall
+        ? safeEnrich("listMomDraftsByCall", () => store.listMomDraftsByCall(record.id), [])
+        : Promise.resolve([]),
+    dealSignals: store.listDealSignalsByCall
+      ? safeEnrich("listDealSignalsByCall", () => store.listDealSignalsByCall(record.id), [])
+      : Promise.resolve([]),
+  });
+
+  if (!dealId && parallel.domainCall?.dealId) dealId = parallel.domainCall.dealId;
+
   let deal = null;
   let account = null;
+  let technicalCommit = resultBlob.technicalCommit || null;
 
   if (dealId) {
-    deal = await safeEnrich("getDeal", () => getDeal(dealId), null);
+    const [loadedDeal, tcFromStore] = await Promise.all([
+      safeEnrich("getDeal", () => getDeal(dealId), null),
+      !technicalCommit && store.getTechnicalCommitByDeal
+        ? safeEnrich("getTechnicalCommitByDeal", () => store.getTechnicalCommitByDeal(dealId), null)
+        : Promise.resolve(null),
+    ]);
+    deal = loadedDeal;
+    if (!technicalCommit) technicalCommit = tcFromStore;
     if (deal?.accountId && store.getAccount) {
       account = await safeEnrich("getAccount", () => store.getAccount(deal.accountId), null);
     }
@@ -1412,55 +1496,33 @@ async function loadCallBundle(session, record) {
   const qipScore = composite?.score ?? null;
   const qipLabel = composite ? formatTypeComposite(composite) : null;
   const deltaInfo = qipDeltaForType(email, callType, qipScore, record.id);
-  const analysis = record.analysis || record.result?.analysis || {};
+  const analysis = record.analysis || resultBlob.analysis || {};
   const momentumStatus = analysis?.momentum?.status || "—";
   const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
 
-  let productGaps = store.listProductGapsByPostCall
-    ? await safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
-    : [];
-  let whatWorks = store.listWhatWorksByPostCall
-    ? await safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
-    : [];
-  // Fallback: Pass 6 blob on the history record when dual-write collections are empty.
-  const pass6 = record.pass6 || record.result?.pass6 || null;
-  if (!productGaps.length && pass6?.productGaps?.length) {
-    productGaps = pass6.productGaps;
-  }
-  if (!whatWorks.length && pass6?.whatWorks?.length) {
-    whatWorks = pass6.whatWorks;
-  }
+  let productGaps = pass6?.productGaps?.length ? pass6.productGaps : parallel.productGaps;
+  let whatWorks = pass6?.whatWorks?.length ? pass6.whatWorks : parallel.whatWorks;
+
   /** @type {Record<string, string>} */
   const clusterLabels = {};
-  for (const g of productGaps) {
-    if (!g.clusterId || clusterLabels[g.clusterId]) continue;
-    const cluster = store.getGapCluster
-      ? await safeEnrich("getGapCluster", () => store.getGapCluster(g.clusterId), null)
-      : null;
-    if (cluster?.label) clusterLabels[g.clusterId] = cluster.label;
+  if (store.getGapCluster) {
+    const clusterIds = [
+      ...new Set(productGaps.map((g) => g.clusterId).filter(Boolean)),
+    ];
+    const clusters = await Promise.all(
+      clusterIds.map((id) => safeEnrich("getGapCluster", () => store.getGapCluster(id), null)),
+    );
+    clusterIds.forEach((id, index) => {
+      if (clusters[index]?.label) clusterLabels[id] = clusters[index].label;
+    });
   }
 
   const identities = resolveConfirmedIdentities(record);
   const attendees = analysis?.callHeader?.attendees || [];
 
-  let timelineFacts = null;
-  let timelineSegments = [];
-  const storedFacts = store.listVideoFactsByCall
-    ? await safeEnrich("listVideoFactsByCall", () => store.listVideoFactsByCall(record.id), [])
-    : [];
-  if (storedFacts?.[0]) {
-    timelineFacts = storedFacts[0];
-  }
-  // Segments are stored per call, not per videoFacts — transcript spines have no facts doc.
-  if (store.listTimelineSegmentsByCall) {
-    timelineSegments = await safeEnrich(
-      "listTimelineSegmentsByCall",
-      () => store.listTimelineSegmentsByCall(record.id),
-      [],
-    );
-  }
-  const draftVf = record.result?.videoFacts;
+  let timelineFacts = parallel.storedFacts?.[0] || null;
+  let timelineSegments = parallel.timelineSegments;
   if (!timelineSegments.length && Array.isArray(draftVf?.segments)) {
     timelineSegments = draftVf.segments;
     timelineFacts = timelineFacts || draftVf;
@@ -1469,10 +1531,7 @@ async function loadCallBundle(session, record) {
     timelineFacts = { ...timelineFacts, attendeeCurveJson: draftVf.attendeeCurveJson };
   }
 
-  let timelineMarkers = store.listTimelineMarkersByCall
-    ? await safeEnrich("listTimelineMarkersByCall", () => store.listTimelineMarkersByCall(record.id), [])
-    : [];
-  const draftTimeline = record.result?.timeline;
+  let timelineMarkers = parallel.timelineMarkers;
   if (!timelineSegments.length && Array.isArray(draftTimeline?.segments)) {
     timelineSegments = draftTimeline.segments;
   }
@@ -1483,65 +1542,23 @@ async function loadCallBundle(session, record) {
   const arrPoint =
     deal?.arrSnapshot?.arrEstimatePoint ??
     deal?.arrEstimatePoint ??
-    record.result?.arrCompute?.arrPoint ??
-    record.result?.arrCompute?.arrEstimatePoint ??
+    resultBlob.arrCompute?.arrPoint ??
+    resultBlob.arrCompute?.arrEstimatePoint ??
     null;
   const arrLabel =
     arrPoint != null && Number.isFinite(Number(arrPoint))
       ? `$${Math.round(Number(arrPoint)).toLocaleString()}`
       : null;
 
-  let technicalCommit = null;
-  if (dealId && store.getTechnicalCommitByDeal) {
-    technicalCommit = await safeEnrich(
-      "getTechnicalCommitByDeal",
-      () => store.getTechnicalCommitByDeal(dealId),
-      null,
-    );
-  }
-  if (!technicalCommit) {
-    technicalCommit = record.result?.technicalCommit || null;
-  }
+  let tcDeltas = resultBlob.tcDeltas?.length ? resultBlob.tcDeltas : parallel.tcDeltas;
+  let meddpiccDeltas = parallel.meddpiccDeltas;
+  let objections = summarise.objections?.length ? summarise.objections : parallel.objections;
+  let followUps = summarise.followUps?.length ? summarise.followUps : parallel.followUps;
 
-  let tcDeltas = store.listTcDeltasByCall
-    ? await safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
-    : [];
-  if (!tcDeltas.length && Array.isArray(record.result?.tcDeltas)) {
-    tcDeltas = record.result.tcDeltas;
-  }
+  let momDraft = summarise.momDraft || resultBlob.momDraft || null;
+  if (!momDraft) momDraft = parallel.momDrafts?.[0] || null;
 
-  let meddpiccDeltas = store.listMeddpiccDeltasByCall
-    ? await safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
-    : [];
-
-  let objections = store.listObjectionsByCall
-    ? await safeEnrich("listObjectionsByCall", () => store.listObjectionsByCall(record.id), [])
-    : [];
-  if (!objections.length && Array.isArray(record.result?.summarise?.objections)) {
-    objections = record.result.summarise.objections;
-  }
-
-  let followUps = store.listFollowUpsByCall
-    ? await safeEnrich("listFollowUpsByCall", () => store.listFollowUpsByCall(record.id), [])
-    : [];
-  if (!followUps.length && Array.isArray(record.result?.summarise?.followUps)) {
-    followUps = record.result.summarise.followUps;
-  }
-
-  let momDraft = null;
-  if (store.listMomDraftsByCall) {
-    const moms = await safeEnrich("listMomDraftsByCall", () => store.listMomDraftsByCall(record.id), []);
-    momDraft = moms?.[0] || null;
-  }
-  if (!momDraft) {
-    momDraft = record.result?.summarise?.momDraft || record.result?.momDraft || null;
-  }
-
-  let dealSignal = null;
-  if (store.listDealSignalsByCall) {
-    const signals = await safeEnrich("listDealSignalsByCall", () => store.listDealSignalsByCall(record.id), []);
-    dealSignal = signals?.[0] || null;
-  }
+  const dealSignal = parallel.dealSignals?.[0] || null;
 
   return {
     record,
@@ -1573,7 +1590,7 @@ async function loadCallBundle(session, record) {
     callNotes: (() => {
       const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
       if (fromAnalysis) return fromAnalysis;
-      const fromSummarise = record.result?.summarise?.callNotes;
+      const fromSummarise = summarise.callNotes;
       return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
     })(),
     identities,
@@ -1957,15 +1974,21 @@ export async function renderCallView(container, session, opts = {}) {
 
   try {
     const ownerEmail = opts.ownerEmail || activeSession.email;
+    const selfEmail = normalizeSeEmail(activeSession.email);
     const record =
-      (await getPostCallForSession(activeSession, opts.callId, ownerEmail)) ||
-      getPostCallAnalysis(activeSession.email, opts.callId);
-    if (!record) {
+      !opts.ownerEmail || normalizeSeEmail(ownerEmail) === selfEmail
+        ? getPostCallAnalysis(activeSession.email, opts.callId)
+        : null;
+    const resolvedRecord =
+      record || (await getPostCallForSession(activeSession, opts.callId, ownerEmail));
+    if (!resolvedRecord) {
       container.innerHTML = renderCallEmptyState("Call not found — it may have been cleared from this browser.");
       return;
     }
 
-    const bundle = await loadCallBundle(activeSession, record);
+    container.innerHTML = renderCallLoadingShell(resolvedRecord);
+    const bundle = await loadCallBundle(activeSession, resolvedRecord);
+    if (opts.shouldApply && !opts.shouldApply()) return;
     container.innerHTML = renderCallRecord(bundle);
     wireCallRecord(container, activeSession, bundle, opts);
   } catch (err) {

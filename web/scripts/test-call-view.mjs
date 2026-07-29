@@ -90,6 +90,7 @@ Object.defineProperty(container, "querySelectorAll", {
 await renderCallView(container, firebaseSession, { callId });
 
 assert(container.innerHTML.includes("call-record"), "renders call record shell");
+assert(!container.innerHTML.includes("call-record--loading"), "finished render replaces loading shell");
 assert(container.innerHTML.includes("Acme · Demo"), "shows call title");
 assert(container.innerHTML.includes("QIP"), "shows verdict strip");
 assert(container.innerHTML.includes("How the 48 minutes went"), "timeline title from duration");
