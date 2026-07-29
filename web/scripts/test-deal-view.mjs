@@ -11,6 +11,7 @@ import {
   sortDealListRows,
   tractionSortRank,
   formatDealListMoneyBand,
+  resolveDealNavId,
 } from "../deal-view.js";
 import { filterDealRows } from "../search-service.js";
 import { now } from "../domain/types.js";
@@ -395,5 +396,19 @@ assert(detailContainer.innerHTML.includes("Reporting fields"), "section 8 report
 assert(!detailContainer.innerHTML.includes("latestQualityScore"), "no QIP on deal screen");
 assert(!detailContainer.innerHTML.includes("QIP"), "no QIP label on deal screen");
 assert(!detailContainer.innerHTML.includes("account-command-deck"), "deal record replaces opportunity shell");
+
+assert(
+  (await resolveDealNavId(session, "deal_globex_nb")) === "deal_globex_nb",
+  "resolveDealNavId returns store deal id",
+);
+
+const raceContainer = mockContainer();
+const racePromise = renderDealView(raceContainer, session, {
+  shouldApply: () => false,
+});
+await new Promise((r) => setTimeout(r, 5));
+raceContainer.innerHTML = "stale-marker";
+await racePromise;
+assert(raceContainer.innerHTML === "stale-marker", "stale deal list render does not overwrite DOM");
 
 console.log("test-deal-view: ok");

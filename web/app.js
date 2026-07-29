@@ -123,6 +123,8 @@ function accountDetailHash() {
 }
 /** Selected deal when Deals nav is active */
 let selectedDealNavId = null;
+/** Bumps on each deal panel render — stale async renders must not overwrite the DOM. */
+let dealPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
 let pipelineQuarterFilter = "";
@@ -772,6 +774,7 @@ async function renderProductSignalPanel() {
 async function renderDealPanel() {
   const panel = $("deal-panel");
   if (!panel || !currentSession?.email) return;
+  const gen = ++dealPanelRenderGen;
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
@@ -795,6 +798,18 @@ async function renderDealPanel() {
     listSortKey: dealListSortKey,
     listTractionFilter: dealListTractionFilter,
     detailSearchQuery: accountDetailSearchQuery,
+    shouldApply: () => gen === dealPanelRenderGen,
+    onInvalidDealId: () => {
+      if (gen !== dealPanelRenderGen) return;
+      selectedDealNavId = null;
+      history.replaceState(null, "", `#${dealDetailHash()}`);
+      void renderDealPanel();
+    },
+    onResolvedDealId: (dealId) => {
+      if (gen !== dealPanelRenderGen) return;
+      selectedDealNavId = dealId;
+      history.replaceState(null, "", `#${dealDetailHash()}`);
+    },
     onListSearchQueryChange: (q) => {
       dealListSearchQuery = q;
     },
@@ -930,6 +945,60 @@ function openCallRecord(id, opts = {}) {
   document.querySelectorAll(".sidebar-call-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
   });
+}
+
+/** Apply top-level hash routes when the user navigates with back/forward. */
+function applyRouteFromHash() {
+  if (!currentSession?.email) return;
+  const { path: hashPath, params: hashParams } = parseLocationHash();
+  const hash = hashPath;
+
+  const dealNavMatch = /^deals\/([^/?]+)$/.exec(hash);
+  if (dealNavMatch) {
+    selectedDealNavId = dealNavMatch[1];
+    dealListTractionFilter = "";
+    if (currentView !== "deals") {
+      switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
+    } else {
+      void renderDealPanel();
+    }
+    return;
+  }
+  if (hash === "deals") {
+    selectedDealNavId = null;
+    dealListTractionFilter = hashParams.get("filter") || "";
+    if (currentView !== "deals") {
+      switchView("deals", { drillDown: !!dealListTractionFilter });
+    } else {
+      void renderDealPanel();
+    }
+    return;
+  }
+
+  const callMatch = /^calls\/([^/?]+)$/.exec(hash);
+  if (callMatch) {
+    selectedCallId = callMatch[1];
+    callRecordTab = hashParams.get("tab") || undefined;
+    callExpandThemeKey = hashParams.get("theme") || undefined;
+    callRecordOwnerEmail = hashParams.get("owner")
+      ? normalizeSeEmail(hashParams.get("owner"))
+      : undefined;
+    if (currentView !== "calls") {
+      switchView("calls", { drillDown: true, callId: callMatch[1] });
+    } else {
+      void renderCallPanel();
+    }
+    return;
+  }
+  if (hash === "calls") {
+    selectedCallId = null;
+    callsListFilter = hashParams.get("filter") || "";
+    if (currentView !== "calls") {
+      switchView("calls", { drillDown: !!callsListFilter });
+    } else {
+      void renderCallPanel();
+    }
+  }
 }
 
 function openHistoryItem(id) {
@@ -1239,7 +1308,7 @@ async function showApp(session, opts = {}) {
           if (dealNavMatch) {
             selectedDealNavId = dealNavMatch[1];
             dealListTractionFilter = "";
-            switchView("deals", { drillDown: true });
+            switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
           } else if (hash === "deals") {
             selectedDealNavId = null;
             dealListTractionFilter = hashParams.get("filter") || "";
@@ -1633,6 +1702,8 @@ async function boot() {
   document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
     btn.addEventListener("fwClick", () => switchView(btn.dataset.view));
   });
+
+  window.addEventListener("hashchange", () => applyRouteFromHash());
 
   $("sidebar-toggle")?.addEventListener("fwClick", openSidebar);
   $("sidebar-close")?.addEventListener("fwClick", closeSidebar);

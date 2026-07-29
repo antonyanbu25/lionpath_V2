@@ -1046,16 +1046,75 @@ function renderDealRecord(detail) {
     </div>`;
 }
 
+/**
+ * Resolve deal nav id — canonical store id, history fallback id, or deal_hist slug alias.
+ * @param {object} session
+ * @param {string} dealId
+ * @returns {Promise<string|null>}
+ */
+export async function resolveDealNavId(session, dealId) {
+  if (!dealId) return null;
+
+  const storeDeal = await safeStoreOp("getDeal", () => getDeal(dealId), null);
+  if (storeDeal?.accountId) return dealId;
+
+  const histRows = listDealsFromHistory(session);
+  const exactHist = histRows.find((r) => r.deal.id === dealId);
+  if (exactHist) return exactHist.deal.id;
+
+  if (dealId.startsWith("deal_hist_")) {
+    const slug = dealId.slice("deal_hist_".length);
+    const bySlug = histRows.find((r) => {
+      const acctSlug = String(r.account?.id || "").replace(/^hist_/, "");
+      return acctSlug === slug;
+    });
+    if (bySlug) return bySlug.deal.id;
+
+    try {
+      const rows = await listDealsForSession(session);
+      const fromStore = rows.find((r) => {
+        const nameSlug = String(r.account?.name || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .slice(0, 40);
+        const acctSlug = String(r.account?.id || "").replace(/^hist_/, "");
+        return nameSlug === slug || acctSlug === slug || acctSlug.endsWith(slug);
+      });
+      if (fromStore?.deal?.id) return fromStore.deal.id;
+    } catch (err) {
+      console.warn("[deal-view] resolveDealNavId store lookup failed:", err?.message || err);
+    }
+  }
+
+  return dealId;
+}
+
+/** @param {HTMLElement} container @param {object} opts @param {string} html @returns {boolean} */
+function applyDealViewHtml(container, opts, html) {
+  if (opts.shouldApply && !opts.shouldApply()) return false;
+  container.innerHTML = html;
+  return true;
+}
+
 /** @param {object} session @param {string} dealId @param {object} [opts] */
 async function loadDealRecordDetail(session, dealId, opts = {}) {
-  const deal = await safeStoreOp("getDeal", () => getDeal(dealId), null);
+  const resolvedDealId = await resolveDealNavId(session, dealId);
+  if (!resolvedDealId) return null;
+
+  const deal = await safeStoreOp("getDeal", () => getDeal(resolvedDealId), null);
   if (!deal?.accountId) {
-    const histRow = listDealsFromHistory(session).find((r) => r.deal.id === dealId);
+    const histRow = listDealsFromHistory(session).find((r) => r.deal.id === resolvedDealId);
     if (histRow) {
-      const detail = await getAccountEngagementDetail(session, histRow.account.id, {
-        dealId: histRow.deal.id,
-        lifecycleOwnerId: opts.lifecycleOwnerId,
-      });
+      let detail = null;
+      try {
+        detail = await getAccountEngagementDetail(session, histRow.account.id, {
+          dealId: histRow.deal.id,
+          lifecycleOwnerId: opts.lifecycleOwnerId,
+        });
+      } catch (err) {
+        console.warn("[deal-view] history deal detail failed:", err?.message || err);
+        return null;
+      }
       if (!detail) return null;
       const callRows = (detail.accountRollup?.accountCalls || []).map(({ postCall, movement }) => ({
         postCall,
@@ -1065,6 +1124,7 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
       }));
       return {
         ...detail,
+        resolvedDealId,
         technicalCommit: null,
         latestSignal: null,
         daysInStage: 0,
@@ -1076,10 +1136,16 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
     return null;
   }
 
-  const detail = await getAccountEngagementDetail(session, deal.accountId, {
-    dealId: deal.id,
-    lifecycleOwnerId: opts.lifecycleOwnerId,
-  });
+  let detail = null;
+  try {
+    detail = await getAccountEngagementDetail(session, deal.accountId, {
+      dealId: deal.id,
+      lifecycleOwnerId: opts.lifecycleOwnerId,
+    });
+  } catch (err) {
+    console.warn("[deal-view] store deal detail failed:", err?.message || err);
+    return null;
+  }
   if (!detail) return null;
 
   const store = getStore();
@@ -1141,6 +1207,7 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
 
   return {
     ...detail,
+    resolvedDealId,
     technicalCommit,
     latestSignal,
     daysInStage,
@@ -1246,7 +1313,9 @@ function wireDealRecordEvents(container, session, opts, detail) {
   container.querySelector('[data-action="postcall"]')?.addEventListener("fwClick", () => engage("postcall"));
 
   container.querySelectorAll(".deal-calls-row[data-call-id]").forEach((row) => {
-    const open = () => {
+    const open = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
       const id = row.getAttribute("data-call-id");
       if (id) opts.onOpenCall?.(id);
     };
@@ -1284,25 +1353,49 @@ export async function renderDealView(container, session, opts = {}) {
     return;
   }
 
-  try {
-    if (opts.dealId) {
+  if (opts.dealId) {
+    try {
       const detail = await loadDealRecordDetail(activeSession, opts.dealId, opts);
+      if (opts.shouldApply && !opts.shouldApply()) return;
       if (!detail) {
-        container.innerHTML = `<p class="muted">Deal not found.</p>`;
+        if (opts.onInvalidDealId) {
+          opts.onInvalidDealId();
+          return;
+        }
+        applyDealViewHtml(container, opts, `<p class="muted">Deal not found.</p>`);
         return;
       }
-      container.innerHTML = renderDealRecord(detail);
+      if (!applyDealViewHtml(container, opts, renderDealRecord(detail))) return;
+      if (detail.resolvedDealId && detail.resolvedDealId !== opts.dealId) {
+        opts.onResolvedDealId?.(detail.resolvedDealId);
+      }
       wireDealRecordEvents(container, activeSession, opts, detail);
       const arrMount = container.querySelector("#deal-arr-module-mount");
       if (arrMount && detail.selectedDeal) {
-        mountDealArrModule(arrMount, detail.selectedDeal, detail.arrLines || [], {
-          session: activeSession,
-          getAuthHeaders: getWorkerAuthHeaders,
-        });
+        try {
+          mountDealArrModule(arrMount, detail.selectedDeal, detail.arrLines || [], {
+            session: activeSession,
+            getAuthHeaders: getWorkerAuthHeaders,
+          });
+        } catch (err) {
+          console.warn("[deal-view] ARR module mount failed:", err?.message || err);
+        }
       }
-      return;
+    } catch (err) {
+      console.error("[deal-view] failed to render deal record:", err);
+      if (opts.shouldApply && !opts.shouldApply()) return;
+      applyDealViewHtml(
+        container,
+        opts,
+        renderDealsEmptyState(
+          "Could not load this deal right now. Refresh the page or try again in a moment.",
+        ),
+      );
     }
+    return;
+  }
 
+  try {
     const store = getStore();
     let baseRows = [];
     try {
@@ -1327,14 +1420,24 @@ export async function renderDealView(container, session, opts = {}) {
     const openCount = enrichedRows.filter((row) => isOpenPipelineDeal(row.deal)).length;
     const listMetrics = summarizeDealListMetrics(enrichedRows);
 
+    if (opts.shouldApply && !opts.shouldApply()) return;
+
     if (!filtered.length && !enrichedRows.length) {
-      container.innerHTML = renderDealsEmptyState(
-        "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+      applyDealViewHtml(
+        container,
+        opts,
+        renderDealsEmptyState(
+          "No deals yet — run a prep or post-call on an account to create your first opportunity.",
+        ),
       );
       return;
     }
 
-    container.innerHTML = `
+    if (
+      !applyDealViewHtml(
+        container,
+        opts,
+        `
       <div class="lifecycle-list-view deal-list-view deal-list-view--compact">
         <div class="deal-list-toolbar deal-list-toolbar--compact">
           <div class="deal-list-title-group">
@@ -1353,15 +1456,24 @@ export async function renderDealView(container, session, opts = {}) {
           </div>
         </div>
         <p class="deal-list-footnote muted">QIP grades you. MEDPICC grades the deal. When they diverge sharply, the gap is the story.</p>
-      </div>`;
+      </div>`,
+      )
+    ) {
+      return;
+    }
 
     wireDealListItemClicks(container, opts);
     wireDealListFilter(container, enrichedRows, opts);
     wireDealListSort(container, enrichedRows, opts);
   } catch (err) {
-    console.error("[deal-view] failed to render deals:", err);
-    container.innerHTML = renderDealsEmptyState(
-      "Could not load deals right now. Refresh the page or try again in a moment.",
+    console.error("[deal-view] failed to render deals list:", err);
+    if (opts.shouldApply && !opts.shouldApply()) return;
+    applyDealViewHtml(
+      container,
+      opts,
+      renderDealsEmptyState(
+        "Could not load deals right now. Refresh the page or try again in a moment.",
+      ),
     );
   }
 }
