@@ -66,6 +66,7 @@ import {
   setOnCallRecordHydrated,
   resetPostCallView,
   clearPostCallForm,
+  hidePostCallLegacyResult,
   isPostCallGenerationBusy,
 } from "./postcall.js";
 import {
@@ -971,6 +972,7 @@ async function renderCallPanel() {
 
 function openCallRecord(id, opts = {}) {
   if (!id) return;
+  hidePostCallLegacyResult();
   selectedCallId = id;
   if (opts.tab) callRecordTab = opts.tab;
   if (opts.expandTheme) callExpandThemeKey = opts.expandTheme;

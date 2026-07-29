@@ -1,5 +1,5 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
-import { isFirebaseAuthEnabled } from "./auth.js";
+import { isFirebaseAuthEnabled, getSession } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach, formatTypeComposite, typeComposite } from "./quality-score.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext } from "./postcall-resolve-context.js";
@@ -1387,7 +1387,20 @@ export function renderPostCall(data, meta = {}) {
     <footer class="prep-footer">${followUpEmail}${crmBlock}${transcriptDetails}</footer>`;
 }
 
+/** Keep the inline one-pager hidden once a call record exists. */
+export function hidePostCallLegacyResult() {
+  const result = $("postcall-result");
+  if (result) {
+    result.classList.remove("anim-root", "anim-ready");
+    show(result, false);
+  }
+}
+
 export function displayPostCall(data, meta) {
+  if (pipelineState?.recordId) {
+    hidePostCallLegacyResult();
+    return;
+  }
   const result = $("postcall-result");
   if (!result) return;
   result.classList.remove("anim-root", "anim-ready");
@@ -2185,8 +2198,8 @@ async function confirmAndGenerate(e) {
     showInlineStatus(status, { open: false });
 
     let record = null;
-    if (currentSession?.email) {
-      const email = normalizeUserEmail(currentSession.email);
+    const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+    if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
         dealId,
@@ -2198,27 +2211,32 @@ async function confirmAndGenerate(e) {
           customerIdentities,
         },
       };
-      record = await savePostCallHistory(email, savePayload, data);
-      if (record) {
+      record = await savePostCallHistory(sessionEmail, savePayload, data);
+      if (record?.id) {
         pipelineState.recordId = record.id;
+        hidePostCallLegacyResult();
+        // Navigate to call record before any legacy inline render or slow dual-write.
+        onCallRecordReady?.(record.id);
+        invalidatePostCallResolveContext();
+        invalidateDealListCache();
         const DUAL_WRITE_BUDGET_MS = 2000;
         if (onAnalysisSaved) {
-          await Promise.race([
+          void Promise.race([
             onAnalysisSaved(record, savePayload, data).catch((err) =>
               console.warn("[postcall] analysis-saved hook failed:", err?.message || err),
             ),
             new Promise((r) => window.setTimeout(r, DUAL_WRITE_BUDGET_MS)),
           ]);
         }
-        onCallRecordReady?.(record.id);
-        invalidatePostCallResolveContext();
-        invalidateDealListCache();
       }
     }
 
-    // The call-record view is the canonical layout. Only fall back to the inline
-    // one-pager when there was no session/record to navigate to.
-    if (!record?.id) displayPostCall(data, meta);
+    // Call record is canonical. Legacy one-pager only when history could not be saved.
+    if (!record?.id) {
+      displayPostCall(data, meta);
+    } else {
+      hidePostCallLegacyResult();
+    }
 
     // Hydrate the slow passes after the SE is already looking at the analysis.
     void (async () => {
@@ -2266,9 +2284,9 @@ async function confirmAndGenerate(e) {
           objections: data.summarise?.objections || [],
           scorecardLines: data.scorecard?.lines || [],
         });
-        if (!record?.id || !currentSession?.email) return;
+        if (!record?.id || !sessionEmail) return;
         const { updatePostCallAnalysis } = await import("./history.js");
-        await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
+        await updatePostCallAnalysis(sessionEmail, record.id, (rec) => {
           rec.pass6 = pass6 || rec.pass6 || null;
           rec.result = { ...(rec.result || {}), arrInputs, arrCompute, pass6, timeline };
           return rec;
