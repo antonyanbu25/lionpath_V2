@@ -56,6 +56,43 @@ export function buildSceneSegments(
   return segments;
 }
 
+/**
+ * Pick frames for Gemini vision — at least one frame per strategic window.
+ * Scene-delta pickKeyframes drops window coverage and breaks per-window camera aggregation.
+ */
+export function pickVisionKeyframes(samples: SampleFrame[], max = MAX_KEYFRAMES): SampleFrame[] {
+  if (!samples.length) return [];
+  const byWindow = new Map<string, SampleFrame[]>();
+  for (const s of samples) {
+    const label = s.windowLabel || "";
+    if (!label) continue;
+    const arr = byWindow.get(label) || [];
+    arr.push(s);
+    byWindow.set(label, arr);
+  }
+  if (!byWindow.size) return pickKeyframes(samples, max);
+
+  const chosen: SampleFrame[] = [];
+  const windowCount = byWindow.size;
+  const perWindow = Math.max(2, Math.floor(max / windowCount));
+
+  for (const frames of byWindow.values()) {
+    if (!frames.length) continue;
+    const stride = Math.max(1, Math.floor(frames.length / perWindow));
+    const local = new Set<number>();
+    for (let i = 0; i < frames.length && local.size < perWindow; i += stride) {
+      local.add(i);
+    }
+    local.add(Math.floor((frames.length - 1) / 2));
+    local.add(frames.length - 1);
+    for (const idx of [...local].sort((a, b) => a - b)) {
+      if (chosen.length < max) chosen.push(frames[idx]);
+    }
+  }
+
+  return chosen.sort((a, b) => a.atS - b.atS).slice(0, max);
+}
+
 /** Prefer high scene-delta frames, spaced out, capped at MAX_KEYFRAMES. */
 export function pickKeyframes(samples: SampleFrame[], max = MAX_KEYFRAMES): SampleFrame[] {
   if (!samples.length) return [];

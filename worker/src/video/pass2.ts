@@ -12,7 +12,7 @@ import {
   type ZoomShareMedia,
 } from "../zoomShare";
 import { ffmpegAvailable, videoPassReady } from "./capability";
-import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickKeyframes } from "./facts";
+import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickVisionKeyframes } from "./facts";
 import { cleanupStaging, sampleStrategicWindowsFromUrl } from "./ffmpeg";
 import { inferVideoFactsFromTranscript } from "./transcript-infer";
 import { analyzeKeyframes } from "./vision";
@@ -127,7 +127,7 @@ async function runFfmpegPass(
       };
     }
 
-    const keyframeSamples = pickKeyframes(samples);
+    const keyframeSamples = pickVisionKeyframes(samples);
     let cameraOnPct: number | null = null;
     let cdeCustomized: boolean | null = null;
     let cdeEvidence: string | null = null;

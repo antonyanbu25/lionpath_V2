@@ -11,18 +11,15 @@ import { effectiveGeminiModel } from "../providers/gemini";
 import type { ProviderEnv } from "../providers/types";
 import type { SampleFrame } from "./facts";
 import {
-  aggregateParticipantCamera,
+  buildAttendeeCurveFromAggregated,
+  parseVisionCameraResponse,
   seCameraOnPctFromParticipants,
-  type ParticipantCameraAggregate,
+  type VisionIdentities,
 } from "./sampling";
 
 const MAX_VISION_FRAMES = 24;
 
-export interface VisionIdentities {
-  seIdentity?: string | null;
-  aeIdentity?: string | null;
-  customerIdentities?: string[] | null;
-}
+export type { VisionIdentities };
 
 export interface VisionAnalysis {
   cameraOnPct: number | null;
@@ -37,6 +34,7 @@ export interface VisionAnalysis {
     name: string;
     talkPct?: number | null;
     cameraOn?: boolean | null;
+    cameraOnPct?: number | null;
     role?: string | null;
   }> | null;
   pptSegments?: Array<{
@@ -94,7 +92,7 @@ async function callGeminiJson(
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: textPrompt }, ...imageParts] }],
       generationConfig: {
-        temperature: 0.1,
+        temperature: 0,
         responseMimeType: "application/json",
         thinkingConfig: { thinkingLevel: "minimal" },
       },
@@ -115,73 +113,6 @@ async function callGeminiJson(
   } catch {
     return null;
   }
-}
-
-function roleForName(name: string, identities: VisionIdentities): string | null {
-  const key = name.trim().toLowerCase();
-  if (identities.seIdentity && identities.seIdentity.trim().toLowerCase() === key) return "se";
-  if (identities.aeIdentity && identities.aeIdentity.trim().toLowerCase() === key) return "ae";
-  if (
-    (identities.customerIdentities || []).some((c) => c.trim().toLowerCase() === key)
-  ) {
-    return "customer";
-  }
-  return null;
-}
-
-function parseWindowParticipantRows(
-  parsed: Record<string, unknown>,
-  identities: VisionIdentities,
-): ParticipantCameraAggregate[] {
-  const rows: Array<{
-    name: string;
-    role?: string | null;
-    secondsOn: number;
-    secondsOff: number;
-  }> = [];
-
-  const windows = Array.isArray(parsed.windows) ? parsed.windows : [];
-  for (const win of windows) {
-    if (!win || typeof win !== "object") continue;
-    const w = win as Record<string, unknown>;
-    const windowDur =
-      typeof w.windowSeconds === "number" && Number.isFinite(w.windowSeconds)
-        ? Math.max(1, Math.round(w.windowSeconds))
-        : 15;
-    const participants = w.participants;
-    if (!participants || typeof participants !== "object") continue;
-
-    for (const [rawName, rawState] of Object.entries(participants as Record<string, unknown>)) {
-      const name = String(rawName || "").trim();
-      if (!name) continue;
-      let secondsOn = 0;
-      let secondsOff = 0;
-      if (typeof rawState === "boolean") {
-        secondsOn = rawState ? windowDur : 0;
-        secondsOff = rawState ? 0 : windowDur;
-      } else if (rawState && typeof rawState === "object") {
-        const st = rawState as Record<string, unknown>;
-        if (typeof st.secondsOn === "number" && Number.isFinite(st.secondsOn)) {
-          secondsOn = Math.max(0, st.secondsOn);
-        }
-        if (typeof st.secondsOff === "number" && Number.isFinite(st.secondsOff)) {
-          secondsOff = Math.max(0, st.secondsOff);
-        }
-        if (!secondsOn && !secondsOff && typeof st.cameraOn === "boolean") {
-          secondsOn = st.cameraOn ? windowDur : 0;
-          secondsOff = st.cameraOn ? 0 : windowDur;
-        }
-      }
-      rows.push({
-        name,
-        role: roleForName(name, identities),
-        secondsOn,
-        secondsOff,
-      });
-    }
-  }
-
-  return aggregateParticipantCamera(rows);
 }
 
 /**
@@ -217,27 +148,38 @@ export async function analyzeKeyframes(
   const customers = (identities.customerIdentities || []).filter(Boolean);
   const customerList = customers.length ? customers.join(", ") : "customer attendees";
 
+  const windowExample = {
+    label: "opening_10pct",
+    windowSeconds: 15,
+    participants: {
+      [seName]: { secondsOn: 12, secondsOff: 3, cameraOn: true },
+      [aeName]: { secondsOn: 0, secondsOff: 15, cameraOn: false },
+    },
+  };
+  if (customers[0]) {
+    (windowExample.participants as Record<string, unknown>)[customers[0]] = {
+      secondsOn: 8,
+      secondsOff: 7,
+      cameraOn: true,
+    };
+  }
+
   const prompt = consent
     ? [
         "You analyze SE demo/call recording keyframes sampled at strategic windows:",
         "opening (first 10%), 30%, 60%, 90%, and closing minute.",
-        "Track camera/video tiles for these participants only:",
+        "Each frame is tagged with [window=...] — group your analysis by those windows.",
+        "Track camera/video tiles for these participants only (use these exact display names):",
         `- SE: ${seName}`,
         `- AE: ${aeName}`,
         `- Customer(s): ${customerList}`,
-        "For each participant in each window, estimate seconds camera ON vs OFF (out of ~15s per window, 60s for closing).",
+        "For EVERY window and EVERY listed participant, estimate seconds camera ON vs OFF",
+        "(~15s per window except closing_1min which is 60s).",
+        "A participant with a visible face or live video tile counts as camera ON.",
         "Also detect slides/PPT/deck usage and whether product CDE/tenant looks customized vs stock demo (Acme Corp, demo@, placeholders).",
-        "Reply JSON only:",
+        "Reply JSON only with a windows array covering all sampled windows:",
         JSON.stringify({
-          windows: [
-            {
-              label: "opening_10pct",
-              windowSeconds: 15,
-              participants: {
-                [seName]: { secondsOn: 12, secondsOff: 3, cameraOn: true },
-              },
-            },
-          ],
+          windows: [windowExample, { label: "pct_30", windowSeconds: 15, participants: {} }],
           pptUsed: true,
           pptEvidence: "Slide deck visible in opening window",
           shareOnPct: 70,
@@ -274,14 +216,9 @@ export async function analyzeKeyframes(
   let attendeeCurveJson: VisionAnalysis["attendeeCurveJson"] = null;
 
   if (consent) {
-    const aggregated = parseWindowParticipantRows(parsed, identities);
+    const aggregated = parseVisionCameraResponse(parsed, identities);
     if (aggregated.length) {
-      attendeeCurveJson = aggregated.map((p) => ({
-        name: p.name,
-        cameraOn: p.cameraOn,
-        role: p.role,
-        talkPct: null,
-      }));
+      attendeeCurveJson = buildAttendeeCurveFromAggregated(aggregated, identities);
       cameraOnPct = seCameraOnPctFromParticipants(aggregated, identities.seIdentity);
     } else {
       const cameraRaw = parsed.cameraOnPct;

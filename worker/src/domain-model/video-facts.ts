@@ -90,6 +90,8 @@ export interface VideoFactsDraft {
     name: string;
     talkPct?: number | null;
     cameraOn?: boolean | null;
+    /** Estimated % of sampled call time with camera on (Pass 2 vision). */
+    cameraOnPct?: number | null;
     role?: string | null;
   }> | null;
   segments: Array<{

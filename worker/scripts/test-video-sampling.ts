@@ -1,12 +1,16 @@
 /**
- * Unit tests for strategic Pass 2 sampling windows.
+ * Unit tests for strategic Pass 2 sampling windows and camera aggregation.
  * Run: tsx scripts/test-video-sampling.ts
  */
 
 import assert from "node:assert/strict";
+import { pickVisionKeyframes } from "../src/video/facts.ts";
 import {
   aggregateParticipantCamera,
+  buildAttendeeCurveFromAggregated,
   computeStrategicSampleWindows,
+  identityMatchesName,
+  parseVisionCameraResponse,
   seCameraOnPctFromParticipants,
 } from "../src/video/sampling.ts";
 
@@ -44,8 +48,104 @@ function testSeCameraPct() {
   assert.equal(pct, 25);
 }
 
+function testIdentityFuzzyMatch() {
+  assert.equal(identityMatchesName("Sathish Kuttan", "Sathish K"), true);
+  assert.equal(identityMatchesName("Priyal | AE @Freshworks", "Priyal"), true);
+}
+
+function testParseVisionWindows() {
+  const aggregated = parseVisionCameraResponse(
+    {
+      windows: [
+        {
+          label: "opening_10pct",
+          windowSeconds: 15,
+          participants: {
+            SE: { secondsOn: 15, secondsOff: 0, cameraOn: true },
+            AE: { secondsOn: 0, secondsOff: 15, cameraOn: false },
+          },
+        },
+        {
+          label: "pct_30",
+          windowSeconds: 15,
+          participants: {
+            SE: { secondsOn: 10, secondsOff: 5 },
+            AE: true,
+          },
+        },
+      ],
+    },
+    { seIdentity: "Sathish Kuttan", aeIdentity: "Priyal | AE @Freshworks" },
+  );
+  assert.equal(aggregated.length, 2);
+  const se = aggregated.find((p) => p.role === "se");
+  assert.ok(se?.cameraOn);
+  assert.equal(seCameraOnPctFromParticipants(aggregated, "Sathish Kuttan"), 83);
+}
+
+function testParseVisionFlatParticipants() {
+  const aggregated = parseVisionCameraResponse(
+    {
+      participants: [
+        { name: "Alex Lee", role: "se", cameraOnPct: 80 },
+        { name: "Jordan", role: "customer", cameraOn: false },
+      ],
+    },
+    { seIdentity: "Alex Lee" },
+  );
+  assert.equal(aggregated.length, 2);
+  assert.equal(seCameraOnPctFromParticipants(aggregated, "Alex Lee"), 80);
+}
+
+function testBuildAttendeeCurveCanonicalNames() {
+  const aggregated = parseVisionCameraResponse(
+    {
+      windows: [
+        {
+          label: "opening_10pct",
+          windowSeconds: 15,
+          participants: {
+            SE: { secondsOn: 12, secondsOff: 3 },
+            AE: { secondsOn: 0, secondsOff: 15 },
+          },
+        },
+      ],
+    },
+    { seIdentity: "Sathish Kuttan", aeIdentity: "Priyal | AE @Freshworks" },
+  );
+  const curve = buildAttendeeCurveFromAggregated(aggregated, {
+    seIdentity: "Sathish Kuttan",
+    aeIdentity: "Priyal | AE @Freshworks",
+  });
+  assert.equal(curve[0].name, "Sathish Kuttan");
+  assert.equal(curve[0].cameraOnPct, 80);
+  assert.equal(curve[1].name, "Priyal | AE @Freshworks");
+  assert.equal(curve[1].cameraOn, false);
+}
+
+function testPickVisionKeyframesPerWindow() {
+  const samples = [
+    { atS: 0, path: "/a.jpg", windowLabel: "opening_10pct" },
+    { atS: 3, path: "/b.jpg", windowLabel: "opening_10pct" },
+    { atS: 6, path: "/c.jpg", windowLabel: "opening_10pct" },
+    { atS: 900, path: "/d.jpg", windowLabel: "pct_30" },
+    { atS: 903, path: "/e.jpg", windowLabel: "pct_30" },
+    { atS: 1800, path: "/f.jpg", windowLabel: "pct_60" },
+    { atS: 2700, path: "/g.jpg", windowLabel: "pct_90" },
+    { atS: 3540, path: "/h.jpg", windowLabel: "closing_1min" },
+  ];
+  const picked = pickVisionKeyframes(samples, 20);
+  const labels = new Set(picked.map((s) => s.windowLabel));
+  assert.equal(labels.size, 5, "every strategic window represented");
+}
+
 testWindows();
 testAggregateCameraMajority();
 testAggregateCameraOffWins();
 testSeCameraPct();
+testIdentityFuzzyMatch();
+testParseVisionWindows();
+testParseVisionFlatParticipants();
+testBuildAttendeeCurveCanonicalNames();
+testPickVisionKeyframesPerWindow();
 console.log("test-video-sampling: ok");

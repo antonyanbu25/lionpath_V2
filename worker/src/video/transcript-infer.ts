@@ -243,7 +243,7 @@ export async function inferVideoFactsFromTranscript(
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.15,
+          temperature: 0,
           responseMimeType: "application/json",
         },
       }),

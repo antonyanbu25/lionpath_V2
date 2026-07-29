@@ -539,12 +539,30 @@ function renderSpineMetrics(videoFacts, scorecard, record) {
     metrics.push(["SE camera on", "—", ""]);
   }
 
-  const customerCamOn = customerCurves.filter((p) => p.cameraOn === true).length;
-  const customerTotal = customerCurves.length;
-  if (customerTotal) {
+  const aeCurve = customerCurves.find((p) => /^(ae|account executive)$/i.test(String(p.role || "")));
+  if (aeCurve?.cameraOnPct != null) {
+    metrics.push(["AE camera on", `${aeCurve.cameraOnPct}%`, ""]);
+  } else if (aeCurve?.cameraOn != null) {
+    metrics.push(["AE camera on", aeCurve.cameraOn ? "On" : "Off", ""]);
+  } else {
+    metrics.push(["AE camera on", "—", ""]);
+  }
+
+  const customerCamRows = customerCurves.filter((p) => /customer/i.test(String(p.role || "")));
+  if (customerCamRows.length) {
+    const onCount = customerCamRows.filter((p) => p.cameraOn === true).length;
+    const avgPct =
+      customerCamRows.filter((p) => p.cameraOnPct != null).length > 0
+        ? Math.round(
+            customerCamRows
+              .filter((p) => p.cameraOnPct != null)
+              .reduce((sum, p) => sum + Number(p.cameraOnPct), 0) /
+              customerCamRows.filter((p) => p.cameraOnPct != null).length,
+          )
+        : null;
     metrics.push([
       "Customer cameras",
-      customerCamOn ? `${customerCamOn} of ${customerTotal}` : `0 of ${customerTotal}`,
+      avgPct != null ? `${onCount} on · avg ${avgPct}%` : `${onCount} of ${customerCamRows.length} on`,
       "",
     ]);
   } else {
@@ -574,12 +592,19 @@ function normalizeParticipantStats(raw) {
       let cameraOn = false;
       if (typeof camRaw === "boolean") cameraOn = camRaw;
       else if (typeof camRaw === "string") cameraOn = camRaw.toLowerCase() === "on";
+      const camPctRaw = p.cameraOnPct ?? p.camera_on_pct;
+      const cameraOnPct =
+        camPctRaw != null && Number.isFinite(Number(camPctRaw))
+          ? Math.max(0, Math.min(100, Math.round(Number(camPctRaw))))
+          : null;
+      if (cameraOnPct != null) cameraOn = cameraOnPct >= 50;
       return {
         name,
         role: String(p.role || p.side || "").trim(),
         talkPct:
           talkRaw != null && Number.isFinite(Number(talkRaw)) ? Math.round(Number(talkRaw)) : null,
         cameraOn,
+        cameraOnPct,
       };
     })
     .filter(Boolean);
@@ -619,6 +644,11 @@ function preferPersonLabel(a, b) {
   return String(a).trim().length <= String(b).trim().length ? a : b;
 }
 
+function findParticipantStat(statsByName, label) {
+  const key = normalizePersonKey(label);
+  return statsByName.get(key) ?? statsByName.get(String(label || "").trim().toLowerCase());
+}
+
 function buildStakeholderRows(identities, attendees, videoFacts) {
   const statsByName = new Map();
   for (const p of normalizeParticipantStats(videoFacts?.attendeeCurveJson)) {
@@ -636,13 +666,17 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
       existing.name = preferPersonLabel(existing.name, label);
       return;
     }
-    const stat = statsByName.get(key) ?? statsByName.get(label.toLowerCase());
+    const stat = findParticipantStat(statsByName, label);
     let talkPct = stat?.talkPct ?? null;
+    let cameraOnPct = stat?.cameraOnPct ?? null;
     let cameraOn = stat?.cameraOn;
-    if (cameraOn == null && /solution engineer|^se$/i.test(role)) {
+    if (cameraOnPct == null && /solution engineer|^se$/i.test(role)) {
       if (videoFacts?.cameraOnPct != null) {
-        cameraOn = Number(videoFacts.cameraOnPct) >= 50;
+        cameraOnPct = Math.round(Number(videoFacts.cameraOnPct));
       }
+    }
+    if (cameraOn == null && cameraOnPct != null) {
+      cameraOn = cameraOnPct >= 50;
     }
     if (cameraOn == null) cameraOn = false;
     rows.push({
@@ -652,6 +686,7 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
       side,
       talkPct,
       cameraOn,
+      cameraOnPct,
     });
   };
 
@@ -880,7 +915,12 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts) {
             ? `<span class="pill call-stakeholder-pill">talk ${esc(String(r.talkPct))}%</span>`
             : "";
         const camCls = r.cameraOn ? "green" : "";
-        const camLabel = r.cameraOn ? "On" : "Off";
+        const camLabel =
+          r.cameraOnPct != null
+            ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
+            : r.cameraOn
+              ? "On"
+              : "Off";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">
