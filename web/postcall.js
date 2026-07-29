@@ -2139,7 +2139,7 @@ async function confirmAndGenerate(e) {
       ? Math.round(Number(pipelineState.resolve.durationMinutes) * 60)
       : null);
   const canRunPass2 =
-    (pipelineState.resolve.videoAvailable && pipelineState.resolve.media?.streams?.length) ||
+    (pipelineState.resolve.videoAvailable && pipelineState.payload.recordingUrl) ||
     pass2Transcript.length > 0;
 
   if (canRunPass2) {
@@ -2161,7 +2161,7 @@ async function confirmAndGenerate(e) {
         callId: provisionalCallId,
         recordingUrl: pipelineState.payload.recordingUrl,
         recordingPassword: pipelineState.payload.recordingPassword,
-        media: pipelineState.resolve.media,
+        // Do not pass resolve.media — Zoom signed URLs expire during the confirm gate.
         transcript: pass2Transcript || undefined,
         durationSec: pass2DurationSec,
         callType,
@@ -2183,11 +2183,13 @@ async function confirmAndGenerate(e) {
         hasCameraData: hasCam,
         seCameraOnPct: videoFacts?.cameraOnPct ?? null,
         ok: videoRes?.ok ?? null,
+        pass2Error: videoFacts?.errorMessage || null,
       }, "H1");
       console.warn("[DEBUG-064b3d] pass2 videoFacts", {
         streamKind: videoFacts?.streamKind,
         hasCamera: hasCam,
         status: videoFacts?.status,
+        pass2Error: videoFacts?.errorMessage || null,
       });
       // #endregion
     } catch (videoErr) {

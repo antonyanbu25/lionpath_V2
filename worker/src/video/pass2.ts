@@ -70,6 +70,25 @@ function pickStreamForConsent(
   return preferredMediaStream(media);
 }
 
+/** Prefer a fresh Zoom fetch at Pass 2 time — share-link URLs from Pass 0 expire during the confirm gate. */
+async function resolvePass2Media(input: VideoPassInput): Promise<ZoomShareMedia | undefined> {
+  if (input.recordingUrl?.trim()) {
+    try {
+      const fetched = await fetchRecordingFromShareLink(
+        input.recordingUrl.trim(),
+        input.recordingPassword?.trim(),
+      );
+      if (fetched.media?.streams?.length) return fetched.media;
+    } catch (err) {
+      console.warn(
+        "[video/pass2] fresh media fetch failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return input.media;
+}
+
 async function enrichFfmpegWithTranscriptTalk(
   env: VideoPassEnv,
   input: VideoPassInput,
@@ -254,30 +273,14 @@ export async function runVideoPass(
   }
 
   const consent = !!input.visualAnalysisConsent;
-  let media = input.media;
+  let media = await resolvePass2Media(input);
   if (!media?.streams?.length && input.recordingUrl?.trim()) {
-    try {
-      const fetched = await fetchRecordingFromShareLink(
-        input.recordingUrl.trim(),
-        input.recordingPassword?.trim(),
-      );
-      media = fetched.media;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Zoom media resolve failed";
-      if (input.transcript?.trim()) {
-        const fallback = await runTranscriptPass(env, input);
-        if (fallback.ok) return fallback;
-      }
-      return {
-        ok: false,
-        videoFacts: buildVideoFactsDraft({
-          status: "failed",
-          samples: [],
-          errorMessage: msg,
-          visualAnalysisConsent: consent,
-        }),
-      };
-    }
+    return {
+      ok: false,
+      unavailable: true,
+      reason: "Zoom media resolve failed",
+      videoFacts: unavailableDraft("Zoom media resolve failed — could not fetch recording streams"),
+    };
   }
 
   const stream = pickStreamForConsent(media, consent);
@@ -298,7 +301,20 @@ export async function runVideoPass(
   }
 
   if (stream && ffmpegOk) {
-    const ffmpegResult = await runFfmpegPass(env, input, media!, stream, consent);
+    let ffmpegResult = await runFfmpegPass(env, input, media!, stream, consent);
+    if (!ffmpegResult.ok && input.recordingUrl?.trim() && input.media?.streams?.length) {
+      const refreshed = await resolvePass2Media({
+        ...input,
+        media: undefined,
+      });
+      if (refreshed?.streams?.length) {
+        const retryStream = pickStreamForConsent(refreshed, consent);
+        if (retryStream) {
+          console.warn("[video/pass2] retrying ffmpeg with refreshed Zoom media URLs");
+          ffmpegResult = await runFfmpegPass(env, input, refreshed, retryStream, consent);
+        }
+      }
+    }
     if (ffmpegResult.ok) {
       return enrichFfmpegWithTranscriptTalk(env, input, ffmpegResult);
     }
