@@ -6,6 +6,15 @@ import { getStore } from "./domain/store.js";
 import { loadLocalBriefs } from "./precall.js";
 import { domainFromEmail } from "./domain/types.js";
 
+const CONTEXT_TTL_MS = 60_000;
+const contextCache = new Map(); // ownerId -> { at: number, value: object }
+
+/** Clear when a new account/deal may have been created mid-session. */
+export function invalidatePostCallResolveContext(ownerId) {
+  if (ownerId) contextCache.delete(ownerId);
+  else contextCache.clear();
+}
+
 function prospectEmailsFromBrief(brief) {
   const emails = [];
   const add = (e) => {
@@ -61,6 +70,11 @@ export async function buildPostCallResolveContext(ownerId) {
   const empty = { ownerId, briefs: [], accounts: [], deals: [] };
   if (!ownerId) return empty;
 
+  const cached = contextCache.get(ownerId);
+  if (cached && Date.now() - cached.at < CONTEXT_TTL_MS) {
+    return cached.value;
+  }
+
   try {
     const store = getStore();
     const briefs = [];
@@ -71,11 +85,16 @@ export async function buildPostCallResolveContext(ownerId) {
       const lifecycles = await store.listLifecyclesByOwner(ownerId, 300);
       for (const lc of lifecycles) {
         if (lc.accountId) accountIds.add(lc.accountId);
-        if (!store.listPrepBriefsByLifecycle) continue;
-        const preps = await store.listPrepBriefsByLifecycle(lc.id, ownerId);
-        for (const prep of preps) {
-          const snap = briefSnapshotFromDoc(prep);
-          if (snap) briefs.push(snap);
+      }
+      if (store.listPrepBriefsByLifecycle) {
+        const prepArrays = await Promise.all(
+          lifecycles.map((lc) => store.listPrepBriefsByLifecycle(lc.id, ownerId)),
+        );
+        for (const preps of prepArrays) {
+          for (const prep of preps) {
+            const snap = briefSnapshotFromDoc(prep);
+            if (snap) briefs.push(snap);
+          }
         }
       }
     }
@@ -88,16 +107,20 @@ export async function buildPostCallResolveContext(ownerId) {
       }
     }
 
-    for (const accountId of accountIds) {
-      const account = store.getAccount ? await store.getAccount(accountId) : null;
-      if (account) {
-        accountsById.set(account.id, {
+    const accountResults = await Promise.all(
+      [...accountIds].map(async (accountId) => {
+        const account = store.getAccount ? await store.getAccount(accountId) : null;
+        if (!account) return null;
+        return {
           id: account.id,
           name: account.name,
           domain: account.domain || null,
           slug: account.slug,
-        });
-      }
+        };
+      }),
+    );
+    for (const account of accountResults) {
+      if (account) accountsById.set(account.id, account);
     }
 
     const deals = [];
@@ -118,14 +141,17 @@ export async function buildPostCallResolveContext(ownerId) {
       }
     }
 
-    return {
+    const result = {
       ownerId,
       briefs,
       accounts: [...accountsById.values()],
       deals,
     };
+    contextCache.set(ownerId, { at: Date.now(), value: result });
+    return result;
   } catch (err) {
     if (isFirestorePermissionError(err)) {
+      contextCache.delete(ownerId);
       console.warn(
         "[postcall] Firestore resolve context denied — continuing without domain match:",
         err?.message || err,

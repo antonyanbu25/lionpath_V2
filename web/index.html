@@ -435,38 +435,21 @@
                         label="Recording link"
                         type="text"
                         placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
-                        hint-text="Kaia share link, or Zoom when Zoom API access is configured. Otherwise download the transcript from Zoom and upload it below."
+                        hint-text="Add Kaia share link or Zoom share link with Transcript enabled for viewers. Otherwise download the transcript from Zoom and upload it below."
                         clear-input
                       ></fw-input>
-                      <div id="pc-passcode-wrap">
+                      <div id="pc-passcode-wrap" hidden>
                         <fw-input
                           id="pc-recording-pwd"
                           label="Passcode"
-                          hint-text="From the Zoom recording email (required for most Freshworks shares). The .SyK… bit in the URL is not this."
                           type="password"
                           placeholder="Passcode from Zoom email"
                           autocomplete="off"
                           clear-input
                         ></fw-input>
                       </div>
-                      <label class="pc-consent-row" id="pc-visual-consent-wrap">
-                        <input type="checkbox" id="pc-visual-consent" />
-                        <span>
-                          I have authority to run automated <strong>visual analysis</strong> of this
-                          recording (camera state + screen content) for coaching. Without this,
-                          camera-on is not scored; screen/CDE sampling may still run.
-                        </span>
-                      </label>
                     </div>
                     <div class="prep-form-grid">
-                      <fw-input
-                        id="pc-company-name"
-                        label="Company"
-                        type="text"
-                        placeholder="Acme Corp"
-                        required
-                        clear-input
-                      ></fw-input>
                       <div class="prep-email-field">
                         <fw-input
                           id="pc-prospect-emails"
@@ -478,6 +461,19 @@
                           clear-input
                         ></fw-input>
                       </div>
+                      <div class="pc-lookup-field">
+                        <fw-input
+                          id="pc-company-name"
+                          label="Company"
+                          type="text"
+                          placeholder="Acme Corp"
+                          autocomplete="off"
+                          required
+                          clear-input
+                        ></fw-input>
+                        <div id="pc-company-suggest" class="pc-lookup-menu" role="listbox" hidden></div>
+                        <p id="pc-company-lookup-note" class="field-hint" hidden></p>
+                      </div>
                     </div>
                     <div class="prep-form-optional">
                       <div class="prep-form-eyebrow">Optional</div>
@@ -487,7 +483,6 @@
                           label="Deck link"
                           type="text"
                           placeholder="Google Slides or .pptx"
-                          hint-text="Stored only — deck diff deferred to v2"
                           clear-input
                         ></fw-input>
                         <div class="prep-linkedin-upload">
@@ -504,7 +499,7 @@
                       </div>
                       <fw-textarea
                         id="pc-additional-context"
-                        label="Additional context"
+                        label="Discovery/Additional context"
                         hint-text="Optional · AE notes, anything the recording won't show"
                         rows="2"
                         placeholder="AE notes, anything the recording won't show"

@@ -2,7 +2,7 @@ import { WORKER_BASE_URL } from "./firebase-config.js";
 import { isFirebaseAuthEnabled } from "./auth.js";
 import { savePostCallHistory, normalizeUserEmail } from "./history.js";
 import { normalizeQualityCoach, formatTypeComposite, typeComposite } from "./quality-score.js";
-import { buildPostCallResolveContext } from "./postcall-resolve-context.js";
+import { buildPostCallResolveContext, invalidatePostCallResolveContext } from "./postcall-resolve-context.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
 import {
@@ -79,6 +79,9 @@ const VIDEO_THEME_LABELS = {
 
 let linkedinParsing = false;
 let companyNameTouched = false;
+let pcResolvedAccount = null;
+let pcCreateNewAccount = false;
+let companyPrefillTimer = null;
 
 /** @type {null | { payload: object, resolve: object|null, classify: object|null, generated: boolean, recordId: string|null }} */
 let pipelineState = null;
@@ -217,17 +220,18 @@ function isZoomRecordingUrl(url) {
   }
 }
 
-/** Always show passcode for Zoom — `.token` in the link is not the email passcode. */
+/** Hidden by default. Only ask for a passcode when the pasted Zoom link has none. */
 function syncPasscodeVisibility() {
   const wrap = $("pc-passcode-wrap");
   if (!wrap) return;
   const raw = readFieldValue($("pc-recording-url"));
   const { recordingUrl } = parseRecordingInput(raw, "");
-  const showPwd =
+  const needsPwd =
     !!recordingUrl &&
     isZoomRecordingUrl(recordingUrl) &&
-    !isKaiaRecordingUrl(recordingUrl);
-  wrap.hidden = !showPwd;
+    !isKaiaRecordingUrl(recordingUrl) &&
+    !recordingHasExplicitPasscode(raw, readFieldValue($("pc-recording-pwd")));
+  wrap.hidden = !needsPwd;
 }
 
 const TRANSCRIPT_FILE_MAX_BYTES = 5 * 1024 * 1024;
@@ -290,6 +294,63 @@ function parseProspectEmails(raw) {
     .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
 }
 
+/** Mail-infra labels that are never the company name. */
+const DOMAIN_LABEL_NOISE = new Set([
+  "mail", "email", "smtp", "mx", "corp", "corporate", "internal",
+  "www", "info", "go", "my", "app", "get",
+]);
+
+const NON_PROSPECT_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com",
+  "live.com", "icloud.com", "aol.com", "proton.me", "protonmail.com",
+  "freshworks.com", "freshdesk.com", "freshservice.com",
+]);
+
+/**
+ * "alex@acme.com" -> "Acme". Takes the label after @ and before the first dot,
+ * skipping mail-infra prefixes ("mail.acme.com" -> "Acme").
+ * Returns null for free-mail and internal Freshworks domains.
+ */
+export function companyNameFromEmail(email) {
+  const domain = domainFromEmail(email);
+  if (!domain || NON_PROSPECT_DOMAINS.has(domain)) return null;
+  const labels = domain.split(".").filter(Boolean);
+  if (labels.length < 2) return null;
+  let label = labels[0];
+  if (DOMAIN_LABEL_NOISE.has(label) && labels.length > 2) label = labels[1];
+  if (!label || label.length < 2) return null;
+  return label
+    .replace(/[-_]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function scheduleCompanyPrefill() {
+  window.clearTimeout(companyPrefillTimer);
+  companyPrefillTimer = window.setTimeout(() => { void prefillCompanyFromEmails(); }, 300);
+}
+
+async function tryMatchEmail(ctx, email) {
+  const domain = domainFromEmail(email);
+  if (!domain) return null;
+  const account = (ctx.accounts || []).find(
+    (a) => String(a.domain || "").toLowerCase() === domain,
+  );
+  if (account?.name) {
+    return { name: account.name, account };
+  }
+  const brief = (ctx.briefs || []).find((b) =>
+    (b.prospectEmails || []).some((e) => e === email) ||
+    String(b.domain || "").toLowerCase() === domain,
+  );
+  if (brief?.companyName) {
+    return { name: brief.companyName, account: null };
+  }
+  return null;
+}
+
 async function prefillCompanyFromEmails() {
   if (companyNameTouched) return;
   const companyEl = $("pc-company-name");
@@ -304,28 +365,188 @@ async function prefillCompanyFromEmails() {
   if (!ownerId) return;
   try {
     const ctx = await buildPostCallResolveContext(ownerId);
-    for (const email of emails) {
-      const domain = domainFromEmail(email);
-      if (!domain) continue;
-      const account = (ctx.accounts || []).find(
-        (a) => String(a.domain || "").toLowerCase() === domain,
-      );
-      if (account?.name) {
-        companyEl.value = account.name;
-        return;
-      }
-      const brief = (ctx.briefs || []).find((b) =>
-        (b.prospectEmails || []).some((e) => e === email) ||
-        String(b.domain || "").toLowerCase() === domain,
-      );
-      if (brief?.companyName) {
-        companyEl.value = brief.companyName;
-        return;
+    const primary = emails[0];
+    let match = await tryMatchEmail(ctx, primary);
+    if (!match) {
+      for (const email of emails.slice(1)) {
+        match = await tryMatchEmail(ctx, email);
+        if (match) break;
       }
     }
+    if (match) {
+      companyEl.value = match.name;
+      if (match.account) {
+        pcResolvedAccount = {
+          id: match.account.id,
+          name: match.account.name,
+          domain: match.account.domain || null,
+        };
+        pcCreateNewAccount = false;
+      }
+      return;
+    }
+    const derived = companyNameFromEmail(primary);
+    if (derived) companyEl.value = derived;
   } catch {
     /* prefills are best-effort */
   }
+}
+
+/**
+ * Account lookup with a create-new escape hatch.
+ * Mirrors the confirm-gate account picker so intake and gate behave identically.
+ * @param {{ inputEl: HTMLElement, menuEl: HTMLElement, noteEl?: HTMLElement,
+ *           onPick: (account: object|null, typedName: string) => void }} cfg
+ */
+function attachAccountLookup(cfg) {
+  const { inputEl, menuEl, noteEl, onPick } = cfg;
+  if (!inputEl || !menuEl) return;
+
+  let debounceTimer = null;
+  let activeIndex = -1;
+  let rows = [];
+  let blurTimer = null;
+
+  const closeMenu = () => {
+    menuEl.hidden = true;
+    activeIndex = -1;
+    rows = [];
+    menuEl.innerHTML = "";
+  };
+
+  const renderRows = (accounts, typed) => {
+    const q = typed.trim().toLowerCase();
+    const matches = q
+      ? accounts
+          .filter(
+            (a) =>
+              String(a.name || "").toLowerCase().includes(q) ||
+              String(a.domain || "").toLowerCase().includes(q),
+          )
+          .slice(0, 8)
+      : [];
+
+    const exactMatch = matches.some(
+      (a) => String(a.name || "").toLowerCase() === q,
+    );
+    const html = matches
+      .map(
+        (a) =>
+          `<button type="button" class="pc-lookup-option" role="option" data-account-id="${esc(a.id)}">
+            <span>${esc(a.name)}</span>
+            ${a.domain ? `<span class="pc-lookup-option-sub">${esc(a.domain)}</span>` : ""}
+          </button>`,
+      )
+      .join("");
+
+    const createRow =
+      q && !exactMatch
+        ? `<button type="button" class="pc-lookup-option pc-lookup-option--create" role="option" data-create="1">
+            ＋ Create new account "${esc(typed.trim())}"
+          </button>`
+        : "";
+
+    menuEl.innerHTML = html + createRow;
+    rows = [...menuEl.querySelectorAll(".pc-lookup-option")];
+    if (!rows.length) {
+      closeMenu();
+      return;
+    }
+    menuEl.hidden = false;
+    activeIndex = -1;
+  };
+
+  const pickRow = (btn) => {
+    if (!btn) return;
+    const typed = readFieldValue(inputEl)?.trim() || "";
+    if (btn.dataset.create === "1") {
+      onPick(null, typed);
+      pcCreateNewAccount = true;
+      pcResolvedAccount = null;
+      if (noteEl) {
+        noteEl.textContent = "New account — will be created on confirm";
+        noteEl.hidden = false;
+      }
+    } else {
+      const accountId = btn.dataset.accountId;
+      buildPostCallResolveContext(effectiveSessionUserId(currentSession))
+        .then((ctx) => {
+          const account = (ctx.accounts || []).find((a) => a.id === accountId);
+          if (account) {
+            onPick(account, account.name);
+            pcResolvedAccount = {
+              id: account.id,
+              name: account.name,
+              domain: account.domain || null,
+            };
+            pcCreateNewAccount = false;
+            if (noteEl) noteEl.hidden = true;
+          }
+        })
+        .catch((err) => {
+          console.warn("[postcall] account lookup pick failed:", err?.message || err);
+        });
+    }
+    closeMenu();
+  };
+
+  const refreshMenu = () => {
+    const typed = readFieldValue(inputEl)?.trim() || "";
+    if (!typed) {
+      closeMenu();
+      return;
+    }
+    buildPostCallResolveContext(effectiveSessionUserId(currentSession))
+      .then((ctx) => renderRows(ctx.accounts || [], typed))
+      .catch((err) => {
+        console.warn("[postcall] account lookup failed:", err?.message || err);
+        closeMenu();
+      });
+  };
+
+  const scheduleRefresh = () => {
+    window.clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(refreshMenu, 200);
+  };
+
+  inputEl.addEventListener("fwInput", scheduleRefresh);
+  inputEl.addEventListener("input", scheduleRefresh);
+
+  inputEl.addEventListener("keydown", (ev) => {
+    if (menuEl.hidden || !rows.length) return;
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, rows.length - 1);
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === activeIndex));
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === activeIndex));
+    } else if (ev.key === "Enter" && activeIndex >= 0) {
+      ev.preventDefault();
+      pickRow(rows[activeIndex]);
+    } else if (ev.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  menuEl.addEventListener("click", (ev) => {
+    const btn = ev.target?.closest?.(".pc-lookup-option");
+    if (btn) pickRow(btn);
+  });
+
+  inputEl.addEventListener("fwBlur", () => {
+    window.clearTimeout(blurTimer);
+    blurTimer = window.setTimeout(closeMenu, 120);
+  });
+  inputEl.addEventListener("blur", () => {
+    window.clearTimeout(blurTimer);
+    blurTimer = window.setTimeout(closeMenu, 120);
+  });
+
+  document.addEventListener("pointerdown", (ev) => {
+    if (!inputEl.contains(ev.target) && !menuEl.contains(ev.target)) closeMenu();
+  });
 }
 
 const CATEGORY_LABELS = {
@@ -1535,7 +1756,10 @@ function renderConfirmationGate(resolve, classify) {
         <input id="pc-confirm-account" class="postcall-confirm-input" type="text"
           value="${esc(resolve?.noMatch?.suggestedCompanyName || formCompany || "")}" placeholder="Company name" />
         <label for="pc-confirm-search">Search accounts</label>
-        <input id="pc-confirm-search" class="postcall-confirm-input" type="search" placeholder="Type to search…" />`;
+        <div class="pc-lookup-field">
+          <input id="pc-confirm-search" class="postcall-confirm-input" type="search" placeholder="Type to search…" />
+          <div id="pc-confirm-suggest" class="pc-lookup-menu" role="listbox" hidden></div>
+        </div>`;
 
   const accountBlock = account
     ? `<div class="postcall-match-banner postcall-match-banner--deal">
@@ -1627,6 +1851,27 @@ function showConfirmationGate(resolve, classify) {
   $("postcall-restart-btn")?.addEventListener("click", (e) => { void restartPipeline(e); });
 
   wireDealChangeToggle(card);
+
+  const confirmSearch = card.querySelector("#pc-confirm-search");
+  const confirmSuggest = card.querySelector("#pc-confirm-suggest");
+  const confirmAccount = card.querySelector("#pc-confirm-account");
+  if (confirmSearch && confirmSuggest && confirmAccount) {
+    attachAccountLookup({
+      inputEl: confirmSearch,
+      menuEl: confirmSuggest,
+      onPick: (account, typedName) => {
+        confirmAccount.value = typedName;
+        if (account) {
+          pcResolvedAccount = {
+            id: account.id,
+            name: account.name,
+            domain: account.domain || null,
+          };
+          pcCreateNewAccount = false;
+        }
+      },
+    });
+  }
 
   card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
@@ -1793,7 +2038,7 @@ async function confirmAndGenerate(e) {
       confirmed: true,
       callType,
       dealId,
-      accountId: pipelineState.resolve.account?.accountId || null,
+      accountId: pipelineState.resolve.account?.accountId || pipelineState.payload.accountId || null,
       companyDomain: companyDomain || undefined,
       resolveSnapshot: {
         ...pipelineState.resolve,
@@ -2000,6 +2245,9 @@ function restartPipeline(e) {
 export function resetPostCallView() {
   pipelineState = null;
   companyNameTouched = false;
+  pcResolvedAccount = null;
+  pcCreateNewAccount = false;
+  invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
   show($("postcall-confirm-view"), false);
   show($("postcall-progress"), false);
@@ -2032,7 +2280,9 @@ async function collectIntakePayload() {
   const additionalContext =
     (await readFieldValueAsync($("pc-additional-context")))?.trim() || undefined;
   const linkedinProfileExports = linkedinProfileExportsForPayload("postcall");
-  const visualAnalysisConsent = !!$("pc-visual-consent")?.checked;
+  // SEs are obliged to visual analysis by policy — no per-call checkbox.
+  // Kept in the payload because the worker (Pass 2 + scorecard camera_on) reads it.
+  const visualAnalysisConsent = true;
 
   setFieldError(recordingField);
   setFieldError(companyField);
@@ -2067,6 +2317,8 @@ async function collectIntakePayload() {
       linkedinProfileExports,
       linkedinProfileExportsStored: linkedinProfileExportsForStorage("postcall"),
       visualAnalysisConsent,
+      accountId: pcResolvedAccount?.id || undefined,
+      createNewAccount: pcCreateNewAccount || undefined,
     },
   };
 }
@@ -2112,6 +2364,7 @@ async function startPipeline(e) {
       recordingPassword: payload.recordingPassword,
       companyName: payload.companyName,
       participantEmails: payload.participantEmails,
+      accountId: payload.accountId,
       ownerId,
       ownerEmail: currentSession?.email || undefined,
       ownerDisplayName: currentSession?.name || currentSession?.displayName || undefined,
@@ -2188,6 +2441,9 @@ export function onSessionCleared() {
   getAuthToken = null;
   pipelineState = null;
   companyNameTouched = false;
+  pcResolvedAccount = null;
+  pcCreateNewAccount = false;
+  invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
   show($("postcall-form-view"), true);
   show($("postcall-result"), false);
@@ -2205,6 +2461,10 @@ export function initPostcall() {
   recordingUrl?.addEventListener("fwBlur", syncPasscodeVisibility);
   syncPasscodeVisibility();
 
+  const recordingPwd = $("pc-recording-pwd");
+  recordingPwd?.addEventListener("fwInput", syncPasscodeVisibility);
+  recordingPwd?.addEventListener("input", syncPasscodeVisibility);
+
   const transcriptFile = $("pc-transcript-file");
   const transcriptFileBtn = $("pc-transcript-file-btn");
   transcriptFileBtn?.addEventListener("fwClick", () => transcriptFile?.click());
@@ -2218,6 +2478,19 @@ export function initPostcall() {
   const emailsEl = $("pc-prospect-emails");
   emailsEl?.addEventListener("fwBlur", () => { void prefillCompanyFromEmails(); });
   emailsEl?.addEventListener("blur", () => { void prefillCompanyFromEmails(); });
+  emailsEl?.addEventListener("fwInput", scheduleCompanyPrefill);
+  emailsEl?.addEventListener("input", scheduleCompanyPrefill);
+
+  attachAccountLookup({
+    inputEl: $("pc-company-name"),
+    menuEl: $("pc-company-suggest"),
+    noteEl: $("pc-company-lookup-note"),
+    onPick: (account, typedName) => {
+      const companyEl = $("pc-company-name");
+      if (companyEl) companyEl.value = typedName;
+      companyNameTouched = true;
+    },
+  });
 
   initLinkedInPdfUpload({
     bag: "postcall",
