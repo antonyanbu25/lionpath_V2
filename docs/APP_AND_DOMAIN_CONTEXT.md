@@ -396,27 +396,31 @@ erDiagram
 
 ### Pre-call flow
 
-1. SE fills form in `web/app.js` → `POST /api/generate-prep`
-2. Worker (`worker/src/prep.ts`) calls Gemini with web search → structured JSON
-3. UI renders one-pager (`web/precall-render.js`)
-4. **`linkPrepToLifecycle()`** in `web/domain/dual-write.js`:
+1. SE selects deal on Account/Deal detail → `setAccountEngagementContext({ dealId, ... })` (see [DEAL_CALL_LINKING.md](./DEAL_CALL_LINKING.md))
+2. SE fills form in `web/app.js` → `POST /api/generate-prep` (`buildPayload()` carries `dealId` from session context)
+3. Worker (`worker/src/prep.ts`) calls Gemini with web search → structured JSON
+4. UI renders one-pager (`web/precall-render.js`)
+5. **`linkPrepToLifecycle()`** in `web/domain/dual-write.js`:
    - Upserts **Account** + **Contacts** (`account-service.js`)
-   - Gets or creates **Lifecycle** for `(SE, account)` (`lifecycle-service.js`)
-   - Saves **PrepBrief** + **LifecycleEvent**
+   - Gets or creates **Lifecycle** for `(SE, account, deal)` (`lifecycle-service.js`)
+   - Saves **PrepBrief** with `dealId` + **LifecycleEvent**
    - Also writes to legacy localStorage briefs
 
 ### Post-call flow
 
-1. SE pastes Zoom link in `web/postcall.js` → `POST /api/analyze-call`
-2. Worker fetches VTT transcript (`worker/src/zoomShare.ts`) → Gemini analysis → Quality Coach score
-3. UI renders debrief one-pager
-4. **`linkPostCallToLifecycle()`**:
+1. SE pastes Zoom link in `web/postcall.js` → Pass 0 resolve/match → confirmation gate (deal preselected from prep briefs)
+2. SE confirms deal → `POST /api/analyze-call` (and qualify/commit passes)
+3. Worker fetches VTT transcript (`worker/src/zoomShare.ts`) → Gemini analysis → Quality Coach score
+4. UI renders debrief one-pager; navigates to call record
+5. **`linkPostCallToLifecycle()`**:
    - Finds/creates **Account**
-   - Gets or creates **Lifecycle**
+   - Gets or creates **Lifecycle** with confirmed `dealId`
    - Upserts **PostCallDoc** by `callIdentityKey` (no duplicates)
    - Auto-advances stage `research` → `discovery` on first post-call
    - Extracts **Tasks** from next steps
    - Also writes to legacy history (`web/history.js` + worker `/api/history`)
+
+Full deal ↔ call linking detail: [DEAL_CALL_LINKING.md](./DEAL_CALL_LINKING.md).
 
 ### History / dashboard
 
