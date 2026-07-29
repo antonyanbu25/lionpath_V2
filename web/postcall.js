@@ -91,6 +91,23 @@ let pipelineState = null;
 let currentSession = null;
 let getAuthToken = null;
 
+// #region agent log
+function agentDebugLog(location, message, data, hypothesisId) {
+  const payload = { sessionId: "064b3d", location, message, data, hypothesisId, timestamp: Date.now() };
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+  try {
+    const k = "debug-064b3d";
+    const arr = JSON.parse(sessionStorage.getItem(k) || "[]");
+    arr.push(payload);
+    sessionStorage.setItem(k, JSON.stringify(arr.slice(-30)));
+  } catch (_) { /* ignore */ }
+}
+// #endregion
+
 const isUnknown = (v) => !v || String(v).trim().toLowerCase() === "unknown" || String(v).trim() === "-";
 const dash = (v) => (isUnknown(v) ? '<span class="muted">—</span>' : esc(v));
 
@@ -1397,7 +1414,14 @@ export function hidePostCallLegacyResult() {
 }
 
 export function displayPostCall(data, meta) {
-  if (pipelineState?.recordId) {
+  // #region agent log
+  agentDebugLog("postcall.js:displayPostCall", "displayPostCall invoked", {
+    recordId: pipelineState?.recordId || null,
+    generated: !!pipelineState?.generated,
+    hash: location.hash,
+  }, "H4");
+  // #endregion
+  if (pipelineState?.recordId || pipelineState?.generated) {
     hidePostCallLegacyResult();
     return;
   }
@@ -2199,6 +2223,13 @@ async function confirmAndGenerate(e) {
 
     let record = null;
     const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+    // #region agent log
+    agentDebugLog("postcall.js:confirmAndGenerate", "post-save path", {
+      sessionEmail: sessionEmail || null,
+      hasOnCallRecordReady: typeof onCallRecordReady === "function",
+      hashBefore: location.hash,
+    }, "H1");
+    // #endregion
     if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
@@ -2212,11 +2243,28 @@ async function confirmAndGenerate(e) {
         },
       };
       record = await savePostCallHistory(sessionEmail, savePayload, data);
+      // #region agent log
+      agentDebugLog("postcall.js:confirmAndGenerate", "savePostCallHistory result", {
+        recordId: record?.id || null,
+        writeOk: !!record?.id,
+      }, "H2");
+      // #endregion
       if (record?.id) {
         pipelineState.recordId = record.id;
         hidePostCallLegacyResult();
         // Navigate to call record before any legacy inline render or slow dual-write.
-        onCallRecordReady?.(record.id);
+        if (typeof onCallRecordReady === "function") {
+          onCallRecordReady(record.id);
+        } else {
+          location.hash = `#calls/${record.id}`;
+        }
+        // #region agent log
+        agentDebugLog("postcall.js:confirmAndGenerate", "navigation triggered", {
+          recordId: record.id,
+          hashAfter: location.hash,
+          usedCallback: typeof onCallRecordReady === "function",
+        }, "H3");
+        // #endregion
         invalidatePostCallResolveContext();
         invalidateDealListCache();
         const DUAL_WRITE_BUDGET_MS = 2000;
@@ -2236,6 +2284,8 @@ async function confirmAndGenerate(e) {
       displayPostCall(data, meta);
     } else {
       hidePostCallLegacyResult();
+      show($("postcall-form-view"), false);
+      show($("postcall-confirm-view"), false);
     }
 
     // Hydrate the slow passes after the SE is already looking at the analysis.

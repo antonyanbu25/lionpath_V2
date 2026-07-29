@@ -716,7 +716,7 @@
     </script>
     <script type="module">
       import "./firebase-config.js?v=auth-fix-v3";
-      import("./app.js?v=call-notes-bullets-4").catch(function (err) {
+      import("./app.js?v=call-record-nav-1").catch(function (err) {
         console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {
@@ -731,6 +731,5 @@
         } catch (e) {}
       });
     </script>
-    <script type="module" src="./postcall.js?v=auth-fix-v3"></script>
   </body>
 </html>

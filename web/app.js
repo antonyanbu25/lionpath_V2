@@ -972,6 +972,20 @@ async function renderCallPanel() {
 
 function openCallRecord(id, opts = {}) {
   if (!id) return;
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
+    body: JSON.stringify({
+      sessionId: "064b3d",
+      location: "app.js:openCallRecord",
+      message: "openCallRecord",
+      data: { id, currentView, hashBefore: location.hash },
+      hypothesisId: "H5",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   hidePostCallLegacyResult();
   selectedCallId = id;
   if (opts.tab) callRecordTab = opts.tab;
