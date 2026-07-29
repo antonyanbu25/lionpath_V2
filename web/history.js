@@ -11,7 +11,32 @@ export { normalizeUserEmail };
 
 export const STORAGE_PREFIX = "se-singha-history:";
 const LEGACY_PREFIX = "se-sp-postcalls:";
+const EMERGENCY_PREFIX = "lionpath:emergency-call:";
 const MAX_ENTRIES = 100;
+
+function emergencyKey(email, id) {
+  return `${EMERGENCY_PREFIX}${normalizeUserEmail(email)}:${id}`;
+}
+
+function stashEmergencyRecord(email, record) {
+  if (!email || !record?.id) return;
+  try {
+    sessionStorage.setItem(emergencyKey(email, record.id), JSON.stringify(record));
+  } catch (err) {
+    console.warn("[history] emergency stash failed:", err?.message || err);
+  }
+}
+
+function readEmergencyRecord(email, id) {
+  if (!email || !id) return null;
+  try {
+    const raw = sessionStorage.getItem(emergencyKey(email, id));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 /** @type {(() => Promise<string | null>) | null} */
 let getAuthToken = null;
@@ -249,8 +274,9 @@ export async function savePostCallAnalysis(email, input, result) {
   const trimmed = list.slice(0, MAX_ENTRIES);
   const ok = writeAll(normalized, trimmed);
   if (!ok) {
-    console.warn(`[history] save failed for ${storageKey(normalized)}`);
-    return null;
+    console.warn(`[history] save failed for ${storageKey(normalized)} — using emergency stash`);
+    stashEmergencyRecord(normalized, record);
+    return record;
   }
 
   console.info(`[history] saved "${record.title}" → ${storageKey(normalized)} (${trimmed.length} total)`);
@@ -272,7 +298,10 @@ export function listPostCallAnalyses(email) {
 }
 
 export function getPostCallAnalysis(email, id) {
-  return listPostCallAnalyses(email).find((r) => r.id === id) || null;
+  const normalized = normalizeUserEmail(email);
+  const found = listPostCallAnalyses(normalized).find((r) => r.id === id) || null;
+  if (found) return found;
+  return readEmergencyRecord(normalized, id);
 }
 
 /**

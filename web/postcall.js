@@ -1413,6 +1413,32 @@ export function hidePostCallLegacyResult() {
   }
 }
 
+/** Route to the call-record view — never leave the legacy one-pager visible. */
+function navigateToCallRecord(recordId) {
+  if (!recordId) return;
+  hidePostCallLegacyResult();
+  show($("postcall-form-view"), false);
+  show($("postcall-confirm-view"), false);
+  show($("postcall-loading"), false);
+  // #region agent log
+  agentDebugLog("postcall.js:navigateToCallRecord", "navigateToCallRecord", {
+    recordId,
+    hasCallback: typeof onCallRecordReady === "function",
+    hashBefore: location.hash,
+  }, "H3");
+  console.warn("[DEBUG-064b3d] navigateToCallRecord", recordId, location.hash);
+  // #endregion
+  if (typeof onCallRecordReady === "function") {
+    onCallRecordReady(recordId);
+  }
+  window.dispatchEvent(
+    new CustomEvent("lionpath:open-call-record", { detail: { id: recordId }, bubbles: true }),
+  );
+  if (!location.hash.includes(recordId)) {
+    location.hash = `#calls/${recordId}`;
+  }
+}
+
 export function displayPostCall(data, meta) {
   // #region agent log
   agentDebugLog("postcall.js:displayPostCall", "displayPostCall invoked", {
@@ -2251,20 +2277,7 @@ async function confirmAndGenerate(e) {
       // #endregion
       if (record?.id) {
         pipelineState.recordId = record.id;
-        hidePostCallLegacyResult();
-        // Navigate to call record before any legacy inline render or slow dual-write.
-        if (typeof onCallRecordReady === "function") {
-          onCallRecordReady(record.id);
-        } else {
-          location.hash = `#calls/${record.id}`;
-        }
-        // #region agent log
-        agentDebugLog("postcall.js:confirmAndGenerate", "navigation triggered", {
-          recordId: record.id,
-          hashAfter: location.hash,
-          usedCallback: typeof onCallRecordReady === "function",
-        }, "H3");
-        // #endregion
+        navigateToCallRecord(record.id);
         invalidatePostCallResolveContext();
         invalidateDealListCache();
         const DUAL_WRITE_BUDGET_MS = 2000;
@@ -2279,13 +2292,21 @@ async function confirmAndGenerate(e) {
       }
     }
 
-    // Call record is canonical. Legacy one-pager only when history could not be saved.
-    if (!record?.id) {
-      displayPostCall(data, meta);
-    } else {
+    // Call record is canonical after a successful generate — never show the legacy one-pager.
+    if (pipelineState.generated) {
       hidePostCallLegacyResult();
       show($("postcall-form-view"), false);
       show($("postcall-confirm-view"), false);
+      if (!record?.id) {
+        // #region agent log
+        agentDebugLog("postcall.js:confirmAndGenerate", "generate ok but no record id", {
+          sessionEmail: sessionEmail || null,
+        }, "H2");
+        console.warn("[DEBUG-064b3d] generate succeeded but history save returned no record");
+        // #endregion
+      }
+    } else if (!record?.id) {
+      displayPostCall(data, meta);
     }
 
     // Hydrate the slow passes after the SE is already looking at the analysis.

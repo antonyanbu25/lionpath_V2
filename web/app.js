@@ -1792,6 +1792,10 @@ async function boot() {
   });
 
   window.addEventListener("hashchange", () => applyRouteFromHash());
+  window.addEventListener("lionpath:open-call-record", (ev) => {
+    const id = ev.detail?.id;
+    if (id) openCallRecord(id);
+  });
 
   $("sidebar-toggle")?.addEventListener("fwClick", openSidebar);
   $("sidebar-close")?.addEventListener("fwClick", closeSidebar);
