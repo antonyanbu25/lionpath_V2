@@ -2172,6 +2172,24 @@ async function confirmAndGenerate(e) {
       });
       videoFacts = videoRes?.videoFacts || null;
       pipelineState.videoFacts = videoFacts;
+      // #region agent log
+      const curve = videoFacts?.attendeeCurveJson;
+      const hasCam = Array.isArray(curve) && curve.some(
+        (p) => p?.cameraOn != null || p?.cameraOnPct != null,
+      );
+      agentDebugLog("postcall.js:videoPass", "video pass result", {
+        streamKind: videoFacts?.streamKind || null,
+        status: videoFacts?.status || null,
+        hasCameraData: hasCam,
+        seCameraOnPct: videoFacts?.cameraOnPct ?? null,
+        ok: videoRes?.ok ?? null,
+      }, "H1");
+      console.warn("[DEBUG-064b3d] pass2 videoFacts", {
+        streamKind: videoFacts?.streamKind,
+        hasCamera: hasCam,
+        status: videoFacts?.status,
+      });
+      // #endregion
     } catch (videoErr) {
       console.warn("[postcall] video-pass soft-fail:", videoErr?.message || videoErr);
       videoFacts = null;
@@ -2268,7 +2286,10 @@ async function confirmAndGenerate(e) {
           customerIdentities,
         },
       };
-      record = await savePostCallHistory(sessionEmail, savePayload, data);
+      record = await savePostCallHistory(sessionEmail, savePayload, {
+        ...data,
+        videoFacts: data.videoFacts || pipelineState.videoFacts || videoFacts || undefined,
+      });
       // #region agent log
       agentDebugLog("postcall.js:confirmAndGenerate", "savePostCallHistory result", {
         recordId: record?.id || null,

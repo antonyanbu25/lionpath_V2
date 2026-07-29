@@ -311,7 +311,16 @@ export async function runVideoPass(
             "[video/pass2] visual consent set but ffmpeg failed — camera from transcript only (no frames)",
           );
         }
-        return fallback;
+        const ffErr = ffmpegResult.videoFacts.errorMessage?.trim();
+        return {
+          ...fallback,
+          videoFacts: {
+            ...fallback.videoFacts,
+            errorMessage: ffErr
+              ? `Pass 2 used transcript fallback (ffmpeg failed: ${ffErr.slice(0, 200)})`
+              : fallback.videoFacts.errorMessage,
+          },
+        };
       }
       return ffmpegResult;
     }

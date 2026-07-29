@@ -107,4 +107,43 @@ assert(
   "must not show profile gate error",
 );
 
+const camSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/cam-test",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Pradeep Solai",
+      customerIdentities: ["Israel"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "CamCo · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Pat", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true },
+    videoFacts: {
+      status: "ready",
+      streamKind: "video",
+      cameraOnPct: 82,
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 75, cameraOn: true, cameraOnPct: 82 },
+        { name: "Pradeep Solai", role: "Account Executive", talkPct: 5, cameraOn: false, cameraOnPct: 12 },
+        { name: "Israel", role: "Customer", talkPct: 20, cameraOn: true, cameraOnPct: 60 },
+      ],
+    },
+  },
+);
+const camContainer = { innerHTML: "" };
+Object.defineProperty(camContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(camContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(camContainer, firebaseSession, { callId: camSaved.id });
+assert(camContainer.innerHTML.includes("talk 75%"), "shows talk pct from videoFacts");
+assert(camContainer.innerHTML.includes("cam On"), "shows camera on when videoFacts has camera data");
+assert(camContainer.innerHTML.includes("cam Off"), "shows camera off for AE when vision says off");
+
 console.log("test-call-view: ok");

@@ -252,6 +252,56 @@ function resolveAnalysisMeta(record) {
   return record?.analysisMeta || record?.result?.analysisMeta || {};
 }
 
+function curveHasCameraData(curve) {
+  if (!Array.isArray(curve)) return false;
+  return curve.some(
+    (p) =>
+      p?.cameraOn === true ||
+      p?.cameraOn === false ||
+      (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
+  );
+}
+
+// #region agent log
+function agentDebugLog(location, message, data, hypothesisId) {
+  const payload = { sessionId: "064b3d", location, message, data, hypothesisId, timestamp: Date.now() };
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+  try {
+    const k = "debug-064b3d";
+    const arr = JSON.parse(sessionStorage.getItem(k) || "[]");
+    arr.push(payload);
+    sessionStorage.setItem(k, JSON.stringify(arr.slice(-30)));
+  } catch (_) { /* ignore */ }
+}
+// #endregion
+
+function resolveVideoFactsForBundle(draftVf, timelineFacts, storedFacts) {
+  const candidates = [draftVf, timelineFacts, storedFacts?.[0]].filter(Boolean);
+  if (!candidates.length) return null;
+
+  let videoFacts = candidates[0];
+  for (const next of candidates.slice(1)) {
+    const hasCam = curveHasCameraData(next?.attendeeCurveJson);
+    const curHasCam = curveHasCameraData(videoFacts?.attendeeCurveJson);
+    if (hasCam && !curHasCam) {
+      videoFacts = {
+        ...videoFacts,
+        ...next,
+        attendeeCurveJson: next.attendeeCurveJson,
+        cameraOnPct: next.cameraOnPct ?? videoFacts.cameraOnPct,
+        streamKind: next.streamKind || videoFacts.streamKind,
+      };
+    } else if (!videoFacts?.attendeeCurveJson && next?.attendeeCurveJson) {
+      videoFacts = { ...videoFacts, ...next };
+    }
+  }
+  return videoFacts;
+}
+
 function resolveVideoAvailable(record) {
   const meta = resolveAnalysisMeta(record);
   const resolve = record?.result?.resolve || {};
@@ -738,6 +788,12 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
     const role = a.role || "Attendee";
     pushUnique(a.name || a.email, role, /customer/i.test(role) ? "customer" : "");
   }
+  // #region agent log
+  agentDebugLog("call-view.js:buildStakeholderRows", "stakeholder camera match", {
+    curveKeys: [...statsByName.keys()].slice(0, 12),
+    rows: rows.map((r) => ({ name: r.name, talkPct: r.talkPct, cameraOn: r.cameraOn, cameraOnPct: r.cameraOnPct })),
+  }, "H3");
+  // #endregion
   return rows;
 }
 
@@ -1543,7 +1599,7 @@ async function loadCallBundle(session, record) {
         ? safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
         : Promise.resolve([]),
     storedFacts:
-      !draftVf && store.listVideoFactsByCall
+      store.listVideoFactsByCall
         ? safeEnrich("listVideoFactsByCall", () => store.listVideoFactsByCall(record.id), [])
         : Promise.resolve([]),
     timelineSegments:
@@ -1701,6 +1757,25 @@ async function loadCallBundle(session, record) {
     timelineMarkers = draftTimeline.markers;
   }
 
+  const videoFacts = resolveVideoFactsForBundle(
+    draftVf,
+    timelineFacts,
+    parallel.storedFacts,
+  );
+  // #region agent log
+  agentDebugLog("call-view.js:loadCallBundle", "videoFacts resolved", {
+    streamKind: videoFacts?.streamKind || null,
+    status: videoFacts?.status || null,
+    hasCameraData: curveHasCameraData(videoFacts?.attendeeCurveJson),
+    seCameraOnPct: videoFacts?.cameraOnPct ?? null,
+    curveRows: Array.isArray(videoFacts?.attendeeCurveJson) ? videoFacts.attendeeCurveJson.length : 0,
+  }, "H2");
+  console.warn("[DEBUG-064b3d] call videoFacts", {
+    streamKind: videoFacts?.streamKind,
+    hasCamera: curveHasCameraData(videoFacts?.attendeeCurveJson),
+  });
+  // #endregion
+
   const arrPoint =
     deal?.arrSnapshot?.arrEstimatePoint ??
     deal?.arrEstimatePoint ??
@@ -1765,7 +1840,7 @@ async function loadCallBundle(session, record) {
     identities,
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
-    videoFacts: timelineFacts,
+    videoFacts,
     productSignal: { productGaps, whatWorks, clusterLabels },
     technicalCommit,
     tcDeltas,
