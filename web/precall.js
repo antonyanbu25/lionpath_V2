@@ -27,7 +27,7 @@ import {
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
-import { enrichProspectsParallel, toConfirmedProspectProfiles } from "./prep-contact-enrich.js";
+import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep } from "./prep-contact-enrich.js";
 import { applySeContextToPrep } from "./prep-se-context.js";
 import { esc, $, show } from "./shared.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
@@ -166,6 +166,40 @@ function isQuotaExceededError(err) {
 }
 
 /** Drop large research payloads before localStorage persist (prep already holds the brief). */
+function compactLinkedInProspectProfiles(record) {
+  const matched = new Set(
+    (record.meta?.linkedinMatchedEmails || record.meta?.researchMeta?.linkedinMatchedEmails || []).map((e) =>
+      String(e).toLowerCase(),
+    ),
+  );
+  if (!matched.size) return undefined;
+  const emails = record.meta?.prospectEmails || record.input?.prospectEmails || [];
+  const profiles = record.prep?.prospects || [];
+  const out = [];
+  for (let i = 0; i < emails.length; i++) {
+    const email = String(emails[i] || "").toLowerCase();
+    if (!matched.has(email)) continue;
+    const p = profiles[i];
+    if (!p) continue;
+    out.push({
+      email,
+      profile: {
+        name: p.name,
+        role: p.role,
+        totalExperience: p.totalExperience,
+        priorEmployers: p.priorEmployers,
+        summary: p.summary,
+        skills: p.skills,
+        languages: p.languages,
+        education: p.education,
+        competitorTouchpoints: p.competitorTouchpoints,
+      },
+      disc: p.discHint,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 export function compactBriefForStorage(record) {
   if (!record || typeof record !== "object") return record;
   const meta = record.meta || {};
@@ -190,6 +224,7 @@ export function compactBriefForStorage(record) {
       accountId: meta.accountId,
       ownerId: meta.ownerId,
       prospectEmails: meta.prospectEmails,
+      linkedinProspectProfiles: compactLinkedInProspectProfiles(record),
     },
     input: {
       companyName: input.companyName,
@@ -271,6 +306,7 @@ function renderActiveTab() {
       linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
       kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
       peopleProspectTab: state.peopleProspectTab,
+      prospectEmails: meta?.prospectEmails || meta?.researchMeta?.prospectEmails,
     });
   }
   if (demo) demo.innerHTML = renderDemoTab(prep, state.checks, accountId(meta));
@@ -321,7 +357,20 @@ function showResultView(prep, meta) {
 
 export function displayPrepResult(prep, meta = {}) {
   const context = meta.additionalContext || meta.seAdditionalContext;
-  showResultView(applySeContextToPrep(prep, context), meta);
+  let merged = prep;
+  const enrichByEmail = meta.contactEnrichmentsByEmail;
+  const storedProfiles = meta.linkedinProspectProfiles;
+  const emails =
+    meta.prospectEmails ||
+    meta.researchMeta?.prospectEmails ||
+    prep?.prospects?.map((p) => p.email).filter(Boolean) ||
+    [];
+  if (enrichByEmail && prep?.prospects?.length && emails.length) {
+    merged = mergeEnrichmentsIntoPrep(prep, emails, Object.values(enrichByEmail));
+  } else if (storedProfiles?.length && prep?.prospects?.length && emails.length) {
+    merged = mergeEnrichmentsIntoPrep(prep, emails, storedProfiles);
+  }
+  showResultView(applySeContextToPrep(merged, context), meta);
 }
 
 function openSourcePopover(label, ev) {
@@ -774,6 +823,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
       researchMeta: data.researchMeta,
       researchBundle: data.researchBundle,
       linkedinMatchedEmails: data.researchMeta?.linkedinMatchedEmails,
+      prospectEmails: emails,
       contactEnrichmentsByEmail: state.contactEnrichmentsByEmail,
     };
 

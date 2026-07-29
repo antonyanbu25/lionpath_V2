@@ -71,11 +71,11 @@ function slugTokensFromLinkedInUrl(text) {
 }
 
 function localPart(email) {
-  return email.split("@")[0]?.replace(/[.+]/g, " ").toLowerCase() || "";
+  return email.split("@")[0]?.replace(/[.+_-]/g, " ").toLowerCase() || "";
 }
 
-export function matchPdfToEmail(pdf, emails, hintName) {
-  const text = pdf.text;
+/** Match PDF text to a prospect email using email-in-text or LinkedIn slug. */
+export function matchPdfToProspect(text, emails) {
   const normalizedProspects = emails.map((e) => e.toLowerCase());
   const inText = findEmailsInText(text);
   for (const e of inText) {
@@ -89,7 +89,14 @@ export function matchPdfToEmail(pdf, emails, hintName) {
       if (joined.includes(local) || local.includes(slugTokens[0] || "")) return prospect;
     }
   }
-  const pdfName = extractNameFromPdfText(text);
+  return null;
+}
+
+export function matchPdfToEmail(pdf, emails, hintName) {
+  const byEmail = matchPdfToProspect(pdf.text, emails);
+  if (byEmail) return byEmail;
+
+  const pdfName = extractNameFromPdfText(pdf.text);
   const targetNorm = hintName ? normalizeName(hintName) : "";
   if (pdfName && targetNorm) {
     const pdfNorm = normalizeName(pdfName);
@@ -126,13 +133,11 @@ export function assignPdfsToEmails(pdfs, emails) {
       }
     }
     if (!email) {
+      email = matchPdfToProspect(pdf.text, emails.filter((e) => !used.has(e)));
+    }
+    if (!email) {
       const remaining = emails.filter((e) => !used.has(e));
-      for (const e of remaining) {
-        if (matchPdfToEmail(pdf, [e]) === e) {
-          email = e;
-          break;
-        }
-      }
+      if (remaining.length === 1) email = remaining[0];
     }
     if (email && !used.has(email)) {
       used.add(email);
@@ -211,4 +216,80 @@ export function toConfirmedProspectProfiles(enrichResponses) {
     disc: r.disc,
     influence: r.influence,
   }));
+}
+
+function linkedInSourceLabel(sources) {
+  const li = (sources || []).find((s) => /linkedin/i.test(s.label));
+  return li?.label || "LinkedIn PDF";
+}
+
+function enrichmentSourceLabel(discSource, liLabel) {
+  switch (discSource) {
+    case "kaia":
+      return "Kaia";
+    case "merged":
+      return "LinkedIn + Kaia";
+    case "zoom":
+      return "Zoom";
+    default:
+      return liLabel;
+  }
+}
+
+/** Deterministic merge: enrichment wins over model output (mirrors worker merge-enrichment.ts). */
+export function mergeEnrichmentsIntoPrep(prep, emails, enrichments) {
+  if (!prep || !enrichments?.length) return prep;
+
+  const byEmail = new Map(enrichments.map((e) => [String(e.email || "").toLowerCase(), e]));
+  const prospects = [...(prep.prospects || [])];
+  const liLabel = linkedInSourceLabel(prep.sources);
+
+  while (prospects.length < emails.length) {
+    prospects.push({
+      name: "unknown",
+      role: "unknown",
+      totalExperience: "unknown",
+      priorEmployers: [],
+      competitorTouchpoints: [],
+      sourceLabel: liLabel,
+    });
+  }
+
+  for (let i = 0; i < emails.length; i++) {
+    const email = String(emails[i] || "").toLowerCase();
+    const en = byEmail.get(email);
+    if (!en) continue;
+
+    const p = prospects[i] || {};
+    const profile = en.profile || {};
+    prospects[i] = {
+      ...p,
+      name: profile.name && profile.name !== "unknown" ? profile.name : p.name,
+      role: profile.role && profile.role !== "unknown" ? profile.role : p.role,
+      totalExperience:
+        profile.totalExperience && profile.totalExperience !== "unknown"
+          ? profile.totalExperience
+          : p.totalExperience,
+      priorEmployers: profile.priorEmployers?.length ? profile.priorEmployers : p.priorEmployers,
+      competitorTouchpoints: en ? profile.competitorTouchpoints || [] : p.competitorTouchpoints,
+      summary: profile.summary || p.summary,
+      skills: profile.skills?.length ? profile.skills : p.skills,
+      languages: profile.languages?.length ? profile.languages : p.languages,
+      education: profile.education?.length ? profile.education : p.education,
+      sourceLabel: enrichmentSourceLabel(en.disc?.source, liLabel),
+      discHint: en.disc
+        ? {
+            primary: en.disc.primary || "unknown",
+            secondary: en.disc.secondary,
+            confidence: en.disc.confidence || "low",
+            evidence: en.disc.evidence || [],
+            inferred: true,
+            source: en.disc.source,
+          }
+        : p.discHint,
+      influence: en.influence || p.influence,
+    };
+  }
+
+  return { ...prep, prospects };
 }

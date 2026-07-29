@@ -9,6 +9,8 @@ import {
   SIGNAL_TOOLTIPS,
   isSeNotesSource,
   countPopulatedSignals,
+  resolveDisplayFacts,
+  isLinkedInEnrichedProspect,
 } from "../precall-render.js";
 import { CUSTOMER_REFERENCE_BY_INDUSTRY } from "../customer-reference-links.js";
 
@@ -127,6 +129,13 @@ const discoveryWithSeSignal = renderDiscoveryTab(
   },
   false,
 );
+const discoveryWithUnverifiedSignal = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    signals: [{ label: "Incumbent tool", value: "Made Up CRM", sourceLabel: "S3" }, ...sampleV8.signals.slice(1)],
+  },
+  false,
+);
 const discoveryWithEmptySignal = renderDiscoveryTab(
   {
     ...sampleV8,
@@ -186,6 +195,40 @@ const discoveryMerged = renderDiscoveryTab(
   },
   false,
 );
+const discoveryLinkedInProspect = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "LinkedIn PDF",
+        competitorTouchpoints: ["Zendesk admin"],
+        discHint: {
+          primary: "D",
+          confidence: "medium",
+          evidence: ["Leadership"],
+          inferred: true,
+          source: "linkedin_pdf",
+        },
+      },
+    ],
+  },
+  false,
+);
+const discoveryLlmCompetitorHidden = renderDiscoveryTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "S2",
+        competitorTouchpoints: ["Hallucinated Vendor"],
+        discHint: { primary: "D", confidence: "medium", evidence: ["Guess"], inferred: true },
+      },
+    ],
+  },
+  false,
+);
 
 const checks = [
   ["isV8Prep accepts v8 shape", isV8Prep(sampleV8)],
@@ -214,11 +257,39 @@ const checks = [
   ["discovery research extras open when requested", discoverySourcesOpen.includes('class="prep-research-extras" open')],
   ["discovery support JD in research extras", discovery.includes("prep-research-extras") && discovery.includes("prep-jd-full")],
   ["discovery no standalone sources accordion", !discovery.includes("prep-sources-card")],
-  ["discovery about line clamp", discovery.includes("prep-line-clamp-2")],
+  ["discovery about expandable", discovery.includes("prep-about") && !discovery.includes("prep-line-clamp-2")],
+  ["discovery fact fallback from businessContext", (() => {
+    const html = renderDiscoveryTab({
+      ...sampleV8,
+      facts: [{ key: "Company size", value: "unknown", sourceLabel: "S1" }],
+      businessContext: { ...sampleV8.businessContext, users: "500 employees" },
+    }, false);
+    return html.includes("500 employees");
+  })()],
+  ["discovery linkedin about in hero", discovery.includes("prep-prospect-about") && discovery.includes("Seasoned support leader")],
+  ["discovery hides competitor touchpoints without linkedin enrich", (() => {
+    const html = renderDiscoveryTab({
+      ...sampleV8,
+      prospects: [{ ...sampleV8.prospects[1], competitorTouchpoints: ["Intercom trials"], sourceLabel: "S3" }],
+    }, false);
+    return !html.includes("Competitor touchpoints");
+  })()],
+  ["isLinkedInEnrichedProspect matched email", isLinkedInEnrichedProspect(
+    { sourceLabel: "S6" },
+    { linkedinMatchedEmails: ["pat@acme.com"], prospectEmails: ["pat@acme.com"] },
+    0,
+  )],
+  ["resolveDisplayFacts fills company size", resolveDisplayFacts({
+    facts: [{ key: "Company size", value: "unknown" }],
+    businessContext: { users: "200 staff" },
+  })[0].value === "200 staff"],
   ["discovery SE signal your notes badge", discoveryWithSeSignal.includes("prep-trust-notes") && discoveryWithSeSignal.includes("Your notes")],
   ["discovery empty signal not found", discoveryWithEmptySignal.includes("prep-signal-empty") && discoveryWithEmptySignal.includes("Not found")],
+  ["discovery unverified signal not found", discoveryWithUnverifiedSignal.includes("prep-signal-empty") && !discoveryWithUnverifiedSignal.includes("Made Up CRM")],
+  ["discovery linkedin competitor touchpoints shown", discoveryLinkedInProspect.includes("Zendesk admin")],
+  ["discovery llm competitor touchpoints hidden", !discoveryLlmCompetitorHidden.includes("Hallucinated Vendor")],
   ["isSeNotesSource SE", isSeNotesSource("SE")],
-  ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals) === 6],
+  ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals, sampleV8.sources) === 4],
   ["discovery DISC in hero before details", (() => {
     const hero = discovery.indexOf("prep-prospect-hero");
     const details = discovery.indexOf("prep-prospect-details");

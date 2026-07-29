@@ -309,10 +309,12 @@
 .prep-desc {
   margin: 4px 0 0;
   font-size: 12.5px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 560px;
+  line-height: 1.45;
 }
 
 .prep-header-right {
@@ -626,6 +628,36 @@
 
 .prep-prospect-hero {
   padding-bottom: 4px;
+}
+
+.prep-prospect-headline {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.prep-prospect-about {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.prep-about-details {
+  margin: 0 0 12px;
+}
+
+.prep-about-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.prep-about-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prep-about-full {
+  margin: 8px 0 0;
+  line-height: 1.45;
 }
 
 .prep-prospect-head-text {

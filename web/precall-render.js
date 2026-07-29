@@ -29,8 +29,13 @@ export function isSeNotesSource(sourceLabel) {
   return String(sourceLabel || "").trim().toUpperCase() === "SE";
 }
 
-export function countPopulatedSignals(signals) {
-  return (signals || []).filter((s) => !isUnknown(s.value)).length;
+export function countPopulatedSignals(signals, sources) {
+  return (signals || []).filter((s) => {
+    if (isUnknown(s.value)) return false;
+    if (!sources?.length) return true;
+    if (isSeNotesSource(s.sourceLabel)) return true;
+    return !isUnverifiedSource(sources, s.sourceLabel);
+  }).length;
 }
 
 function trustNotesBadge() {
@@ -226,22 +231,73 @@ function renderIcpFitment(icpFit, sources) {
   </div>`;
 }
 
+const FACT_BC_FALLBACK = {
+  Industry: (prep) => prep.businessContext?.market,
+  "Head office": (prep) => prep.businessContext?.headOffice,
+  "Company size": (prep) => prep.businessContext?.users,
+  "Support team": (prep) => prep.companySizeAgents?.agents,
+  "Business model": (prep) => prep.businessContext?.model,
+  Ownership: (prep) => prep.businessContext?.fundingParent,
+  "Parent company": (prep) => prep.businessContext?.fundingParent,
+  Languages: (prep) => prep.businessContext?.languages,
+};
+
+/** Fill unknown fact values from businessContext / companySizeAgents when present. */
+export function resolveDisplayFacts(prep) {
+  const facts = prep?.facts || [];
+  if (!facts.length) return facts;
+  return facts.map((f) => {
+    if (!isUnknown(f.value)) return f;
+    const fallback = FACT_BC_FALLBACK[f.key]?.(prep);
+    if (isUnknown(fallback)) return f;
+    return { ...f, value: String(fallback).trim() };
+  });
+}
+
 function renderFactRows(facts, sources) {
   return (facts || [])
     .map((f, i) => {
       const src = sources.find((s) => s.label === f.sourceLabel) || sources[i % sources.length];
       const conf = src?.confidence ?? 50;
       const seNotes = isSeNotesSource(f.sourceLabel);
-      const unverified = !seNotes && (isUnverifiedSource(sources, f.sourceLabel) || isUnknown(f.value));
+      const unverified = !seNotes && !isUnknown(f.value) && isUnverifiedSource(sources, f.sourceLabel);
       const srcIdx = Math.max(0, sources.indexOf(src));
-      return `<div class="prep-kv-row${unverified && !isUnknown(f.value) ? " prep-kv-unverified" : ""}">
+      return `<div class="prep-kv-row${unverified ? " prep-kv-unverified" : ""}">
         <span class="prep-kv-key">${esc(f.key)}</span>
-        <span class="prep-kv-val">${dash(f.value, unverified && !isUnknown(f.value))} ${sourceOrTrustBadge(f.sourceLabel, conf, srcIdx, sources)}
+        <span class="prep-kv-val">${dash(f.value, unverified)} ${sourceOrTrustBadge(f.sourceLabel, conf, srcIdx, sources)}
           <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="facts" data-dispute-idx="${i}" data-dispute-key="${esc(f.key)}">Report</button>
         </span>
       </div>`;
     })
     .join("");
+}
+
+export function isLinkedInEnrichedProspect(p, renderOpts = {}, prospectIdx = 0) {
+  if (/linkedin/i.test(String(p?.sourceLabel || ""))) return true;
+  const discSrc = p?.discHint?.source;
+  if (discSrc === "linkedin_pdf" || discSrc === "merged") return true;
+  const email = String(p?.email || renderOpts.prospectEmails?.[prospectIdx] || "").toLowerCase();
+  const matched = (renderOpts.linkedinMatchedEmails || []).map((e) => String(e).toLowerCase());
+  if (email && matched.includes(email)) return true;
+  return false;
+}
+
+function renderAboutBlock(about) {
+  const text = String(about || "").trim();
+  if (isUnknown(text)) return "";
+  if (text.length <= 160) return `<p class="prep-about muted">${esc(text)}</p>`;
+  const short = `${text.slice(0, 157)}…`;
+  return `<details class="prep-about-details">
+    <summary class="prep-about muted">${esc(short)}</summary>
+    <p class="prep-about-full muted">${esc(text)}</p>
+  </details>`;
+}
+
+function prospectAboutSnippet(summary, maxLen = 220) {
+  const text = String(summary || "").trim();
+  if (isUnknown(text)) return "";
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen - 1)}…`;
 }
 
 function renderSignalRows(signals, sources) {
@@ -252,18 +308,19 @@ function renderSignalRows(signals, sources) {
       const seNotes = isSeNotesSource(s.sourceLabel);
       const empty = isUnknown(s.value);
       const unverified = !seNotes && !empty && isUnverifiedSource(sources, s.sourceLabel);
+      const showEmpty = empty || unverified;
       const srcIdx = Math.max(0, sources.indexOf(src));
       const valueHtml =
-        empty ? '<span class="muted prep-signal-empty">Not found</span>'
+        showEmpty ? '<span class="muted prep-signal-empty">Not found</span>'
         : seNotes ? `<span class="prep-signal-val-text">${esc(s.value)}</span>`
-        : dash(s.value, unverified);
+        : dash(s.value, false);
       const actions =
-        empty ?
+        showEmpty ?
           ""
         : `<span class="prep-signal-actions">${sourceOrTrustBadge(s.sourceLabel, conf, srcIdx, sources)}
             <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="signals" data-dispute-idx="${i}" data-dispute-key="${esc(s.label)}">Report</button>
           </span>`;
-      return `<div class="prep-signal-cell${unverified ? " prep-kv-unverified" : ""}${empty ? " prep-signal-cell-empty" : ""}">
+      return `<div class="prep-signal-cell${showEmpty ? " prep-signal-cell-empty" : ""}">
         <div class="prep-signal-top">
           <span class="prep-kv-key prep-signal-label">${signalLabelWithTooltip(s.label)}</span>
           ${actions}
@@ -275,7 +332,7 @@ function renderSignalRows(signals, sources) {
 }
 
 function renderSignalsSection(signals, sources) {
-  const found = countPopulatedSignals(signals);
+  const found = countPopulatedSignals(signals, sources);
   return `<fw-card class="prep-card prep-signals-section">
     <details class="prep-signals-details">
       <summary class="prep-signals-summary dew-mono-label">Tech stack &amp; signals (${found} found)</summary>
@@ -325,6 +382,9 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
   const conf = src?.confidence ?? 50;
   const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
   const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
+  const linkedInEnriched = isLinkedInEnrichedProspect(p, renderOpts, i);
+  const showCompetitorTouchpoints = linkedInEnriched;
+  const verifiedTouchpoints = showCompetitorTouchpoints ? touchpoints : [];
   const unverified = isUnverifiedSource(sources, p.sourceLabel);
   const disc = p.discHint;
   const discPrimary = disc?.primary && disc.primary !== "unknown" ? disc.primary : "";
@@ -333,6 +393,7 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
   const langs = (p.languages || []).filter(Boolean);
   const edu = (p.education || []).filter(Boolean);
   const summary = p.summary && !isUnknown(p.summary) ? p.summary : "";
+  const aboutLine = prospectAboutSnippet(summary);
   const expLine = experienceHeroLine(p.totalExperience, employers);
 
   const discHero = discPrimary
@@ -355,7 +416,9 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
     edu.length ?
       `<div class="prep-detail-block"><span class="prep-kv-key">Education</span><p>${esc(edu.join("; "))}</p></div>`
     : "",
-    `<div class="prep-detail-block"><span class="prep-kv-key">Competitor touchpoints</span><p>${touchpoints.length ? esc(touchpoints.join(", ")) : dash("")}</p></div>`,
+    showCompetitorTouchpoints ?
+      `<div class="prep-detail-block"><span class="prep-kv-key">Competitor touchpoints</span><p>${verifiedTouchpoints.length ? esc(verifiedTouchpoints.join(", ")) : '<span class="muted prep-signal-empty">Not found</span>'}</p></div>`
+    : "",
     discPrimary && discEvidence.length ?
       `<div class="prep-detail-block"><span class="prep-kv-key">Why (DISC)</span><ul class="prep-disc-evidence">${discEvidence.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></div>`
     : "",
@@ -363,7 +426,7 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
     .filter(Boolean)
     .join("");
 
-  const hasDetails = !!(summary || employers.length || langs.length || edu.length || touchpoints.length || discEvidence.length);
+  const hasDetails = !!(summary || employers.length || langs.length || edu.length || showCompetitorTouchpoints || discEvidence.length);
 
   return `<div class="prep-prospect-card${unverified ? " prep-kv-unverified" : ""}" data-prospect-idx="${i}">
     <div class="prep-prospect-hero">
@@ -371,11 +434,16 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
         <span class="prep-prospect-avatar">${esc(mono)}</span>
         <div class="prep-prospect-head-text">
           <div class="prep-prospect-name">${dash(p.name, unverified && !isUnknown(p.name))}</div>
-          <div class="prep-prospect-role muted">${dash(p.role, unverified && !isUnknown(p.role))}</div>
+          ${!isUnknown(p.role)
+            ? linkedInEnriched
+              ? `<p class="prep-prospect-headline muted">${esc(p.role)}</p>`
+              : `<div class="prep-prospect-role muted">${dash(p.role, unverified)}</div>`
+            : `<div class="prep-prospect-role muted">${dash(p.role, unverified)}</div>`}
         </div>
         ${prospectSourceBadges(p, src, sources, renderOpts)}
       </div>
       ${discHero}
+      ${aboutLine ? `<p class="prep-prospect-about muted">${esc(aboutLine)}</p>` : ""}
       ${expLine ? `<p class="prep-prospect-exp-line muted">${esc(expLine)}</p>` : ""}
       ${renderSkillChips(skills, 4)}
     </div>
@@ -620,7 +688,7 @@ export function renderResultHeader(prep, meta) {
           <h1 class="prep-company-name">${esc(company)}</h1>
           ${domain ? `<a class="prep-domain-link" href="${esc(domainLink)}" target="_blank" rel="noopener noreferrer">${esc(domain)} ↗</a>` : ""}
         </div>
-        <p class="prep-desc muted">${dash(prep.description)}</p>
+        <p class="prep-desc muted" title="${esc(String(prep.description || "").trim())}">${dash(prep.description)}</p>
       </div>
     </div>
     <div class="prep-header-right">
@@ -648,8 +716,8 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
     <div class="prep-grid-2 prep-grid-account">
       <fw-card class="prep-card">
         ${sectionHead("Account facts", "var(--dew-primary)")}
-        <p class="prep-about muted prep-line-clamp-2">${dash(prep.about)}</p>
-        ${renderFactRows(prep.facts, sources)}
+        ${renderAboutBlock(prep.about)}
+        ${renderFactRows(resolveDisplayFacts(prep), sources)}
         ${renderIcpFitment(prep.icpFit, sources)}
       </fw-card>
       ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
