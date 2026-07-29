@@ -2,7 +2,8 @@
  * Deals nav: global deal list + deal record (spec §11.6).
  */
 
-import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail } from "./domain/account-service.js";
+import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js";
+import { buildDealExtrasFromHistory } from "./domain/history-deal-enrichment.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import {
@@ -654,7 +655,7 @@ function renderMeddpiccSidebar(deal, account) {
     <section class="account-record-section deal-record-section deal-record-meddpicc-sidebar account-record-section--card account-record-section--tight">
       <p class="prep-form-eyebrow account-section-eyebrow">MEDDPICC</p>
       <p class="muted deal-record-meddpicc-score">${esc(String(score))}% · ${filled} of ${total} surfaced</p>
-      <div class="meddpicc-field-grid">${fields}</div>
+      <div class="meddpicc-field-grid meddpicc-field-grid--sidebar">${fields}</div>
       ${med?.lastUpdatedAt ? `<p class="muted meddpicc-updated">Last updated ${esc(formatDate(med.lastUpdatedAt))}</p>` : ""}
     </section>`;
 }
@@ -1240,6 +1241,8 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
   if (!deal?.accountId) {
     const histRow = listDealsFromHistory(session).find((r) => r.deal.id === resolvedDealId);
     if (histRow) {
+      const historyRecs = historyRecordsForAccount(session, histRow.account.id);
+      const historyExtras = buildDealExtrasFromHistory(histRow.deal, histRow.account, historyRecs);
       let detail = null;
       try {
         detail = await getAccountEngagementDetail(session, histRow.account.id, {
@@ -1250,35 +1253,23 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
         console.warn("[deal-view] history deal detail failed:", err?.message || err);
       }
       if (detail) {
-        const callRows = (detail.accountRollup?.accountCalls || []).map(({ postCall, movement }) => ({
-          postCall,
-          meddpiccDeltas: [],
-          tcDeltas: [],
-          movement: movement || "—",
-        }));
         return {
           ...detail,
+          ...historyExtras,
+          selectedDeal: historyExtras.selectedDeal || detail.selectedDeal,
+          dealSummary: historyExtras.dealSummary || detail.dealSummary,
           resolvedDealId,
-          technicalCommit: null,
-          latestSignal: null,
-          daysInStage: 0,
-          stageMedianDays: 34,
-          callRows,
-          arrLines: [],
+          callRows: historyExtras.callRows?.length ? historyExtras.callRows : detail.callRows || [],
         };
       }
       return {
         account: histRow.account,
-        selectedDeal: histRow.deal,
+        lifecycle: { id: `lc_hist_${histRow.account.id}`, stage: histRow.deal.stage, title: histRow.account.name },
+        selectedDeal: historyExtras.selectedDeal || histRow.deal,
         selectedDealId: histRow.deal.id,
-        dealSummary: null,
+        dealSummary: historyExtras.dealSummary,
         resolvedDealId,
-        technicalCommit: null,
-        latestSignal: null,
-        daysInStage: 0,
-        stageMedianDays: 34,
-        callRows: [],
-        arrLines: [],
+        ...historyExtras,
       };
     }
     return null;
@@ -1298,7 +1289,27 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
 
   const extras = await extrasPromise;
   if (engagementDetail) {
-    return { ...engagementDetail, resolvedDealId, ...extras };
+    const historyRecs = engagementDetail._historyFallback
+      ? historyRecordsForAccount(session, deal.accountId)
+      : [];
+    const historyExtras =
+      historyRecs.length ? buildDealExtrasFromHistory(deal, engagementDetail.account, historyRecs) : null;
+    return {
+      ...engagementDetail,
+      resolvedDealId,
+      ...extras,
+      ...(historyExtras
+        ? {
+            selectedDeal: historyExtras.selectedDeal || engagementDetail.selectedDeal,
+            dealSummary: extras.dealSummary || historyExtras.dealSummary || engagementDetail.dealSummary,
+            technicalCommit: extras.technicalCommit || historyExtras.technicalCommit,
+            latestSignal: extras.latestSignal || historyExtras.latestSignal,
+            daysInStage: extras.daysInStage ?? historyExtras.daysInStage,
+            stageMedianDays: extras.stageMedianDays ?? historyExtras.stageMedianDays,
+            callRows: extras.callRows?.length ? extras.callRows : historyExtras.callRows,
+          }
+        : {}),
+    };
   }
 
   return buildDealRecordDetailFromStore(session, deal, resolvedDealId, extras);

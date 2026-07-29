@@ -21,7 +21,7 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js?v=accounts-perf-1";
+import { renderAccountView } from "./account-view.js?v=accounts-fix-2";
 import { renderDealView } from "./deal-view.js";
 import { renderCallView } from "./call-view.js?v=call-perf-1";
 import { renderCallsListView } from "./calls-list-view.js";
@@ -589,7 +589,15 @@ function switchView(name, opts = {}) {
     $("main-view-title").textContent = VIEW_TITLES.se;
     void renderSePanel();
   } else if (name === "accounts") {
-    if (opts.accountId) selectedAccountId = opts.accountId;
+    if (opts.accountId) {
+      selectedAccountId = opts.accountId;
+    } else if (!opts.drillDown) {
+      selectedAccountId = null;
+      selectedAccountDealId = null;
+      selectedAccountEngagementPrepType = undefined;
+      selectedAccountContactId = null;
+      accountLifecycleOwnerId = null;
+    }
     void renderAccountPanel();
   } else if (name === "deals") {
     if (opts.dealId) selectedDealNavId = opts.dealId;

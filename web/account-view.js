@@ -9,6 +9,7 @@ import {
   enrichAccountListRow,
   listAccountRowsFromHistory,
 } from "./domain/account-service.js";
+import { mergeAccountListRows } from "./domain/history-deal-enrichment.js";
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
@@ -2061,30 +2062,40 @@ function renderAccountsListView(rows, opts) {
 }
 
 async function loadAccountListRows(session, onPreview) {
-  const historyRows = listAccountRowsFromHistory(session);
-  const store = getStore();
-
-  const storePromise = safeStoreOp(
-    "listAccountsForSession",
-    () => listAccountsForSession(session),
-    [],
-  );
-
-  if (historyRows.length && onPreview) {
-    const previewRows = await Promise.all(historyRows.map((row) => enrichAccountListRow(store, row)));
-    onPreview(previewRows.filter((row) => row?.account?.id));
-  }
-
-  let storeRows = [];
   try {
-    storeRows = await storePromise;
-  } catch (err) {
-    console.warn("[account-view] listAccountsForSession failed, using history:", err?.message || err);
-  }
+    const historyRows = listAccountRowsFromHistory(session);
+    const store = getStore();
 
-  const baseRows = storeRows.length ? storeRows : historyRows;
-  const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
-  return rows.filter((row) => row?.account?.id);
+    const storePromise = safeStoreOp(
+      "listAccountsForSession",
+      () => listAccountsForSession(session),
+      [],
+    );
+
+    if (historyRows.length && onPreview) {
+      try {
+        const previewRows = await Promise.all(historyRows.map((row) => enrichAccountListRow(store, row)));
+        onPreview(previewRows.filter((row) => row?.account?.id));
+      } catch (err) {
+        console.warn("[account-view] account list preview failed:", err?.message || err);
+      }
+    }
+
+    let storeRows = [];
+    try {
+      storeRows = await storePromise;
+    } catch (err) {
+      console.warn("[account-view] listAccountsForSession failed, using history:", err?.message || err);
+    }
+
+    const baseRows = mergeAccountListRows(storeRows, historyRows);
+    const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
+    return rows.filter((row) => row?.account?.id);
+  } catch (err) {
+    console.warn("[account-view] loadAccountListRows failed:", err?.message || err);
+    const historyRows = listAccountRowsFromHistory(session);
+    return historyRows.filter((row) => row?.account?.id);
+  }
 }
 
 function renderAccountsEmptyState(message) {
@@ -2169,9 +2180,13 @@ export async function renderAccountView(container, session, opts = {}) {
     const rows = await loadAccountListRows(activeSession, (previewRows) => {
       if (!previewRows.length) return;
       if (opts.shouldApply && !opts.shouldApply()) return;
-      applyAccountViewHtml(container, opts, renderAccountsListView(previewRows, opts));
-      wireAccountListItemClicks(container, opts);
-      wireListFilter(container, previewRows, opts);
+      try {
+        applyAccountViewHtml(container, opts, renderAccountsListView(previewRows, opts));
+        wireAccountListItemClicks(container, opts);
+        wireListFilter(container, previewRows, opts);
+      } catch (err) {
+        console.warn("[account-view] account list preview render failed:", err?.message || err);
+      }
     });
     if (opts.shouldApply && !opts.shouldApply()) return;
 
@@ -2193,6 +2208,33 @@ export async function renderAccountView(container, session, opts = {}) {
   } catch (err) {
     console.error("[account-view] failed to render accounts:", err);
     if (opts.shouldApply && !opts.shouldApply()) return;
+    if (opts.accountId) {
+      applyAccountViewHtml(
+        container,
+        opts,
+        renderAccountsEmptyState(
+          "Could not load this account right now. Refresh the page or try again in a moment.",
+        ),
+      );
+      return;
+    }
+    try {
+      const historyRows = listAccountRowsFromHistory(activeSession);
+      if (historyRows.length) {
+        const store = getStore();
+        const fallbackRows = await Promise.all(
+          historyRows.map((row) => enrichAccountListRow(store, row)),
+        );
+        const rows = fallbackRows.filter((row) => row?.account?.id);
+        if (rows.length && applyAccountViewHtml(container, opts, renderAccountsListView(rows, opts))) {
+          wireAccountListItemClicks(container, opts);
+          wireListFilter(container, rows, opts);
+          return;
+        }
+      }
+    } catch (fallbackErr) {
+      console.warn("[account-view] history fallback failed:", fallbackErr?.message || fallbackErr);
+    }
     applyAccountViewHtml(
       container,
       opts,

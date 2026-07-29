@@ -35,6 +35,12 @@ import { selectLatestArrLines } from "./arr-service.js";
 import { buildAccountArrRollup, formatProductLabel } from "./account-arr-service.js";
 import { resolveDealMeddpicc } from "./contact-service.js";
 import {
+  buildDealExtrasFromHistory,
+  enrichDealFromHistoryRecords,
+  dealSummaryFromHistoryRecords,
+  mergeAccountListRows,
+} from "./history-deal-enrichment.js";
+import {
   computePrepInputHash as computePrepInputHashImpl,
   PREP_PLAYBOOK_VERSION,
 } from "../prep-input-hash.js";
@@ -310,7 +316,7 @@ function findHistoryAccountRow(session, accountId) {
 }
 
 /** @param {object} session @param {string} accountId */
-function historyRecordsForAccount(session, accountId) {
+export function historyRecordsForAccount(session, accountId) {
   const email = normalizeUserEmail(session?.email);
   if (!email) return [];
   const out = [];
@@ -406,7 +412,14 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
   } else if (options.dealId !== null) {
     selectedDealId = dealId;
   }
-  const selectedDeal = selectedDealId ? deals.find((d) => d.id === selectedDealId) || null : null;
+  let selectedDeal = selectedDealId ? deals.find((d) => d.id === selectedDealId) || null : null;
+  selectedDeal = enrichDealFromHistoryRecords(selectedDeal, historyRecs);
+  if (selectedDeal && selectedDealId) {
+    const dealIdx = deals.findIndex((d) => d.id === selectedDealId);
+    if (dealIdx >= 0) deals[dealIdx] = selectedDeal;
+  }
+
+  const historyExtras = buildDealExtrasFromHistory(selectedDeal, account, historyRecs);
 
   const postCalls = historyRecs.map((rec) => ({
     id: rec.id,
@@ -437,14 +450,18 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     payload: { qualityScore: pc.qualityScore, title: pc.title },
   }));
 
-  const accountCalls = postCalls.map((postCall) => ({
-    postCall,
-    deal: deals[0],
-    dealLabel: account.name,
-    meddpiccScore: null,
-    scorecard: postCall.scorecard || null,
-    ownerName: session?.name || user.displayName || "—",
-  }));
+  const accountCalls = postCalls.map((postCall) => {
+    const med = resolveDealMeddpicc(selectedDeal, account);
+    return {
+      postCall,
+      deal: selectedDeal || deals[0],
+      dealLabel: account.name,
+      meddpiccScore: med?.completionScore ?? null,
+      scorecard: postCall.scorecard || null,
+      ownerName: session?.name || user.displayName || "—",
+      movement: historyExtras.callRows.find((r) => r.postCall.id === postCall.id)?.movement || "—",
+    };
+  });
 
   const accountRollup = {
     arrRollup: {
@@ -491,85 +508,95 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     engagementSelectionSource: "explicit",
     canManageTeam: false,
     assignableSeOptions: [],
-    dealSummary: null,
+    dealSummary: historyExtras.dealSummary || dealSummaryFromHistoryRecords(historyRecs),
     accountSummary: null,
     accountRollup,
+    technicalCommit: historyExtras.technicalCommit,
+    latestSignal: historyExtras.latestSignal,
+    daysInStage: historyExtras.daysInStage,
+    stageMedianDays: historyExtras.stageMedianDays,
     _historyFallback: true,
   };
 }
 
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session) {
-  const store = getStore();
-  const { effectiveSessionUserId } = await import("./session.js");
-  const ownerId = effectiveSessionUserId(session);
-
-  let lifecycles = [];
   try {
-    lifecycles = await listLifecyclesForSession(session);
+    const store = getStore();
+    const { effectiveSessionUserId } = await import("./session.js");
+    const ownerId = effectiveSessionUserId(session);
+
+    let lifecycles = [];
+    try {
+      lifecycles = await listLifecyclesForSession(session);
+    } catch (err) {
+      console.warn("[account-service] listLifecyclesForSession failed:", err?.message || err);
+    }
+
+    const byAccount = new Map();
+    for (const lifecycle of lifecycles) {
+      const list = byAccount.get(lifecycle.accountId) || [];
+      list.push(lifecycle);
+      byAccount.set(lifecycle.accountId, list);
+    }
+
+    const rows = await Promise.all(
+      [...byAccount.entries()].map(async ([accountId, lcs]) => {
+        try {
+          let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
+          if (!account) return null;
+          account = await safeStoreOp(
+            "backfillAccountSeTeam",
+            () => backfillAccountSeTeam(accountId),
+            account,
+          );
+          const lifecycle = pickRowLifecycle(account, lcs);
+          if (!lifecycle) return null;
+          const seTeamDisplay = await safeStoreOp(
+            "resolveSeTeamDisplay",
+            () => resolveSeTeamDisplay(account),
+            [],
+          );
+          const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
+          const deals = store.listDealsByAccount
+            ? await safeStoreOp(
+                "listDealsByAccount",
+                () => store.listDealsByAccount(accountId, ownerId || undefined),
+                [],
+              )
+            : [];
+          const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
+          const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
+          const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);
+          const dealType = canonicalDeal?.type || "new_business";
+          const dealStage = canonicalDeal?.stage || lifecycle.stage;
+          return {
+            account,
+            lifecycle,
+            seTeamDisplay,
+            secondaryCount,
+            lastActivityAt: maxLastActivity(lcs),
+            dealType,
+            dealTypeLabel: DEAL_TYPE_LABELS[dealType] || dealType,
+            dealStage,
+            deals,
+            canonicalDealId: canonicalDeal?.id || lifecycle.dealId || null,
+          };
+        } catch (err) {
+          console.warn("[account-service] account row skipped:", accountId, err?.message || err);
+          return null;
+        }
+      }),
+    );
+
+    const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+    const historyRows = listAccountRowsFromHistory(session);
+    if (sorted.length) return mergeAccountListRows(sorted, historyRows);
+    return historyRows;
   } catch (err) {
-    console.warn("[account-service] listLifecyclesForSession failed:", err?.message || err);
+    console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
+    return listAccountRowsFromHistory(session);
   }
-
-  const byAccount = new Map();
-  for (const lifecycle of lifecycles) {
-    const list = byAccount.get(lifecycle.accountId) || [];
-    list.push(lifecycle);
-    byAccount.set(lifecycle.accountId, list);
-  }
-
-  const rows = await Promise.all(
-    [...byAccount.entries()].map(async ([accountId, lcs]) => {
-      try {
-        let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
-        if (!account) return null;
-        account = await safeStoreOp(
-          "backfillAccountSeTeam",
-          () => backfillAccountSeTeam(accountId),
-          account,
-        );
-        const lifecycle = pickRowLifecycle(account, lcs);
-        if (!lifecycle) return null;
-        const seTeamDisplay = await safeStoreOp(
-          "resolveSeTeamDisplay",
-          () => resolveSeTeamDisplay(account),
-          [],
-        );
-        const secondaryCount = (account.seTeam || []).filter((m) => m.role === "secondary").length;
-        const deals = store.listDealsByAccount
-          ? await safeStoreOp(
-              "listDealsByAccount",
-              () => store.listDealsByAccount(accountId, ownerId || undefined),
-              [],
-            )
-          : [];
-        const activeNb = deals.find((d) => d.type === "new_business" && d.status === "active");
-        const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
-        const canonicalDeal = activeNb || activeExp || selectedDealFromLifecycle(deals, lifecycle);
-        const dealType = canonicalDeal?.type || "new_business";
-        const dealStage = canonicalDeal?.stage || lifecycle.stage;
-        return {
-          account,
-          lifecycle,
-          seTeamDisplay,
-          secondaryCount,
-          lastActivityAt: maxLastActivity(lcs),
-          dealType,
-          dealTypeLabel: DEAL_TYPE_LABELS[dealType] || dealType,
-          dealStage,
-          deals,
-          canonicalDealId: canonicalDeal?.id || lifecycle.dealId || null,
-        };
-      } catch (err) {
-        console.warn("[account-service] account row skipped:", accountId, err?.message || err);
-        return null;
-      }
-    }),
-  );
-
-  const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
-  if (sorted.length) return sorted;
-  return listAccountRowsFromHistory(session);
 }
 
 const TRACTION_RANK = { hot: 0, warm: 1, cold: 2 };
@@ -868,6 +895,20 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   }
   account = await safeStoreOp("backfillAccountSeTeam", () => backfillAccountSeTeam(accountId), account);
 
+  try {
+    return await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
+  } catch (err) {
+    console.warn("[account-service] engagement detail failed, trying history:", err?.message || err);
+    const histRow = findHistoryAccountRow(session, accountId);
+    if (histRow) {
+      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+    }
+    return null;
+  }
+}
+
+async function loadAccountEngagementDetailFromStore(session, user, account, accountId, options = {}) {
+  const store = getStore();
   const deals = await safeStoreOp("listDealsForAccount", () => listDealsForAccount(accountId), []);
   let selectedDealId = null;
   /** @type {'explicit' | 'override' | 'motion' | 'fallback'} */
@@ -902,13 +943,25 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     }
   }
 
-  const teamLifecycles = await listActiveLifecyclesForAccount(accountId);
+  const teamLifecycles = await safeStoreOp(
+    "listActiveLifecyclesForAccount",
+    () => listActiveLifecyclesForAccount(accountId),
+    [],
+  );
   if (!(await canReadAccountEngagement(user, account, teamLifecycles))) {
-    const ownLc = await store.findActiveLifecycle(user.id, accountId);
+    const ownLc = await safeStoreOp(
+      "findActiveLifecycle",
+      () => store.findActiveLifecycle(user.id, accountId),
+      null,
+    );
     if (!ownLc) return null;
   }
 
-  const seTeamDisplay = await resolveSeTeamDisplay(account);
+  const seTeamDisplay = await safeStoreOp(
+    "resolveSeTeamDisplay",
+    () => resolveSeTeamDisplay(account),
+    [],
+  );
   const memberIds = seTeamUserIds(account);
   let lensOwnerId = options.lifecycleOwnerId || null;
   if (!lensOwnerId) {
@@ -918,12 +971,20 @@ export async function getAccountEngagementDetail(session, accountId, options = {
 
   let lensLifecycle = null;
   if (selectedDealId && store.findLifecycleByDealAndOwner) {
-    lensLifecycle = await store.findLifecycleByDealAndOwner(selectedDealId, lensOwnerId);
+    lensLifecycle = await safeStoreOp(
+      "findLifecycleByDealAndOwner",
+      () => store.findLifecycleByDealAndOwner(selectedDealId, lensOwnerId),
+      null,
+    );
   }
   if (!lensLifecycle) {
     lensLifecycle =
       teamLifecycles.find((l) => l.ownerId === lensOwnerId) ||
-      (await store.findActiveLifecycle(lensOwnerId, accountId));
+      (await safeStoreOp(
+        "findActiveLifecycle",
+        () => store.findActiveLifecycle(lensOwnerId, accountId),
+        null,
+      ));
   }
   if (!lensLifecycle && teamLifecycles.length) {
     lensLifecycle = teamLifecycles[0];
@@ -931,7 +992,11 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   }
   if (!lensLifecycle) return null;
 
-  const lensDetail = await getLifecycleDetail(lensLifecycle.id);
+  const lensDetail = await safeStoreOp(
+    "getLifecycleDetail",
+    () => getLifecycleDetail(lensLifecycle.id),
+    null,
+  );
   if (!lensDetail) return null;
 
   const userNameById = new Map(seTeamDisplay.map((m) => [m.seUserId, m.user.displayName]));
@@ -941,7 +1006,11 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     ? teamLifecycles.filter((lc) => lc.dealId === selectedDealId)
     : teamLifecycles;
   for (const lc of lifecyclesForEvents.length ? lifecyclesForEvents : teamLifecycles) {
-    const evs = await store.listLifecycleEvents(lc.id);
+    const evs = await safeStoreOp(
+      "listLifecycleEvents",
+      () => store.listLifecycleEvents(lc.id),
+      [],
+    );
     const ownerName = userNameById.get(lc.ownerId) || lc.ownerId;
     const dealLabel = deals.find((d) => d.id === lc.dealId);
     for (const ev of evs) {
@@ -956,8 +1025,16 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   }
   mergedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
-  const contacts = await store.listContactsByAccount(accountId);
-  const contactEventsByContactId = await loadContactEventsForAccount(contacts, 10);
+  const contacts = await safeStoreOp(
+    "listContactsByAccount",
+    () => store.listContactsByAccount(accountId),
+    [],
+  );
+  const contactEventsByContactId = await safeStoreOp(
+    "loadContactEventsForAccount",
+    () => loadContactEventsForAccount(contacts, 10),
+    {},
+  );
 
   const canManageTeam = can(user, "manage_account_team", {
     seTeamUserIds: memberIds,
@@ -973,13 +1050,41 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   let dealSummary = null;
   let accountSummary = null;
   if (selectedDealId && store.getDealSummaryByDeal) {
-    dealSummary = await store.getDealSummaryByDeal(selectedDealId);
+    dealSummary = await safeStoreOp(
+      "getDealSummaryByDeal",
+      () => store.getDealSummaryByDeal(selectedDealId),
+      null,
+    );
   }
   if (store.getAccountSummaryByAccount) {
-    accountSummary = await store.getAccountSummaryByAccount(accountId);
+    accountSummary = await safeStoreOp(
+      "getAccountSummaryByAccount",
+      () => store.getAccountSummaryByAccount(accountId),
+      null,
+    );
   }
 
-  const accountRollup = await loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts);
+  const accountRollup = await safeStoreOp(
+    "loadAccountOverviewRollup",
+    () => loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts),
+    {
+      arrRollup: {
+        estimateBand: null,
+        linesByDealId: new Map(),
+        discussedUnquantified: [],
+        crossSellGaps: [],
+      },
+      dealRows: [],
+      accountCalls: [],
+      firmographics: {},
+      reasonForEvaluation: null,
+      whyAi: null,
+      hasEconomicBuyer: false,
+      health: deriveAccountHealth(null, null, account.updatedAt),
+      callCount: 0,
+      dealCount: (deals || []).length,
+    },
+  );
 
   return {
     ...lensDetail,
