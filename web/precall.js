@@ -23,7 +23,6 @@ import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disp
 import { resolveCompanyDomainForSubmit } from "./prep-domain.js";
 import {
   linkedinProfileExportsForPayload,
-  linkedinProfileExportsForStorage,
   initLinkedInPdfUpload,
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
@@ -150,10 +149,61 @@ function saveChecks() {
 
 export function loadLocalBriefs() {
   try {
-    return JSON.parse(localStorage.getItem(BRIEFS_KEY) || "[]");
+    const raw = localStorage.getItem(BRIEFS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list.slice(0, MAX_BRIEFS) : [];
   } catch {
     return [];
   }
+}
+
+function isQuotaExceededError(err) {
+  if (!err) return false;
+  if (err.name === "QuotaExceededError") return true;
+  if (err.code === 22) return true;
+  return /quota/i.test(String(err.message || err));
+}
+
+/** Drop large research payloads before localStorage persist (prep already holds the brief). */
+export function compactBriefForStorage(record) {
+  if (!record || typeof record !== "object") return record;
+  const meta = record.meta || {};
+  const researchMeta = meta.researchMeta || {};
+  const input = record.input || {};
+  return {
+    id: record.id,
+    company: record.company,
+    kind: record.kind,
+    when: record.when,
+    lifecycleId: record.lifecycleId || null,
+    prep: record.prep,
+    meta: {
+      company: meta.company,
+      domain: meta.domain,
+      companyDomain: meta.companyDomain,
+      emailDomain: meta.emailDomain,
+      additionalContext: meta.additionalContext,
+      kaiaFetched: !!(meta.kaiaFetched || researchMeta.kaiaFetched),
+      linkedinMatchedEmails: meta.linkedinMatchedEmails || researchMeta.linkedinMatchedEmails,
+      dealId: meta.dealId,
+      accountId: meta.accountId,
+      ownerId: meta.ownerId,
+      prospectEmails: meta.prospectEmails,
+    },
+    input: {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      prospectEmail: input.prospectEmail,
+      prospectEmails: input.prospectEmails,
+      prepType: input.prepType,
+      dealId: input.dealId,
+      lifecycleId: input.lifecycleId,
+      additionalContext: input.additionalContext,
+      meetingZoomUrl: input.meetingZoomUrl,
+      kaiaMeetingUrl: input.kaiaMeetingUrl,
+    },
+  };
 }
 
 /** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
@@ -179,7 +229,25 @@ export async function countPrepsGenerated(fetchRemotePreps) {
 }
 
 function saveLocalBriefs(list) {
-  localStorage.setItem(BRIEFS_KEY, JSON.stringify(list.slice(0, MAX_BRIEFS)));
+  let trimmed = list.slice(0, MAX_BRIEFS).map(compactBriefForStorage);
+  while (trimmed.length > 0) {
+    try {
+      localStorage.setItem(BRIEFS_KEY, JSON.stringify(trimmed));
+      return true;
+    } catch (err) {
+      if (!isQuotaExceededError(err)) {
+        console.warn("[precall] could not persist briefs:", err?.message || err);
+        return false;
+      }
+      if (trimmed.length <= 1) {
+        console.warn("[precall] localStorage quota exceeded; brief not cached locally");
+        return false;
+      }
+      trimmed = trimmed.slice(0, -1);
+      console.warn("[precall] localStorage quota exceeded; evicting oldest brief and retrying");
+    }
+  }
+  return false;
 }
 
 function closePopover() {
@@ -351,16 +419,26 @@ function wireTabInteractions() {
 
 function pushBriefRecord(record) {
   const list = loadLocalBriefs().filter((b) => b.id !== record.id);
-  list.unshift(record);
-  saveLocalBriefs(list);
+  list.unshift(compactBriefForStorage(record));
+  if (!saveLocalBriefs(list)) {
+    console.warn("[precall] brief kept in session only (local cache unavailable)");
+  }
 }
 
 export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
   if (!isV8Prep(prep)) return;
   const id = `${accountId(meta)}-${Date.now()}`;
   const storedInput = {
-    ...input,
-    linkedinProfileExports: linkedinProfileExportsForStorage() || input.linkedinProfileExports,
+    companyName: input.companyName,
+    companyDomain: input.companyDomain,
+    prospectEmail: input.prospectEmail,
+    prospectEmails: input.prospectEmails,
+    prepType: input.prepType,
+    dealId: input.dealId,
+    lifecycleId: input.lifecycleId,
+    additionalContext: input.additionalContext,
+    meetingZoomUrl: input.meetingZoomUrl,
+    kaiaMeetingUrl: input.kaiaMeetingUrl,
   };
   pushBriefRecord({
     id,
