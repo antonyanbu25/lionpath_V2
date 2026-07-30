@@ -8,6 +8,11 @@ globalThis.localStorage = {
   setItem: (k, v) => store.set(k, v),
   removeItem: (k) => store.delete(k),
 };
+globalThis.sessionStorage = {
+  getItem: (k) => store.get(`s:${k}`) ?? null,
+  setItem: (k, v) => store.set(`s:${k}`, v),
+  removeItem: (k) => store.delete(`s:${k}`),
+};
 
 class El {
   constructor(tag = "div") {
@@ -66,7 +71,7 @@ await renderSeLaunchpad(container, "se@freshworks.com", { seName: "Alex SE" });
 const html = container.innerHTML;
 const checks = [
   ["non-empty HTML", html.length > 200],
-  ["has greeting", html.includes("Good") && html.includes("Alex")],
+  ["has greeting", /,\s*Alex/.test(html) && html.includes("launch-greeting")],
   ["has KPI cards", html.includes("Open tasks") && html.includes("Calls analysed")],
   ["has task board mount", html.includes("task-board-mount")],
   ["has recent activity section", html.includes("Recent activity")],

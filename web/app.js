@@ -48,6 +48,8 @@ import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
+import { resetSessionGreeting } from "./greeting.js";
+import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
 import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
 import {
@@ -1282,6 +1284,7 @@ function showLogin() {
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
+  resetSessionGreeting();
   clearLocalStoreCache();
   clearHistoryAuthGetter();
   clearTasksAuthGetter();
@@ -1313,8 +1316,10 @@ async function showApp(session, opts = {}) {
     show($("login-view"), false);
     show($("app-shell"), true);
     refreshUserMenuFromSession();
+    updateTopbarDate();
 
     if (opts.freshLogin) {
+      resetSessionGreeting();
       triggerSignInPulse();
     }
 
@@ -1704,6 +1709,7 @@ async function boot() {
 
   initSidebar();
   wireUserMenu();
+  updateTopbarDate();
   initGlobalSearch({
     getSession: () => currentSession,
     switchView,

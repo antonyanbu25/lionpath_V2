@@ -20,7 +20,7 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css" />
-    <link rel="stylesheet" href="./styles.css?v=se-labs-align-2" />
+    <link rel="stylesheet" href="./styles.css?v=se-labs-sidebar-2" />
     <link rel="stylesheet" href="./precall.css?v=dispute-static-v11" />
     <link rel="stylesheet" href="./postcall.css" />
     <link rel="stylesheet" href="./call-view.css?v=call-notes-bullets-4" />
@@ -127,74 +127,65 @@
             </fw-button>
             <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
           </div>
-          <div class="sidebar-user" id="sidebar-user">
-            <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
-            <div class="sidebar-user-text">
-              <span class="sidebar-user-name" id="sidebar-user-name">-</span>
-              <span class="sidebar-user-role muted" id="sidebar-user-role">-</span>
-            </div>
-          </div>
         <nav class="sidebar-nav" role="navigation">
-          <div class="nav-grp">Capture</div>
-          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call">
-            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
-            <span class="nav-label">Pre-call</span>
+          <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="Dashboard">
+            <span slot="before-label" class="nav-icon nav-icon-text" aria-hidden="true">▦</span>
+            <span class="nav-label">Dashboard</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call">
-            <fw-icon slot="before-label" class="nav-icon" name="phone" size="16"></fw-icon>
-            <span class="nav-label">Post-call</span>
+          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call brief">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
+            <span class="nav-label">Pre-call brief</span>
           </fw-button>
-          <div class="nav-grp">Mine</div>
+          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call analysis">
+            <fw-icon slot="before-label" class="nav-icon" name="phone" size="18"></fw-icon>
+            <span class="nav-label">Post-call analysis</span>
+          </fw-button>
           <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
-            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="18"></fw-icon>
             <span class="nav-label">All calls</span>
           </fw-button>
+          <div class="sidebar-nav-divider" role="separator" aria-hidden="true"></div>
           <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
-            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="18"></fw-icon>
             <span class="nav-label">Accounts</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
-            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="18"></fw-icon>
             <span class="nav-label">My deals</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
-            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="18"></fw-icon>
             <span class="nav-label">My coaching</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="profile" data-role="se" color="secondary" fill="clear" title="Settings">
+            <span slot="before-label" class="nav-icon nav-icon-text" aria-hidden="true">⚙</span>
+            <span class="nav-label">Settings</span>
           </fw-button>
           <div class="nav-grp nav-grp--rollup" data-role="rollup" hidden>Roll-ups</div>
           <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
-            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="18"></fw-icon>
             <span class="nav-label">Team</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
-            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="18"></fw-icon>
             <span class="nav-label">Pipeline review</span>
           </fw-button>
           <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
-            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="18"></fw-icon>
             <span class="nav-label">Product signal</span>
           </fw-button>
         </nav>
-        <div class="sidebar-recent-work">
-          <h3 class="sidebar-history-title">
-            <fw-icon class="sidebar-history-icon" name="calendar-time" size="14"></fw-icon>
-            <span class="sidebar-history-label">Recent work</span>
-          </h3>
-          <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing…</p>
-          <div class="sidebar-recent-section">
-            <h4 class="sidebar-recent-subtitle">Discovery briefs</h4>
-            <ul id="sidebar-prep-list" class="sidebar-history-list"></ul>
-            <p id="sidebar-prep-empty" class="muted sidebar-history-empty">No discovery briefs yet.</p>
-          </div>
-          <div class="sidebar-recent-section">
-            <h4 class="sidebar-recent-subtitle">Call reviews</h4>
-            <ul id="sidebar-call-list" class="sidebar-history-list"></ul>
-            <p id="sidebar-call-empty" class="muted sidebar-history-empty">No call reviews yet.</p>
-          </div>
-        </div>
         <div class="sidebar-foot">
-          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
-            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
+          <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-controls="user-menu-panel" aria-label="Account menu">
+            <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
+            <div class="sidebar-user-text">
+              <span class="sidebar-user-name" id="sidebar-user-name">-</span>
+              <span class="sidebar-user-role" id="sidebar-user-role">Solution Engineering</span>
+            </div>
+            <span class="sidebar-user-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
             <span class="nav-label">Feedback</span>
           </fw-button>
         </div>
@@ -206,7 +197,11 @@
         <header class="main-topbar">
           <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
           <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
-          <span id="main-view-title" class="main-view-title">My dashboard</span>
+          <div class="topbar-date" id="topbar-date">
+            <span id="topbar-day" class="topbar-day muted"></span>
+            <span id="topbar-date-text" class="topbar-date-text"></span>
+          </div>
+          <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
           <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
           <div class="topbar-actions">
             <div class="user-menu" id="user-menu">

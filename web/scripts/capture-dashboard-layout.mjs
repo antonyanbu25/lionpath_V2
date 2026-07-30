@@ -99,7 +99,17 @@ const metrics = await page.evaluate(() => {
 
   const quickAdd = document.querySelector(".task-quick-add");
   const sidebarItem = document.querySelector(".sidebar-history-item");
+  const sidebarUser = document.getElementById("sidebar-user");
+  const sidebarNav = document.querySelector(".sidebar-nav");
+  const sidebarFoot = document.querySelector(".sidebar-foot");
+  const navDivider = document.querySelector(".sidebar-nav-divider");
+  const recentWork = document.querySelector(".sidebar-recent-work");
+  const captureGrp = document.querySelector('.nav-grp:not([hidden])');
+  const navLabels = [...document.querySelectorAll(".sidebar-nav .nav-label")].map((el) => el.textContent?.trim());
   const topbar = document.querySelector(".main-topbar");
+  const topbarDay = document.getElementById("topbar-day");
+  const topbarDateText = document.getElementById("topbar-date-text");
+  const greeting = document.querySelector(".launch-greeting");
 
   return {
     tabsLeft: m(tabs)?.left,
@@ -112,15 +122,36 @@ const metrics = await page.evaluate(() => {
       : null,
     sidebarItem: m(sidebarItem),
     sidebarClipped: sidebarItem ? sidebarItem.scrollWidth > sidebarItem.clientWidth + 1 : null,
+    sidebarLayout: {
+      userInFoot: sidebarFoot?.contains(sidebarUser),
+      userAfterNav:
+        sidebarUser && sidebarNav
+          ? sidebarUser.compareDocumentPosition(sidebarNav) & Node.DOCUMENT_POSITION_FOLLOWING
+          : null,
+      hasDivider: Boolean(navDivider),
+      hasRecentWork: Boolean(recentWork),
+      visibleNavGroups: Boolean(captureGrp),
+      navLabels,
+      userTop: m(sidebarUser)?.top,
+      navTop: m(sidebarNav)?.top,
+      footTop: m(sidebarFoot)?.top,
+    },
     topbar: topbar
-      ? { alignItems: getComputedStyle(topbar).alignItems, children: [...topbar.children].map((c) => m(c)) }
+      ? {
+          alignItems: getComputedStyle(topbar).alignItems,
+          children: [...topbar.children].map((c) => m(c)),
+          dayText: topbarDay?.textContent?.trim(),
+          dateText: topbarDateText?.textContent?.trim(),
+        }
       : null,
+    greetingText: greeting?.textContent?.trim(),
   };
 });
 
 log("A", "activity-rows", { rows: metrics.activityRows });
 log("B", "task-quick-add", metrics.quickAdd);
 log("C", "sidebar", { item: metrics.sidebarItem, clipped: metrics.sidebarClipped });
+log("F", "sidebar-layout", metrics.sidebarLayout);
 log("D", "tab-alignment", {
   tabsLeft: metrics.tabsLeft,
   kpiLeft: metrics.kpiLeft,
@@ -138,6 +169,17 @@ const quickAddSpread =
   quickAddHeights.length > 1 ? Math.max(...quickAddHeights) - Math.min(...quickAddHeights) : 0;
 const quickAddBad = quickAddSpread > 8;
 log("B", "task-quick-add-summary", { quickAddSpread, quickAddBad, heights: quickAddHeights });
-console.log(failed || tabMisaligned || quickAddBad ? "LAYOUT ISSUES DETECTED" : "LAYOUT OK");
+const sidebarBad =
+  !metrics.sidebarLayout?.userInFoot ||
+  !metrics.sidebarLayout?.hasDivider ||
+  metrics.sidebarLayout?.hasRecentWork ||
+  metrics.sidebarLayout?.visibleNavGroups;
+const topbarBad =
+  !metrics.topbar?.dayText ||
+  !metrics.topbar?.dateText ||
+  !metrics.greetingText?.includes("Alex");
+log("F", "sidebar-layout-summary", { sidebarBad, layout: metrics.sidebarLayout });
+log("G", "topbar-greeting-summary", { topbarBad, topbar: metrics.topbar, greeting: metrics.greetingText });
+console.log(failed || tabMisaligned || quickAddBad || sidebarBad || topbarBad ? "LAYOUT ISSUES DETECTED" : "LAYOUT OK");
 console.log("Log:", LOG);
-process.exit(failed || tabMisaligned || quickAddBad ? 1 : 0);
+process.exit(failed || tabMisaligned || quickAddBad || sidebarBad || topbarBad ? 1 : 0);

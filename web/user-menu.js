@@ -52,6 +52,11 @@ export function initUserMenu(opts) {
     toggleMenu();
   });
 
+  document.getElementById("sidebar-user")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
   document.getElementById("user-menu-profile")?.addEventListener("click", () => {
     closeMenu();
     opts.onProfileSettings?.();
@@ -108,9 +113,5 @@ export function refreshUserMenu(session) {
   const sidebarRole = document.getElementById("sidebar-user-role");
   if (sidebarAvatar) sidebarAvatar.textContent = initials;
   if (sidebarName) sidebarName.textContent = name || email.split("@")[0] || "User";
-  if (sidebarRole) {
-    const title = session?.jobTitle || "Solution Engineer";
-    const region = session?.region || session?.subRegion || "";
-    sidebarRole.textContent = region ? `${title} · ${region}` : title;
-  }
+  if (sidebarRole) sidebarRole.textContent = "Solution Engineering";
 }

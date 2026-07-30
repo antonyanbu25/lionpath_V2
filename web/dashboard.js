@@ -26,6 +26,7 @@ import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } fr
 import { countPrepsGenerated } from "./precall.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
+import { getSessionGreeting } from "./greeting.js";
 import {
   normalizeDimensionKey,
   barClass,
@@ -1025,12 +1026,6 @@ function renderOverviewEmptyState() {
     </fw-card>`;
 }
 
-function greetingForHour(hour) {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 function firstNameFromDisplay(seName) {
   const name = String(seName || "").trim();
   if (!name) return "there";
@@ -1285,14 +1280,14 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
   const seName = opts.seName || displayNameForEmail(email) || "there";
-  const greeting = greetingForHour(new Date().getHours());
+  const { greeting, subtitle } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">
       <div class="launch-hero">
         <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
-        <p class="launch-sub muted">Here's what needs you today.</p>
+        <p class="launch-sub muted">${esc(subtitle)}</p>
       </div>
       ${renderLaunchKpis(taskMetrics, metrics, prepsCount)}
       <div class="dash-split launch-split">
