@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>SE Singha Paathai | Freshworks</title>
+    <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./dew-theme.css" />
+    <link rel="stylesheet" href="./styles.css?v=accounts-flow-4" />
+    <link rel="stylesheet" href="./precall.css?v=dispute-static-v11" />
+    <link rel="stylesheet" href="./postcall.css" />
+    <link rel="stylesheet" href="./call-view.css?v=call-notes-bullets-4" />
+    <link rel="stylesheet" href="./lifecycle.css?v=accounts-flow-4" />
+    <style id="prep-dispute-critical-css">
+      #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
+      #prep-dispute-modal.prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+      #prep-dispute-modal .prep-dispute-dialog { width: min(480px,100%); background: #fff; color: #111; border: 1px solid #ccc; border-radius: 12px; padding: 0; max-height: 90vh; overflow: auto; }
+      #prep-dispute-modal .prep-dispute-form { display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 18px; }
+      #prep-dispute-modal .prep-dispute-field { display: flex; flex-direction: column; gap: 6px; }
+      #prep-dispute-modal .prep-dispute-select,
+      #prep-dispute-modal .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; }
+      #prep-dispute-modal .prep-dispute-textarea { min-height: 96px !important; }
+    </style>
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
+    ></script>
+  </head>
+  <body>
+    <!-- Lion splash (index only — see splash.js) -->
+    <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
+      <div class="lion-splash-inner">
+        <div class="lion-loader" aria-hidden="true">
+          <span class="sidebar-brand-icon lion-loader-mark">SW</span>
+          <fw-spinner size="large"></fw-spinner>
+        </div>
+        <h1 class="lion-title">SE Singha Paathai</h1>
+        <p class="lion-tagline">Freshworks Solution Engineering</p>
+      </div>
+    </div>
+
+    <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
+      <fw-card class="app-loading-card">
+        <fw-spinner size="medium"></fw-spinner>
+        <span>Loading your workspace…</span>
+      </fw-card>
+    </div>
+
+    <!-- Login -->
+    <div id="login-view" class="login-page">
+      <fw-card class="login-card form-panel">
+        <div class="login-card-head">
+          <div>
+            <h1>SE Singha Paathai</h1>
+            <p id="login-subtitle" class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+          </div>
+          <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
+        </div>
+        <form id="login-form" class="login-form" action="javascript:void(0)" novalidate>
+          <fw-input
+            id="login-email"
+            label="Email"
+            type="email"
+            autocomplete="username"
+            placeholder="se@freshworks.com"
+            required
+            clear-input
+          ></fw-input>
+          <fw-input
+            id="login-password"
+            label="Password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="••••••"
+            required
+            clear-input
+          ></fw-input>
+          <fw-button id="login-submit" color="primary" type="button">Sign in</fw-button>
+        </form>
+        <fw-inline-message id="login-error" type="error" closable="false" hidden></fw-inline-message>
+        <details id="login-hint" class="login-hint">
+          <summary>Demo credentials</summary>
+          <ul class="muted">
+            <li>Director: <code>vipin.thomas@freshworks.com</code> / <code>vipin123</code></li>
+            <li>Senior manager: <code>antony.sagayaraj@freshworks.com</code> / <code>leader123</code></li>
+            <li>Line manager (International - NB): <code>ajay.raghavan@freshworks.com</code> / <code>mgr123</code></li>
+            <li>Product (PM): <code>product.pm@freshworks.com</code> / <code>pm123</code></li>
+            <li>SE: <code>se@freshworks.com</code> / <code>se123</code></li>
+          </ul>
+        </details>
+        <div id="firebase-signin-block" hidden>
+          <p class="muted or-divider">or</p>
+          <fw-button id="signin-google" color="secondary" fill="outline">Sign in with Google</fw-button>
+          <fw-inline-message id="signin-error" type="error" closable="false" hidden></fw-inline-message>
+        </div>
+      </fw-card>
+    </div>
+
+    <!-- App shell -->
+    <div id="app-shell" class="app-shell" hidden>
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-inner">
+          <div class="sidebar-head">
+            <div class="sidebar-brand">
+              <span class="sidebar-brand-icon" aria-hidden="true">SP</span>
+              <span class="sidebar-brand-text">SE Singha Paathai</span>
+            </div>
+            <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
+              <span slot="before-label" class="sidebar-collapse-glyph" aria-hidden="true">‹</span>
+            </fw-button>
+            <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
+          </div>
+          <div class="sidebar-user" id="sidebar-user">
+            <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
+            <div class="sidebar-user-text">
+              <span class="sidebar-user-name" id="sidebar-user-name">-</span>
+              <span class="sidebar-user-role muted" id="sidebar-user-role">-</span>
+            </div>
+          </div>
+        <nav class="sidebar-nav" role="navigation">
+          <div class="nav-grp">Capture</div>
+          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
+            <span class="nav-label">Pre-call</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call">
+            <fw-icon slot="before-label" class="nav-icon" name="phone" size="16"></fw-icon>
+            <span class="nav-label">Post-call</span>
+          </fw-button>
+          <div class="nav-grp">Mine</div>
+          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
+            <fw-icon slot="before-label" class="nav-icon" name="calendar-time" size="16"></fw-icon>
+            <span class="nav-label">All calls</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
+            <span class="nav-label">Accounts</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <span class="nav-label">My deals</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="contacts" data-role="se" color="secondary" fill="clear" title="My contacts">
+            <fw-icon slot="before-label" class="nav-icon" name="contact" size="16"></fw-icon>
+            <span class="nav-label">My contacts</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <span class="nav-label">My coaching</span>
+          </fw-button>
+          <div class="nav-grp nav-grp--rollup" data-role="rollup" hidden>Roll-ups</div>
+          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="agent" size="16"></fw-icon>
+            <span class="nav-label">Team</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="currency" size="16"></fw-icon>
+            <span class="nav-label">Pipeline review</span>
+          </fw-button>
+          <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
+            <fw-icon slot="before-label" class="nav-icon" name="bulb" size="16"></fw-icon>
+            <span class="nav-label">Product signal</span>
+          </fw-button>
+        </nav>
+        <div class="sidebar-recent-work">
+          <h3 class="sidebar-history-title">
+            <fw-icon class="sidebar-history-icon" name="calendar-time" size="14"></fw-icon>
+            <span class="sidebar-history-label">Recent work</span>
+          </h3>
+          <p id="sidebar-history-sync" class="sidebar-history-sync muted" hidden>Syncing…</p>
+          <div class="sidebar-recent-section">
+            <h4 class="sidebar-recent-subtitle">Discovery briefs</h4>
+            <ul id="sidebar-prep-list" class="sidebar-history-list"></ul>
+            <p id="sidebar-prep-empty" class="muted sidebar-history-empty">No discovery briefs yet.</p>
+          </div>
+          <div class="sidebar-recent-section">
+            <h4 class="sidebar-recent-subtitle">Call reviews</h4>
+            <ul id="sidebar-call-list" class="sidebar-history-list"></ul>
+            <p id="sidebar-call-empty" class="muted sidebar-history-empty">No call reviews yet.</p>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="16"></fw-icon>
+            <span class="nav-label">Feedback</span>
+          </fw-button>
+        </div>
+        </div>
+      </aside>
+      <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+      <div class="app-main">
+        <header class="main-topbar">
+          <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
+          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
+          <span id="main-view-title" class="main-view-title">My dashboard</span>
+          <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
+          <div class="topbar-actions">
+            <div class="user-menu" id="user-menu">
+              <button type="button" id="user-menu-trigger" class="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
+                <span id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true">U</span>
+              </button>
+              <div id="user-menu-panel" class="user-menu-panel" hidden role="menu" aria-labelledby="user-menu-trigger">
+                <div class="user-menu-header">
+                  <span id="user-menu-name" class="user-menu-name"></span>
+                  <span id="user-menu-email" class="user-menu-email muted"></span>
+                </div>
+                <div class="user-menu-divider" role="separator"></div>
+                <button type="button" class="user-menu-item" id="user-menu-profile" role="menuitem">
+                  <span class="user-menu-item-icon" aria-hidden="true">⚙</span>
+                  <span class="user-menu-item-label">Profile settings</span>
+                </button>
+                <div class="user-menu-theme">
+                  <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
+                    <span class="user-menu-item-icon" aria-hidden="true">◐</span>
+                    <span class="user-menu-item-label">Theme</span>
+                    <span class="user-menu-chevron" aria-hidden="true">›</span>
+                  </button>
+                  <div id="user-menu-theme-submenu" class="user-menu-theme-submenu" hidden>
+                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="light" role="menuitemradio">Light</button>
+                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="dark" role="menuitemradio">Dark</button>
+                  </div>
+                </div>
+                <div class="user-menu-divider" role="separator"></div>
+                <button type="button" class="user-menu-item user-menu-signout" id="user-menu-signout" role="menuitem">
+                  <span class="user-menu-item-icon" aria-hidden="true">↪</span>
+                  <span class="user-menu-item-label">Sign out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div id="global-search-backdrop" class="global-search-backdrop" hidden></div>
+        <div id="global-search-modal" class="global-search-modal" hidden role="dialog" aria-label="Search">
+          <div class="global-search-modal-inner">
+            <fw-input id="global-search-palette-input" class="global-search-palette-input" placeholder="Search accounts, briefs, calls… (⌘K)" clear-input></fw-input>
+            <div id="global-search-results" class="global-search-results"></div>
+          </div>
+        </div>
+
+        <fw-inline-message id="worker-warning" class="wrap-banner worker-banner" type="error" closable="false" hidden></fw-inline-message>
+
+        <main class="main-content">
+          <!-- SE Dashboard (Overview + Coaching tabs) -->
+          <section id="view-dashboard" class="view-panel">
+            <fw-tabs id="dash-tabs" class="dash-tabs" active-tab-name="overview">
+              <fw-tab slot="tab" panel="overview">Overview</fw-tab>
+              <fw-tab slot="tab" panel="coaching">Coaching</fw-tab>
+              <fw-tab-panel name="overview">
+                <div id="dash-tab-overview" class="dash-tab-panel tab-active" role="tabpanel"></div>
+              </fw-tab-panel>
+              <fw-tab-panel name="coaching">
+                <div id="dash-tab-coaching" class="dash-tab-panel" role="tabpanel"></div>
+              </fw-tab-panel>
+            </fw-tabs>
+          </section>
+
+          <!-- Manager dashboard -->
+          <section id="view-manager" class="view-panel" hidden></section>
+
+          <!-- Pipeline review (org leadership) -->
+          <section id="view-pipeline" class="view-panel" hidden>
+            <div id="pipeline-panel" class="lifecycle-panel pipeline-panel"></div>
+          </section>
+
+          <!-- Product signal (PM / admin) -->
+          <section id="view-signal" class="view-panel" hidden>
+            <div id="product-signal-panel" class="lifecycle-panel product-signal-panel"></div>
+          </section>
+
+          <!-- SE detail (manager drill-down) -->
+          <section id="view-se" class="view-panel" hidden></section>
+
+          <!-- Profile settings -->
+          <section id="view-profile" class="view-panel" hidden>
+            <div id="profile-settings-root"></div>
+          </section>
+
+          <!-- Accounts -->
+          <section id="view-accounts" class="view-panel" hidden>
+            <div id="account-panel" class="lifecycle-panel account-panel"></div>
+          </section>
+
+          <!-- Deals -->
+          <section id="view-deals" class="view-panel" hidden>
+            <div id="deal-panel" class="lifecycle-panel deal-panel"></div>
+          </section>
+
+          <!-- My contacts -->
+          <section id="view-contacts" class="view-panel" hidden>
+            <div id="contacts-panel" class="lifecycle-panel contacts-panel"></div>
+          </section>
+
+          <!-- Call record -->
+          <section id="view-calls" class="view-panel" hidden>
+            <div id="call-panel" class="lifecycle-panel call-panel"></div>
+          </section>
+
+          <!-- Pre-call -->
+          <section id="view-precall" class="view-panel" hidden>
+            <div id="prep-form-view" class="prep-form-wrap">
+              <div class="prep-form-center">
+                <div class="prep-form-heading">
+                  <h1>Pre-call brief</h1>
+                  <p class="muted">Research the account and the room before you walk in. The brief becomes the answer key the post-call scorecard grades against.</p>
+                </div>
+                <div id="prep-motion-row" class="prep-motion-row" hidden>
+                  <div id="prep-motion-from-account" class="prep-motion-from-account" hidden>
+                    <fw-tag id="prep-motion-chip" color="blue"></fw-tag>
+                    <span class="muted">Change pursuit type on the account page.</span>
+                  </div>
+                  <fw-select id="prep-meeting-motion" class="prep-meeting-motion" label="Meeting motion" data-action="deal-type" value="new_business">
+                    <fw-select-option value="new_business">New business</fw-select-option>
+                    <fw-select-option value="expansion">Expansion</fw-select-option>
+                  </fw-select>
+                </div>
+                <fw-card class="prep-form-card">
+                  <form id="prep-form">
+                    <div class="prep-form-grid">
+                      <div class="prep-email-field prep-form-full">
+                        <fw-input id="prospectEmail" label="Prospect email" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="First email is the primary contact. Add more with commas." required clear-input></fw-input>
+                        <fw-tooltip content="First email is the primary contact. Add more with commas, e.g. alex@acme.com, sam@acme.com">
+                          <span class="prep-email-tip muted">Primary + comma-separated</span>
+                        </fw-tooltip>
+                      </div>
+                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible. Edit if the customer uses a different website." required clear-input></fw-input>
+                      <span id="domain-hint" class="field-hint prep-form-full" hidden></span>
+                    </div>
+                    <div class="prep-form-optional">
+                      <div class="prep-form-eyebrow">Optional</div>
+                      <div class="prep-optional-grid">
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">LinkedIn profiles</span>
+                          <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
+                          <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="prep-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add PDFs</fw-button>
+                            <span id="prep-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
+                          </div>
+                          <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
+                          <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
+                        </div>
+                        <div class="prep-meeting-col">
+                          <fw-input id="meetingZoomUrl" label="Meeting link" type="text" placeholder="Zoom or Kaia" clear-input></fw-input>
+                          <details class="prep-enrich-advanced prep-meeting-extra">
+                            <summary>More meeting links</summary>
+                            <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
+                            <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="https://engage.freshworks.com/s/…"></fw-input>
+                          </details>
+                        </div>
+                      </div>
+                      <fw-textarea
+                        id="additionalContext"
+                        label="Additional context"
+                        hint-text="Optional · AE notes, meeting type"
+                        rows="2"
+                        placeholder="AE notes, meeting type"
+                      ></fw-textarea>
+                    </div>
+                    <fw-button id="generate" color="primary" type="submit" class="prep-form-submit">Generate brief</fw-button>
+                    <p class="prep-form-footnote">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
+                  </form>
+                </fw-card>
+              </div>
+            </div>
+            <div id="prep-status" class="dew-status-host" hidden></div>
+            <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
+              <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="rect" height="120px" effect="sheen"></fw-skeleton>
+            </fw-card>
+            <div id="prep-legacy-fallback" hidden></div>
+            <div id="prep-result-view" hidden>
+              <div id="prep-result-header" class="prep-result-header"></div>
+              <fw-tabs id="prep-tabs" active-tab-name="discovery">
+                <fw-tab slot="tab" panel="discovery">Discovery</fw-tab>
+                <fw-tab slot="tab" panel="demo">Demo prep</fw-tab>
+                <fw-tab-panel name="discovery">
+                  <div class="prep-tab-panel-wrap">
+                    <div id="prep-tab-discovery"></div>
+                  </div>
+                </fw-tab-panel>
+                <fw-tab-panel name="demo">
+                  <div class="prep-tab-panel-wrap">
+                    <div id="prep-tab-demo"></div>
+                  </div>
+                </fw-tab-panel>
+              </fw-tabs>
+            </div>
+            <div id="prep-source-popover" hidden></div>
+          </section>
+
+          <!-- Post-call -->
+          <section id="view-postcall" class="view-panel" hidden>
+            <div id="postcall-form-view" class="prep-form-wrap">
+              <div class="prep-form-center">
+                <div class="prep-form-heading">
+                  <h1>Post-call analysis</h1>
+                  <p class="muted">Paste the recording. We pull transcript and video, find the deal, and score the call.</p>
+                </div>
+                <fw-card class="prep-form-card">
+                  <form id="postcall-form">
+                    <div class="postcall-recording-block">
+                      <fw-input
+                        id="pc-recording-url"
+                        label="Recording link"
+                        type="text"
+                        placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
+                        hint-text="Add Kaia share link or Zoom share link with Transcript enabled for viewers. Otherwise download the transcript from Zoom and upload it below."
+                        clear-input
+                      ></fw-input>
+                      <div id="pc-passcode-wrap" hidden>
+                        <fw-input
+                          id="pc-recording-pwd"
+                          label="Passcode"
+                          type="password"
+                          placeholder="Passcode from Zoom email"
+                          autocomplete="off"
+                          clear-input
+                        ></fw-input>
+                      </div>
+                    </div>
+                    <div class="prep-form-grid">
+                      <div class="prep-email-field">
+                        <fw-input
+                          id="pc-prospect-emails"
+                          label="Prospect emails"
+                          type="text"
+                          placeholder="alex@acme.com, sam@acme.com"
+                          hint-text="Multiple emails can be added with comma separation"
+                          required
+                          clear-input
+                        ></fw-input>
+                      </div>
+                      <div class="pc-lookup-field">
+                        <fw-input
+                          id="pc-company-name"
+                          label="Company"
+                          type="text"
+                          placeholder="Acme Corp"
+                          autocomplete="off"
+                          required
+                          clear-input
+                        ></fw-input>
+                        <div id="pc-company-suggest" class="pc-lookup-menu" role="listbox" hidden></div>
+                        <p id="pc-company-lookup-note" class="field-hint" hidden></p>
+                      </div>
+                    </div>
+                    <div id="pc-crm-matches" class="pc-crm-matches" hidden></div>
+                    <div class="prep-form-optional">
+                      <div class="prep-form-eyebrow">Optional</div>
+                      <div class="prep-optional-grid">
+                        <fw-input
+                          id="pc-deck-link"
+                          label="Deck link"
+                          type="text"
+                          placeholder="Google Slides or .pptx"
+                          clear-input
+                        ></fw-input>
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">LinkedIn PDFs</span>
+                          <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
+                          <input type="file" id="pc-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="pc-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add PDFs</fw-button>
+                            <span id="pc-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
+                          </div>
+                          <ul id="pc-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
+                          <p id="pc-linkedin-error" class="field-hint warn" hidden></p>
+                        </div>
+                      </div>
+                      <fw-textarea
+                        id="pc-additional-context"
+                        label="Discovery/Additional context"
+                        hint-text="Optional · AE notes, anything the recording won't show"
+                        rows="2"
+                        placeholder="AE notes, anything the recording won't show"
+                      ></fw-textarea>
+                    </div>
+                    <details class="prep-enrich-advanced postcall-transcript-fallback" id="pc-transcript-fallback">
+                      <summary>No recording? Upload or paste transcript</summary>
+                      <div class="prep-linkedin-upload">
+                        <span class="prep-linkedin-label">Transcript file</span>
+                        <p class="muted prep-linkedin-hint">In Zoom: open the recording → Audio Transcript → Download. Drop the .vtt here.</p>
+                        <input type="file" id="pc-transcript-file" accept=".vtt,.srt,.txt,text/vtt,text/plain" hidden />
+                        <div class="prep-linkedin-actions">
+                          <fw-button id="pc-transcript-file-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Upload VTT</fw-button>
+                        </div>
+                        <p id="pc-transcript-file-name" class="field-hint" hidden></p>
+                        <p id="pc-transcript-file-error" class="field-hint warn" hidden></p>
+                      </div>
+                      <fw-textarea
+                        id="pc-transcript"
+                        label="Transcript"
+                        hint-text="Video-dependent themes (camera, CDE, call flow, engagement) will be marked not applicable"
+                        rows="6"
+                        placeholder="Paste the call transcript…"
+                      ></fw-textarea>
+                    </details>
+                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit">Analyse call</fw-button>
+                    <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>
+                  </form>
+                </fw-card>
+              </div>
+            </div>
+            <div id="postcall-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
+            <fw-card id="postcall-confirm-view" class="postcall-confirm-card postcall-stage-panel" hidden></fw-card>
+            <div id="postcall-status" class="dew-status-host postcall-stage-panel" hidden></div>
+            <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
+              <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
+              <fw-skeleton variant="rect" height="150px" effect="sheen"></fw-skeleton>
+            </fw-card>
+            <fw-card id="postcall-result" class="result one-pager postcall-result-card" hidden></fw-card>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div id="prep-dispute-backdrop" class="prep-dispute-backdrop" hidden></div>
+    <div id="prep-dispute-modal" class="prep-dispute-overlay" hidden role="dialog" aria-labelledby="prep-dispute-title">
+      <div class="prep-dispute-dialog">
+        <header class="prep-dispute-header">
+          <h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2>
+          <button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">×</button>
+        </header>
+        <form id="prep-dispute-form" class="prep-dispute-form">
+          <p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p>
+          <div id="prep-dispute-target" class="prep-dispute-target" hidden></div>
+          <label class="prep-dispute-field" for="prep-dispute-category">
+            <span class="prep-dispute-label">Issue type</span>
+            <select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;">
+              <option value="wrong_data">Wrong data</option>
+              <option value="partial_missing">Partial / missing</option>
+              <option value="outdated">Outdated</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label class="prep-dispute-field" for="prep-dispute-note">
+            <span class="prep-dispute-label">What is wrong? (required for review)</span>
+            <textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue. Include the correct value or what's missing…" required style="display:block;width:100%;min-height:96px;"></textarea>
+          </label>
+          <div class="prep-dispute-actions">
+            <button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button>
+            <button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button>
+          </div>
+          <div id="prep-dispute-status" class="dew-status-host" hidden></div>
+        </form>
+      </div>
+    </div>
+
+    <fw-modal id="feedback-modal" title-text="Send feedback" is-open="false">
+      <fw-modal-content>
+        <form id="feedback-form" class="feedback-form">
+          <fw-select id="feedback-category" label="Category" value="idea">
+            <fw-select-option value="bug">Bug</fw-select-option>
+            <fw-select-option value="idea">Idea</fw-select-option>
+            <fw-select-option value="data">Data quality</fw-select-option>
+          </fw-select>
+          <fw-textarea
+            id="feedback-text"
+            label="Your feedback"
+            rows="5"
+            placeholder="What worked, what didn't, or what you'd like to see…"
+            required
+          ></fw-textarea>
+          <div class="feedback-actions">
+            <fw-button id="feedback-close" type="button" color="secondary" fill="outline">Cancel</fw-button>
+            <fw-button id="feedback-submit" type="submit" color="primary">Submit</fw-button>
+          </div>
+          <div id="feedback-status" class="dew-status-host" hidden></div>
+        </form>
+      </fw-modal-content>
+    </fw-modal>
+
+    <script type="module" src="./theme.js"></script>
+    <script type="module" src="./splash.js"></script>
+    <script>
+      // Static dispute modal shell — created once at page load
+      (function initDisputeShell() {
+        // Prevent default form submit on login form
+        document.getElementById("login-form")?.addEventListener("submit", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        var modal = document.getElementById("prep-dispute-modal");
+        var backdrop = document.getElementById("prep-dispute-backdrop");
+        if (!backdrop) {
+          backdrop = document.createElement("div");
+          backdrop.id = "prep-dispute-backdrop";
+          backdrop.className = "prep-dispute-backdrop";
+          backdrop.hidden = true;
+          document.body.appendChild(backdrop);
+        }
+        if (!modal || modal.tagName !== "DIV") {
+          if (modal) modal.remove();
+          modal = document.createElement("div");
+          modal.id = "prep-dispute-modal";
+          modal.className = "prep-dispute-overlay";
+          modal.hidden = true;
+          modal.setAttribute("role", "dialog");
+          modal.setAttribute("aria-labelledby", "prep-dispute-title");
+          var tpl = document.getElementById("prep-dispute-modal-template");
+          modal.innerHTML = tpl ? tpl.innerHTML : '<div class="prep-dispute-dialog"><header class="prep-dispute-header"><h2 id="prep-dispute-title" class="prep-dispute-title">Report research issue</h2><button type="button" id="prep-dispute-close-x" class="prep-dispute-close-x" aria-label="Close">\u00d7</button></header><form id="prep-dispute-form" class="prep-dispute-form"><p id="prep-dispute-context" class="muted">Select an issue type and describe what is wrong.</p><div id="prep-dispute-target" class="prep-dispute-target" hidden></div><label class="prep-dispute-field" for="prep-dispute-category"><span class="prep-dispute-label">Issue type</span><select id="prep-dispute-category" class="prep-dispute-select" required style="display:block;width:100%;min-height:42px;"><option value="wrong_data">Wrong data</option><option value="partial_missing">Partial / missing</option><option value="outdated">Outdated</option><option value="other">Other</option></select></label><label class="prep-dispute-field" for="prep-dispute-note"><span class="prep-dispute-label">What is wrong? (required for review)</span><textarea id="prep-dispute-note" class="prep-dispute-textarea" rows="4" placeholder="Describe the issue. include the correct value or what\'s missing…" required style="display:block;width:100%;min-height:96px;"></textarea></label><div class="prep-dispute-actions"><button type="button" id="prep-dispute-cancel" class="prep-dispute-btn prep-dispute-btn-secondary">Cancel</button><button type="submit" id="prep-dispute-submit" class="prep-dispute-btn prep-dispute-btn-primary">Submit report</button></div><div id="prep-dispute-status" class="dew-status-host" hidden></div></form></div>';
+          document.body.appendChild(modal);
+        }
+
+        window.ensureStaticDisputeShell = initDisputeShell;
+        window.purgeLegacyDisputeModal = function() {};
+
+        window.ensureDisputeFieldsVisible = function() {
+          var cat = document.getElementById("prep-dispute-category");
+          var note = document.getElementById("prep-dispute-note");
+          if (cat) { cat.style.display = "block"; cat.style.width = "100%"; cat.style.minHeight = "42px"; }
+          if (note) { note.style.display = "block"; note.style.width = "100%"; note.style.minHeight = "96px"; }
+        };
+
+        // Delegated click handler for dispute triggers
+        document.addEventListener("click", function(ev) {
+          var btn = ev.target && ev.target.closest ? ev.target.closest(".prep-dispute-trigger") : null;
+          if (!btn) {
+            var path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+            for (var i = 0; i < path.length; i++) {
+              if (path[i] && path[i].classList && path[i].classList.contains("prep-dispute-trigger")) { btn = path[i]; break; }
+            }
+          }
+          if (!btn) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          var key = btn.getAttribute("data-dispute-key") || "";
+          var company = (document.querySelector(".prep-company-name") || {}).textContent || "";
+          if (window.openSeDisputeModal) {
+            window.openSeDisputeModal({
+              step: btn.getAttribute("data-dispute-step") || "brief_result",
+              section: btn.getAttribute("data-dispute-section") || "general",
+              factKeys: key ? [key] : [],
+              companyName: company.trim(),
+            });
+          }
+        }, true);
+
+        function closeDispute() {
+          var m = document.getElementById("prep-dispute-modal");
+          var b = document.getElementById("prep-dispute-backdrop");
+          if (m) m.hidden = true;
+          if (b) b.hidden = true;
+        }
+        document.getElementById("prep-dispute-cancel")?.addEventListener("click", closeDispute);
+        document.getElementById("prep-dispute-close-x")?.addEventListener("click", closeDispute);
+        document.getElementById("prep-dispute-backdrop")?.addEventListener("click", closeDispute);
+      })();
+    </script>
+    <script type="module" src="./prep-disputes-boot.mjs?v=dispute-static-v11"></script>
+    <script>
+      (function applyProductionLoginShellInline() {
+        var h = location.hostname;
+        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
+        function apply() {
+          var form = document.getElementById("login-form");
+          var hint = document.getElementById("login-hint");
+          var block = document.getElementById("firebase-signin-block");
+          var sub = document.getElementById("login-subtitle");
+          if (form) form.hidden = true;
+          if (hint) hint.hidden = true;
+          if (block) block.hidden = false;
+          if (sub) sub.textContent = "Sign in with your @freshworks.com Google account.";
+          var div = block && block.querySelector(".or-divider");
+          if (div) div.hidden = true;
+        }
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+        else apply();
+      })();
+      window.addEventListener("error", function (ev) {
+        var msg = String(ev.message || "");
+        if (!/module|import|export|SyntaxError/i.test(msg)) return;
+        var el = document.getElementById("login-error");
+        if (!el) return;
+        el.textContent = "App failed to start: " + msg + ". Hard-refresh (Ctrl+Shift+R) and try again.";
+        el.hidden = false;
+        try {
+          var key = "se-sp-boot-debug";
+          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
+          arr.push({ message: "module load error", error: msg, timestamp: Date.now() });
+          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+        } catch (e) {}
+      }, true);
+    </script>
+    <script type="module">
+      import "./firebase-config.js?v=auth-fix-v3";
+      import("./app.js?v=call-record-nav-2").catch(function (err) {
+        console.error("App boot failed:", err);
+        var el = document.getElementById("login-error");
+        if (el) {
+          el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";
+          el.hidden = false;
+        }
+        try {
+          var key = "se-sp-boot-debug";
+          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
+          arr.push({ message: "app.js import failed", error: String(err.message || err), timestamp: Date.now() });
+          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
+        } catch (e) {}
+      });
+    </script>
+  </body>
+</html>

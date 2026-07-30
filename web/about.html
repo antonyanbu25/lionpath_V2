@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About | SE Singha Paathai</title>
+    <!-- Dew head — see web/partials/head-dew.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./dew-theme.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
+    ></script>
+    <script type="module" src="./theme.js"></script>
+  </head>
+  <body class="about-page">
+    <header class="about-header">
+      <div class="about-header-top">
+        <a href="./index.html" class="about-back">← Back to app</a>
+        <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
+      </div>
+      <p class="about-kicker muted">SE Singha Paathai · Freshworks Solution Engineering</p>
+      <h1>About this project</h1>
+      <p class="about-lead muted">
+        A coaching portal that turns recorded customer demos into summaries, next steps, and quality feedback in under a minute.
+      </p>
+    </header>
+
+    <main class="about-main">
+      <fw-card class="about-section">
+        <h2>What is it?</h2>
+        <p>
+          <strong>SE Singha Paathai</strong> helps Solution Engineers debrief after customer calls without the manual write-up.
+          Paste a Zoom recording link and the system reads what was actually said on the call, then returns three things:
+        </p>
+        <ul class="about-list">
+          <li><strong>Call summary</strong>: a structured recap of who was on the call, what was discussed, and what was decided</li>
+          <li><strong>Next steps</strong>: prioritized actions, a follow-up email draft, and CRM-ready notes</li>
+          <li><strong>Quality Coach</strong>: an evidence-based scorecard on how the SE ran the demo</li>
+        </ul>
+        <p class="muted about-note">
+          It is designed to support every SE with a consistent debrief, not to replace the SE or manager judgment.
+        </p>
+      </fw-card>
+
+      <fw-card class="about-section">
+        <h2>How post-call analysis works</h2>
+        <p class="muted">No file uploads in the default flow; just paste your Zoom cloud recording link.</p>
+        <ol class="about-steps">
+          <li>
+            <span class="about-step-num">1</span>
+            <div>
+              <strong>Sign in</strong> to the SE portal.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">2</span>
+            <div>
+              <strong>Open “New analysis”</strong> and paste the Zoom recording URL from your “recording is ready” email.
+              Add the passcode if it is not in the link, or paste both in one line.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">3</span>
+            <div>
+              <strong>Click “Analyze call.”</strong> The system fetches the audio transcript from Zoom’s share link.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">4</span>
+            <div>
+              <strong>Wait ~10–25 seconds.</strong> The UI shows progress and prevents double-submit.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">5</span>
+            <div>
+              <strong>Review results</strong>: summary, next steps, and Quality Coach. Copy the follow-up email or print the page.
+            </div>
+          </li>
+          <li>
+            <span class="about-step-num">6</span>
+            <div>
+              <strong>History and dashboard update</strong>: the analysis is saved under your account and feeds your quality metrics.
+            </div>
+          </li>
+        </ol>
+        <div class="about-callout">
+          <strong>What you get from each analysis</strong>
+          <div class="about-grid2">
+            <div>
+              <h3>Call summary</h3>
+              <p class="muted">Headline, customer context, attendees, key topics, pain points, objections, competitive mentions, decisions, and open questions.</p>
+            </div>
+            <div>
+              <h3>Next steps</h3>
+              <p class="muted">SE and AE action items, customer commitments, a suggested follow-up email, and paste-ready CRM notes.</p>
+            </div>
+          </div>
+        </div>
+      </fw-card>
+
+      <fw-card class="about-section">
+        <h2>Quality Coach</h2>
+        <p>
+          Coaching feedback modeled on how an SE manager would QA a recorded demo: honest and evidence-based, not flattering.
+        </p>
+        <ul class="about-list">
+          <li><strong>Overall score</strong>: 0–10 gauge with a label (Excellent, Strong, Good, Developing, Needs focus)</li>
+          <li><strong>Radar chart</strong>: visual profile across all six dimensions</li>
+          <li><strong>Expandable scorecard</strong>: each dimension shows score, written feedback, and transcript evidence</li>
+          <li><strong>Strengths, improvements, and missed opportunities</strong>: actionable coaching takeaways</li>
+        </ul>
+
+        <h3 class="about-subhead">Six coaching dimensions</h3>
+        <p class="muted">Each dimension is scored 1–5. The AI cites transcript evidence; it does not invent moments that did not happen.</p>
+        <div class="about-table-wrap">
+          <table class="about-table">
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>What it measures</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Discovery</strong></td>
+                <td>Did you uncover real pain before jumping into the demo?</td>
+              </tr>
+              <tr>
+                <td><strong>Demo alignment</strong></td>
+                <td>Did you show capabilities tied to what the customer said they need?</td>
+              </tr>
+              <tr>
+                <td><strong>Objections</strong></td>
+                <td>When concerns came up, did you acknowledge and respond with specifics?</td>
+              </tr>
+              <tr>
+                <td><strong>Value articulation</strong></td>
+                <td>Did you connect Freshworks to business outcomes, not just list features?</td>
+              </tr>
+              <tr>
+                <td><strong>Next-step clarity</strong></td>
+                <td>Did the call end with clear owners, dates, and commitments?</td>
+              </tr>
+              <tr>
+                <td><strong>Talk balance</strong></td>
+                <td>Was speaking time reasonably balanced between SE and customer?</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </fw-card>
+
+      <fw-card class="about-section">
+        <h2>Scoring explained</h2>
+
+        <h3 class="about-subhead">Per dimension (1–5)</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Score</th>
+                <th>Label</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>5</strong></td>
+                <td>Exceptional</td>
+                <td>Best-in-class execution with clear transcript proof</td>
+              </tr>
+              <tr>
+                <td><strong>4</strong></td>
+                <td>Solid</td>
+                <td>Meets SE expectations; only minor gaps</td>
+              </tr>
+              <tr>
+                <td><strong>3</strong></td>
+                <td>Acceptable</td>
+                <td>Basic execution with noticeable weaknesses; typical for an average call</td>
+              </tr>
+              <tr>
+                <td><strong>2</strong></td>
+                <td>Needs improvement</td>
+                <td>Significant misses or weak handling</td>
+              </tr>
+              <tr>
+                <td><strong>1</strong></td>
+                <td>Missed</td>
+                <td>Dimension largely absent or handled poorly</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">Overall score (out of 10)</h3>
+        <p class="muted">
+          Computed automatically from the six dimension scores. The AI does not assign the overall number directly; this keeps scoring consistent.
+        </p>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>9.0+</strong></td><td>Excellent</td></tr>
+              <tr><td><strong>7.0 – 8.9</strong></td><td>Strong</td></tr>
+              <tr><td><strong>5.5 – 6.9</strong></td><td>Good</td></tr>
+              <tr><td><strong>4.0 – 5.4</strong></td><td>Developing</td></tr>
+              <tr><td><strong>Below 4.0</strong></td><td>Needs focus</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="about-calibration muted">
+          Scoring is intentionally strict for the MVP. A typical average call should land around 3–3.5 per dimension (~6–7 overall).
+          A score of 5 on any dimension requires specific transcript evidence of excellence.
+        </p>
+      </fw-card>
+
+      <fw-card id="code-logic" class="about-section about-code-logic">
+        <div class="about-code-head">
+          <h2>How the code works</h2>
+          <fw-button class="about-print-btn" color="secondary" fill="outline" data-print-guide="code">Print / Save as PDF</fw-button>
+        </div>
+        <p class="about-note"><strong>Paste <code>docs/CODE_LOGIC.md</code> to your AI coding assistant before starting a task on this repo.</strong></p>
+
+        <h3 class="about-subhead">What Lionpath is</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Flow</th><th>When</th><th>Output</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pre-call prep</strong></td><td>Before discovery (company + email)</td><td>Research brief one-pager</td></tr>
+              <tr><td><strong>Post-call analysis</strong></td><td>After Zoom recording</td><td>Summary, next steps, Quality Coach</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">The pieces, in plain English</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Plain name</th><th>File</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td>The page shell</td><td><code>web/index.html</code></td><td>HTML layout: login, sidebar, forms, results</td></tr>
+              <tr><td>The page logic</td><td><code>web/app.js</code></td><td>Login gate, navigation, prep form + render</td></tr>
+              <tr><td>The post-call UI</td><td><code>web/postcall.js</code></td><td>Post-call form, result display, copy/print</td></tr>
+              <tr><td>The dashboards</td><td><code>web/dashboard.js</code></td><td>SE stats and manager team rollup</td></tr>
+              <tr><td>The doorman</td><td><code>web/auth.js</code></td><td>Demo login or Firebase SSO</td></tr>
+              <tr><td>The memory (browser)</td><td><code>web/history.js</code></td><td>Browser cache + server sync on login</td></tr>
+              <tr><td>The messenger</td><td><code>worker/src/index.ts</code></td><td>API routes, CORS, auth, history endpoints</td></tr>
+              <tr><td>The researcher</td><td><code>worker/src/prep.ts</code></td><td>Prep prompt + Gemini → research JSON</td></tr>
+              <tr><td>The debriefer</td><td><code>worker/src/postcall.ts</code></td><td>Transcript → Gemini → analysis JSON</td></tr>
+              <tr><td>The rulebook</td><td><code>schema.ts</code> / <code>postcall-schema.ts</code></td><td>Defines every JSON field the AI must return</td></tr>
+              <tr><td>The trimmer</td><td><code>worker/src/word-limits.ts</code></td><td>Word caps + shape normalization</td></tr>
+              <tr><td>The scorer</td><td><code>worker/src/quality-score.ts</code></td><td>Overall Quality Coach score from six dimensions</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">How it works, start to finish</h3>
+        <pre class="about-arch" aria-label="Architecture diagram">Browser (web/)  →  Worker API (worker/)  →  Gemini (structured JSON)
+                      ↓
+              History storage (KV or file)</pre>
+        <p class="muted">Server setup: <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md">docs/VPS_DEPLOY.md</a></p>
+        <div class="about-callout">
+          <strong>1. Discovery prep</strong>
+          <p class="muted">The page logic (<code>app.js</code>) → <code>POST /api/generate-prep</code> → the researcher (<code>prep.ts</code>) → the trimmer (<code>word-limits.ts</code>) → <code>renderPrep</code>. ~15–45s.</p>
+        </div>
+        <div class="about-callout">
+          <strong>2. Post-call analysis</strong>
+          <p class="muted">The post-call UI (<code>postcall.js</code>) → <code>POST /api/analyze-call</code> → the debriefer (<code>postcall.ts</code>) → the scorer (<code>quality-score.ts</code>) → <code>renderPostCall</code>. ~10–25s.</p>
+        </div>
+        <div class="about-callout">
+          <strong>3. History</strong>
+          <p class="muted">The memory (<code>history.js</code>) saves to localStorage, syncs via <code>/api/history</code> on login. Dashboards read entries.</p>
+        </div>
+        <pre class="about-arch" aria-label="Data pipeline">Form → POST /api/... → Gemini JSON → validate + trim → render one-pager HTML</pre>
+        <p class="muted">Tables and bullets only. Prompts set word caps; UI truncates if needed.</p>
+
+        <h3 class="about-subhead">The one rule that matters</h3>
+        <p class="muted">
+          <strong>Schema ↔ render contract.</strong> The rulebook (<code>schema.ts</code> / <code>postcall-schema.ts</code>) defines the JSON shape.
+          The trimmer (<code>word-limits.ts</code>) normalizes it. The page logic (<code>app.js</code> / <code>postcall.js</code>) renders it.
+          Change a field in all four places together.
+        </p>
+
+        <h3 class="about-subhead">What breaks when you change something</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Plain name</th><th>You change…</th><th>Also update…</th><th>Safety</th></tr></thead>
+            <tbody>
+              <tr><td>The rulebook (prep)</td><td><code>schema.ts</code></td><td><code>prep.ts</code>, <code>word-limits.ts</code>, <code>app.js</code></td><td>CHANGE TOGETHER</td></tr>
+              <tr><td>The rulebook (post-call)</td><td><code>postcall-schema.ts</code></td><td><code>postcall.ts</code>, <code>word-limits.ts</code>, <code>quality-score.ts</code>, <code>postcall.js</code></td><td>CHANGE TOGETHER</td></tr>
+              <tr><td>The trimmer</td><td><code>word-limits.ts</code></td><td>Nothing</td><td>SAFE alone</td></tr>
+              <tr><td>The look</td><td><code>styles.css</code></td><td>Nothing</td><td>SAFE alone</td></tr>
+              <tr><td>The doorman</td><td><code>auth.js</code></td><td><code>app.js</code>, <code>dashboard.js</code>, <code>history.js</code></td><td>TEST BOTH LOGINS</td></tr>
+              <tr><td>The researcher / debriefer</td><td><code>prep.ts</code> / <code>postcall.ts</code></td><td>Schema only if JSON shape changes</td><td>SAFE / CHANGE TOGETHER</td></tr>
+              <tr><td>The messenger</td><td><code>index.ts</code> routes</td><td><code>app.js</code>, <code>postcall.js</code>, <code>history.js</code>, <code>firebase-config.js</code></td><td>CHANGE TOGETHER</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="about-subhead">Where to change things</h3>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead><tr><th>Change</th><th>File(s)</th></tr></thead>
+            <tbody>
+              <tr><td>Pre-call AI prompt</td><td><code>worker/src/prep.ts</code></td></tr>
+              <tr><td>Post-call AI prompt</td><td><code>worker/src/postcall.ts</code></td></tr>
+              <tr><td>JSON schemas</td><td><code>schema.ts</code>, <code>postcall-schema.ts</code></td></tr>
+              <tr><td>Word caps</td><td><code>worker/src/word-limits.ts</code></td></tr>
+              <tr><td>Prep UI + render</td><td><code>web/app.js</code></td></tr>
+              <tr><td>Post-call UI + render</td><td><code>web/postcall.js</code></td></tr>
+              <tr><td>Styles / print</td><td><code>web/styles.css</code></td></tr>
+              <tr><td>API routes / auth</td><td><code>worker/src/index.ts</code></td></tr>
+              <tr><td>Worker URL</td><td><code>web/firebase-config.js</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted about-print-hint">Full markdown version: <code>docs/CODE_LOGIC.md</code> in the repo.</p>
+      </fw-card>
+
+      <fw-card id="discovery-wireframe" class="about-section print-wireframe-guide">
+        <div class="about-section-head">
+          <h2>Discovery pre-call wireframe</h2>
+          <fw-button class="about-print-btn" color="secondary" fill="outline" data-print-guide="wireframe">Print / Save as PDF</fw-button>
+        </div>
+        <p class="muted">
+          One continuous <strong>Account Snapshot</strong> table: company header is the first row, not a separate block above.
+          ≤8 words per cell · no invented stats · one printed page.
+        </p>
+        <pre class="about-wireframe" aria-label="Discovery table wireframe">| Company name | domain | One-line description | Attendee chips (name · role · dot) |
+| FIT |
+| Attribute           | This company | Industry norm | GAP |
+| Omnichannel Support |              |               |     |
+| AI Deflection       |              |               |     |
+| Agent Assist        |              |               |     |
+| ACCOUNT FACTS |
+| Incumbent        | value (colspan) |
+| Support agents   |                 |
+| Market           |                 |
+| Business model   |                 |
+| Users            |                 |
+| Uptime need      |                 |
+| Funding / parent |                 |
+| Head office      |                 |
+| Languages        |                 |
+| INDUSTRY USE CASES (max 3) |
+| use case (colspan) |
+|                  |
+|                  |
+| DISCOVERY KIT (max 3) |
+| Ask this | Because |
+|          |         |
+|          |         |
+|          |         |
+| DEMO PREP (max 3) |
+| Pain | Capability | Value |
+|      |            |       |
+|      |            |       |
+|      |            |       |
+| RESOURCES |
+| [link] [link] [link] (colspan) |
+
+Sources (collapsible footer, outside table)
+
+REMOVED: Support Maturity block · Signals block · separate card stacks · header above table</pre>
+        <p class="muted about-print-hint">
+          Full doc: <a href="https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md">DISCOVERY_WIREFRAME.md</a>
+          · Slack copy-paste: <code>docs/SLACK_DISCOVERY_WIREFRAME.txt</code>
+        </p>
+        <h3 class="about-subhead">Team feedback</h3>
+        <ul class="about-list muted">
+          <li>Approve layout, or change section order / rows?</li>
+          <li>Sources in footer vs inside table?</li>
+          <li>Resource link count OK?</li>
+        </ul>
+      </fw-card>
+
+      <fw-card class="about-section about-demo">
+        <h2>Demo login</h2>
+        <p class="muted">For local demos and shared environments (dummy auth, not production SSO).</p>
+        <p class="muted">Team portal: <a href="https://lionpath.benjaminsquare.com">https://lionpath.benjaminsquare.com</a></p>
+        <div class="about-table-wrap">
+          <table class="about-table about-table-compact">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Password</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>SE</td>
+                <td><code>se@freshworks.com</code></td>
+                <td><code>se123</code></td>
+              </tr>
+              <tr>
+                <td>Manager</td>
+                <td><code>manager@freshworks.com</code></td>
+                <td><code>mgr123</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="about-demo-path muted">
+          <strong>Suggested demo path:</strong> Log in as SE → New analysis → paste a Zoom recording link → review results → open My dashboard → click a History item to reload a past call.
+        </p>
+        <p class="about-cta">
+          <a href="./index.html"><fw-button color="primary" class="about-btn">Open the app</fw-button></a>
+        </p>
+      </fw-card>
+    </main>
+
+    <footer class="site-footer">
+      <span class="muted">SE Singha Paathai · Freshworks</span>
+      <a href="#discovery-wireframe" class="muted" style="margin-left:1rem">Discovery wireframe</a>
+      <a href="#code-logic" class="muted" style="margin-left:1rem">How the code works</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/DISCOVERY_WIREFRAME.md" class="muted" style="margin-left:1rem">DISCOVERY_WIREFRAME.md</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/CODE_LOGIC.md" class="muted" style="margin-left:1rem">CODE_LOGIC.md</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/README.md" class="muted" style="margin-left:1rem">README</a>
+      <a href="https://github.com/skut264/lionpath/blob/main/docs/VPS_DEPLOY.md" class="muted" style="margin-left:1rem">VPS deploy guide</a>
+    </footer>
+    <script>
+      function printCodeGuide() {
+        document.body.classList.add("print-code-guide");
+        window.print();
+        window.addEventListener("afterprint", () => document.body.classList.remove("print-code-guide"), { once: true });
+      }
+      function printWireframeGuide() {
+        document.body.classList.add("print-wireframe-guide");
+        window.print();
+        window.addEventListener("afterprint", () => document.body.classList.remove("print-wireframe-guide"), { once: true });
+      }
+      document.querySelector('[data-print-guide="code"]')?.addEventListener("fwClick", printCodeGuide);
+      document.querySelector('[data-print-guide="wireframe"]')?.addEventListener("fwClick", printWireframeGuide);
+    </script>
+  </body>
+</html>

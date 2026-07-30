@@ -1,0 +1,37 @@
+# Build prep-portal-api + prep-portal-web images for Cloud Run.
+# Run from repo root: gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
+#
+# Requires web/firebase-config.local.js on the build machine (gitignored) for Google SSO.
+
+substitutions:
+  _REGION: us-central1
+  _PROJECT: se-singha-paathi
+  _REPO: prep-portal
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build-api
+    args:
+      - build
+      - -f=deploy/cloudrun/Dockerfile.api
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+      - worker
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-web
+    args:
+      - build
+      - -f=deploy/cloudrun/Dockerfile.web
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,179 @@
+/**
+ * Node HTTP server for VPS deployment (Docker / systemd).
+ * Wraps the Cloudflare Worker fetch handler with file-based history when HISTORY_FILE_DIR is set.
+ */
+
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import worker from "./index";
+import { createFileHistoryBackend } from "./history-file";
+import type { HistoryEnv } from "./history";
+import type { Env as PrepEnv } from "./prep";
+import type { ZoomEnv } from "./zoom";
+
+interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv {
+  ALLOWED_ORIGINS?: string;
+  ALLOWED_EMAIL_DOMAIN?: string;
+  FIREBASE_PROJECT_ID?: string;
+  VIDEO_PASS_ENABLED?: string;
+  VIDEO_DATA_DIR?: string;
+}
+
+const PORT = Number(process.env.PORT || 8787);
+// Prefer :: so localhost resolves over IPv6 and IPv4 (macOS browsers often hit ::1 first).
+const HOST = process.env.HOST || "::";
+
+function buildEnv(): NodeEnv {
+  const env: NodeEnv = {
+    LLM_PROVIDER: process.env.LLM_PROVIDER || "gemini",
+    MODEL: process.env.MODEL || "gemini-3.1-flash-lite",
+    RESEARCH_MODEL: process.env.RESEARCH_MODEL || "",
+    RESEARCH_THINKING_LEVEL: process.env.RESEARCH_THINKING_LEVEL || "medium",
+    SYNTHESIZE_MODEL: process.env.SYNTHESIZE_MODEL || "",
+    EFFORT: process.env.EFFORT || "medium",
+    POSTCALL_LLM_PROVIDER: process.env.POSTCALL_LLM_PROVIDER || "gemini",
+    POSTCALL_MODEL: process.env.POSTCALL_MODEL || "gemini-3.1-flash-lite",
+    POSTCALL_EFFORT: process.env.POSTCALL_EFFORT || "low",
+    ALLOWED_ORIGINS:
+      process.env.ALLOWED_ORIGINS ||
+      "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com",
+    ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
+    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ZOOM_ACCOUNT_ID: process.env.ZOOM_ACCOUNT_ID,
+    ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID,
+    ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET,
+    ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI,
+    VIDEO_PASS_ENABLED: process.env.VIDEO_PASS_ENABLED || "1",
+    VIDEO_DATA_DIR: process.env.VIDEO_DATA_DIR || "/data/video",
+  };
+
+  const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
+  if (historyDir) {
+    env.HISTORY_BACKEND = createFileHistoryBackend(historyDir);
+  }
+
+  return env;
+}
+
+function corsHeadersFor(req: IncomingMessage, env: NodeEnv): Record<string, string> {
+  const allowed = (env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  const allowOrigin = origin && allowed.includes(origin) ? origin : allowed[0] || "*";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
+
+async function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    return undefined;
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return chunks.length ? Buffer.concat(chunks) : undefined;
+}
+
+function applyResponseHeaders(res: ServerResponse, headers: Headers): void {
+  headers.forEach((value, key) => {
+    if (key.toLowerCase() === "content-length") return;
+    res.setHeader(key, value);
+  });
+}
+
+const env = buildEnv();
+
+createServer(async (req, res) => {
+  const cors = corsHeadersFor(req, env);
+  try {
+    const host = req.headers.host || `localhost:${PORT}`;
+    const url = new URL(req.url || "/", `http://${host}`);
+
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
+      res.end();
+      return;
+    }
+
+    // Pass 2 with ffmpeg — Node only (keeps CF Worker bundle free of node:fs/child_process).
+    if (req.method === "POST" && url.pathname === "/api/video-pass") {
+      const { requireUser } = await import("./auth");
+      const { handleVideoPassNode } = await import("./video/http");
+      const raw = await readBody(req);
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (!value) continue;
+        headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+      }
+      const authReq = new Request(url.toString(), { method: "POST", headers });
+      await requireUser(authReq, env);
+      const parsed = raw?.length ? JSON.parse(Buffer.from(raw).toString("utf8")) : {};
+      const { status, payload } = await handleVideoPassNode(parsed, env);
+      const bodyOut = JSON.stringify(payload);
+      res.statusCode = status;
+      for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.end(bodyOut);
+      return;
+    }
+
+    const body = await readBody(req);
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (!value) continue;
+      headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+    }
+
+    const request = new Request(url.toString(), {
+      method: req.method,
+      headers,
+      body: body ? new Uint8Array(body) : undefined,
+    });
+
+    const response = await worker.fetch(request, env);
+    applyResponseHeaders(res, response.headers);
+    // Ensure browser can read error bodies even if the Worker omitted CORS.
+    for (const [k, v] of Object.entries(cors)) {
+      if (!res.hasHeader(k)) res.setHeader(k, v);
+    }
+    res.statusCode = response.status;
+
+    if (response.body) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+      }
+    }
+    res.end();
+  } catch (err) {
+    console.error("[worker]", err);
+    if (!res.headersSent) {
+      res.statusCode = (err as { status?: number }).status || 500;
+      for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Internal Server Error" }));
+      return;
+    }
+    res.end();
+  }
+}).listen(PORT, HOST, () => {
+  const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
+  console.log(`SE Paathai worker listening on http://${HOST}:${PORT}`);
+  console.log(
+    historyDir
+      ? `History storage: file (${historyDir})`
+      : "History storage: not configured (set HISTORY_FILE_DIR)",
+  );
+  console.log(
+    `Video Pass 2: ${process.env.VIDEO_PASS_ENABLED === "0" ? "disabled" : "enabled (ffmpeg)"} → ${process.env.VIDEO_DATA_DIR || "/data/video"}`,
+  );
+});

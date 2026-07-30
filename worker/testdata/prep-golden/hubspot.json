@@ -1,0 +1,11 @@
+{
+  "id": "hubspot",
+  "input": {
+    "companyName": "HubSpot",
+    "companyDomain": "hubspot.com",
+    "prospectEmail": "support@hubspot.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

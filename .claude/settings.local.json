@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -q \"lionpath-2.0.7.1-antony-laptop-version.zip\" -d extracted)",
+      "Bash(git config *)"
+    ]
+  }
+}

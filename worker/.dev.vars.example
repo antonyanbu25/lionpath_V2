@@ -1,0 +1,12 @@
+# Copy to worker/.dev.vars (gitignored) for local wrangler dev / npm run dev:node.
+# Required for pre-call prep and post-call analysis locally.
+GEMINI_API_KEY=your-gemini-api-key-from-aistudio
+
+# Optional — only when testing Firebase Google SSO locally (see docs/FIREBASE_SETUP.md).
+# Must match web/firebase-config.local.js projectId when Firebase auth is enabled.
+# FIREBASE_PROJECT_ID=your-firebase-project-id
+
+# Optional — Apollo enrichment (Phase 2). Never commit real keys.
+# APOLLO_API_KEY=your-apollo-api-key
+
+# wrangler secret put APOLLO_API_KEY

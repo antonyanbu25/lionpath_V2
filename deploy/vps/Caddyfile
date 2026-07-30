@@ -1,0 +1,25 @@
+# Caddy reverse proxy — automatic HTTPS via Let's Encrypt.
+# DNS must point portal.* and portalapi.* to this VPS (DNS only — not Cloudflare proxied).
+
+{
+	email admin@benjaminsquare.com
+}
+
+portal.benjaminsquare.com {
+	encode gzip zstd
+	reverse_proxy web:8788
+}
+
+portalapi.benjaminsquare.com {
+	encode gzip zstd
+	reverse_proxy worker:8787
+}
+
+# Optional: gate the portal with HTTP basic auth (uncomment and set hashed password).
+# Run: docker compose exec caddy caddy hash-password
+# portal.benjaminsquare.com {
+# 	basicauth {
+# 		demo $2a$14$...replace-with-caddy-hash-password...
+# 	}
+# 	reverse_proxy web:8788
+# }
