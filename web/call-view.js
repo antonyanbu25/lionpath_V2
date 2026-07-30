@@ -1769,10 +1769,12 @@ async function loadCallBundle(session, record) {
     hasCameraData: curveHasCameraData(videoFacts?.attendeeCurveJson),
     seCameraOnPct: videoFacts?.cameraOnPct ?? null,
     curveRows: Array.isArray(videoFacts?.attendeeCurveJson) ? videoFacts.attendeeCurveJson.length : 0,
+    pass2Debug: analysisMeta?.pass2Debug || resultBlob.analysisMeta?.pass2Debug || null,
   }, "H2");
   console.warn("[DEBUG-064b3d] call videoFacts", {
     streamKind: videoFacts?.streamKind,
     hasCamera: curveHasCameraData(videoFacts?.attendeeCurveJson),
+    pass2Debug: analysisMeta?.pass2Debug || resultBlob.analysisMeta?.pass2Debug || null,
   });
   // #endregion
 

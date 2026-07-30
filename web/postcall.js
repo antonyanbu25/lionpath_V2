@@ -2145,6 +2145,7 @@ async function confirmAndGenerate(e) {
       });
       videoFacts = videoRes?.videoFacts || null;
       pipelineState.videoFacts = videoFacts;
+      pipelineState.pass2Debug = videoRes?.pass2Debug || null;
       // #region agent log
       const curve = videoFacts?.attendeeCurveJson;
       const hasCam = Array.isArray(curve) && curve.some(
@@ -2266,6 +2267,10 @@ async function confirmAndGenerate(e) {
       record = await savePostCallHistory(sessionEmail, savePayload, {
         ...data,
         videoFacts: data.videoFacts || pipelineState.videoFacts || videoFacts || undefined,
+        analysisMeta: {
+          ...(data.analysisMeta || {}),
+          pass2Debug: pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null,
+        },
       });
       // #region agent log
       agentDebugLog("postcall.js:confirmAndGenerate", "savePostCallHistory result", {

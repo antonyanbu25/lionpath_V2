@@ -164,18 +164,25 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
     const clipDur = win.endS - win.startS;
     if (clipDur <= 0) continue;
     const outPattern = path.join(framesDir, `win_${win.label}_%05d.jpg`);
+    // Seek AFTER -i — Zoom signed HTTP URLs often reject input-side -ss (no byte-range seek).
     const args = [
       "-hide_banner",
       "-loglevel",
       "error",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_delay_max",
+      "5",
       "-headers",
       headerStr,
+      "-i",
+      input.mediaUrl,
       "-ss",
       String(win.startS),
       "-t",
       String(clipDur),
-      "-i",
-      input.mediaUrl,
       "-vf",
       `fps=1/${interval},scale=640:-2`,
       "-q:v",
@@ -185,12 +192,13 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
 
     try {
       await execFileAsync(bin, args, {
-        timeout: 3 * 60 * 1000,
-        maxBuffer: 2 * 1024 * 1024,
+        timeout: 5 * 60 * 1000,
+        maxBuffer: 2 * 1024 * 1000,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`ffmpeg strategic sample failed (${win.label}): ${msg.slice(0, 300)}`);
+      console.warn(`[video/ffmpeg] strategic window ${win.label} failed: ${msg.slice(0, 200)}`);
+      continue;
     }
 
     const names = (await readdir(framesDir))
@@ -213,7 +221,8 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
   }
 
   if (!samples.length) {
-    throw new Error("ffmpeg strategic sample produced no frames");
+    console.warn("[video/ffmpeg] strategic windows produced no frames; falling back to linear sample");
+    return sampleFramesFromUrl(input);
   }
 
   return { samples, workDir, framesDir };
