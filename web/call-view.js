@@ -24,9 +24,6 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { esc } from "./shared.js";
 import { renderLoadingPanel } from "./crayons-ui.js";
 
-/** Bumped with call perf + loading shell. grep console for [DEBUG-72b8a2] on portal. */
-const CALL_VIEW_MODULE_VERSION = "call-perf-1";
-
 const CALL_TYPE_LABELS = {
   demo: "Demo",
   discovery: "Discovery",
@@ -261,23 +258,6 @@ function curveHasCameraData(curve) {
       (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
   );
 }
-
-// #region agent log
-function agentDebugLog(location, message, data, hypothesisId) {
-  const payload = { sessionId: "064b3d", location, message, data, hypothesisId, timestamp: Date.now() };
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  try {
-    const k = "debug-064b3d";
-    const arr = JSON.parse(sessionStorage.getItem(k) || "[]");
-    arr.push(payload);
-    sessionStorage.setItem(k, JSON.stringify(arr.slice(-30)));
-  } catch (_) { /* ignore */ }
-}
-// #endregion
 
 function resolveVideoFactsForBundle(draftVf, timelineFacts, storedFacts) {
   const candidates = [draftVf, timelineFacts, storedFacts?.[0]].filter(Boolean);
@@ -788,12 +768,6 @@ function buildStakeholderRows(identities, attendees, videoFacts) {
     const role = a.role || "Attendee";
     pushUnique(a.name || a.email, role, /customer/i.test(role) ? "customer" : "");
   }
-  // #region agent log
-  agentDebugLog("call-view.js:buildStakeholderRows", "stakeholder camera match", {
-    curveKeys: [...statsByName.keys()].slice(0, 12),
-    rows: rows.map((r) => ({ name: r.name, talkPct: r.talkPct, cameraOn: r.cameraOn, cameraOnPct: r.cameraOnPct })),
-  }, "H3");
-  // #endregion
   return rows;
 }
 
@@ -1026,7 +1000,7 @@ function renderCallNotesEditPanelHtml(notes) {
 
 function renderCallNotesSection(notes) {
   return `
-    <section class="call-section call-notes-section card-wire" data-call-notes-ui="${CALL_VIEW_MODULE_VERSION}">
+    <section class="call-section call-notes-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
         <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
@@ -1762,19 +1736,6 @@ async function loadCallBundle(session, record) {
     timelineFacts,
     parallel.storedFacts,
   );
-  // #region agent log
-  agentDebugLog("call-view.js:loadCallBundle", "videoFacts resolved", {
-    streamKind: videoFacts?.streamKind || null,
-    status: videoFacts?.status || null,
-    hasCameraData: curveHasCameraData(videoFacts?.attendeeCurveJson),
-    seCameraOnPct: videoFacts?.cameraOnPct ?? null,
-    curveRows: Array.isArray(videoFacts?.attendeeCurveJson) ? videoFacts.attendeeCurveJson.length : 0,
-  }, "H2");
-  console.warn("[DEBUG-064b3d] call videoFacts", {
-    streamKind: videoFacts?.streamKind,
-    hasCamera: curveHasCameraData(videoFacts?.attendeeCurveJson),
-  });
-  // #endregion
 
   const arrPoint =
     deal?.arrSnapshot?.arrEstimatePoint ??
@@ -2044,65 +2005,6 @@ function wireCallRecord(container, session, bundle, opts) {
   };
 
   setNotesEditMode(false);
-
-  // #region agent log
-  const notesHtml = container.innerHTML || "";
-  const readCallNotesVisibility = () => ({
-    callViewModuleVersion: CALL_VIEW_MODULE_VERSION,
-    readHidden: notesRead?.hidden ?? null,
-    editHidden: notesEditPanel?.hidden ?? null,
-    editHasOpenClass: notesEditPanel?.classList.contains("call-notes-edit--open") ?? null,
-    readDisplay:
-      notesRead && typeof getComputedStyle === "function"
-        ? getComputedStyle(notesRead).display
-        : null,
-    editDisplay:
-      notesEditPanel && typeof getComputedStyle === "function"
-        ? getComputedStyle(notesEditPanel).display
-        : null,
-  });
-  const logCallNotesVisibility = (label) => {
-    const vis = {
-      ...readCallNotesVisibility(),
-      htmlHasBullets: notesHtml.includes("call-notes-bullets"),
-      htmlHasSaveNotes: notesHtml.includes(">Save notes</fw-button>") && !notesHtml.includes("call-notes-edit-btn"),
-      htmlHasEditNotes: notesHtml.includes("call-notes-edit-btn"),
-    };
-    console.log("[DEBUG-72b8a2]", label, vis);
-    try {
-      sessionStorage.setItem("debug-72b8a2-call-notes", JSON.stringify({ label, ...vis, ts: Date.now() }));
-    } catch (_) {}
-    return vis;
-  };
-  const visibility = logCallNotesVisibility("after setNotesEditMode(false)");
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-    body: JSON.stringify({
-      sessionId: "72b8a2",
-      runId: "post-fix-verify",
-      hypothesisId: "H5-lazy-edit",
-      location: "call-view.js:wireCallRecord",
-      message: "call notes DOM after wire",
-      data: {
-        bulletCount: formatCallNotesBullets(bundle.callNotes).length,
-        notesLen: (bundle.callNotes || "").length,
-        htmlHasBullets: notesHtml.includes("call-notes-bullets"),
-        htmlHasTextarea: notesHtml.includes("call-notes-editor"),
-        htmlHasEditBtn: notesHtml.includes("call-notes-edit-btn"),
-        foundReadEl: !!notesRead,
-        foundEditEl: !!notesEditPanel,
-        ...visibility,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => {
-      logCallNotesVisibility("after paint setNotesEditMode(false)");
-    });
-  }
-  // #endregion
 
   notesEditBtn?.addEventListener("fwClick", () => setNotesEditMode(true));
   notesEditBtn?.addEventListener("click", () => setNotesEditMode(true));

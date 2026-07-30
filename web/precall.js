@@ -1,6 +1,7 @@
 /** Pre-call wireframe. state, generate flow, interactions. */
 
 import {
+  bindActionOnce,
   readFieldValueAsync,
   setButtonLoading,
   setFieldError,
@@ -19,7 +20,7 @@ import {
   companyMono,
 } from "./precall-render.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
-import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js?v=dispute-static-v11";
+import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
 import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
 import {
   linkedinProfileExportsForPayload,
@@ -352,8 +353,7 @@ function showResultView(prep, meta) {
   if (tabs) tabs.activeTabName = state.tab;
 
   renderActiveTab();
-  $("prep-new-search")?.addEventListener("fwClick", showFormView);
-  $("prep-new-search")?.addEventListener("click", showFormView);
+  bindActionOnce($("prep-new-search"), showFormView);
 }
 
 export function displayPrepResult(prep, meta = {}) {

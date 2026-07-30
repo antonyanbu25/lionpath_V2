@@ -8,6 +8,7 @@ import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
 import {
+  bindActionOnce,
   readFieldValue,
   readFieldValueAsync,
   setButtonLoading,
@@ -82,6 +83,8 @@ const VIDEO_THEME_LABELS = {
 };
 
 let linkedinParsing = false;
+let generating = false;
+let confirmGateAccountLookupTeardown = null;
 let companyNameTouched = false;
 let suppressCompanyTouch = false;
 let pcResolvedAccount = null;
@@ -95,23 +98,6 @@ let pipelineState = null;
 
 let currentSession = null;
 let getAuthToken = null;
-
-// #region agent log
-function agentDebugLog(location, message, data, hypothesisId) {
-  const payload = { sessionId: "064b3d", location, message, data, hypothesisId, timestamp: Date.now() };
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  try {
-    const k = "debug-064b3d";
-    const arr = JSON.parse(sessionStorage.getItem(k) || "[]");
-    arr.push(payload);
-    sessionStorage.setItem(k, JSON.stringify(arr.slice(-30)));
-  } catch (_) { /* ignore */ }
-}
-// #endregion
 
 const isUnknown = (v) => {
   const s = String(v ?? "").trim();
@@ -512,10 +498,11 @@ async function prefillCompanyFromEmails() {
  * Mirrors the confirm-gate account picker so intake and gate behave identically.
  * @param {{ inputEl: HTMLElement, menuEl: HTMLElement, noteEl?: HTMLElement,
  *           onPick: (account: object|null, typedName: string) => void }} cfg
+ * @returns {(() => void) | undefined} teardown — call before re-attaching to the same instance
  */
 function attachAccountLookup(cfg) {
   const { inputEl, menuEl, noteEl, onPick } = cfg;
-  if (!inputEl || !menuEl) return;
+  if (!inputEl || !menuEl) return undefined;
 
   let debounceTimer = null;
   let activeIndex = -1;
@@ -624,10 +611,7 @@ function attachAccountLookup(cfg) {
     debounceTimer = window.setTimeout(refreshMenu, 200);
   };
 
-  inputEl.addEventListener("fwInput", scheduleRefresh);
-  inputEl.addEventListener("input", scheduleRefresh);
-
-  inputEl.addEventListener("keydown", (ev) => {
+  const onKeydown = (ev) => {
     if (menuEl.hidden || !rows.length) return;
     if (ev.key === "ArrowDown") {
       ev.preventDefault();
@@ -643,25 +627,41 @@ function attachAccountLookup(cfg) {
     } else if (ev.key === "Escape") {
       closeMenu();
     }
-  });
+  };
 
-  menuEl.addEventListener("click", (ev) => {
+  const onMenuClick = (ev) => {
     const btn = ev.target?.closest?.(".pc-lookup-option");
     if (btn) pickRow(btn);
-  });
+  };
 
-  inputEl.addEventListener("fwBlur", () => {
+  const onBlur = () => {
     window.clearTimeout(blurTimer);
     blurTimer = window.setTimeout(closeMenu, 120);
-  });
-  inputEl.addEventListener("blur", () => {
-    window.clearTimeout(blurTimer);
-    blurTimer = window.setTimeout(closeMenu, 120);
-  });
+  };
 
-  document.addEventListener("pointerdown", (ev) => {
+  const onOutsidePointerdown = (ev) => {
     if (!inputEl.contains(ev.target) && !menuEl.contains(ev.target)) closeMenu();
-  });
+  };
+
+  inputEl.addEventListener("fwInput", scheduleRefresh);
+  inputEl.addEventListener("input", scheduleRefresh);
+  inputEl.addEventListener("keydown", onKeydown);
+  menuEl.addEventListener("click", onMenuClick);
+  inputEl.addEventListener("fwBlur", onBlur);
+  inputEl.addEventListener("blur", onBlur);
+  document.addEventListener("pointerdown", onOutsidePointerdown);
+
+  return () => {
+    window.clearTimeout(debounceTimer);
+    window.clearTimeout(blurTimer);
+    inputEl.removeEventListener("fwInput", scheduleRefresh);
+    inputEl.removeEventListener("input", scheduleRefresh);
+    inputEl.removeEventListener("keydown", onKeydown);
+    menuEl.removeEventListener("click", onMenuClick);
+    inputEl.removeEventListener("fwBlur", onBlur);
+    inputEl.removeEventListener("blur", onBlur);
+    document.removeEventListener("pointerdown", onOutsidePointerdown);
+  };
 }
 
 const CATEGORY_LABELS = {
@@ -1494,14 +1494,6 @@ function navigateToCallRecord(recordId) {
   show($("postcall-form-view"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
-  // #region agent log
-  agentDebugLog("postcall.js:navigateToCallRecord", "navigateToCallRecord", {
-    recordId,
-    hasCallback: typeof onCallRecordReady === "function",
-    hashBefore: location.hash,
-  }, "H3");
-  console.warn("[DEBUG-064b3d] navigateToCallRecord", recordId, location.hash);
-  // #endregion
   if (typeof onCallRecordReady === "function") {
     onCallRecordReady(recordId);
   }
@@ -1514,13 +1506,6 @@ function navigateToCallRecord(recordId) {
 }
 
 export function displayPostCall(data, meta) {
-  // #region agent log
-  agentDebugLog("postcall.js:displayPostCall", "displayPostCall invoked", {
-    recordId: pipelineState?.recordId || null,
-    generated: !!pipelineState?.generated,
-    hash: location.hash,
-  }, "H4");
-  // #endregion
   if (pipelineState?.recordId || pipelineState?.generated) {
     hidePostCallLegacyResult();
     return;
@@ -2024,18 +2009,19 @@ function showConfirmationGate(resolve, classify) {
   show(card, true);
   show($("postcall-result"), false);
 
-  $("postcall-confirm-btn")?.addEventListener("fwClick", (e) => { void confirmAndGenerate(e); });
-  $("postcall-confirm-btn")?.addEventListener("click", (e) => { void confirmAndGenerate(e); });
-  $("postcall-restart-btn")?.addEventListener("fwClick", (e) => { void restartPipeline(e); });
-  $("postcall-restart-btn")?.addEventListener("click", (e) => { void restartPipeline(e); });
+  bindActionOnce($("postcall-confirm-btn"), (e) => { void confirmAndGenerate(e); });
+  bindActionOnce($("postcall-restart-btn"), (e) => { void restartPipeline(e); });
 
   wireDealChangeToggle(card);
+
+  confirmGateAccountLookupTeardown?.();
+  confirmGateAccountLookupTeardown = null;
 
   const confirmSearch = card.querySelector("#pc-confirm-search");
   const confirmSuggest = card.querySelector("#pc-confirm-suggest");
   const confirmAccount = card.querySelector("#pc-confirm-account");
   if (confirmSearch && confirmSuggest && confirmAccount) {
-    attachAccountLookup({
+    confirmGateAccountLookupTeardown = attachAccountLookup({
       inputEl: confirmSearch,
       menuEl: confirmSuggest,
       onPick: (account, typedName) => {
@@ -2086,6 +2072,7 @@ function formatConfirmedIdentitiesContext({ seIdentity, aeIdentity, customerIden
 
 async function confirmAndGenerate(e) {
   e?.preventDefault?.();
+  if (generating) return;
   if (!pipelineState?.resolve || !pipelineState?.classify) return;
 
   const btn = $("postcall-confirm-btn");
@@ -2123,6 +2110,7 @@ async function confirmAndGenerate(e) {
       ? { from: preselectedId, to: dealId, at: Date.now() }
       : undefined;
 
+  generating = true;
   setButtonLoading(btn, true);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), true);
@@ -2257,28 +2245,6 @@ async function confirmAndGenerate(e) {
       });
       videoFacts = videoRes?.videoFacts || null;
       pipelineState.videoFacts = videoFacts;
-      // #region agent log
-      const curve = videoFacts?.attendeeCurveJson;
-      const hasCam = Array.isArray(curve) && curve.some(
-        (p) => p?.cameraOn != null || p?.cameraOnPct != null,
-      );
-      agentDebugLog("postcall.js:videoPass", "video pass result", {
-        streamKind: videoFacts?.streamKind || null,
-        status: videoFacts?.status || null,
-        hasCameraData: hasCam,
-        seCameraOnPct: videoFacts?.cameraOnPct ?? null,
-        ok: videoRes?.ok ?? null,
-        pass2Error: videoFacts?.errorMessage || null,
-        pass2Debug: videoRes?.pass2Debug || null,
-      }, "H1");
-      console.warn("[DEBUG-064b3d] pass2 videoFacts", {
-        streamKind: videoFacts?.streamKind,
-        hasCamera: hasCam,
-        status: videoFacts?.status,
-        pass2Error: videoFacts?.errorMessage || null,
-        pass2Debug: videoRes?.pass2Debug || null,
-      });
-      // #endregion
     } catch (videoErr) {
       console.warn("[postcall] video-pass soft-fail:", videoErr?.message || videoErr);
       videoFacts = null;
@@ -2356,13 +2322,6 @@ async function confirmAndGenerate(e) {
 
     let record = null;
     const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
-    // #region agent log
-    agentDebugLog("postcall.js:confirmAndGenerate", "post-save path", {
-      sessionEmail: sessionEmail || null,
-      hasOnCallRecordReady: typeof onCallRecordReady === "function",
-      hashBefore: location.hash,
-    }, "H1");
-    // #endregion
     if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
@@ -2379,12 +2338,6 @@ async function confirmAndGenerate(e) {
         ...data,
         videoFacts: data.videoFacts || pipelineState.videoFacts || videoFacts || undefined,
       });
-      // #region agent log
-      agentDebugLog("postcall.js:confirmAndGenerate", "savePostCallHistory result", {
-        recordId: record?.id || null,
-        writeOk: !!record?.id,
-      }, "H2");
-      // #endregion
       if (record?.id) {
         pipelineState.recordId = record.id;
         navigateToCallRecord(record.id);
@@ -2408,12 +2361,7 @@ async function confirmAndGenerate(e) {
       show($("postcall-form-view"), false);
       show($("postcall-confirm-view"), false);
       if (!record?.id) {
-        // #region agent log
-        agentDebugLog("postcall.js:confirmAndGenerate", "generate ok but no record id", {
-          sessionEmail: sessionEmail || null,
-        }, "H2");
-        console.warn("[DEBUG-064b3d] generate succeeded but history save returned no record");
-        // #endregion
+        console.warn("[postcall] generate succeeded but history save returned no record");
       }
     } else if (!record?.id) {
       displayPostCall(data, meta);
@@ -2488,11 +2436,13 @@ async function confirmAndGenerate(e) {
     showInlineStatus(status, { type: "error", message: err.message || "Generation failed." });
   } finally {
     setButtonLoading(btn, false);
+    generating = false;
   }
 }
 
 function restartPipeline(e) {
   e?.preventDefault?.();
+  if (generating) return;
   resetPostCallView();
 }
 

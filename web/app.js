@@ -2,7 +2,7 @@ import { readFieldValue, readFieldValueAsync, setFieldError } from "./crayons-ui
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
-import { initPrepDisputes } from "./prep-disputes.js?v=dispute-static-v11";
+import { initPrepDisputes } from "./prep-disputes.js";
 import {
   authMode,
   getSession,
@@ -21,10 +21,10 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js?v=accounts-fix-2";
+import { renderAccountView } from "./account-view.js";
 import { renderDealView } from "./deal-view.js";
 import { renderContactsView } from "./contacts-view.js";
-    import { renderCallView } from "./call-view.js?v=cam-fix-4";
+import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
@@ -57,7 +57,7 @@ import {
   openPrepBrief,
   parseProspectEmails,
   syncPrepEngagementMotion,
-} from "./precall.js?v=dispute-static-v14";
+} from "./precall.js";
 import {
   initPostcall,
   onSessionReady,
@@ -1001,20 +1001,6 @@ async function renderCallPanel() {
 
 function openCallRecord(id, opts = {}) {
   if (!id) return;
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "064b3d" },
-    body: JSON.stringify({
-      sessionId: "064b3d",
-      location: "app.js:openCallRecord",
-      message: "openCallRecord",
-      data: { id, currentView, hashBefore: location.hash },
-      hypothesisId: "H5",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   hidePostCallLegacyResult();
   selectedCallId = id;
   if (opts.tab) callRecordTab = opts.tab;
@@ -1683,28 +1669,6 @@ async function warnIfWorkerDown() {
   }
 }
 
-function agentBootLog(location, message, data, hypothesisId = "A") {
-  if (typeof globalThis.location !== "undefined" &&
-      globalThis.location.hostname !== "localhost" &&
-      globalThis.location.hostname !== "127.0.0.1") {
-    return; // Skip debug telemetry in production
-  }
-  const entry = { sessionId: "72b8a2", runId: "post-fix", hypothesisId, location, message, data, timestamp: Date.now() };
-  // #region agent log
-  try {
-    const key = "se-sp-boot-debug";
-    const arr = JSON.parse(sessionStorage.getItem(key) || "[]");
-    arr.push(entry);
-    sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
-  } catch { /* ignore */ }
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "72b8a2" },
-    body: JSON.stringify(entry),
-  }).catch(() => {});
-  // #endregion
-}
-
 /** Re-check while worker is down (e.g. user starts worker in a second terminal). */
 function startWorkerHealthMonitoring() {
   let timerId = null;
@@ -1721,12 +1685,6 @@ function startWorkerHealthMonitoring() {
 async function boot() {
   assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
-  agentBootLog("app.js:boot:afterLoadFirebaseConfig", "boot after loadFirebaseConfig", {
-    host: typeof location !== "undefined" ? location.hostname : "",
-    projectId: firebaseConfig.projectId || "",
-    authMode: authMode(),
-    firebaseAuthEnabled: isFirebaseAuthEnabled(),
-  }, "A");
 
   initSidebar();
   wireUserMenu();
@@ -1898,16 +1856,10 @@ async function boot() {
 
   if (authMode() === "firebase") {
     await initFirebase();
-    agentBootLog("app.js:boot:afterInitFirebase", "firebase auth init complete", {
-      hasSession: !!getSession(),
-      googleBlockVisible: !$("firebase-signin-block")?.hidden,
-      loginFormHidden: !!$("login-form")?.hidden,
-    }, "B");
     await authReadyPromise;
     if (!getSession()) showLogin();
   } else {
     initDummyAuth();
-    agentBootLog("app.js:boot:dummyAuth", "dummy auth path", { handlersWired: loginHandlersWired }, "C");
     await authReadyPromise;
     const existing = getSession();
     if (!existing) showLogin();
@@ -1918,7 +1870,6 @@ async function boot() {
 
 void boot().catch((err) => {
   console.error("App boot failed:", err);
-  agentBootLog("app.js:boot:catch", "boot failed", { error: String(err?.message || err) }, "D");
   const errEl = $("login-error");
   if (errEl) {
     errEl.textContent = `App failed to start: ${err?.message || err}. Hard-refresh (Ctrl+Shift+R) and try again.`;

@@ -4,6 +4,8 @@
 
 import { wireThemeMenu, syncThemeMenuState } from "./theme.js";
 
+let globalEventsBound = false;
+
 function initialsFromName(name, email) {
   const n = String(name || "").trim();
   if (n) {
@@ -69,15 +71,18 @@ export function initUserMenu(opts) {
     if (themeSubmenu) themeSubmenu.hidden = expanded;
   });
 
-  document.addEventListener("click", (e) => {
-    if (panel.hidden) return;
-    const menu = document.getElementById("user-menu");
-    if (menu && !menu.contains(e.target)) closeMenu();
-  });
+  if (!globalEventsBound) {
+    globalEventsBound = true;
+    document.addEventListener("click", (e) => {
+      if (panel.hidden) return;
+      const menu = document.getElementById("user-menu");
+      if (menu && !menu.contains(e.target)) closeMenu();
+    });
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !panel.hidden) closeMenu();
-  });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !panel.hidden) closeMenu();
+    });
+  }
 
   refreshUserMenu(opts.getSession?.());
 }

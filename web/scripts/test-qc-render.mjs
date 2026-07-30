@@ -250,5 +250,41 @@ if (failed.length) {
 }
 
 const out = join(dirname(fileURLToPath(import.meta.url)), "..", "qc-preview.html");
-writeFileSync(out, `<!doctype html><html><head><link rel="stylesheet" href="./styles.css" /></head><body class="wrap"><article class="card result">${html}</article></body></html>`);
+const page = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QC preview | SE Singha Paathai</title>
+    <!-- Dew head — see web/partials/head-dew.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./dew-theme.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./postcall.css" />
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
+    ></script>
+    <script type="module" src="./theme.js"></script>
+  </head>
+  <body class="qc-preview-page">
+    <div class="qc-preview-toolbar">
+      <a href="./index.html" class="about-back">← Back to app</a>
+      <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
+    </div>
+    <fw-card class="qc-preview-card">${html}</fw-card>
+  </body>
+</html>
+`;
+writeFileSync(out, page);
 console.log("OK — all checks passed; wrote qc-preview.html");

@@ -19,12 +19,12 @@
       href="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/css/crayons-min.css"
       crossorigin="anonymous"
     />
-    <link rel="stylesheet" href="./dew-theme.css" />
-    <link rel="stylesheet" href="./styles.css?v=accounts-flow-4" />
-    <link rel="stylesheet" href="./precall.css?v=dispute-static-v11" />
-    <link rel="stylesheet" href="./postcall.css" />
-    <link rel="stylesheet" href="./call-view.css?v=call-notes-bullets-4" />
-    <link rel="stylesheet" href="./lifecycle.css?v=accounts-flow-4" />
+    <link rel="stylesheet" href="./dew-theme.css?v=2.0.8" />
+    <link rel="stylesheet" href="./styles.css?v=2.0.8" />
+    <link rel="stylesheet" href="./precall.css?v=2.0.8" />
+    <link rel="stylesheet" href="./postcall.css?v=2.0.8" />
+    <link rel="stylesheet" href="./call-view.css?v=2.0.8" />
+    <link rel="stylesheet" href="./lifecycle.css?v=2.0.8" />
     <style id="prep-dispute-critical-css">
       #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
       #prep-dispute-modal.prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
@@ -666,7 +666,7 @@
         document.getElementById("prep-dispute-backdrop")?.addEventListener("click", closeDispute);
       })();
     </script>
-    <script type="module" src="./prep-disputes-boot.mjs?v=dispute-static-v11"></script>
+    <script type="module" src="./prep-disputes-boot.mjs?v=2.0.8"></script>
     <script>
       (function applyProductionLoginShellInline() {
         var h = location.hostname;
@@ -693,29 +693,17 @@
         if (!el) return;
         el.textContent = "App failed to start: " + msg + ". Hard-refresh (Ctrl+Shift+R) and try again.";
         el.hidden = false;
-        try {
-          var key = "se-sp-boot-debug";
-          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
-          arr.push({ message: "module load error", error: msg, timestamp: Date.now() });
-          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
-        } catch (e) {}
       }, true);
     </script>
     <script type="module">
-      import "./firebase-config.js?v=auth-fix-v3";
-      import("./app.js?v=call-record-nav-2").catch(function (err) {
+      import "./firebase-config.js?v=2.0.8";
+      import("./app.js?v=2.0.8").catch(function (err) {
         console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {
           el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";
           el.hidden = false;
         }
-        try {
-          var key = "se-sp-boot-debug";
-          var arr = JSON.parse(sessionStorage.getItem(key) || "[]");
-          arr.push({ message: "app.js import failed", error: String(err.message || err), timestamp: Date.now() });
-          sessionStorage.setItem(key, JSON.stringify(arr.slice(-20)));
-        } catch (e) {}
       });
     </script>
   </body>

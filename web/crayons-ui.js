@@ -83,6 +83,27 @@ export function setButtonLoading(button, loading) {
   button.disabled = loading;
 }
 
+/**
+ * Crayons buttons emit both `fwClick` and a bubbled native `click` for one physical gesture.
+ * Binding a handler to both (for compatibility) makes it run twice per click unless deduped.
+ * @param {HTMLElement | null | undefined} el
+ * @param {(ev: Event) => void} handler
+ */
+export function bindActionOnce(el, handler) {
+  if (!el) return;
+  let pending = false;
+  const wrapped = (ev) => {
+    if (pending) return;
+    pending = true;
+    queueMicrotask(() => {
+      pending = false;
+    });
+    handler(ev);
+  };
+  el.addEventListener("fwClick", wrapped);
+  el.addEventListener("click", wrapped);
+}
+
 /** @param {HTMLElement | null | undefined} field @param {string} message */
 export function setFieldError(field, message = "") {
   if (!field) return;
