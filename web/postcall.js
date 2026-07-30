@@ -2169,7 +2169,9 @@ async function confirmAndGenerate(e) {
       });
       // #endregion
     } catch (videoErr) {
-      console.warn("[postcall] video-pass soft-fail:", videoErr?.message || videoErr);
+      const msg = videoErr?.message || String(videoErr);
+      console.warn("[postcall] video-pass soft-fail:", msg);
+      pipelineState.pass2Debug = { route: "unavailable", error: msg.slice(0, 200) };
       videoFacts = null;
     }
   } else {

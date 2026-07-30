@@ -64,6 +64,7 @@ import {
 } from "./tasks";
 import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
+import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -92,6 +93,7 @@ export async function handleConfig(
   const postcallProvider = env.POSTCALL_LLM_PROVIDER || prepProvider || "gemini";
   const prepModel = env.MODEL || "gemini-3.1-flash-lite";
   const postcallModel = env.POSTCALL_MODEL || "gemini-3.1-flash-lite";
+  const ffmpegOk = isNodeRuntime() && (await ffmpegAvailable());
   return json(
     {
       prep: {
@@ -124,6 +126,11 @@ export async function handleConfig(
       feedback: {
         available: feedbackStorageAvailable(env),
         storage: historyStorageKind(env),
+      },
+      videoPass: {
+        enabled: videoPassEnvEnabled(env),
+        nodeRuntime: isNodeRuntime(),
+        ffmpeg: ffmpegOk,
       },
     },
     200,

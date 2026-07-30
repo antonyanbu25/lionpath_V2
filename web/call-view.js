@@ -1041,7 +1041,25 @@ function renderCallNotesSection(notes) {
     </section>`;
 }
 
-function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, stakeholderRows) {
+function formatPass2DebugNote(analysisMeta, videoFacts) {
+  const dbg = analysisMeta?.pass2Debug;
+  const err = videoFacts?.errorMessage;
+  if (!dbg && !err) return "";
+  const parts = [
+    dbg?.route && `route=${dbg.route}`,
+    dbg?.streamKind && `stream=${dbg.streamKind}`,
+    dbg?.sampleCount != null && `samples=${dbg.sampleCount}`,
+    dbg?.keyframeCount != null && `keyframes=${dbg.keyframeCount}`,
+    dbg?.visionCurveRows != null && `visionRows=${dbg.visionCurveRows}`,
+    videoFacts?.streamKind && `vf=${videoFacts.streamKind}`,
+    dbg?.error && `err=${dbg.error}`,
+    err && !dbg?.error && `err=${String(err).slice(0, 100)}`,
+  ].filter(Boolean);
+  if (!parts.length) return "";
+  return `<p class="muted call-stakeholder-note call-pass2-debug" data-pass2-debug>${esc(parts.join(" · "))}</p>`;
+}
+
+function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, stakeholderRows, analysisMeta) {
   const rows = stakeholderRows?.length
     ? stakeholderRows
     : buildStakeholderRows(identities, attendees, videoFacts);
@@ -1076,7 +1094,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
       hasVideo
         ? ""
         : `<p class="muted call-stakeholder-note">Transcript-only call. roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
-    }`;
+    }${formatPass2DebugNote(analysisMeta, videoFacts)}`;
   } else if (hasVideo) {
     body = renderVideoEmptySection(
       "Stakeholder profiles not loaded",
@@ -1910,7 +1928,7 @@ function renderCallRecord(bundle) {
         ${renderVerdictStrip(bundle)}
         <div class="call-record-notes-row">
           ${renderCallNotesSection(bundle.callNotes)}
-          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows)}
+          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows, bundle.analysisMeta)}
         </div>
         ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
           videoFacts: bundle.videoFacts,
