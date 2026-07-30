@@ -506,7 +506,7 @@ function renderQuickAddRow(calls) {
         id="quick-add-due"
         class="task-quick-due"
         type="date"
-        hint-text="Due"
+        placeholder="Due date"
       ></fw-input>
       ${callSelect}
       <fw-button id="quick-add-btn" color="primary" class="task-quick-btn">Add</fw-button>

@@ -1068,7 +1068,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-clay" aria-hidden="true">☑</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="dash-stat-value" data-stat="open">${taskMetrics.openTotal}</span>
+          <span class="launch-kpi-value" data-stat="open">${taskMetrics.openTotal}</span>
           ${overdueDelta ? `<span class="launch-kpi-delta ${overdueCls}">${esc(overdueDelta)}</span>` : ""}
         </div>
       </div>
@@ -1078,7 +1078,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-teal" aria-hidden="true">☎</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="dash-stat-value" data-stat="calls">${callMetrics.totalCalls}</span>
+          <span class="launch-kpi-value" data-stat="calls">${callMetrics.totalCalls}</span>
           ${callsDelta ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
         </div>
       </div>
@@ -1088,7 +1088,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-sand" aria-hidden="true">✎</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="dash-stat-value" data-stat="preps">${prepsCount}</span>
+          <span class="launch-kpi-value" data-stat="preps">${prepsCount}</span>
           ${prepsDelta ? `<span class="launch-kpi-delta ${prepsDeltaCls}">${esc(prepsDelta)}</span>` : ""}
         </div>
       </div>
@@ -1116,14 +1116,16 @@ function renderRecentActivityRow(c, usesLegacyCoach = false) {
       : `Analysed · ${esc(c.momentum || "review")}`;
   const statusColor = scoreCls === "good" ? "var(--dew-green)" : "var(--dew-text-secondary)";
   return `
-    <fw-button class="launch-activity-row dash-call-link" color="secondary" fill="clear" data-call-id="${esc(c.id)}">
-      <span class="launch-activity-icon tile-teal" aria-hidden="true">☎</span>
-      <span class="launch-activity-body">
-        <span class="launch-activity-title">${esc(c.company)} · Call debrief</span>
-        <span class="launch-activity-status" style="color:${statusColor}">${status}</span>
+    <button type="button" class="launch-activity-row dash-call-link" data-call-id="${esc(c.id)}">
+      <span class="launch-activity-inner">
+        <span class="launch-activity-icon tile-teal" aria-hidden="true">☎</span>
+        <span class="launch-activity-body">
+          <span class="launch-activity-title">${esc(c.company)} · Call debrief</span>
+          <span class="launch-activity-status" style="color:${statusColor}">${status}</span>
+        </span>
+        <span class="launch-activity-when">${esc(relativeWhen(c.timestamp))}</span>
       </span>
-      <span class="launch-activity-when">${esc(relativeWhen(c.timestamp))}</span>
-    </fw-button>`;
+    </button>`;
 }
 
 function renderRecentCallRow(c, { compact = false, usesLegacyCoach = false } = {}) {

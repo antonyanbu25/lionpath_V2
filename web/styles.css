@@ -456,11 +456,18 @@ fw-button.nav-item.active .nav-icon {
 .sidebar-history,
 .sidebar-recent-work {
   flex: 1;
-  padding: 16px 8px 8px;
+  padding: 16px 12px 8px;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+.sidebar-history-list li {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  min-width: 0;
 }
 .sidebar-recent-section {
   margin-bottom: 14px;
@@ -516,8 +523,10 @@ fw-button.nav-item.active .nav-icon {
 fw-button.sidebar-history-item {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   text-align: left;
   background: var(--surface-elevated);
   border: 1px solid var(--border-soft);
@@ -525,9 +534,11 @@ fw-button.sidebar-history-item {
   border-radius: var(--radius);
   font-size: 13px;
   gap: 2px;
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  overflow: hidden;
   transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
-  --fw-button-min-width: 100%;
+  --fw-button-min-width: 0;
+  --fw-button-padding: 0;
 }
 .sidebar-history-item:hover,
 fw-button.sidebar-history-item:hover {
@@ -737,8 +748,9 @@ fw-button.sidebar-history-item.active {
 .main-topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 20px 34px 0;
+  gap: 16px;
+  min-height: 44px;
+  padding: 16px 34px 0;
   background: transparent;
   border-bottom: none;
   transition: background var(--transition), border-color var(--transition);
@@ -746,9 +758,10 @@ fw-button.sidebar-history-item.active {
   z-index: 20;
 }
 .global-search-input {
-  flex: 1;
-  max-width: 360px;
-  min-width: 120px;
+  flex: 0 1 300px;
+  max-width: 300px;
+  min-width: 160px;
+  margin-left: auto;
 }
 .topbar-actions {
   display: flex;
@@ -1053,9 +1066,11 @@ fw-button.sidebar-history-item.active {
 }
 .main-view-title {
   font-weight: 600;
-  font-size: 15px;
-  flex: 1;
+  font-size: 14px;
+  flex: 0 1 auto;
   min-width: 0;
+  color: var(--dew-text-secondary);
+  line-height: 44px;
 }
 .sidebar-toggle {
   display: none;
@@ -3292,9 +3307,17 @@ a { color: var(--accent); }
 .launch-kpi-icon.tile-sand { background: var(--dew-sand-tint); color: #a5883f; }
 .launch-kpi-foot {
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
+}
+.launch-kpi-value {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--dew-text);
+  font-variant-numeric: tabular-nums;
 }
 .launch-kpi-delta {
   font-size: 12.5px;
@@ -3333,13 +3356,46 @@ a { color: var(--accent); }
   justify-content: space-between;
   padding: 20px 22px 14px;
 }
-.launch-activity-row {
+fw-button.launch-activity-row,
+button.launch-activity-row {
+  display: block;
+  width: 100%;
+  --fw-button-min-width: 100%;
+  --fw-button-padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+fw-button.launch-activity-row:hover,
+button.launch-activity-row:hover {
+  background: var(--dew-surface-subtle);
+}
+button.launch-activity-row:focus-visible {
+  outline: 2px solid var(--dew-brand);
+  outline-offset: -2px;
+}
+.launch-activity-inner {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 13px 22px;
   border-top: 1px solid var(--border-soft);
+  box-sizing: border-box;
+}
+.launch-activity-row {
+  display: block;
+  width: 100%;
 }
 .launch-activity-icon {
   width: 34px;
@@ -3367,6 +3423,9 @@ a { color: var(--accent); }
 }
 .launch-activity-status {
   font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .launch-activity-when {
   font-size: 11.5px;
@@ -3961,7 +4020,14 @@ fw-button.nav-item.active {
   max-width: calc(100% - 32px);
 }
 .dash-tabs {
-  margin-bottom: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.launch-side.dash-section {
+  margin-bottom: 0;
+}
+#view-dashboard .launch-hero {
+  margin-top: 0;
 }
 
 /* Task board. ClickUp / Monday inspired */
@@ -3988,17 +4054,24 @@ fw-button.nav-item.active {
   border: 1px solid var(--dew-border);
 }
 .task-quick-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 150px minmax(140px, 220px) auto;
+  align-items: center;
   gap: 10px 12px;
-  padding: 20px 20px 16px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--border-soft);
 }
 .task-quick-add fw-input,
 .task-quick-add fw-select,
 .task-quick-add fw-button {
   margin: 0;
+  width: 100%;
+  --fw-input-min-height: 40px;
+}
+.task-quick-add fw-button.task-quick-btn {
+  min-height: 40px;
+  width: auto;
+  justify-self: end;
 }
 .task-quick-title {
   flex: 1 1 200px;
@@ -4023,12 +4096,12 @@ fw-button.nav-item.active {
 }
 .task-section-header {
   margin: 0;
-  padding: 14px 20px 10px;
-  font-size: 12px;
+  padding: 16px 22px 8px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  letter-spacing: 0.09em;
+  color: var(--dew-text-muted);
 }
 .task-section-count {
   font-weight: 600;
@@ -4054,10 +4127,10 @@ fw-button.nav-item.active {
 .task-list { display: flex; flex-direction: column; }
 .task-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: flex-start;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px 16px;
-  padding: 16px 20px;
+  padding: 13px 22px;
   border-bottom: 1px solid var(--border-soft);
 }
 .task-row + .task-row {
@@ -4163,7 +4236,8 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 6px;
+  align-self: center;
+  margin-top: 0;
 }
 .task-urgency-spacer {
   visibility: hidden;
@@ -4294,15 +4368,16 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
 
 @media (max-width: 768px) {
   .task-quick-add {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
   .task-quick-title,
   .task-quick-due,
   .task-quick-call {
-    flex: 1 1 auto;
     min-width: 0;
     width: 100%;
+  }
+  .task-quick-btn {
+    justify-self: stretch;
   }
   .task-row {
     grid-template-columns: auto auto 1fr;
@@ -4317,6 +4392,7 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
 
 fw-card.launch-recent-list,
 fw-card.launch-followup-list,
+fw-card.launch-activity-card,
 fw-card.task-board-card,
 fw-card.task-chart-card,
 fw-card.dash-empty,
