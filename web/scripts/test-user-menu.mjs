@@ -21,7 +21,7 @@ const checks = [
   ["sidebar nav groups", html.includes('class="nav-grp"')],
   ["My deals nav label", html.includes("My deals")],
   ["My coaching nav", html.includes('data-view="coaching"')],
-  ["SE Singha Paathai brand", html.includes("SE Singha Paathai")],
+  ["SE Labs brand", html.includes("SE Labs")],
   ["no sidebar logout btn", !html.includes('id="logout-btn"')],
   ["no app topbar theme toggle", !html.includes('class="main-topbar"') || !/main-topbar[\s\S]*data-theme-toggle/.test(html)],
   ["login theme toggle kept", html.includes('login-card-head') && html.includes('data-theme-toggle')],

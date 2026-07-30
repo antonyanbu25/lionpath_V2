@@ -723,8 +723,10 @@ export function renderTaskBoard(container, email, opts = {}) {
 
   container.innerHTML = `
     <section class="dash-section task-board-section" aria-labelledby="tasks-heading">
-      <h2 id="tasks-heading" class="dash-section-title">What should I do now?</h2>
       <fw-card class="task-board-card">
+        <div class="task-board-head">
+          <h2 id="tasks-heading" class="task-board-title">What should I do now?</h2>
+        </div>
         ${renderQuickAddRow(calls)}
         <div class="task-board-sections">
           ${

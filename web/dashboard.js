@@ -1025,6 +1025,107 @@ function renderOverviewEmptyState() {
     </fw-card>`;
 }
 
+function greetingForHour(hour) {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstNameFromDisplay(seName) {
+  const name = String(seName || "").trim();
+  if (!name) return "there";
+  return name.split(/\s+/)[0];
+}
+
+function callsThisWeekCount(recentCalls) {
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  return (recentCalls || []).filter((c) => c.timestamp && c.timestamp >= weekStart.getTime()).length;
+}
+
+function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
+  const overdueDelta =
+    taskMetrics.overdueOpen > 0
+      ? `${taskMetrics.overdueOpen} overdue`
+      : taskMetrics.openTotal
+        ? "On track"
+        : "";
+  const overdueCls = taskMetrics.overdueOpen > 0 ? "warn" : taskMetrics.openTotal ? "good" : "muted";
+
+  const callsWeek = callsThisWeekCount(callMetrics.recentCalls);
+  const callsDelta = callsWeek > 0 ? `↑ ${callsWeek} this week` : "";
+  const callsDeltaCls = callsWeek > 0 ? "good" : "muted";
+
+  const prepsDelta = prepsCount > 0 ? `${prepsCount} total` : "";
+  const prepsDeltaCls = prepsCount > 0 ? "good" : "muted";
+
+  return `
+    <div class="launch-kpi-grid" aria-label="Dashboard summary">
+      <div class="launch-kpi-card">
+        <div class="launch-kpi-head">
+          <span class="launch-kpi-label">Open tasks</span>
+          <span class="launch-kpi-icon tile-clay" aria-hidden="true">☑</span>
+        </div>
+        <div class="launch-kpi-foot">
+          <span class="dash-stat-value" data-stat="open">${taskMetrics.openTotal}</span>
+          ${overdueDelta ? `<span class="launch-kpi-delta ${overdueCls}">${esc(overdueDelta)}</span>` : ""}
+        </div>
+      </div>
+      <div class="launch-kpi-card">
+        <div class="launch-kpi-head">
+          <span class="launch-kpi-label">Calls analysed</span>
+          <span class="launch-kpi-icon tile-teal" aria-hidden="true">☎</span>
+        </div>
+        <div class="launch-kpi-foot">
+          <span class="dash-stat-value" data-stat="calls">${callMetrics.totalCalls}</span>
+          ${callsDelta ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
+        </div>
+      </div>
+      <div class="launch-kpi-card">
+        <div class="launch-kpi-head">
+          <span class="launch-kpi-label">Briefs generated</span>
+          <span class="launch-kpi-icon tile-sand" aria-hidden="true">✎</span>
+        </div>
+        <div class="launch-kpi-foot">
+          <span class="dash-stat-value" data-stat="preps">${prepsCount}</span>
+          ${prepsDelta ? `<span class="launch-kpi-delta ${prepsDeltaCls}">${esc(prepsDelta)}</span>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+function relativeWhen(ts) {
+  if (!ts) return "";
+  const diffMs = Date.now() - ts;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${Math.max(1, mins)}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function renderRecentActivityRow(c, usesLegacyCoach = false) {
+  const scoreMax = usesLegacyCoach ? 10 : QIP_SCORE_MAX;
+  const score = c.overallScore;
+  const scoreCls = score != null ? barClass(score, scoreMax) : "";
+  const status =
+    score != null
+      ? `Analysed · ${score}/${scoreMax} score`
+      : `Analysed · ${esc(c.momentum || "review")}`;
+  const statusColor = scoreCls === "good" ? "var(--dew-green)" : "var(--dew-text-secondary)";
+  return `
+    <fw-button class="launch-activity-row dash-call-link" color="secondary" fill="clear" data-call-id="${esc(c.id)}">
+      <span class="launch-activity-icon tile-teal" aria-hidden="true">☎</span>
+      <span class="launch-activity-body">
+        <span class="launch-activity-title">${esc(c.company)} · Call debrief</span>
+        <span class="launch-activity-status" style="color:${statusColor}">${status}</span>
+      </span>
+      <span class="launch-activity-when">${esc(relativeWhen(c.timestamp))}</span>
+    </fw-button>`;
+}
+
 function renderRecentCallRow(c, { compact = false, usesLegacyCoach = false } = {}) {
   const momCls = momentumClass(c.momentum);
   const scoreMax = usesLegacyCoach ? 10 : QIP_SCORE_MAX;
@@ -1118,26 +1219,33 @@ async function updateSideStats(container, email, fetchRemotePreps) {
 }
 
 function renderRecentCallsSide(recentCalls, usesLegacyCoach = false) {
-  const compact = recentCalls.slice(0, 5);
+  const compact = recentCalls.slice(0, 6);
   if (!compact.length) {
     return `
-      <section class="dash-section launch-recent dash-side-recent" aria-labelledby="recent-heading">
-        <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
-        <p class="muted dash-side-empty">Analyze a recording to see call activity here.</p>
+      <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
+        <fw-card class="launch-activity-card">
+          <div class="launch-activity-head">
+            <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
+          </div>
+          <p class="muted dash-side-empty" style="padding:20px 22px">Analyze a recording to see call activity here.</p>
+        </fw-card>
       </section>`;
   }
 
-  const rows = compact.map((c) => renderRecentCallRow(c, { compact: true, usesLegacyCoach })).join("");
+  const rows = compact.map((c) => renderRecentActivityRow(c, usesLegacyCoach)).join("");
 
   return `
-    <section class="dash-section launch-recent dash-side-recent" aria-labelledby="recent-heading">
-      <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
-      <fw-card class="launch-recent-list">${rows}</fw-card>
+    <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
+      <fw-card class="launch-activity-card">
+        <div class="launch-activity-head">
+          <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
+        </div>
+        ${rows}
+      </fw-card>
     </section>`;
 }
 
 function mountDashboardTasks(container, email, opts = {}) {
-  const chartsMount = container.querySelector("#task-charts-mount");
   const boardMount = container.querySelector("#task-board-mount");
   if (!boardMount) return;
 
@@ -1146,14 +1254,22 @@ function mountDashboardTasks(container, email, opts = {}) {
   const taskOpts = {
     ...opts,
     onTasksChanged: () => {
-      const updated = listTasks(email);
-      if (chartsMount) renderTaskCharts(chartsMount, updated);
-      void updateSideStats(container, email, fetchRemotePreps);
+      opts.onTasksChanged?.();
+      void updateLaunchKpis(container, email, fetchRemotePreps);
     },
   };
 
-  if (chartsMount) renderTaskCharts(chartsMount, tasks);
   renderTaskBoard(boardMount, email, taskOpts);
+}
+
+async function updateLaunchKpis(container, email, fetchRemotePreps) {
+  const taskMetrics = aggregateTaskMetrics(listTasks(email));
+  const callMetrics = buildDashboardMetrics(email);
+  const prepsCount = await countPrepsGenerated(fetchRemotePreps);
+  const grid = container.querySelector(".launch-kpi-grid");
+  if (grid) {
+    grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
+  }
 }
 
 /**
@@ -1166,26 +1282,33 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
+  const seName = opts.seName || displayNameForEmail(email) || "there";
+  const greeting = greetingForHour(new Date().getHours());
+  const firstName = firstNameFromDisplay(seName);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">
-      <div class="head dash-head">
-        <h1 class="one-pager-title">My dashboard</h1>
-        <span class="sub muted">Tasks, priorities, and recent call activity.</span>
+      <div class="launch-hero">
+        <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
+        <p class="launch-sub muted">Here's what needs you today.</p>
       </div>
-      <div class="dash-split">
+      ${renderLaunchKpis(taskMetrics, metrics, prepsCount)}
+      <div class="dash-split launch-split">
         <div class="dash-split-main">
-          <div id="task-charts-mount"></div>
           <div id="task-board-mount"></div>
         </div>
-        <aside class="dash-split-side">
-          ${renderSideStats(taskMetrics, metrics, prepsCount)}
+        <aside class="dash-split-side launch-side">
           ${renderRecentCallsSide(metrics.recentCalls, metrics.usesLegacyCoach)}
         </aside>
       </div>
     </div>`;
 
-  mountDashboardTasks(container, email, opts);
+  mountDashboardTasks(container, email, {
+    ...opts,
+    onTasksChanged: () => {
+      void updateLaunchKpis(container, email, opts.fetchRemotePreps);
+    },
+  });
 
   wireCallLinks(container, opts.onOpenCall);
 
