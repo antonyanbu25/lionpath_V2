@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Emergency VPS repair — run when portal API returns 502 after a failed git pull.
-# Safe to fetch directly: curl -fsSL .../repair.sh | bash
+# Emergency VPS repair — run on the VPS after SSH (repo is private; do not curl from GitHub raw).
+#   cd /opt/se-singha-paathai && git fetch origin 2.0.7.2 && git reset --hard origin/2.0.7.2 && cd deploy/vps && bash repair.sh
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"

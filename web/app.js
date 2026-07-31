@@ -95,7 +95,7 @@ function workerDownMessage(status, errName) {
   if (isProd) {
     const hint =
       status === 502
-        ? "The API worker container is down (502). On the VPS run: cd /opt/se-singha-paathai/deploy/vps && git pull && bash start.sh — or bash doctor.sh to diagnose."
+        ? "The API worker is down (502). SSH into the VPS and run: cd /opt/se-singha-paathai && git fetch origin 2.0.7.2 && git reset --hard origin/2.0.7.2 && cd deploy/vps && docker compose build --no-cache worker && docker compose up -d"
         : "On the VPS run: cd /opt/se-singha-paathai/deploy/vps && bash doctor.sh — check GEMINI_API_KEY in .env and restart with bash start.sh.";
     return `Cannot reach the API server at ${WORKER_BASE_URL}${status ? ` (HTTP ${status})` : ""}. ${hint}`;
   }
