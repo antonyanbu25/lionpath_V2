@@ -1393,10 +1393,56 @@ export function initPrecall(options) {
 
   initPrepCrmResolve();
   renderPrepRecentBriefs();
+  if (typeof window !== "undefined") {
+    window.__logPrecallDeploy = () => logPrecallDeployFingerprint("crm");
+  }
+  logPrecallDeployFingerprint("init");
+}
+
+/** Debug: verify which precall build/styles the browser actually loaded. */
+function logPrecallDeployFingerprint(trigger) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const portalBuild = document.querySelector('meta[name="portal-build"]')?.getAttribute("content") || "";
+  const precallCssHref =
+    document.querySelector('link[href*="precall.css"]')?.getAttribute("href") || "";
+  const h1 = document.querySelector("#view-precall .prep-form-heading h1");
+  const h1Style = h1 && window.getComputedStyle ? window.getComputedStyle(h1) : null;
+  const hasLabelTight = !!document.querySelector("#view-precall .nb-label-tight");
+  const prospectIcon = document.querySelector("#prospectEmail")?.closest(".nb-input-shell")?.querySelector(".nb-field-icon svg path")?.getAttribute("d") || "";
+  const hasPersonIcon = prospectIcon.includes("M20 21");
+  const accountGrid = $("prep-account-deal-grid");
+  const payload = {
+    trigger,
+    portalBuild,
+    precallCssHref,
+    h1FontSize: h1Style?.fontSize || null,
+    h1FontWeight: h1Style?.fontWeight || null,
+    hasLabelTight,
+    hasPersonIcon,
+    accountGridHidden: accountGrid?.hidden ?? null,
+    prospectEmailValue: ($("prospectEmail")?.value || "").length,
+  };
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1c1657" },
+    body: JSON.stringify({
+      sessionId: "1c1657",
+      runId: "precall-deploy",
+      hypothesisId: "H1-H5",
+      location: "precall.js:logPrecallDeployFingerprint",
+      message: "precall deploy fingerprint",
+      data: payload,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+  console.info("[precall-deploy]", payload);
 }
 
 export function resetPrecallOnView() {
   resetPrecallForm();
+  logPrecallDeployFingerprint("view");
 }
 
 /** Meeting motion UI removed — prepType comes from account engagement context only. */

@@ -241,6 +241,7 @@ function renderDealRow() {
   }
 
   row.hidden = false;
+  if (typeof window !== "undefined") window.__logPrecallDeploy?.();
 }
 
 async function renderCrmPanel() {

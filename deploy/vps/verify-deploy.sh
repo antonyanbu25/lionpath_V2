@@ -24,11 +24,15 @@ if [[ -z "$WORKER_BUILD" ]] || [[ "$WORKER_BUILD" != *domain-cache* ]]; then
   echo "FAIL: worker missing domain-cache build — run: bash update.sh" >&2
   FAIL=1
 fi
-if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *domain-cache* ]]; then
-  echo "FAIL: portal missing domain-cache build — run: bash update.sh" >&2
+if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *precall-align* ]]; then
+  echo "FAIL: portal missing precall-align build — run: bash update.sh" >&2
+  FAIL=1
+fi
+if ! echo "$HTML" | grep -q 'precall.css?v=2.0.8-precall-align2'; then
+  echo "FAIL: precall.css cache-bust missing — portal HTML is stale" >&2
   FAIL=1
 fi
 if [[ "$FAIL" -eq 0 ]]; then
-  echo "OK: domain-cache release is live on portal and worker."
+  echo "OK: precall-align release is live on portal and worker."
 fi
 exit "$FAIL"

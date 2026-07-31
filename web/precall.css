@@ -59,8 +59,10 @@
 /* styles.css gives #prep-form fw-* a 14px margin — breaks nb-input-shell layout */
 #prep-form.nb-form fw-input,
 #prep-form.nb-form fw-textarea,
-#prep-form.nb-form fw-select {
-  margin-bottom: 0;
+#prep-form.nb-form fw-select,
+#prep-form.nb-form fw-button,
+#prep-form.nb-form .nb-generate-btn {
+  margin-bottom: 0 !important;
 }
 
 .nb-field {
@@ -145,13 +147,16 @@
   width: 100%;
   display: flex;
   align-items: center;
+  margin: 0 !important;
   --fw-input-box-shadow: none;
   --fw-input-border-radius: 0;
   --fw-input-border-color: transparent;
   --fw-input-border-color-hover: transparent;
   --fw-input-border-color-focus: transparent;
   --fw-input-label-font-size: 0;
-  --fw-input-min-height: 44px;
+  --fw-input-min-height: 0;
+  --fw-input-padding-start: 0;
+  --fw-input-padding-end: 0;
 }
 
 .nb-input-shell fw-input::part(input) {
@@ -160,6 +165,8 @@
   background: transparent !important;
   padding: 0 !important;
   min-height: 44px;
+  height: 44px;
+  line-height: 44px;
   font-size: 14px;
   width: 100%;
 }
