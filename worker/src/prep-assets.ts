@@ -37,6 +37,9 @@ const DEMO_CATALOG: Record<string, { label: string; url: string }> = {
   },
 };
 
+/** Labels passed to demo-guidance so leadAsset references stay in the asset catalog. */
+export const DEMO_ASSET_LABELS: string[] = Object.values(DEMO_CATALOG).map((e) => e.label);
+
 function inferExt(url: string): AssetExt {
   const u = url.toLowerCase();
   if (u.includes("/document/")) return "DOC";
