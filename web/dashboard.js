@@ -1111,7 +1111,7 @@ function renderRecentActivityRow(c, usesLegacyCoach = false) {
   return `
     <button type="button" class="launch-activity-row dash-call-link" data-call-id="${esc(c.id)}">
       <span class="launch-activity-inner">
-        <span class="launch-activity-icon tile-teal" aria-hidden="true">☎</span>
+        <span class="launch-activity-icon tile-teal" aria-hidden="true"><fw-icon name="phone" size="18"></fw-icon></span>
         <span class="launch-activity-body">
           <span class="launch-activity-title">${esc(c.company)} · Call debrief</span>
           <span class="launch-activity-status" style="color:${statusColor}">${status}</span>
@@ -1231,7 +1231,7 @@ function renderRecentBriefRow(brief) {
   return `
     <button type="button" class="launch-activity-row dash-brief-link" data-brief-id="${esc(brief.id)}">
       <span class="launch-activity-inner">
-        <span class="launch-activity-icon tile-sand" aria-hidden="true">✎</span>
+        <span class="launch-activity-icon tile-sand" aria-hidden="true"><fw-icon name="add-note" size="18"></fw-icon></span>
         <span class="launch-activity-body">
           <span class="launch-activity-title">${esc(brief.company || brief.meta?.company || "Account")} · Discovery brief</span>
           <span class="launch-activity-status" style="color:var(--dew-green)">${esc(status)}</span>

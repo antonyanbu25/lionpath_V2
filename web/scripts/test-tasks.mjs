@@ -12,6 +12,7 @@ import {
   callLabelFromRecord,
   buildCallPickerOptions,
   aggregateTaskMetrics,
+  renderTaskBoard,
 } from "../tasks.js";
 import { savePostCallAnalysis, storageKey, listPostCallAnalyses } from "../history.js";
 import { dueUrgency } from "../follow-ups.js";
@@ -153,6 +154,34 @@ const checks = [
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
+
+const boardEl = {
+  _html: "",
+  get innerHTML() {
+    return this._html;
+  },
+  set innerHTML(v) {
+    this._html = v;
+  },
+  querySelector() {
+    return null;
+  },
+  querySelectorAll() {
+    return [];
+  },
+};
+renderTaskBoard(boardEl, TEST_EMAIL);
+const boardOut = boardEl.innerHTML;
+const boardChecks = [
+  ["task board merged head", boardOut.includes('class="task-board-head"') && boardOut.includes("task-quick-add")],
+  ["recommended row simplified", boardOut.includes("task-row-recommended") && !boardOut.includes("task-pill-recommended")],
+];
+const failedBoard = boardChecks.filter(([, ok]) => !ok);
+if (failedBoard.length) {
+  console.error("FAILED board render:", failedBoard.map(([n]) => n).join(", "));
+  process.exit(1);
+}
+
 store.delete(tasksStorageKey(TEST_EMAIL));
 store.delete(storageKey(TEST_EMAIL));
 

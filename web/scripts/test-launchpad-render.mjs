@@ -1,6 +1,12 @@
 /** Browser-free smoke test: renderSeLaunchpad populates a container. */
 
+import { readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { renderSeLaunchpad } from "../dashboard.js";
+
+const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const dashboardSrc = await readFile(join(WEB_ROOT, "dashboard.js"), "utf8");
 
 const store = new Map();
 globalThis.localStorage = {
@@ -81,14 +87,19 @@ store.set(
 await renderSeLaunchpad(container, "se@freshworks.com", { seName: "Alex SE" });
 
 const html = container.innerHTML;
+const boardHtml = container.querySelector("#task-board-mount")?.innerHTML ?? "";
 const checks = [
   ["non-empty HTML", html.length > 200],
   ["has greeting", /,\s*Alex/.test(html) && html.includes("launch-greeting")],
   ["has KPI cards", html.includes("Open tasks") && html.includes("Calls analysed")],
   ["KPI cards are clickable", html.includes('data-kpi-nav="calls"')],
   ["has task board mount", html.includes("task-board-mount")],
+  ["task board head inline quick-add", boardHtml.includes('class="task-board-head"') && boardHtml.includes("task-quick-add")],
+  ["task board title", boardHtml.includes("What should I do now?")],
   ["has recent activity section", html.includes("Recent activity")],
   ["activity includes brief link hook", html.includes("dash-brief-link") || html.includes("Discovery brief")],
+  ["recent activity row uses phone fw-icon", /renderRecentActivityRow[\s\S]*?fw-icon name="phone"/.test(dashboardSrc)],
+  ["recent brief row uses add-note fw-icon", /renderRecentBriefRow[\s\S]*?fw-icon name="add-note"/.test(dashboardSrc)],
   ["has launch KPI grid", html.includes("launch-kpi-grid")],
   ["no hero subtitle", !html.includes("launch-sub")],
   ["no needs-you subtitle", !html.includes("Here's what needs you today.")],

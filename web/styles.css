@@ -173,8 +173,8 @@ body.splash-lock { overflow: hidden; }
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(135deg, rgba(18, 24, 22, 0.72) 0%, rgba(18, 24, 22, 0.48) 42%, rgba(18, 24, 22, 0.62) 100%),
-    radial-gradient(circle at 20% 20%, rgba(111, 184, 172, 0.18), transparent 42%);
+    linear-gradient(135deg, rgba(253, 252, 250, 0.82) 0%, rgba(253, 252, 250, 0.65) 45%, rgba(227, 239, 236, 0.55) 100%),
+    radial-gradient(circle at 18% 22%, rgba(111, 184, 172, 0.22), transparent 48%);
 }
 
 .login-page-inner {
@@ -199,14 +199,12 @@ body.splash-lock { overflow: hidden; }
 .login-card {
   width: 100%;
   max-width: none;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.28),
-    0 1px 0 rgba(255, 255, 255, 0.65) inset;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-radius: 18px;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(43, 41, 38, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   padding: 4px 2px;
 }
 
@@ -223,19 +221,11 @@ body.splash-lock { overflow: hidden; }
   gap: 14px;
 }
 
-.login-brand-mark {
+.login-brand-logo {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: linear-gradient(145deg, #6fb8ac 0%, #2e897b 100%);
-  box-shadow: 0 8px 18px rgba(46, 137, 123, 0.35);
+  border-radius: 10px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
@@ -831,16 +821,21 @@ fw-button.sidebar-history-item.active {
   gap: 8px;
 }
 .sidebar-collapsed fw-button.sidebar-collapse {
-  order: 0;
+  order: 1;
   align-self: center;
   width: 32px;
   margin: 0;
 }
 .sidebar-collapsed .sidebar-brand {
-  order: 1;
+  order: 0;
   flex: 0 0 auto;
   justify-content: center;
   width: 100%;
+}
+.sidebar-collapsed .sidebar-brand-logo {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto;
 }
 @media (min-width: 769px) {
   .sidebar-collapsed .sidebar-history,
@@ -876,22 +871,28 @@ fw-button.sidebar-history-item.active {
   overflow: visible;
 }
 .sidebar-collapsed .sidebar-brand {
-  order: 1;
+  order: 0;
   flex: 0 0 auto;
   justify-content: center;
   width: 100%;
   min-width: 0;
 }
 .sidebar-collapsed fw-button.sidebar-collapse {
-  order: 0;
+  order: 1;
   align-self: center;
   margin: 0;
 }
 .sidebar-collapsed .sidebar-nav {
-  min-width: 0;
-  overflow: hidden;
+  align-items: center;
   padding: 4px 0;
   gap: 4px;
+}
+.sidebar-collapsed fw-button.nav-item ::slotted([slot="before-label"]),
+.sidebar-collapsed fw-button.nav-item [slot="before-label"] {
+  margin: 0;
+}
+.sidebar-collapsed fw-button.nav-item .nav-icon {
+  margin: 0 auto;
 }
 .sidebar-collapsed .nav-item,
 .sidebar-collapsed fw-button.nav-item {
@@ -911,6 +912,14 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed fw-button.nav-item.active,
 .sidebar-collapsed .nav-item.active {
   --fw-button-background-color: var(--dew-brand-tint);
+}
+.sidebar-collapsed fw-button.nav-item fw-icon,
+.sidebar-collapsed .nav-item .nav-icon {
+  --fw-icon-color: #7c7466;
+}
+.sidebar-collapsed fw-button.nav-item.active fw-icon,
+.sidebar-collapsed .nav-item.active .nav-icon {
+  --fw-icon-color: var(--dew-primary);
 }
 .sidebar-collapsed .sidebar-foot {
   padding: 8px 6px 0;
@@ -3638,6 +3647,11 @@ a { color: var(--accent); }
 
 /* SE launchpad */
 .launchpad { max-width: 100%; overflow-x: hidden; }
+.launch-hero,
+.launch-kpi-grid,
+.launch-split.dash-split {
+  max-width: 100%;
+}
 .launch-hero { margin-bottom: 20px; }
 .launch-greeting {
   margin: 0 0 6px;
@@ -3783,7 +3797,7 @@ button.launch-activity-row:focus-visible {
 }
 .launch-activity-inner {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -3796,14 +3810,17 @@ button.launch-activity-row:focus-visible {
   width: 100%;
 }
 .launch-activity-icon {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   font-size: 14px;
+}
+.launch-activity-icon fw-icon {
+  --fw-icon-color: currentColor;
 }
 .launch-activity-body {
   min-width: 0;
@@ -4434,7 +4451,10 @@ fw-button.nav-item.active {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px 20px;
+  flex-wrap: wrap;
   padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--border-soft);
 }
 .task-board-title {
   margin: 0;
@@ -4442,6 +4462,7 @@ fw-button.nav-item.active {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--dew-text);
+  flex: 0 0 auto;
 }
 .task-board-card {
   display: block;
@@ -4456,8 +4477,12 @@ fw-button.nav-item.active {
   grid-template-columns: minmax(160px, 1fr) 150px minmax(140px, 220px) auto;
   align-items: center;
   gap: 10px 12px;
-  padding: 16px 22px;
-  border-bottom: 1px solid var(--border-soft);
+  padding: 0;
+  border-bottom: none;
+  flex: 1 1 420px;
+  min-width: 280px;
+  max-width: 720px;
+  margin-left: auto;
 }
 .task-quick-add fw-input,
 .task-quick-add fw-select,
@@ -4543,8 +4568,17 @@ fw-button.nav-item.active {
   margin-top: 2px;
 }
 .task-row-recommended {
-  padding-top: 18px;
-  padding-bottom: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.task-row-body-recommended {
+  min-width: 0;
+}
+.task-row-body-recommended .task-row-title {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 .task-row:last-child { border-bottom: none; }
 .task-row-done { opacity: 0.72; }
@@ -4773,6 +4807,15 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
 }
 
 @media (max-width: 768px) {
+  .task-board-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .task-quick-add {
+    margin-left: 0;
+    max-width: none;
+    flex-basis: auto;
+  }
   .task-quick-add {
     grid-template-columns: 1fr;
   }

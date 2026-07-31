@@ -428,6 +428,16 @@ function renderTaskRow(task, opts = {}) {
     task.callId ? "task-row-has-call" : "",
   ].filter(Boolean).join(" ");
 
+  if (isRecommended) {
+    return `
+    <div class="${rowCls}" data-task-id="${esc(task.id)}">
+      <div class="task-row-body task-row-body-recommended">
+        <span class="task-row-title">${esc(task.title)}</span>
+      </div>
+      ${actions ? `<div class="task-row-actions">${actions}</div>` : ""}
+    </div>`;
+  }
+
   return `
     <div class="${rowCls}" data-task-id="${esc(task.id)}">
       ${urgencyDot(task)}
@@ -719,8 +729,8 @@ export function renderTaskBoard(container, email, opts = {}) {
       <fw-card class="task-board-card">
         <div class="task-board-head">
           <h2 id="tasks-heading" class="task-board-title">What should I do now?</h2>
+          ${renderQuickAddRow(calls)}
         </div>
-        ${renderQuickAddRow(calls)}
         <div class="task-board-sections">
           ${
             hasAnyTasks
