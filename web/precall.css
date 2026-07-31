@@ -31,9 +31,9 @@
 
 .prep-form-heading h1 {
   margin: 0;
-  font-size: 29px;
-  font-weight: 700;
-  letter-spacing: -0.032em;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: var(--dew-text);
 }
 
@@ -79,18 +79,6 @@
   margin-bottom: 7px;
 }
 
-.nb-label-tight {
-  margin-bottom: 2px;
-}
-
-.nb-context-section .nb-label {
-  margin-bottom: 0;
-}
-
-.nb-context-section .nb-hint {
-  margin: 2px 0 0;
-}
-
 .nb-required {
   color: var(--dew-red);
 }
@@ -134,17 +122,11 @@
   flex-shrink: 0;
 }
 
-#prep-form .nb-input-shell {
-  align-items: center;
-}
-
 .nb-input-shell fw-input,
 .nb-input-shell fw-textarea {
   flex: 1;
   min-width: 0;
   width: 100%;
-  display: flex;
-  align-items: center;
   --fw-input-box-shadow: none;
   --fw-input-border-radius: 0;
   --fw-input-border-color: transparent;
@@ -299,14 +281,8 @@
 }
 
 .nb-deal-card-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #f3ecda;
   color: #a5883f;
   display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -364,7 +340,6 @@
   font-weight: 600;
   color: var(--dew-brand);
   background: var(--dew-brand-tint);
-  border: none;
   border-radius: 8px;
   padding: 5px 9px;
   flex-shrink: 0;
@@ -372,13 +347,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-left: auto;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.nb-linkedin-uploaded:hover {
-  background: #d5e8e3;
 }
 
 .nb-context-section {
@@ -389,15 +357,10 @@
   gap: 9px;
 }
 
-.nb-context-upload {
-  align-self: flex-start;
-}
-
 .nb-context-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  align-self: flex-start;
 }
 
 .nb-attach-btn {

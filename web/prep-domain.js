@@ -50,13 +50,6 @@ export function normalizeCompanyDomain(raw) {
     .split("/")[0];
 }
 
-/** Display format for company website field (screenshot parity). */
-export function formatCompanyWebsiteDisplay(domain) {
-  const d = normalizeCompanyDomain(domain);
-  if (!d) return "";
-  return `https://www.${d}`;
-}
-
 function emailDomain(email) {
   const at = String(email || "").lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).trim().toLowerCase() : "";
@@ -100,8 +93,7 @@ export function applyAutoCompanyDomain(domainField, rawEmails, opts = {}) {
     return { applied: null, lastAutoValue: lastAuto };
   }
 
-  const display = formatCompanyWebsiteDisplay(inferred);
-  setDomainValue(domainField, display);
+  setDomainValue(domainField, inferred);
   return { applied: inferred, lastAutoValue: inferred };
 }
 
