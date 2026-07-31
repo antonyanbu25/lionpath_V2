@@ -25,4 +25,17 @@ assert.equal(news[0].headline, "Series B funding");
 assert.equal(news[0].detail, "Raised $45M led by Accel");
 assert.ok(!news.some((n) => /zendesk/i.test(n.headline)), "signal-like news keys excluded");
 
+const remappedSources = [{ label: "S1", title: "News", url: "https://techcrunch.com/acme", confidence: 80 }];
+const afterCanon = buildRecentNews(
+  [{ key: "Series B funding", value: "Raised $45M", sourceLabel: "S5", confidence: 80, category: "news" as const }],
+  remappedSources,
+);
+assert.equal(afterCanon.length, 0, "prep.sources after canonicalize must not be used for lookup");
+
+const beforeCanon = buildRecentNews(
+  [{ key: "Series B funding", value: "Raised $45M", sourceLabel: "S5", confidence: 80, category: "news" as const }],
+  [{ label: "S5", title: "News", url: "https://techcrunch.com/acme", confidence: 80 }],
+);
+assert.equal(beforeCanon.length, 1, "authoritative research sources resolve news facts");
+
 console.log("test-recent-news.ts: ok");

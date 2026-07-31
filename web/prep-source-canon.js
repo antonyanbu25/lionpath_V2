@@ -53,6 +53,7 @@ function collectReferencedLabels(prep) {
   for (const s of prep.signals || []) push(s.sourceLabel);
   push(prep.supportJD?.sourceLabel);
   for (const p of prep.prospects || []) push(p.sourceLabel);
+  for (const n of prep.recentNews || []) push(n.sourceLabel);
   return out;
 }
 
@@ -145,6 +146,9 @@ export function canonicalizePrepSources(prep, opts = {}) {
   };
   if (prep.supportJD) {
     out.supportJD = { ...prep.supportJD, sourceLabel: relabel(prep.supportJD.sourceLabel) };
+  }
+  if (prep.recentNews?.length) {
+    out.recentNews = prep.recentNews.map((n) => ({ ...n, sourceLabel: relabel(n.sourceLabel) }));
   }
 
   return { prep: out, remap, unresolved };

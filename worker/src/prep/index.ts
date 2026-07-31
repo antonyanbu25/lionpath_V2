@@ -336,11 +336,12 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
+  // Build from full research facts + authoritative sources before canonicalize remaps labels.
+  prep.recentNews = buildRecentNews(research.facts, paddedSources);
   // The two calls above mint "Kaia"/"Zoom"/"LinkedIn PDF" labels after synthesis, so
   // they are invisible to the pass inside synthesizePrep. Idempotent, so this only
   // registers the new virtual sources — it renumbers nothing already canonical.
   prep = canonicalizePrepSources(prep, { authoritative: paddedSources }).prep;
-  prep.recentNews = buildRecentNews(facts, prep.sources);
   if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
   timings.validate = Date.now() - t2;
 
@@ -492,9 +493,10 @@ export async function runPrepSynthesize(
 
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
+  const researchFacts = rawInput.researchBundle?.facts || facts;
+  prep.recentNews = buildRecentNews(researchFacts, sources);
   // Registers the post-synthesis enrichment labels (Kaia / Zoom / LinkedIn PDF).
   prep = canonicalizePrepSources(prep, { authoritative: sources }).prep;
-  prep.recentNews = buildRecentNews(facts, prep.sources);
   if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
   const researchBundle =
     rawInput.researchBundle ||

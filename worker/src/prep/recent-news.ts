@@ -64,5 +64,26 @@ export function buildRecentNews(
     if (out.length >= maxItems) break;
   }
 
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
+    body: JSON.stringify({
+      sessionId: "c9d8c5",
+      runId: "post-fix",
+      hypothesisId: "A",
+      location: "recent-news.ts:buildRecentNews",
+      message: "recent news built",
+      data: {
+        totalFacts: facts.length,
+        newsCategoryFacts: facts.filter((f) => f.category === "news").length,
+        outputCount: out.length,
+        headlines: out.map((n) => n.headline),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   return out;
 }
