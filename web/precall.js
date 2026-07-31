@@ -603,8 +603,11 @@ async function buildPayload() {
     }
   }
 
+  const crmForName = getPrepCrmSelection();
   const companyName =
-    companyNameFromPrimaryEmail(rawEmails) || companyNameFromDomain(companyDomain);
+    crmForName.accountName?.trim() ||
+    companyNameFromPrimaryEmail(rawEmails) ||
+    companyNameFromDomain(companyDomain);
   if (!companyName) {
     throw new Error(
       "Enter a corporate prospect email (not Gmail/Outlook) or a company domain we can derive a name from.",

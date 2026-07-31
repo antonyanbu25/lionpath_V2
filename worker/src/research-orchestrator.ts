@@ -22,13 +22,12 @@ export async function runResearch(
   const [companyFragments, ...personResults] = await Promise.all([
     fetchCompanyWeb(companyName, domain),
     ...emails.map(async (email) => {
-      const fragments: PersonResearchFragment[] = [];
+      const [webHits, zi] = await Promise.all([
+        searchPersonWeb(email, companyName, prospectName),
+        fetchZoomInfoPerson(env, email, companyName, prospectName),
+      ]);
+      const fragments: PersonResearchFragment[] = [...webHits];
 
-      // Primary: LinkedIn / Google-style web search
-      const webHits = await searchPersonWeb(email, companyName, prospectName);
-      fragments.push(...webHits);
-
-      // Fallback: ZoomInfo when LinkedIn/web did not yield experience data
       const hasExperience = webHits.some(
         (h) =>
           h.experienceSummary ||
@@ -36,12 +35,8 @@ export async function runResearch(
           h.priorEmployers?.length ||
           h.totalExperience,
       );
-      if (!hasExperience) {
-        const zi = await fetchZoomInfoPerson(env, email, companyName, prospectName);
-        if (zi) fragments.push(zi);
-      }
+      if (!hasExperience && zi) fragments.push(zi);
 
-      // Last resort: company-site context tagged to primary prospect email
       return fragments;
     }),
   ]);

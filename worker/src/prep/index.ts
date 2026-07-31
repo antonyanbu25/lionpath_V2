@@ -177,61 +177,56 @@ async function gatherResearch(
     };
   }
 
-  let apolloCredits = 0;
-  let apolloFacts: ResearchFact[] = [];
-  let apolloSources: SourceRef[] = [];
-  let firmographics: Record<string, unknown> | undefined;
-
-  if (env.APOLLO_API_KEY) {
-    const apollo = await enrichWithApollo(env, input.companyDomain, emails);
-    apolloFacts = apollo.facts;
-    apolloSources = apollo.sources;
-    firmographics = apollo.firmographics;
-    apolloCredits = apollo.creditsUsed;
-    void firmographics;
-  }
-
   const pdfSnippets = linkedInPdfSnippets(linkedinExports);
 
-  const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
+  const playbookInput = {
+    companyName: input.companyName,
+    companyDomain: input.companyDomain,
+    emails,
+  };
+
+  const [apolloResult, mergedResult, orchestratorCtx, playbookSnippets] = await Promise.all([
+    env.APOLLO_API_KEY
+      ? enrichWithApollo(env, input.companyDomain, emails)
+      : Promise.resolve({ facts: [] as ResearchFact[], sources: [] as SourceRef[], creditsUsed: 0 }),
+    resolveMergedAdditionalContext(input),
+    runResearch(env, {
+      companyName: input.companyName,
+      domain: input.companyDomain,
+      emails,
+    }).catch((err) => {
+      console.warn("prep/research-orchestrator skipped:", (err as Error).message);
+      return null;
+    }),
+    runPlaybookResearch(env, playbookInput, { skipLinkedInForEmails: matchedEmails }),
+  ]);
+
+  const apolloCredits = apolloResult.creditsUsed;
+  const apolloFacts = apolloResult.facts;
+  const apolloSources = apolloResult.sources;
+  const { text: mergedContext, kaiaFetched } = mergedResult;
 
   let orchestratorSnippets: import("./types").ResearchSnippet[] = [];
   let orchestratorFacts: ResearchFact[] = [];
   let orchestratorSources: SourceRef[] = [];
-  try {
-    const orchestratorCtx = await runResearch(env, {
-      companyName: input.companyName,
-      domain: input.companyDomain,
-      emails,
-    });
+  if (orchestratorCtx) {
     orchestratorSnippets = orchestratorToSnippets(orchestratorCtx);
     const orch = orchestratorToFacts(orchestratorCtx);
     orchestratorFacts = orch.facts;
     orchestratorSources = orch.sources;
-  } catch (err) {
-    console.warn("prep/research-orchestrator skipped:", (err as Error).message);
   }
-
-  const playbookSnippets = await runPlaybookResearch(
-    env,
-    {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      emails,
-    },
-    { skipLinkedInForEmails: matchedEmails },
-  );
 
   const allSnippets = [...orchestratorSnippets, ...playbookSnippets, ...pdfSnippets];
 
-  const extracted = await extractFacts(env, allSnippets, {
-    companyName: input.companyName,
-    companyDomain: input.companyDomain,
-    emails,
-    additionalContext: mergedContext,
-  });
-
-  const seExtracted = await extractSeContextFacts(env, mergedContext);
+  const [extracted, seExtracted] = await Promise.all([
+    extractFacts(env, allSnippets, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+      additionalContext: mergedContext,
+    }),
+    extractSeContextFacts(env, mergedContext),
+  ]);
   let facts = mergeFacts(apolloFacts, orchestratorFacts, extracted.facts, seExtracted.facts);
   let sources = mergeSources(apolloSources, orchestratorSources, extracted.sources, seExtracted.sources);
   let snippets = allSnippets;

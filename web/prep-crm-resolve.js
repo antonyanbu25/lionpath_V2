@@ -1,9 +1,12 @@
 /**
  * Real-time account / deal lookup for the pre-call search form (mirrors post-call CRM surfacing).
+ * Contacts are grouped by corporate email domain — one account per domain, not per contact.
  */
 
 import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
+import { isFreeMailDomain } from "./domain/constants.js";
+import { companyNameFromDomain } from "./prep-domain.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc, $ } from "./shared.js";
 
@@ -23,6 +26,9 @@ let prepSelectedDealId = null;
 let prepCreateNewDeal = false;
 /** @type {object[]} */
 let lastDeals = [];
+/** @type {string|null} */
+let prepDraftAccountName = null;
+let prepAccountNameUserEdited = false;
 let lookupTimer = 0;
 let lookupToken = 0;
 
@@ -33,6 +39,46 @@ function parseEmails(raw) {
     .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
 }
 
+/** Merge per-email CRM hits into one row per corporate domain. */
+function groupByDomain(byEmail) {
+  /** @type {Map<string, { domain: string|null, emails: string[], accounts: Map<string, object>, matched: boolean }>} */
+  const groups = new Map();
+  for (const entry of byEmail) {
+    const domain = entry.domain;
+    const corporate = domain && !isFreeMailDomain(domain);
+    const key = corporate ? domain : `__personal:${entry.email}`;
+    if (!groups.has(key)) {
+      groups.set(key, { domain: corporate ? domain : null, emails: [], accounts: new Map(), matched: false });
+    }
+    const group = groups.get(key);
+    group.emails.push(entry.email);
+    group.matched = group.matched || entry.matched;
+    for (const account of entry.accounts || []) {
+      if (account?.id) group.accounts.set(account.id, account);
+    }
+  }
+  return [...groups.values()].map((g) => ({
+    domain: g.domain,
+    emails: g.emails,
+    accounts: [...g.accounts.values()],
+    matched: g.matched,
+  }));
+}
+
+function resolveDefaultAccountName(domain, domainAccounts) {
+  if (prepAccountNameUserEdited && prepDraftAccountName) return prepDraftAccountName;
+  if (prepResolvedAccount?.name) return prepResolvedAccount.name;
+  if (domainAccounts.length === 1) {
+    return domainAccounts[0].name || companyNameFromDomain(domain) || domain || "";
+  }
+  return companyNameFromDomain(domain) || domain || "";
+}
+
+function readAccountNameInput() {
+  const input = $("prep-account-name");
+  return (input?.value || prepDraftAccountName || "").trim();
+}
+
 function syncEngagementContext() {
   const ctx = {};
   if (prepResolvedAccount?.id) ctx.accountId = prepResolvedAccount.id;
@@ -41,9 +87,11 @@ function syncEngagementContext() {
 }
 
 export function getPrepCrmSelection() {
+  const accountName = readAccountNameInput() || prepResolvedAccount?.name || null;
   return {
     accountId: prepResolvedAccount?.id || null,
     account: prepResolvedAccount,
+    accountName,
     dealId: prepCreateNewDeal ? null : prepSelectedDealId,
     createNewDeal: prepCreateNewDeal,
   };
@@ -54,12 +102,17 @@ export function resetPrepCrmSelection() {
   prepSelectedDealId = null;
   prepCreateNewDeal = false;
   lastDeals = [];
+  prepDraftAccountName = null;
+  prepAccountNameUserEdited = false;
 }
 
 async function applyAccount(account, deals = []) {
   prepResolvedAccount = account
     ? { id: account.id, name: account.name, domain: account.domain || null }
     : null;
+  if (!prepAccountNameUserEdited) {
+    prepDraftAccountName = account?.name || prepDraftAccountName;
+  }
   lastDeals = deals.filter((d) => !account || d.accountId === account.id);
   if (lastDeals.length === 1 && !prepCreateNewDeal) {
     prepSelectedDealId = lastDeals[0].id;
@@ -76,6 +129,10 @@ async function applyAccount(account, deals = []) {
   }
   syncEngagementContext();
   renderDealRow();
+  const nameInput = $("prep-account-name");
+  if (nameInput && !prepAccountNameUserEdited) {
+    nameInput.value = prepDraftAccountName || account?.name || "";
+  }
 }
 
 function renderDealRow() {
@@ -90,12 +147,13 @@ function renderDealRow() {
     return;
   }
 
+  const displayName = readAccountNameInput() || prepResolvedAccount.name || prepResolvedAccount.domain || "Account";
   if (accountCard) {
     accountCard.hidden = false;
     accountCard.innerHTML = `<div class="prep-account-chip">
-      <span class="prep-account-chip-mono">${esc(String(prepResolvedAccount.name || prepResolvedAccount.domain || "AC").slice(0, 2).toUpperCase())}</span>
+      <span class="prep-account-chip-mono">${esc(String(displayName).slice(0, 2).toUpperCase())}</span>
       <div class="prep-account-chip-body">
-        <span class="prep-account-chip-name">${esc(prepResolvedAccount.name || prepResolvedAccount.domain || "Account")}</span>
+        <span class="prep-account-chip-name">${esc(displayName)}</span>
         ${prepResolvedAccount.domain ? `<span class="prep-account-chip-domain muted">${esc(prepResolvedAccount.domain)}</span>` : ""}
       </div>
     </div>`;
@@ -144,6 +202,9 @@ async function renderCrmPanel() {
   if (seq !== lookupToken) return;
 
   const accounts = result.accounts || [];
+  const domainGroups = groupByDomain(result.byEmail || []);
+  const primaryGroup = domainGroups.find((g) => g.domain) || domainGroups[0];
+
   if (accounts.length === 1) {
     await applyAccount(accounts[0], result.deals || []);
   } else if (accounts.length > 1 && !prepResolvedAccount) {
@@ -151,32 +212,53 @@ async function renderCrmPanel() {
     prepCreateNewDeal = false;
   }
 
-  const rows = result.byEmail
-    .map((entry) => {
-      const accountChips = entry.accounts
+  const defaultName = resolveDefaultAccountName(primaryGroup?.domain, primaryGroup?.accounts || accounts);
+  if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
+
+  const domainRows = domainGroups
+    .map((group) => {
+      const domainLabel = group.domain || "Personal email";
+      const contactList = group.emails.map((e) => esc(e)).join(", ");
+      const accountChips = group.accounts
         .map((a) => {
-          const selected = prepResolvedAccount?.id === a.id ? " prep-crm-account--selected" : "";
+          const selected = prepResolvedAccount?.id === a.id ? " pc-crm-account--selected" : "";
           return `<button type="button" class="pc-crm-account${selected}" data-action="prep-pick-account" data-account-id="${esc(a.id)}">
             <span class="pc-crm-account-name">${esc(a.name || a.domain || "Account")}</span>
           </button>`;
         })
         .join("");
-      const status = entry.matched
+      const status = group.matched
         ? accountChips
         : `<span class="pc-crm-new">New account will be created</span>`;
-      return `<div class="pc-crm-row">
-        <span class="pc-crm-email">${esc(entry.email)}</span>
-        <span class="pc-crm-matchset">${status}</span>
+      return `<div class="pc-crm-domain-group">
+        <div class="pc-crm-row pc-crm-row--domain">
+          <span class="pc-crm-domain-label">${esc(domainLabel)}</span>
+          <span class="pc-crm-contacts muted">${contactList}</span>
+        </div>
+        <div class="pc-crm-row pc-crm-row--status">
+          <span class="pc-crm-matchset">${status}</span>
+        </div>
       </div>`;
     })
     .join("");
 
   const header = accounts.length
-    ? `Linked account${accounts.length === 1 ? "" : "s"} found — select or confirm below`
-    : "No account yet — one will be created when you generate the brief";
+    ? `Linked account${accounts.length === 1 ? "" : "s"} found — one account per domain`
+    : "One account per company domain — edit the name below before generating";
 
-  panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${rows}`;
+  const accountNameBlock = `<label class="prep-account-name-label" for="prep-account-name">Account name</label>
+    <input id="prep-account-name" class="postcall-confirm-input prep-account-name-input" type="text"
+      value="${esc(prepDraftAccountName || defaultName)}" autocomplete="organization" />`;
+
+  panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${domainRows}
+    <div class="prep-account-name-block">${accountNameBlock}</div>`;
   panel.hidden = false;
+
+  $("prep-account-name")?.addEventListener("input", (ev) => {
+    prepAccountNameUserEdited = true;
+    prepDraftAccountName = ev.target?.value || "";
+    renderDealRow();
+  });
 
   panel.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
     btn.addEventListener("click", () => {
