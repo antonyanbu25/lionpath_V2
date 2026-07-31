@@ -4465,9 +4465,11 @@ fw-button.nav-item.active {
 .task-board-section { margin-bottom: 24px; }
 .task-board-head {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   padding: 20px 22px 14px;
   border-bottom: 1px solid var(--border-soft);
 }
@@ -4478,6 +4480,7 @@ fw-button.nav-item.active {
   letter-spacing: -0.02em;
   color: var(--dew-text);
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 .task-board-card {
   display: block;
@@ -4489,13 +4492,14 @@ fw-button.nav-item.active {
 }
 .task-quick-add {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 140px minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(160px, 1fr) 130px minmax(140px, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 0;
   border-bottom: none;
-  width: 100%;
-  min-width: 0;
+  flex: 1 1 420px;
+  min-width: 280px;
+  width: auto;
 }
 .task-quick-add fw-input,
 .task-quick-add fw-select {
@@ -4506,12 +4510,13 @@ fw-button.nav-item.active {
 }
 .task-quick-add fw-button.task-quick-btn {
   margin: 0;
+  height: 40px;
   min-height: 40px;
   width: auto;
   min-width: 72px;
+  align-self: center;
   justify-self: end;
   flex-shrink: 0;
-  --fw-input-min-height: 40px;
 }
 .task-quick-title {
   flex: 1 1 200px;
@@ -4838,7 +4843,16 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
 }
 
 @media (max-width: 768px) {
+  .task-board-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .task-board-title {
+    white-space: normal;
+  }
   .task-quick-add {
+    flex: 1 1 auto;
+    min-width: 0;
     grid-template-columns: 1fr;
   }
   .task-quick-title,
