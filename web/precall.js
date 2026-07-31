@@ -13,12 +13,11 @@ import {
   isV7Prep,
   isV6Prep,
   renderResultHeader,
-  renderDiscoveryTab,
-  renderDemoTab,
   renderSourcePopover,
   renderLegacyFallback,
   companyMono,
 } from "./precall-render.js";
+import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
 import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
@@ -303,7 +302,8 @@ function renderActiveTab() {
   const disc = $("prep-tab-discovery");
   const demo = $("prep-tab-demo");
   if (disc) {
-    disc.innerHTML = renderDiscoveryTab(prep, state.srcOpen, {
+    disc.innerHTML = renderKnowTab(prep, state.srcOpen, {
+      domain: meta?.domain,
       linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
       kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
       additionalContext: meta?.additionalContext || meta?.seAdditionalContext,
@@ -311,7 +311,7 @@ function renderActiveTab() {
       prospectEmails: meta?.prospectEmails || meta?.researchMeta?.prospectEmails,
     });
   }
-  if (demo) demo.innerHTML = renderDemoTab(prep, state.checks, accountId(meta));
+  if (demo) demo.innerHTML = renderDemoPrepTab(prep, state.checks, accountId(meta));
 
   wireTabInteractions();
 }

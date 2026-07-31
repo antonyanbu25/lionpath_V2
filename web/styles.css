@@ -258,6 +258,7 @@ body.splash-lock { overflow: hidden; }
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
+  box-shadow: none;
 }
 .sidebar-brand-copy {
   display: flex;
