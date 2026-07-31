@@ -558,3 +558,15 @@ export async function renderCallsListView(container, session, opts = {}) {
     );
   }
 }
+
+/** Dashboard KPI counts — mirrors All calls list (deduped, provisional excluded, all-time). */
+export function buildLaunchpadCallMetrics(email) {
+  const records = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+  const allTime = aggregateCallListMetrics(filterCallRecords(records, { window: "all" }));
+  const week = aggregateCallListMetrics(filterCallRecords(records, { window: "7d" }));
+  return {
+    totalCalls: allTime.callCount,
+    callsThisWeek: week.callCount,
+    records,
+  };
+}

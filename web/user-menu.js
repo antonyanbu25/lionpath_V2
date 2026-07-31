@@ -23,7 +23,7 @@ function initialsFromName(name, email) {
  * @param {{ getSession: () => object|null, onProfileSettings: () => void, onSignOut: () => void }} opts
  */
 export function initUserMenu(opts) {
-  const trigger = document.getElementById("user-menu-trigger");
+  const trigger = document.getElementById("sidebar-user") || document.getElementById("user-menu-trigger");
   const panel = document.getElementById("user-menu-panel");
   const themeToggle = document.getElementById("user-menu-theme-toggle");
   const themeSubmenu = document.getElementById("user-menu-theme-submenu");
@@ -50,11 +50,6 @@ export function initUserMenu(opts) {
   }
 
   trigger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleMenu();
-  });
-
-  document.getElementById("sidebar-user")?.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleMenu();
   });

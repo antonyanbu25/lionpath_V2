@@ -24,6 +24,7 @@ import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated } from "./precall.js";
+import { buildLaunchpadCallMetrics } from "./calls-list-view.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { getSessionGreeting } from "./greeting.js";
@@ -1032,11 +1033,8 @@ function firstNameFromDisplay(seName) {
   return name.split(/\s+/)[0];
 }
 
-function callsThisWeekCount(recentCalls) {
-  const weekStart = new Date();
-  weekStart.setHours(0, 0, 0, 0);
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  return (recentCalls || []).filter((c) => c.timestamp && c.timestamp >= weekStart.getTime()).length;
+function callsThisWeekCount(callMetrics) {
+  return callMetrics.callsThisWeek ?? 0;
 }
 
 function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
@@ -1048,7 +1046,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
         : "";
   const overdueCls = taskMetrics.overdueOpen > 0 ? "warn" : taskMetrics.openTotal ? "good" : "muted";
 
-  const callsWeek = callsThisWeekCount(callMetrics.recentCalls);
+  const callsWeek = callsThisWeekCount(callMetrics);
   const callsDelta = callsWeek > 0 ? `↑ ${callsWeek} this week` : "";
   const callsDeltaCls = callsWeek > 0 ? "good" : "muted";
 
@@ -1057,7 +1055,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
 
   return `
     <div class="launch-kpi-grid" aria-label="Dashboard summary">
-      <div class="launch-kpi-card">
+      <button type="button" class="launch-kpi-card" data-kpi-nav="tasks" aria-label="Open tasks — view task board">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Open tasks</span>
           <span class="launch-kpi-icon tile-clay" aria-hidden="true">☑</span>
@@ -1066,8 +1064,8 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-value" data-stat="open">${taskMetrics.openTotal}</span>
           ${overdueDelta ? `<span class="launch-kpi-delta ${overdueCls}">${esc(overdueDelta)}</span>` : ""}
         </div>
-      </div>
-      <div class="launch-kpi-card">
+      </button>
+      <button type="button" class="launch-kpi-card" data-kpi-nav="calls" aria-label="Calls analysed — view all calls">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Calls analysed</span>
           <span class="launch-kpi-icon tile-teal" aria-hidden="true">☎</span>
@@ -1076,8 +1074,8 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-value" data-stat="calls">${callMetrics.totalCalls}</span>
           ${callsDelta ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
         </div>
-      </div>
-      <div class="launch-kpi-card">
+      </button>
+      <button type="button" class="launch-kpi-card" data-kpi-nav="briefs" aria-label="Briefs generated — view pre-call brief">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Briefs generated</span>
           <span class="launch-kpi-icon tile-sand" aria-hidden="true">✎</span>
@@ -1086,7 +1084,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-value" data-stat="preps">${prepsCount}</span>
           ${prepsDelta ? `<span class="launch-kpi-delta ${prepsDeltaCls}">${esc(prepsDelta)}</span>` : ""}
         </div>
-      </div>
+      </button>
     </div>`;
 }
 
@@ -1260,12 +1258,33 @@ function mountDashboardTasks(container, email, opts = {}) {
 
 async function updateLaunchKpis(container, email, fetchRemotePreps) {
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const callMetrics = buildDashboardMetrics(email);
+  const callMetrics = buildLaunchpadCallMetrics(email);
   const prepsCount = await countPrepsGenerated(fetchRemotePreps);
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
     grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
+    wireLaunchKpiNav(container, email, fetchRemotePreps);
   }
+}
+
+function wireLaunchKpiNav(container, email, fetchRemotePreps) {
+  container.querySelectorAll("[data-kpi-nav]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nav = btn.dataset.kpiNav;
+      const opts = container._launchpadOpts || {};
+      if (nav === "tasks") {
+        container.querySelector("#task-board-mount")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (nav === "calls") {
+        opts.onOpenCalls?.();
+        return;
+      }
+      if (nav === "briefs") {
+        opts.onOpenBriefs?.();
+      }
+    });
+  });
 }
 
 /**
@@ -1276,6 +1295,7 @@ async function updateLaunchKpis(container, email, fetchRemotePreps) {
  */
 export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
+  const launchCallMetrics = buildLaunchpadCallMetrics(email);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
   const seName = opts.seName || displayNameForEmail(email) || "there";
@@ -1288,7 +1308,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
         <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
         <p class="launch-sub muted">${esc(subtitle)}</p>
       </div>
-      ${renderLaunchKpis(taskMetrics, metrics, prepsCount)}
+      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount)}
       <div class="dash-split launch-split">
         <div class="dash-split-main">
           <div id="task-board-mount"></div>
@@ -1298,6 +1318,9 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
         </aside>
       </div>
     </div>`;
+
+  container._launchpadOpts = opts;
+  wireLaunchKpiNav(container, email, opts.fetchRemotePreps);
 
   mountDashboardTasks(container, email, {
     ...opts,

@@ -12,7 +12,9 @@ const userInFoot = /<div class="sidebar-foot">[\s\S]*?id="sidebar-user"[\s\S]*?<
 
 const checks = [
   ["user menu container", html.includes('id="user-menu"')],
-  ["user menu trigger", html.includes('id="user-menu-trigger"')],
+  ["user menu panel in sidebar", html.includes('user-menu-panel--sidebar')],
+  ["sidebar user trigger", html.includes('id="sidebar-user"')],
+  ["no topbar user menu trigger visible", !html.includes('class="user-menu-trigger"') || html.includes('user-menu-trigger" hidden')],
   ["profile settings menu item", html.includes('id="user-menu-profile"')],
   ["theme submenu", html.includes('id="user-menu-theme-submenu"')],
   ["sign out in menu", html.includes('id="user-menu-signout"')],
@@ -22,6 +24,9 @@ const checks = [
   ["sidebar user block", html.includes('id="sidebar-user-name"')],
   ["sidebar nav divider", html.includes('class="sidebar-nav-divider"')],
   ["dashboard nav item", html.includes('data-view="dashboard"')],
+  ["no dashboard overview tabs", !html.includes('id="dash-tabs"')],
+  ["dashboard panel mount", html.includes('id="dash-panel"')],
+  ["coaching view panel", html.includes('id="view-coaching"')],
   ["settings nav item", html.includes('data-view="profile"')],
   ["Pre-call brief label", html.includes("Pre-call brief")],
   ["My deals nav label", html.includes("My deals")],

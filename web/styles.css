@@ -643,6 +643,32 @@ fw-button.sidebar-history-item.active {
   padding: 14px 14px 0;
   border-top: none;
   margin-top: auto;
+  position: relative;
+}
+.user-menu--sidebar {
+  position: relative;
+  width: 100%;
+}
+.user-menu-panel--sidebar {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  top: auto;
+  right: auto;
+  min-width: 260px;
+  z-index: 300;
+}
+.launch-kpi-card[data-kpi-nav] {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.launch-kpi-card[data-kpi-nav]:hover {
+  border-color: #d8d0c4;
+  box-shadow: 0 2px 8px rgba(43, 41, 38, 0.06);
+}
+.launch-kpi-card[data-kpi-nav]:focus-visible {
+  outline: 2px solid var(--dew-brand);
+  outline-offset: 2px;
 }
 .feedback-form {
   display: flex;
@@ -850,10 +876,7 @@ fw-button.sidebar-history-item.active {
   min-width: 160px;
 }
 .topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  display: none;
 }
 .user-menu {
   position: relative;
@@ -3357,6 +3380,10 @@ a { color: var(--accent); }
   border: 1px solid var(--dew-border);
   border-radius: 14px;
   box-shadow: var(--dew-shadow-island);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
 }
 .launch-kpi-head {
   display: flex;

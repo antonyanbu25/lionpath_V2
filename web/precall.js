@@ -455,6 +455,26 @@ function wireTabInteractions() {
     state.srcOpen = ev.target.open;
   });
 
+  function appendDiscoveryQuestion(question) {
+    const q = String(question || "").trim();
+    if (!q || !state.currentPrep) return;
+    if (!Array.isArray(state.currentPrep.discoveryKit)) state.currentPrep.discoveryKit = [];
+    const exists = state.currentPrep.discoveryKit.some((k) => String(k.question || "").trim() === q);
+    if (exists) return;
+    state.currentPrep.discoveryKit.push({ question: q, because: "Gap from brief research — ask on the call." });
+    renderActiveTab();
+  }
+
+  root.querySelector(".prep-v9-unknown-add-all")?.addEventListener("click", () => {
+    root.querySelectorAll(".prep-v9-unknown-add").forEach((btn) => {
+      appendDiscoveryQuestion(btn.dataset.unknownQuestion);
+    });
+  });
+
+  root.querySelectorAll(".prep-v9-unknown-add").forEach((btn) => {
+    btn.addEventListener("click", () => appendDiscoveryQuestion(btn.dataset.unknownQuestion));
+  });
+
   const peopleTabs = root.querySelector("#prep-people-tabs");
   if (peopleTabs) {
     peopleTabs.addEventListener("fwChange", (ev) => {

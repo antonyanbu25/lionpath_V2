@@ -88,7 +88,7 @@ const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
 const CONTACT_ENRICH_URL = `${WORKER_BASE_URL}/api/contact/enrich`;
 const KAIA_SHARE_CONTENT_URL = `${WORKER_BASE_URL}/api/kaia/share-content`;
 const FETCH_KAIA_SUMMARY_URL = `${WORKER_BASE_URL}/api/fetch-kaia-summary`;
-const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab";
+const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab"; /* legacy — no longer used */
 const WORKER_DOWN_MSG =
   `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
   "Start the worker: from the web folder run `npm run dev:all` (worker + web), or open a second terminal: `cd worker && npm run dev` (wait for Ready on port 8787). " +
@@ -99,7 +99,6 @@ let fb = null;
 let authReadyPromise = Promise.resolve();
 let currentSession = null;
 let currentView = "dashboard";
-let currentDashTab = "overview";
 
 const VIEW_TITLES = {
   dashboard: "My dashboard",
@@ -333,36 +332,6 @@ function normalizeCompanyDomainField(raw) {
     .split("/")[0];
 }
 
-function getStoredDashTab() {
-  const t = localStorage.getItem(DASH_TAB_STORAGE_KEY);
-  return t === "coaching" ? "coaching" : "overview";
-}
-
-function setStoredDashTab(tab) {
-  localStorage.setItem(DASH_TAB_STORAGE_KEY, tab);
-}
-
-function switchDashboardTab(tab) {
-  const normalized = tab === "coaching" ? "coaching" : "overview";
-  currentDashTab = normalized;
-
-  const dashTabs = $("dash-tabs");
-  if (dashTabs && dashTabs.activeTabName !== normalized) {
-    dashTabs.activeTabName = normalized;
-  }
-
-  setStoredDashTab(normalized);
-
-  if (currentView === "dashboard" && currentSession?.email && !isManagerRole(currentSession)) {
-    void renderDashboardPanels(currentSession.email, dashboardOpts());
-  }
-
-  if (currentView === "dashboard") {
-    const hashBase = normalized === "coaching" ? "dashboard/coaching" : "dashboard";
-    history.replaceState(null, "", `#${hashBase}`);
-  }
-}
-
 function buildFetchRemotePreps() {
   if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
   return async () => {
@@ -388,8 +357,17 @@ function dashboardOpts() {
     onAnalyze: () => {
       switchView("postcall");
     },
+    onOpenCalls: () => {
+      callsFilterWindow = "all";
+      callsListFilter = "";
+      selectedCallId = null;
+      switchView("calls");
+    },
+    onOpenBriefs: () => {
+      switchView("precall");
+    },
     onCoaching: () => {
-      switchView("dashboard", { dashTab: "coaching" });
+      switchView("coaching");
     },
   };
 }
@@ -463,8 +441,11 @@ async function renderSePanel() {
 }
 
 async function renderDashboardPanels(email, opts = {}) {
-  await renderDashboard($("dash-tab-overview"), email, opts);
-  renderCoaching($("dash-tab-coaching"), email, {
+  await renderDashboard($("dash-panel"), email, opts);
+}
+
+async function renderCoachingPanel(email, opts = {}) {
+  renderCoaching($("coaching-panel"), email, {
     onOpenCall: opts.onOpenCall || ((id) => openHistoryItem(id)),
   });
 }
@@ -525,14 +506,14 @@ function normalizeViewName(name) {
 
 function switchView(name, opts = {}) {
   if (name === "coaching" || name === "dashboard/coaching") {
-    opts = { dashTab: "coaching", ...opts };
-    name = "dashboard";
+    name = "coaching";
   }
   name = normalizeViewName(name);
   currentView = name;
   const isManager = isManagerRole(currentSession);
   const panels = {
     dashboard: $("view-dashboard"),
+    coaching: $("view-coaching"),
     precall: $("view-precall"),
     postcall: $("view-postcall"),
     accounts: $("view-accounts"),
@@ -582,16 +563,13 @@ function switchView(name, opts = {}) {
   $("main-view-title").textContent = VIEW_TITLES[name] || name;
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
-    const view = btn.dataset.view;
-    const active =
-      view === name ||
-      (view === "coaching" && name === "dashboard" && currentDashTab === "coaching");
-    btn.classList.toggle("active", active);
+    btn.classList.toggle("active", btn.dataset.view === name);
   });
 
   if (name === "dashboard" && !isManager) {
-    const dashTab = opts.dashTab || currentDashTab || getStoredDashTab();
-    switchDashboardTab(dashTab);
+    void renderDashboardPanels(currentSession.email, dashboardOpts());
+  } else if (name === "coaching" && !isManager) {
+    void renderCoachingPanel(currentSession.email, dashboardOpts());
   } else if (name === "manager" && isManager) {
     void renderManagerDashboard($("view-manager"), currentSession, managerDashboardOpts());
   } else if (name === "pipeline" && currentSession?.isOrgDirector) {
@@ -631,9 +609,7 @@ function switchView(name, opts = {}) {
   }
 
   const hash =
-    name === "dashboard" && currentDashTab === "coaching"
-      ? "dashboard/coaching"
-      : name === "se"
+    name === "se"
         ? seDetailHash()
         : name === "accounts" && selectedAccountId
           ? accountDetailHash()
@@ -1352,15 +1328,15 @@ async function showApp(session, opts = {}) {
     const hash = hashPath;
     const hashAliases = {
       lifecycles: { view: "accounts" },
-      coaching: { view: "dashboard", dashTab: "coaching" },
-      "dashboard/coaching": { view: "dashboard", dashTab: "coaching" },
+      coaching: { view: "coaching" },
+      "dashboard/coaching": { view: "coaching" },
       team: { view: "manager" },
       analysis: { view: "postcall" },
       workspace: { view: "postcall" },
     };
     const alias = hashAliases[hash];
     if (alias) {
-      switchView(alias.view, { dashTab: alias.dashTab });
+      switchView(alias.view);
     } else {
       const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
       if (lifecycleMatch) {
@@ -1435,10 +1411,12 @@ async function showApp(session, opts = {}) {
                   } else {
                     const valid = [
                       "dashboard",
+                      "coaching",
                       "precall",
                       "postcall",
                       "accounts",
                       "deals",
+                      "contacts",
                       "calls",
                       "manager",
                       "pipeline",
@@ -1446,9 +1424,7 @@ async function showApp(session, opts = {}) {
                       "se",
                       "profile",
                     ];
-                    switchView(valid.includes(hash) ? hash : defaultView, {
-                      dashTab: hash === "dashboard" ? getStoredDashTab() : undefined,
-                    });
+                    switchView(valid.includes(hash) ? hash : defaultView);
                   }
                 }
               }
@@ -1769,14 +1745,6 @@ async function boot() {
   });
   $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
   $("companyDomain")?.addEventListener("input", onCompanyDomainInput);
-
-  const dashTabs = $("dash-tabs");
-  if (dashTabs) {
-    dashTabs.addEventListener("fwChange", (ev) => {
-      const tab = ev.detail?.activeTabName || ev.detail?.tabName || ev.detail?.panel || "overview";
-      switchDashboardTab(tab);
-    });
-  }
 
   document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
     btn.addEventListener("fwClick", () => switchView(btn.dataset.view));

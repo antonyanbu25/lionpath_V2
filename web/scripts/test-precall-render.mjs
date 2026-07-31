@@ -237,9 +237,20 @@ const checks = [
   ["header no prospect chip", !header.includes("prep-contact-chip")],
   ["know tab has About the company", discovery.includes("About the company")],
   ["know tab has maturity chart", discovery.includes("Where they sit versus their industry")],
+  ["know tab maturity axis labels", discovery.includes("Manual") && discovery.includes("AI-assisted")],
+  ["know tab has support stack", discovery.includes("Their support stack")],
+  ["know tab has unknowns gaps", discovery.includes("What we could not find")],
   ["know tab has Who is in the room", discovery.includes("Who is in the room")],
   ["know tab has signals accordion", discovery.includes("prep-signals-details") && discovery.includes("Tech stack &amp; signals")],
   ["know tab 2-column grid", discovery.includes("prep-v9-grid-2")],
+  [
+    "know tab section order stack unknowns attendees",
+    discovery.indexOf("Their support stack") >= 0 &&
+      discovery.indexOf("What we could not find") >= 0 &&
+      discovery.indexOf("Who is in the room") >= 0 &&
+      discovery.indexOf("Their support stack") < discovery.indexOf("What we could not find") &&
+      discovery.indexOf("What we could not find") < discovery.indexOf("Who is in the room"),
+  ],
   [
     "know tab maturity before discovery kit",
     discovery.indexOf("Where they sit versus their industry") >= 0 &&
@@ -251,7 +262,8 @@ const checks = [
   [
     "know tab section order jd kit extras",
     discovery.indexOf("prep-jd-full") < discovery.indexOf("Discovery kit") &&
-      discovery.indexOf("Discovery kit") < discovery.indexOf("prep-research-extras"),
+      discovery.indexOf("Discovery kit") < discovery.indexOf("prep-research-extras") &&
+      discovery.indexOf("Their support stack") < discovery.indexOf("prep-jd-full"),
   ],
   ["know tab support JD present", discovery.includes("prep-jd-full")],
   ["know tab research extras collapsed", discovery.includes("prep-research-extras") && !discovery.includes('class="prep-research-extras" open')],

@@ -180,14 +180,45 @@
           </fw-button>
         </nav>
         <div class="sidebar-foot">
-          <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-controls="user-menu-panel" aria-label="Account menu">
-            <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
-            <div class="sidebar-user-text">
-              <span class="sidebar-user-name" id="sidebar-user-name">-</span>
-              <span class="sidebar-user-role" id="sidebar-user-role">Solution Engineering</span>
+          <div class="user-menu user-menu--sidebar" id="user-menu">
+            <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
+              <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
+              <div class="sidebar-user-text">
+                <span class="sidebar-user-name" id="sidebar-user-name">-</span>
+                <span class="sidebar-user-role" id="sidebar-user-role">Solution Engineering</span>
+              </div>
+              <span class="sidebar-user-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <button type="button" id="user-menu-trigger" class="user-menu-trigger" hidden aria-hidden="true" tabindex="-1"></button>
+            <span id="user-menu-avatar" class="user-menu-avatar" hidden aria-hidden="true">U</span>
+            <div id="user-menu-panel" class="user-menu-panel user-menu-panel--sidebar" hidden role="menu" aria-labelledby="sidebar-user">
+              <div class="user-menu-header">
+                <span id="user-menu-name" class="user-menu-name"></span>
+                <span id="user-menu-email" class="user-menu-email muted"></span>
+              </div>
+              <div class="user-menu-divider" role="separator"></div>
+              <button type="button" class="user-menu-item" id="user-menu-profile" role="menuitem">
+                <span class="user-menu-item-icon" aria-hidden="true">⚙</span>
+                <span class="user-menu-item-label">Profile settings</span>
+              </button>
+              <div class="user-menu-theme">
+                <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
+                  <span class="user-menu-item-icon" aria-hidden="true">◐</span>
+                  <span class="user-menu-item-label">Theme</span>
+                  <span class="user-menu-chevron" aria-hidden="true">›</span>
+                </button>
+                <div id="user-menu-theme-submenu" class="user-menu-theme-submenu" hidden>
+                  <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="light" role="menuitemradio">Light</button>
+                  <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="dark" role="menuitemradio">Dark</button>
+                </div>
+              </div>
+              <div class="user-menu-divider" role="separator"></div>
+              <button type="button" class="user-menu-item user-menu-signout" id="user-menu-signout" role="menuitem">
+                <span class="user-menu-item-icon" aria-hidden="true">↪</span>
+                <span class="user-menu-item-label">Sign out</span>
+              </button>
             </div>
-            <span class="sidebar-user-chevron" aria-hidden="true">⌄</span>
-          </button>
+          </div>
           <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback" hidden>
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
             <span class="nav-label">Feedback</span>
@@ -207,40 +238,7 @@
           </div>
           <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
           <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
-          <div class="topbar-actions">
-            <div class="user-menu" id="user-menu">
-              <button type="button" id="user-menu-trigger" class="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
-                <span id="user-menu-avatar" class="user-menu-avatar" aria-hidden="true">U</span>
-              </button>
-              <div id="user-menu-panel" class="user-menu-panel" hidden role="menu" aria-labelledby="user-menu-trigger">
-                <div class="user-menu-header">
-                  <span id="user-menu-name" class="user-menu-name"></span>
-                  <span id="user-menu-email" class="user-menu-email muted"></span>
-                </div>
-                <div class="user-menu-divider" role="separator"></div>
-                <button type="button" class="user-menu-item" id="user-menu-profile" role="menuitem">
-                  <span class="user-menu-item-icon" aria-hidden="true">⚙</span>
-                  <span class="user-menu-item-label">Profile settings</span>
-                </button>
-                <div class="user-menu-theme">
-                  <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
-                    <span class="user-menu-item-icon" aria-hidden="true">◐</span>
-                    <span class="user-menu-item-label">Theme</span>
-                    <span class="user-menu-chevron" aria-hidden="true">›</span>
-                  </button>
-                  <div id="user-menu-theme-submenu" class="user-menu-theme-submenu" hidden>
-                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="light" role="menuitemradio">Light</button>
-                    <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="dark" role="menuitemradio">Dark</button>
-                  </div>
-                </div>
-                <div class="user-menu-divider" role="separator"></div>
-                <button type="button" class="user-menu-item user-menu-signout" id="user-menu-signout" role="menuitem">
-                  <span class="user-menu-item-icon" aria-hidden="true">↪</span>
-                  <span class="user-menu-item-label">Sign out</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <div class="topbar-actions" hidden aria-hidden="true"></div>
         </header>
 
         <div id="global-search-backdrop" class="global-search-backdrop" hidden></div>
@@ -254,18 +252,14 @@
         <fw-inline-message id="worker-warning" class="wrap-banner worker-banner" type="error" closable="false" hidden></fw-inline-message>
 
         <main class="main-content">
-          <!-- SE Dashboard (Overview + Coaching tabs) -->
+          <!-- SE Dashboard -->
           <section id="view-dashboard" class="view-panel">
-            <fw-tabs id="dash-tabs" class="dash-tabs" active-tab-name="overview">
-              <fw-tab slot="tab" panel="overview">Overview</fw-tab>
-              <fw-tab slot="tab" panel="coaching">Coaching</fw-tab>
-              <fw-tab-panel name="overview">
-                <div id="dash-tab-overview" class="dash-tab-panel tab-active" role="tabpanel"></div>
-              </fw-tab-panel>
-              <fw-tab-panel name="coaching">
-                <div id="dash-tab-coaching" class="dash-tab-panel" role="tabpanel"></div>
-              </fw-tab-panel>
-            </fw-tabs>
+            <div id="dash-panel" class="dash-panel" role="main"></div>
+          </section>
+
+          <!-- SE Coaching (sidebar nav) -->
+          <section id="view-coaching" class="view-panel" hidden>
+            <div id="coaching-panel" class="coaching-panel"></div>
           </section>
 
           <!-- Manager dashboard -->

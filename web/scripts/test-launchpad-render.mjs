@@ -73,6 +73,7 @@ const checks = [
   ["non-empty HTML", html.length > 200],
   ["has greeting", /,\s*Alex/.test(html) && html.includes("launch-greeting")],
   ["has KPI cards", html.includes("Open tasks") && html.includes("Calls analysed")],
+  ["KPI cards are clickable", html.includes('data-kpi-nav="calls"')],
   ["has task board mount", html.includes("task-board-mount")],
   ["has recent activity section", html.includes("Recent activity")],
   ["has launch KPI grid", html.includes("launch-kpi-grid")],

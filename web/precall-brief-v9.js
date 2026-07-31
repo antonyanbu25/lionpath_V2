@@ -23,7 +23,7 @@ const isUnknown = (v) => {
   return s === "-" || s === "–" || s === "—";
 };
 
-const MATURITY_LEVELS = ["Ad hoc", "Emerging", "Established", "Leading"];
+const MATURITY_LEVELS = ["Manual", "Basic", "Automated", "AI-assisted"];
 
 const GAP_STYLE = {
   large: { them: 1.5, norm: 4, label: "Big gap", color: "#b8544a", bg: "#f6ece7", text: "#b8544a" },
@@ -72,6 +72,211 @@ function factTile(f, sources) {
       ${!empty ? srcBadge(f.sourceLabel, sources) : ""}
       ${seNotes && !empty ? '<span class="prep-v9-src prep-v9-src-input">INPUT</span>' : ""}
     </div>
+  </div>`;
+}
+
+function signalByLabel(signals, pattern) {
+  return (signals || []).find((s) => pattern.test(String(s.label || "")));
+}
+
+const STACK_STYLE = {
+  missing: { border: "1.5px dashed #ddd6c7", bg: "#fff", color: "#7c7466", italic: "italic" },
+  teal: { border: "1px solid #cfe3de", bg: "#eef7f5", color: "#2e897b", italic: "normal" },
+  sand: { border: "1px solid #ece0c8", bg: "#f9f4ea", color: "#a5883f", italic: "normal" },
+  platform: { border: "1px solid #f0d9c9", bg: "#fdf3ec", color: "#a9614f", italic: "normal" },
+  platformMissing: { border: "1.5px dashed #ddd6c7", bg: "#fff", color: "#7c7466", italic: "italic" },
+};
+
+function stackChip(label, tone = "teal") {
+  const s = STACK_STYLE[tone] || STACK_STYLE.teal;
+  return `<div class="prep-v9-stack-box" style="border:${s.border};background:${s.bg};color:${s.color};font-style:${s.italic}">${esc(label)}</div>`;
+}
+
+function splitListValue(value) {
+  if (isUnknown(value)) return [];
+  return String(value)
+    .split(/[,;·|/]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+function buildStackChannels(prep) {
+  const chat = signalByLabel(prep.signals, /web chat|chat widget/i);
+  const portal = signalByLabel(prep.signals, /support portal/i);
+  const channelRow = (prep.fitSnapshot || []).find((r) => /channel/i.test(r.label || ""));
+  const fromFit = splitListValue(channelRow?.thisCompany);
+  const fromSignals = [
+    ...splitListValue(chat?.value),
+    ...splitListValue(portal?.value),
+  ].filter(Boolean);
+  const channels = [...new Set([...fromFit, ...fromSignals])];
+  if (!channels.length) return [stackChip("Channels not found", "missing")];
+  return channels.map((c) => stackChip(c, "teal"));
+}
+
+function buildStackIntegrations(prep) {
+  const integrations = signalByLabel(prep.signals, /^integrations$/i);
+  const items = splitListValue(integrations?.value);
+  if (!items.length) return [stackChip("Integrations not found", "missing")];
+  return items.map((c) => stackChip(c, "sand"));
+}
+
+function buildPlatformBox(prep) {
+  const incumbentSig = signalByLabel(prep.signals, /incumbent/i);
+  const name = incumbentSig?.value || prep.incumbent?.incumbent_name;
+  if (isUnknown(name)) {
+    return {
+      html: `<div class="prep-v9-stack-platform" style="border:${STACK_STYLE.platformMissing.border};background:${STACK_STYLE.platformMissing.bg}">
+        <div class="prep-v9-stack-platform-name" style="color:${STACK_STYLE.platformMissing.color};font-style:italic">Incumbent unknown</div>
+        <div class="prep-v9-stack-platform-sub muted">Ask, then re-run this brief</div>
+      </div>`,
+      thin: true,
+    };
+  }
+  const sub = prep.incumbent?.displacement ? `Incumbent · ${prep.incumbent.displacement}` : "Incumbent platform";
+  return {
+    html: `<div class="prep-v9-stack-platform" style="border:${STACK_STYLE.platform.border};background:${STACK_STYLE.platform.bg}">
+      <div class="prep-v9-stack-platform-name" style="color:${STACK_STYLE.platform.color}">${esc(name)}</div>
+      <div class="prep-v9-stack-platform-sub" style="color:${STACK_STYLE.platform.color}">${esc(sub)}</div>
+    </div>`,
+    thin: false,
+  };
+}
+
+function buildAiLayerBox(prep) {
+  const ai = signalByLabel(prep.signals, /AI in their/i);
+  if (isUnknown(ai?.value)) {
+    return `<div class="prep-v9-stack-ai">
+      <div class="prep-v9-stack-ai-label">AI layer</div>
+      <div class="prep-v9-stack-ai-val muted">Not found</div>
+    </div>`;
+  }
+  return stackChip(ai.value, "teal");
+}
+
+function renderSupportStack(prep) {
+  const channels = buildStackChannels(prep);
+  const integrations = buildStackIntegrations(prep);
+  const platform = buildPlatformBox(prep);
+  const ai = buildAiLayerBox(prep);
+  const stackNote = platform.thin
+    ? "Sketch this live on the call. Naming the incumbent is the highest-value thing you can leave with — everything else improves once we have it."
+    : prep.incumbent?.displacement
+      ? `Freshworks replaces the platform box and adds the missing AI layer — a consolidation story, not an add-on.`
+      : "Freshworks replaces the platform box and adds the missing AI layer — a consolidation story, not an add-on.";
+  return `<div class="prep-v9-card prep-v9-stack-card">
+    <h2 class="prep-v9-card-title">Their support stack</h2>
+    <p class="muted prep-v9-card-sub">Dotted boxes are things we could not verify.</p>
+    <div class="prep-v9-stack-flow">
+      <div class="prep-v9-stack-col">
+        <span class="prep-v9-stack-kicker">Channels in</span>
+        ${channels.join("")}
+      </div>
+      <span class="prep-v9-stack-arrow" aria-hidden="true">→</span>
+      <div class="prep-v9-stack-col prep-v9-stack-col-platform">
+        <span class="prep-v9-stack-kicker">Platform</span>
+        ${platform.html}
+        ${ai}
+      </div>
+      <span class="prep-v9-stack-arrow" aria-hidden="true">→</span>
+      <div class="prep-v9-stack-col">
+        <span class="prep-v9-stack-kicker">Connected to</span>
+        ${integrations.join("")}
+      </div>
+    </div>
+    <div class="prep-v9-stack-note">
+      <span class="prep-v9-stack-note-icon" aria-hidden="true">◆</span>
+      <p>${esc(stackNote)}</p>
+    </div>
+  </div>`;
+}
+
+const UNKNOWN_CHECKS = [
+  {
+    field: "Incumbent platform",
+    question: "What are you using for support today?",
+    missing: (prep) => {
+      const sig = signalByLabel(prep.signals, /incumbent/i);
+      return isUnknown(sig?.value) && isUnknown(prep.incumbent?.incumbent_name);
+    },
+  },
+  {
+    field: "Support channels",
+    question: "How can customers reach you — chat, phone, email?",
+    missing: (prep) => buildStackChannels(prep).some((h) => h.includes("Channels not found")),
+  },
+  {
+    field: "Team size",
+    question: "How many people are on the support team?",
+    missing: (prep) => {
+      const facts = resolveDisplayFacts(prep);
+      const size = facts.find((f) => /size|employee|agent|team/i.test(f.key));
+      return !size || isUnknown(size.value);
+    },
+  },
+  {
+    field: "Ticket volume",
+    question: "Roughly how many tickets a month?",
+    missing: () => true, // rarely in public data — show when thin
+  },
+  {
+    field: "AI in current stack",
+    question: "Any automation or AI in support today?",
+    missing: (prep) => {
+      const ai = signalByLabel(prep.signals, /AI in their/i);
+      return isUnknown(ai?.value);
+    },
+  },
+  {
+    field: "After-hours coverage",
+    question: "Who covers tickets outside business hours?",
+    missing: () => true,
+  },
+  {
+    field: "Support hiring",
+    question: "Grow the team, or hold headcount flat?",
+    missing: (prep) => {
+      const hire = signalByLabel(prep.signals, /hiring support/i);
+      return isUnknown(hire?.value);
+    },
+  },
+];
+
+function buildUnknownsList(prep) {
+  const thin = countPopulatedSignals(prep.signals, prep.sources) < 3;
+  if (thin) {
+    return UNKNOWN_CHECKS.filter((c) => c.field !== "Support hiring" && c.missing(prep));
+  }
+  return UNKNOWN_CHECKS.filter(
+    (c) =>
+      ["AI in current stack", "Support hiring", "After-hours coverage"].includes(c.field) && c.missing(prep),
+  );
+}
+
+function renderUnknownsGaps(prep) {
+  const unknowns = buildUnknownsList(prep);
+  if (!unknowns.length) return "";
+  const subtitle = `${unknowns.length} gap${unknowns.length === 1 ? "" : "s"}. Each one is a question.`;
+  const rows = unknowns
+    .map(
+      (u) => `<div class="prep-v9-unknown-row">
+        <div class="prep-v9-unknown-body">
+          <div class="prep-v9-unknown-field">${esc(u.field)}</div>
+          <div class="prep-v9-unknown-question">${esc(u.question)}</div>
+        </div>
+        <button type="button" class="prep-v9-unknown-add" data-unknown-question="${esc(u.question)}" title="Add to discovery kit" aria-label="Add to my questions">＋</button>
+      </div>`,
+    )
+    .join("");
+  return `<div class="prep-v9-card prep-v9-unknowns-card">
+    <div class="prep-v9-unknowns-head">
+      <div>
+        <h2 class="prep-v9-card-title">What we could not find</h2>
+        <p class="muted prep-v9-card-sub">${esc(subtitle)}</p>
+      </div>
+      <button type="button" class="prep-v9-unknown-add-all">Add all</button>
+    </div>
+    <div class="prep-v9-unknown-list">${rows}</div>
   </div>`;
 }
 
@@ -456,6 +661,8 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
       ${maturityRows(prep.fitSnapshot)}
       ${benchmarkRows(prep)}
     </div>
+    ${renderSupportStack(prep)}
+    ${renderUnknownsGaps(prep)}
     ${renderAttendees(prep.prospects, sources, renderOpts)}
     ${linkedinNote}${kaiaNote}
     ${renderSupportJD(prep.supportJD, sources)}
