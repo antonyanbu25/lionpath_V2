@@ -47,6 +47,8 @@ import { getAccountEngagementContext } from "./domain/account-context.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
 const BRIEFS_KEY = "lionpath_briefs";
+const PREP_DEBUG_LOG_KEY = "prep:debugLog";
+const PREP_DEBUG_LOG_MAX = 50;
 const MAX_BRIEFS = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
@@ -152,6 +154,17 @@ function accountId(meta) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .slice(0, 48);
+}
+
+function logPrepDebug(event, data = {}) {
+  try {
+    const log = JSON.parse(sessionStorage.getItem(PREP_DEBUG_LOG_KEY) || "[]");
+    log.push({ event, data, at: Date.now() });
+    while (log.length > PREP_DEBUG_LOG_MAX) log.shift();
+    sessionStorage.setItem(PREP_DEBUG_LOG_KEY, JSON.stringify(log));
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 function loadChecks() {
@@ -721,11 +734,22 @@ async function buildPayload() {
     kaiaMeetingUrl,
   });
   let cachedResearch = null;
+  let cacheMode = null;
   try {
     cachedResearch = await loadCachedResearch(companyName, companyDomain, inputHash);
+    if (cachedResearch) {
+      cacheMode = cachedResearch.inputHash === inputHash ? "exact" : "soft";
+    }
   } catch {
     cachedResearch = null;
+    cacheMode = null;
   }
+  logPrepDebug("buildPayload-cache", {
+    cacheMode,
+    inputHash,
+    factCount: cachedResearch?.facts?.length ?? 0,
+    domain: companyDomain,
+  });
 
   const linkedinProfileExports = linkedinProfileExportsForPayload();
   const meetingZoomUrl = (await readFieldValueAsync($("meetingZoomUrl")))?.trim() || undefined;
@@ -771,6 +795,8 @@ async function buildPayload() {
       contextAttachments,
       accountId: crm.accountId || engagementCtx.accountId || undefined,
       dealId: crm.dealId || engagementCtx.dealId || undefined,
+      inputHash,
+      cacheMode,
     },
     emails,
   };
@@ -965,6 +991,10 @@ export function createPrepProgress(stageIds, hostId = "prep-progress") {
 
 function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit, softCache) {
   if (cacheHit) {
+    if (steps?.clientCache) {
+      const label = softCache || steps?.softCacheHit ? "Saved account research (domain)" : "Saved account research";
+      return `${label} · ${factCount} facts · ${sourceCount} sources`;
+    }
     const label = softCache || steps?.softCacheHit ? "Domain cache hit" : "Cache hit";
     return `${label} · ${factCount} facts · ${sourceCount} sources`;
   }
@@ -1028,16 +1058,78 @@ async function runPrepEndToEnd(payload, meta, emails) {
   let contactEnrichmentsByEmail = null;
 
   const cacheHit = !!payload.cachedResearch;
-  setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
+  const cachedFactCount = payload.cachedResearch?.facts?.length ?? 0;
+  const skipResearchApi = cachedFactCount >= 8;
+  setLoading(
+    true,
+    skipResearchApi
+      ? "Using saved account research…"
+      : cacheHit
+        ? "Loading cached research…"
+        : "Researching account and prospects…",
+  );
 
   const researchPayload = { ...payload };
   delete researchPayload.confirmedProspectProfiles;
 
   const runResearchStep = async () => {
     progress.set("research", "active");
-    if (cacheHit) progress.setDetail("Using cached research");
     const tResearch = Date.now();
+
+    if (skipResearchApi) {
+      progress.setDetail("Using saved account research");
+      const cachedResearch = payload.cachedResearch;
+      const data = {
+        facts: cachedResearch.facts,
+        sources: cachedResearch.sources || [],
+        snippets: cachedResearch.snippets || [],
+        researchBundle: cachedResearch,
+        researchMeta: {
+          cacheHit: true,
+          playbookSkipped: true,
+          steps: {
+            clientCache: 1,
+            softCacheHit: meta.cacheMode === "soft" ? 1 : 0,
+          },
+        },
+      };
+      logPrepDebug("research-skipped", {
+        cacheMode: meta.cacheMode,
+        factCount: cachedFactCount,
+        ms: Date.now() - tResearch,
+      });
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+        body: JSON.stringify({
+          sessionId: "1a2090",
+          runId: prepRunId,
+          hypothesisId: "H-research",
+          location: "precall.js:runPrepEndToEnd:research-skipped",
+          message: "research step skipped (client cache)",
+          data: {
+            ms: Date.now() - tResearch,
+            cacheHit: true,
+            clientCache: true,
+            cacheMode: meta.cacheMode,
+            steps: data.researchMeta.steps,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      return data;
+    }
+
+    if (cacheHit) progress.setDetail("Using cached research");
+    logPrepDebug("research-api-call", { cacheMode: meta.cacheMode, factCount: cachedFactCount });
     const data = await postJson(deps.researchUrl, researchPayload);
+    logPrepDebug("research-api-done", {
+      ms: Date.now() - tResearch,
+      cacheHit: data.researchMeta?.cacheHit ?? cacheHit,
+      steps: data.researchMeta?.steps || null,
+    });
     // #region agent log
     fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
       method: "POST",
@@ -1131,6 +1223,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const factCount = research.facts?.length ?? confirmedFacts.length;
   const sourceCount = research.sources?.length ?? 0;
   const researchCacheHit = research.researchMeta?.cacheHit ?? cacheHit;
+  const clientCache = research.researchMeta?.steps?.clientCache === 1;
   const softCache = research.researchMeta?.steps?.softCacheHit === 1;
   progress.set("research", "done");
   progress.setDetail(
@@ -1167,6 +1260,17 @@ async function runPrepEndToEnd(payload, meta, emails) {
     };
 
     progress.set("synthesize", "done");
+    const totalMs = Date.now() - prepT0;
+    const synthMs = Date.now() - tSynth;
+    logPrepDebug("pipeline-complete", {
+      totalMs,
+      synthMs,
+      researchSkipped: skipResearchApi,
+      cacheMode: meta.cacheMode,
+      clientCache,
+      cacheHit: researchCacheHit,
+      steps: research.researchMeta?.steps || null,
+    });
     // #region agent log
     fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
       method: "POST",
@@ -1178,10 +1282,11 @@ async function runPrepEndToEnd(payload, meta, emails) {
         location: "precall.js:runPrepEndToEnd:complete",
         message: "prep pipeline complete",
         data: {
-          researchMs: Date.now() - prepT0,
-          synthMs: Date.now() - tSynth,
-          totalMs: Date.now() - prepT0,
+          researchMs: totalMs,
+          synthMs,
+          totalMs,
           cacheHit: researchCacheHit,
+          clientCache,
           steps: research.researchMeta?.steps || null,
         },
         timestamp: Date.now(),
@@ -1200,9 +1305,18 @@ async function runPrepEndToEnd(payload, meta, emails) {
     if (contextListEl) contextListEl.innerHTML = "";
     progress.hide();
     const totalSec = Math.round((Date.now() - prepT0) / 1000);
+    const cacheLabel = clientCache
+      ? softCache
+        ? " (saved research, domain)"
+        : " (saved research)"
+      : researchCacheHit
+        ? softCache
+          ? " (domain cache)"
+          : " (cache hit)"
+        : "";
     showInlineStatus(status, {
       type: "info",
-      message: `Brief ready in ${totalSec}s${researchCacheHit ? (softCache ? " (domain cache)" : " (cache hit)") : ""}.`,
+      message: `Brief ready in ${totalSec}s${cacheLabel}.`,
     });
     window.setTimeout(() => showInlineStatus(status, { open: false }), 4000);
   } catch (err) {
@@ -1238,6 +1352,9 @@ function emailDomain(email) {
 
 export function initPrecall(options) {
   deps = options;
+  if (typeof window !== "undefined") {
+    window.__prepDebugLog = () => JSON.parse(sessionStorage.getItem(PREP_DEBUG_LOG_KEY) || "[]");
+  }
   loadChecks();
   wireAdditionalContextMirror();
   registerDisputeContextResolver(resolveDisputeContextFromButton);
