@@ -22,7 +22,7 @@
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.0.8" />
     <link rel="stylesheet" href="./styles.css?v=2.0.8" />
-    <link rel="stylesheet" href="./precall.css?v=2.0.7.2-b74bc25" />
+    <link rel="stylesheet" href="./precall.css?v=2.0.8-precall-align" />
     <link rel="stylesheet" href="./postcall.css?v=2.0.8" />
     <link rel="stylesheet" href="./call-view.css?v=2.0.8" />
     <link rel="stylesheet" href="./lifecycle.css?v=2.0.8" />
@@ -336,7 +336,7 @@
                     <div class="nb-field nb-field-full">
                       <label class="nb-label" for="prospectEmail">Prospect email<span class="nb-required">*</span></label>
                       <div class="nb-input-shell">
-                        <span class="nb-field-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+                        <span class="nb-field-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
                         <fw-input id="prospectEmail" label="" type="text" placeholder="alex@acme.com, sam@acme.com" required clear-input></fw-input>
                       </div>
                       <p class="nb-hint">We auto-detect the account from the domain. Inviting more than one? Paste the emails from your calendar invite separated by commas — we'll research each attendee.</p>
@@ -352,7 +352,7 @@
                           <span class="nb-label">Deal</span>
                           <button type="button" id="prep-deal-new-btn" class="nb-deal-new-link">＋ New deal</button>
                         </div>
-                        <div id="prep-deal-display" class="nb-deal-card"></div>
+                        <div id="prep-deal-display" class="nb-deal-slot-inner"></div>
                         <fw-select id="prep-deal-select" class="nb-deal-select-hidden" label="" hint-text=""></fw-select>
                       </div>
                     </div>
@@ -370,7 +370,7 @@
                       <span id="domain-hint" class="field-hint nb-hint warn" hidden></span>
                     </div>
                     <div class="nb-field nb-field-full">
-                      <label class="nb-label">LinkedIn profile<span class="nb-required">*</span></label>
+                      <label class="nb-label nb-label-tight">LinkedIn profile<span class="nb-required">*</span></label>
                       <p class="nb-hint nb-hint-tight">One slot per prospect email above. Attach a LinkedIn PDF for each — required before we can research the room.</p>
                       <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
                       <div id="prep-linkedin-attendees" class="nb-linkedin-attendees" aria-live="polite"></div>
@@ -382,7 +382,7 @@
                       <div class="nb-field nb-field-full">
                         <label class="nb-label" for="additionalContext">Context from the AE<span class="nb-required">*</span></label>
                         <p class="nb-hint nb-hint-tight">Paste notes, an email thread, or anything the AE shared — it sharpens the brief.</p>
-                        <fw-textarea id="additionalContext" label="" rows="4" placeholder="e.g. Consolidating tools before the Nov renewal. Budget approved. Zendesk is the incumbent — they want one platform, not more features."></fw-textarea>
+                        <fw-textarea id="additionalContext" label="" rows="4" placeholder="e.g. Consolidating tools before the Nov renewal. Farhan owns the shortlist, budget approved. Zendesk is the incumbent — they want one platform, not more features."></fw-textarea>
                       </div>
                       <div class="prep-context-upload nb-context-upload">
                         <div class="prep-context-actions nb-context-actions">
