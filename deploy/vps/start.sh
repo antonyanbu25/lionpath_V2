@@ -18,12 +18,37 @@ if grep -qE 'ALLOWED_ORIGINS=.*lionpath' .env 2>/dev/null; then
 fi
 
 docker compose pull --ignore-pull-failures 2>/dev/null || true
-docker compose build --pull
+docker compose build --pull worker
 docker compose up -d
 
 echo ""
-echo "Stack running. Check status:"
-docker compose ps
+echo "Waiting for worker to become healthy (up to 90s)..."
+deadline=$((SECONDS + 90))
+while (( SECONDS < deadline )); do
+  if docker compose exec -T worker node -e \
+    "fetch('http://127.0.0.1:8787/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+    >/dev/null 2>&1; then
+    echo "Worker is up."
+    break
+  fi
+  sleep 3
+done
+
 echo ""
-echo "Logs:  docker compose logs -f"
+echo "Stack status:"
+docker compose ps
+
+if ! docker compose exec -T worker node -e \
+  "fetch('http://127.0.0.1:8787/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+  >/dev/null 2>&1; then
+  echo ""
+  echo "ERROR: Worker still not healthy. Run: ./doctor.sh" >&2
+  echo "       Common fixes: set GEMINI_API_KEY in .env, then ./start.sh again" >&2
+  docker compose logs worker --tail 30 >&2
+  exit 1
+fi
+
+echo ""
+echo "Logs:  docker compose logs -f worker"
+echo "Diag:  ./doctor.sh"
 echo "Stop:  docker compose down"

@@ -8,8 +8,8 @@
 services:
   worker:
     build:
-      context: ../../worker
-      dockerfile: ../deploy/vps/Dockerfile.worker
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.worker
     restart: unless-stopped
     env_file:
       - .env
@@ -24,6 +24,12 @@ services:
       - /var/lib/se-paathai/video:/data/video
     expose:
       - "8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     networks:
       - paathai
 

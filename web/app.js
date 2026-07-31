@@ -89,10 +89,22 @@ const CONTACT_ENRICH_URL = `${WORKER_BASE_URL}/api/contact/enrich`;
 const KAIA_SHARE_CONTENT_URL = `${WORKER_BASE_URL}/api/kaia/share-content`;
 const FETCH_KAIA_SUMMARY_URL = `${WORKER_BASE_URL}/api/fetch-kaia-summary`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab"; /* legacy — no longer used */
-const WORKER_DOWN_MSG =
-  `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
-  "Start the worker: from the web folder run `npm run dev:all` (worker + web), or open a second terminal: `cd worker && npm run dev` (wait for Ready on port 8787). " +
-  "Use the same hostname for both (localhost or 127.0.0.1, not mixed). The banner clears automatically when the worker comes up.";
+function workerDownMessage(status, errName) {
+  const host = typeof location !== "undefined" ? location.hostname : "";
+  const isProd = host === "portal.benjaminsquare.com" || host === "yonus.benjaminsquare.com";
+  if (isProd) {
+    const hint =
+      status === 502
+        ? "The API worker container is down (502). On the VPS run: cd /opt/se-singha-paathai/deploy/vps && git pull && bash start.sh — or bash doctor.sh to diagnose."
+        : "On the VPS run: cd /opt/se-singha-paathai/deploy/vps && bash doctor.sh — check GEMINI_API_KEY in .env and restart with bash start.sh.";
+    return `Cannot reach the API server at ${WORKER_BASE_URL}${status ? ` (HTTP ${status})` : ""}. ${hint}`;
+  }
+  return (
+    `Cannot reach the API server at ${WORKER_BASE_URL}. ` +
+    "Start the worker: from the web folder run `npm run dev:all` (worker + web), or open a second terminal: `cd worker && npm run dev` (wait for Ready on port 8787). " +
+    "Use the same hostname for both (localhost or 127.0.0.1, not mixed). The banner clears automatically when the worker comes up."
+  );
+}
 
 let fb = null;
 /** Resolves once Firebase auth state is restored (dummy mode: already resolved). */
@@ -1643,11 +1655,19 @@ async function warnIfWorkerDown() {
   const configUrl = `${WORKER_BASE_URL}/api/config`;
   try {
     const res = await fetch(configUrl, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // #region agent log
+    fetch('http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1a2090'},body:JSON.stringify({sessionId:'1a2090',location:'app.js:warnIfWorkerDown',message:'worker health ok',data:{configUrl,status:res.status,host:location.hostname},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     banner.hidden = true;
     return true;
-  } catch {
-    banner.textContent = WORKER_DOWN_MSG;
+  } catch (err) {
+    const status = err?.status;
+    const errName = err?.name || "Error";
+    // #region agent log
+    fetch('http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1a2090'},body:JSON.stringify({sessionId:'1a2090',location:'app.js:warnIfWorkerDown',message:'worker health fail',data:{configUrl,status,errName,host:location.hostname,workerBase:WORKER_BASE_URL},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
+    // #endregion
+    banner.textContent = workerDownMessage(status, errName);
     banner.hidden = false;
     return false;
   }
