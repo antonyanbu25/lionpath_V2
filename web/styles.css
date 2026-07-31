@@ -869,12 +869,12 @@ fw-button.sidebar-history-item.active {
     display: none !important;
   }
 }
-.sidebar-collapsed .nav-label {
+.sidebar-collapsed .nav-label,
+.sidebar-collapsed .sidebar-user-text,
+.sidebar-collapsed .sidebar-user-chevron {
   display: none;
 }
 .sidebar-collapsed .sidebar-brand-text,
-.sidebar-collapsed .sidebar-user-text,
-.sidebar-collapsed .sidebar-user-chevron,
 .sidebar-collapsed .nav-grp,
 .sidebar-collapsed .sidebar-history-label,
 .sidebar-collapsed .sidebar-feedback .nav-label {
@@ -934,14 +934,35 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed .sidebar-foot {
   padding: 8px 12px 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.sidebar-collapsed .user-menu--sidebar {
+  width: auto;
 }
 .sidebar-collapsed .sidebar-user {
   justify-content: center;
-  padding: 10px 0;
-  margin: 0;
-  width: 100%;
+  align-items: center;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  margin: 0 auto;
+  gap: 0;
+  background: transparent;
+  overflow: visible;
+}
+.sidebar-collapsed .sidebar-user:hover {
+  background: transparent;
+}
+[data-theme="dark"] .sidebar-collapsed .sidebar-user,
+[data-theme="dark"] .sidebar-collapsed .sidebar-user:hover {
+  background: transparent;
 }
 .sidebar-collapsed .sidebar-logout,
 .sidebar-collapsed fw-button.sidebar-logout,
