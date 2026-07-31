@@ -78,14 +78,24 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
     (input.authHeader ? `Authorization: ${input.authHeader}\r\n` : "");
 
   // Cap wall samples — 45min @ 10s = 270; hard cap 360
+  // Cap linear fallback — full 45min scans timeout on Zoom HTTP inputs.
+  const capSec = Math.min(90, Math.max(30, Math.round(input.durationSec ?? 90)));
   const args = [
     "-hide_banner",
     "-loglevel",
     "error",
+    "-reconnect",
+    "1",
+    "-reconnect_streamed",
+    "1",
+    "-reconnect_delay_max",
+    "5",
     "-headers",
     headerStr,
     "-i",
     input.mediaUrl,
+    "-t",
+    String(capSec),
     "-vf",
     `fps=${fps},scale=640:-2`,
     "-q:v",
@@ -160,60 +170,87 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
   const samples: SampleFrame[] = [];
   let prev: Buffer | null = null;
 
-  for (const win of windows) {
+  async function extractWindowFrames(
+    win: { startS: number; endS: number; label: string },
+    interval: number,
+  ): Promise<SampleFrame[]> {
     const clipDur = win.endS - win.startS;
-    if (clipDur <= 0) continue;
+    if (clipDur <= 0) return [];
     const outPattern = path.join(framesDir, `win_${win.label}_%05d.jpg`);
     const args = [
       "-hide_banner",
       "-loglevel",
       "error",
+      "-reconnect",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_delay_max",
+      "5",
       "-headers",
       headerStr,
+      "-i",
+      input.mediaUrl,
       "-ss",
       String(win.startS),
       "-t",
       String(clipDur),
-      "-i",
-      input.mediaUrl,
       "-vf",
       `fps=1/${interval},scale=640:-2`,
       "-q:v",
       "5",
       outPattern,
     ];
-
     try {
       await execFileAsync(bin, args, {
-        timeout: 3 * 60 * 1000,
+        timeout: 5 * 60 * 1000,
         maxBuffer: 2 * 1024 * 1024,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`ffmpeg strategic sample failed (${win.label}): ${msg.slice(0, 300)}`);
+      console.warn(`[video/ffmpeg] window ${win.label} failed: ${msg.slice(0, 200)}`);
+      return [];
     }
-
     const names = (await readdir(framesDir))
       .filter((n) => n.startsWith(`win_${win.label}_`) && n.endsWith(".jpg"))
       .sort();
-
+    const out: SampleFrame[] = [];
     for (let i = 0; i < names.length; i++) {
       const filePath = path.join(framesDir, names[i]);
       const buf = await readFile(filePath);
       const delta = prev ? jpegSceneDelta(prev, buf) : 0;
       prev = buf;
-      const atS = win.startS + i * interval;
-      samples.push({
-        atS,
+      out.push({
+        atS: win.startS + i * interval,
         path: filePath,
         sceneDelta: Math.round(delta * 10) / 10,
         windowLabel: win.label,
       });
     }
+    return out;
+  }
+
+  for (const win of windows) {
+    const winFrames = await extractWindowFrames(win, interval);
+    samples.push(...winFrames);
   }
 
   if (!samples.length) {
-    throw new Error("ffmpeg strategic sample produced no frames");
+    console.warn("[video/ffmpeg] strategic windows empty; trying opening 60s fallback");
+    const openEnd = Math.min(60, durationSec);
+    const opening = await extractWindowFrames(
+      { startS: 0, endS: openEnd, label: "opening_fallback" },
+      interval,
+    );
+    samples.push(...opening);
+  }
+
+  if (!samples.length) {
+    console.warn("[video/ffmpeg] opening fallback empty; trying capped linear sample (90s max)");
+    const capSec = Math.min(90, durationSec);
+    const linear = { ...input, durationSec: capSec, sampleIntervalS: interval };
+    const linearOut = await sampleFramesFromUrl(linear);
+    return linearOut;
   }
 
   return { samples, workDir, framesDir };

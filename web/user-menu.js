@@ -54,6 +54,11 @@ export function initUserMenu(opts) {
     toggleMenu();
   });
 
+  document.getElementById("sidebar-user")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
   document.getElementById("user-menu-profile")?.addEventListener("click", () => {
     closeMenu();
     opts.onProfileSettings?.();

@@ -54,6 +54,7 @@ export interface Pass2Debug {
   ffmpegOk?: boolean;
   consent?: boolean;
   hasStream?: boolean;
+  streamKind?: string | null;
   sampleCount?: number;
   keyframeCount?: number;
   visionCurveRows?: number;
@@ -110,7 +111,13 @@ function pickStreamForConsent(
   if (!consent) {
     const share = media.streams.find((s) => s.kind === "share");
     if (share) return share;
+    return preferredMediaStream(media);
   }
+  // Face/camera vision needs the gallery view — not share-only (no participant tiles).
+  const cameraStream =
+    media.streams.find((s) => s.kind === "view") ||
+    media.streams.find((s) => s.kind === "view_with_share");
+  if (cameraStream) return cameraStream;
   return preferredMediaStream(media);
 }
 
@@ -374,6 +381,7 @@ export async function runVideoPass(
     ffmpegOk,
     consent,
     hasStream: !!stream,
+    streamKind: stream?.kind ?? null,
     freshMedia,
   };
 

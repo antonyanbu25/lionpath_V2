@@ -8,6 +8,11 @@ globalThis.localStorage = {
   setItem: (k, v) => store.set(k, v),
   removeItem: (k) => store.delete(k),
 };
+globalThis.sessionStorage = {
+  getItem: (k) => store.get(`s:${k}`) ?? null,
+  setItem: (k, v) => store.set(`s:${k}`, v),
+  removeItem: (k) => store.delete(`s:${k}`),
+};
 
 class El {
   constructor(tag = "div") {
@@ -24,6 +29,8 @@ class El {
       return this._buttons.find((b) => b.dataset.action === action) ?? null;
     }
     if (sel === ".dash-call-link") return this._buttons.find((b) => b.classList?.contains("dash-call-link")) ?? null;
+    if (sel === "#task-board-mount") return this._boardMount ?? null;
+    if (sel === ".launch-kpi-grid") return this._kpiGrid ?? null;
     return null;
   }
   querySelectorAll(sel) {
@@ -33,6 +40,8 @@ class El {
   set innerHTML(html) {
     this._html = html;
     this._buttons = [];
+    this._boardMount = html.includes("task-board-mount") ? new El("div") : null;
+    this._kpiGrid = html.includes("launch-kpi-grid") ? new El("div") : null;
     const actionRe = /data-action="([^"]+)"/g;
     let m;
     while ((m = actionRe.exec(html))) {
@@ -57,18 +66,16 @@ class El {
 }
 
 const container = new El("section");
-renderSeLaunchpad(container, "se@freshworks.com", { seName: "Alex SE" });
+await renderSeLaunchpad(container, "se@freshworks.com", { seName: "Alex SE" });
 
 const html = container.innerHTML;
 const checks = [
   ["non-empty HTML", html.length > 200],
-  ["has My dashboard title", html.includes("My dashboard")],
-  ["has prep action", html.includes("Prep a call")],
-  ["has analyze action", html.includes("Analyze a recording")],
-  ["has follow-ups section", html.includes("Follow-ups owed")],
-  ["has recent calls section", html.includes("Recent calls")],
-  ["has coaching nudge", html.includes("Coaching nudge")],
-  ["has empty state when no history", html.includes("No calls yet") || html.includes("All caught up")],
+  ["has greeting", /,\s*Alex/.test(html) && html.includes("launch-greeting")],
+  ["has KPI cards", html.includes("Open tasks") && html.includes("Calls analysed")],
+  ["has task board mount", html.includes("task-board-mount")],
+  ["has recent activity section", html.includes("Recent activity")],
+  ["has launch KPI grid", html.includes("launch-kpi-grid")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

@@ -37,9 +37,7 @@ assert(indexHtml.includes('id="view-deals"'), "index.html: view-deals section mi
 assert(!indexHtml.includes('data-view="lifecycles"'), "index.html: Lifecycles nav still present");
 assert(!indexHtml.includes('id="sidebar-account"'), "index.html: sidebar account card still present");
 assert(!indexHtml.includes("sidebar-lifecycle-section"), "index.html: Recent lifecycles section still present");
-assert(indexHtml.includes("Discovery briefs"), "index.html: Discovery briefs section missing");
 assert(indexHtml.includes('class="sidebar-collapse-glyph"'), "index.html: sidebar collapse glyph missing");
-assert(indexHtml.includes("Call reviews"), "index.html: Call reviews section missing");
 assert(indexHtml.includes('id="view-accounts"'), "index.html: view-accounts section missing");
 assert(indexHtml.includes('id="account-panel"'), "index.html: account-panel missing");
 assert(!indexHtml.includes('id="view-lifecycles"'), "index.html: view-lifecycles still present");

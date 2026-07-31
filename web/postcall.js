@@ -2245,8 +2245,11 @@ async function confirmAndGenerate(e) {
       });
       videoFacts = videoRes?.videoFacts || null;
       pipelineState.videoFacts = videoFacts;
+      pipelineState.pass2Debug = videoRes?.pass2Debug || null;
     } catch (videoErr) {
-      console.warn("[postcall] video-pass soft-fail:", videoErr?.message || videoErr);
+      const msg = videoErr?.message || String(videoErr);
+      console.warn("[postcall] video-pass soft-fail:", msg);
+      pipelineState.pass2Debug = { route: "unavailable", error: msg.slice(0, 200) };
       videoFacts = null;
     }
   } else {
@@ -2337,6 +2340,10 @@ async function confirmAndGenerate(e) {
       record = await savePostCallHistory(sessionEmail, savePayload, {
         ...data,
         videoFacts: data.videoFacts || pipelineState.videoFacts || videoFacts || undefined,
+        analysisMeta: {
+          ...(data.analysisMeta || {}),
+          pass2Debug: pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null,
+        },
       });
       if (record?.id) {
         pipelineState.recordId = record.id;
