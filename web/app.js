@@ -1655,18 +1655,12 @@ async function warnIfWorkerDown() {
   const configUrl = `${WORKER_BASE_URL}/api/config`;
   try {
     const res = await fetch(configUrl, { signal: AbortSignal.timeout(8000) });
-    // #region agent log
-    fetch('http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1a2090'},body:JSON.stringify({sessionId:'1a2090',location:'app.js:warnIfWorkerDown',message:'worker health ok',data:{configUrl,status:res.status,host:location.hostname},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     banner.hidden = true;
     return true;
   } catch (err) {
     const status = err?.status;
     const errName = err?.name || "Error";
-    // #region agent log
-    fetch('http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1a2090'},body:JSON.stringify({sessionId:'1a2090',location:'app.js:warnIfWorkerDown',message:'worker health fail',data:{configUrl,status,errName,host:location.hostname,workerBase:WORKER_BASE_URL},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
-    // #endregion
     banner.textContent = workerDownMessage(status, errName);
     banner.hidden = false;
     return false;
@@ -1716,7 +1710,7 @@ async function boot() {
     kaiaShareUrl: KAIA_SHARE_CONTENT_URL,
     fetchKaiaUrl: FETCH_KAIA_SUMMARY_URL,
     authEnabled: isFirebaseAuthEnabled(),
-    workerDownMsg: WORKER_DOWN_MSG,
+    workerDownMsg: workerDownMessage(),
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
     switchView,
     onGenerated: async (payload, prep, meta) => {
