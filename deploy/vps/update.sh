@@ -7,11 +7,27 @@ REPO_ROOT="$(cd ../.. && pwd)"
 
 echo "=== Fetching origin/2.0.7.2 ==="
 cd "$REPO_ROOT"
-git fetch origin 2.0.7.2
+ORIGIN_URL="$(git remote get-url origin 2>/dev/null || echo "missing")"
+echo "=== Git origin: $ORIGIN_URL ==="
+if [[ "$ORIGIN_URL" != *"skut264/lionpath"* && "$ORIGIN_URL" != *"se-singha-paathai"* ]]; then
+  echo "WARN: origin may be wrong. Expected github.com/skut264/lionpath.git" >&2
+  echo "      Fix: git remote set-url origin https://github.com/skut264/lionpath.git" >&2
+fi
+if ! git fetch origin 2.0.7.2; then
+  echo "ERROR: git fetch failed — check VPS deploy key / GitHub credentials for private repo." >&2
+  exit 1
+fi
 
 echo "=== Resetting to origin/2.0.7.2 (keeps .env — gitignored) ==="
 git checkout 2.0.7.2 2>/dev/null || git checkout -B 2.0.7.2
 git reset --hard origin/2.0.7.2
+echo "=== Deployed commit: $(git log -1 --oneline) ==="
+
+if ! grep -q 'precall.css?v=2.0.8-precall-align2' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing precall-align2 after reset — git pull did not apply." >&2
+  echo "       Run: git remote -v && git fetch origin && git log -1 origin/2.0.7.2 --oneline" >&2
+  exit 1
+fi
 
 cd "$REPO_ROOT/deploy/vps"
 
@@ -44,6 +60,7 @@ fi
 
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker
+docker compose up -d --force-recreate web
 docker compose up -d
 
 echo "=== Waiting for worker (up to 90s) ==="
@@ -73,4 +90,4 @@ fi
 
 echo ""
 echo "=== verify-deploy.sh ==="
-bash verify-deploy.sh || true
+bash verify-deploy.sh

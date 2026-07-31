@@ -37,8 +37,18 @@
   color: var(--dew-text);
 }
 
-.prep-form-heading p {
+.prep-form-heading p:not(.nb-build-stamp) {
   display: none;
+}
+
+.nb-build-stamp {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
 }
 
 /* New pre-call brief — SE Labs design */

@@ -1397,6 +1397,10 @@ export function initPrecall(options) {
     window.__logPrecallDeploy = () => logPrecallDeployFingerprint("crm");
   }
   logPrecallDeployFingerprint("init");
+  const stamp = document.getElementById("prep-ui-build-stamp");
+  if (stamp) {
+    stamp.textContent = document.querySelector('meta[name="portal-build"]')?.getAttribute("content") || "";
+  }
 }
 
 /** Debug: verify which precall build/styles the browser actually loaded. */
