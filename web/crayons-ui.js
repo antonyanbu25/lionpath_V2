@@ -1,5 +1,24 @@
 /** Shared Freshworks Crayons helpers for the SE portal. */
 
+/**
+ * fw-input's internal .field-control is display:block with its own intrinsic
+ * height, so forcing a taller height on the host (to match a native button
+ * beside it) doesn't stretch the visible box — it stays top-aligned and short.
+ * @param {HTMLElement} el
+ */
+export function fillShadowFieldHeight(el) {
+  const apply = () => {
+    const root = el.shadowRoot;
+    if (!root || root.querySelector("style[data-fill-field-height]")) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-fill-field-height", "");
+    style.textContent = ".field-control{height:100%!important;box-sizing:border-box!important;}";
+    root.appendChild(style);
+  };
+  if (typeof el.componentOnReady === "function") el.componentOnReady().then(apply);
+  else apply();
+}
+
 /** @param {HTMLElement | null | undefined} el */
 export function readFieldValue(el) {
   if (!el) return "";

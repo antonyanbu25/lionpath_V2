@@ -989,6 +989,11 @@ fw-button.sidebar-history-item.active {
   flex: 0 1 300px;
   max-width: 300px;
   min-width: 160px;
+  /* match .topbar-action's 44px so the search field isn't visibly shorter
+     than "New brief" / "New call analysis" beside it. */
+  height: 44px;
+  box-sizing: border-box;
+  --fw-input-min-height: 44px;
 }
 .topbar-actions {
   display: flex;
@@ -4486,7 +4491,8 @@ fw-button.nav-item.active {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
+  /* push the quick-add controls to the right edge, title stays left */
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px 32px;
   padding: 20px 22px 14px;
@@ -4548,7 +4554,10 @@ fw-button.nav-item.active {
   flex: 0 0 auto;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  /* fw-input's shadow box top-aligns within its host; fw-button's shadow pill
+     has a fixed intrinsic height and centers by default. flex-start makes the
+     two match top-edges instead of the button's pill sitting ~4px lower. */
+  align-items: flex-start;
   padding-block: 0;
 }
 .task-quick-title {
