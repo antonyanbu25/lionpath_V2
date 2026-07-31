@@ -20,8 +20,8 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-chmod +x start.sh setup.sh doctor.sh update.sh entrypoint-worker.sh 2>/dev/null || true
-sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh entrypoint-worker.sh 2>/dev/null || true
+chmod +x start.sh setup.sh doctor.sh update.sh verify-deploy.sh entrypoint-worker.sh 2>/dev/null || true
+sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh verify-deploy.sh entrypoint-worker.sh 2>/dev/null || true
 
 if ! grep -q 'DEMO_ASSET_LABELS' "$REPO_ROOT/worker/src/prep-assets.ts" 2>/dev/null; then
   echo "ERROR: worker/src/prep-assets.ts missing DEMO_ASSET_LABELS — git reset did not apply." >&2
@@ -72,6 +72,5 @@ if ! docker compose exec -T worker node -e \
 fi
 
 echo ""
-echo "Done. Test: curl -sI https://portalapi.benjaminsquare.com/api/config"
-echo "Worker: curl -s https://portalapi.benjaminsquare.com/api/config | grep workerBuild || true"
-echo "Expect workerBuild 2.0.7.2-domain-cache and portal-build 2.0.7.2-domain-cache. Hard-refresh browser after deploy."
+echo "=== verify-deploy.sh ==="
+bash verify-deploy.sh || true
