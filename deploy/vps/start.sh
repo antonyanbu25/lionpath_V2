@@ -11,6 +11,15 @@ fi
 
 chmod 600 .env 2>/dev/null || true
 
+REPO_ROOT="$(cd ../.. && pwd)"
+PREP_ASSETS="$REPO_ROOT/worker/src/prep-assets.ts"
+if ! grep -q 'DEMO_ASSET_LABELS' "$PREP_ASSETS" 2>/dev/null; then
+  echo "ERROR: Worker source is stale (missing DEMO_ASSET_LABELS export)." >&2
+  echo "       Your git pull likely failed. Run: bash repair.sh" >&2
+  echo "       Or:  cd $REPO_ROOT && git fetch origin && git reset --hard origin/2.0.7.2" >&2
+  exit 1
+fi
+
 # Warn when CORS still points at pre-migration lionpath hostnames.
 if grep -qE 'ALLOWED_ORIGINS=.*lionpath' .env 2>/dev/null; then
   echo "WARNING: .env ALLOWED_ORIGINS still references lionpath.* — update to https://portal.benjaminsquare.com" >&2
@@ -18,7 +27,7 @@ if grep -qE 'ALLOWED_ORIGINS=.*lionpath' .env 2>/dev/null; then
 fi
 
 docker compose pull --ignore-pull-failures 2>/dev/null || true
-docker compose build --pull worker
+docker compose build --no-cache worker
 docker compose up -d
 
 echo ""
