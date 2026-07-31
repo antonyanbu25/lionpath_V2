@@ -6,6 +6,8 @@ import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 /** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
 const AI_STUDIO_DEFAULT_MODEL = DEFAULT_MODEL;
+/** Grounded web-search calls can stall under load; cap so one query cannot block research. */
+const RESEARCH_FETCH_TIMEOUT_MS = 90_000;
 
 interface GeminiPart {
   text?: string;
@@ -222,6 +224,29 @@ async function getVertexAccessToken(): Promise<string> {
   return tokenResponse.token;
 }
 
+async function fetchGemini(
+  url: string,
+  init: RequestInit,
+  req: LlmRequest,
+): Promise<Response> {
+  if (!req.research) return fetch(url, init);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RESEARCH_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(
+        `[${req.step ?? "research"}] Gemini research timed out after ${RESEARCH_FETCH_TIMEOUT_MS / 1000}s`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function generateViaAiStudio(
   apiKey: string,
   model: string,
@@ -232,11 +257,15 @@ async function generateViaAiStudio(
 ): Promise<LlmResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(buildRequestBody(req, model, env)),
-  });
+  const res = await fetchGemini(
+    url,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildRequestBody(req, model, env)),
+    },
+    req,
+  );
   if (!res.ok) {
     const errBody = await res.text();
     throw new Error(
@@ -259,14 +288,18 @@ async function generateViaVertex(
     `https://${location}-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(project)}` +
     `/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`,
+  const res = await fetchGemini(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(buildRequestBody(req, model, env)),
     },
-    body: JSON.stringify(buildRequestBody(req, model, env)),
-  });
+    req,
+  );
   if (!res.ok) {
     const errBody = await res.text();
     throw new Error(`Vertex AI Gemini ${res.status}: ${errBody.slice(0, 500)}`);

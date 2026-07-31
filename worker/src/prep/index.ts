@@ -185,26 +185,32 @@ async function gatherResearch(
     emails,
   };
 
-  const [apolloResult, mergedResult, orchestratorCtx, playbookSnippets] = await Promise.all([
-    env.APOLLO_API_KEY
-      ? enrichWithApollo(env, input.companyDomain, emails)
-      : Promise.resolve({ facts: [] as ResearchFact[], sources: [] as SourceRef[], creditsUsed: 0 }),
-    resolveMergedAdditionalContext(input),
-    runResearch(env, {
+  // Run enrichment and web fetches sequentially — parallel Gemini playbook queries
+  // alongside orchestrator/Apollo saturated outbound connections and left hung
+  // generateContent calls blocking the whole research step (no client response).
+  const apolloResult = env.APOLLO_API_KEY
+    ? await enrichWithApollo(env, input.companyDomain, emails)
+    : { facts: [] as ResearchFact[], sources: [] as SourceRef[], creditsUsed: 0 };
+  const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
+
+  let orchestratorCtx: Awaited<ReturnType<typeof runResearch>> | null = null;
+  try {
+    orchestratorCtx = await runResearch(env, {
       companyName: input.companyName,
       domain: input.companyDomain,
       emails,
-    }).catch((err) => {
-      console.warn("prep/research-orchestrator skipped:", (err as Error).message);
-      return null;
-    }),
-    runPlaybookResearch(env, playbookInput, { skipLinkedInForEmails: matchedEmails }),
-  ]);
+    });
+  } catch (err) {
+    console.warn("prep/research-orchestrator skipped:", (err as Error).message);
+  }
+
+  const playbookSnippets = await runPlaybookResearch(env, playbookInput, {
+    skipLinkedInForEmails: matchedEmails,
+  });
 
   const apolloCredits = apolloResult.creditsUsed;
   const apolloFacts = apolloResult.facts;
   const apolloSources = apolloResult.sources;
-  const { text: mergedContext, kaiaFetched } = mergedResult;
 
   let orchestratorSnippets: import("./types").ResearchSnippet[] = [];
   let orchestratorFacts: ResearchFact[] = [];
