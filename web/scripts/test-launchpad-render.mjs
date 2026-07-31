@@ -90,6 +90,8 @@ const checks = [
   ["has recent activity section", html.includes("Recent activity")],
   ["activity includes brief link hook", html.includes("dash-brief-link") || html.includes("Discovery brief")],
   ["has launch KPI grid", html.includes("launch-kpi-grid")],
+  ["no hero subtitle", !html.includes("launch-sub")],
+  ["no needs-you subtitle", !html.includes("Here's what needs you today.")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

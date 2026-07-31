@@ -63,13 +63,22 @@
 
     <!-- Login -->
     <div id="login-view" class="login-page">
+      <div class="login-bg" aria-hidden="true">
+        <video class="login-bg-video" autoplay muted loop playsinline preload="auto" tabindex="-1">
+          <source src="assets/login-bg.webm" type="video/webm" />
+        </video>
+        <div class="login-bg-overlay"></div>
+      </div>
+      <div class="login-page-inner">
       <fw-card class="login-card form-panel">
         <div class="login-card-head">
-          <div>
-            <h1>SE Labs</h1>
-            <p id="login-subtitle" class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+          <div class="login-card-brand">
+            <span class="login-brand-mark" aria-hidden="true">SE</span>
+            <div>
+              <h1>SE Labs</h1>
+              <p id="login-subtitle" class="muted">Sign in to access your SE dashboard, call history, and quality metrics.</p>
+            </div>
           </div>
-          <fw-button class="theme-toggle" data-theme-toggle color="secondary" fill="clear" aria-label="Toggle dark mode">🌙</fw-button>
         </div>
         <form id="login-form" class="login-form" action="javascript:void(0)" novalidate>
           <fw-input
@@ -109,6 +118,7 @@
           <fw-inline-message id="signin-error" type="error" closable="false" hidden></fw-inline-message>
         </div>
       </fw-card>
+      </div>
     </div>
 
     <!-- App shell -->
@@ -117,10 +127,9 @@
         <div class="sidebar-inner">
           <div class="sidebar-head">
             <div class="sidebar-brand">
-              <span class="sidebar-brand-icon" aria-hidden="true">SL</span>
+              <img class="sidebar-brand-logo" src="assets/freshworks-logomark.webp" alt="Freshworks" width="38" height="38" />
               <div class="sidebar-brand-copy">
                 <span class="sidebar-brand-text">SE Labs</span>
-                <span class="sidebar-brand-sub">Solution Engineering</span>
               </div>
             </div>
             <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
@@ -231,30 +240,6 @@
       <div id="user-menu-backdrop" class="user-menu-backdrop" hidden aria-hidden="true"></div>
 
       <div class="app-main">
-        <header class="main-topbar">
-          <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
-          <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
-          <div class="topbar-date" id="topbar-date">
-            <span id="topbar-day" class="topbar-day muted"></span>
-            <span id="topbar-date-text" class="topbar-date-text"></span>
-          </div>
-          <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
-          <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
-          <div class="topbar-actions" id="topbar-actions">
-            <button type="button" class="topbar-action topbar-action--primary" id="topbar-new-brief">
-              <span class="topbar-action-icon" aria-hidden="true">+</span>
-              New brief
-            </button>
-            <button type="button" class="topbar-action topbar-action--secondary" id="topbar-new-call">
-              <span class="topbar-action-icon" aria-hidden="true">+</span>
-              New call analysis
-            </button>
-            <button type="button" class="topbar-action topbar-action--icon" id="topbar-notifications" aria-label="Notifications" title="Notifications">
-              <span aria-hidden="true">🔔</span>
-            </button>
-          </div>
-        </header>
-
         <div id="global-search-backdrop" class="global-search-backdrop" hidden></div>
         <div id="global-search-modal" class="global-search-modal" hidden role="dialog" aria-label="Search">
           <div class="global-search-modal-inner">
@@ -266,6 +251,28 @@
         <fw-inline-message id="worker-warning" class="wrap-banner worker-banner" type="error" closable="false" hidden></fw-inline-message>
 
         <main class="main-content">
+          <header class="main-topbar">
+            <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
+            <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
+            <div class="topbar-date" id="topbar-date">
+              <span id="topbar-date-text" class="topbar-date-text"></span>
+            </div>
+            <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
+            <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
+            <div class="topbar-actions" id="topbar-actions">
+              <button type="button" class="topbar-action topbar-action--primary" id="topbar-new-brief">
+                <span class="topbar-action-icon" aria-hidden="true">+</span>
+                New brief
+              </button>
+              <button type="button" class="topbar-action topbar-action--secondary" id="topbar-new-call">
+                <span class="topbar-action-icon" aria-hidden="true">+</span>
+                New call analysis
+              </button>
+              <button type="button" class="topbar-action topbar-action--icon" id="topbar-notifications" aria-label="Notifications" title="Notifications">
+                <span aria-hidden="true">🔔</span>
+              </button>
+            </div>
+          </header>
           <!-- SE Dashboard -->
           <section id="view-dashboard" class="view-panel">
             <div id="dash-panel" class="dash-panel" role="main"></div>

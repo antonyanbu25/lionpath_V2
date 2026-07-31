@@ -107,7 +107,6 @@ const metrics = await page.evaluate(() => {
   const captureGrp = document.querySelector('.nav-grp:not([hidden])');
   const navLabels = [...document.querySelectorAll(".sidebar-nav .nav-label")].map((el) => el.textContent?.trim());
   const topbar = document.querySelector(".main-topbar");
-  const topbarDay = document.getElementById("topbar-day");
   const topbarDateText = document.getElementById("topbar-date-text");
   const greeting = document.querySelector(".launch-greeting");
 
@@ -140,7 +139,7 @@ const metrics = await page.evaluate(() => {
       ? {
           alignItems: getComputedStyle(topbar).alignItems,
           children: [...topbar.children].map((c) => m(c)),
-          dayText: topbarDay?.textContent?.trim(),
+          dayText: null,
           dateText: topbarDateText?.textContent?.trim(),
         }
       : null,

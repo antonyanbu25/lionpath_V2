@@ -12,8 +12,7 @@ export { normalizeUserEmail };
 
 export const TASKS_STORAGE_PREFIX = "se-singha-tasks:";
 const MAX_TASKS = 200;
-const MAX_RECOMMENDED_VISIBLE = 6;
-const COMPLETED_SHOW = 10;
+const MAX_RECOMMENDED_VISIBLE = 5;
 const MAX_CALLS_PICKER = 50;
 
 /** @type {(() => Promise<string | null>) | null} */
@@ -446,26 +445,26 @@ function renderTaskRow(task, opts = {}) {
     </div>`;
 }
 
-function renderRecommendedSection(recommended, opts, expanded) {
-  const showToggle = recommended.length > MAX_RECOMMENDED_VISIBLE;
-  const visible = showToggle && !expanded
-    ? recommended.slice(0, MAX_RECOMMENDED_VISIBLE)
-    : recommended;
-  const rowsHtml = visible.map((t) => renderTaskRow(t, opts)).join("");
-  const body = rowsHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations. Analyze a call or run prep.</span></div>`;
-  const toggle = showToggle
-    ? `<div class="task-show-more-wrap">
-         <fw-button class="task-show-more" color="link" size="small" data-toggle-recommended>
-           ${expanded ? "Show less" : `Show all ${recommended.length} recommendations`}
-         </fw-button>
-       </div>`
-    : "";
+function renderRecommendedSection(recommended, opts) {
+  const visible = recommended.slice(0, MAX_RECOMMENDED_VISIBLE);
+  const hidden = recommended.slice(MAX_RECOMMENDED_VISIBLE);
+  const visibleHtml = visible.map((t) => renderTaskRow(t, opts)).join("");
+  const body = visibleHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations. Analyze a call or run prep.</span></div>`;
+  const more =
+    hidden.length > 0
+      ? `<details class="task-recommended-more">
+           <summary class="task-section-header task-recommended-summary">
+             Show ${hidden.length} more recommendation${hidden.length === 1 ? "" : "s"}
+           </summary>
+           <div class="task-list">${hidden.map((t) => renderTaskRow(t, opts)).join("")}</div>
+         </details>`
+      : "";
 
   return `
     <div class="task-section task-section-recommended">
       <h3 class="task-section-header">Recommended <span class="task-section-count">(${recommended.length})</span></h3>
       <div class="task-list">${body}</div>
-      ${toggle}
+      ${more}
     </div>`;
 }
 
@@ -690,11 +689,6 @@ function wireTaskBoardEvents(container, email, tasks, calls, opts) {
     });
   });
 
-  container.querySelector("[data-toggle-recommended]")?.addEventListener("fwClick", () => {
-    container.dataset.recommendedExpanded = container.dataset.recommendedExpanded === "1" ? "" : "1";
-    renderTaskBoard(container, email, opts);
-  });
-
   container.querySelectorAll("[data-open-call]").forEach((btn) => {
     btn.addEventListener("fwClick", (e) => {
       e.stopPropagation();
@@ -712,14 +706,13 @@ export function renderTaskBoard(container, email, opts = {}) {
   const tasks = listTasks(email);
   const recommended = sortTasksByUrgency(tasks.filter((t) => t.status === "recommended"));
   const active = sortTasksByUrgency(tasks.filter((t) => t.status === "pending"));
-  const completed = sortTasksByUrgency(tasks.filter((t) => t.status === "completed")).slice(0, COMPLETED_SHOW);
+  const completedAll = sortTasksByUrgency(tasks.filter((t) => t.status === "completed"));
   const calls = listPostCallAnalyses(email).slice(0, MAX_CALLS_PICKER);
-  const recommendedExpanded = container.dataset.recommendedExpanded === "1";
 
   const activeRows = active.map((t) => renderTaskRow(t, opts)).join("");
-  const doneRows = completed.map((t) => renderTaskRow(t, opts)).join("");
+  const doneRows = completedAll.map((t) => renderTaskRow(t, opts)).join("");
 
-  const hasAnyTasks = recommended.length + active.length + completed.length > 0;
+  const hasAnyTasks = recommended.length + active.length + completedAll.length > 0;
 
   container.innerHTML = `
     <section class="dash-section task-board-section" aria-labelledby="tasks-heading">
@@ -731,13 +724,13 @@ export function renderTaskBoard(container, email, opts = {}) {
         <div class="task-board-sections">
           ${
             hasAnyTasks
-              ? `${renderRecommendedSection(recommended, opts, recommendedExpanded)}
+              ? `${renderRecommendedSection(recommended, opts)}
                  ${renderSection("Active", active.length, activeRows, "Nothing active. Accept a recommendation or add a task.")}
                  ${
-                   completed.length
+                   completedAll.length
                      ? `<details class="task-completed-accordion">
                           <summary class="task-section-header task-completed-summary">
-                            Completed <span class="task-section-count">(${completed.length})</span>
+                            Completed <span class="task-section-count">(${completedAll.length})</span>
                           </summary>
                           <div class="task-list">${doneRows}</div>
                         </details>`

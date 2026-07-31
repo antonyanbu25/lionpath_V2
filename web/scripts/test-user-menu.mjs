@@ -41,8 +41,11 @@ const checks = [
   ["no sidebar recent work", !html.includes('class="sidebar-recent-work"')],
   ["no sidebar logout btn", !html.includes('id="logout-btn"')],
   ["no app topbar theme toggle", !html.includes('class="main-topbar"') || !/main-topbar[\s\S]*data-theme-toggle/.test(html)],
-  ["login theme toggle kept", html.includes('login-card-head') && html.includes('data-theme-toggle')],
-  ["topbar day label", html.includes('id="topbar-day"')],
+  ["login theme toggle removed", !html.includes('login-card-head') || !/login-card-head[\s\S]*data-theme-toggle/.test(html)],
+  ["login video background", html.includes('class="login-bg-video"') && html.includes("assets/login-bg.webm")],
+  ["Freshworks sidebar logo", html.includes('class="sidebar-brand-logo"') && html.includes("assets/freshworks-logomark.webp")],
+  ["no sidebar brand sub", !html.includes('class="sidebar-brand-sub"')],
+  ["topbar inside main content", /<main class="main-content">[\s\S]*?<header class="main-topbar"/.test(html)],
   ["topbar date label", html.includes('id="topbar-date-text"')],
   ["topbar date block", html.includes('class="topbar-date"')],
 ];

@@ -1344,14 +1344,13 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
   const seName = opts.seName || displayNameForEmail(email) || "there";
-  const { greeting, subtitle } = getSessionGreeting();
+  const { greeting } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
 
   container.innerHTML = `
     <div class="dash-one-pager one-pager launchpad">
       <div class="launch-hero">
         <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
-        <p class="launch-sub muted">${esc(subtitle)}</p>
       </div>
       ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount)}
       <div class="dash-split launch-split">
