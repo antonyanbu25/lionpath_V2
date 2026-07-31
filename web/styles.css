@@ -4493,7 +4493,7 @@ fw-button.nav-item.active {
 .task-quick-add {
   display: grid;
   grid-template-columns: minmax(0, 200px) 130px minmax(0, 160px) auto;
-  align-items: end;
+  align-items: center;
   gap: 10px;
   padding: 0;
   border-bottom: none;
@@ -4508,6 +4508,10 @@ fw-button.nav-item.active {
   width: 100%;
   min-width: 0;
   --fw-input-min-height: 40px;
+  --fw-input-label-font-size: 0;
+  height: 40px;
+  box-sizing: border-box;
+  align-self: center;
 }
 .task-quick-add fw-button.task-quick-btn {
   margin: 0;
@@ -4516,9 +4520,13 @@ fw-button.nav-item.active {
   --fw-button-min-height: 40px;
   width: auto;
   min-width: 72px;
-  align-self: end;
+  align-self: center;
   justify-self: start;
   flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding-block: 0;
 }
 .task-quick-title {
   flex: 1 1 200px;
