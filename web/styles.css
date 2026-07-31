@@ -913,6 +913,7 @@ fw-button.sidebar-history-item.active {
   padding: 0;
   gap: 0;
   text-align: center;
+  --nav-btn-justify: center;
   --fw-button-min-width: 32px;
   --fw-button-min-height: 32px;
   --fw-button-padding-start: 0;
@@ -3134,7 +3135,6 @@ a { color: var(--accent); }
 @media (max-width: 620px) {
   .grid2, .qc-dashboard, .qc-insights, .dash-stats, .prep-action-grid, .split-blocks, .biz-grid, .signals-grid { grid-template-columns: 1fr; }
   .launch-kpi-grid { grid-template-columns: 1fr; }
-  .launch-split { grid-template-columns: 1fr; }
   .flow-row { grid-template-columns: 1fr; }
   .flow-arrow { display: none; }
   .outcome-bar { grid-template-columns: 1fr; }
@@ -3709,9 +3709,10 @@ a { color: var(--accent); }
   font-size: 13px;
   font-weight: 600;
   color: var(--dew-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* wrap rather than ellipsis-truncate ("Briefs generated") when cards get
+     narrow; the KPI cards share a grid row and stretch to equal height. */
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 .launch-kpi-icon {
   width: 36px;
@@ -3751,6 +3752,9 @@ a { color: var(--accent); }
 .launch-kpi-delta.good { color: var(--dew-green); }
 .launch-kpi-delta.warn { color: var(--dew-red); }
 .launch-kpi-delta.muted { color: var(--dew-text-muted); }
+/* Launchpad variant of `.dash-split` (base at "Dashboard split layout" below):
+   base supplies display:grid + align-items:start; this only widens the right
+   rail (380px) and tightens the gap. Keep both in sync intentionally. */
 .launch-split.dash-split {
   grid-template-columns: minmax(0, 1fr) 380px;
   gap: 16px;
@@ -4420,6 +4424,8 @@ fw-button.sidebar-logout {
   --fw-button-background-color: transparent;
   --fw-button-border: 0;
   --fw-button-box-shadow: none;
+  /* consumed inside the shadow root by sidebar.js -> alignNavButton() */
+  --nav-btn-justify: flex-start;
   text-align: left;
   border: none;
   box-shadow: none;
@@ -4443,6 +4449,7 @@ fw-button.nav-item.active {
   padding: 0;
   align-self: center;
   text-align: center;
+  --nav-btn-justify: center;
   --fw-button-min-width: 32px;
   --fw-button-min-height: 32px;
   --fw-button-padding-start: 0;
@@ -4497,27 +4504,32 @@ fw-button.nav-item.active {
 .task-board-card {
   display: block;
   padding: 0;
-  overflow: visible;
+  /* matches fw-card.task-board-card below; the call select hoists its dropdown
+     to <body>, so clipping to rounded corners here is safe. */
+  overflow: hidden;
   border-radius: var(--dew-radius-lg);
   box-shadow: var(--dew-shadow-island);
   border: 1px solid var(--dew-border);
 }
+/* Flex row (not grid): the call select is conditionally rendered, so a fixed
+   column count would leave a dead track / float the Add button. Flex keeps the
+   controls grouped and consistently sized whether there are 3 or 4 of them. */
 .task-quick-add {
-  display: grid;
-  grid-template-columns: minmax(0, 200px) 130px minmax(0, 160px) auto;
+  display: flex;
   align-items: center;
+  /* nowrap here so the controls never break across lines; .task-board-head
+     wraps the whole row below the title when the card is narrow. Mobile
+     switches to wrap+stack below. */
+  flex-wrap: nowrap;
   gap: 10px;
   padding: 0;
   border-bottom: none;
   flex: 0 1 auto;
   min-width: 0;
-  width: auto;
-  margin-left: 4px;
 }
 .task-quick-add fw-input,
 .task-quick-add fw-select {
   margin: 0;
-  width: 100%;
   min-width: 0;
   --fw-input-min-height: 40px;
   --fw-input-label-font-size: 0;
@@ -4533,24 +4545,23 @@ fw-button.nav-item.active {
   width: auto;
   min-width: 72px;
   align-self: center;
-  justify-self: start;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   padding-block: 0;
 }
 .task-quick-title {
-  flex: 1 1 200px;
+  flex: 0 1 220px;
   min-width: 160px;
 }
 .task-quick-due {
-  flex: 0 1 150px;
-  min-width: 130px;
+  flex: 0 0 auto;
+  width: 150px;
 }
 .task-quick-call {
-  flex: 0 1 220px;
-  min-width: 180px;
+  flex: 0 1 200px;
+  min-width: 160px;
 }
 .task-quick-btn {
   flex: 0 0 auto;
@@ -4853,6 +4864,11 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
   .dash-split {
     grid-template-columns: 1fr;
   }
+  /* Must match the .launch-split.dash-split specificity (0,2,0) to actually
+     collapse the launchpad's 380px rail; a bare .launch-split rule loses. */
+  .launch-split.dash-split {
+    grid-template-columns: 1fr;
+  }
   .dash-split-side {
     border-left: none;
     border-top: 1px solid var(--border-soft);
@@ -4874,17 +4890,19 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
   }
   .task-quick-add {
     flex: 1 1 auto;
+    flex-wrap: wrap;
     min-width: 0;
-    grid-template-columns: 1fr;
   }
   .task-quick-title,
   .task-quick-due,
-  .task-quick-call {
+  .task-quick-call,
+  .task-quick-btn {
+    flex: 1 1 100%;
     min-width: 0;
     width: 100%;
   }
-  .task-quick-btn {
-    justify-self: stretch;
+  .task-quick-add fw-button.task-quick-btn {
+    width: 100%;
   }
   .task-row {
     grid-template-columns: auto auto 1fr;

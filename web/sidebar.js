@@ -48,50 +48,29 @@ export function initSidebar() {
     });
   }
 
-  function measureSidebarAlignment(collapsed) {
-    const sidebarRect = sidebar.getBoundingClientRect();
-    const sidebarCenter = sidebarRect.left + sidebarRect.width / 2;
-    const navBtn = sidebar.querySelector("fw-button.nav-item");
-    const icon = navBtn?.querySelector("[data-nav-icon], .nav-icon");
-    const iconRect = icon?.getBoundingClientRect();
-    const logo = sidebar.querySelector(".sidebar-brand-logo");
-    const logoRect = logo?.getBoundingClientRect();
-    const brandCopy = sidebar.querySelector(".sidebar-brand-copy");
-    const shadowBtn = navBtn?.shadowRoot?.querySelector(".fw-btn");
-    const stylesHref = [...document.querySelectorAll('link[rel="stylesheet"]')]
-      .map((l) => l.href)
-      .find((h) => h.includes("styles.css"));
-    return {
-      collapsed,
-      sidebarWidth: Math.round(sidebarRect.width),
-      iconOffset: iconRect ? Math.round(Math.abs(iconRect.left + iconRect.width / 2 - sidebarCenter)) : null,
-      logoOffset: logoRect ? Math.round(Math.abs(logoRect.left + logoRect.width / 2 - sidebarCenter)) : null,
-      logoClipped: logoRect
-        ? logoRect.left < sidebarRect.left - 0.5 || logoRect.right > sidebarRect.right + 0.5
-        : null,
-      brandCopyDisplay: brandCopy ? getComputedStyle(brandCopy).display : null,
-      navBtnSize: navBtn?.getAttribute("size") || null,
-      shadowBtnClass: shadowBtn?.className || null,
-      stylesHref: stylesHref || null,
-    };
+  // Crayons fw-button centers its content inside an encapsulated shadow `.fw-btn`
+  // that has no exposed ::part, so external CSS can't left-align the expanded nav
+  // items. Inject a one-time shadow style that reads a light-DOM custom property
+  // (`--nav-btn-justify`), letting styles.css switch between left-aligned (expanded)
+  // and centered (collapsed) via the normal cascade.
+  function alignNavButton(btn) {
+    const root = btn.shadowRoot;
+    if (!root || root.querySelector("style[data-nav-align]")) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-nav-align", "");
+    style.textContent =
+      ".fw-btn{justify-content:var(--nav-btn-justify,center)!important;width:100%!important}";
+    root.appendChild(style);
   }
 
-  function logSidebarDebug(collapsed, runId = "pre-fix") {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0a6d10" },
-      body: JSON.stringify({
-        sessionId: "0a6d10",
-        runId,
-        hypothesisId: collapsed ? "B-collapsed" : "E-expanded",
-        location: "sidebar.js:applyCollapsed",
-        message: "sidebar alignment snapshot",
-        data: measureSidebarAlignment(collapsed),
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+  function initNavAlignment() {
+    sidebar.querySelectorAll("fw-button.nav-item").forEach((btn) => {
+      if (typeof btn.componentOnReady === "function") {
+        btn.componentOnReady().then(() => alignNavButton(btn));
+      } else {
+        alignNavButton(btn);
+      }
+    });
   }
 
   function applyCollapsed(collapsed) {
@@ -112,7 +91,6 @@ export function initSidebar() {
     collapseBtn.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
     const glyph = collapseBtn.querySelector(".sidebar-collapse-glyph");
     if (glyph) glyph.textContent = collapsed ? "›" : "‹";
-    requestAnimationFrame(() => logSidebarDebug(collapsed));
   }
 
   function setCollapsed(collapsed) {
@@ -129,4 +107,5 @@ export function initSidebar() {
   mq.addEventListener("change", () => applyCollapsed(readCollapsed()));
   applyCollapsed(readCollapsed());
   initNavIcons();
+  initNavAlignment();
 }
