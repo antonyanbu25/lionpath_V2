@@ -65,6 +65,7 @@ import {
 import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
+import { WORKER_BUILD } from "./build-id";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -96,6 +97,7 @@ export async function handleConfig(
   const ffmpegOk = isNodeRuntime() && (await ffmpegAvailable());
   return json(
     {
+      workerBuild: WORKER_BUILD,
       prep: {
         provider: prepProvider,
         model: prepModel,

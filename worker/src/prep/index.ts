@@ -146,8 +146,9 @@ async function gatherResearch(
   );
   const linkedinMatchedEmails = [...matchedEmails];
 
-  const { cacheHit, bundle } = resolveCachedResearch(input, emails);
+  const { cacheHit, bundle, softCacheHit } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
+    const tCache = Date.now();
     const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
     const withSe = applySeContextFacts(baseFacts, bundle.sources, mergedContext);
@@ -172,9 +173,8 @@ async function gatherResearch(
       apolloCredits: 0,
       linkedinMatchedEmails,
       mergedContext,
-      // Use the resolver's own flag: comparing merged text against the typed field
-      // reported "Kaia fetched" for any attached file too.
       kaiaFetched,
+      stepTimings: { cache: Date.now() - tCache, softCacheHit: softCacheHit ? 1 : 0 },
     };
   }
 

@@ -963,8 +963,11 @@ export function createPrepProgress(stageIds, hostId = "prep-progress") {
   };
 }
 
-function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit) {
-  if (cacheHit) return `Cache hit · ${factCount} facts · ${sourceCount} sources`;
+function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit, softCache) {
+  if (cacheHit) {
+    const label = softCache || steps?.softCacheHit ? "Domain cache hit" : "Cache hit";
+    return `${label} · ${factCount} facts · ${sourceCount} sources`;
+  }
   if (!steps || typeof steps !== "object") return `${factCount} facts · ${sourceCount} sources`;
   const parts = [];
   if (steps.parallelIo) parts.push(`io ${Math.round(steps.parallelIo / 1000)}s`);
@@ -1128,9 +1131,10 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const factCount = research.facts?.length ?? confirmedFacts.length;
   const sourceCount = research.sources?.length ?? 0;
   const researchCacheHit = research.researchMeta?.cacheHit ?? cacheHit;
+  const softCache = research.researchMeta?.steps?.softCacheHit === 1;
   progress.set("research", "done");
   progress.setDetail(
-    formatResearchStepDetail(research.researchMeta?.steps, factCount, sourceCount, researchCacheHit),
+    formatResearchStepDetail(research.researchMeta?.steps, factCount, sourceCount, researchCacheHit, softCache),
   );
 
   const enrichPayload = {
@@ -1185,7 +1189,6 @@ async function runPrepEndToEnd(payload, meta, emails) {
     }).catch(() => {});
     // #endregion
     displayPrepResult(data.prep, enrichedMeta);
-    showInlineStatus(status, { open: false });
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
     saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
     state.pendingResearch = null;
@@ -1196,6 +1199,12 @@ async function runPrepEndToEnd(payload, meta, emails) {
     const contextListEl = $("prep-context-file-list");
     if (contextListEl) contextListEl.innerHTML = "";
     progress.hide();
+    const totalSec = Math.round((Date.now() - prepT0) / 1000);
+    showInlineStatus(status, {
+      type: "info",
+      message: `Brief ready in ${totalSec}s${researchCacheHit ? (softCache ? " (domain cache)" : " (cache hit)") : ""}.`,
+    });
+    window.setTimeout(() => showInlineStatus(status, { open: false }), 4000);
   } catch (err) {
     progress.set("synthesize", "error");
     const msg = err.message || "Something went wrong.";

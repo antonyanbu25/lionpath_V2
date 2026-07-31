@@ -38,6 +38,9 @@ fi
 if ! grep -q 'New pre-call brief' "$REPO_ROOT/web/index.html" 2>/dev/null; then
   echo "WARN: web/index.html still has old pre-call form — git reset may not have applied." >&2
 fi
+if ! grep -q 'domain-cache' "$REPO_ROOT/worker/src/build-id.ts" 2>/dev/null; then
+  echo "WARN: worker build-id.ts missing domain-cache stamp — worker speed fixes may be stale." >&2
+fi
 
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker
@@ -70,5 +73,5 @@ fi
 
 echo ""
 echo "Done. Test: curl -sI https://portalapi.benjaminsquare.com/api/config"
-echo "Portal UI: curl -s https://portal.benjaminsquare.com/ | grep -o 'portal-build\" content=\"[^\"]*\"' || true"
-echo "Expect: New pre-call brief + portal-build 2.0.7.2-b74bc25 (or newer). Hard-refresh browser after deploy."
+echo "Worker: curl -s https://portalapi.benjaminsquare.com/api/config | grep workerBuild || true"
+echo "Expect workerBuild 2.0.7.2-domain-cache and portal-build 2.0.7.2-domain-cache. Hard-refresh browser after deploy."

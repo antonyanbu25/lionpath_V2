@@ -1461,10 +1461,13 @@ export async function findAccountByCompanyName(companyName, domain) {
 export async function loadCachedResearch(companyName, companyDomain, inputHash) {
   const account = await findAccountByCompanyName(companyName, companyDomain);
   const research = account?.metadata?.research;
-  if (!research?.lastResearchedAt || research.inputHash !== inputHash) return null;
+  if (!research?.lastResearchedAt) return null;
   if ((research.playbookVersion || "1") !== PREP_PLAYBOOK_VERSION) return null;
   if (Date.now() - research.lastResearchedAt > RESEARCH_TTL_MS) return null;
-  return research;
+  if (research.inputHash === inputHash) return research;
+  // Domain-soft cache: reuse account research when AE context or PDFs changed.
+  if ((research.facts?.length ?? 0) >= 8) return research;
+  return null;
 }
 
 /** Simple input hash matching worker (must stay in sync). */
