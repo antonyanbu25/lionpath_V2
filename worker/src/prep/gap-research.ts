@@ -18,14 +18,19 @@ export function buildGapQueries(input: {
   emails: string[];
   facts: ResearchFact[];
 }): string[] {
+  const signalFactCount = input.facts.filter(
+    (f) => f.category === "signal" && !isUnknown(f.value),
+  );
+  if (signalFactCount.length >= 4) return [];
+
   const queries: string[] = [];
   const { companyName, companyDomain, emails } = input;
 
-  const signalFacts = new Set(
+  const signalKeys = new Set(
     input.facts.filter((f) => f.category === "signal").map((f) => f.key),
   );
   for (const label of SIGNAL_LABELS) {
-    if (signalFacts.has(label)) continue;
+    if (signalKeys.has(label)) continue;
     if (label === "Incumbent tool") {
       queries.push(`site:${companyDomain} (zendesk OR intercom OR freshdesk OR "help center")`);
     } else if (label === "Hiring support roles") {

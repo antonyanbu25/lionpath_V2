@@ -481,7 +481,7 @@ export async function runPrepResearch(env: Env, rawInput: PrepInput): Promise<Re
       {
         cacheHit: research.cacheHit,
         playbookSkipped: research.playbookSkipped,
-        steps: { research: 0 },
+        steps: research.stepTimings || { research: 0 },
         linkedinMatchedEmails: research.linkedinMatchedEmails,
       },
       inputHash,

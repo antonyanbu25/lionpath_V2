@@ -19,8 +19,8 @@
 
 .prep-form-center {
   width: 100%;
-  max-width: 660px;
-  margin: 12px auto;
+  max-width: 720px;
+  margin: 6px auto 0;
   animation: prep-rise 0.4s ease;
 }
 
@@ -32,14 +32,447 @@
 .prep-form-heading h1 {
   margin: 0;
   font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: var(--dew-text);
 }
 
 .prep-form-heading p {
-  margin: 5px 0 0;
+  display: none;
+}
+
+/* New pre-call brief — SE Labs design */
+.nb-form-card {
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(43, 41, 38, 0.05);
+  padding: 24px;
+}
+
+.nb-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.nb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.nb-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--dew-text);
+  margin-bottom: 7px;
+}
+
+.nb-required {
+  color: var(--dew-red);
+}
+
+.nb-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--dew-text-muted);
+  line-height: 1.45;
+}
+
+.nb-hint-tight {
+  margin: 0 0 9px;
+}
+
+.nb-info-tip {
+  display: inline-flex;
+  color: var(--dew-text-faint);
+  cursor: help;
+}
+
+.nb-input-shell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--dew-input-border);
+  border-radius: 11px;
+  min-height: 46px;
+  padding: 0 14px;
+  background: var(--dew-surface);
+}
+
+.nb-input-shell:focus-within {
+  border-color: var(--dew-brand);
+  box-shadow: 0 0 0 1px var(--dew-brand-tint);
+}
+
+.nb-field-icon {
+  color: var(--dew-text-faint);
+  display: flex;
+  flex-shrink: 0;
+}
+
+.nb-input-shell fw-input,
+.nb-input-shell fw-textarea {
+  flex: 1;
+  min-width: 0;
+  --fw-input-box-shadow: none;
+  --fw-input-border-radius: 0;
+  --fw-input-border-color: transparent;
+  --fw-input-border-color-hover: transparent;
+  --fw-input-border-color-focus: transparent;
+}
+
+.nb-input-shell fw-input::part(input),
+.nb-context-section fw-textarea::part(textarea) {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  font-size: 14px;
+}
+
+.nb-context-section fw-textarea {
+  width: 100%;
+  --fw-textarea-border-color: var(--dew-input-border);
+  --fw-textarea-border-radius: 11px;
+}
+
+.nb-context-section fw-textarea::part(textarea) {
+  min-height: 92px;
   font-size: 13px;
+  line-height: 1.55;
+  padding: 11px 13px !important;
+}
+
+.nb-account-deal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.nb-account-card,
+.nb-deal-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--dew-border);
+  border-radius: 11px;
+  min-height: 46px;
+  padding: 0 12px;
+  background: var(--dew-surface-subtle);
+}
+
+.nb-account-card-mono {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--dew-clay-tint);
+  color: #c2603f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.nb-account-card-body,
+.nb-deal-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-account-card-name,
+.nb-deal-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--dew-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-account-card-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--dew-brand);
+}
+
+.nb-deal-card-stage {
+  font-size: 10.5px;
+  color: var(--dew-text-muted);
+}
+
+.nb-deal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.nb-deal-new-link {
+  appearance: none;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dew-brand);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.nb-deal-new-link:hover {
+  text-decoration: underline;
+}
+
+.nb-deal-select-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.nb-deal-card-icon {
+  color: #a5883f;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.nb-linkedin-attendees {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nb-linkedin-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--dew-border);
+  border-radius: 11px;
+  padding: 9px 12px;
+  background: var(--dew-surface);
+}
+
+.nb-linkedin-row-email {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--dew-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-linkedin-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px dashed #cfe3de;
+  background: #f7fbfa;
+  color: var(--dew-brand);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+
+.nb-linkedin-upload-btn:hover {
+  background: var(--dew-brand-tint);
+}
+
+.nb-linkedin-uploaded {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dew-brand);
+  background: var(--dew-brand-tint);
+  border-radius: 8px;
+  padding: 5px 9px;
+  flex-shrink: 0;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-context-section {
+  border-top: 1px solid var(--dew-hairline);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.nb-context-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nb-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px dashed var(--dew-input-border);
+  background: var(--dew-surface-subtle);
+  color: #57514a;
+  border-radius: 10px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nb-attach-btn:hover {
+  background: #f3efe7;
+}
+
+.nb-more-options {
+  margin-top: 4px;
+}
+
+.nb-more-options summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dew-text-secondary);
+  font-weight: 600;
+}
+
+.nb-more-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.nb-generate-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--dew-primary);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  height: 50px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(43, 41, 38, 0.08);
+  font-family: inherit;
+  margin-top: 2px;
+}
+
+.nb-generate-btn:hover:not(:disabled) {
+  background: var(--dew-primary-hover);
+}
+
+.nb-generate-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.nb-recent-briefs {
+  margin-top: 22px;
+}
+
+.nb-recent-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #7c7466;
+  margin: 0 4px 10px;
+}
+
+.nb-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nb-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nb-recent-item:hover {
+  background: var(--dew-surface-subtle);
+}
+
+.nb-recent-mono {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.nb-recent-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-recent-account {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--dew-text);
+}
+
+.nb-recent-meta {
+  font-size: 11.5px;
+  color: #7c7466;
+}
+
+.nb-recent-ext {
+  color: var(--dew-text-faint);
+  display: flex;
+  flex-shrink: 0;
+}
+
+.nb-parsing {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.nb-crm-panel {
+  margin: -6px 0 0;
 }
 
 #view-precall fw-card.prep-form-card {
@@ -1660,6 +2093,12 @@
   .prep-form-center,
   .prep-rise {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .nb-account-deal-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -24,7 +24,8 @@ import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disp
 import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
 import {
   linkedinProfileExportsForPayload,
-  initLinkedInPdfUpload,
+  initPrepAttendeeLinkedIn,
+  renderPrepAttendeeRows,
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
@@ -368,13 +369,67 @@ export function resetPrecallForm() {
   const domainHint = $("domain-hint");
   if (domainHint) domainHint.hidden = true;
   clearLinkedInAttachments();
-  const listEl = $("prep-linkedin-file-list");
-  if (listEl) listEl.innerHTML = "";
+  renderPrepAttendeeRows([], {});
   clearContextAttachments();
   const contextListEl = $("prep-context-file-list");
   if (contextListEl) contextListEl.innerHTML = "";
+  const grid = $("prep-account-deal-grid");
+  if (grid) grid.hidden = true;
+  renderPrepRecentBriefs();
   resetPrepCrmUi();
   syncPrepEngagementMotion();
+}
+
+function dedupeBriefsForRecent(briefs) {
+  const seen = new Set();
+  const out = [];
+  for (const b of briefs || []) {
+    const domain = String(b.meta?.domain || b.meta?.companyDomain || "").toLowerCase();
+    const key = domain || String(b.company || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(b);
+  }
+  return out;
+}
+
+/** Recent briefs list below the new-brief form (SE Labs design). */
+export function renderPrepRecentBriefs() {
+  const host = $("prep-recent-briefs");
+  if (!host) return;
+  const briefs = dedupeBriefsForRecent(loadLocalBriefs()).slice(0, 4);
+  if (!briefs.length) {
+    host.innerHTML = "";
+    return;
+  }
+  const monoTints = [
+    { bg: "#f6e7e1", color: "#c2603f" },
+    { bg: "#e7eef7", color: "#4a6fa5" },
+    { bg: "#eeeaf6", color: "#6b5b95" },
+    { bg: "#e9f1e9", color: "#4a7a5c" },
+  ];
+  host.innerHTML = `<div class="nb-recent-label">Recent briefs</div>
+    <ul class="nb-recent-list">${briefs
+      .map((b, i) => {
+        const name = b.company || b.meta?.company || "Account";
+        const tint = monoTints[i % monoTints.length];
+        const meta = [b.kind || "Discovery", b.when].filter(Boolean).join(" · ");
+        return `<li><button type="button" class="nb-recent-item" data-prep-recent-id="${esc(b.id)}">
+          <span class="nb-recent-mono" style="background:${tint.bg};color:${tint.color}">${esc(companyMono(name))}</span>
+          <span class="nb-recent-body">
+            <span class="nb-recent-account">${esc(name)}</span>
+            <span class="nb-recent-meta">${esc(meta)}</span>
+          </span>
+          <span class="nb-recent-ext" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg></span>
+        </button></li>`;
+      })
+      .join("")}</ul>`;
+  host.querySelectorAll("[data-prep-recent-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-prep-recent-id");
+      if (id) openPrepBrief(id);
+    });
+  });
 }
 
 function showFormView() {
@@ -612,6 +667,7 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
     lifecycleId: lifecycleId || null,
   });
   state.activeBriefId = id;
+  renderPrepRecentBriefs();
 }
 
 async function buildPayload() {
@@ -743,10 +799,11 @@ function setLoading(on, message) {
   state.loading = on;
   setButtonLoading(btn, on);
   setFormFieldsDisabled($("prep-form"), on);
-  const addPdfBtn = $("prep-linkedin-add-btn");
-  if (addPdfBtn) addPdfBtn.disabled = on || state.linkedinParsing;
   const addContextBtn = $("prep-context-add-btn");
   if (addContextBtn) addContextBtn.disabled = on || state.contextParsing;
+  document.querySelectorAll(".nb-linkedin-upload-btn").forEach((el) => {
+    el.disabled = on || state.linkedinParsing;
+  });
   show($("prep-loading"), on);
   if (on) {
     showInlineStatus(status, { type: "info", message, loading: true });
@@ -909,6 +966,28 @@ export function createPrepProgress(stageIds, hostId = "prep-progress") {
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
   const pdfs = payload.linkedinProfileExports || [];
+  // #region agent log
+  const prepRunId = `prep-${Date.now()}`;
+  const prepT0 = Date.now();
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+    body: JSON.stringify({
+      sessionId: "1a2090",
+      runId: prepRunId,
+      hypothesisId: "H-cache",
+      location: "precall.js:runPrepEndToEnd:start",
+      message: "prep pipeline start",
+      data: {
+        cacheHint: !!payload.cachedResearch,
+        pdfCount: pdfs.length,
+        emailCount: emails.length,
+        domain: payload.companyDomain,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const willFetchKaia = !!payload.kaiaMeetingUrl?.trim() && !payload.kaiaSummary?.trim();
   const willEnrich = !!deps.enrichUrl && shouldRunProspectEnrich(payload, pdfs.length);
@@ -973,6 +1052,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
   if (cacheHit) progress.setDetail("Using cached research");
 
   let research;
+  const tResearch = Date.now();
   try {
     research = await postJson(deps.researchUrl, enrichPayload);
   } catch (err) {
@@ -1005,9 +1085,30 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const sourceCount = research.sources?.length ?? 0;
   progress.set("research", "done");
   progress.setDetail(`${factCount} facts · ${sourceCount} sources`);
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+    body: JSON.stringify({
+      sessionId: "1a2090",
+      runId: prepRunId,
+      hypothesisId: "H-research",
+      location: "precall.js:runPrepEndToEnd:research-done",
+      message: "research step complete",
+      data: {
+        ms: Date.now() - tResearch,
+        cacheHit: research.researchMeta?.cacheHit ?? cacheHit,
+        steps: research.researchMeta?.steps || null,
+        factCount,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   setLoading(true, "Generating brief from research…");
   progress.set("synthesize", "active");
+  const tSynth = Date.now();
 
   try {
     const data = await postJson(deps.synthesizeUrl, {
@@ -1030,6 +1131,26 @@ async function runPrepEndToEnd(payload, meta, emails) {
     };
 
     progress.set("synthesize", "done");
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+      body: JSON.stringify({
+        sessionId: "1a2090",
+        runId: prepRunId,
+        hypothesisId: "H-synth",
+        location: "precall.js:runPrepEndToEnd:complete",
+        message: "prep pipeline complete",
+        data: {
+          researchMs: Date.now() - tResearch,
+          synthMs: Date.now() - tSynth,
+          totalMs: Date.now() - prepT0,
+          cacheHit: research.researchMeta?.cacheHit ?? cacheHit,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     displayPrepResult(data.prep, enrichedMeta);
     showInlineStatus(status, { open: false });
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
@@ -1091,25 +1212,24 @@ export function initPrecall(options) {
   $("prep-form")?.addEventListener("submit", (e) => {
     void generatePrep(e);
   });
-  $("generate")?.addEventListener("fwClick", (e) => {
-    void generatePrep(e);
-  });
 
   const syncParsingGate = () => {
     const busy = isParsingAttachments() || state.loading;
     const btn = $("generate");
     if (btn) btn.disabled = busy;
-    const addPdfBtn = $("prep-linkedin-add-btn");
-    if (addPdfBtn) addPdfBtn.disabled = busy;
+    document.querySelectorAll(".nb-linkedin-upload-btn").forEach((el) => {
+      el.disabled = busy;
+    });
     const addContextBtn = $("prep-context-add-btn");
     if (addContextBtn) addContextBtn.disabled = busy;
   };
 
-  initLinkedInPdfUpload({
+  initPrepAttendeeLinkedIn({
     setParsing: (on) => {
       state.linkedinParsing = on;
       syncParsingGate();
     },
+    onListChange: syncParsingGate,
   });
 
   initContextFileUpload({
@@ -1120,6 +1240,7 @@ export function initPrecall(options) {
   });
 
   initPrepCrmResolve();
+  renderPrepRecentBriefs();
 }
 
 export function resetPrecallOnView() {

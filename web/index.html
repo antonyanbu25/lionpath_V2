@@ -318,11 +318,10 @@
 
           <!-- Pre-call -->
           <section id="view-precall" class="view-panel" hidden>
-            <div id="prep-form-view" class="prep-form-wrap">
-              <div class="prep-form-center">
-                <div class="prep-form-heading">
-                  <h1>Pre-call brief</h1>
-                  <p class="muted">Research the account and the room before you walk in. The brief becomes the answer key the post-call scorecard grades against.</p>
+            <div id="prep-form-view" class="prep-form-wrap nb-form-wrap">
+              <div class="prep-form-center nb-form-center">
+                <div class="prep-form-heading nb-form-heading">
+                  <h1>New pre-call brief</h1>
                 </div>
                 <div id="prep-motion-row" class="prep-motion-row" hidden>
                   <div id="prep-motion-from-account" class="prep-motion-from-account" hidden>
@@ -334,77 +333,84 @@
                     <fw-select-option value="expansion">Expansion</fw-select-option>
                   </fw-select>
                 </div>
-                <fw-card class="prep-form-card">
-                  <form id="prep-form">
-                    <div class="prep-form-grid">
-                      <div class="prep-email-field prep-form-full">
-                        <fw-input id="prospectEmail" label="Prospect email" type="text" placeholder="alex@acme.com, sam@acme.com" hint-text="First email is the primary contact. Add more with commas." required clear-input></fw-input>
-                        <fw-tooltip content="First email is the primary contact. Add more with commas, e.g. alex@acme.com, sam@acme.com">
-                          <span class="prep-email-tip muted">Primary + comma-separated</span>
-                        </fw-tooltip>
+                <div class="nb-form-card prep-form-card">
+                  <form id="prep-form" class="nb-form">
+                    <div class="nb-field nb-field-full">
+                      <label class="nb-label" for="prospectEmail">Prospect email<span class="nb-required">*</span></label>
+                      <div class="nb-input-shell">
+                        <span class="nb-field-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+                        <fw-input id="prospectEmail" label="" type="text" placeholder="alex@acme.com, sam@acme.com" required clear-input></fw-input>
                       </div>
-                      <div id="prep-crm-matches" class="pc-crm-matches prep-form-full" hidden aria-live="polite"></div>
-                      <div id="prep-account-card" class="prep-account-card prep-form-full" hidden></div>
-                      <div id="prep-deal-row" class="prep-deal-row prep-form-full" hidden>
-                        <fw-select id="prep-deal-select" label="Deal" hint-text="Link this brief to an existing deal or create a new one"></fw-select>
-                        <button type="button" id="prep-deal-new-btn" class="prep-deal-new-btn">+ New deal</button>
-                      </div>
-                      <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible. Edit if the customer uses a different website." required clear-input></fw-input>
-                      <span id="domain-hint" class="field-hint prep-form-full" hidden></span>
+                      <p class="nb-hint">We auto-detect the account from the domain. Inviting more than one? Paste the emails from your calendar invite separated by commas — we'll research each attendee.</p>
                     </div>
-                    <div class="prep-form-optional">
-                      <div class="prep-form-eyebrow">Optional</div>
-                      <div class="prep-optional-grid">
-                        <div class="prep-linkedin-upload">
-                          <span class="prep-linkedin-label">LinkedIn profiles</span>
-                          <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
-                          <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
-                          <div class="prep-linkedin-actions">
-                            <fw-button id="prep-linkedin-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add PDFs</fw-button>
-                            <span id="prep-linkedin-parsing" class="muted prep-linkedin-parsing" hidden>Parsing PDFs…</span>
-                          </div>
-                          <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" aria-label="Attached LinkedIn PDFs"></ul>
-                          <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
+                    <div id="prep-crm-matches" class="pc-crm-matches nb-crm-panel" hidden aria-live="polite"></div>
+                    <div id="prep-account-deal-grid" class="nb-account-deal-grid" hidden>
+                      <div id="prep-account-card" class="prep-account-card nb-account-slot" hidden></div>
+                      <div id="prep-deal-row" class="prep-deal-row nb-deal-slot" hidden>
+                        <div class="nb-deal-head">
+                          <span class="nb-label">Deal</span>
+                          <button type="button" id="prep-deal-new-btn" class="nb-deal-new-link">＋ New deal</button>
                         </div>
-                        <div class="prep-meeting-col">
-                          <fw-input id="meetingZoomUrl" label="Meeting link" type="text" placeholder="Zoom or Kaia" clear-input></fw-input>
-                          <details class="prep-enrich-advanced prep-meeting-extra">
-                            <summary>More meeting links</summary>
-                            <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
-                            <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="https://engage.freshworks.com/s/…"></fw-input>
-                          </details>
-                        </div>
+                        <div id="prep-deal-display" class="nb-deal-card"></div>
+                        <fw-select id="prep-deal-select" class="nb-deal-select-hidden" label="" hint-text=""></fw-select>
                       </div>
-                      <fw-textarea
-                        id="additionalContext"
-                        label="Additional context"
-                        hint-text="Optional · AE notes, meeting type"
-                        rows="2"
-                        placeholder="AE notes, meeting type"
-                      ></fw-textarea>
-                      <div class="prep-context-upload">
-                        <div class="prep-context-actions">
-                          <input
-                            type="file"
-                            id="prep-context-files"
-                            accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.txt,.md,.csv,.tsv,.json,.log,.vtt,application/pdf,text/plain,text/csv"
-                            multiple
-                            hidden
-                          />
-                          <button type="button" id="prep-context-add-btn" class="prep-context-attach">
-                            <span aria-hidden="true">+</span> Attach files
+                    </div>
+                    <div class="nb-field nb-field-full">
+                      <label class="nb-label" for="companyDomain">
+                        Company website
+                        <span class="nb-info-tip" tabindex="0" title="Auto-detected from the prospect's email domain. Edit it if the company's site differs — this is what we crawl to research the account.">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                        </span>
+                      </label>
+                      <div class="nb-input-shell">
+                        <span class="nb-field-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                        <fw-input id="companyDomain" label="" type="text" placeholder="acme.com" required clear-input></fw-input>
+                      </div>
+                      <span id="domain-hint" class="field-hint nb-hint warn" hidden></span>
+                    </div>
+                    <div class="nb-field nb-field-full">
+                      <label class="nb-label">LinkedIn profile<span class="nb-required">*</span></label>
+                      <p class="nb-hint nb-hint-tight">One slot per prospect email above. Attach a LinkedIn PDF for each — required before we can research the room.</p>
+                      <input type="file" id="prep-linkedin-pdfs" accept="application/pdf,.pdf" multiple hidden />
+                      <div id="prep-linkedin-attendees" class="nb-linkedin-attendees" aria-live="polite"></div>
+                      <span id="prep-linkedin-parsing" class="muted nb-parsing" hidden>Parsing PDFs…</span>
+                      <ul id="prep-linkedin-file-list" class="prep-linkedin-file-list" hidden aria-hidden="true"></ul>
+                      <p id="prep-linkedin-error" class="field-hint warn" hidden></p>
+                    </div>
+                    <div class="nb-context-section">
+                      <div class="nb-field nb-field-full">
+                        <label class="nb-label" for="additionalContext">Context from the AE<span class="nb-required">*</span></label>
+                        <p class="nb-hint nb-hint-tight">Paste notes, an email thread, or anything the AE shared — it sharpens the brief.</p>
+                        <fw-textarea id="additionalContext" label="" rows="4" placeholder="e.g. Consolidating tools before the Nov renewal. Budget approved. Zendesk is the incumbent — they want one platform, not more features."></fw-textarea>
+                      </div>
+                      <div class="prep-context-upload nb-context-upload">
+                        <div class="prep-context-actions nb-context-actions">
+                          <input type="file" id="prep-context-files" accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.txt,.md,.csv,.tsv,.json,.log,.vtt,application/pdf,text/plain,text/csv" multiple hidden />
+                          <button type="button" id="prep-context-add-btn" class="nb-attach-btn">
+                            <span aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+                            Attach files
                           </button>
-                          <span class="muted prep-context-hint">PDF, Word, Excel, PowerPoint or text — we read them as context.</span>
-                          <span id="prep-context-parsing" class="muted prep-linkedin-parsing" hidden>Reading files…</span>
+                          <span id="prep-context-parsing" class="muted nb-parsing" hidden>Reading files…</span>
                         </div>
                         <ul id="prep-context-file-list" class="prep-linkedin-file-list" aria-label="Attached context files"></ul>
                         <p id="prep-context-error" class="field-hint warn" hidden></p>
                       </div>
+                      <details class="nb-more-options">
+                        <summary>Meeting links (optional)</summary>
+                        <div class="nb-more-options-body">
+                          <fw-input id="meetingZoomUrl" label="Meeting link" type="text" placeholder="Zoom or Kaia" clear-input></fw-input>
+                          <fw-input id="meetingZoomPasscode" label="Zoom passcode" placeholder="Optional"></fw-input>
+                          <fw-input id="kaiaMeetingUrl" label="Kaia meeting URL" placeholder="https://engage.freshworks.com/s/…"></fw-input>
+                        </div>
+                      </details>
                     </div>
-                    <fw-button id="generate" color="primary" type="submit" class="prep-form-submit">Generate brief</fw-button>
-                    <p class="prep-form-footnote">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
+                    <button id="generate" type="submit" class="nb-generate-btn">
+                      <span aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19h14M5 15h8"/></svg></span>
+                      Generate brief
+                    </button>
                   </form>
-                </fw-card>
+                </div>
+                <div id="prep-recent-briefs" class="nb-recent-briefs" aria-label="Recent briefs"></div>
               </div>
             </div>
             <div id="prep-status" class="dew-status-host" hidden></div>

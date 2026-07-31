@@ -121,6 +121,8 @@ export function resetPrepCrmUi() {
   }
   const dealRow = $("prep-deal-row");
   if (dealRow) dealRow.hidden = true;
+  const grid = $("prep-account-deal-grid");
+  if (grid) grid.hidden = true;
   const nameInput = $("prep-account-name");
   if (nameInput) nameInput.value = "";
 }
@@ -154,26 +156,63 @@ async function applyAccount(account, deals = []) {
   }
 }
 
+function renderAccountDealPreview(domain, accountName, isExisting = false) {
+  const grid = $("prep-account-deal-grid");
+  const accountCard = $("prep-account-card");
+  const row = $("prep-deal-row");
+  const dealDisplay = $("prep-deal-display");
+  if (!grid || !accountCard) return;
+
+  const displayName = accountName || companyNameFromDomain(domain) || domain || "Account";
+  const mono = displayName.slice(0, 2).toUpperCase();
+  grid.hidden = false;
+  accountCard.hidden = false;
+  accountCard.innerHTML = `<div class="nb-account-card">
+    <span class="nb-account-card-mono">${esc(mono)}</span>
+    <div class="nb-account-card-body">
+      <span class="nb-account-card-name">${esc(displayName)}</span>
+      <span class="nb-account-card-badge">${isExisting ? "Existing account" : "New account"}</span>
+    </div>
+  </div>`;
+
+  if (row && dealDisplay) {
+    row.hidden = false;
+    dealDisplay.innerHTML = `<div class="nb-deal-card">
+      <span class="nb-deal-card-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+      <div class="nb-deal-card-body">
+        <span class="nb-deal-card-title">New deal</span>
+        <span class="nb-deal-card-stage">Will be created on generate</span>
+      </div>
+    </div>`;
+  }
+}
+
 function renderDealRow() {
   const row = $("prep-deal-row");
   const select = $("prep-deal-select");
   const accountCard = $("prep-account-card");
+  const dealDisplay = $("prep-deal-display");
+  const grid = $("prep-account-deal-grid");
   if (!row || !select) return;
 
   if (!prepResolvedAccount) {
     row.hidden = true;
     if (accountCard) accountCard.hidden = true;
+    if (grid) grid.hidden = true;
     return;
   }
 
+  if (grid) grid.hidden = false;
+
   const displayName = readAccountNameInput() || prepResolvedAccount.name || prepResolvedAccount.domain || "Account";
+  const mono = displayName.slice(0, 2).toUpperCase();
   if (accountCard) {
     accountCard.hidden = false;
-    accountCard.innerHTML = `<div class="prep-account-chip">
-      <span class="prep-account-chip-mono">${esc(String(displayName).slice(0, 2).toUpperCase())}</span>
-      <div class="prep-account-chip-body">
-        <span class="prep-account-chip-name">${esc(displayName)}</span>
-        ${prepResolvedAccount.domain ? `<span class="prep-account-chip-domain muted">${esc(prepResolvedAccount.domain)}</span>` : ""}
+    accountCard.innerHTML = `<div class="nb-account-card">
+      <span class="nb-account-card-mono">${esc(mono)}</span>
+      <div class="nb-account-card-body">
+        <span class="nb-account-card-name">${esc(displayName)}</span>
+        <span class="nb-account-card-badge">${prepResolvedAccount.id ? "Existing account" : "New account"}</span>
       </div>
     </div>`;
   }
@@ -192,6 +231,19 @@ function renderDealRow() {
     select.value = prepSelectedDealId;
   }
 
+  const selectedDeal = lastDeals.find((d) => d.id === prepSelectedDealId);
+  if (dealDisplay) {
+    const title = prepCreateNewDeal || !selectedDeal ? "New deal" : selectedDeal.title || "Deal";
+    const stage = prepCreateNewDeal || !selectedDeal ? "Will be created on generate" : selectedDeal.stage || selectedDeal.status || "Active";
+    dealDisplay.innerHTML = `<div class="nb-deal-card">
+      <span class="nb-deal-card-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+      <div class="nb-deal-card-body">
+        <span class="nb-deal-card-title">${esc(title)}</span>
+        <span class="nb-deal-card-stage">${esc(stage)}</span>
+      </div>
+    </div>`;
+  }
+
   row.hidden = false;
 }
 
@@ -202,10 +254,9 @@ async function renderCrmPanel() {
   if (!emails.length) {
     panel.hidden = true;
     panel.innerHTML = "";
-    if (!prepResolvedAccount) {
-      $("prep-deal-row") && ($("prep-deal-row").hidden = true);
-      $("prep-account-card") && ($("prep-account-card").hidden = true);
-    }
+    $("prep-deal-row") && ($("prep-deal-row").hidden = true);
+    $("prep-account-card") && ($("prep-account-card").hidden = true);
+    $("prep-account-deal-grid") && ($("prep-account-deal-grid").hidden = true);
     return;
   }
 
@@ -223,16 +274,17 @@ async function renderCrmPanel() {
   const accounts = result.accounts || [];
   const domainGroups = groupByDomain(result.byEmail || []);
   const primaryGroup = domainGroups.find((g) => g.domain) || domainGroups[0];
+  const defaultName = resolveDefaultAccountName(primaryGroup?.domain, primaryGroup?.accounts || accounts);
+  if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
 
   if (accounts.length === 1) {
     await applyAccount(accounts[0], result.deals || []);
   } else if (accounts.length > 1 && !prepResolvedAccount) {
     prepSelectedDealId = null;
     prepCreateNewDeal = false;
+  } else if (primaryGroup?.domain && !prepResolvedAccount) {
+    renderAccountDealPreview(primaryGroup.domain, defaultName, false);
   }
-
-  const defaultName = resolveDefaultAccountName(primaryGroup?.domain, primaryGroup?.accounts || accounts);
-  if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
 
   const domainRows = domainGroups
     .map((group) => {
@@ -261,34 +313,25 @@ async function renderCrmPanel() {
     })
     .join("");
 
-  const header = accounts.length
-    ? `Linked account${accounts.length === 1 ? "" : "s"} found — one account per domain`
-    : "One account per company domain — edit the name below before generating";
+  if (accounts.length <= 1) {
+    panel.hidden = true;
+    panel.innerHTML = `<input id="prep-account-name" type="hidden" value="${esc(prepDraftAccountName || defaultName)}" />`;
+  } else {
+    const header = "Multiple accounts found — pick one";
+    panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${domainRows}`;
+    panel.hidden = false;
 
-  const accountNameBlock = `<label class="prep-account-name-label" for="prep-account-name">Account name</label>
-    <input id="prep-account-name" class="postcall-confirm-input prep-account-name-input" type="text"
-      value="${esc(prepDraftAccountName || defaultName)}" autocomplete="organization" />`;
-
-  panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${domainRows}
-    <div class="prep-account-name-block">${accountNameBlock}</div>`;
-  panel.hidden = false;
-
-  $("prep-account-name")?.addEventListener("input", (ev) => {
-    prepAccountNameUserEdited = true;
-    prepDraftAccountName = ev.target?.value || "";
-    renderDealRow();
-  });
-
-  panel.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const account = accounts.find((a) => a.id === btn.dataset.accountId);
-      if (!account) return;
-      prepCreateNewDeal = false;
-      void applyAccount(account, (result.deals || []).filter((d) => d.accountId === account.id));
-      panel.querySelectorAll(".pc-crm-account").forEach((el) => el.classList.remove("pc-crm-account--selected"));
-      btn.classList.add("pc-crm-account--selected");
+    panel.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const account = accounts.find((a) => a.id === btn.dataset.accountId);
+        if (!account) return;
+        prepCreateNewDeal = false;
+        void applyAccount(account, (result.deals || []).filter((d) => d.accountId === account.id));
+        panel.querySelectorAll(".pc-crm-account").forEach((el) => el.classList.remove("pc-crm-account--selected"));
+        btn.classList.add("pc-crm-account--selected");
+      });
     });
-  });
+  }
 
   renderDealRow();
 }

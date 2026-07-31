@@ -75,6 +75,7 @@ export function getLinkedInAttachments(bag = "prep") {
 /** @param {string} [bag] */
 export function clearLinkedInAttachments(bag = "prep") {
   bags[bag] = [];
+  if (bag === "prep") emailFileMap.clear();
 }
 
 /**
@@ -153,6 +154,146 @@ export function linkedinFingerprintForHash(bag = "prep") {
     .map((e) => `${e.fileName}:${e.text.length}:${e.text.slice(0, 200)}`)
     .sort()
     .join("|");
+}
+
+/** @type {Map<string, string>} prep bag email (lower) -> attached fileName */
+const emailFileMap = new Map();
+
+function findAttachmentForEmail(email, bag = "prep") {
+  const key = String(email || "").toLowerCase();
+  const mapped = emailFileMap.get(key);
+  if (mapped) {
+    return getLinkedInAttachments(bag).find((a) => a.fileName === mapped) || null;
+  }
+  return null;
+}
+
+/**
+ * Render per-attendee LinkedIn upload rows (New pre-call brief design).
+ * @param {string[]} emails
+ * @param {{ bag?: string, hostId?: string, onListChange?: () => void }} [opts]
+ */
+export function renderPrepAttendeeRows(emails, opts = {}) {
+  const host = document.getElementById(opts.hostId || "prep-linkedin-attendees");
+  if (!host) return;
+  const bag = opts.bag || "prep";
+  const list = (emails || []).filter(Boolean);
+  if (!list.length) {
+    host.innerHTML = "";
+    return;
+  }
+  host.innerHTML = list
+    .map((email) => {
+      const att = findAttachmentForEmail(email, bag);
+      if (att) {
+        return `<div class="nb-linkedin-row" data-email="${escapeAttr(email)}">
+          <span class="nb-field-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+          <span class="nb-linkedin-row-email">${escapeHtml(email)}</span>
+          <span class="nb-linkedin-uploaded" title="${escapeAttr(att.fileName)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>
+            ${escapeHtml(att.fileName)}
+          </span>
+          <button type="button" class="nb-linkedin-upload-btn" data-upload-email="${escapeAttr(email)}">Replace</button>
+        </div>`;
+      }
+      return `<div class="nb-linkedin-row" data-email="${escapeAttr(email)}">
+        <span class="nb-field-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+        <span class="nb-linkedin-row-email">${escapeHtml(email)}</span>
+        <button type="button" class="nb-linkedin-upload-btn" data-upload-email="${escapeAttr(email)}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          Upload LinkedIn PDF
+        </button>
+      </div>`;
+    })
+    .join("");
+
+  host.querySelectorAll("[data-upload-email]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const email = btn.getAttribute("data-upload-email");
+      if (email && host.__pickLinkedIn) host.__pickLinkedIn(email);
+    });
+  });
+  opts.onListChange?.();
+}
+
+/** Clear email→file associations for a bag. */
+export function clearPrepAttendeeLinkedIn() {
+  emailFileMap.clear();
+  const host = document.getElementById("prep-linkedin-attendees");
+  if (host) host.innerHTML = "";
+}
+
+/**
+ * Per-attendee LinkedIn upload for prep form.
+ * @param {{
+ *   bag?: string,
+ *   fileInputId?: string,
+ *   hostId?: string,
+ *   emailFieldId?: string,
+ *   errElId?: string,
+ *   parsingElId?: string,
+ *   onListChange?: () => void,
+ *   setParsing?: (on: boolean) => void,
+ * }} [opts]
+ */
+export function initPrepAttendeeLinkedIn(opts = {}) {
+  const bag = opts.bag || "prep";
+  loadPdfJs().catch(() => {});
+  const fileInput = document.getElementById(opts.fileInputId || "prep-linkedin-pdfs");
+  const host = document.getElementById(opts.hostId || "prep-linkedin-attendees");
+  const emailField = document.getElementById(opts.emailFieldId || "prospectEmail");
+  const errEl = document.getElementById(opts.errElId || "prep-linkedin-error");
+  const parsingEl = document.getElementById(opts.parsingElId || "prep-linkedin-parsing");
+  /** @type {string|null} */
+  let pendingEmail = null;
+
+  const parseEmails = (raw) =>
+    String(raw || "")
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+  const refreshRows = () => {
+    const emails = parseEmails(emailField?.value || "");
+    renderPrepAttendeeRows(emails, { bag, hostId: opts.hostId, onListChange: opts.onListChange });
+  };
+
+  if (host) {
+    host.__pickLinkedIn = (email) => {
+      pendingEmail = email;
+      fileInput?.click();
+    };
+  }
+
+  emailField?.addEventListener("fwInput", refreshRows);
+  emailField?.addEventListener("input", refreshRows);
+
+  fileInput?.addEventListener("change", async () => {
+    const files = [...(fileInput.files || [])];
+    fileInput.value = "";
+    if (!files.length) return;
+    if (errEl) errEl.hidden = true;
+    if (parsingEl) parsingEl.hidden = false;
+    opts.setParsing?.(true);
+    try {
+      const { errors, added } = await addLinkedInPdfFiles(files, bag);
+      if (added > 0 && pendingEmail) {
+        const latest = getLinkedInAttachments(bag).at(-1);
+        if (latest) emailFileMap.set(pendingEmail.toLowerCase(), latest.fileName);
+      }
+      pendingEmail = null;
+      if (errors.length && errEl) {
+        errEl.textContent = errors.join(" ");
+        errEl.hidden = false;
+      }
+      refreshRows();
+    } finally {
+      if (parsingEl) parsingEl.hidden = true;
+      opts.setParsing?.(false);
+    }
+  });
+
+  refreshRows();
 }
 
 /**
