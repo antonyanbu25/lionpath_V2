@@ -129,6 +129,12 @@ export interface ResearchMeta {
     apolloCredits: number;
   };
   linkedinMatchedEmails?: string[];
+  /** Dev/diag — counts for recent news pipeline (no PII). */
+  recentNewsDebug?: {
+    newsCategoryFacts: number;
+    recentNewsCount: number;
+    headlines: string[];
+  };
 }
 
 export interface PrepResult {
@@ -158,7 +164,7 @@ export interface ResearchOnlyResult {
   researchBundle: ResearchBundle;
 }
 
-export const PLAYBOOK_VERSION = "2";
+export const PLAYBOOK_VERSION = "3";
 
 export interface KaiaParticipantMeta {
   displayName: string;

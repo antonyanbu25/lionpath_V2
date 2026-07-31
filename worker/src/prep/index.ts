@@ -21,6 +21,7 @@ import { fillResearchGaps } from "./gap-research";
 import { factsFromSeContext } from "./se-context-facts";
 import { canonicalizePrepSources } from "./canonicalize-sources";
 import { buildRecentNews } from "./recent-news";
+import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
 import { padSources } from "./source-table";
@@ -83,6 +84,14 @@ function assetLabelsOf(prep: import("../schema").Prep): string[] {
   return (prep.assets || []).map((a) => a.label);
 }
 
+function recentNewsDebug(researchFacts: ResearchFact[], prep: import("../schema").Prep) {
+  return {
+    newsCategoryFacts: researchFacts.filter((f) => f.category === "news").length,
+    recentNewsCount: prep.recentNews?.length ?? 0,
+    headlines: (prep.recentNews || []).map((n) => n.headline).slice(0, 4),
+  };
+}
+
 /**
  * Pain-ish research facts, as demo-guidance input. The real `likelyPains` only exist
  * after synthesis, and guidance runs alongside it — these are the closest pre-synthesis
@@ -141,10 +150,22 @@ async function gatherResearch(
     const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
     const withSe = applySeContextFacts(baseFacts, bundle.sources, mergedContext);
+    const supplemented = await supplementNewsFacts(
+      env,
+      bundle.snippets,
+      withSe.facts,
+      withSe.sources,
+      {
+        companyName: input.companyName,
+        companyDomain: input.companyDomain,
+        emails,
+        additionalContext: mergedContext,
+      },
+    );
     return {
       snippets: bundle.snippets,
-      facts: withSe.facts,
-      sources: withSe.sources,
+      facts: supplemented.facts,
+      sources: supplemented.sources,
       cacheHit: true,
       playbookSkipped: true,
       apolloCredits: 0,
@@ -232,11 +253,23 @@ async function gatherResearch(
     sources,
   );
   const afterGap = applySeContextFacts(gapFilled.facts, gapFilled.sources, mergedContext);
+  const supplemented = await supplementNewsFacts(
+    env,
+    gapFilled.snippets,
+    afterGap.facts,
+    afterGap.sources,
+    {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+      additionalContext: mergedContext,
+    },
+  );
 
   return {
     snippets: gapFilled.snippets,
-    facts: afterGap.facts,
-    sources: afterGap.sources,
+    facts: supplemented.facts,
+    sources: supplemented.sources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,
@@ -359,6 +392,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       playbookSkipped: research.playbookSkipped,
       steps: timings,
       linkedinMatchedEmails: research.linkedinMatchedEmails,
+      recentNewsDebug: recentNewsDebug(research.facts, prep),
     },
     inputHash,
     [...lowConfidence, ...findLowConfidenceFacts(facts)],
@@ -510,7 +544,12 @@ export async function runPrepSynthesize(
   return {
     prep,
     researchMeta: buildResearchMeta(
-      { cacheHit: false, playbookSkipped: true, steps: { synthesize: 0 } },
+      {
+        cacheHit: false,
+        playbookSkipped: true,
+        steps: { synthesize: 0 },
+        recentNewsDebug: recentNewsDebug(researchFacts, prep),
+      },
       computeInputHash(input, emails),
       lowConfidence,
       false,

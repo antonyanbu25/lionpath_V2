@@ -37,6 +37,7 @@ import { mergeContextAttachments } from "./prep-context-attachments.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks } from "./prep-contact-enrich.js";
 import { applySeContextToDiscovery, applySeContextToPrep } from "./prep-se-context.js";
 import { canonicalizePrepSources } from "./prep-source-canon.js";
+import { hydrateRecentNews } from "./recent-news.js";
 import { esc, $, show } from "./shared.js";
 import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
@@ -390,6 +391,27 @@ export function displayPrepResult(prep, meta = {}) {
     merged = mergeEnrichmentsIntoPrep(prep, emails, storedProfiles);
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
+  merged = hydrateRecentNews(merged, meta);
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
+    body: JSON.stringify({
+      sessionId: "c9d8c5",
+      runId: "post-fix-v2",
+      hypothesisId: "C",
+      location: "precall.js:displayPrepResult",
+      message: "recent news display",
+      data: {
+        serverRecentNews: prep?.recentNews?.length ?? 0,
+        hydratedRecentNews: merged?.recentNews?.length ?? 0,
+        headlines: (merged?.recentNews || []).slice(0, 3).map((n) => n.headline),
+        debug: meta?.researchMeta?.recentNewsDebug || null,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const withContext = applySeContextToDiscovery(applySeContextToPrep(merged, context), context);
   showResultView(canonicalizePrepSources(withContext).prep, meta);
 }
