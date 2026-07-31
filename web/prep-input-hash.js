@@ -2,7 +2,7 @@
  * Research input hash — must stay in sync with worker/src/prep/input-hash.ts
  */
 
-export const PREP_PLAYBOOK_VERSION = "2";
+export const PREP_PLAYBOOK_VERSION = "3";
 
 /** @param {string} value */
 export function fingerprintString(value) {

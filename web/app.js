@@ -48,6 +48,7 @@ import { renderSeDetailView } from "./se-detail-view.js";
 import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
+import { invalidateSessionListCache } from "./domain/account-service.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
@@ -58,6 +59,7 @@ import {
   loadLocalBriefs,
   openPrepBrief,
   parseProspectEmails,
+  resetPrecallForm,
   syncPrepEngagementMotion,
 } from "./precall.js";
 import {
@@ -155,6 +157,8 @@ let dealPanelRenderGen = 0;
 let callPanelRenderGen = 0;
 /** Bumps on each account panel render. stale async renders must not overwrite the DOM. */
 let accountPanelRenderGen = 0;
+/** Bumps on each contacts panel render. stale async renders must not overwrite the DOM. */
+let contactsPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
 let pipelineQuarterFilter = "";
@@ -894,6 +898,7 @@ async function renderDealPanel() {
 async function renderContactsPanel() {
   const panel = $("contacts-panel");
   if (!panel || !currentSession?.email) return;
+  const gen = ++contactsPanelRenderGen;
   let session = withEffectiveUserId(currentSession);
   if (!sessionUserId(session)) {
     try {
@@ -903,6 +908,7 @@ async function renderContactsPanel() {
     }
   }
   await renderContactsView(panel, session, {
+    shouldApply: () => gen === contactsPanelRenderGen,
     onOpenAccount: (accountId, contactId) => {
       if (accountId) switchView("accounts", { accountId, contactId, drillDown: true });
     },
@@ -1735,6 +1741,7 @@ async function boot() {
         });
       }
       if (isFirebaseAuthEnabled() && fb?.auth?.currentUser) await savePrep(payload, prep, meta);
+      invalidateSessionListCache(currentSession);
       if (currentView === "dashboard") refreshDashboardFromStorage();
       if (currentView === "accounts") void renderAccountPanel();
       if (currentView === "deals") void renderDealPanel();
@@ -1761,7 +1768,10 @@ async function boot() {
     updateDomainHint();
   });
 
-  $("topbar-new-brief")?.addEventListener("click", () => switchView("precall"));
+  $("topbar-new-brief")?.addEventListener("click", () => {
+    resetPrecallForm();
+    switchView("precall");
+  });
   $("topbar-new-call")?.addEventListener("click", () => switchView("postcall"));
   $("topbar-notifications")?.addEventListener("click", () => {
     /* notifications placeholder — empty for now */
@@ -1843,6 +1853,7 @@ async function boot() {
       if (currentView === "pipeline") void renderPipelinePanel();
       if (currentView === "signal") void renderProductSignalPanel();
       invalidateSearchIndex();
+      invalidateSessionListCache(currentSession);
       refreshSidebarRecentWork();
     } catch (err) {
       console.warn("[app] post-call history refresh failed:", err?.message || err);

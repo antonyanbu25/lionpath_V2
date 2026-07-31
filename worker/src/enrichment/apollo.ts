@@ -121,13 +121,18 @@ export async function enrichWithApollo(
     }
   }
 
-  for (const email of emails.slice(0, 5)) {
-    const personRes = await apolloFetch(apiKey, "/people/match", { email });
-    if (!personRes.ok) continue;
-    creditsUsed += 1;
-    const person = (personRes.data as ApolloPersonResponse).person;
-    if (!person?.name) continue;
+  const personResults = await Promise.all(
+    emails.slice(0, 5).map(async (email) => {
+      const personRes = await apolloFetch(apiKey, "/people/match", { email });
+      if (!personRes.ok) return null;
+      return { email, person: (personRes.data as ApolloPersonResponse).person };
+    }),
+  );
 
+  for (const hit of personResults) {
+    if (!hit?.person?.name) continue;
+    creditsUsed += 1;
+    const { email, person } = hit;
     const label = `S-Apollo-${email.split("@")[0]}`;
     sources.push({
       label,

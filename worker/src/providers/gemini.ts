@@ -7,7 +7,7 @@ const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 /** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
 const AI_STUDIO_DEFAULT_MODEL = DEFAULT_MODEL;
 /** Grounded web-search calls can stall under load; cap so one query cannot block research. */
-const RESEARCH_FETCH_TIMEOUT_MS = 90_000;
+const RESEARCH_FETCH_TIMEOUT_MS = 45_000;
 
 interface GeminiPart {
   text?: string;

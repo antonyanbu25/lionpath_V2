@@ -1059,7 +1059,6 @@ export function renderResultHeader(prep, meta) {
     </div>
     <div class="prep-header-right">
       <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline prep-dispute-btn-outline" data-dispute-step="brief_result" data-dispute-section="general">Report issue</button>
-      <fw-button id="prep-new-search" color="secondary" fill="outline">New search</fw-button>
     </div>
   </div>`;
 }

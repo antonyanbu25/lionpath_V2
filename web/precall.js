@@ -41,7 +41,7 @@ import { hydrateRecentNews } from "./recent-news.js";
 import { getPrepCrmSelection } from "./prep-crm-resolve.js";
 import { esc, $, show } from "./shared.js";
 import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
-import { initPrepCrmResolve } from "./prep-crm-resolve.js";
+import { initPrepCrmResolve, resetPrepCrmUi } from "./prep-crm-resolve.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
@@ -334,6 +334,49 @@ function renderActiveTab() {
   wireTabInteractions();
 }
 
+function clearFwInput(id) {
+  const field = $(id);
+  if (!field) return;
+  field.value = "";
+  field.dispatchEvent(new CustomEvent("fwInput", { bubbles: true, detail: { value: "" } }));
+}
+
+/** Reset pre-call form to empty state (New brief). */
+export function resetPrecallForm() {
+  if (state.loading) return;
+  state.view = "form";
+  state.tab = "discovery";
+  state.currentPrep = null;
+  state.currentMeta = null;
+  state.activeBriefId = null;
+  state.pendingResearch = null;
+  state.contactEnrichmentsByEmail = null;
+  state.peopleProspectTab = "prospect-0";
+  closePopover();
+  show($("prep-form-view"), true);
+  show($("prep-result-view"), false);
+  show($("prep-status"), false);
+  show($("prep-loading"), false);
+  show($("prep-legacy-fallback"), false);
+  hidePipelineProgress("prep-progress");
+  clearFwInput("prospectEmail");
+  clearFwInput("companyDomain");
+  clearFwInput("additionalContext");
+  clearFwInput("meetingZoomUrl");
+  clearFwInput("meetingZoomPasscode");
+  clearFwInput("kaiaMeetingUrl");
+  const domainHint = $("domain-hint");
+  if (domainHint) domainHint.hidden = true;
+  clearLinkedInAttachments();
+  const listEl = $("prep-linkedin-file-list");
+  if (listEl) listEl.innerHTML = "";
+  clearContextAttachments();
+  const contextListEl = $("prep-context-file-list");
+  if (contextListEl) contextListEl.innerHTML = "";
+  resetPrepCrmUi();
+  syncPrepEngagementMotion();
+}
+
 function showFormView() {
   state.view = "form";
   state.tab = "discovery";
@@ -371,7 +414,6 @@ function showResultView(prep, meta) {
   if (tabs) tabs.activeTabName = state.tab;
 
   renderActiveTab();
-  bindActionOnce($("prep-new-search"), showFormView);
 }
 
 export function displayPrepResult(prep, meta = {}) {
@@ -1081,7 +1123,7 @@ export function initPrecall(options) {
 }
 
 export function resetPrecallOnView() {
-  if (state.view === "form") return;
+  resetPrecallForm();
 }
 
 /** Show meeting motion controls based on account engagement context. */

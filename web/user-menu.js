@@ -33,6 +33,25 @@ function positionFlyout(panel) {
   panel.style.right = "auto";
 }
 
+function rememberTeleportHome(el) {
+  if (!el || el.dataset.teleportHome) return;
+  el.dataset.teleportHome = "1";
+  el._teleportParent = el.parentNode;
+  el._teleportNext = el.nextSibling;
+}
+
+function teleportToBody(el) {
+  if (!el) return;
+  rememberTeleportHome(el);
+  document.body.appendChild(el);
+}
+
+function restoreTeleportHome(el) {
+  if (!el?._teleportParent) return;
+  if (el._teleportNext) el._teleportParent.insertBefore(el, el._teleportNext);
+  else el._teleportParent.appendChild(el);
+}
+
 /**
  * @param {{ getSession: () => object|null, onProfileSettings: () => void, onSignOut: () => void }} opts
  */
@@ -49,12 +68,16 @@ export function initUserMenu(opts) {
   function closeMenu() {
     panel.hidden = true;
     if (backdrop) backdrop.hidden = true;
+    restoreTeleportHome(panel);
+    restoreTeleportHome(backdrop);
     trigger.setAttribute("aria-expanded", "false");
     if (themeSubmenu) themeSubmenu.hidden = true;
     if (themeToggle) themeToggle.setAttribute("aria-expanded", "false");
   }
 
   function openMenu() {
+    teleportToBody(backdrop);
+    teleportToBody(panel);
     positionFlyout(panel);
     panel.hidden = false;
     if (backdrop) backdrop.hidden = false;
@@ -98,9 +121,18 @@ export function initUserMenu(opts) {
     });
 
     document.addEventListener("click", (e) => {
-      if (panel.hidden) return;
-      const menu = document.getElementById("user-menu");
-      if (menu && !menu.contains(e.target) && e.target !== backdrop) closeMenu();
+      const panelEl = document.getElementById("user-menu-panel");
+      if (!panelEl || panelEl.hidden) return;
+      const triggerEl = document.getElementById("sidebar-user");
+      const backdropEl = document.getElementById("user-menu-backdrop");
+      if (panelEl.contains(e.target)) return;
+      if (triggerEl?.contains(e.target)) return;
+      if (backdropEl?.contains(e.target)) return;
+      panelEl.hidden = true;
+      if (backdropEl) backdropEl.hidden = true;
+      restoreTeleportHome(panelEl);
+      restoreTeleportHome(backdropEl);
+      triggerEl?.setAttribute("aria-expanded", "false");
     });
 
     document.addEventListener("keydown", (e) => {

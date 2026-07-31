@@ -44,6 +44,13 @@ import {
   computePrepInputHash as computePrepInputHashImpl,
   PREP_PLAYBOOK_VERSION,
 } from "../prep-input-hash.js";
+import {
+  getCachedAccountListRows,
+  setCachedAccountListRows,
+  invalidateSessionListCache,
+} from "./session-list-cache.js";
+
+export { invalidateSessionListCache };
 
 export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -520,7 +527,11 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
 }
 
 /** Accounts visible to session (scoped list, deduped by accountId). */
-export async function listAccountsForSession(session) {
+export async function listAccountsForSession(session, opts = {}) {
+  if (!opts.skipCache) {
+    const cached = getCachedAccountListRows(session);
+    if (cached) return cached;
+  }
   try {
     const store = getStore();
     const { effectiveSessionUserId } = await import("./session.js");
@@ -591,8 +602,9 @@ export async function listAccountsForSession(session) {
 
     const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
     const historyRows = listAccountRowsFromHistory(session);
-    if (sorted.length) return mergeAccountListRows(sorted, historyRows);
-    return historyRows;
+    const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
+    setCachedAccountListRows(session, merged);
+    return merged;
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
     return listAccountRowsFromHistory(session);

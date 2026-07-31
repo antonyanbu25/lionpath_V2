@@ -137,6 +137,7 @@ async function gatherResearch(
   linkedinMatchedEmails: string[];
   mergedContext: string;
   kaiaFetched: boolean;
+  stepTimings?: Record<string, number>;
 }> {
   const linkedinExports = normalizeLinkedInExports(input.linkedinProfileExports);
   const { matchedEmails } = assignExportsToProspects(
@@ -185,28 +186,37 @@ async function gatherResearch(
     emails,
   };
 
-  // Run enrichment and web fetches sequentially — parallel Gemini playbook queries
-  // alongside orchestrator/Apollo saturated outbound connections and left hung
-  // generateContent calls blocking the whole research step (no client response).
-  const apolloResult = env.APOLLO_API_KEY
-    ? await enrichWithApollo(env, input.companyDomain, emails)
-    : { facts: [] as ResearchFact[], sources: [] as SourceRef[], creditsUsed: 0 };
-  const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
+  const stepTimings: Record<string, number> = {};
 
-  let orchestratorCtx: Awaited<ReturnType<typeof runResearch>> | null = null;
-  try {
-    orchestratorCtx = await runResearch(env, {
-      companyName: input.companyName,
-      domain: input.companyDomain,
-      emails,
-    });
-  } catch (err) {
+  // Parallelize non-Gemini I/O; run playbook alone afterward (Gemini + heavy HTTP together hung).
+  const tParallel = Date.now();
+  const apolloPromise = env.APOLLO_API_KEY
+    ? enrichWithApollo(env, input.companyDomain, emails)
+    : Promise.resolve({ facts: [] as ResearchFact[], sources: [] as SourceRef[], creditsUsed: 0 });
+  const contextPromise = resolveMergedAdditionalContext(input);
+  const orchestratorPromise = runResearch(env, {
+    companyName: input.companyName,
+    domain: input.companyDomain,
+    emails,
+  }).catch((err) => {
     console.warn("prep/research-orchestrator skipped:", (err as Error).message);
-  }
+    return null;
+  });
 
+  const [apolloResult, contextResult, orchestratorCtx] = await Promise.all([
+    apolloPromise,
+    contextPromise,
+    orchestratorPromise,
+  ]);
+  stepTimings.parallelIo = Date.now() - tParallel;
+
+  const { text: mergedContext, kaiaFetched } = contextResult;
+
+  const tPlaybook = Date.now();
   const playbookSnippets = await runPlaybookResearch(env, playbookInput, {
     skipLinkedInForEmails: matchedEmails,
   });
+  stepTimings.playbook = Date.now() - tPlaybook;
 
   const apolloCredits = apolloResult.creditsUsed;
   const apolloFacts = apolloResult.facts;
@@ -224,6 +234,7 @@ async function gatherResearch(
 
   const allSnippets = [...orchestratorSnippets, ...playbookSnippets, ...pdfSnippets];
 
+  const tExtract = Date.now();
   const [extracted, seExtracted] = await Promise.all([
     extractFacts(env, allSnippets, {
       companyName: input.companyName,
@@ -233,6 +244,7 @@ async function gatherResearch(
     }),
     extractSeContextFacts(env, mergedContext),
   ]);
+  stepTimings.extract = Date.now() - tExtract;
   let facts = mergeFacts(apolloFacts, orchestratorFacts, extracted.facts, seExtracted.facts);
   let sources = mergeSources(apolloSources, orchestratorSources, extracted.sources, seExtracted.sources);
   let snippets = allSnippets;
@@ -241,6 +253,7 @@ async function gatherResearch(
   facts = withSe.facts;
   sources = withSe.sources;
 
+  const tGap = Date.now();
   const gapFilled = await fillResearchGaps(
     env,
     {
@@ -253,7 +266,9 @@ async function gatherResearch(
     facts,
     sources,
   );
+  stepTimings.gap = Date.now() - tGap;
   const afterGap = applySeContextFacts(gapFilled.facts, gapFilled.sources, mergedContext);
+  const tNews = Date.now();
   const supplemented = await supplementNewsFacts(
     env,
     gapFilled.snippets,
@@ -266,6 +281,7 @@ async function gatherResearch(
       additionalContext: mergedContext,
     },
   );
+  stepTimings.news = Date.now() - tNews;
 
   return {
     snippets: gapFilled.snippets,
@@ -277,6 +293,7 @@ async function gatherResearch(
     linkedinMatchedEmails,
     mergedContext,
     kaiaFetched,
+    stepTimings,
   };
 }
 
@@ -322,6 +339,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 
   const research = await gatherResearch(env, input, emails);
   timings.research = Date.now() - t0;
+  if (research.stepTimings) Object.assign(timings, research.stepTimings);
 
   const facts = input.confirmedFacts?.length ? input.confirmedFacts : research.facts;
   const t1 = Date.now();

@@ -12,7 +12,28 @@ import {
 const SEARCH_SYSTEM =
   "You are a research assistant. Run the web search implied by the user query and return a concise factual summary (max 400 words). Include specific URLs when found. If nothing useful is found, say so plainly.";
 
-/** Run web-search queries in parallel; log and skip individual failures. */
+const PLAYBOOK_QUERY_CONCURRENCY = 3;
+
+/** Run async tasks with bounded concurrency. */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<ResearchSnippet>,
+): Promise<ResearchSnippet[]> {
+  if (!items.length) return [];
+  const results: ResearchSnippet[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
+/** Run web-search queries with bounded concurrency; log and skip individual failures. */
 export async function runResilientResearchQueries(
   provider: LlmProvider,
   queries: string[],
@@ -22,36 +43,34 @@ export async function runResilientResearchQueries(
 ): Promise<ResearchSnippet[]> {
   const fetchedAt = Date.now();
 
-  const results = await Promise.all(
-    queries.map(async (query, index) => {
-      const step = label(query, index);
-      try {
-        const result = await provider.generate({
-          system: SEARCH_SYSTEM,
-          user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
-          maxTokens: 1200,
-          temperature: 0,
-          research: true,
-          effort: "low",
-          step,
-        });
-        const citations = dedupeCitations(normalizeCitations(result.citations));
-        return {
-          query,
-          snippet: result.text.trim(),
-          fetchedAt,
-          origin: "grounded" as const,
-          ...(citations.length ? { citations } : {}),
-          ...(result.searchQueries?.length ? { searchQueries: result.searchQueries } : {}),
-        };
-      } catch (err) {
-        const message = (err as Error).message;
-        console.warn(`${step} (${query.slice(0, 80)}):`, message);
-        errorsOut?.push(message);
-        return { query, snippet: "", fetchedAt };
-      }
-    }),
-  );
+  const results = await runWithConcurrency(queries, PLAYBOOK_QUERY_CONCURRENCY, async (query, index) => {
+    const step = label(query, index);
+    try {
+      const result = await provider.generate({
+        system: SEARCH_SYSTEM,
+        user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
+        maxTokens: 1200,
+        temperature: 0,
+        research: true,
+        effort: "low",
+        step,
+      });
+      const citations = dedupeCitations(normalizeCitations(result.citations));
+      return {
+        query,
+        snippet: result.text.trim(),
+        fetchedAt,
+        origin: "grounded" as const,
+        ...(citations.length ? { citations } : {}),
+        ...(result.searchQueries?.length ? { searchQueries: result.searchQueries } : {}),
+      };
+    } catch (err) {
+      const message = (err as Error).message;
+      console.warn(`${step} (${query.slice(0, 80)}):`, message);
+      errorsOut?.push(message);
+      return { query, snippet: "", fetchedAt };
+    }
+  });
 
   const kept = results.filter((r) => r.snippet.length > 0);
 

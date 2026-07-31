@@ -106,6 +106,25 @@ export function resetPrepCrmSelection() {
   prepAccountNameUserEdited = false;
 }
 
+/** Clear CRM UI after starting a fresh brief. */
+export function resetPrepCrmUi() {
+  resetPrepCrmSelection();
+  const panel = $("prep-crm-matches");
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  const accountCard = $("prep-account-card");
+  if (accountCard) {
+    accountCard.hidden = true;
+    accountCard.innerHTML = "";
+  }
+  const dealRow = $("prep-deal-row");
+  if (dealRow) dealRow.hidden = true;
+  const nameInput = $("prep-account-name");
+  if (nameInput) nameInput.value = "";
+}
+
 async function applyAccount(account, deals = []) {
   prepResolvedAccount = account
     ? { id: account.id, name: account.name, domain: account.domain || null }
