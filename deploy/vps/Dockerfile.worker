@@ -10,7 +10,7 @@ RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 COPY worker/tsconfig.json ./
 COPY worker/src ./src
 COPY deploy/vps/entrypoint-worker.sh /entrypoint-worker.sh
-RUN chmod +x /entrypoint-worker.sh
+RUN chmod +x /entrypoint-worker.sh && sed -i 's/\r$//' /entrypoint-worker.sh
 
 ENV NODE_ENV=production
 ENV PORT=8787

@@ -21,6 +21,13 @@ if [[ ! -f .env ]]; then
 fi
 
 chmod +x start.sh setup.sh doctor.sh update.sh entrypoint-worker.sh 2>/dev/null || true
+sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh entrypoint-worker.sh 2>/dev/null || true
+
+if ! grep -q 'DEMO_ASSET_LABELS' "$REPO_ROOT/worker/src/prep-assets.ts" 2>/dev/null; then
+  echo "ERROR: worker/src/prep-assets.ts missing DEMO_ASSET_LABELS — git reset did not apply." >&2
+  echo "Run: cd $REPO_ROOT && git fetch origin && git reset --hard origin/2.0.7.2" >&2
+  exit 1
+fi
 
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker
