@@ -35,7 +35,7 @@ function buildEnv(): NodeEnv {
     POSTCALL_EFFORT: process.env.POSTCALL_EFFORT || "low",
     ALLOWED_ORIGINS:
       process.env.ALLOWED_ORIGINS ||
-      "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com",
+      "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com",
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,

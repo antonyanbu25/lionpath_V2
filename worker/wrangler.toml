@@ -20,7 +20,7 @@ POSTCALL_LLM_PROVIDER = "gemini"
 POSTCALL_MODEL = "gemini-3.1-flash-lite"
 POSTCALL_EFFORT = "low"
 # Comma-separated allowed origins for CORS. Include both localhost and 127.0.0.1 for local dev.
-ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://lionpath.benjaminsquare.com"
+ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com"
 # Restrict sign-in to this email domain. Empty = allow any verified Google account.
 ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Firebase project id — used to verify ID tokens (audience/issuer check).
