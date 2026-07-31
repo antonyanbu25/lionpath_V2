@@ -29,6 +29,16 @@ if ! grep -q 'DEMO_ASSET_LABELS' "$REPO_ROOT/worker/src/prep-assets.ts" 2>/dev/n
   exit 1
 fi
 
+PORTAL_BUILD="$(grep -o 'portal-build" content="[^"]*"' "$REPO_ROOT/web/index.html" 2>/dev/null | head -1 || true)"
+if [[ -z "$PORTAL_BUILD" ]]; then
+  echo "WARN: web/index.html has no portal-build meta — web UI may be stale." >&2
+else
+  echo "=== Portal build: $PORTAL_BUILD ==="
+fi
+if ! grep -q 'New pre-call brief' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "WARN: web/index.html still has old pre-call form — git reset may not have applied." >&2
+fi
+
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker
 docker compose up -d
@@ -60,3 +70,5 @@ fi
 
 echo ""
 echo "Done. Test: curl -sI https://portalapi.benjaminsquare.com/api/config"
+echo "Portal UI: curl -s https://portal.benjaminsquare.com/ | grep -o 'portal-build\" content=\"[^\"]*\"' || true"
+echo "Expect: New pre-call brief + portal-build 2.0.7.2-b74bc25 (or newer). Hard-refresh browser after deploy."
