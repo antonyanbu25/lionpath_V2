@@ -721,6 +721,65 @@ function wireTaskBoardEvents(container, email, tasks, calls, opts) {
       opts.onOpenCall?.(btn.dataset.openCall);
     });
   });
+
+  // #region agent log
+  function logQuickAddAlignment(runId = "pre-fix") {
+    if (typeof requestAnimationFrame !== "function") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const grid = container.querySelector(".task-quick-add");
+        const callEl = container.querySelector("#quick-add-call");
+        const btnEl = container.querySelector("#quick-add-btn");
+        const dueEl = container.querySelector("#quick-add-due");
+        if (!grid || !btnEl) return;
+        const measure = (el, key) => {
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return {
+            key,
+            top: Math.round(r.top * 10) / 10,
+            bottom: Math.round(r.bottom * 10) / 10,
+            height: Math.round(r.height * 10) / 10,
+            alignSelf: cs.alignSelf,
+            marginTop: cs.marginTop,
+            marginBottom: cs.marginBottom,
+          };
+        };
+        const items = [
+          measure(container.querySelector("#quick-add-title"), "title"),
+          measure(dueEl, "due"),
+          measure(callEl, "call"),
+          measure(btnEl, "add"),
+        ].filter(Boolean);
+        const call = items.find((i) => i.key === "call");
+        const add = items.find((i) => i.key === "add");
+        const topDelta = call && add ? Math.round((add.top - call.top) * 10) / 10 : null;
+        const bottomDelta = call && add ? Math.round((add.bottom - call.bottom) * 10) / 10 : null;
+        fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "f9a55f" },
+          body: JSON.stringify({
+            sessionId: "f9a55f",
+            runId,
+            hypothesisId: "H-ALIGN",
+            location: "tasks.js:logQuickAddAlignment",
+            message: "quick-add control box metrics",
+            data: {
+              gridAlignItems: getComputedStyle(grid).alignItems,
+              items,
+              topDeltaAddVsCall: topDelta,
+              bottomDeltaAddVsCall: bottomDelta,
+              hasCallSelect: Boolean(callEl),
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      });
+    });
+  }
+  logQuickAddAlignment("pre-fix");
+  // #endregion
 }
 
 /**
