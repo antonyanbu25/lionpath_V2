@@ -834,25 +834,32 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed .sidebar-head {
   flex-direction: column;
   align-items: center;
-  padding: 4px 8px 8px;
+  padding: 8px 0;
   gap: 8px;
-}
-.sidebar-collapsed fw-button.sidebar-collapse {
-  order: 1;
-  align-self: center;
-  width: 32px;
-  margin: 0;
+  min-width: 0;
+  overflow: visible;
 }
 .sidebar-collapsed .sidebar-brand {
   order: 0;
   flex: 0 0 auto;
   justify-content: center;
   width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+.sidebar-collapsed .sidebar-brand-copy {
+  display: none;
 }
 .sidebar-collapsed .sidebar-brand-logo {
   width: 32px;
   height: 32px;
   margin: 0 auto;
+}
+.sidebar-collapsed fw-button.sidebar-collapse {
+  order: 1;
+  align-self: center;
+  width: 32px;
+  margin: 0;
 }
 @media (min-width: 769px) {
   .sidebar-collapsed .sidebar-history,
@@ -879,29 +886,9 @@ fw-button.sidebar-history-item.active {
   flex-shrink: 0;
   pointer-events: none;
 }
-.sidebar-collapsed .sidebar-head {
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 8px 8px;
-  gap: 8px;
-  min-width: 0;
-  overflow: visible;
-}
-.sidebar-collapsed .sidebar-brand {
-  order: 0;
-  flex: 0 0 auto;
-  justify-content: center;
-  width: 100%;
-  min-width: 0;
-}
-.sidebar-collapsed fw-button.sidebar-collapse {
-  order: 1;
-  align-self: center;
-  margin: 0;
-}
 .sidebar-collapsed .sidebar-nav {
-  align-items: stretch;
-  padding: 4px 8px;
+  align-items: center;
+  padding: 4px 0;
   gap: 4px;
 }
 .sidebar-collapsed fw-button.nav-item ::slotted([slot="before-label"]),
@@ -913,17 +900,19 @@ fw-button.sidebar-history-item.active {
 }
 .sidebar-collapsed .nav-item,
 .sidebar-collapsed fw-button.nav-item {
-  justify-content: flex-start;
+  justify-content: center;
   align-items: center;
   width: 100%;
   height: auto;
   min-height: 40px;
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px 0;
   gap: 0;
   min-width: 0;
   max-width: none;
   --fw-button-min-width: 0;
+  --fw-button-padding-start: 0;
+  --fw-button-padding-end: 0;
   border-radius: 10px;
 }
 .sidebar-collapsed fw-button.nav-item.active,
@@ -938,14 +927,14 @@ fw-button.sidebar-history-item.active {
   color: var(--dew-primary);
 }
 .sidebar-collapsed .sidebar-foot {
-  padding: 8px 6px 0;
+  padding: 8px 0 0;
   min-width: 0;
   overflow: hidden;
   margin-top: auto;
 }
 .sidebar-collapsed .sidebar-user {
-  justify-content: flex-start;
-  padding: 10px 12px;
+  justify-content: center;
+  padding: 10px 0;
   margin: 0;
   width: 100%;
 }
@@ -953,15 +942,17 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed fw-button.sidebar-logout,
 .sidebar-collapsed .sidebar-feedback,
 .sidebar-collapsed fw-button.sidebar-feedback {
-  justify-content: flex-start;
+  justify-content: center;
   align-items: center;
   width: 100%;
   height: auto;
   min-height: 40px;
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px 0;
   gap: 0;
   --fw-button-min-width: 0;
+  --fw-button-padding-start: 0;
+  --fw-button-padding-end: 0;
   border-radius: 10px;
 }
 
@@ -3128,8 +3119,8 @@ a { color: var(--accent); }
   }
   .sidebar-collapsed .sidebar-user-avatar { display: none; }
   .sidebar-collapsed .sidebar-history-icon { display: none; }
-  .sidebar-collapsed .nav-item { justify-content: flex-start; padding: 10px 12px; }
-  .sidebar-collapsed .sidebar-logout { justify-content: flex-start; padding: 8px 14px; }
+  .sidebar-collapsed .nav-item { justify-content: center; padding: 10px 0; }
+  .sidebar-collapsed .sidebar-logout { justify-content: center; padding: 10px 0; }
   .sidebar-backdrop:not([hidden]) { display: block; }
   .sidebar-close { display: block; }
   .sidebar-toggle { display: block; }
