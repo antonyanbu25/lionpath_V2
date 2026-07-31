@@ -38,8 +38,10 @@ import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsI
 import { applySeContextToDiscovery, applySeContextToPrep } from "./prep-se-context.js";
 import { canonicalizePrepSources } from "./prep-source-canon.js";
 import { hydrateRecentNews } from "./recent-news.js";
+import { getPrepCrmSelection } from "./prep-crm-resolve.js";
 import { esc, $, show } from "./shared.js";
 import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
+import { initPrepCrmResolve } from "./prep-crm-resolve.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
@@ -629,6 +631,7 @@ async function buildPayload() {
   const meetingZoomPasscode = (await readFieldValueAsync($("meetingZoomPasscode")))?.trim() || undefined;
 
   const engagementCtx = getAccountEngagementContext();
+  const crm = getPrepCrmSelection();
 
   let prepType = engagementCtx.prepType || "new_business";
   const motionSelect = $("prep-meeting-motion");
@@ -649,7 +652,8 @@ async function buildPayload() {
       seAdditionalContext: additionalContext,
       contextAttachments,
       prepType,
-      dealId: engagementCtx.dealId || undefined,
+      dealId: crm.dealId || engagementCtx.dealId || undefined,
+      accountId: crm.accountId || engagementCtx.accountId || undefined,
       lifecycleId: engagementCtx.lifecycleId || undefined,
       cachedResearch: cachedResearch || undefined,
       linkedinProfileExports,
@@ -664,6 +668,8 @@ async function buildPayload() {
       emailDomain: emailDomain(emails[0]),
       additionalContext,
       contextAttachments,
+      accountId: crm.accountId || engagementCtx.accountId || undefined,
+      dealId: crm.dealId || engagementCtx.dealId || undefined,
     },
     emails,
   };
@@ -1067,6 +1073,8 @@ export function initPrecall(options) {
       syncParsingGate();
     },
   });
+
+  initPrepCrmResolve();
 }
 
 export function resetPrecallOnView() {

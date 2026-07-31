@@ -23,7 +23,7 @@ import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
-import { countPrepsGenerated } from "./precall.js";
+import { countPrepsGenerated, loadLocalBriefs } from "./precall.js";
 import { buildLaunchpadCallMetrics } from "./calls-list-view.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
@@ -1213,27 +1213,72 @@ async function updateSideStats(container, email, fetchRemotePreps) {
   if (doneWeek) doneWeek.textContent = String(m.completedThisWeek);
 }
 
-function renderRecentCallsSide(recentCalls, usesLegacyCoach = false) {
-  const compact = recentCalls.slice(0, 6);
-  if (!compact.length) {
+function briefTimestamp(brief) {
+  const idPart = String(brief.id || "").split("-").pop();
+  const ts = Number(idPart);
+  if (Number.isFinite(ts) && ts > 1e12) return ts;
+  const when = Date.parse(String(brief.when || ""));
+  return Number.isFinite(when) ? when : 0;
+}
+
+function renderRecentBriefRow(brief) {
+  const factCount = brief.prep?.facts?.filter((f) => f.value && f.value !== "unknown").length || 0;
+  const totalFacts = brief.prep?.facts?.length || 0;
+  const status =
+    totalFacts > 0
+      ? `${factCount} of ${totalFacts} facts sourced`
+      : "Discovery brief ready";
+  return `
+    <button type="button" class="launch-activity-row dash-brief-link" data-brief-id="${esc(brief.id)}">
+      <span class="launch-activity-inner">
+        <span class="launch-activity-icon tile-sand" aria-hidden="true">✎</span>
+        <span class="launch-activity-body">
+          <span class="launch-activity-title">${esc(brief.company || brief.meta?.company || "Account")} · Discovery brief</span>
+          <span class="launch-activity-status" style="color:var(--dew-green)">${esc(status)}</span>
+        </span>
+        <span class="launch-activity-when">${esc(relativeWhen(briefTimestamp(brief)))}</span>
+      </span>
+    </button>`;
+}
+
+function buildRecentActivity(recentCalls, usesLegacyCoach = false) {
+  const callItems = (recentCalls || []).map((c) => ({
+    kind: "call",
+    ts: c.timestamp || 0,
+    html: renderRecentActivityRow(c, usesLegacyCoach),
+  }));
+  const briefItems = loadLocalBriefs().slice(0, 12).map((b) => ({
+    kind: "brief",
+    ts: briefTimestamp(b),
+    html: renderRecentBriefRow(b),
+  }));
+  return [...callItems, ...briefItems]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 6);
+}
+
+function renderRecentCallsSide(recentCalls, usesLegacyCoach = false, opts = {}) {
+  const items = buildRecentActivity(recentCalls, usesLegacyCoach);
+  if (!items.length) {
     return `
       <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
         <fw-card class="launch-activity-card">
           <div class="launch-activity-head">
             <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
           </div>
-          <p class="muted dash-side-empty" style="padding:20px 22px">Analyze a recording to see call activity here.</p>
+          <p class="muted dash-side-empty" style="padding:20px 22px">Generate a brief or analyze a recording to see activity here.</p>
         </fw-card>
       </section>`;
   }
 
-  const rows = compact.map((c) => renderRecentActivityRow(c, usesLegacyCoach)).join("");
+  const rows = items.map((i) => i.html).join("");
 
   return `
     <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
       <fw-card class="launch-activity-card">
         <div class="launch-activity-head">
           <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
+          ${opts.onViewAll ? `<button type="button" class="launch-activity-viewall" data-action="view-all-activity">View all</button>` : ""}
         </div>
         ${rows}
       </fw-card>
@@ -1314,7 +1359,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
           <div id="task-board-mount"></div>
         </div>
         <aside class="dash-split-side launch-side">
-          ${renderRecentCallsSide(metrics.recentCalls, metrics.usesLegacyCoach)}
+          ${renderRecentCallsSide(metrics.recentCalls, metrics.usesLegacyCoach, { onViewAll: true })}
         </aside>
       </div>
     </div>`;
@@ -1330,6 +1375,16 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   });
 
   wireCallLinks(container, opts.onOpenCall);
+
+  container.querySelectorAll(".dash-brief-link").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.briefId;
+      if (id) opts.onOpenBrief?.(id);
+    });
+  });
+  container.querySelector('[data-action="view-all-activity"]')?.addEventListener("click", () => {
+    opts.onOpenCalls?.();
+  });
 
   container.querySelectorAll('[data-action="prep"]').forEach((btn) => {
     btn.addEventListener("fwClick", () => opts.onPrep?.());

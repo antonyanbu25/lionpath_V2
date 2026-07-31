@@ -1,5 +1,5 @@
 /**
- * Top-right user profile dropdown — Freshdesk-style menu.
+ * Sidebar user profile menu — Slack-style flyout on the left edge.
  */
 
 import { wireThemeMenu, syncThemeMenuState } from "./theme.js";
@@ -19,12 +19,27 @@ function initialsFromName(name, email) {
   return local ? local.slice(0, 2).toUpperCase() : "U";
 }
 
+function sidebarWidthPx() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return 240;
+  return sidebar.getBoundingClientRect().width || 240;
+}
+
+function positionFlyout(panel) {
+  if (!panel) return;
+  panel.style.left = `${Math.round(sidebarWidthPx())}px`;
+  panel.style.bottom = "18px";
+  panel.style.top = "auto";
+  panel.style.right = "auto";
+}
+
 /**
  * @param {{ getSession: () => object|null, onProfileSettings: () => void, onSignOut: () => void }} opts
  */
 export function initUserMenu(opts) {
   const trigger = document.getElementById("sidebar-user") || document.getElementById("user-menu-trigger");
   const panel = document.getElementById("user-menu-panel");
+  const backdrop = document.getElementById("user-menu-backdrop");
   const themeToggle = document.getElementById("user-menu-theme-toggle");
   const themeSubmenu = document.getElementById("user-menu-theme-submenu");
   if (!trigger || !panel) return;
@@ -33,13 +48,16 @@ export function initUserMenu(opts) {
 
   function closeMenu() {
     panel.hidden = true;
+    if (backdrop) backdrop.hidden = true;
     trigger.setAttribute("aria-expanded", "false");
     if (themeSubmenu) themeSubmenu.hidden = true;
     if (themeToggle) themeToggle.setAttribute("aria-expanded", "false");
   }
 
   function openMenu() {
+    positionFlyout(panel);
     panel.hidden = false;
+    if (backdrop) backdrop.hidden = false;
     trigger.setAttribute("aria-expanded", "true");
     syncThemeMenuState(panel);
   }
@@ -53,6 +71,8 @@ export function initUserMenu(opts) {
     e.stopPropagation();
     toggleMenu();
   });
+
+  backdrop?.addEventListener("click", closeMenu);
 
   document.getElementById("user-menu-profile")?.addEventListener("click", () => {
     closeMenu();
@@ -73,10 +93,14 @@ export function initUserMenu(opts) {
 
   if (!globalEventsBound) {
     globalEventsBound = true;
+    window.addEventListener("resize", () => {
+      if (!panel.hidden) positionFlyout(panel);
+    });
+
     document.addEventListener("click", (e) => {
       if (panel.hidden) return;
       const menu = document.getElementById("user-menu");
-      if (menu && !menu.contains(e.target)) closeMenu();
+      if (menu && !menu.contains(e.target) && e.target !== backdrop) closeMenu();
     });
 
     document.addEventListener("keydown", (e) => {

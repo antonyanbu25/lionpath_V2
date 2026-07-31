@@ -66,6 +66,18 @@ class El {
 }
 
 const container = new El("section");
+store.set(
+  "lionpath_briefs",
+  JSON.stringify([
+    {
+      id: `acme-${Date.now()}`,
+      company: "Acme Corp",
+      when: new Date().toLocaleDateString(),
+      prep: { facts: [{ key: "Industry", value: "SaaS" }, { key: "Size", value: "200" }] },
+      meta: { company: "Acme Corp" },
+    },
+  ]),
+);
 await renderSeLaunchpad(container, "se@freshworks.com", { seName: "Alex SE" });
 
 const html = container.innerHTML;
@@ -76,6 +88,7 @@ const checks = [
   ["KPI cards are clickable", html.includes('data-kpi-nav="calls"')],
   ["has task board mount", html.includes("task-board-mount")],
   ["has recent activity section", html.includes("Recent activity")],
+  ["activity includes brief link hook", html.includes("dash-brief-link") || html.includes("Discovery brief")],
   ["has launch KPI grid", html.includes("launch-kpi-grid")],
 ];
 

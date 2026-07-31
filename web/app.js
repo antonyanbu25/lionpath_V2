@@ -366,6 +366,9 @@ function dashboardOpts() {
     onOpenBriefs: () => {
       switchView("precall");
     },
+    onOpenBrief: (id) => {
+      openPrepBriefItem(id);
+    },
     onCoaching: () => {
       switchView("coaching");
     },
@@ -1743,6 +1746,13 @@ async function boot() {
     syncAutoCompanyDomain();
     updateDomainHint();
   });
+
+  $("topbar-new-brief")?.addEventListener("click", () => switchView("precall"));
+  $("topbar-new-call")?.addEventListener("click", () => switchView("postcall"));
+  $("topbar-notifications")?.addEventListener("click", () => {
+    /* notifications placeholder — empty for now */
+  });
+
   $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
   $("companyDomain")?.addEventListener("input", onCompanyDomainInput);
 

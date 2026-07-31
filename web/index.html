@@ -227,6 +227,7 @@
         </div>
       </aside>
       <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+      <div id="user-menu-backdrop" class="user-menu-backdrop" hidden aria-hidden="true"></div>
 
       <div class="app-main">
         <header class="main-topbar">
@@ -238,7 +239,19 @@
           </div>
           <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
           <fw-input id="global-search-input" class="global-search-input" placeholder="Search accounts, briefs, calls…" clear-input aria-label="Global search"></fw-input>
-          <div class="topbar-actions" hidden aria-hidden="true"></div>
+          <div class="topbar-actions" id="topbar-actions">
+            <button type="button" class="topbar-action topbar-action--primary" id="topbar-new-brief">
+              <span class="topbar-action-icon" aria-hidden="true">+</span>
+              New brief
+            </button>
+            <button type="button" class="topbar-action topbar-action--secondary" id="topbar-new-call">
+              <span class="topbar-action-icon" aria-hidden="true">+</span>
+              New call analysis
+            </button>
+            <button type="button" class="topbar-action topbar-action--icon" id="topbar-notifications" aria-label="Notifications" title="Notifications">
+              <span aria-hidden="true">🔔</span>
+            </button>
+          </div>
         </header>
 
         <div id="global-search-backdrop" class="global-search-backdrop" hidden></div>
@@ -329,6 +342,12 @@
                         <fw-tooltip content="First email is the primary contact. Add more with commas, e.g. alex@acme.com, sam@acme.com">
                           <span class="prep-email-tip muted">Primary + comma-separated</span>
                         </fw-tooltip>
+                      </div>
+                      <div id="prep-crm-matches" class="pc-crm-matches prep-form-full" hidden aria-live="polite"></div>
+                      <div id="prep-account-card" class="prep-account-card prep-form-full" hidden></div>
+                      <div id="prep-deal-row" class="prep-deal-row prep-form-full" hidden>
+                        <fw-select id="prep-deal-select" label="Deal" hint-text="Link this brief to an existing deal or create a new one"></fw-select>
+                        <button type="button" id="prep-deal-new-btn" class="prep-deal-new-btn">+ New deal</button>
                       </div>
                       <fw-input id="companyDomain" label="Company domain" type="text" placeholder="acme.com" hint-text="Filled from prospect email when possible. Edit if the customer uses a different website." required clear-input></fw-input>
                       <span id="domain-hint" class="field-hint prep-form-full" hidden></span>

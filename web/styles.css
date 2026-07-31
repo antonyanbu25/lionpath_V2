@@ -650,13 +650,27 @@ fw-button.sidebar-history-item.active {
   width: 100%;
 }
 .user-menu-panel--sidebar {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  left: var(--sidebar-w);
+  bottom: 18px;
   top: auto;
   right: auto;
-  min-width: 260px;
-  z-index: 300;
+  min-width: 280px;
+  max-height: min(420px, calc(100dvh - 36px));
+  overflow-y: auto;
+  z-index: 400;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(43, 41, 38, 0.14);
+}
+.user-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  background: transparent;
+}
+.sidebar-collapsed ~ .user-menu-backdrop + .app-main .user-menu-panel--sidebar,
+.sidebar-collapsed ~ .app-main .user-menu-panel--sidebar {
+  left: var(--sidebar-w-collapsed);
 }
 .launch-kpi-card[data-kpi-nav] {
   cursor: pointer;
@@ -876,7 +890,133 @@ fw-button.sidebar-history-item.active {
   min-width: 160px;
 }
 .topbar-actions {
-  display: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.topbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 15px;
+  border-radius: 11px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.topbar-action--primary {
+  border: none;
+  background: var(--dew-brand);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(43, 41, 38, 0.06);
+}
+.topbar-action--primary:hover {
+  filter: brightness(1.04);
+}
+.topbar-action--secondary {
+  border: 1px solid #cfe3de;
+  background: #fff;
+  color: #2e897b;
+}
+.topbar-action--secondary:hover {
+  background: #f0f7f5;
+}
+.topbar-action--icon {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--dew-border);
+  background: #fff;
+  color: var(--dew-text-secondary);
+  position: relative;
+}
+.topbar-action-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+.prep-deal-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.prep-deal-new-btn {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--dew-border);
+  background: var(--dew-surface);
+  color: var(--dew-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.prep-deal-new-btn:hover {
+  background: var(--dew-surface-subtle);
+}
+.prep-account-card {
+  margin-top: -4px;
+}
+.prep-account-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--dew-border);
+  background: var(--dew-surface-subtle);
+}
+.prep-account-chip-mono {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--dew-brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.prep-account-chip-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.prep-account-chip-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--dew-text);
+}
+.prep-account-chip-domain {
+  font-size: 12px;
+}
+.launch-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px 0;
+}
+.launch-activity-viewall {
+  border: none;
+  background: transparent;
+  color: var(--dew-brand);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+.launch-activity-viewall:hover {
+  text-decoration: underline;
 }
 .user-menu {
   position: relative;
