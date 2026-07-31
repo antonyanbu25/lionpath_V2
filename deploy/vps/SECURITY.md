@@ -22,6 +22,18 @@ sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_
 systemctl reload sshd
 ```
 
+## GitHub deploy key (VPS → private repo)
+
+The production repo is **private** (`skut264/lionpath`). The VPS needs its own **read-only deploy key** to run `update.sh`.
+
+```bash
+# On VPS
+ssh-keygen -t ed25519 -C "vps-lionpath-deploy" -f /root/.ssh/lionpath_deploy -N ""
+cat /root/.ssh/lionpath_deploy.pub   # add to GitHub → repo → Deploy keys
+```
+
+See **docs/VPS_DEPLOY.md** § Git authentication for full steps and the `insteadOf` HTTPS rewrite fix.
+
 ## Secrets — never in git
 
 | Secret | Where it lives | Never commit |

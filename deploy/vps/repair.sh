@@ -4,12 +4,13 @@
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"
+DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 
 echo "=== SE Paathai VPS repair ==="
 echo "Repo: $REPO_ROOT"
 
 cd "$REPO_ROOT"
-git fetch origin 2.0.7.2
+bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.7.2"
 git checkout 2.0.7.2 2>/dev/null || git checkout -B 2.0.7.2
 git reset --hard origin/2.0.7.2
 
@@ -39,8 +40,8 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-chmod +x start.sh setup.sh doctor.sh update.sh repair.sh entrypoint-worker.sh 2>/dev/null || true
-sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh repair.sh entrypoint-worker.sh 2>/dev/null || true
+chmod +x start.sh setup.sh doctor.sh update.sh repair.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
+sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh repair.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
 
 echo "=== Rebuilding worker (no cache — fixes stale COPY src layers) ==="
 docker compose build --no-cache worker

@@ -67,11 +67,13 @@ ssh root@YOUR_VPS_IP
 On the VPS:
 
 ```bash
-git clone https://github.com/kuttas246/se-singha-paathai.git /opt/se-singha-paathai
+git clone git@github.com:skut264/lionpath.git /opt/se-singha-paathai
 cd /opt/se-singha-paathai/deploy/vps
 chmod +x setup.sh start.sh
 ./setup.sh
 ```
+
+The repo is **private** — you need a GitHub **deploy key** (read-only) on the VPS before `git clone` / `update.sh` will work. See [Git authentication (private repo)](#git-authentication-private-repo) below.
 
 `setup.sh` installs Docker (if needed), clones/updates the repo, creates `/var/lib/se-paathai/history` (mode 700), and copies `.env.example` → `.env`.
 
@@ -153,16 +155,108 @@ systemctl enable --now se-paathai
 ## 8. Updates
 
 ```bash
-cd /opt/se-singha-paathai
-git pull
-cd deploy/vps
-./start.sh
+cd /opt/se-singha-paathai/deploy/vps
+bash update.sh
 ```
+
+`update.sh` fetches `2.0.7.2` via SSH (bypassing HTTPS rewrites), resets the repo, rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`.
 
 After pulling domain changes, restart Caddy so it picks up the new `Caddyfile`:
 
 ```bash
 docker compose restart caddy
+```
+
+---
+
+## Git authentication (private repo)
+
+Repository: **git@github.com:skut264/lionpath.git** (private)
+
+### Symptom — SSH remote but HTTPS password prompt
+
+```text
+origin  git@github.com:skut264/lionpath.git (fetch)
+Username for 'https://github.com': skut264
+Password for 'https://skut264@github.com':
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/skut264/lionpath.git/'
+```
+
+**Root cause:** Git is rewriting `git@github.com:` → `https://github.com/` (global `url.*.insteadOf`), so `git fetch origin` uses HTTPS even though `origin` is SSH. GitHub no longer accepts account passwords — you need SSH keys or a Personal Access Token.
+
+**Diagnose on VPS:**
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash git-auth-diagnose.sh
+# or full stack + git:  bash doctor.sh
+```
+
+Check for rewrites:
+
+```bash
+git config --global --get-regexp '^url\.'
+```
+
+If you see `url.https://github.com/.insteadof git@github.com:`, remove it:
+
+```bash
+git config --global --unset-all url.https://github.com/.insteadOf
+```
+
+### Fix — SSH deploy key (recommended)
+
+On the **VPS** (as root):
+
+```bash
+ssh-keygen -t ed25519 -C "vps-lionpath-deploy" -f /root/.ssh/lionpath_deploy -N ""
+cat /root/.ssh/lionpath_deploy.pub
+```
+
+1. Copy the public key output.
+2. GitHub → **skut264/lionpath** → **Settings** → **Deploy keys** → **Add deploy key** (title: `vps-portal`, **read-only**).
+3. Configure SSH:
+
+```bash
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat >> /root/.ssh/config <<'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile /root/.ssh/lionpath_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 /root/.ssh/config
+```
+
+4. Test:
+
+```bash
+ssh -T git@github.com
+# Expected: Hi skut264/lionpath! You've successfully authenticated...
+git ls-remote git@github.com:skut264/lionpath.git refs/heads/2.0.7.2
+```
+
+5. Deploy:
+
+```bash
+git remote set-url origin git@github.com:skut264/lionpath.git
+cd /opt/se-singha-paathai/deploy/vps
+bash update.sh
+```
+
+`update.sh` uses `git-fetch-origin.sh`, which fetches **directly** via `git@github.com:skut264/lionpath.git` so `insteadOf` rewrites on `origin` no longer matter.
+
+### Alternative — HTTPS + Personal Access Token
+
+Only if you prefer HTTPS:
+
+```bash
+git remote set-url origin https://github.com/skut264/lionpath.git
+git fetch origin 2.0.7.2
+# Username: skut264
+# Password: <GitHub PAT with repo scope — NOT your account password>
 ```
 
 ---
@@ -206,6 +300,8 @@ ufw status
 | **"Cannot reach the API server at portalapi…"** banner after domain migration | API is up but CORS is wrong — see [Domain migration](#domain-migration-lionpath--portal) below |
 | History empty after reload | Check `HISTORY_FILE_DIR` and volume mount; `ls -la /var/lib/se-paathai/history` |
 | 502 from Caddy | `docker compose ps` — ensure worker and web are healthy |
+| **`git fetch` asks for HTTPS password** (SSH remote) | Global `insteadOf` rewrite — see [Git authentication](#git-authentication-private-repo); run `bash git-auth-diagnose.sh` |
+| **`Invalid username or token`** on fetch | Set up SSH deploy key or GitHub PAT — passwords are not supported |
 
 ---
 

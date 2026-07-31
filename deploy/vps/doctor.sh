@@ -32,6 +32,15 @@ docker compose exec -T worker node -e \
   2>/dev/null && echo "Worker responds internally" || echo "Worker NOT responding on :8787"
 
 echo ""
+echo "=== git / GitHub auth (deploy) ==="
+REPO_ROOT="$(cd ../.. && pwd)"
+if [[ -x "$REPO_ROOT/deploy/vps/git-auth-diagnose.sh" ]]; then
+  bash "$REPO_ROOT/deploy/vps/git-auth-diagnose.sh" "$REPO_ROOT"
+else
+  echo "(git-auth-diagnose.sh not found — pull latest repo or copy script manually)"
+fi
+
+echo ""
 echo "=== public API probe ==="
 if command -v curl >/dev/null 2>&1; then
   curl -sI https://portalapi.benjaminsquare.com/api/config | head -5
