@@ -79,6 +79,35 @@ function readAccountNameInput() {
   return (input?.value || prepDraftAccountName || "").trim();
 }
 
+/** @returns {{ id: null, name: string, domain: string|null }} */
+export function buildDraftAccount(domain, name) {
+  const displayName = name || companyNameFromDomain(domain) || domain || "Account";
+  return {
+    id: null,
+    name: displayName,
+    domain: normalizeDomain(domain) || domain || null,
+  };
+}
+
+/** Stable draft account for new-domain previews (fixes post-lookup flicker). */
+export function ensureDraftAccount(domain, name) {
+  prepResolvedAccount = buildDraftAccount(domain, name);
+  if (!prepAccountNameUserEdited) prepDraftAccountName = prepResolvedAccount.name;
+  if (!lastDeals.length && !prepSelectedDealId) prepCreateNewDeal = true;
+}
+
+function hideAccountDealGrid() {
+  const grid = $("prep-account-deal-grid");
+  const accountCard = $("prep-account-card");
+  const dealRow = $("prep-deal-row");
+  if (grid) grid.hidden = true;
+  if (accountCard) {
+    accountCard.hidden = true;
+    accountCard.innerHTML = "";
+  }
+  if (dealRow) dealRow.hidden = true;
+}
+
 function syncEngagementContext() {
   const ctx = {};
   if (prepResolvedAccount?.id) ctx.accountId = prepResolvedAccount.id;
@@ -114,15 +143,7 @@ export function resetPrepCrmUi() {
     panel.hidden = true;
     panel.innerHTML = "";
   }
-  const accountCard = $("prep-account-card");
-  if (accountCard) {
-    accountCard.hidden = true;
-    accountCard.innerHTML = "";
-  }
-  const dealRow = $("prep-deal-row");
-  if (dealRow) dealRow.hidden = true;
-  const grid = $("prep-account-deal-grid");
-  if (grid) grid.hidden = true;
+  hideAccountDealGrid();
   const nameInput = $("prep-account-name");
   if (nameInput) nameInput.value = "";
 }
@@ -156,35 +177,10 @@ async function applyAccount(account, deals = []) {
   }
 }
 
-function renderAccountDealPreview(domain, accountName, isExisting = false) {
-  const grid = $("prep-account-deal-grid");
-  const accountCard = $("prep-account-card");
-  const row = $("prep-deal-row");
-  const dealDisplay = $("prep-deal-display");
-  if (!grid || !accountCard) return;
-
-  const displayName = accountName || companyNameFromDomain(domain) || domain || "Account";
-  const mono = displayName.slice(0, 2).toUpperCase();
-  grid.hidden = false;
-  accountCard.hidden = false;
-  accountCard.innerHTML = `<div class="nb-account-card">
-    <span class="nb-account-card-mono">${esc(mono)}</span>
-    <div class="nb-account-card-body">
-      <span class="nb-account-card-name">${esc(displayName)}</span>
-      <span class="nb-account-card-badge">${isExisting ? "Existing account" : "New account"}</span>
-    </div>
-  </div>`;
-
-  if (row && dealDisplay) {
-    row.hidden = false;
-    dealDisplay.innerHTML = `<div class="nb-deal-card">
-      <span class="nb-deal-card-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-      <div class="nb-deal-card-body">
-        <span class="nb-deal-card-title">New deal</span>
-        <span class="nb-deal-card-stage">Will be created on generate</span>
-      </div>
-    </div>`;
-  }
+function renderAccountDealPreview(domain, accountName) {
+  if (!$("prep-account-deal-grid")) return;
+  ensureDraftAccount(domain, accountName);
+  renderDealRow();
 }
 
 function renderDealRow() {
@@ -196,9 +192,7 @@ function renderDealRow() {
   if (!row || !select) return;
 
   if (!prepResolvedAccount) {
-    row.hidden = true;
-    if (accountCard) accountCard.hidden = true;
-    if (grid) grid.hidden = true;
+    hideAccountDealGrid();
     return;
   }
 
@@ -252,11 +246,10 @@ async function renderCrmPanel() {
   if (!panel) return;
   const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
   if (!emails.length) {
+    resetPrepCrmSelection();
     panel.hidden = true;
     panel.innerHTML = "";
-    $("prep-deal-row") && ($("prep-deal-row").hidden = true);
-    $("prep-account-card") && ($("prep-account-card").hidden = true);
-    $("prep-account-deal-grid") && ($("prep-account-deal-grid").hidden = true);
+    hideAccountDealGrid();
     return;
   }
 
@@ -282,8 +275,10 @@ async function renderCrmPanel() {
   } else if (accounts.length > 1 && !prepResolvedAccount) {
     prepSelectedDealId = null;
     prepCreateNewDeal = false;
-  } else if (primaryGroup?.domain && !prepResolvedAccount) {
-    renderAccountDealPreview(primaryGroup.domain, defaultName, false);
+  } else if (primaryGroup?.domain && !prepResolvedAccount?.id) {
+    ensureDraftAccount(primaryGroup.domain, defaultName);
+  } else if (!primaryGroup?.domain && !prepResolvedAccount?.id) {
+    prepResolvedAccount = null;
   }
 
   const domainRows = domainGroups
@@ -345,16 +340,20 @@ function scheduleLookup() {
 }
 
 async function showInstantAccountPreview() {
-  if (prepResolvedAccount) return;
+  if (prepResolvedAccount?.id) return;
   const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
   if (!emails.length) {
-    $("prep-account-deal-grid") && ($("prep-account-deal-grid").hidden = true);
+    hideAccountDealGrid();
     return;
   }
   const domain = emails[0].split("@")[1]?.toLowerCase();
-  if (!domain || isFreeMailDomain(domain)) return;
+  if (!domain || isFreeMailDomain(domain)) {
+    if (!prepResolvedAccount?.id) prepResolvedAccount = null;
+    hideAccountDealGrid();
+    return;
+  }
   const name = companyNameFromDomain(domain) || domain;
-  renderAccountDealPreview(domain, name, false);
+  renderAccountDealPreview(domain, name);
 }
 
 export function initPrepCrmResolve() {
@@ -372,6 +371,7 @@ export function initPrepCrmResolve() {
       prepSelectedDealId = val || null;
     }
     syncEngagementContext();
+    renderDealRow();
   });
 
   $("prep-deal-new-btn")?.addEventListener("click", () => {
@@ -380,5 +380,6 @@ export function initPrepCrmResolve() {
     const select = $("prep-deal-select");
     if (select) select.value = "__new__";
     syncEngagementContext();
+    renderDealRow();
   });
 }

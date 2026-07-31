@@ -758,14 +758,7 @@ async function buildPayload() {
   const engagementCtx = getAccountEngagementContext();
   const crm = getPrepCrmSelection();
 
-  let prepType = engagementCtx.prepType || "new_business";
-  const motionSelect = $("prep-meeting-motion");
-  const fromAccount = $("prep-motion-from-account");
-  if (fromAccount && !fromAccount.hidden) {
-    prepType = engagementCtx.prepType || prepType;
-  } else if (motionSelect && !$("prep-motion-row")?.hidden) {
-    prepType = (await readFieldValueAsync(motionSelect)) || prepType;
-  }
+  const prepType = engagementCtx.prepType || "new_business";
 
   return {
     payload: {
@@ -1406,30 +1399,7 @@ export function resetPrecallOnView() {
   resetPrecallForm();
 }
 
-/** Show meeting motion controls based on account engagement context. */
-export function syncPrepEngagementMotion() {
-  const row = $("prep-motion-row");
-  const fromAccount = $("prep-motion-from-account");
-  const select = $("prep-meeting-motion");
-  const chip = $("prep-motion-chip");
-  if (!row) return;
-
-  const ctx = getAccountEngagementContext();
-  const hasAccount = Boolean(ctx.accountId);
-
-  row.hidden = false;
-  if (hasAccount) {
-    if (fromAccount) fromAccount.hidden = false;
-    if (select) select.hidden = true;
-    const label = ctx.prepType === "expansion" ? "Expansion" : "New business";
-    if (chip) chip.text = `Meeting motion: ${label}`;
-  } else {
-    if (fromAccount) fromAccount.hidden = true;
-    if (select) {
-      select.hidden = false;
-      select.value = ctx.prepType === "expansion" ? "expansion" : "new_business";
-    }
-  }
-}
+/** Meeting motion UI removed — prepType comes from account engagement context only. */
+export function syncPrepEngagementMotion() {}
 
 export { isV8Prep, isV7Prep, isV6Prep, companyMono };

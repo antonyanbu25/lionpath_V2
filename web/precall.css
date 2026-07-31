@@ -56,6 +56,13 @@
   gap: 18px;
 }
 
+/* styles.css gives #prep-form fw-* a 14px margin — breaks nb-input-shell layout */
+#prep-form.nb-form fw-input,
+#prep-form.nb-form fw-textarea,
+#prep-form.nb-form fw-select {
+  margin-bottom: 0;
+}
+
 .nb-field {
   display: flex;
   flex-direction: column;
@@ -140,10 +147,32 @@
 }
 
 #view-precall .nb-form-card {
-  padding: 0;
-  border: none;
-  box-shadow: none;
-  background: transparent;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(43, 41, 38, 0.05);
+  padding: 24px;
+}
+
+.nb-account-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nb-account-column > .nb-label {
+  margin-bottom: 7px;
+}
+
+.nb-deal-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nb-crm-panel[hidden] {
+  display: none !important;
+  margin: 0;
 }
 
 .nb-context-section fw-textarea {
@@ -482,7 +511,7 @@
 }
 
 .nb-crm-panel {
-  margin: -6px 0 0;
+  margin: 0;
 }
 
 #view-precall fw-card.prep-form-card {
