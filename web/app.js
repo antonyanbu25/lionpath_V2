@@ -1666,9 +1666,12 @@ async function warnIfWorkerDown() {
     if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     const config = await res.json();
     const workerBuild = String(config.workerBuild || "");
-    const needsDomainCache =
-      !workerBuild.includes("domain-cache") ||
-      (portalBuild && !portalBuild.includes("domain-cache"));
+    const workerOk = workerBuild.includes("domain-cache");
+    const portalOk =
+      !portalBuild ||
+      portalBuild.includes("domain-cache") ||
+      portalBuild.includes("precall-align");
+    const needsDomainCache = !workerOk || !portalOk;
     if (needsDomainCache) {
       banner.setAttribute("type", "warning");
       banner.textContent =
