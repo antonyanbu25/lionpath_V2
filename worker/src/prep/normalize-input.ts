@@ -1,5 +1,6 @@
 import { isValidCompanyDomain, normalizeCompanyDomain } from "../domain";
 import type { PrepInput, NormalizedPrepInput } from "./types";
+import { normalizeContextAttachments } from "./context-attachments";
 import { computeInputHash as computeInputHashImpl } from "./input-hash";
 import { normalizeLinkedInExports } from "./linkedin-pdf";
 
@@ -131,6 +132,9 @@ export function normalizePrepInput(input: PrepInput): NormalizedPrepInput {
     prepType: input.prepType || "new_business",
     forceRefresh: !!input.forceRefresh,
     linkedinProfileExports: normalizeLinkedInExports(input.linkedinProfileExports),
+    contextAttachments: normalizeContextAttachments(input.contextAttachments).map(
+      ({ fileName, text }) => ({ fileName, text }),
+    ),
   };
 }
 

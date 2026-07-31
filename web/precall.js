@@ -18,6 +18,7 @@ import {
   companyMono,
 } from "./precall-render.js";
 import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js";
+import { wirePrepV9ScrollAnimations } from "./prep-v9-animate.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
 import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
@@ -27,9 +28,17 @@ import {
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
 } from "./prep-linkedin-pdf.js";
+import {
+  initContextFileUpload,
+  clearContextAttachments,
+  contextAttachmentsForPayload,
+} from "./prep-context-files.js";
+import { mergeContextAttachments } from "./prep-context-attachments.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks } from "./prep-contact-enrich.js";
 import { applySeContextToDiscovery, applySeContextToPrep } from "./prep-se-context.js";
+import { canonicalizePrepSources } from "./prep-source-canon.js";
 import { esc, $, show } from "./shared.js";
+import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
 const CHECKS_KEY = "lionpath_prep_checks";
@@ -126,7 +135,13 @@ let state = {
   contactEnrichmentsByEmail: null,
   peopleProspectTab: "prospect-0",
   linkedinParsing: false,
+  contextParsing: false,
 };
+
+/** True while any attachment is still being read — submitting now would drop it. */
+function isParsingAttachments() {
+  return state.linkedinParsing || state.contextParsing;
+}
 
 function accountId(meta) {
   return String(meta?.company || "account")
@@ -357,7 +372,10 @@ function showResultView(prep, meta) {
 }
 
 export function displayPrepResult(prep, meta = {}) {
-  const context = meta.additionalContext || meta.seAdditionalContext;
+  const context = mergeContextAttachments(
+    meta.additionalContext || meta.seAdditionalContext,
+    meta.contextAttachments || meta.input?.contextAttachments,
+  );
   let merged = prep;
   const enrichByEmail = meta.contactEnrichmentsByEmail;
   const storedProfiles = meta.linkedinProspectProfiles;
@@ -372,14 +390,14 @@ export function displayPrepResult(prep, meta = {}) {
     merged = mergeEnrichmentsIntoPrep(prep, emails, storedProfiles);
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
-  showResultView(applySeContextToDiscovery(applySeContextToPrep(merged, context), context), meta);
+  const withContext = applySeContextToDiscovery(applySeContextToPrep(merged, context), context);
+  showResultView(canonicalizePrepSources(withContext).prep, meta);
 }
 
 function openSourcePopover(label, ev) {
   const prep = state.currentPrep;
   if (!prep?.sources) return;
-  const idx = prep.sources.findIndex((s) => s.label === label);
-  const source = idx >= 0 ? prep.sources[idx] : prep.sources[Number(label)] || prep.sources[0];
+  const source = prep.sources.find((s) => s.label === label);
   if (!source) return;
 
   const pop = $("prep-source-popover");
@@ -486,6 +504,7 @@ function wireTabInteractions() {
   }
 
   wireDisputeTriggers(root);
+  wirePrepV9ScrollAnimations(root);
 }
 
 function pushBriefRecord(record) {
@@ -511,6 +530,10 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
     meetingZoomUrl: input.meetingZoomUrl,
     kaiaMeetingUrl: input.kaiaMeetingUrl,
     linkedinProfileExports: meta.linkedinProfileExports || input.linkedinProfileExports,
+    // Attached-file text is deliberately NOT stored: up to 40k chars per brief would
+    // crowd the localStorage quota, and the signals it produced are already baked into
+    // `prep` by the server. Re-rendering a saved brief therefore uses the typed note
+    // only — the same trade compactBriefForStorage already makes for LinkedIn exports.
   };
   pushBriefRecord({
     id,
@@ -566,9 +589,10 @@ async function buildPayload() {
 
   const additionalContext = await readAdditionalContextForSubmit();
   const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
+  const contextAttachments = contextAttachmentsForPayload();
 
   const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash(), {
-    additionalContext,
+    additionalContext: mergeContextAttachments(additionalContext, contextAttachments),
     kaiaMeetingUrl,
   });
   let cachedResearch = null;
@@ -601,6 +625,7 @@ async function buildPayload() {
       prospectEmails: emails,
       additionalContext,
       seAdditionalContext: additionalContext,
+      contextAttachments,
       prepType,
       dealId: engagementCtx.dealId || undefined,
       lifecycleId: engagementCtx.lifecycleId || undefined,
@@ -616,6 +641,7 @@ async function buildPayload() {
       domain: companyDomain,
       emailDomain: emailDomain(emails[0]),
       additionalContext,
+      contextAttachments,
     },
     emails,
   };
@@ -646,6 +672,8 @@ function setLoading(on, message) {
   setFormFieldsDisabled($("prep-form"), on);
   const addPdfBtn = $("prep-linkedin-add-btn");
   if (addPdfBtn) addPdfBtn.disabled = on || state.linkedinParsing;
+  const addContextBtn = $("prep-context-add-btn");
+  if (addContextBtn) addContextBtn.disabled = on || state.contextParsing;
   show($("prep-loading"), on);
   if (on) {
     showInlineStatus(status, { type: "info", message, loading: true });
@@ -700,6 +728,7 @@ function buildDisputeContext(overrides = {}) {
     companyDomain: meta.companyDomain || meta.domain || payload.companyDomain || "",
     researchInputHash: inputHash,
     facts,
+    sources: pending?.research?.sources || state.currentPrep?.sources || [],
     briefId: state.activeBriefId,
     ...overrides,
   };
@@ -761,17 +790,72 @@ async function hydrateKaiaSummary(payload, statusEl) {
   }
 }
 
+const PREP_STAGE_LABELS = {
+  kaia: "Fetch Kaia meeting summary",
+  enrich: "Read LinkedIn exports and notes",
+  research: "Research account and prospects",
+  synthesize: "Write the brief",
+};
+
+/** @param {string[]} stageIds */
+export function createPrepProgress(stageIds, hostId = "prep-progress") {
+  const steps = stageIds.map((id) => ({
+    id,
+    label: PREP_STAGE_LABELS[id] || id,
+    status: "pending",
+  }));
+  let detail;
+
+  const render = () => showPipelineProgress(hostId, steps, { title: "Brief pipeline", meta: detail });
+
+  return {
+    steps,
+    set(id, status) {
+      const step = steps.find((s) => s.id === id);
+      if (step) step.status = status;
+      render();
+    },
+    advance(id, nextId) {
+      if (id) this.set(id, "done");
+      if (nextId) this.set(nextId, "active");
+    },
+    setDetail(text) {
+      detail = text;
+      render();
+    },
+    clearDetail() {
+      detail = undefined;
+      render();
+    },
+    hide() {
+      hidePipelineProgress(hostId);
+    },
+  };
+}
+
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
   const pdfs = payload.linkedinProfileExports || [];
 
+  const willFetchKaia = !!payload.kaiaMeetingUrl?.trim() && !payload.kaiaSummary?.trim();
+  const willEnrich = !!deps.enrichUrl && shouldRunProspectEnrich(payload, pdfs.length);
+  const progress = createPrepProgress([
+    ...(willFetchKaia ? ["kaia"] : []),
+    ...(willEnrich ? ["enrich"] : []),
+    "research",
+    "synthesize",
+  ]);
+
+  if (willFetchKaia) progress.set("kaia", "active");
   await hydrateKaiaSummary(payload, status);
+  if (willFetchKaia) progress.set("kaia", payload.kaiaSummary?.trim() ? "done" : "skipped");
   let kaiaFetched = !!payload.kaiaSummary?.trim();
 
   let confirmedProspectProfiles = [];
 
-  if (deps.enrichUrl && shouldRunProspectEnrich(payload, pdfs.length)) {
+  if (willEnrich) {
     setLoading(true, "Enriching prospects…");
+    progress.set("enrich", "active");
     try {
       const enrichResponses = await enrichProspectsParallel(
         {
@@ -784,7 +868,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
           pdfs,
           payload,
           onProgress: (n, total) => {
-            setLoading(true, `Enriching prospects (${n}/${total})…`);
+            progress.setDetail(`Prospects read: ${n} of ${total}`);
           },
         },
       );
@@ -793,11 +877,16 @@ async function runPrepEndToEnd(payload, meta, emails) {
         enrichResponses.map((r) => [r.email.toLowerCase(), r]),
       );
     } catch (err) {
+      progress.set("enrich", "error");
       showInlineStatus(status, {
         type: "warn",
         message: `Some prospect enrichments failed: ${err.message || "error"}. Continuing with available data…`,
       });
     }
+    if (progress.steps.find((s) => s.id === "enrich")?.status === "active") {
+      progress.set("enrich", "done");
+    }
+    progress.clearDetail();
   }
 
   const enrichPayload = {
@@ -807,33 +896,45 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
   const cacheHit = payload.cachedResearch || meta.researchMeta?.cacheHit;
   setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
+  progress.set("research", "active");
+  if (cacheHit) progress.setDetail("Using cached research");
 
   let research;
   try {
     research = await postJson(deps.researchUrl, enrichPayload);
   } catch (err) {
+    progress.set("research", "error");
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {
       type: "error",
       message: msg === "Failed to fetch" || /network|fetch/i.test(msg) ? deps.workerDownMsg : msg,
     });
     clearLoading();
+    progress.hide();
     return;
   }
 
   const confirmedFacts = selectDefaultConfirmedFacts(research);
   if (!confirmedFacts.length) {
+    progress.set("research", "error");
     showInlineStatus(status, {
       type: "error",
       message: "No verified research facts found. Check company domain and emails, then try again.",
     });
     clearLoading();
+    progress.hide();
     return;
   }
 
   state.pendingResearch = { payload, meta, research };
 
+  const factCount = research.facts?.length ?? confirmedFacts.length;
+  const sourceCount = research.sources?.length ?? 0;
+  progress.set("research", "done");
+  progress.setDetail(`${factCount} facts · ${sourceCount} sources`);
+
   setLoading(true, "Generating brief from research…");
+  progress.set("synthesize", "active");
 
   try {
     const data = await postJson(deps.synthesizeUrl, {
@@ -845,6 +946,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
     const enrichedMeta = {
       ...meta,
       additionalContext: payload.additionalContext || meta.additionalContext,
+      contextAttachments: payload.contextAttachments || meta.contextAttachments,
       kaiaFetched,
       researchMeta: data.researchMeta,
       researchBundle: data.researchBundle,
@@ -854,6 +956,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
       linkedinProfileExports: pdfs,
     };
 
+    progress.set("synthesize", "done");
     displayPrepResult(data.prep, enrichedMeta);
     showInlineStatus(status, { open: false });
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
@@ -862,7 +965,12 @@ async function runPrepEndToEnd(payload, meta, emails) {
     clearLinkedInAttachments();
     const listEl = $("prep-linkedin-file-list");
     if (listEl) listEl.innerHTML = "";
+    clearContextAttachments();
+    const contextListEl = $("prep-context-file-list");
+    if (contextListEl) contextListEl.innerHTML = "";
+    progress.hide();
   } catch (err) {
+    progress.set("synthesize", "error");
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {
       type: "error",
@@ -875,7 +983,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
 export async function generatePrep(e) {
   e?.preventDefault?.();
-  if (state.loading || state.linkedinParsing) return;
+  if (state.loading || isParsingAttachments()) return;
 
   const status = $("prep-status");
   try {
@@ -914,13 +1022,27 @@ export function initPrecall(options) {
     void generatePrep(e);
   });
 
+  const syncParsingGate = () => {
+    const busy = isParsingAttachments() || state.loading;
+    const btn = $("generate");
+    if (btn) btn.disabled = busy;
+    const addPdfBtn = $("prep-linkedin-add-btn");
+    if (addPdfBtn) addPdfBtn.disabled = busy;
+    const addContextBtn = $("prep-context-add-btn");
+    if (addContextBtn) addContextBtn.disabled = busy;
+  };
+
   initLinkedInPdfUpload({
     setParsing: (on) => {
       state.linkedinParsing = on;
-      const btn = $("generate");
-      if (btn) btn.disabled = on || state.loading;
-      const addBtn = $("prep-linkedin-add-btn");
-      if (addBtn) addBtn.disabled = on || state.loading;
+      syncParsingGate();
+    },
+  });
+
+  initContextFileUpload({
+    setParsing: (on) => {
+      state.contextParsing = on;
+      syncParsingGate();
     },
   });
 }

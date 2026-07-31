@@ -21,12 +21,31 @@ export interface SourceRef {
   title: string;
   url: string;
   confidence: number;
+  /**
+   * UI chip text — the publisher domain where there is one. Computed, never
+   * model-supplied. Optional so sources persisted before this existed still load;
+   * the renderer falls back to sourceDisplayName().
+   */
+  displayName?: string;
 }
+
+/** Where a snippet came from — drives how its source entry is built. */
+export type SnippetOrigin =
+  | "grounded"
+  | "company_web"
+  | "linkedin_pdf"
+  | "orchestrator"
+  | "apollo";
 
 export interface ResearchSnippet {
   query: string;
   snippet: string;
   fetchedAt: number;
+  /** All optional so research bundles persisted before this existed still deserialize. */
+  citations?: import("./citations").VerifiedCitation[];
+  /** What the provider's search tool actually queried (may differ from `query`). */
+  searchQueries?: string[];
+  origin?: SnippetOrigin;
 }
 
 export interface ResearchBundle {
@@ -80,6 +99,11 @@ export interface PrepInput {
   cachedResearch?: ResearchBundle | null;
   confirmedFacts?: ResearchFact[];
   linkedinProfileExports?: Array<{ fileName: string; text: string }>;
+  /**
+   * SE-attached context files (PDF/DOCX/XLSX/TXT…), already extracted to text in the
+   * browser. Folded into additionalContext by resolveMergedAdditionalContext.
+   */
+  contextAttachments?: Array<{ fileName: string; text: string }>;
   confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
   meetingZoomUrl?: string;
   meetingZoomPasscode?: string;

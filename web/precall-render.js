@@ -1,6 +1,13 @@
 /** Pure HTML builders for pre-call wireframe (v8 brief). */
 
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
+import {
+  SOURCE_KIND_LABEL,
+  citationNumber,
+  isLinkableSource,
+  sourceDisplayName,
+  sourceKind,
+} from "./prep-source-display.js";
 import { esc } from "./shared.js";
 import { EMPTY_DISPLAY } from "./shared.js";
 
@@ -25,7 +32,7 @@ function isUnverifiedSource(sources, sourceLabel) {
   return Number(src.confidence) < 55;
 }
 
-/** SE additional-context source. show as "Your notes", not Unverified. */
+/** SE additional-context source. shown as "From your input", not Unverified. */
 export function isSeNotesSource(sourceLabel) {
   return String(sourceLabel || "").trim().toUpperCase() === "SE";
 }
@@ -39,13 +46,42 @@ export function countPopulatedSignals(signals, sources) {
   }).length;
 }
 
-function trustNotesBadge() {
-  return '<span class="prep-trust-badge prep-trust-notes">Your notes</span>';
+/**
+ * Non-web provenance as a small coloured dot rather than a shouted pill.
+ * The old uppercase amber "FROM YOUR INPUT" badge pulled more attention than the value
+ * it was annotating. Colour alone is not decipherable or accessible, so every dot
+ * carries a title and an aria-label, and the card renders a legend.
+ */
+function kindDot(kind) {
+  const name = SOURCE_KIND_LABEL[kind] || "Source";
+  return `<span class="prep-kind-dot prep-kind-${kind}" role="img" title="${esc(name)}" aria-label="Source: ${esc(name)}"></span>`;
 }
 
+function trustNotesBadge() {
+  return kindDot("context");
+}
+
+/** True when a row's provenance could not be resolved (canonicaliser's marker). */
+export function isUnattributedSource(sourceLabel) {
+  return String(sourceLabel || "").trim() === "?";
+}
+
+function unattributedBadge() {
+  return `<span class="prep-kind-dot prep-kind-none" role="img" title="No source could be attributed to this value" aria-label="Source: none"></span>`;
+}
+
+/**
+ * The one entry point for every citation chip. Web sources get a number, everything
+ * else gets a kind dot — so `sourceBadge` is never called directly (that bypass is what
+ * made SE and unattributed render as ordinary source chips on prospect/ICP/JD cards).
+ */
 function sourceOrTrustBadge(sourceLabel, conf, idx, sources) {
   if (isSeNotesSource(sourceLabel)) return trustNotesBadge();
-  return sourceBadge(sourceLabel, conf, idx >= 0 ? idx : 0);
+  if (isUnattributedSource(sourceLabel)) return unattributedBadge();
+  const src = sources?.find((s) => s.label === sourceLabel);
+  const kind = sourceKind(src || { label: sourceLabel });
+  if (kind !== "web") return kindDot(kind);
+  return sourceBadge(sourceLabel, conf, idx >= 0 ? idx : 0, src);
 }
 
 export const SIGNAL_TOOLTIPS = {
@@ -124,11 +160,33 @@ export function logoGradient(name) {
   return hues[hash % hues.length];
 }
 
-function sourceBadge(label, conf, idx) {
-  const meta = confidenceMeta(conf);
-  return `<button type="button" class="prep-src-badge" data-src-idx="${idx}" aria-label="Source ${esc(label)}">
-    ${esc(label)}<span class="prep-src-dot" style="background:${meta.color}"></span>
-  </button>`;
+/**
+ * Web citation chip: a compact [n] keyed to the Sources & confidence list, like a
+ * footnote. Domains were self-describing but 90-115px wide each, and
+ * `.prep-kv-actions` is flex-shrink:0/nowrap, so they stole width from the value.
+ *
+ * Always a <button>: as an <a> it double-fired (opened a tab AND the popover). The
+ * popover carries the link instead. `data-src-idx` and `aria-label` are preserved —
+ * the click wiring and the accessible name both depend on them.
+ */
+function sourceBadge(label, conf, idx, src) {
+  const n = citationNumber(label);
+  const text = n === null ? sourceDisplayName(src || { label }) : String(n);
+  const domain = sourceDisplayName(src || { label });
+  const title = n === null ? `${label} · ${src?.title || text}` : `${domain} — ${src?.title || "source"}`;
+  return `<button type="button" class="prep-src-badge${n === null ? "" : " prep-src-num"}" data-src-idx="${idx}" aria-label="Source ${esc(label)}: ${esc(domain)}" title="${esc(title)}">${esc(text)}</button>`;
+}
+
+/** Key for the kind dots. Colour alone is not usable, so name each one. */
+function sourceKindLegend(sources) {
+  const kinds = [...new Set((sources || []).map((s) => sourceKind(s)))].filter((k) => k !== "web");
+  if (!kinds.length) return "";
+  const order = ["context", "linkedin", "recording", "none"];
+  const items = order
+    .filter((k) => kinds.includes(k))
+    .map((k) => `<span class="prep-kind-legend-item">${kindDot(k)}${esc(SOURCE_KIND_LABEL[k])}</span>`)
+    .join("");
+  return `<div class="prep-kind-legend"><span class="prep-kind-legend-item"><span class="prep-src-badge prep-src-num prep-kind-legend-num">1</span>Web source — see Research extras</span>${items}</div>`;
 }
 
 /** Map discHint.confidence to hero chip suffix (e.g. "Confident - Low"). */
@@ -163,7 +221,7 @@ function prospectSourceBadges(p, src, sources, renderOpts = {}) {
   const primaryLabel = p.sourceLabel || src?.label || "S1";
   const conf = src?.confidence ?? 50;
   const idx = Math.max(0, sources.indexOf(src));
-  let html = sourceBadge(primaryLabel, conf, idx);
+  let html = sourceOrTrustBadge(primaryLabel, conf, idx, sources);
   if (renderOpts.kaiaFetched && !prospectUsesKaia(p)) {
     html += `<span class="prep-src-badge prep-kaia-indicator" title="Kaia meeting linked for this brief">Kaia</span>`;
   }
@@ -190,51 +248,100 @@ function signalLabelWithTooltip(label) {
 
 function icpVerdictClass(verdict) {
   if (verdict === "Strong") return "good";
-  if (verdict === "Moderate") return "ok";
+  if (verdict === "Medium") return "ok";
   if (verdict === "Weak") return "weak";
   return "muted";
 }
 
+const CRITERION_STATE_LABEL = {
+  met: "Met",
+  unmet: "Not met",
+  unknown: "No evidence yet",
+};
+
+const CRITERION_MARK = { met: "✓", unmet: "✕", unknown: "–" };
+
+/**
+ * One criterion as a label and a tick. Nothing else.
+ *
+ * Earlier versions put the evidence inline and grouped the rows under three headings; SEs
+ * asked for a plain checklist instead. The evidence and its source still travel on the
+ * row's tooltip, so nothing is lost — it just is not competing for the eye.
+ */
+function icpTick(row, sources) {
+  const state = row.state === "met" || row.state === "unmet" ? row.state : "unknown";
+  const label = row.label || row.id || "Criterion";
+  const src = (sources || []).find((s) => s.label === row.sourceLabel);
+  // Tooltip carries what the row used to show inline: the evidence and where it came from.
+  const detail = [
+    CRITERION_STATE_LABEL[state],
+    !isUnknown(row.evidence) ? row.evidence : "",
+    src ? `Source: ${sourceDisplayName(src)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  const dq =
+    row.disqualifying && state === "unmet"
+      ? ` <span class="prep-icp-tick-dq" title="A KB disqualifier — this alone caps the alignment at Weak">disqualifier</span>`
+      : "";
+  return `<li class="prep-icp-tick prep-icp-tick-${state}" title="${esc(detail)}">
+    <span class="prep-icp-tick-mark" role="img" aria-label="${esc(CRITERION_STATE_LABEL[state])}">${CRITERION_MARK[state]}</span>
+    <span class="prep-icp-tick-label">${esc(label)}${dq}</span>
+  </li>`;
+}
+
+/** Met first, then not-met, then unevidenced — so the shape of the read is visible. */
+const TICK_ORDER = { met: 0, unmet: 1, unknown: 2 };
+
 function renderIcpFitment(icpFit, sources) {
   if (!icpFit) return "";
-  const verdictCls = icpVerdictClass(icpFit.verdict);
-  const score =
-    typeof icpFit.score === "number" && Number.isFinite(icpFit.score)
-      ? `<span class="prep-icp-score muted">${icpFit.score}/100</span>`
-      : "";
-  const highlights = (icpFit.highlights || [])
-    .map((h) => `<li>${dash(h)}</li>`)
-    .join("");
-  const gaps = (icpFit.gaps || [])
-    .map((g) => `<li>${dash(g)}</li>`)
-    .join("");
-  const refs = (icpFit.frameworkRefs || []).filter((r) => !isUnknown(r));
-  const refChips = refs.length
-    ? `<div class="prep-icp-ref-chips">${refs.map((r) => `<span class="prep-icp-ref-chip">${dash(r)}</span>`).join("")}</div>`
+  const rows = icpFit.criteria || [];
+
+  const ordered = [...rows].sort(
+    (a, b) =>
+      (TICK_ORDER[a.state] ?? 2) - (TICK_ORDER[b.state] ?? 2) ||
+      // Within a state, the two gating criteria lead: they decide the tier.
+      Number(!!b.gating) - Number(!!a.gating),
+  );
+
+  // The only prose kept: when a disqualifier caps the tier, the ticks alone would not
+  // explain why mostly-met reads Weak.
+  const disqualified = rows.filter((r) => r.state === "unmet" && r.disqualifying);
+  const capNote = disqualified.length
+    ? `<p class="prep-icp-cap">Capped at <strong>Weak</strong> — fails ${
+        disqualified.length === 1 ? "a disqualifier" : `${disqualified.length} disqualifiers`
+      }: ${disqualified.map((d) => esc(d.label || d.id)).join(", ")}.</p>`
     : "";
-  const hasDetails = highlights || gaps || refChips;
-  const src = sources[0];
-  const srcBadge = src ? sourceBadge(src.label, src.confidence, 0) : "";
+
+  const unplaced =
+    rows.some((r) => r.gating) && !icpFit.zone
+      ? `<p class="prep-icp-cap">Not placed — ${esc(
+          rows
+            .filter((r) => r.gating)
+            .map((r) => String(r.label || r.id).toLowerCase())
+            .join(" and "),
+        )} not sourced. Ask on the call.</p>`
+      : "";
+
+  const legacyNote = rows.length
+    ? ""
+    : `<p class="prep-icp-legacy muted">Fitment factors were added after this brief was generated. Re-run the brief to see them.</p>`;
+
   return `<div class="prep-icp-block">
     <div class="prep-icp-head">
       <span class="dew-mono-label">ICP fitment</span>
       <span class="prep-icp-product">${esc(icpFit.product || "Freshdesk")}</span>
-      <span class="prep-icp-verdict prep-icp-pill ${verdictCls}">${esc(icpFit.verdict || "Unknown")}</span>
-      ${score}
-      ${srcBadge}
+      <span class="prep-icp-verdict prep-icp-pill ${icpVerdictClass(icpFit.verdict)}">${esc(icpFit.verdict || "Unknown")} alignment</span>
+      ${icpFit.zone ? `<span class="prep-icp-zone">${esc(icpFit.zone)}</span>` : ""}
     </div>
     ${
-      hasDetails
-        ? `<details class="prep-icp-details">
-        <summary class="prep-icp-details-summary">Highlights &amp; gaps</summary>
-        <div class="prep-icp-details-body">
-          ${highlights ? `<div class="prep-icp-subhead muted">Highlights</div><ul class="prep-icp-list">${highlights}</ul>` : ""}
-          ${gaps ? `<div class="prep-icp-subhead muted">Gaps to probe</div><ul class="prep-icp-list prep-icp-gaps">${gaps}</ul>` : ""}
-          ${refChips ? `<div class="prep-icp-subhead muted">Framework</div>${refChips}` : ""}
-        </div>
-      </details>`
+      ordered.length
+        ? `<ul class="prep-icp-tick-list">${ordered.map((r) => icpTick(r, sources)).join("")}</ul>`
         : ""
     }
+    ${capNote}
+    ${unplaced}
+    ${legacyNote}
   </div>`;
 }
 
@@ -261,19 +368,53 @@ export function resolveDisplayFacts(prep) {
   });
 }
 
+/**
+ * "Report this row is wrong" control.
+ *
+ * Framed as a bordered button with a flag glyph because SEs read the old borderless
+ * text link as another data column rather than an action. Keeps `.prep-dispute-trigger`
+ * and every data-dispute-* attribute so the handler contract is unchanged.
+ */
+function reportButton({ section, idx, key, step = "brief_result" }) {
+  return `<button type="button"
+    class="prep-dispute-trigger prep-report-btn"
+    data-dispute-step="${esc(step)}"
+    data-dispute-section="${esc(section)}"
+    data-dispute-idx="${idx}"
+    data-dispute-key="${esc(key)}"
+    title="Report incorrect data or a wrong source for ${esc(key)}"
+    aria-label="Report an issue with ${esc(key)}"
+  ><span class="prep-report-icon" aria-hidden="true">⚑</span><span class="prep-report-text">Report</span></button>`;
+}
+
 function renderFactRows(facts, sources) {
   return (facts || [])
     .map((f, i) => {
-      const src = sources.find((s) => s.label === f.sourceLabel) || sources[i % sources.length];
+      // No positional fallback: crediting a neighbouring source made the confidence dot
+      // and the source popover describe a publisher this fact never came from.
+      const src = sources.find((s) => s.label === f.sourceLabel);
       const conf = src?.confidence ?? 50;
       const seNotes = isSeNotesSource(f.sourceLabel);
-      const unverified = !seNotes && !isUnknown(f.value) && isUnverifiedSource(sources, f.sourceLabel);
+      // The "No source" chip carries the same meaning, so skip the duplicate tag.
+      const unverified =
+        !seNotes &&
+        !isUnattributedSource(f.sourceLabel) &&
+        !isUnknown(f.value) &&
+        isUnverifiedSource(sources, f.sourceLabel);
       const srcIdx = Math.max(0, sources.indexOf(src));
-      return `<div class="prep-kv-row${unverified ? " prep-kv-unverified" : ""}">
+      // A row with no value has nothing to attribute, so its chip and Report are muted
+      // rather than presented as live provenance.
+      const emptyVal = isUnknown(f.value);
+      // Grid row, not inline flow: as a bare inline span the value, chip and Report
+      // button competed for one line box, so Report wrapped to its own line at random.
+      return `<div class="prep-kv-row${unverified ? " prep-kv-unverified" : ""}${emptyVal ? " prep-kv-empty" : ""}">
         <span class="prep-kv-key">${esc(f.key)}</span>
-        <span class="prep-kv-val">${dash(f.value, unverified)} ${sourceOrTrustBadge(f.sourceLabel, conf, srcIdx, sources)}
-          <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="facts" data-dispute-idx="${i}" data-dispute-key="${esc(f.key)}">Report</button>
-        </span>
+        <span class="prep-kv-val">${dash(f.value, unverified)}</span>
+        <span class="prep-kv-actions">${sourceOrTrustBadge(f.sourceLabel, conf, srcIdx, sources)}${reportButton({
+          section: "facts",
+          idx: i,
+          key: f.key,
+        })}</span>
       </div>`;
     })
     .join("");
@@ -300,17 +441,10 @@ function renderAboutBlock(about) {
   </details>`;
 }
 
-function prospectAboutSnippet(summary, maxLen = 220) {
-  const text = String(summary || "").trim();
-  if (isUnknown(text)) return "";
-  if (text.length <= maxLen) return text;
-  return `${text.slice(0, maxLen - 1)}…`;
-}
-
 function renderSignalRows(signals, sources) {
   return (signals || [])
     .map((s, i) => {
-      const src = sources.find((x) => x.label === s.sourceLabel) || sources[i % sources.length];
+      const src = sources.find((x) => x.label === s.sourceLabel);
       const conf = src?.confidence ?? 50;
       const seNotes = isSeNotesSource(s.sourceLabel);
       const empty = isUnknown(s.value);
@@ -324,9 +458,11 @@ function renderSignalRows(signals, sources) {
       const actions =
         showEmpty ?
           ""
-        : `<span class="prep-signal-actions">${sourceOrTrustBadge(s.sourceLabel, conf, srcIdx, sources)}
-            <button type="button" class="prep-dispute-trigger prep-dispute-btn-inline" data-dispute-step="brief_result" data-dispute-section="signals" data-dispute-idx="${i}" data-dispute-key="${esc(s.label)}">Report</button>
-          </span>`;
+        : `<span class="prep-signal-actions">${sourceOrTrustBadge(s.sourceLabel, conf, srcIdx, sources)}${reportButton({
+            section: "signals",
+            idx: i,
+            key: s.label,
+          })}</span>`;
       return `<div class="prep-signal-cell${showEmpty ? " prep-signal-cell-empty" : ""}">
         <div class="prep-signal-top">
           <span class="prep-kv-key prep-signal-label">${signalLabelWithTooltip(s.label)}</span>
@@ -385,7 +521,7 @@ function renderSkillChips(skills, maxVisible = 6) {
 
 function renderProspectCard(p, i, sources, renderOpts = {}) {
   const mono = companyMono(p.name);
-  const src = sources.find((s) => s.label === p.sourceLabel) || sources[i % sources.length];
+  const src = sources.find((s) => s.label === p.sourceLabel);
   const conf = src?.confidence ?? 50;
   const employers = (p.priorEmployers || []).filter((e) => !isUnknown(e));
   const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
@@ -400,7 +536,8 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
   const langs = (p.languages || []).filter(Boolean);
   const edu = (p.education || []).filter(Boolean);
   const summary = p.summary && !isUnknown(p.summary) ? p.summary : "";
-  const aboutLine = prospectAboutSnippet(summary);
+  // No truncated teaser: "Profile details" is open by default and shows the full
+  // summary a few lines below, so a clipped copy of the same text was pure duplication.
   const expLine = experienceHeroLine(p.totalExperience, employers);
 
   const discHero = discPrimary
@@ -450,13 +587,12 @@ function renderProspectCard(p, i, sources, renderOpts = {}) {
         ${prospectSourceBadges(p, src, sources, renderOpts)}
       </div>
       ${discHero}
-      ${aboutLine ? `<p class="prep-prospect-about muted">${esc(aboutLine)}</p>` : ""}
       ${expLine ? `<p class="prep-prospect-exp-line muted">${esc(expLine)}</p>` : ""}
       ${renderSkillChips(skills, 4)}
     </div>
     ${
       hasDetails ?
-        `<details class="prep-prospect-details">
+        `<details class="prep-prospect-details" open>
         <summary>Profile details</summary>
         <div class="prep-prospect-details-body">${detailsBlocks}</div>
       </details>`
@@ -504,13 +640,18 @@ function renderProspectSection(prospects, sources, sectionNotes = "", peoplePros
   </fw-card>`;
 }
 
+/**
+ * A real, cited job posting. No positional source fallback and no hardcoded "· LinkedIn"
+ * — nothing fetches LinkedIn, so claiming it was simply untrue. The chip now names the
+ * page the JD actually came from.
+ */
 function renderSupportJDBlock(supportJD, sources) {
-  const src = sources.find((s) => s.label === supportJD?.sourceLabel) || sources[1] || sources[0];
+  const src = sources.find((s) => s.label === supportJD?.sourceLabel);
   const conf = src?.confidence ?? 55;
   return `<div class="prep-jd-block prep-jd-full">
     <div class="prep-jd-head">
-      <span class="prep-jd-title">Support agent JD · LinkedIn</span>
-      ${sourceBadge(supportJD?.sourceLabel || src?.label || "S2", conf, sources.indexOf(src))}
+      <span class="prep-jd-title">Support agent JD</span>
+      ${sourceOrTrustBadge(supportJD?.sourceLabel || "", conf, sources.indexOf(src), sources)}
     </div>
     <p class="muted prep-jd-role">${dash(supportJD?.title)}</p>
     <ul class="prep-jd-bullets">${(supportJD?.bullets || [])
@@ -519,12 +660,36 @@ function renderSupportJDBlock(supportJD, sources) {
   </div>`;
 }
 
-function renderSupportJDCard(supportJD, sources) {
+/**
+ * No cited posting: say so, and hand the SE the one thing we do know (the hiring signal)
+ * plus a question to ask. Previously this slot showed a model-invented job description
+ * with a borrowed citation, which was the least trustworthy content on the page.
+ */
+function renderSupportJDFallback(signals) {
+  const hiring = (signals || []).find((s) => s.label === "Hiring support roles");
+  const known =
+    hiring && !isUnknown(hiring.value)
+      ? `<p class="prep-jd-known"><span class="prep-kv-key">Hiring signal</span> ${esc(hiring.value)}</p>`
+      : "";
+  return `<div class="prep-jd-block prep-jd-full prep-jd-empty">
+    <div class="prep-jd-head">
+      <span class="prep-jd-title">Support agent JD</span>
+      <span class="prep-jd-none">Not found</span>
+    </div>
+    <p class="muted">No public support-role posting found on their careers pages, so there is no JD to quote.</p>
+    ${known}
+    <p class="prep-jd-ask"><span class="prep-kv-key">Ask instead</span> How is the support team structured today, and are you hiring into it?</p>
+  </div>`;
+}
+
+function renderSupportJDCard(supportJD, sources, signals) {
   const hasContent =
     supportJD &&
     (!isUnknown(supportJD.title) || (supportJD.bullets || []).some((b) => !isUnknown(b)));
-  if (!hasContent) return "";
-  return `<fw-card class="prep-card prep-jd-card">${renderSupportJDBlock(supportJD, sources)}</fw-card>`;
+  const body = hasContent
+    ? renderSupportJDBlock(supportJD, sources)
+    : renderSupportJDFallback(signals);
+  return `<fw-card class="prep-card prep-jd-card">${body}</fw-card>`;
 }
 
 function renderFitGrid(fitSnapshot) {
@@ -578,9 +743,15 @@ function renderSourcesRows(sources) {
     .map((s) => {
       const meta = confidenceMeta(s.confidence);
       const pct = Number.isFinite(meta.pct) ? meta.pct : 50;
+      // Lead with the same domain the chip shows, so the two are cross-referenceable.
+      const name = sourceDisplayName(s);
+      const detail = s.title && s.title !== name ? `<span class="muted"> · ${esc(s.title)}</span>` : "";
+      const title = isLinkableSource(s.url)
+        ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>${detail}`
+        : `${esc(name)}${detail}`;
       return `<div class="prep-source-row">
-        <span class="prep-source-label">${esc(s.label)}</span>
-        <span class="prep-source-title">${dash(s.title)}</span>
+        <span class="prep-source-label">${esc(String(citationNumber(s.label) ?? s.label))}</span>
+        <span class="prep-source-title">${title}</span>
         <div class="prep-conf-bar-wrap">
           <div class="prep-conf-bar prep-conf-${meta.tier}" style="width:${pct}%"></div>
         </div>
@@ -665,8 +836,14 @@ function renderAssets(assets, prep) {
       if (String(a.label || "").trim().toLowerCase() === "customer reference" && customerRefUrl) {
         url = customerRefUrl;
       }
-      const href = url && !isUnknown(url) ? esc(url) : "#";
-      return `<a class="prep-asset-row" href="${href}" target="_blank" rel="noopener noreferrer">
+      // A missing URL used to render href="#": a link to nowhere that looked live.
+      if (!url || isUnknown(url)) {
+        return `<span class="prep-asset-row prep-asset-row-disabled" title="No link available for this asset">
+          <span class="prep-asset-label">${esc(a.label)}</span>
+          <span class="${extClass}">${esc(a.ext || "DOC")}</span>
+        </span>`;
+      }
+      return `<a class="prep-asset-row" href="${esc(url)}" target="_blank" rel="noopener noreferrer">
         <span class="prep-asset-label">${esc(a.label)}</span>
         <span class="${extClass}">${esc(a.ext || "DOC")}</span>
       </a>`;
@@ -674,23 +851,192 @@ function renderAssets(assets, prep) {
     .join("");
 }
 
-export function renderDemoTab(prep, checks, accountId) {
+/** Free-string decisionRole → human label. Pass-through default: never a lookup miss. */
+function humanDecisionRole(role) {
+  const raw = String(role || "").trim();
+  if (!raw || raw.toLowerCase() === "unknown") return "";
+  const known = {
+    economic_buyer: "Economic buyer",
+    champion: "Champion",
+    influencer: "Influencer",
+    technical_buyer: "Technical buyer",
+    end_user: "End user",
+  };
+  if (known[raw.toLowerCase()]) return known[raw.toLowerCase()];
+  const spaced = raw.replace(/[_-]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function resolveGuidanceTab(requested, count) {
+  const match = String(requested || "").match(/^guidance-(\d+)$/);
+  if (!match) return "guidance-0";
+  const idx = Number(match[1]);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= count) return "guidance-0";
+  return `guidance-${idx}`;
+}
+
+function guidanceTabLabel(name, i) {
+  return prospectTabLabel(name, i);
+}
+
+/** One attendee's demo guidance. */
+function renderGuidanceBlock(g) {
+  const discChip = g.disc
+    ? `<span class="prep-disc-chip">DISC ${esc(g.disc)}${
+        g.confidence ? `<span class="prep-disc-chip-conf"> · ${esc(discConfidenceLabel(g.confidence))}</span>` : ""
+      }</span>`
+    : `<span class="prep-disc-chip prep-disc-chip-unknown">DISC unknown</span>`;
+  const role = humanDecisionRole(g.decisionRole);
+  const roleChip = role ? `<span class="prep-guidance-role">${esc(role)}</span>` : "";
+
+  // DISC here is inferred from text, never assessed — say so when it is weak.
+  const lowNote =
+    g.disc && g.confidence === "low"
+      ? `<p class="prep-guidance-hedge muted">Low confidence — treat this as a hypothesis to test, not a script.</p>`
+      : "";
+  const unknownNote = !g.disc
+    ? `<p class="prep-guidance-hedge muted">No DISC read available — guidance below is based on role and pains only.</p>`
+    : "";
+
+  const line = (label, value) =>
+    value ? `<div class="prep-guidance-line"><span class="prep-kv-key">${label}</span><p>${esc(value)}</p></div>` : "";
+
+  const list = (label, items, cls = "") =>
+    items?.length
+      ? `<div class="prep-guidance-line"><span class="prep-kv-key">${label}</span><ul class="prep-guidance-list ${cls}">${items
+          .map((s) => `<li>${esc(s)}</li>`)
+          .join("")}</ul></div>`
+      : "";
+
+  const objections = g.objections?.length
+    ? `<div class="prep-guidance-line"><span class="prep-kv-key">Expect</span><ul class="prep-guidance-objections">${g.objections
+        .map(
+          (o) =>
+            `<li><span class="prep-guidance-obj">“${esc(o.objection)}”</span><span class="prep-guidance-counter">${esc(o.counter)}</span></li>`,
+        )
+        .join("")}</ul></div>`
+    : "";
+
+  const leadAsset = g.leadAsset
+    ? `<div class="prep-guidance-line"><span class="prep-kv-key">Lead with</span><p><span class="prep-guidance-asset">${esc(g.leadAsset)}</span></p></div>`
+    : "";
+
+  return `<div class="prep-guidance-block">
+    <div class="prep-guidance-head">
+      <span class="prep-guidance-name">${esc(g.name || "Prospect")}</span>
+      ${discChip}${roleChip}
+    </div>
+    ${lowNote}${unknownNote}
+    ${line("Open with", g.openWith)}
+    ${list("Ice breakers", g.iceBreakers)}
+    ${line("Pacing", g.pacing)}
+    ${objections}
+    ${list("Avoid", g.avoid, "prep-guidance-avoid")}
+    ${line("Next step", g.nextStep)}
+    ${leadAsset}
+  </div>`;
+}
+
+/**
+ * "How to run this demo" — DISC-driven, per attendee.
+ * Guidance is generated server-side (worker/src/prep/demo-guidance.ts) and is absent
+ * whenever enrichment didn't run, which is the common case rather than an edge case.
+ */
+export function renderDemoGuidance(prep, renderOpts = {}) {
+  const head = sectionHead("How to run this demo", "var(--dew-amber)");
+  const list = prep?.demoGuidance?.perProspect || [];
+
+  if (!list.length) {
+    return `<fw-card class="prep-card prep-guidance-section">${head}
+      <p class="muted">No demo guidance yet. Attach a LinkedIn PDF, add meeting notes, or link a Kaia meeting on the pre-call form — guidance is built from the prospect profile those produce.</p>
+    </fw-card>`;
+  }
+
+  const room = prep.demoGuidance.room
+    ? `<div class="prep-guidance-room">
+        <span class="prep-kv-key">The room</span>
+        <p>${esc(prep.demoGuidance.room.read)}</p>
+        <p class="prep-guidance-sequence">${esc(prep.demoGuidance.room.sequence)}</p>
+      </div>`
+    : "";
+
+  if (list.length === 1) {
+    return `<fw-card class="prep-card prep-guidance-section">${head}${room}${renderGuidanceBlock(list[0])}</fw-card>`;
+  }
+
+  // Plain buttons, not fw-tabs. The demo tab's HTML is rendered eagerly while its
+  // fw-tab-panel is still display:none, and a nested fw-tabs that hydrates hidden never
+  // activates a panel — neither activeTabName nor activateTab() recovers it.
+  const activeTab = resolveGuidanceTab(renderOpts.demoGuidanceTab, list.length);
+  const tabs = list
+    .map(
+      (g, i) =>
+        `<button type="button" class="prep-guidance-tab" role="tab" data-guidance-tab="guidance-${i}" aria-selected="${
+          `guidance-${i}` === activeTab ? "true" : "false"
+        }">${esc(guidanceTabLabel(g.name, i))}</button>`,
+    )
+    .join("");
+  const panels = list
+    .map(
+      (g, i) =>
+        `<div class="prep-guidance-panel" data-guidance-panel="guidance-${i}"${
+          `guidance-${i}` === activeTab ? "" : " hidden"
+        }>${renderGuidanceBlock(g)}</div>`,
+    )
+    .join("");
+
+  return `<fw-card class="prep-card prep-guidance-section">${head}${room}
+    <div class="prep-guidance-tabs" role="tablist">${tabs}</div>
+    ${panels}
+  </fw-card>`;
+}
+
+/**
+ * Industry use cases from demoGuidance — support scenarios described in the account's own
+ * operational terms, not demo click paths. An unordered list, deliberately: numbered
+ * steps read as "do this then that", which is what the first version wrongly produced.
+ *
+ * Renders nothing when the server's grounding guard rejected everything. An empty section
+ * beats generic filler, which is why these were removed the first time.
+ */
+function renderUseCases(useCases) {
+  const list = (useCases || []).filter((u) => u?.name && (u.scenario || []).length);
+  if (!list.length) return "";
+  return `<div class="prep-uc-block">
+    <div class="prep-uc-head">
+      <span class="dew-mono-label">Common use cases</span>
+      <span class="prep-uc-sub muted">Scenarios specific to this account's industry and markets</span>
+    </div>
+    <div class="prep-uc-grid">
+      ${list
+        .map(
+          (u) => `<div class="prep-uc-item">
+        <div class="prep-uc-name">${esc(u.name)}</div>
+        <ul class="prep-uc-scenario">${u.scenario.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+      </div>`,
+        )
+        .join("")}
+    </div>
+  </div>`;
+}
+
+export function renderDemoTab(prep, checks, accountId, renderOpts = {}) {
   return `<div class="prep-tab-body prep-rise">
     <div class="prep-grid-demo">
+      ${renderDemoGuidance(prep, renderOpts)}
       <fw-card class="prep-card">
-        ${sectionHead("Demo script · pain → feature → value", "var(--dew-primary)")}
-        ${renderStoryline(prep.painCapabilityValue)}
+        ${sectionHead("Deck and assets", "var(--dew-purple)")}
+        ${renderAssets(prep.assets, prep)}
+        ${renderUseCases(prep.demoGuidance?.useCases)}
       </fw-card>
-      <div class="prep-demo-side">
-        <fw-card class="prep-card prep-check-card">
-          ${renderChecklist(prep.checklist, checks, accountId)}
-        </fw-card>
-        <fw-card class="prep-card">
-          ${sectionHead("Deck and assets", "var(--dew-purple)")}
-          ${renderAssets(prep.assets, prep)}
-        </fw-card>
-      </div>
     </div>
+    <fw-card class="prep-card prep-demo-script-card">
+      ${sectionHead("Demo script · pain → feature → value", "var(--dew-primary)")}
+      ${renderStoryline(prep.painCapabilityValue)}
+    </fw-card>
+    <fw-card class="prep-card prep-check-card">
+      ${renderChecklist(prep.checklist, checks, accountId)}
+    </fw-card>
   </div>`;
 }
 
@@ -738,12 +1084,13 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
         ${sectionHead("Account facts", "var(--dew-primary)")}
         ${renderAboutBlock(prep.about)}
         ${renderFactRows(resolveDisplayFacts(prep), sources)}
+        ${sourceKindLegend(sources)}
         ${renderIcpFitment(prep.icpFit, sources)}
       </fw-card>
       ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
     </div>
     ${renderSignalsSection(prep.signals, sources)}
-    ${renderSupportJDCard(prep.supportJD, sources)}
+    ${renderSupportJDCard(prep.supportJD, sources, prep.signals)}
     <fw-card class="prep-card prep-fit-card">
       ${sectionHead("Fit · them vs industry norm", "var(--dew-green)")}
       <div class="prep-fit-grid">${renderFitGrid(prep.fitSnapshot)}</div>
@@ -769,10 +1116,15 @@ export function renderSourcePopover(source, x, y) {
   const url = source.url && !isUnknown(source.url) ? source.url : "";
   return `<div class="prep-popover" style="left:${x}px;top:${y}px" role="dialog" aria-label="Source details">
     <div class="prep-popover-head">
-      <span class="dew-mono-label">Source ${esc(source.label)}</span>
+      <span class="dew-mono-label">${esc(
+        citationNumber(source.label) === null
+          ? SOURCE_KIND_LABEL[sourceKind(source)] || source.label
+          : `Source ${citationNumber(source.label)}`,
+      )}</span>
       <span class="prep-conf-text-${conf.tier}">${conf.word} · ${pct}%</span>
     </div>
-    <p class="prep-popover-title">${dash(source.title)}</p>
+    <p class="prep-popover-title">${esc(sourceDisplayName(source))}</p>
+    ${source.title && source.title !== sourceDisplayName(source) ? `<p class="muted prep-popover-detail">${esc(source.title)}</p>` : ""}
     ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>` : '<span class="muted">No URL</span>'}
     <div class="prep-conf-bar-wrap prep-popover-bar">
       <div class="prep-conf-bar prep-conf-${conf.tier}" style="width:${pct}%"></div>

@@ -3,6 +3,7 @@
  */
 
 import type { PrepInput } from "./types";
+import { mergeContextAttachments } from "./context-attachments";
 import { linkedInFingerprint, normalizeLinkedInExports } from "./linkedin-pdf";
 import { PLAYBOOK_VERSION } from "./types";
 
@@ -58,7 +59,13 @@ export function buildInputHashPayload(input: PrepInput, emails: string[]): Input
     playbookVersion: PLAYBOOK_VERSION,
     linkedin: exports.length ? linkedInFingerprint(exports) : "",
     kaiaRef: computeKaiaRef(input.kaiaMeetingUrl),
-    contextFp: computeContextFp(input.additionalContext),
+    // Hash the *merged* context, not the typed field. Attachments are part of the
+    // research input, and folding them in here (rather than adding a new payload key)
+    // keeps the hash byte-identical when no files are attached — so shipping
+    // attachments does not invalidate every warm research cache entry.
+    contextFp: computeContextFp(
+      mergeContextAttachments(input.additionalContext, input.contextAttachments),
+    ),
   };
 }
 

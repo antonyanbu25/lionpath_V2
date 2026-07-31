@@ -284,13 +284,13 @@ function maturityRows(fitSnapshot) {
   const rows = (fitSnapshot || []).slice(0, 5);
   if (!rows.length) return "";
   const body = rows
-    .map((ft) => {
+    .map((ft, rowIdx) => {
       const g = GAP_STYLE[ft.gap] || GAP_STYLE.partial;
       const them = g.them;
       const norm = g.norm;
       const bandLeft = posPct(Math.min(them, norm));
       const bandWidth = `${Math.abs(norm - them) * 25}%`;
-      return `<div class="prep-v9-maturity-row">
+      return `<div class="prep-v9-maturity-row" data-prep-v9-stagger="${rowIdx}">
         <div class="prep-v9-maturity-label">
           <span class="prep-v9-maturity-name">${esc(ft.label)}</span>
           <span class="prep-v9-maturity-them muted">${esc(ft.thisCompany || "Unknown")}</span>
@@ -305,7 +305,7 @@ function maturityRows(fitSnapshot) {
       </div>`;
     })
     .join("");
-  return `<div class="prep-v9-card">
+  return `<div class="prep-v9-card" data-prep-v9-animate="maturity-chart">
     <div class="prep-v9-card-head">
       <div>
         <h2 class="prep-v9-card-title">Where they sit versus their industry</h2>
@@ -356,22 +356,24 @@ function benchmarkRows(prep) {
   </div>`;
 }
 
-function signalNewsRows(signals, sources) {
-  const populated = (signals || []).filter((s) => !isUnknown(s.value) && !isSeNotesSource(s.sourceLabel));
-  if (!populated.length) {
-    return `<div class="prep-v9-empty-box"><p class="muted">No public signals found for this account. Ask what's changed recently — a new launch, funding, or reorg is your opening.</p></div>`;
+function renderRecentNews(recentNews, sources) {
+  const items = (recentNews || []).filter((n) => !isUnknown(n.detail) && !isUnknown(n.headline));
+  if (!items.length) {
+    return `<div class="prep-v9-empty-box"><p class="muted">No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener.</p></div>`;
   }
-  return populated
+  return items
     .slice(0, 4)
-    .map(
-      (s) => `<div class="prep-v9-news-row">
+    .map((n) => {
+      const showDetail = n.detail && n.detail.toLowerCase() !== n.headline.toLowerCase();
+      return `<div class="prep-v9-news-row">
         <span class="prep-v9-news-dot"></span>
         <div>
-          <span class="prep-v9-news-title">${esc(s.label)}: ${esc(s.value)}</span>
-          <span class="prep-v9-news-meta muted">${srcBadge(s.sourceLabel, sources)}</span>
+          <span class="prep-v9-news-title">${esc(n.headline)}</span>
+          ${showDetail ? `<span class="prep-v9-news-detail muted">${esc(n.detail)}</span>` : ""}
+          <span class="prep-v9-news-meta muted">${srcBadge(n.sourceLabel, sources)}</span>
         </div>
-      </div>`,
-    )
+      </div>`;
+    })
     .join("");
 }
 
@@ -403,8 +405,9 @@ function attendeeRow(p, i, sources, renderOpts) {
     verb: ["Ask", "Watch", "Match"][idx] || "Note",
     text,
   }));
+  const hasDisc = !!String(p.discHint?.primary || "").trim();
   return `<div class="prep-v9-attendee">
-    <div class="prep-v9-attendee-disc">${discSvg(p)}</div>
+    <div class="prep-v9-attendee-disc"${hasDisc ? ' data-prep-v9-animate="disc-chart"' : ""}>${discSvg(p)}</div>
     <div class="prep-v9-attendee-main">
       <span class="prep-v9-attendee-name">${esc(p.name || "Prospect")}</span>
       <p class="muted prep-v9-attendee-role">${esc(p.role || "—")}</p>
@@ -654,7 +657,7 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
       </div>
       <div class="prep-v9-card">
         <h2 class="prep-v9-card-title">Recent news</h2>
-        ${signalNewsRows(prep.signals, sources)}
+        ${renderRecentNews(prep.recentNews, sources)}
       </div>
     </div>
     <div class="prep-v9-grid-2">
@@ -689,12 +692,12 @@ export function renderDemoPrepTab(prep, checks, accountId, renderOpts = {}) {
   const assets = assetRows(prep.assets, prep);
 
   return `<div class="prep-tab-body prep-rise prep-v9 prep-v9-demo">
-    <div class="prep-v9-hero">
+    <div class="prep-v9-hero" data-prep-v9-animate="hero-panel">
       <div class="prep-v9-hero-head">
         <span class="prep-v9-hero-kicker">Sixty seconds before the call</span>
         <div class="prep-v9-hero-conf muted">
           <span>Brief confidence</span>
-          <span class="prep-v9-conf-bar"><span style="width:${hero.pct};background:${hero.color}"></span></span>
+          <span class="prep-v9-conf-bar"><span class="prep-v9-conf-fill" style="width:${hero.pct};background:${hero.color}"></span></span>
           <strong style="color:${hero.color}">${hero.pct}</strong>
           <span>· ${esc(hero.sub)}</span>
         </div>
@@ -709,14 +712,14 @@ export function renderDemoPrepTab(prep, checks, accountId, renderOpts = {}) {
         )
         .join("")}</div>
     </div>
-    <div class="prep-v9-card">
+    <div class="prep-v9-card" data-prep-v9-animate="call-plan">
       <div class="prep-v9-card-head">
         <h2 class="prep-v9-card-title">Your call plan</h2>
         <span class="prep-v9-call-length muted">45 min call</span>
       </div>
       <div class="prep-v9-ribbon">${ribbon
         .map(
-          (r) => `<div class="prep-v9-ribbon-seg" style="flex:${r.flex}">
+          (r, segIdx) => `<div class="prep-v9-ribbon-seg" style="flex:${r.flex}" data-prep-v9-stagger="${segIdx}">
             <div class="prep-v9-ribbon-bar" style="background:${r.color}"></div>
             <div class="prep-v9-ribbon-meta"><span class="muted">${esc(r.mins)}</span><strong>${esc(r.title)}</strong></div>
             <div class="prep-v9-ribbon-beats">${(r.beats || []).map((b) => `<div class="prep-v9-beat"><span style="background:${r.color}"></span>${esc(b)}</div>`).join("")}</div>

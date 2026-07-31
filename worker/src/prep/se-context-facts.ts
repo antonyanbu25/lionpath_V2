@@ -6,6 +6,7 @@ export const SE_SOURCE: SourceRef = {
   title: "SE additional context",
   url: "se-context",
   confidence: 88,
+  displayName: "From your input",
 };
 
 type SignalLabel = (typeof SIGNAL_LABELS)[number];

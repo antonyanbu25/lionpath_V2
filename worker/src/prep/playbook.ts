@@ -17,6 +17,7 @@ export function buildPlaybookQueries(
     `site:${companyDomain} (support OR help OR careers OR jobs)`,
     `site:${companyDomain} (zendesk OR intercom OR freshdesk OR "help center")`,
     `"${companyName}" news OR funding`,
+    `"${companyName}" (acquisition OR partnership OR CEO OR launches)`,
   ];
 
   for (const email of emails) {

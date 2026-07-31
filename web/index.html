@@ -363,6 +363,24 @@
                         rows="2"
                         placeholder="AE notes, meeting type"
                       ></fw-textarea>
+                      <div class="prep-context-upload">
+                        <div class="prep-context-actions">
+                          <input
+                            type="file"
+                            id="prep-context-files"
+                            accept=".pdf,.docx,.pptx,.xlsx,.xlsm,.txt,.md,.csv,.tsv,.json,.log,.vtt,application/pdf,text/plain,text/csv"
+                            multiple
+                            hidden
+                          />
+                          <button type="button" id="prep-context-add-btn" class="prep-context-attach">
+                            <span aria-hidden="true">+</span> Attach files
+                          </button>
+                          <span class="muted prep-context-hint">PDF, Word, Excel, PowerPoint or text — we read them as context.</span>
+                          <span id="prep-context-parsing" class="muted prep-linkedin-parsing" hidden>Reading files…</span>
+                        </div>
+                        <ul id="prep-context-file-list" class="prep-linkedin-file-list" aria-label="Attached context files"></ul>
+                        <p id="prep-context-error" class="field-hint warn" hidden></p>
+                      </div>
                     </div>
                     <fw-button id="generate" color="primary" type="submit" class="prep-form-submit">Generate brief</fw-button>
                     <p class="prep-form-footnote">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
@@ -371,6 +389,7 @@
               </div>
             </div>
             <div id="prep-status" class="dew-status-host" hidden></div>
+            <div id="prep-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>

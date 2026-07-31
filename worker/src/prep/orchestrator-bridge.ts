@@ -1,15 +1,39 @@
 import type { ValidatedResearchContext } from "../research/types";
+import { DIRECT_FETCH_CONFIDENCE, citationDomain } from "./citations";
+import { sourceDisplayName } from "./source-display";
 import type { ResearchFact, ResearchSnippet, SourceRef } from "./types";
 
 export function orchestratorToSnippets(ctx: ValidatedResearchContext): ResearchSnippet[] {
   const fetchedAt = Date.now();
   const out: ResearchSnippet[] = [];
 
-  if (ctx.companySnippets.length) {
+  if (ctx.companyPages?.length) {
+    // One snippet per fetched page, so each carries the URL it came from. We fetched
+    // these ourselves, so they need no redirect resolution.
+    for (const page of ctx.companyPages) {
+      const domain = citationDomain(page.url);
+      out.push({
+        query: `company_web:${page.url}`,
+        snippet: page.snippet.slice(0, 2000),
+        fetchedAt,
+        origin: "company_web",
+        citations: [
+          {
+            uri: page.url,
+            domain,
+            title: domain || "Company website",
+            confidence: page.confidence || DIRECT_FETCH_CONFIDENCE,
+          },
+        ],
+      });
+    }
+  } else if (ctx.companySnippets.length) {
+    // Fallback for contexts built before companyPages existed.
     out.push({
       query: "orchestrator:company_web",
       snippet: ctx.companySnippets.join("\n\n").slice(0, 2000),
       fetchedAt,
+      origin: "company_web",
     });
   }
 
@@ -23,10 +47,25 @@ export function orchestratorToSnippets(ctx: ValidatedResearchContext): ResearchS
       p.competitorTouchpoints.length ? `Competitors: ${p.competitorTouchpoints.join(", ")}` : "",
     ].filter(Boolean);
     if (!parts.length) continue;
+    const url = /^https?:\/\//i.test(p.sourceUrl || "") ? p.sourceUrl : "";
+    const domain = url ? citationDomain(url) : "";
     out.push({
       query: `orchestrator:prospect:${p.email}`,
       snippet: parts.join(". "),
       fetchedAt,
+      origin: "orchestrator",
+      ...(url
+        ? {
+            citations: [
+              {
+                uri: url,
+                domain,
+                title: domain || "Web / LinkedIn research",
+                confidence: p.confidence || 60,
+              },
+            ],
+          }
+        : {}),
     });
   }
 
@@ -51,12 +90,14 @@ export function orchestratorToFacts(ctx: ValidatedResearchContext): {
   for (const p of ctx.prospects) {
     const label = p.sourceLabel || "Orchestrator";
     if (!sources.some((s) => s.label === label)) {
-      sources.push({
+      const source: SourceRef = {
         label,
         title: "Web / LinkedIn research",
         url: p.sourceUrl || "orchestrator",
         confidence: p.confidence || 60,
-      });
+      };
+      source.displayName = sourceDisplayName(source);
+      sources.push(source);
     }
     if (p.name && p.name !== "unknown") {
       facts.push({
@@ -96,6 +137,7 @@ export function orchestratorToFacts(ctx: ValidatedResearchContext): {
       title: "Company website",
       url: "company-web",
       confidence: 65,
+      displayName: "Company website",
     });
   }
 

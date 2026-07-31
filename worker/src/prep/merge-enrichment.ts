@@ -8,8 +8,16 @@ export interface ConfirmedProspectProfile {
   influence?: { level: "high" | "medium" | "low" | "unknown"; decisionRole: string };
 }
 
+/**
+ * Testing only `s.label` never matched — buildSourceTable emits S{n}, and a LinkedIn
+ * source carries its identity in title/url. Falling through to the literal
+ * "LinkedIn PDF" produced a label that was not in sources[], so the prospect rendered
+ * Unverified. Now resolvable either way: the label is also a registered virtual source.
+ */
 function linkedInSourceLabel(sources: Prep["sources"]): string {
-  const li = sources.find((s) => /linkedin/i.test(s.label));
+  const li = sources.find((s) =>
+    /linkedin/i.test(`${s.label || ""} ${s.displayName || ""} ${s.title || ""} ${s.url || ""}`),
+  );
   return li?.label || "LinkedIn PDF";
 }
 

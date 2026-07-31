@@ -5,7 +5,9 @@ import { extractJson } from "../json";
 import { getSynthesizeProvider } from "../providers";
 import { PREP_SCHEMA, type Prep } from "../schema";
 import { normalizePrepOutput } from "../word-limits";
+import { canonicalizePrepSources } from "./canonicalize-sources";
 import { kbContextBlock } from "./extract-facts";
+import { allCriteriaPromptBlock } from "./icp-criteria";
 import { applySeContextToDiscovery } from "./se-discovery-hints";
 import { applySeContextToPrep } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
@@ -23,9 +25,33 @@ CRITICAL RULES:
 - Each discoveryKit "because" line MUST cite which SE fact the question probes.
 - likelyPains MUST prioritize pains implied by SE notes before generic industry pains.
 - Where facts are missing or "unknown", output "unknown" or [] — never invent.
-- Every facts[]/signals[]/prospects[] sourceLabel MUST match sources[].label from facts.
+- Every facts[]/signals[]/prospects[]/supportJD sourceLabel MUST match sources[].label from facts.
+- supportJD: fill title and bullets ONLY from a real job posting present in the research snippets (a careers page or a cited job listing). If no such posting is in the research, return title "" and bullets [] — never describe a generic support role.
 - Map SE-context signal facts (sourceLabel SE) into signals[] when present.
 - Enforce all word caps from the schema descriptions.
+
+ICP FITMENT (icpFit.criteria):
+- Pick icpFit.product first, then emit ONE criteria row for EVERY id listed below for
+  that product. Never invent an id and never emit an id from the other product.
+- state "met" or "unmet" requires evidence from the research facts plus a sourceLabel
+  that matches sources[].label. When the research is silent, state "unknown" with empty
+  evidence — do NOT guess "unmet". Absence of evidence is not evidence of misfit.
+- [GATING] criteria ALSO need a "band": copy exactly one band name from that criterion's
+  own band list, verbatim. These two facts decide the alignment tier, so the evidence must
+  be the concrete figure or category you found (e.g. "220 employees", "email and chat live,
+  voice planned Q3"), not a paraphrase. If you cannot source the fact, state "unknown" and
+  omit the band — never estimate a band to avoid leaving it blank.
+- Do NOT put a "band" on a non-gating criterion; it will be discarded.
+- [DISQUALIFIER] criteria: mark "unmet" only on an explicit stated fact (e.g. a hard
+  on-prem requirement), never on inference. One unmet disqualifier caps the verdict at Weak.
+- There is NO numeric score. The verdict is derived server-side from the gating bands, so
+  filling "verdict" is a formality — do not tune rows to reach a verdict you prefer.
+- Non-gating criteria are shown to the SE as supporting or contradicting evidence and do
+  not change the verdict. Report them honestly rather than strategically.
+- icpFit.gaps should name criteria you marked unknown that are worth probing on the call.
+
+=== ICP CRITERIA ===
+${allCriteriaPromptBlock()}
 
 ${kbContextBlock()}
 
@@ -150,9 +176,13 @@ export async function synthesizePrep(
   const result = await generateSynthesis(provider, input, facts, sources);
 
   function finalizePrep(raw: Prep): Prep {
-    const normalized = normalizePrepOutput(raw);
+    // `raw.sources` is the model's own lossy echo of the source list; pass the real
+    // research table so rows resolve against it instead of a positional guess.
+    const normalized = normalizePrepOutput(raw, { authoritative: sources });
     const withSignals = applySeContextToPrep(normalized, input.additionalContext);
-    return applySeContextToDiscovery(withSignals, input.additionalContext);
+    const withDiscovery = applySeContextToDiscovery(withSignals, input.additionalContext);
+    // Must be last: applySeContextToPrep unshifts the SE source after normalization.
+    return canonicalizePrepSources(withDiscovery, { authoritative: sources }).prep;
   }
 
   try {

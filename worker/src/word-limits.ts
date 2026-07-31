@@ -1,6 +1,7 @@
 // Server-side word-cap enforcement for prep/post-call JSON (v5).
 
 import { attachPrepAssets } from "./prep-assets";
+import { UNATTRIBUTED_LABEL } from "./prep/source-display";
 import {
   FACT_KEYS,
   FIT_LABELS,
@@ -11,7 +12,9 @@ import {
   type PrepSource,
   type ProspectProfile,
   type IcpFit,
+  type IcpCriterionRow,
 } from "./schema";
+import { criteriaForProduct, criterionById, placeAccount, resolveBand } from "./prep/icp-criteria";
 import {
   CURRENT_ANALYSIS_VERSION,
   CURRENT_RUBRIC_VERSION,
@@ -139,15 +142,43 @@ function confidenceBand(conf: number): "High" | "Medium" | "Low" {
   return "Low";
 }
 
-function normalizeSources(raw: Prep): PrepSource[] {
-  const items = (raw.sources || []).map((s, i) => {
+/**
+ * `raw.sources` is the synthesis model's own re-emitted copy of the source list, so it
+ * is lossy. `authoritative` is the real research table — it wins on url/confidence, and
+ * the model's echo only contributes labels the table lacks.
+ *
+ * No slice here: the cap now lives in canonicalizePrepSources, which drops only
+ * *unreferenced* sources so a cited one is never lost.
+ */
+function normalizeSources(raw: Prep, authoritative?: PrepSource[]): PrepSource[] {
+  const byLabel = new Map<string, PrepSource>();
+
+  for (const s of authoritative || []) {
+    const label = String(s.label ?? "").trim();
+    if (!label) continue;
+    byLabel.set(label, {
+      label,
+      title: trimBullet(s.title ?? "Source"),
+      url: String(s.url ?? "").trim() || "unknown",
+      confidence: clampConfidence(s.confidence),
+      ...(s.displayName ? { displayName: s.displayName } : {}),
+    });
+  }
+
+  (raw.sources || []).forEach((s, i) => {
     const legacy = s as PrepSource & { claim?: string };
     const label = String(legacy.label ?? `S${i + 1}`).trim() || `S${i + 1}`;
-    const title = trimBullet(legacy.title ?? legacy.claim ?? "Source");
-    const url = String(legacy.url ?? "").trim() || "unknown";
-    return { label, title, url, confidence: clampConfidence(legacy.confidence) };
+    if (byLabel.has(label)) return; // authoritative wins
+    byLabel.set(label, {
+      label,
+      title: trimBullet(legacy.title ?? legacy.claim ?? "Source"),
+      url: String(legacy.url ?? "").trim() || "unknown",
+      confidence: clampConfidence(legacy.confidence),
+      ...(legacy.displayName ? { displayName: legacy.displayName } : {}),
+    });
   });
-  if (items.length >= 3) return items.slice(0, 8);
+
+  const items = [...byLabel.values()];
   while (items.length < 3) {
     const idx = items.length + 1;
     items.push({ label: `S${idx}`, title: "unknown", url: "unknown", confidence: 50 });
@@ -155,11 +186,15 @@ function normalizeSources(raw: Prep): PrepSource[] {
   return items;
 }
 
-function pickSourceLabel(sources: PrepSource[], preferred?: string, index = 0): string {
-  const labels = new Set(sources.map((s) => s.label));
+/**
+ * Resolve a row's declared source. Deliberately has NO index parameter: the old
+ * `sources[index]` fallback made a row silently claim an unrelated publisher whenever
+ * its true source was missing. An unresolvable row is marked unattributed instead,
+ * which validate-prep.ts already renders as a blank value.
+ */
+function resolveSourceLabel(sources: PrepSource[], preferred?: string): string {
   const p = String(preferred ?? "").trim();
-  if (p && labels.has(p)) return p;
-  return sources[index]?.label || sources[0]?.label || "S1";
+  return p && sources.some((s) => s.label === p) ? p : UNATTRIBUTED_LABEL;
 }
 
 function normalizeFacts(raw: Prep, sources: PrepSource[]): Prep["facts"] {
@@ -168,7 +203,7 @@ function normalizeFacts(raw: Prep, sources: PrepSource[]): Prep["facts"] {
     return incoming.slice(0, 8).map((f, i) => ({
       key: trimCell(f.key) !== "unknown" ? trimWords(String(f.key), 4) : FACT_KEYS[i] || "Fact",
       value: trimWords(String(f.value ?? ""), 12) || "unknown",
-      sourceLabel: pickSourceLabel(sources, f.sourceLabel, i),
+      sourceLabel: resolveSourceLabel(sources, f.sourceLabel),
     }));
   }
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
@@ -184,10 +219,10 @@ function normalizeFacts(raw: Prep, sources: PrepSource[]): Prep["facts"] {
     { key: "Parent company", value: trimCell(bc.fundingParent) },
     { key: "Languages", value: trimCell(bc.languages) },
   ];
-  return fallback.map((f, i) => ({
+  return fallback.map((f) => ({
     key: f.key,
     value: f.value,
-    sourceLabel: pickSourceLabel(sources, undefined, i % sources.length),
+    sourceLabel: resolveSourceLabel(sources),
   }));
 }
 
@@ -228,16 +263,19 @@ function normalizeSignals(raw: Prep, sources: PrepSource[]): Prep["signals"] {
     return {
       label,
       value: trimWords(String(value), 12) || "unknown",
-      sourceLabel: pickSourceLabel(sources, hit?.sourceLabel, i % sources.length),
+      sourceLabel: resolveSourceLabel(sources, hit?.sourceLabel),
     };
   });
 }
 
 function normalizeSupportJD(raw: Prep, sources: PrepSource[]): Prep["supportJD"] {
   const jd = raw.supportJD || { title: "", sourceLabel: "", bullets: [] };
+  // Do NOT invent a title. This field is required by the schema, so an empty string is
+  // how we signal "no real JD found" — the renderer then shows the hiring signal instead
+  // of model-imagined responsibilities.
   return {
-    title: trimWords(jd.title || "Support agent role", 12),
-    sourceLabel: pickSourceLabel(sources, jd.sourceLabel, 1),
+    title: trimWords(jd.title || "", 12),
+    sourceLabel: resolveSourceLabel(sources, jd.sourceLabel),
     bullets: trimBullets(jd.bullets, 4).map((b) => trimWords(b, 14)).filter(Boolean),
   };
 }
@@ -416,7 +454,7 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
     competitorTouchpoints: trimBullets(p.competitorTouchpoints, 4)
       .map((t) => trimWords(t, 8))
       .filter(Boolean),
-    sourceLabel: pickSourceLabel(sources, p.sourceLabel, i % sources.length),
+    sourceLabel: resolveSourceLabel(sources, p.sourceLabel),
     discHint: normalizeDiscHint(p.discHint),
     influence: p.influence,
   }));
@@ -432,7 +470,7 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
       totalExperience: "unknown",
       priorEmployers: [] as string[],
       competitorTouchpoints: [] as string[],
-      sourceLabel: pickSourceLabel(sources, undefined, i % sources.length),
+      sourceLabel: resolveSourceLabel(sources),
     }));
 
   if (fromAttendees.length >= 1) return fromAttendees;
@@ -444,36 +482,100 @@ function normalizeProspects(raw: Prep, sources: PrepSource[]): ProspectProfile[]
       totalExperience: "unknown",
       priorEmployers: [],
       competitorTouchpoints: [],
-      sourceLabel: pickSourceLabel(sources, undefined, 0),
+      sourceLabel: resolveSourceLabel(sources),
     },
   ];
 }
 
-function normalizeIcpFit(raw: Prep): IcpFit {
+/**
+ * Rebuild criteria rows against the product's definition list: unknown ids dropped,
+ * duplicates collapsed, and every missing criterion padded in as `unknown` so the
+ * denominator in "7 of 10 met" is the real criteria count rather than however many rows
+ * the model happened to emit.
+ */
+function normalizeIcpCriteria(
+  rawRows: IcpCriterionRow[] | undefined,
+  product: IcpFit["product"],
+  sources: PrepSource[],
+): IcpCriterionRow[] {
+  if (!Array.isArray(rawRows) || !rawRows.length) return [];
+
+  const byId = new Map<string, IcpCriterionRow>();
+  for (const row of rawRows) {
+    const def = criterionById(product, String(row?.id || ""));
+    if (!def || byId.has(def.id)) continue;
+    const state = row?.state === "met" || row?.state === "unmet" ? row.state : "unknown";
+    const evidence = state === "unknown" ? "" : trimWords(String(row?.evidence || ""), 14);
+    // A band survives only if it names one of THIS criterion's own bands. An invented
+    // band, or a band on a non-gating criterion, is dropped — the tier rests on these, so
+    // the model does not get to widen the vocabulary.
+    const band = resolveBand(def, row?.band)?.band;
+    byId.set(def.id, {
+      id: def.id,
+      state,
+      evidence,
+      // Only decided rows carry a citation; validate-prep demotes any that cannot resolve.
+      ...(state === "unknown" ? {} : { sourceLabel: resolveSourceLabel(sources, row?.sourceLabel) }),
+      ...(band && state !== "unknown" ? { band } : {}),
+    });
+  }
+
+  return criteriaForProduct(product).map((def) => {
+    const row = byId.get(def.id) ?? { id: def.id, state: "unknown" as const, evidence: "" };
+    // label / disqualifying / gating come from the definition, never from the model. The
+    // `gating` flag travels on the row so the browser needs no mirror of the definitions
+    // to know which rows placed the account.
+    return {
+      ...row,
+      label: def.label,
+      ...(def.disqualifying ? { disqualifying: true } : {}),
+      ...(def.gating ? { gating: true } : {}),
+    };
+  });
+}
+
+/**
+ * `verdict` and `zone` are DERIVED from the gating criteria, never taken from the model.
+ * There is no score: see placeAccount for why the percentage was removed.
+ *
+ * Legacy path: a brief with no criteria rows keeps its stored verdict so it still reads
+ * as something, with `"Moderate"` mapped to the current `"Medium"` label. The renderer
+ * shows a "re-run the brief" note beside it, because there is no breakdown to show.
+ */
+export function normalizeIcpFit(raw: Prep, sources: PrepSource[] = []): IcpFit {
   const fit = raw.icpFit || ({} as IcpFit);
   const product = fit.product === "Freshdesk Omni" || fit.product === "Freshdesk" ? fit.product : "Freshdesk";
-  const verdict =
-    fit.verdict === "Strong" ||
-    fit.verdict === "Moderate" ||
-    fit.verdict === "Weak" ||
-    fit.verdict === "Unknown"
-      ? fit.verdict
-      : "Unknown";
-  let score: number | undefined;
-  if (typeof fit.score === "number" && Number.isFinite(fit.score)) {
-    score = Math.max(0, Math.min(100, Math.round(fit.score)));
-  }
-  return {
+  const criteria = normalizeIcpCriteria(fit.criteria, product, sources);
+
+  const shared = {
     product,
-    verdict,
-    score,
-    highlights: trimBullets(fit.highlights, 2).map((h) => trimWords(h, 10)).filter(Boolean),
+    criteria,
     gaps: trimBullets(fit.gaps, 2).map((g) => trimWords(g, 10)).filter(Boolean),
-    frameworkRefs: trimBullets(fit.frameworkRefs, 2).map((r) => trimWords(r, 8)).filter(Boolean),
+  };
+
+  if (!criteria.length) {
+    return { ...shared, verdict: legacyVerdict(fit.verdict) };
+  }
+
+  const placed = placeAccount(criteria, product);
+  return {
+    ...shared,
+    verdict: placed.tier,
+    ...(placed.zone ? { zone: placed.zone } : {}),
   };
 }
 
-export function normalizePrepOutput(raw: Prep): Prep {
+/** Pre-criteria briefs stored "Moderate"; the label is now "Medium". */
+function legacyVerdict(stored: unknown): IcpFit["verdict"] {
+  if (stored === "Moderate" || stored === "Medium") return "Medium";
+  if (stored === "Strong" || stored === "Weak") return stored;
+  return "Unknown";
+}
+
+export function normalizePrepOutput(
+  raw: Prep,
+  opts: { authoritative?: PrepSource[] } = {},
+): Prep {
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
   const fitRows = (raw.fitSnapshot || []).slice(0, 3).map((row, index) => {
     const gap =
@@ -497,7 +599,7 @@ export function normalizePrepOutput(raw: Prep): Prep {
     });
   }
 
-  const sources = normalizeSources(raw);
+  const sources = normalizeSources(raw, opts.authoritative);
   const likelyPains = trimBullets(raw.likelyPains, 5).map((p) => trimWords(p, 12)).filter(Boolean);
   const normalized: Prep = {
     description: trimDescription(raw.description),
@@ -540,7 +642,7 @@ export function normalizePrepOutput(raw: Prep): Prep {
           : "unknown",
     })),
     prospects: normalizeProspects(raw, sources),
-    icpFit: normalizeIcpFit(raw),
+    icpFit: normalizeIcpFit(raw, sources),
     sources,
   };
   normalized.assets = attachPrepAssets(normalized);

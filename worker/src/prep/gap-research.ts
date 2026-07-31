@@ -2,6 +2,7 @@ import { getResearchProvider } from "../providers";
 import { SIGNAL_LABELS } from "../schema";
 import { extractFacts } from "./extract-facts";
 import { runResilientResearchQueries } from "./research";
+import { maxSourceOffset } from "./source-table";
 import type { Env, ResearchFact, ResearchSnippet, SourceRef } from "./types";
 
 const MAX_GAP_QUERIES = 3;
@@ -99,6 +100,9 @@ export async function fillResearchGaps(
     companyDomain: input.companyDomain,
     emails: input.emails,
     additionalContext: input.additionalContext,
+    // Continue the numbering from round 1, otherwise this round re-issues S1…
+    // and its labels collide with already-merged sources.
+    sourceOffset: maxSourceOffset(sources),
   });
 
   const seen = new Set(facts.map((f) => `${f.category}:${f.key}:${f.value}`));

@@ -19,6 +19,11 @@ import { orchestratorToFacts, orchestratorToSnippets } from "./orchestrator-brid
 import { extractSeContextFacts } from "./se-context-extract";
 import { fillResearchGaps } from "./gap-research";
 import { factsFromSeContext } from "./se-context-facts";
+import { canonicalizePrepSources } from "./canonicalize-sources";
+import { buildRecentNews } from "./recent-news";
+import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
+import { DEMO_ASSET_LABELS } from "../prep-assets";
+import { padSources } from "./source-table";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
   Env,
@@ -73,6 +78,42 @@ function applySeContextFacts(
   };
 }
 
+/** Asset labels actually attached to this prep, for validating guidance recommendations. */
+function assetLabelsOf(prep: import("../schema").Prep): string[] {
+  return (prep.assets || []).map((a) => a.label);
+}
+
+/**
+ * Pain-ish research facts, as demo-guidance input. The real `likelyPains` only exist
+ * after synthesis, and guidance runs alongside it — these are the closest pre-synthesis
+ * signal available.
+ */
+function factsToPains(facts: ResearchFact[]): string[] {
+  return facts
+    .filter((f) => f.category === "signal" || f.category === "support")
+    .map((f) => `${f.key}: ${f.value}`)
+    .filter((s) => !/unknown/i.test(s))
+    .slice(0, 8);
+}
+
+/**
+ * The account's industry, for demo use-case grounding. Read from the research facts
+ * because prep.businessContext.market only exists after synthesis, which runs in
+ * parallel with guidance.
+ */
+function factsToIndustry(facts: ResearchFact[]): string | undefined {
+  const hit = facts.find((f) => /^(industry|market|vertical)$/i.test(f.key) && !/unknown/i.test(f.value));
+  return hit ? String(hit.value) : undefined;
+}
+
+/** Raw signal values, so a use case can be grounded in a tool or channel we observed. */
+function factsToSignals(facts: ResearchFact[]): string[] {
+  return facts
+    .filter((f) => !/unknown/i.test(String(f.value)))
+    .map((f) => String(f.value))
+    .slice(0, 12);
+}
+
 async function gatherResearch(
   env: Env,
   input: NormalizedPrepInput,
@@ -97,7 +138,7 @@ async function gatherResearch(
 
   const { cacheHit, bundle } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
-    const { text: mergedContext } = await resolveMergedAdditionalContext(input);
+    const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
     const withSe = applySeContextFacts(baseFacts, bundle.sources, mergedContext);
     return {
@@ -109,7 +150,9 @@ async function gatherResearch(
       apolloCredits: 0,
       linkedinMatchedEmails,
       mergedContext,
-      kaiaFetched: mergedContext !== (input.additionalContext || "").trim(),
+      // Use the resolver's own flag: comparing merged text against the typed field
+      // reported "Kaia fetched" for any attached file too.
+      kaiaFetched,
     };
   }
 
@@ -249,28 +292,56 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   const facts = input.confirmedFacts?.length ? input.confirmedFacts : research.facts;
   const t1 = Date.now();
   const effort = ALLOWED_EFFORT.includes(input.effort || "") ? input.effort! : env.EFFORT || "medium";
+  // PREP_SCHEMA.sources requires minItems 3; gap-only research can return fewer.
+  const paddedSources = padSources(research.sources, {
+    companyDomain: input.companyDomain,
+    hasSeContext: !!String(research.mergedContext || "").trim(),
+    pdfFileNames: (input.linkedinProfileExports || []).map((e) => e.fileName),
+  });
 
-  const prepRaw = await synthesizePrep(
-    env,
-    {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      emails,
-      additionalContext: research.mergedContext || input.additionalContext,
-      meetingType: input.meetingType,
-      ae: input.ae,
-      effort,
-      confirmedProspectProfiles: input.confirmedProspectProfiles,
-    },
-    facts,
-    research.sources,
-  );
+  // Parallel — see the note in runPrepSynthesize.
+  const [prepRaw, guidance] = await Promise.all([
+    synthesizePrep(
+      env,
+      {
+        companyName: input.companyName,
+        companyDomain: input.companyDomain,
+        emails,
+        additionalContext: research.mergedContext || input.additionalContext,
+        meetingType: input.meetingType,
+        ae: input.ae,
+        effort,
+        confirmedProspectProfiles: input.confirmedProspectProfiles,
+      },
+      facts,
+      paddedSources,
+    ),
+    generateDemoGuidance(
+      env,
+      {
+        companyName: input.companyName,
+        likelyPains: factsToPains(facts),
+        // Use-case grounding is checked against these tokens — without industry and
+        // signals nothing clears the specificity bar and no use cases render.
+        industry: factsToIndustry(facts),
+        signals: factsToSignals(facts),
+        assetLabels: DEMO_ASSET_LABELS,
+      },
+      input.confirmedProspectProfiles || [],
+    ),
+  ]);
   timings.synthesize = Date.now() - t1;
 
   const t2 = Date.now();
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
+  // The two calls above mint "Kaia"/"Zoom"/"LinkedIn PDF" labels after synthesis, so
+  // they are invisible to the pass inside synthesizePrep. Idempotent, so this only
+  // registers the new virtual sources — it renumbers nothing already canonical.
+  prep = canonicalizePrepSources(prep, { authoritative: paddedSources }).prep;
+  prep.recentNews = buildRecentNews(facts, prep.sources);
+  if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -376,28 +447,55 @@ export async function runPrepSynthesize(
   const input = normalizePrepInput(rawInput);
   const emails = resolveProspectEmails(input);
   const facts = rawInput.confirmedFacts || [];
-  const sources = rawInput.researchBundle?.sources || [];
 
   const effort = ALLOWED_EFFORT.includes(input.effort || "") ? input.effort! : env.EFFORT || "medium";
   const { text: mergedContext } = await resolveMergedAdditionalContext(input);
-  const prepRaw = await synthesizePrep(
-    env,
-    {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      emails,
-      additionalContext: mergedContext,
-      meetingType: input.meetingType,
-      ae: input.ae,
-      effort,
-      confirmedProspectProfiles: input.confirmedProspectProfiles,
-    },
-    facts,
-    sources,
-  );
+  // PREP_SCHEMA.sources requires minItems 3; gap-only research can return fewer.
+  const sources = padSources(rawInput.researchBundle?.sources || [], {
+    companyDomain: input.companyDomain,
+    hasSeContext: !!String(mergedContext || "").trim(),
+    pdfFileNames: (input.linkedinProfileExports || []).map((e) => e.fileName),
+  });
+  // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
+  // incumbent, never the finished demo script, so it stays off the critical path. It is
+  // also the smaller call, so it finishes first and adds ~0s wall clock.
+  const [prepRaw, guidance] = await Promise.all([
+    synthesizePrep(
+      env,
+      {
+        companyName: input.companyName,
+        companyDomain: input.companyDomain,
+        emails,
+        additionalContext: mergedContext,
+        meetingType: input.meetingType,
+        ae: input.ae,
+        effort,
+        confirmedProspectProfiles: input.confirmedProspectProfiles,
+      },
+      facts,
+      sources,
+    ),
+    generateDemoGuidance(
+      env,
+      {
+        companyName: input.companyName,
+        likelyPains: factsToPains(facts),
+        // Use-case grounding is checked against these tokens — without industry and
+        // signals nothing clears the specificity bar and no use cases render.
+        industry: factsToIndustry(facts),
+        signals: factsToSignals(facts),
+        assetLabels: DEMO_ASSET_LABELS,
+      },
+      input.confirmedProspectProfiles || [],
+    ),
+  ]);
 
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
+  // Registers the post-synthesis enrichment labels (Kaia / Zoom / LinkedIn PDF).
+  prep = canonicalizePrepSources(prep, { authoritative: sources }).prep;
+  prep.recentNews = buildRecentNews(facts, prep.sources);
+  if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

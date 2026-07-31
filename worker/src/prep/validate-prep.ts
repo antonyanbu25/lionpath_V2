@@ -1,4 +1,5 @@
-import type { Prep } from "../schema";
+import type { IcpFit, Prep } from "../schema";
+import { placeAccount } from "./icp-criteria";
 import type { ResearchFact } from "./types";
 
 const UNKNOWN = "unknown";
@@ -49,6 +50,55 @@ export function validatePrep(prep: Prep): { prep: Prep; lowConfidence: string[] 
     return s;
   });
 
+  // supportJD was the one claim that escaped this gate entirely — it is not research-
+  // derived unless it traces to a real job posting, so blank it when the label does not
+  // resolve to a usable source rather than presenting invented responsibilities.
+  let supportJD = prep.supportJD;
+  if (supportJD) {
+    const src = srcByLabel.get(supportJD.sourceLabel);
+    const hasContent = !isUnknown(supportJD.title) || (supportJD.bullets || []).some((b) => !isUnknown(b));
+    if (hasContent && (!supportJD.sourceLabel || isLowConfidenceSource(src))) {
+      lowConfidence.push("supportJD");
+      supportJD = { ...supportJD, title: "", bullets: [] };
+    }
+  }
+
+  // icpFit escaped this gate entirely, so a criterion resting on an unsourced claim still
+  // counted. Demote those to `unknown` and re-place — otherwise the gate would leave a
+  // verdict that no longer matches the surviving rows.
+  //
+  // A demoted GATING criterion also loses its band, which can drop the tier to Unknown.
+  // That is correct: we cannot place an account whose employee count we could not source.
+  let icpFit = prep.icpFit;
+  if (icpFit?.criteria?.length) {
+    let demoted = 0;
+    const criteria = icpFit.criteria.map((row) => {
+      if (row.state === "unknown") return row;
+      const src = srcByLabel.get(row.sourceLabel || "");
+      if (!row.sourceLabel || isLowConfidenceSource(src)) {
+        demoted++;
+        return {
+          ...row,
+          state: "unknown" as const,
+          evidence: "",
+          sourceLabel: undefined,
+          band: undefined,
+        };
+      }
+      return row;
+    });
+    if (demoted) {
+      lowConfidence.push(`icpFit:${demoted} unsourced criteria`);
+      const placed = placeAccount(criteria, icpFit.product);
+      icpFit = {
+        ...icpFit,
+        criteria,
+        verdict: placed.tier,
+        ...(placed.zone ? { zone: placed.zone } : { zone: undefined }),
+      } satisfies IcpFit;
+    }
+  }
+
   const fitSnapshot = (prep.fitSnapshot || []).map((row) => {
     if (isUnknown(row.industryNorm)) {
       lowConfidence.push(`fit:${row.label}:industryNorm`);
@@ -84,6 +134,8 @@ export function validatePrep(prep: Prep): { prep: Prep; lowConfidence: string[] 
       fitSnapshot,
       prospects,
       sources,
+      ...(supportJD ? { supportJD } : {}),
+      ...(icpFit ? { icpFit } : {}),
     },
     lowConfidence,
   };

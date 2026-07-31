@@ -125,6 +125,7 @@ export function linkedInPdfSnippets(exports: LinkedInProfileExport[]): ResearchS
     query: `linkedin-pdf:${e.fileName}`,
     snippet: e.text.slice(0, 12_000),
     fetchedAt: t,
+    origin: "linkedin_pdf" as const,
   }));
 }
 

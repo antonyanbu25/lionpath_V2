@@ -1,0 +1,453 @@
+{
+  "_comment": "Shared fixture read by BOTH worker/scripts/test-canonicalize-sources.ts and web/scripts/test-prep-source-canon.mjs. If the two implementations of canonicalizePrepSources/sourceDisplayName drift, these cases fail on one side. Do not edit one implementation without re-running both suites.",
+  "displayName": [
+    {
+      "in": {
+        "url": "https://www.acme.com/a/b"
+      },
+      "out": "acme.com"
+    },
+    {
+      "in": {
+        "url": "https://saviuk.co.uk/about-2"
+      },
+      "out": "saviuk.co.uk"
+    },
+    {
+      "in": {
+        "label": "SE",
+        "url": "se-context"
+      },
+      "out": "From your input"
+    },
+    {
+      "in": {
+        "label": "Kaia",
+        "url": "kaia-meeting"
+      },
+      "out": "Kaia"
+    },
+    {
+      "in": {
+        "label": "Zoom",
+        "url": "zoom-transcript"
+      },
+      "out": "Zoom"
+    },
+    {
+      "in": {
+        "label": "LinkedIn + Kaia",
+        "url": "linkedin-kaia"
+      },
+      "out": "LinkedIn + Kaia"
+    },
+    {
+      "in": {
+        "url": "linkedin-pdf:Profile (1).pdf"
+      },
+      "out": "LinkedIn PDF"
+    },
+    {
+      "in": {
+        "url": "company-web"
+      },
+      "out": "Company website"
+    },
+    {
+      "in": {
+        "url": "orchestrator"
+      },
+      "out": "Web research"
+    },
+    {
+      "in": {
+        "title": "thegrocer.co.uk",
+        "url": "unknown"
+      },
+      "out": "thegrocer.co.uk"
+    },
+    {
+      "in": {
+        "title": "Some Very Long Page Title Here",
+        "url": "unknown"
+      },
+      "out": "Some Very Long"
+    },
+    {
+      "in": {
+        "label": "S4",
+        "url": "unknown",
+        "title": ""
+      },
+      "out": "S4"
+    },
+    {
+      "in": {
+        "displayName": "custom",
+        "url": "https://a.com"
+      },
+      "out": "custom"
+    },
+    {
+      "in": {},
+      "out": "Source"
+    }
+  ],
+  "domainKey": [
+    {
+      "a": "https://www.acme.com/a",
+      "b": "https://acme.com/b/c",
+      "same": true
+    },
+    {
+      "a": "https://a.com/x",
+      "b": "https://b.com/x",
+      "same": false
+    },
+    {
+      "a": "se-context",
+      "b": "company-web",
+      "same": false
+    },
+    {
+      "a": "linkedin-pdf:a.pdf",
+      "b": "linkedin-pdf:b.pdf",
+      "same": false
+    }
+  ],
+  "canonicalize": [
+    {
+      "name": "sparse labels renumber contiguously in reference order",
+      "prep": {
+        "sources": [
+          {
+            "label": "S15",
+            "title": "saviuk.co.uk",
+            "url": "https://saviuk.co.uk/about",
+            "confidence": 70
+          },
+          {
+            "label": "S23",
+            "title": "help",
+            "url": "https://help.example.com/",
+            "confidence": 85
+          },
+          {
+            "label": "S28",
+            "title": "venditan",
+            "url": "https://venditan.com/case",
+            "confidence": 92
+          }
+        ],
+        "facts": [
+          {
+            "key": "Industry",
+            "value": "Retail",
+            "sourceLabel": "S28"
+          },
+          {
+            "key": "Head office",
+            "value": "Glasgow",
+            "sourceLabel": "S15"
+          }
+        ],
+        "signals": [
+          {
+            "label": "Support portal",
+            "value": "Help desk",
+            "sourceLabel": "S23"
+          }
+        ],
+        "prospects": []
+      },
+      "expect": {
+        "sourceLabels": [
+          "S1",
+          "S2",
+          "S3"
+        ],
+        "factLabels": [
+          "S1",
+          "S2"
+        ],
+        "signalLabels": [
+          "S3"
+        ],
+        "displayNames": [
+          "venditan.com",
+          "saviuk.co.uk",
+          "help.example.com"
+        ]
+      }
+    },
+    {
+      "name": "unresolvable label becomes unattributed, never a positional guess",
+      "prep": {
+        "sources": [
+          {
+            "label": "S1",
+            "title": "a",
+            "url": "https://a.com",
+            "confidence": 70
+          },
+          {
+            "label": "S2",
+            "title": "b",
+            "url": "https://b.com",
+            "confidence": 70
+          },
+          {
+            "label": "S3",
+            "title": "c",
+            "url": "https://c.com",
+            "confidence": 70
+          }
+        ],
+        "facts": [
+          {
+            "key": "Industry",
+            "value": "SaaS",
+            "sourceLabel": "S77"
+          }
+        ],
+        "signals": [],
+        "prospects": []
+      },
+      "expect": {
+        "factLabels": [
+          "?"
+        ]
+      }
+    },
+    {
+      "name": "orphan Kaia label is promoted and kept verbatim",
+      "prep": {
+        "sources": [
+          {
+            "label": "S1",
+            "title": "a",
+            "url": "https://a.com",
+            "confidence": 70
+          },
+          {
+            "label": "S2",
+            "title": "b",
+            "url": "https://b.com",
+            "confidence": 70
+          },
+          {
+            "label": "S3",
+            "title": "c",
+            "url": "https://c.com",
+            "confidence": 70
+          }
+        ],
+        "facts": [],
+        "signals": [],
+        "prospects": [
+          {
+            "name": "Emma",
+            "role": "CS Manager",
+            "sourceLabel": "Kaia"
+          }
+        ]
+      },
+      "expect": {
+        "prospectLabels": [
+          "Kaia"
+        ],
+        "hasSourceLabel": "Kaia"
+      }
+    },
+    {
+      "name": "R1 is not reserved: merges by domain into a numbered source",
+      "prep": {
+        "sources": [
+          {
+            "label": "R1",
+            "title": "Web / LinkedIn research",
+            "url": "https://linkedin.com/in/emma",
+            "confidence": 60
+          },
+          {
+            "label": "S1",
+            "title": "a",
+            "url": "https://a.com",
+            "confidence": 70
+          },
+          {
+            "label": "S2",
+            "title": "b",
+            "url": "https://b.com",
+            "confidence": 70
+          }
+        ],
+        "facts": [],
+        "signals": [],
+        "prospects": [
+          {
+            "name": "Emma",
+            "role": "CS",
+            "sourceLabel": "R1"
+          }
+        ]
+      },
+      "expect": {
+        "prospectLabels": [
+          "S1"
+        ],
+        "displayNames": [
+          "linkedin.com"
+        ]
+      }
+    },
+    {
+      "name": "many urls on one domain collapse to one source",
+      "prep": {
+        "sources": [
+          {
+            "label": "S1",
+            "title": "x",
+            "url": "https://saviuk.co.uk/a",
+            "confidence": 60
+          },
+          {
+            "label": "S2",
+            "title": "y",
+            "url": "https://saviuk.co.uk/b",
+            "confidence": 70
+          },
+          {
+            "label": "S3",
+            "title": "z",
+            "url": "https://www.saviuk.co.uk/c",
+            "confidence": 65
+          }
+        ],
+        "facts": [
+          {
+            "key": "Industry",
+            "value": "Retail",
+            "sourceLabel": "S2"
+          }
+        ],
+        "signals": [],
+        "prospects": []
+      },
+      "expect": {
+        "factLabels": [
+          "S1"
+        ],
+        "mergedConfidence": 70,
+        "displayNames": [
+          "saviuk.co.uk"
+        ]
+      }
+    }
+  ],
+  "sourceKind": [
+    {
+      "in": {
+        "label": "SE",
+        "url": "se-context"
+      },
+      "out": "context"
+    },
+    {
+      "in": {
+        "label": "S1",
+        "url": "https://acme.com/a"
+      },
+      "out": "web"
+    },
+    {
+      "in": {
+        "label": "LinkedIn PDF",
+        "url": "linkedin-pdf:x.pdf"
+      },
+      "out": "linkedin"
+    },
+    {
+      "in": {
+        "label": "S4",
+        "url": "linkedin-pdf:y.pdf"
+      },
+      "out": "linkedin"
+    },
+    {
+      "in": {
+        "label": "Kaia",
+        "url": "kaia-meeting"
+      },
+      "out": "recording"
+    },
+    {
+      "in": {
+        "label": "Zoom",
+        "url": "zoom-transcript"
+      },
+      "out": "recording"
+    },
+    {
+      "in": {
+        "label": "LinkedIn + Kaia",
+        "url": "linkedin-kaia"
+      },
+      "out": "recording"
+    },
+    {
+      "in": {
+        "label": "?",
+        "url": "unknown"
+      },
+      "out": "none"
+    },
+    {
+      "in": {
+        "label": "S9",
+        "url": "unknown"
+      },
+      "out": "none"
+    },
+    {
+      "in": {
+        "label": "S9",
+        "url": ""
+      },
+      "out": "none"
+    },
+    {
+      "in": {
+        "label": "Orchestrator",
+        "url": "orchestrator"
+      },
+      "out": "web"
+    }
+  ],
+  "citationNumber": [
+    {
+      "label": "S1",
+      "out": 1
+    },
+    {
+      "label": "S12",
+      "out": 12
+    },
+    {
+      "label": "SE",
+      "out": null
+    },
+    {
+      "label": "Kaia",
+      "out": null
+    },
+    {
+      "label": "?",
+      "out": null
+    },
+    {
+      "label": "LinkedIn PDF",
+      "out": null
+    }
+  ]
+}

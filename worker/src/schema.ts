@@ -473,6 +473,13 @@ export interface PrepAsset {
   url: string;
 }
 
+/** Company news from Gemini web research — not tech-stack signals. */
+export interface RecentNewsItem {
+  headline: string;
+  detail: string;
+  sourceLabel: string;
+}
+
 export interface Prep {
   description: string;
   about: string;
@@ -506,6 +513,8 @@ export interface Prep {
   prospects: ProspectProfile[];
   icpFit: IcpFit;
   sources: PrepSource[];
+  /** Populated server-side from research facts with category "news". */
+  recentNews?: RecentNewsItem[];
   assets?: PrepAsset[];
   meddpiccHints?: Record<
     string,

@@ -109,6 +109,10 @@ const sampleV8 = {
     { label: "S2", title: "LinkedIn company", url: "https://linkedin.com", confidence: 72 },
     { label: "S3", title: "Job posting", url: "unknown", confidence: 45 },
   ],
+  recentNews: [
+    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "S2" },
+    { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "S2" },
+  ],
   assets: [
     { label: "Demo script", ext: "ENV", url: "https://example.com/sheet" },
     { label: "Customer reference", ext: "PPT", url: "https://example.com/old-customer-ref" },
@@ -271,6 +275,8 @@ const checks = [
   ["know tab no verbatim notes card", !renderKnowTab(sampleV8, false, { additionalContext: "AE says Zendesk incumbent" }).includes("prep-se-notes-card")],
   ["know tab no standalone sources accordion", !discovery.includes("prep-sources-card")],
   ["know tab about text", discovery.includes("prep-v9-about")],
+  ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
+  ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({
       ...sampleV8,
@@ -283,6 +289,10 @@ const checks = [
   ["know tab single prospect", !discovery.includes("prep-people-tabs")],
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has call plan", demo.includes("Your call plan")],
+  ["know tab maturity chart animate hook", discovery.includes('data-prep-v9-animate="maturity-chart"')],
+  ["demo hero animate hook", demo.includes('data-prep-v9-animate="hero-panel"')],
+  ["demo call plan animate hook", demo.includes('data-prep-v9-animate="call-plan"')],
+  ["know tab disc animate hook", discovery.includes('data-prep-v9-animate="disc-chart"')],
   ["demo has demo moments", demo.includes("prep-v9-moment")],
   ["demo has sixty second hero", demo.includes("Sixty seconds before the call")],
   ["demo rows match pcv count", (demo.match(/class="prep-v9-moment"/g) || []).length === sampleV8.painCapabilityValue.length],
