@@ -423,8 +423,9 @@ function renderTaskRow(task, opts = {}) {
 
   const rowCls = [
     "task-row",
-    isDone ? "task-row-done" : "",
+    isDone ? "task-row-done task-row-completed" : "",
     isRecommended ? "task-row-recommended" : "",
+    isActive ? "task-row-active" : "",
     task.callId ? "task-row-has-call" : "",
   ].filter(Boolean).join(" ");
 
@@ -433,6 +434,20 @@ function renderTaskRow(task, opts = {}) {
     <div class="${rowCls}" data-task-id="${esc(task.id)}">
       <div class="task-row-body task-row-body-recommended">
         <span class="task-row-title">${esc(task.title)}</span>
+      </div>
+      ${actions ? `<div class="task-row-actions">${actions}</div>` : ""}
+    </div>`;
+  }
+
+  if (isActive || isDone) {
+    return `
+    <div class="${rowCls}" data-task-id="${esc(task.id)}">
+      <div class="task-row-body">
+        <span class="task-row-title${isDone ? " task-row-title-done" : ""}">${esc(task.title)}</span>
+        <div class="task-row-meta-row">
+          ${metaParts.length ? `<span class="task-row-meta muted">${esc(metaParts.join(" · "))}</span>` : ""}
+          ${renderCallChip(task, opts)}
+        </div>
       </div>
       ${actions ? `<div class="task-row-actions">${actions}</div>` : ""}
     </div>`;
@@ -473,6 +488,7 @@ function renderRecommendedSection(recommended, opts) {
   return `
     <div class="task-section task-section-recommended">
       <h3 class="task-section-header">Recommended <span class="task-section-count">(${recommended.length})</span></h3>
+      <p class="task-section-hint muted">Accept a task to move it to Active</p>
       <div class="task-list">${body}</div>
       ${more}
     </div>`;
@@ -735,7 +751,7 @@ export function renderTaskBoard(container, email, opts = {}) {
           ${
             hasAnyTasks
               ? `${renderRecommendedSection(recommended, opts)}
-                 ${renderSection("Active", active.length, activeRows, "Nothing active. Accept a recommendation or add a task.")}
+                 ${renderSection("Active", active.length, activeRows, "No active tasks yet. Accept a recommendation above or add one with the form above.")}
                  ${
                    completedAll.length
                      ? `<details class="task-completed-accordion">

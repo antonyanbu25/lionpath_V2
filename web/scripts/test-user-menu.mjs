@@ -45,9 +45,14 @@ const checks = [
   ["login video background", html.includes('class="login-bg-video"') && html.includes("assets/login-bg.webm")],
   ["Freshworks sidebar logo", html.includes('class="sidebar-brand-logo"') && html.includes("assets/freshworks-logomark.webp")],
   ["Freshworks login logo", html.includes('class="login-brand-logo"') && html.includes("assets/freshworks-logomark.webp")],
-  ["dashboard nav fw-icon", /data-view="dashboard"[\s\S]*?fw-icon[^>]*name="home"/.test(html)],
-  ["settings nav fw-icon", /data-view="profile"[\s\S]*?fw-icon[^>]*name="settings"/.test(html)],
-  ["no dashboard unicode nav icon", !html.includes('class="nav-icon-text"') || !/data-view="dashboard"[\s\S]*?nav-icon-text/.test(html)],
+  ["dashboard nav svg icon", /data-view="dashboard"[\s\S]*?data-nav-icon="dashboard"/.test(html)],
+  ["settings nav svg icon", /data-view="profile"[\s\S]*?data-nav-icon="settings"/.test(html)],
+  ["precall nav brief icon", /data-view="precall"[\s\S]*?data-nav-icon="brief"/.test(html)],
+  ["dashboard nav no crayons icon", (() => {
+    const m = html.match(/<fw-button[^>]*data-view="dashboard"[\s\S]*?<\/fw-button>/);
+    return m ? !m[0].includes("fw-icon") : false;
+  })()],
+  ["sidebar user chevron up", html.includes('class="sidebar-user-chevron"') && html.includes("⌃")],
   ["no sidebar brand sub", !html.includes('class="sidebar-brand-sub"')],
   ["topbar inside main content", /<main class="main-content">[\s\S]*?<header class="main-topbar"/.test(html)],
   ["topbar date label", html.includes('id="topbar-date-text"')],

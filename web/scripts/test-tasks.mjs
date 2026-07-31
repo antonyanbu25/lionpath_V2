@@ -175,6 +175,9 @@ const boardOut = boardEl.innerHTML;
 const boardChecks = [
   ["task board merged head", boardOut.includes('class="task-board-head"') && boardOut.includes("task-quick-add")],
   ["recommended row simplified", boardOut.includes("task-row-recommended") && !boardOut.includes("task-pill-recommended")],
+  ["recommended hint copy", boardOut.includes("Accept a task to move it to Active")],
+  ["active row no urgency dot", boardOut.includes("task-row-active") && !boardOut.includes("task-urgency-dot dot-red")],
+  ["active row no status pill", boardOut.includes("task-row-active") && !boardOut.includes("task-pill-active")],
 ];
 const failedBoard = boardChecks.filter(([, ok]) => !ok);
 if (failedBoard.length) {

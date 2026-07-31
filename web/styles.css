@@ -514,6 +514,10 @@ fw-button.sidebar-collapse:focus-visible {
   color: #7c7466;
   font-size: 12px;
   line-height: 1;
+  transition: transform 150ms ease;
+}
+.sidebar-user[aria-expanded="true"] .sidebar-user-chevron {
+  transform: rotate(180deg);
 }
 
 .sidebar-nav {
@@ -566,7 +570,20 @@ fw-button.sidebar-collapse:focus-visible {
   flex-shrink: 0;
   width: 18px;
   text-align: center;
-  --fw-icon-color: #7c7466;
+  color: #7c7466;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: #7c7466;
+}
+.nav-item.active .nav-icon svg,
+fw-button.nav-item.active .nav-icon svg {
+  color: var(--dew-text);
 }
 .nav-icon-text {
   display: inline-flex;
@@ -883,8 +900,8 @@ fw-button.sidebar-history-item.active {
   margin: 0;
 }
 .sidebar-collapsed .sidebar-nav {
-  align-items: center;
-  padding: 4px 0;
+  align-items: stretch;
+  padding: 4px 8px;
   gap: 4px;
 }
 .sidebar-collapsed fw-button.nav-item ::slotted([slot="before-label"]),
@@ -892,34 +909,33 @@ fw-button.sidebar-history-item.active {
   margin: 0;
 }
 .sidebar-collapsed fw-button.nav-item .nav-icon {
-  margin: 0 auto;
+  margin: 0;
 }
 .sidebar-collapsed .nav-item,
 .sidebar-collapsed fw-button.nav-item {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  width: 40px;
-  height: 40px;
+  width: 100%;
+  height: auto;
   min-height: 40px;
-  margin: 0 auto;
-  padding: 0;
+  margin: 0;
+  padding: 10px 12px;
   gap: 0;
-  min-width: 40px;
-  max-width: 40px;
-  --fw-button-min-width: 40px;
+  min-width: 0;
+  max-width: none;
+  --fw-button-min-width: 0;
   border-radius: 10px;
 }
 .sidebar-collapsed fw-button.nav-item.active,
 .sidebar-collapsed .nav-item.active {
   --fw-button-background-color: var(--dew-brand-tint);
 }
-.sidebar-collapsed fw-button.nav-item fw-icon,
-.sidebar-collapsed .nav-item .nav-icon {
-  --fw-icon-color: #7c7466;
+.sidebar-collapsed .nav-icon svg {
+  color: #7c7466;
 }
-.sidebar-collapsed fw-button.nav-item.active fw-icon,
-.sidebar-collapsed .nav-item.active .nav-icon {
-  --fw-icon-color: var(--dew-primary);
+.sidebar-collapsed fw-button.nav-item.active .nav-icon svg,
+.sidebar-collapsed .nav-item.active .nav-icon svg {
+  color: var(--dew-primary);
 }
 .sidebar-collapsed .sidebar-foot {
   padding: 8px 6px 0;
@@ -928,24 +944,24 @@ fw-button.sidebar-history-item.active {
   margin-top: auto;
 }
 .sidebar-collapsed .sidebar-user {
-  justify-content: center;
-  padding: 8px;
-  margin: 0 auto;
-  width: 40px;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  margin: 0;
+  width: 100%;
 }
 .sidebar-collapsed .sidebar-logout,
 .sidebar-collapsed fw-button.sidebar-logout,
 .sidebar-collapsed .sidebar-feedback,
 .sidebar-collapsed fw-button.sidebar-feedback {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  width: 40px;
-  height: 40px;
+  width: 100%;
+  height: auto;
   min-height: 40px;
-  margin: 0 auto;
-  padding: 0;
+  margin: 0;
+  padding: 10px 12px;
   gap: 0;
-  --fw-button-min-width: 40px;
+  --fw-button-min-width: 0;
   border-radius: 10px;
 }
 
@@ -4449,10 +4465,9 @@ fw-button.nav-item.active {
 .task-board-section { margin-bottom: 24px; }
 .task-board-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px 20px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   padding: 20px 22px 14px;
   border-bottom: 1px solid var(--border-soft);
 }
@@ -4474,27 +4489,29 @@ fw-button.nav-item.active {
 }
 .task-quick-add {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 150px minmax(140px, 220px) auto;
+  grid-template-columns: minmax(180px, 1fr) 140px minmax(160px, 1fr) auto;
   align-items: center;
-  gap: 10px 12px;
+  gap: 10px;
   padding: 0;
   border-bottom: none;
-  flex: 1 1 420px;
-  min-width: 280px;
-  max-width: 720px;
-  margin-left: auto;
+  width: 100%;
+  min-width: 0;
 }
 .task-quick-add fw-input,
-.task-quick-add fw-select,
-.task-quick-add fw-button {
+.task-quick-add fw-select {
   margin: 0;
   width: 100%;
+  min-width: 0;
   --fw-input-min-height: 40px;
 }
 .task-quick-add fw-button.task-quick-btn {
+  margin: 0;
   min-height: 40px;
   width: auto;
+  min-width: 72px;
   justify-self: end;
+  flex-shrink: 0;
+  --fw-input-min-height: 40px;
 }
 .task-quick-title {
   flex: 1 1 200px;
@@ -4525,6 +4542,16 @@ fw-button.nav-item.active {
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--dew-text-muted);
+}
+.task-section-hint {
+  margin: 0;
+  padding: 0 22px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dew-text-secondary);
+}
+.task-section-recommended .task-section-header {
+  padding-bottom: 4px;
 }
 .task-section-count {
   font-weight: 600;
@@ -4571,6 +4598,10 @@ fw-button.nav-item.active {
   grid-template-columns: minmax(0, 1fr) auto;
   padding-top: 14px;
   padding-bottom: 14px;
+}
+.task-row-active,
+.task-row-completed {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 .task-row-body-recommended {
   min-width: 0;
@@ -4807,15 +4838,6 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
 }
 
 @media (max-width: 768px) {
-  .task-board-head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .task-quick-add {
-    margin-left: 0;
-    max-width: none;
-    flex-basis: auto;
-  }
   .task-quick-add {
     grid-template-columns: 1fr;
   }

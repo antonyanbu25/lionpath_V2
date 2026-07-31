@@ -1,3 +1,5 @@
+import { initNavIcons } from "./nav-icons.js";
+
 /**
  * Desktop sidebar collapse — persists in localStorage (lionpath_sidebar_collapsed).
  * Mobile (<768px) keeps the existing overlay drawer; collapse is desktop-only.
@@ -54,4 +56,5 @@ export function initSidebar() {
 
   mq.addEventListener("change", () => applyCollapsed(readCollapsed()));
   applyCollapsed(readCollapsed());
+  initNavIcons();
 }
