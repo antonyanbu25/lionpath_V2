@@ -408,6 +408,7 @@ function dedupeBriefsForRecent(briefs) {
 
 /** Recent briefs list below the new-brief form (SE Labs design). */
 export function renderPrepRecentBriefs() {
+  if (typeof document === "undefined") return;
   const host = $("prep-recent-briefs");
   if (!host) return;
   const briefs = dedupeBriefsForRecent(loadLocalBriefs()).slice(0, 4);
@@ -433,7 +434,7 @@ export function renderPrepRecentBriefs() {
             <span class="nb-recent-account">${esc(name)}</span>
             <span class="nb-recent-meta">${esc(meta)}</span>
           </span>
-          <span class="nb-recent-ext" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg></span>
+          <span class="nb-recent-ext" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg></span>
         </button></li>`;
       })
       .join("")}</ul>`;

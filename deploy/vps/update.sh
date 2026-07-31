@@ -15,8 +15,8 @@ git checkout 2.0.7.2 2>/dev/null || git checkout -B 2.0.7.2
 git reset --hard "origin/2.0.7.2"
 echo "=== Deployed commit: $(git log -1 --oneline) ==="
 
-if ! grep -q 'precall.css?v=2.0.8-precall-align2' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html missing precall-align2 after reset — git pull did not apply." >&2
+if ! grep -q 'precall.css?v=2.0.8-precall-align3' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing precall-align3 after reset — git pull did not apply." >&2
   echo "       Run: bash $DEPLOY_DIR/git-auth-diagnose.sh" >&2
   exit 1
 fi
