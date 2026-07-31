@@ -337,10 +337,24 @@ async function renderCrmPanel() {
 }
 
 function scheduleLookup() {
+  void showInstantAccountPreview();
   window.clearTimeout(lookupTimer);
   lookupTimer = window.setTimeout(() => {
     void renderCrmPanel();
   }, 320);
+}
+
+async function showInstantAccountPreview() {
+  if (prepResolvedAccount) return;
+  const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
+  if (!emails.length) {
+    $("prep-account-deal-grid") && ($("prep-account-deal-grid").hidden = true);
+    return;
+  }
+  const domain = emails[0].split("@")[1]?.toLowerCase();
+  if (!domain || isFreeMailDomain(domain)) return;
+  const name = companyNameFromDomain(domain) || domain;
+  renderAccountDealPreview(domain, name, false);
 }
 
 export function initPrepCrmResolve() {

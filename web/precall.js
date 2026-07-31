@@ -963,6 +963,24 @@ export function createPrepProgress(stageIds, hostId = "prep-progress") {
   };
 }
 
+function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit) {
+  if (cacheHit) return `Cache hit · ${factCount} facts · ${sourceCount} sources`;
+  if (!steps || typeof steps !== "object") return `${factCount} facts · ${sourceCount} sources`;
+  const parts = [];
+  if (steps.parallelIo) parts.push(`io ${Math.round(steps.parallelIo / 1000)}s`);
+  if (steps.playbook) parts.push(`playbook ${Math.round(steps.playbook / 1000)}s`);
+  if (steps.extract) parts.push(`extract ${Math.round(steps.extract / 1000)}s`);
+  if (steps.gap) parts.push(`gap ${Math.round(steps.gap / 1000)}s`);
+  if (steps.news) parts.push(`news ${Math.round(steps.news / 1000)}s`);
+  const timing = parts.length ? parts.join(" · ") : null;
+  try {
+    sessionStorage.setItem("prep:lastTimings", JSON.stringify({ steps, factCount, sourceCount, at: Date.now() }));
+  } catch {
+    /* quota */
+  }
+  return timing ? `${timing} · ${factCount} facts` : `${factCount} facts · ${sourceCount} sources`;
+}
+
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
   const pdfs = payload.linkedinProfileExports || [];
@@ -1004,9 +1022,43 @@ async function runPrepEndToEnd(payload, meta, emails) {
   let kaiaFetched = !!payload.kaiaSummary?.trim();
 
   let confirmedProspectProfiles = [];
+  let contactEnrichmentsByEmail = null;
 
-  if (willEnrich) {
-    setLoading(true, "Enriching prospects…");
+  const cacheHit = !!payload.cachedResearch;
+  setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
+
+  const researchPayload = { ...payload };
+  delete researchPayload.confirmedProspectProfiles;
+
+  const runResearchStep = async () => {
+    progress.set("research", "active");
+    if (cacheHit) progress.setDetail("Using cached research");
+    const tResearch = Date.now();
+    const data = await postJson(deps.researchUrl, researchPayload);
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+      body: JSON.stringify({
+        sessionId: "1a2090",
+        runId: prepRunId,
+        hypothesisId: "H-research",
+        location: "precall.js:runPrepEndToEnd:research-done",
+        message: "research step complete",
+        data: {
+          ms: Date.now() - tResearch,
+          cacheHit: data.researchMeta?.cacheHit ?? cacheHit,
+          steps: data.researchMeta?.steps || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    return data;
+  };
+
+  const runEnrichStep = async () => {
+    if (!willEnrich) return [];
     progress.set("enrich", "active");
     try {
       const enrichResponses = await enrichProspectsParallel(
@@ -1024,37 +1076,29 @@ async function runPrepEndToEnd(payload, meta, emails) {
           },
         },
       );
-      confirmedProspectProfiles = toConfirmedProspectProfiles(enrichResponses);
-      state.contactEnrichmentsByEmail = Object.fromEntries(
+      contactEnrichmentsByEmail = Object.fromEntries(
         enrichResponses.map((r) => [r.email.toLowerCase(), r]),
       );
+      const profiles = toConfirmedProspectProfiles(enrichResponses);
+      progress.set("enrich", "done");
+      return profiles;
     } catch (err) {
       progress.set("enrich", "error");
       showInlineStatus(status, {
         type: "warn",
         message: `Some prospect enrichments failed: ${err.message || "error"}. Continuing with available data…`,
       });
+      progress.set("enrich", "skipped");
+      return [];
     }
-    if (progress.steps.find((s) => s.id === "enrich")?.status === "active") {
-      progress.set("enrich", "done");
-    }
-    progress.clearDetail();
-  }
-
-  const enrichPayload = {
-    ...payload,
-    confirmedProspectProfiles: confirmedProspectProfiles.length ? confirmedProspectProfiles : undefined,
   };
 
-  const cacheHit = payload.cachedResearch || meta.researchMeta?.cacheHit;
-  setLoading(true, cacheHit ? "Loading cached research…" : "Researching account and prospects…");
-  progress.set("research", "active");
-  if (cacheHit) progress.setDetail("Using cached research");
-
   let research;
-  const tResearch = Date.now();
   try {
-    research = await postJson(deps.researchUrl, enrichPayload);
+    const [researchResult, enrichProfiles] = await Promise.all([runResearchStep(), runEnrichStep()]);
+    research = researchResult;
+    confirmedProspectProfiles = enrichProfiles;
+    state.contactEnrichmentsByEmail = contactEnrichmentsByEmail;
   } catch (err) {
     progress.set("research", "error");
     const msg = err.message || "Something went wrong.";
@@ -1083,28 +1127,16 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
   const factCount = research.facts?.length ?? confirmedFacts.length;
   const sourceCount = research.sources?.length ?? 0;
+  const researchCacheHit = research.researchMeta?.cacheHit ?? cacheHit;
   progress.set("research", "done");
-  progress.setDetail(`${factCount} facts · ${sourceCount} sources`);
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-    body: JSON.stringify({
-      sessionId: "1a2090",
-      runId: prepRunId,
-      hypothesisId: "H-research",
-      location: "precall.js:runPrepEndToEnd:research-done",
-      message: "research step complete",
-      data: {
-        ms: Date.now() - tResearch,
-        cacheHit: research.researchMeta?.cacheHit ?? cacheHit,
-        steps: research.researchMeta?.steps || null,
-        factCount,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+  progress.setDetail(
+    formatResearchStepDetail(research.researchMeta?.steps, factCount, sourceCount, researchCacheHit),
+  );
+
+  const enrichPayload = {
+    ...payload,
+    confirmedProspectProfiles: confirmedProspectProfiles.length ? confirmedProspectProfiles : undefined,
+  };
 
   setLoading(true, "Generating brief from research…");
   progress.set("synthesize", "active");
@@ -1142,10 +1174,11 @@ async function runPrepEndToEnd(payload, meta, emails) {
         location: "precall.js:runPrepEndToEnd:complete",
         message: "prep pipeline complete",
         data: {
-          researchMs: Date.now() - tResearch,
+          researchMs: Date.now() - prepT0,
           synthMs: Date.now() - tSynth,
           totalMs: Date.now() - prepT0,
-          cacheHit: research.researchMeta?.cacheHit ?? cacheHit,
+          cacheHit: researchCacheHit,
+          steps: research.researchMeta?.steps || null,
         },
         timestamp: Date.now(),
       }),

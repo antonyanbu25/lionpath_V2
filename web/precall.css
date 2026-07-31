@@ -119,21 +119,31 @@
 .nb-input-shell fw-textarea {
   flex: 1;
   min-width: 0;
+  width: 100%;
   --fw-input-box-shadow: none;
   --fw-input-border-radius: 0;
   --fw-input-border-color: transparent;
   --fw-input-border-color-hover: transparent;
   --fw-input-border-color-focus: transparent;
+  --fw-input-label-font-size: 0;
+  --fw-input-min-height: 44px;
 }
 
-.nb-input-shell fw-input::part(input),
-.nb-context-section fw-textarea::part(textarea) {
+.nb-input-shell fw-input::part(input) {
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding: 0 !important;
+  min-height: 44px;
   font-size: 14px;
+  width: 100%;
+}
+
+#view-precall .nb-form-card {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .nb-context-section fw-textarea {

@@ -12,7 +12,7 @@ import {
 const SEARCH_SYSTEM =
   "You are a research assistant. Run the web search implied by the user query and return a concise factual summary (max 400 words). Include specific URLs when found. If nothing useful is found, say so plainly.";
 
-const PLAYBOOK_QUERY_CONCURRENCY = 3;
+const PLAYBOOK_QUERY_CONCURRENCY = 4;
 
 /** Run async tasks with bounded concurrency. */
 async function runWithConcurrency<T>(
