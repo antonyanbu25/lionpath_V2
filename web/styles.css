@@ -869,8 +869,10 @@ fw-button.sidebar-history-item.active {
     display: none !important;
   }
 }
+.sidebar-collapsed .nav-label {
+  display: none;
+}
 .sidebar-collapsed .sidebar-brand-text,
-.sidebar-collapsed .nav-label,
 .sidebar-collapsed .sidebar-user-text,
 .sidebar-collapsed .sidebar-user-chevron,
 .sidebar-collapsed .nav-grp,
@@ -888,7 +890,7 @@ fw-button.sidebar-history-item.active {
 }
 .sidebar-collapsed .sidebar-nav {
   align-items: center;
-  padding: 4px 0;
+  padding: 4px 12px;
   gap: 4px;
 }
 .sidebar-collapsed fw-button.nav-item ::slotted([slot="before-label"]),
@@ -902,17 +904,20 @@ fw-button.sidebar-history-item.active {
 .sidebar-collapsed fw-button.nav-item {
   justify-content: center;
   align-items: center;
-  width: 100%;
-  height: auto;
-  min-height: 40px;
-  margin: 0;
-  padding: 10px 0;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0 auto;
+  padding: 0;
   gap: 0;
-  min-width: 0;
-  max-width: none;
-  --fw-button-min-width: 0;
+  text-align: center;
+  --fw-button-min-width: 32px;
+  --fw-button-min-height: 32px;
   --fw-button-padding-start: 0;
   --fw-button-padding-end: 0;
+  --fw-button-label-vertical-padding: 0;
   border-radius: 10px;
 }
 .sidebar-collapsed fw-button.nav-item.active,
@@ -927,7 +932,7 @@ fw-button.sidebar-history-item.active {
   color: var(--dew-primary);
 }
 .sidebar-collapsed .sidebar-foot {
-  padding: 8px 0 0;
+  padding: 8px 12px 0;
   min-width: 0;
   overflow: hidden;
   margin-top: auto;
@@ -3119,7 +3124,7 @@ a { color: var(--accent); }
   }
   .sidebar-collapsed .sidebar-user-avatar { display: none; }
   .sidebar-collapsed .sidebar-history-icon { display: none; }
-  .sidebar-collapsed .nav-item { justify-content: center; padding: 10px 0; }
+  .sidebar-collapsed .nav-item { justify-content: center; width: 32px; min-width: 32px; margin: 0 auto; padding: 0; }
   .sidebar-collapsed .sidebar-logout { justify-content: center; padding: 10px 0; }
   .sidebar-backdrop:not([hidden]) { display: block; }
   .sidebar-close { display: block; }
@@ -4427,6 +4432,22 @@ fw-button.sidebar-logout:hover {
 fw-button.nav-item.active {
   --fw-button-background-color: var(--dew-brand-tint);
   --fw-button-color: var(--dew-brand);
+}
+.sidebar-collapsed fw-button.nav-item {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0 auto;
+  padding: 0;
+  align-self: center;
+  text-align: center;
+  --fw-button-min-width: 32px;
+  --fw-button-min-height: 32px;
+  --fw-button-padding-start: 0;
+  --fw-button-padding-end: 0;
+  --fw-button-label-vertical-padding: 0;
 }
 .login-form fw-input,
 .login-form fw-button,
