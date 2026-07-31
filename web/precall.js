@@ -408,6 +408,7 @@ function dedupeBriefsForRecent(briefs) {
 
 /** Recent briefs list below the new-brief form (SE Labs design). */
 export function renderPrepRecentBriefs() {
+  if (typeof document === "undefined") return;
   const host = $("prep-recent-briefs");
   if (!host) return;
   const briefs = dedupeBriefsForRecent(loadLocalBriefs()).slice(0, 4);
