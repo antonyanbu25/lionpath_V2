@@ -45,9 +45,18 @@ export interface ValidatedProspectResearch {
   confidence: number;
 }
 
+/** A company page fetched directly (not yet produced by validate.ts — see orchestratorToSnippets' fallback). */
+export interface ResearchCompanyPage {
+  url: string;
+  snippet: string;
+  confidence?: number;
+}
+
 export interface ValidatedResearchContext {
   companySnippets: string[];
   prospects: ValidatedProspectResearch[];
   /** Pre-formatted block injected into the prep user prompt. */
   promptBlock: string;
+  /** Present only when pages were fetched directly; absent contexts fall back to companySnippets. */
+  companyPages?: ResearchCompanyPage[];
 }

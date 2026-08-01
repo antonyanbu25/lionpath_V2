@@ -39,8 +39,21 @@ export interface LlmRequest {
   step?: string;
 }
 
+/** A raw grounding citation as returned by a provider's web-search tool (e.g. Gemini groundingMetadata). */
+export interface Citation {
+  uri: string;
+  /** Some providers return a short-lived redirect in `uri` and the real publisher URL here. */
+  resolvedUrl?: string;
+  title?: string;
+  snippet?: string;
+}
+
 export interface LlmResult {
   text: string; // the model's final text (expected to be a JSON object for this app)
+  /** Present only when the request set `research: true` and the provider grounded its answer. */
+  citations?: Citation[];
+  /** The web-search queries the provider actually ran, when it exposes them. */
+  searchQueries?: string[];
 }
 
 export interface LlmProvider {

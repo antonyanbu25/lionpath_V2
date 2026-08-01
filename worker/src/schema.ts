@@ -1,5 +1,7 @@
 // Pre-call (Discovery) output shape (v8): wireframe brief with prospects + ICP fitment.
 
+import type { DemoGuidance } from "./prep/demo-guidance";
+
 const fitRow = {
   type: "object",
   additionalProperties: false,
@@ -171,7 +173,7 @@ const icpFitBlock = {
     },
     verdict: {
       type: "string",
-      enum: ["Strong", "Moderate", "Weak", "Unknown"],
+      enum: ["Strong", "Medium", "Weak", "Unknown"],
     },
     score: { type: "number", description: "Optional ICP fit score 0-100." },
     highlights: {
@@ -440,13 +442,34 @@ export interface ProspectProfile {
   influence?: { level: "high" | "medium" | "low" | "unknown"; decisionRole: string };
 }
 
+/** One ICP criterion's evaluated state for an account — see prep/icp-criteria.ts. */
+export interface IcpCriterionRow {
+  id: string;
+  /** SE-facing label — comes from the criterion definition, never the model. */
+  label?: string;
+  state: "met" | "unmet" | "unknown";
+  evidence?: string;
+  sourceLabel?: string;
+  /** The ICP document's own band name, present only on decided gating rows. */
+  band?: string;
+  disqualifying?: boolean;
+  /** Whether this criterion placed the account's tier — from the definition, not the model. */
+  gating?: boolean;
+}
+
 export interface IcpFit {
   product: "Freshdesk Omni" | "Freshdesk";
-  verdict: "Strong" | "Moderate" | "Weak" | "Unknown";
+  verdict: "Strong" | "Medium" | "Weak" | "Unknown";
   score?: number;
-  highlights: string[];
+  /** Pre-criteria field — Gemini's legacy responseSchema still requires it; normalizeIcpFit omits it. */
+  highlights?: string[];
   gaps: string[];
-  frameworkRefs: string[];
+  /** Pre-criteria field — Gemini's legacy responseSchema still requires it; normalizeIcpFit omits it. */
+  frameworkRefs?: string[];
+  /** Per-criterion breakdown — absent on pre-criteria legacy briefs. */
+  criteria?: IcpCriterionRow[];
+  /** The framework's own name for where this account sits, e.g. "Winning Zone". */
+  zone?: string;
 }
 
 export interface SupportJD {
@@ -465,6 +488,8 @@ export interface PrepSource {
   title: string;
   url: string;
   confidence: number;
+  /** Human-friendly name shown in the UI — see prep/source-display.ts. */
+  displayName?: string;
 }
 
 export interface PrepAsset {
@@ -520,6 +545,8 @@ export interface Prep {
     string,
     { value?: string; status?: "unknown" | "partial" | "confirmed"; contactId?: string }
   >;
+  /** Demo-day talking points, generated separately — see prep/demo-guidance.ts. */
+  demoGuidance?: DemoGuidance;
 }
 
 export const FIT_LABELS = ["Support channels", "Self Serve", "Agent Assist"] as const;

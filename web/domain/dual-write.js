@@ -2,7 +2,7 @@
  * Bridge prep/post-call flows to the lifecycle domain layer (dual-write).
  */
 
-import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails, ensureSeTeamForPrepActor } from "./account-service.js";
+import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails, ensureSeTeamForPrepActor, invalidateSessionListCache } from "./account-service.js";
 import { getOrCreateLifecycle, attachPrep, attachPostCall, attachTask } from "./lifecycle-service.js";
 import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./contact-service.js";
 import { applyQualificationToDeal } from "./meddpicc-qualify-service.js";
@@ -95,6 +95,7 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     });
   }
 
+  invalidateSessionListCache(session);
   return { lifecycle, prepBrief, accountId, dealId: lifecycle.dealId || null };
 }
 
@@ -370,6 +371,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     console.warn("[dual-write] identity stamp failed:", err?.message || err);
   }
 
+  invalidateSessionListCache(session);
   return { lifecycle, postCall, accountId: account.id };
 }
 

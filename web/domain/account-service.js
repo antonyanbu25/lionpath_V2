@@ -1381,6 +1381,8 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
     }
     seTeam.push({ seUserId: addId, role: "secondary", addedAt: ts, addedBy: actorId });
     account = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
+    invalidateSessionListCache(session);
+    invalidateSessionListCache({ uid: addId });
 
     const targetUser = await store.getUser(addId);
     const lc = await getOrCreateLifecycle(addId, accountId, targetUser?.teamId || user.teamId || "", {
@@ -1409,6 +1411,8 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
       primarySeUserId = seTeam.find((m) => m.role === "primary")?.seUserId || null;
     }
     account = await store.updateAccount(accountId, { seTeam, primarySeUserId, updatedAt: ts });
+    invalidateSessionListCache(session);
+    invalidateSessionListCache({ uid: targetId });
 
     const lc = await store.findActiveLifecycle(targetId, accountId);
     if (lc) {
@@ -1435,6 +1439,9 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
       primarySeUserId: newPrimaryId,
       updatedAt: ts,
     });
+    invalidateSessionListCache(session);
+    invalidateSessionListCache({ uid: newPrimaryId });
+    if (oldPrimaryId) invalidateSessionListCache({ uid: oldPrimaryId });
 
     const lc = await store.findActiveLifecycle(newPrimaryId, accountId);
     if (lc) {
