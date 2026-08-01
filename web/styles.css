@@ -940,6 +940,10 @@ fw-button.sidebar-history-item.active {
 }
 .sidebar-collapsed .sidebar-user {
   justify-content: center;
+  /* the text/chevron siblings collapse to width:0 but keep contributing to
+     the flex gap (gap isn't content-dependent), which was pushing the
+     centered group — and so the avatar — off to the left. */
+  gap: 0;
   padding: 10px 0;
   margin: 0;
   width: 100%;

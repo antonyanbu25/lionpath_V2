@@ -1,4 +1,4 @@
-import { readFieldValue, readFieldValueAsync, setFieldError } from "./crayons-ui.js";
+import { readFieldValue, readFieldValueAsync, setFieldError, fillShadowField } from "./crayons-ui.js";
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
@@ -1788,6 +1788,8 @@ async function boot() {
       void renderCallPanel();
     }
   });
+
+  document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea").forEach((el) => fillShadowField(el));
 
   $("prospectEmail")?.addEventListener("fwInput", () => {
     syncAutoCompanyDomain();

@@ -2,7 +2,7 @@
  * Global search — topbar input + Cmd/Ctrl+K palette.
  */
 
-import { readFieldValueAsync, fillShadowFieldHeight } from "./crayons-ui.js";
+import { readFieldValueAsync, fillShadowField } from "./crayons-ui.js";
 import {
   buildSearchIndex,
   searchIndex,
@@ -39,7 +39,7 @@ export function initGlobalSearch(deps) {
 
   if (!topbarInput || !modal || !paletteInput || !resultsEl) return;
 
-  fillShadowFieldHeight(topbarInput);
+  fillShadowField(topbarInput);
 
   let highlightIdx = -1;
   let currentResults = [];

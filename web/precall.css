@@ -83,6 +83,11 @@
 
 .nb-label {
   display: flex;
+  /* styles.css has a generic `label { flex-direction: column }` for a
+     different stacked label pattern; since it never declares its own
+     flex-direction, that column value otherwise wins the cascade here
+     despite .nb-label's higher specificity on every other property. */
+  flex-direction: row;
   align-items: center;
   gap: 5px;
   font-size: 12.5px;
@@ -196,13 +201,29 @@
 }
 
 .nb-account-column > .nb-label {
+  height: 20px;
   margin-bottom: 7px;
+}
+
+.nb-account-slot {
+  /* this element also carries the legacy .prep-account-card class
+     (styles.css), which sets margin-top: -4px for its old layout — override
+     so the card sits exactly margin-bottom(7px) below the label, matching
+     the deal column next to it. */
+  margin-top: 0;
 }
 
 .nb-deal-slot {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* this element also carries the legacy .prep-deal-row class (styles.css),
+     which sets gap: 10px and align-items: end for its old grid layout —
+     override both. align-items: end was shrink-wrapping and right-aligning
+     the head + card instead of stretching them to the column's full width
+     (the account column, with no legacy class, stretches by default). */
+  gap: 0;
+  align-items: stretch;
 }
 
 .nb-crm-panel[hidden] {
@@ -287,7 +308,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 20px;
   margin-bottom: 7px;
+  /* this div has no font-size of its own, so it inherits the page default
+     line-height (~25px) — taller than its actual content (~19px) — which
+     pushed the deal card lower than the account card next to it. Explicit
+     height (matching .nb-account-column > .nb-label) forces both header
+     rows to the exact same box size regardless of internal font-metric
+     differences between a <span> and a <span>+<button> row. */
+  line-height: 1;
 }
 
 .nb-deal-new-link {
