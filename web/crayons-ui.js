@@ -1,5 +1,45 @@
 /** Shared Freshworks Crayons helpers for the SE portal. */
 
+/**
+ * fw-input/fw-textarea's internal .field-control is display:block sized to
+ * its own intrinsic content — it doesn't stretch to fill a host that's been
+ * resized via CSS (host width/height changes, .field-control doesn't
+ * follow). This shows up as a narrow, short input box floating inside a
+ * much larger invisible host. This version's Crayons build also doesn't
+ * expose a `part="input"` for `::part(input)` overrides to land on, so the
+ * only way in is a shadow-root style injection.
+ * @param {HTMLElement} el
+ */
+export function fillShadowField(el) {
+  const apply = () => {
+    const root = el.shadowRoot;
+    if (!root || root.querySelector("style[data-fill-field]")) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-fill-field", "");
+    style.textContent = ".field-control{width:100%!important;height:100%!important;box-sizing:border-box!important;}";
+    root.appendChild(style);
+  };
+  const tryApply = () => {
+    if (el.shadowRoot) apply();
+  };
+  tryApply();
+  if (typeof el.componentOnReady === "function") el.componentOnReady().then(tryApply);
+  // Crayons can re-render the shadow tree (e.g. a later hydration pass)
+  // after componentOnReady() has already resolved, silently discarding the
+  // injected <style> along with everything else. Keep re-applying it for
+  // as long as the element exists, so a slow/late re-render can't leave the
+  // field visibly unsized.
+  const observer = new MutationObserver(tryApply);
+  const observeRoot = () => {
+    if (el.shadowRoot) {
+      observer.observe(el.shadowRoot, { childList: true });
+    } else {
+      requestAnimationFrame(observeRoot);
+    }
+  };
+  observeRoot();
+}
+
 /** @param {HTMLElement | null | undefined} el */
 export function readFieldValue(el) {
   if (!el) return "";

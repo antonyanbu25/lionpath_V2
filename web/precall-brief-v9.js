@@ -358,25 +358,6 @@ function benchmarkRows(prep) {
 
 function renderRecentNews(recentNews, sources) {
   const items = (recentNews || []).filter((n) => !isUnknown(n.detail) && !isUnknown(n.headline));
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
-    body: JSON.stringify({
-      sessionId: "c9d8c5",
-      runId: "post-fix",
-      hypothesisId: "E",
-      location: "precall-brief-v9.js:renderRecentNews",
-      message: "render recent news",
-      data: {
-        inputCount: (recentNews || []).length,
-        renderedCount: items.length,
-        headlines: items.slice(0, 3).map((n) => n.headline),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!items.length) {
     return `<div class="prep-v9-empty-box"><p class="muted">No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener.</p></div>`;
   }
