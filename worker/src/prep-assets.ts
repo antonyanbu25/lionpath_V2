@@ -2,7 +2,7 @@
 
 import type { Prep } from "./schema";
 
-export type AssetExt = "DOC" | "ENV" | "PDF" | "PPT";
+export type AssetExt = "DOC" | "SHEET" | "PDF" | "PPT";
 
 export interface PrepAsset {
   label: string;
@@ -43,7 +43,9 @@ export const DEMO_ASSET_LABELS: string[] = Object.values(DEMO_CATALOG).map((e) =
 function inferExt(url: string): AssetExt {
   const u = url.toLowerCase();
   if (u.includes("/document/")) return "DOC";
-  if (u.includes("/spreadsheets/")) return "ENV";
+  // A Google Sheet. This returned "ENV" — a badge that told the SE nothing about
+  // what they were about to open, on the one asset that is a spreadsheet.
+  if (u.includes("/spreadsheets/")) return "SHEET";
   if (u.includes(".pdf")) return "PDF";
   return "PPT";
 }

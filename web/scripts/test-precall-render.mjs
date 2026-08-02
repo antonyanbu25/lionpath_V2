@@ -114,7 +114,7 @@ const sampleV8 = {
     { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "S2" },
   ],
   assets: [
-    { label: "Demo script", ext: "ENV", url: "https://example.com/sheet" },
+    { label: "Demo script", ext: "SHEET", url: "https://example.com/sheet" },
     { label: "Customer reference", ext: "PPT", url: "https://example.com/old-customer-ref" },
     { label: "Slide pack", ext: "PPT", url: "https://example.com/slides" },
   ],
@@ -298,7 +298,7 @@ const checks = [
   ["demo rows match pcv count", (demo.match(/class="prep-v9-moment"/g) || []).length === sampleV8.painCapabilityValue.length],
   ["demo value bullets", demo.includes("prep-v9-value-row")],
   ["demo no use cases", !demo.includes("prep-uc-grid")],
-  ["demo assets title", demo.includes("Bring these")],
+  ["demo assets title", demo.includes("Assets")],
   ["isLinkedInEnrichedProspect matched email", isLinkedInEnrichedProspect(
     { sourceLabel: "S6" },
     { linkedinMatchedEmails: ["pat@acme.com"], prospectEmails: ["pat@acme.com"] },

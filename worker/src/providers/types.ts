@@ -54,6 +54,12 @@ export interface LlmResult {
   citations?: Citation[];
   /** The web-search queries the provider actually ran, when it exposes them. */
   searchQueries?: string[];
+  /**
+   * Google Search Suggestions HTML from groundingMetadata.searchEntryPoint. Google's
+   * grounding terms require displaying this alongside grounded results, so it is carried
+   * rather than discarded at the provider boundary.
+   */
+  searchEntryPointHtml?: string;
 }
 
 export interface LlmProvider {

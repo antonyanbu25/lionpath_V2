@@ -1,6 +1,7 @@
 import type {
   CompanyResearchFragment,
   PersonResearchFragment,
+  ResearchCompanyPage,
   ValidatedProspectResearch,
   ValidatedResearchContext,
 } from "./types";
@@ -172,6 +173,22 @@ export function validateResearchContext(
 ): ValidatedResearchContext {
   const companySnippets = dedupeStrings(companyFragments.flatMap((f) => f.snippets), 5);
 
+  // Keep each snippet attributed to the page it came from. The flatMap above drops
+  // fragment.url, which is why company-web facts reached the brief with no verifiable
+  // source URL. `companyPages` is declared on ValidatedResearchContext but nothing filled
+  // it, so orchestrator-bridge always took its unattributed fallback.
+  const seenSnippets = new Set<string>();
+  const companyPages: ResearchCompanyPage[] = [];
+  for (const frag of companyFragments) {
+    if (!frag.url) continue;
+    for (const snippet of frag.snippets) {
+      const text = String(snippet || "").trim();
+      if (!text || seenSnippets.has(text)) continue;
+      seenSnippets.add(text);
+      companyPages.push({ url: frag.url, snippet: text, confidence: frag.confidence });
+    }
+  }
+
   const prospects = emails.map((email, i) => {
     const frags = personFragments.filter((f) => f.email === email);
     const sourceLabel = `R${i + 1}`;
@@ -180,6 +197,7 @@ export function validateResearchContext(
 
   return {
     companySnippets,
+    ...(companyPages.length ? { companyPages } : {}),
     prospects,
     promptBlock: buildResearchPromptBlock(companySnippets, prospects),
   };

@@ -1678,6 +1678,20 @@ async function warnIfWorkerDown() {
         `Speed fixes not deployed (portal: ${portalBuild || "unknown"}, worker: ${workerBuild || "missing"}). ` +
         "On VPS run: cd /opt/se-singha-paathai/deploy/vps && bash update.sh";
       banner.hidden = false;
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
+        body: JSON.stringify({
+          sessionId: "1a2090",
+          hypothesisId: "H-deploy",
+          location: "app.js:warnIfWorkerDown:stale",
+          message: "stale deploy detected",
+          data: { portalBuild, workerBuild },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       return true;
     }
     banner.hidden = true;
@@ -1778,6 +1792,8 @@ async function boot() {
     }
   });
 
+  // Crayons' internal .field-control does not stretch to a CSS-resized host and this build
+  // exposes no ::part(input), so the only way in is a shadow-root style injection.
   document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea").forEach((el) => fillShadowField(el));
 
   $("prospectEmail")?.addEventListener("fwInput", () => {

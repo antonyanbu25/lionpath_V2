@@ -11,6 +11,7 @@ import {
   rollupDealTractionAfterPostCall,
   regenerateSummariesAfterPostCall,
   persistArrAfterPostCall,
+  linkContactsToDealRecord,
 } from "./deal-service.js";
 import { persistScorecardDraft } from "./scorecard-service.js";
 import { persistVideoFactsDraft } from "./video-facts-service.js";
@@ -32,6 +33,76 @@ import {
 } from "./product-signal-service.js";
 
 /**
+ * Emails of the people on a post-call, customer-confirmed addresses first.
+ *
+ * The SE types these into the intake form (`prospectEmails`, mirrored as `participantEmails`) and
+ * then ticks the customer attendees at the confirm gate. `customerIdentities` are free-form person
+ * labels that often, but not always, carry an address. Order is load-bearing:
+ * `upsertAccountFromPrep` makes the first email the primary contact, and someone the SE explicitly
+ * confirmed as a customer is a better primary than whichever address happened to be typed first.
+ * @param {object} payload post-call save payload
+ * @returns {string[]} lower-cased, deduped
+ */
+function postCallParticipantEmails(payload) {
+  const seen = new Set();
+  /** @type {string[]} */
+  const out = [];
+  const add = (raw) => {
+    const email = String(raw || "").trim().toLowerCase();
+    if (!email.includes("@") || seen.has(email)) return;
+    seen.add(email);
+    out.push(email);
+  };
+  for (const label of payload?.confirmedIdentities?.customerIdentities || []) {
+    const match = String(label || "").match(/[^\s<>,;"']+@[^\s<>,;"']+/);
+    if (match) add(match[0]);
+  }
+  for (const email of payload?.prospectEmails || []) add(email);
+  for (const email of payload?.participantEmails || []) add(email);
+  return out;
+}
+
+/**
+ * Link a call's participants to its deal.
+ *
+ * Delegates to deal-service rather than writing the join here. `Deal` is deal-service's
+ * aggregate, and it owns the one policy that keeps the join and `Deal.primaryContactId` in
+ * agreement — join-first, single primary, backfill-only repointing so a background post-call
+ * cannot silently overwrite an SE-confirmed primary. An earlier version of this function called
+ * `store.setPrimaryDealContact` directly, which moved the join's primary while leaving the deal's
+ * pointer behind: two writers, two policies, and a deal whose two representations disagreed.
+ *
+ * Deliberately called after the contact frameworks pass: influence metadata is merged from the
+ * transcript there, so the role reaching the join is the analysed one rather than "unknown". Roles
+ * are per-deal — a champion on the new-business deal can be an end user on the expansion — which
+ * is why they cannot be read off the contact alone.
+ *
+ * @param {string|null} dealId
+ * @param {string} accountId
+ * @param {string[]} contactIds
+ * @param {string|null} primaryContactId
+ */
+async function linkContactsToDeal(dealId, accountId, contactIds, primaryContactId) {
+  const store = getStore();
+  if (!dealId || !contactIds?.length) return;
+
+  const contactsById = new Map(
+    (store.listContactsByAccount ? await store.listContactsByAccount(accountId) : []).map((c) => [
+      c.id,
+      c,
+    ]),
+  );
+
+  const contacts = contactIds.map((contactId) => ({
+    contactId,
+    // undefined becomes "unknown" downstream — an unclassified attendee still gets linked.
+    role: contactsById.get(contactId)?.metadata?.influence?.decisionRole,
+  }));
+
+  await linkContactsToDealRecord(dealId, { contacts, primaryContactId });
+}
+
+/**
  * Resolve lifecycle spine after prep generation.
  * @param {object} session
  * @param {object} payload prep form input
@@ -42,8 +113,17 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
   const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
   if (!ownerId || !session?.teamId) return null;
 
-  const { accountId, primaryContactId, account } = await upsertAccountFromPrep({
+  const {
+    accountId,
+    contactIds,
+    primaryContactId,
+    contactIdByEmail,
+    account,
+  } = await upsertAccountFromPrep({
     companyName: payload.companyName,
+    // The CRM panel's explicit selection. Was resolved into the payload and then dropped here,
+    // so the account the SE picked was re-derived from the typed name and could fork a duplicate.
+    accountId: payload.accountId || meta?.accountId || null,
     companyDomain: payload.companyDomain || meta?.companyDomain,
     prospectEmail: payload.prospectEmail,
     prospectEmails: payload.prospectEmails,
@@ -63,6 +143,9 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     orgId: session.orgId || account?.orgId || null,
     prepType: payload.prepType || "new_business",
     dealId: payload.dealId || meta?.dealId || null,
+    // Set only by the "+ New deal" choice in the pre-call CRM panel. Strict === true so a
+    // truthy leftover in a re-submitted stored payload cannot silently fork a second deal.
+    createNewDeal: payload.createNewDeal === true,
   });
 
   const prepBrief = await attachPrep(
@@ -95,8 +178,18 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     });
   }
 
+  await linkContactsToDeal(lifecycle.dealId || null, accountId, contactIds, primaryContactId);
+
   invalidateSessionListCache(session);
-  return { lifecycle, prepBrief, accountId, dealId: lifecycle.dealId || null };
+  return {
+    lifecycle,
+    prepBrief,
+    accountId,
+    contactIds,
+    primaryContactId,
+    contactIdByEmail,
+    dealId: lifecycle.dealId || null,
+  };
 }
 
 /**
@@ -125,19 +218,39 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     record?.title?.split("-")[0]?.trim() ||
     "";
 
-  let account = company ? await findAccountByCompanyName(company) : null;
-  if (!account && company) {
-    const { accountId } = await upsertAccountFromPrep({
-      companyName: company,
-      domain: payload?.companyDomain || null,
-      actorId: ownerId,
-    });
-    account = { id: accountId, name: company };
-  }
-  if (!account) {
+  if (!company) {
     console.warn("[dual-write] post-call skipped. no company/account to attach");
     return null;
   }
+
+  // ---- Account + contacts, BEFORE the lifecycle/deal. ---------------------------------------
+  // This ordering looks arbitrary and is not. getOrCreateLifecycle → resolveDealForEngagement
+  // stamps `primaryContactId` onto the deal it creates and never backfills it, so a deal born
+  // before its contacts is permanently pointed at null. Contacts used to be ensured dead last, by
+  // applyPostCallContactFrameworks inside a try/catch that only console.warn'd — which is how
+  // post-calls shipped an account and a deal with zero contacts and no signal to the caller.
+  //
+  // The upsert is unconditional now, not just when the account is missing: an account that already
+  // exists still needs its participants turned into contacts, and this is the only place that does
+  // it before deal creation. It is idempotent (slug lookup, then contacts matched by email).
+  //
+  // Still NOT atomic, and cannot be — neither local-store nor firestore-store exposes a
+  // transaction, so a throw between these writes and the deal write leaves the account and its
+  // contacts committed with no deal. That is the cheap direction to fail: re-running the same call
+  // re-uses the contacts by email and completes the deal. Failing the other way round (deal
+  // without contacts) is what this reordering exists to stop, and it cannot self-heal.
+  const participantEmails = postCallParticipantEmails(payload);
+  const knownAccount = await findAccountByCompanyName(company, payload?.companyDomain);
+  const upserted = await upsertAccountFromPrep({
+    // `record.title` ("Acme - Discovery") is a display string: good enough to find an account,
+    // not good enough to rename one, so an account we already know keeps its own name.
+    companyName: knownAccount?.name || company,
+    companyDomain: payload?.companyDomain || knownAccount?.domain || null,
+    prospectEmails: participantEmails,
+    actorId: ownerId,
+  });
+  const { contactIds, primaryContactId, contactIdByEmail } = upserted;
+  const account = upserted.account || { id: upserted.accountId, name: company };
 
   await ensureSeTeamForPrepActor(account.id, ownerId);
 
@@ -152,6 +265,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
 
   const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
     title: account.name || company,
+    // Resolved above; the deal created here is the only chance to set it.
+    primaryContactId,
     actorId: ownerId,
     orgId: session.orgId || null,
     dealId,
@@ -343,6 +458,14 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     }
   }
 
+  // Non-fatal from here on, but reported: everything below enriches records that already exist.
+  // Collected rather than only logged, because a console.warn is not a signal a caller can act on
+  // — that is exactly how the missing-contacts bug above stayed invisible.
+  /** @type {string[]} */
+  const warnings = [];
+
+  // Enrichment only now (influence, DISC, MEDDPICC from the transcript). The contacts themselves
+  // were ensured before the deal, so a throw here costs detail, not records.
   try {
     await applyPostCallContactFrameworks(account.id, analysis, {
       lifecycleId: lifecycle.id,
@@ -350,10 +473,23 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       postCallId: postCall.id,
       dealId: lifecycle.dealId || null,
       qualification,
-      participantEmails: payload?.prospectEmails || payload?.participantEmails || [],
+      participantEmails,
     });
   } catch (err) {
+    warnings.push(`contact frameworks: ${err?.message || err}`);
     console.warn("[dual-write] contact frameworks failed:", err?.message || err);
+  }
+
+  try {
+    await linkContactsToDeal(
+      lifecycle.dealId || dealId || null,
+      account.id,
+      contactIds,
+      primaryContactId,
+    );
+  } catch (err) {
+    warnings.push(`deal contact links: ${err?.message || err}`);
+    console.warn("[dual-write] deal contact link failed:", err?.message || err);
   }
 
   // Identity stamping: AE on the deal, and {ae, primary/secondary SE, contacts} on
@@ -365,14 +501,23 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       lifecycle,
       postCall,
       confirmedIdentities: payload?.confirmedIdentities || {},
-      participantEmails: payload?.prospectEmails || payload?.participantEmails || [],
+      participantEmails,
     });
   } catch (err) {
+    warnings.push(`identity stamp: ${err?.message || err}`);
     console.warn("[dual-write] identity stamp failed:", err?.message || err);
   }
 
   invalidateSessionListCache(session);
-  return { lifecycle, postCall, accountId: account.id };
+  return {
+    lifecycle,
+    postCall,
+    accountId: account.id,
+    contactIds,
+    primaryContactId,
+    contactIdByEmail,
+    warnings,
+  };
 }
 
 /** Parse a confirmed AE label into a structured {name, email}. */

@@ -16,7 +16,7 @@ PREP_ASSETS="$REPO_ROOT/worker/src/prep-assets.ts"
 if ! grep -q 'DEMO_ASSET_LABELS' "$PREP_ASSETS" 2>/dev/null; then
   echo "ERROR: Worker source is stale (missing DEMO_ASSET_LABELS export)." >&2
   echo "       Your git pull likely failed. Run: bash repair.sh" >&2
-  echo "       Or:  cd $REPO_ROOT && git fetch origin && git reset --hard origin/2.0.7.2" >&2
+  echo "       Or:  cd $REPO_ROOT && git fetch origin && git reset --hard origin/2.0.7.4" >&2
   exit 1
 fi
 

@@ -37,17 +37,9 @@
   color: var(--dew-text);
 }
 
-/* Precall-only heading. Post-call reuses .prep-form-heading and keeps its subtitle. */
-.nb-form-heading {
-  margin-bottom: 22px;
-}
-
-.nb-form-heading h1 {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
+/* Precall-only: .prep-form-heading is on the post-call heading too (index.html:450), whose
+   subtitle must stay visible. Scoped to .nb-form-heading, which only the precall heading
+   carries — hiding it globally blanked the post-call subtitle. */
 .nb-form-heading p:not(.nb-build-stamp) {
   display: none;
 }
@@ -362,8 +354,14 @@
 }
 
 .nb-deal-card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f3ecda;
   color: #a5883f;
   display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -2161,7 +2159,7 @@
 .prep-ext-doc { color: var(--dew-primary); background: var(--dew-primary-tint); }
 .prep-ext-ppt { color: var(--dew-red); background: var(--dew-red-tint); }
 .prep-ext-pdf { color: var(--dew-green); background: var(--dew-green-tint); }
-.prep-ext-env { color: var(--dew-amber); background: var(--dew-amber-tint); }
+.prep-ext-sheet { color: var(--dew-amber); background: var(--dew-amber-tint); }
 
 #prep-source-popover {
   position: fixed;

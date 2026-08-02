@@ -189,7 +189,7 @@ const excludedHtml = renderDealArrModule(deal, [
 ]);
 
 assert(
-  excludedHtml.includes("Freddy AI Agent sessions — discussed, volume not stated — excluded"),
+  excludedHtml.includes("Freddy AI Agent sessions. discussed, volume not stated. excluded"),
   "excluded row visible with reason",
 );
 assert(excludedHtml.includes("deal-arr-row--excluded"), "excluded styling");

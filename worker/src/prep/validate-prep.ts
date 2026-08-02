@@ -4,10 +4,21 @@ import type { ResearchFact } from "./types";
 
 const UNKNOWN = "unknown";
 
+/**
+ * Prose the model writes when it found nothing. These are not values — "None identified" is the
+ * absence of a finding, worded as one. Left as-is they read as data: the signals grid counted
+ * them, so a brief where every lookup came back empty announced "Tech stack & signals (4 found)"
+ * above six cells that all said nothing was found. Normalised here rather than in the two mirrored
+ * client isUnknown() copies, so the count, the confidence band and the news gate all agree.
+ */
+const ABSENCE_PHRASES =
+  /^(?:none|none\s+(?:identified|found|detected|listed|specified)|not\s+(?:identified|found|detected|present|available|specified|listed|disclosed|applicable)|no\s+(?:data|information|evidence|mention|record)s?(?:\s+found)?|nothing\s+(?:found|identified)|not\s+present\s+on\s+(?:the\s+)?website|unable\s+to\s+(?:determine|verify|identify)|n\/?a)\b[\s.]*$/i;
+
 function isUnknown(v: unknown): boolean {
   if (v == null) return true;
   const s = String(v).trim().toLowerCase();
-  return !s || s === UNKNOWN || s === "-";
+  if (!s || s === UNKNOWN || s === "-") return true;
+  return ABSENCE_PHRASES.test(s);
 }
 
 function sourceMap(prep: Prep): Map<string, { url: string; confidence: number }> {

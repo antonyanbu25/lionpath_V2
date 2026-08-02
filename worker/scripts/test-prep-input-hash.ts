@@ -5,10 +5,12 @@
 
 import assert from "node:assert/strict";
 import { buildInputHashPayload, hashInputPayload } from "../src/prep/input-hash.js";
+import { PLAYBOOK_VERSION } from "../src/prep/types.js";
 import {
   computePrepInputHash,
   computeKaiaRef,
   computeContextFp,
+  PREP_PLAYBOOK_VERSION,
 } from "../../web/prep-input-hash.js";
 
 const sampleInput = {
@@ -30,7 +32,11 @@ const webHash = computePrepInputHash(sampleInput.companyName, sampleInput.compan
 });
 
 assert.equal(workerHash, webHash, "worker and web hash must match");
-assert.equal(workerPayload.playbookVersion, "2");
+// Pinned to the constant, not a literal: this file is the only guard that the two
+// no-bundler mirrors agree, and a literal turned a routine version bump into a failure
+// here instead — which aborted the `&&` chain and hid every later worker test.
+assert.equal(workerPayload.playbookVersion, PLAYBOOK_VERSION);
+assert.equal(PLAYBOOK_VERSION, PREP_PLAYBOOK_VERSION, "worker and web playbook version must agree");
 assert.ok(workerPayload.kaiaRef.includes("p_abc123"));
 assert.ok(workerPayload.contextFp.length > 0);
 

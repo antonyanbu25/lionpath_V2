@@ -575,6 +575,31 @@ Add a join collection only when the requirement is real:
 | Contact at multiple accounts | `accountContacts/{accountId_contactId}` |
 | Tags on lifecycles | `lifecycleTags/{lifecycleId_tagId}` |
 
+### Implemented: `dealContacts/{dealId_contactId}`
+
+Deal ↔ Contact is many-to-many, mirroring Salesforce's `OpportunityContactRole`. An account's
+contacts are **not** implicitly on every one of its deals, and one person carries a different
+role on each deal they touch.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `dealId` | `Deal.id` | |
+| `contactId` | `Contact.id` | |
+| `accountId` | `Account.id` | Denormalised. Both parents must belong to this account. |
+| `role` | `DealContactRole` | `economic_buyer` \| `champion` \| `evaluator` \| `influencer` \| `technical_buyer` \| `end_user` \| `unknown`. Unrecognised values coerce to `unknown` — a bad role must not cost us the link. |
+| `isPrimary` | `boolean` | At most one per deal. `setPrimaryDealContact` demotes the others in the same pass. |
+
+`Deal.primaryContactId` is retained as the denormalised pointer to the `isPrimary` row. **The
+join row is authoritative; the field is the fast read.** They must be written together.
+
+Top-level collection, not a deal subcollection, because it is read from both directions — a
+deal's people and a person's deals. Single-field equality is auto-indexed, so
+`firestore.indexes.json` needs no change.
+
+> **Do not** populate a deal's contact panel from `listContactsByAccount`. That returns *all* of
+> the account's contacts, which made two deals on one account render identical people. Use
+> `listContactsByDeal`.
+
 ---
 
 ## Related docs

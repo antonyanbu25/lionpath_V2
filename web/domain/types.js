@@ -18,6 +18,12 @@ import { isFreeMailDomain } from "./constants.js";
  * @typedef {{ name?: string, email?: string }} DealAe   Account Executive on the deal (name and/or email).
  * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup, ae?: DealAe }, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
  * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
+ * Deal↔Contact is many-to-many, mirroring Salesforce's OpportunityContactRole: an account's
+ * contacts are not automatically on every one of its deals, and a contact carries a different
+ * role on each deal they touch. `Deal.primaryContactId` is retained as the denormalised pointer
+ * to the row with isPrimary — the join row is authoritative, the field is the fast read.
+ * @typedef {"economic_buyer"|"champion"|"evaluator"|"influencer"|"technical_buyer"|"end_user"|"unknown"} DealContactRole
+ * @typedef {{ id: string, dealId: string, contactId: string, accountId: string, role: DealContactRole, isPrimary: boolean, createdAt: number, updatedAt: number }} DealContact
  * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
  * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
@@ -84,6 +90,45 @@ export const CONTACT_EVENT_LABELS = {
   linked_from_prep: "Linked from prep",
   linked_from_postcall: "Linked from post-call",
 };
+
+/**
+ * Buying-committee roles on a deal. Vocabulary taken from the Omni persona hooks in the ICP KB
+ * (`worker/src/icp/freshdesk-omni.md` "Persona hooks") so the brief and the CRM speak the same
+ * language, and aligned with Salesforce's OpportunityContactRole picklist.
+ * @type {DealContactRole[]}
+ */
+export const DEAL_CONTACT_ROLES = [
+  "economic_buyer",
+  "champion",
+  "evaluator",
+  "influencer",
+  "technical_buyer",
+  "end_user",
+  "unknown",
+];
+
+/** @type {Record<DealContactRole, string>} */
+export const DEAL_CONTACT_ROLE_LABELS = {
+  economic_buyer: "Economic buyer",
+  champion: "Champion",
+  evaluator: "Evaluator",
+  influencer: "Influencer",
+  technical_buyer: "Technical buyer",
+  end_user: "End user",
+  unknown: "Unknown",
+};
+
+/** Unrecognised roles coerce to "unknown" rather than being rejected — a bad role must not
+ *  cost us the link itself, which is the part that carries meaning. */
+export function normalizeDealContactRole(role) {
+  const r = String(role || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return DEAL_CONTACT_ROLES.includes(/** @type {DealContactRole} */ (r)) ? r : "unknown";
+}
+
+/** Stable join id, matching the documented `{parentId_childId}` convention in RELATIONSHIPS.md. */
+export function dealContactId(dealId, contactId) {
+  return `${String(dealId || "").trim()}_${String(contactId || "").trim()}`;
+}
 
 /** Normalize company name to lookup slug. prefers corporate domain; ignores free-mail. */
 export function normalizeAccountSlug(name, domain) {

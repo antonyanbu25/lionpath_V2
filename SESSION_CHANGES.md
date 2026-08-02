@@ -1,5 +1,24 @@
 # Session changes — Contact-primary post-call resolution & identity model
 
+## Release 2.0.7.4 (branch `2.0.7.4` on `antonyanbu25/lionpath_V2`)
+
+Merged `lionpath-2.0.8.zip` (`design-2.0.7.3-preview` @ `0f638a0`) onto GitHub `2.0.7.3`, preserving 2.0.7.3 UI fixes (sidebar-align4, account/deal column alignment).
+
+**From zip (backend + prep):**
+- Grounded rival comparison for company sizing (`worker/src/prep/rivals.ts`)
+- Deal↔Contact join and deal-resolution fixes
+- Prep grounding/ICP field population, schema updates
+- Worker test suite restoration
+
+**Preserved from 2.0.7.3:**
+- `styles.css` sidebar avatar centering + topbar search height
+- `precall.css` account/deal column alignment + zip subtitle scoping fix
+- `index.html` sidebar-align4 cache bust + zip icon sizing
+
+**Version stamps:** `portal-build: 2.0.7.4-precall-align4`, `workerBuild: 2.0.7.4-domain-cache`
+
+---
+
 This document summarizes the work done in this session on top of branch `2.0.7`. The
 theme: make the **contact email(s)** the primary identifier for the post-call flow —
 surface existing accounts/deals from typed emails, create/name records meaningfully,

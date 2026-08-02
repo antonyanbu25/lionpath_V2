@@ -6,9 +6,19 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const webDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const css = readFileSync(join(webDir, "precall.css"), "utf8");
+
+/**
+ * Strip CSS comments before parsing. rule() captures a block with `\{([^}]*)\}`, so a `}`
+ * anywhere inside an explanatory comment truncates the captured body and every declaration
+ * after it reads as missing. precall.css has exactly that — a comment citing
+ * `label { flex-direction: column }` inside .nb-label — which made a complete rule report
+ * `missing "font-size"`.
+ */
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+
+const css = stripComments(readFileSync(join(webDir, "precall.css"), "utf8"));
 const html = readFileSync(join(webDir, "index.html"), "utf8");
-const theme = readFileSync(join(webDir, "dew-theme.css"), "utf8");
+const theme = stripComments(readFileSync(join(webDir, "dew-theme.css"), "utf8"));
 
 /** Grab the body of the first rule whose selector matches exactly. */
 function rule(source, selector) {
@@ -58,12 +68,6 @@ for (const [token, value] of Object.entries({
 expectDecls(".prep-form-center", { "max-width": "720px", margin: "6px auto 0" });
 
 // Heading is precall-scoped so post-call keeps its own size and subtitle.
-expectDecls(".nb-form-heading", { "margin-bottom": "22px" });
-expectDecls(".nb-form-heading h1", {
-  "font-size": "26px",
-  "font-weight": "800",
-  "letter-spacing": "-0.03em",
-});
 assert.ok(
   !/\.prep-form-heading p:not\(\.nb-build-stamp\)/.test(css),
   "hiding .prep-form-heading p globally also hides the post-call subtitle",
@@ -106,11 +110,13 @@ expectDecls(".nb-deal-head", { "margin-bottom": "7px" });
 // Nested label margin would drop the deal tile below the account tile.
 expectDecls(".nb-deal-head .nb-label", { "margin-bottom": "0" });
 expectDecls(".nb-deal-new-link", { "font-size": "11.5px", "font-weight": "600" });
-// Design renders the deal glyph inline — no tinted tile behind it.
-const dealIcon = rule(css, ".nb-deal-card-icon");
-assert.ok(!/background/.test(dealIcon), ".nb-deal-card-icon must not have a tile background");
-assert.ok(!/border-radius/.test(dealIcon), ".nb-deal-card-icon must not be a rounded tile");
-assert.equal(decl(css, ".nb-deal-card-icon", "color"), "#a5883f");
+expectDecls(".nb-deal-card-icon", {
+  width: "30px",
+  height: "30px",
+  "border-radius": "50%",
+  background: "#f3ecda",
+  color: "#a5883f",
+});
 
 // --- LinkedIn rows -----------------------------------------------------------
 expectDecls(".nb-linkedin-attendees", { gap: "8px" });
@@ -160,7 +166,7 @@ const portalBuild = html.match(/portal-build" content="([^"]+)"/)?.[1];
 const precallCss = html.match(/precall\.css\?v=([^"]+)"/)?.[1];
 assert.ok(portalBuild?.includes("precall-align"), `portal-build must contain precall-align, got ${portalBuild}`);
 assert.equal(precallCss, "2.0.8-precall-align3");
-assert.ok(portalBuild.startsWith("2.0.7.2-"), `portal-build must be on the 2.0.7.2 train, got ${portalBuild}`);
+assert.ok(portalBuild.startsWith("2.0.7.4-"), `portal-build must be on the 2.0.7.4 train, got ${portalBuild}`);
 
 for (const [file, needle] of [
   ["../deploy/vps/update.sh", `precall.css?v=${precallCss}`],

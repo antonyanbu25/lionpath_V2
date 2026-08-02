@@ -56,8 +56,22 @@ export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Upsert Account + Contacts from prep form / generated prep.
- * @param {{ companyName: string, companyDomain?: string, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[], lifecycleId?: string, actorId?: string, prepBriefId?: string }} input
- * @returns {Promise<{ accountId: string, contactIds: string[], primaryContactId: string|null, account: object }>}
+ *
+ * Account and contacts only — this deliberately never creates a Deal. Deal creation lives in
+ * deal-service, which stamps `primaryContactId` onto the deal at create time and never backfills
+ * it; callers therefore run this first and pass the ids below into deal creation.
+ *
+ * `accountId` is an explicit SE choice from the CRM match panel and outranks every heuristic
+ * below. Without it the typed company name was re-slugged and looked up afresh, so selecting
+ * "Acme Corporation" (slug `acme.com`) while typing "Acme" with a gmail prospect resolved to
+ * slug `acme` — missing the account, and creating a duplicate the SE had just pointed at.
+ *
+ * @param {{ companyName: string, accountId?: string|null, companyDomain?: string, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[], lifecycleId?: string, actorId?: string, prepBriefId?: string }} input
+ * @returns {Promise<{ accountId: string, contactIds: string[], primaryContactId: string|null, contactIdByEmail: Record<string, string>, account: object }>}
+ *   `contactIds` follows the resolved email order, so `contactIds[0] === primaryContactId`.
+ *   `contactIdByEmail` is keyed by lower-cased email: a caller that knows an attendee only by
+ *   address (the post-call confirm gate does) can link that contact to a deal with a
+ *   `DealContactRole` without re-reading the store.
  */
 export async function upsertAccountFromPrep(input) {
   const store = getStore();
@@ -65,13 +79,51 @@ export async function upsertAccountFromPrep(input) {
   const companyName = String(input.companyName || "").trim();
   const companyDomain = normalizeDomain(input.companyDomain || input.domain);
   const emails = collectEmails(input);
-  const emailDomain = domainFromEmail(emails[0]) || null;
-  const resolvedDomain =
-    companyDomain || (emailDomain && !isFreeMailDomain(emailDomain) ? emailDomain : null);
-  const fromFreeMailProspect = !companyDomain && !!emailDomain && isFreeMailDomain(emailDomain);
+  // Every email, not just the first: a gmail address happening to sort first must not hide the
+  // corporate domain behind it, because that leaves the account name-slugged and forkable below.
+  const corporateEmailDomain =
+    emails.map((email) => domainFromEmail(email)).find((d) => d && !isFreeMailDomain(d)) || null;
+  const resolvedDomain = companyDomain || corporateEmailDomain;
+  // With no usable domain, normalizeAccountSlug falls back to the company name, so the slug is
+  // provisional — it will change the moment a domain shows up. The free-mail-prospect case that
+  // used to raise this flag on its own is just one way of landing here (gmail.com is discarded by
+  // the line above, leaving resolvedDomain null), and it was too narrow: a post-call with no
+  // domain and no emails at all is name-slugged too and got no flag.
+  const slugIsNameDerived = !resolvedDomain;
   const slug = normalizeAccountSlug(companyName, resolvedDomain);
 
-  let account = await store.findAccountBySlug(slug);
+  // An id the SE picked beats anything derived from the form. Falls through to the slug path when
+  // the id no longer resolves (a deleted account, a stale stored payload) rather than throwing.
+  const selectedAccountId = String(input.accountId || "").trim();
+  let account = selectedAccountId ? await store.getAccount(selectedAccountId) : null;
+  const accountWasSelected = !!account;
+  if (!account) account = await store.findAccountBySlug(slug);
+
+  // One company must not become two accounts because its domain arrived late. "Acme Corp" with
+  // no domain slugs `acme-corp`; the same company once a prospect email reveals acme.com slugs
+  // `acme.com`, the lookup above misses, and we create a duplicate — with no merge routine to
+  // undo it. Reconcile forward instead: adopt the provisionally-slugged row.
+  /** @type {string|null} */
+  let adoptedNameSlug = null;
+  if (!account && resolvedDomain && companyName) {
+    const nameSlug = normalizeAccountSlug(companyName, null);
+    if (nameSlug !== slug) {
+      const byName = await store.findAccountBySlug(nameSlug);
+      // Only adopt a row that never pinned a domain of its own (or already has this one). A row
+      // sitting on a different domain is a different company that happens to share a name, and
+      // merging those two is a worse outcome than the duplicate we are trying to avoid.
+      const adoptable =
+        byName &&
+        (!byName.domain ||
+          byName.domain === resolvedDomain ||
+          byName.metadata?.domainNeedsConfirmation === true);
+      if (adoptable) {
+        account = byName;
+        adoptedNameSlug = nameSlug;
+      }
+    }
+  }
+
   let metadataPatch = input.researchBundle
     ? mergeAccountResearch(account?.metadata, input.researchBundle, input.prep)
     : account?.metadata ? { ...account.metadata } : undefined;
@@ -79,7 +131,9 @@ export async function upsertAccountFromPrep(input) {
 
   if (!account) {
     const createMetadata = metadataPatch ? { ...metadataPatch } : {};
-    if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
+    // Recorded on every name-derived slug, not just the free-mail case, because this flag is what
+    // lets a later call recognise this row as adoptable instead of forking a second account.
+    if (slugIsNameDerived) createMetadata.domainNeedsConfirmation = true;
     account = await store.createAccount({
       id: newId("account"),
       name: companyName || slug,
@@ -91,15 +145,35 @@ export async function upsertAccountFromPrep(input) {
     });
   } else {
     const patch = { updatedAt: ts };
-    if (companyName && account.name !== companyName) patch.name = companyName;
+    // Not when the SE selected this account by id: they pointed at an existing record, they did
+    // not ask to rename it. "Acme" typed as a search shorthand must not overwrite
+    // "Acme Corporation" — and the name feeds generated deal titles, so a rename cascades.
+    if (companyName && account.name !== companyName && !accountWasSelected) patch.name = companyName;
     if (resolvedDomain && account.domain !== resolvedDomain) patch.domain = resolvedDomain;
     if (metadataPatch) patch.metadata = metadataPatch;
+    if (adoptedNameSlug) {
+      // Domain beats name as identity, so the domain slug becomes canonical. The superseded slug
+      // is kept as an alias: account ids already handed out are untouched, and a lookup that
+      // still slugs from the name alone leaves a trace here rather than silently forking.
+      patch.slug = slug;
+      const meta = { ...(patch.metadata || account.metadata || {}) };
+      delete meta.domainNeedsConfirmation;
+      meta.slugAliases = [...new Set([...(meta.slugAliases || []), adoptedNameSlug])];
+      patch.metadata = meta;
+    } else if (resolvedDomain && account.metadata?.domainNeedsConfirmation) {
+      // Domain confirmed on a row whose slug was already canonical — just retire the flag.
+      const meta = { ...(patch.metadata || account.metadata || {}) };
+      delete meta.domainNeedsConfirmation;
+      patch.metadata = meta;
+    }
     if (Object.keys(patch).length > 1) {
       account = await store.updateAccount(account.id, patch);
     }
   }
 
   const contactIds = [];
+  /** @type {Record<string, string>} */
+  const contactIdByEmail = {};
   let primaryContactId = null;
   const prospects = input.prep?.prospects || [];
   const contactDrafts = input.contactDrafts || [];
@@ -147,10 +221,11 @@ export async function upsertAccountFromPrep(input) {
     }
 
     contactIds.push(contact.id);
+    contactIdByEmail[email] = contact.id;
     if (i === 0) primaryContactId = contact.id;
   }
 
-  return { accountId: account.id, contactIds, primaryContactId, account };
+  return { accountId: account.id, contactIds, primaryContactId, contactIdByEmail, account };
 }
 
 function normalizeDomain(raw) {
@@ -1079,11 +1154,41 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
   }
   mergedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
-  const contacts = await safeStoreOp(
+  const accountContacts = await safeStoreOp(
     "listContactsByAccount",
     () => store.listContactsByAccount(accountId),
     [],
   );
+
+  /**
+   * The contact panel is scoped to the SELECTED DEAL, not the account.
+   *
+   * It previously rendered every contact on the account, so two deals on one account showed an
+   * identical list — which made it look as though a Deal↔Contact relation already existed when
+   * none did. `dealContacts` is that relation; read it here.
+   *
+   * Falls back to the account-wide list when a deal has no join rows yet: deals created before the
+   * join existed have none, and showing nothing would read as "no contacts" rather than "not
+   * linked yet". The fallback is flagged so the UI can tell the two apart.
+   */
+  let contacts = accountContacts;
+  let contactsAreDealScoped = false;
+  if (selectedDealId && store.listContactsByDeal) {
+    const links = await safeStoreOp(
+      "listContactsByDeal",
+      () => store.listContactsByDeal(selectedDealId),
+      [],
+    );
+    if (links.length) {
+      const byId = new Map(accountContacts.map((c) => [c.id, c]));
+      const scoped = links.map((l) => byId.get(l.contactId)).filter(Boolean);
+      if (scoped.length) {
+        contacts = scoped;
+        contactsAreDealScoped = true;
+      }
+    }
+  }
+
   const contactEventsByContactId = await safeStoreOp(
     "loadContactEventsForAccount",
     () => loadContactEventsForAccount(contacts, 10),
@@ -1145,6 +1250,9 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
     account,
     events: mergedEvents,
     contacts,
+    /** True when `contacts` came from the deal's join rows rather than the whole account. */
+    contactsAreDealScoped,
+    accountContacts,
     contactEventsByContactId,
     seTeamDisplay,
     lifecycleOwnerId: lensOwnerId,

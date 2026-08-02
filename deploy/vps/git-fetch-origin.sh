@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT="${1:-.}"
-BRANCH="${2:-2.0.7.2}"
+BRANCH="${2:-2.0.7.4}"
 
 cd "$REPO_ROOT"
 
@@ -16,7 +16,7 @@ Recommended fix — SSH deploy key (read-only):
 
   ssh-keygen -t ed25519 -C "vps-lionpath-deploy" -f /root/.ssh/lionpath_deploy -N ""
   cat /root/.ssh/lionpath_deploy.pub
-  # GitHub → skut264/lionpath → Settings → Deploy keys → Add (Allow read)
+  # GitHub → antonyanbu25/lionpath_V2 → Settings → Deploy keys → Add (Allow read)
 
   mkdir -p /root/.ssh && chmod 700 /root/.ssh
   cat >> /root/.ssh/config <<'CFG'
@@ -28,7 +28,7 @@ Host github.com
 CFG
   chmod 600 /root/.ssh/config
 
-  git remote set-url origin git@github.com:skut264/lionpath.git
+  git remote set-url origin git@github.com:antonyanbu25/lionpath_V2.git
   ssh -T git@github.com
   cd /opt/se-singha-paathai/deploy/vps && bash update.sh
 
@@ -61,7 +61,7 @@ if [[ -n "$GLOBAL_REWRITES" || -n "$LOCAL_REWRITES" ]]; then
 fi
 
 # Direct SSH URL avoids `git fetch origin` when insteadOf rewrites git@ → https://
-SSH_FETCH_URL="git@github.com:skut264/lionpath.git"
+SSH_FETCH_URL="git@github.com:antonyanbu25/lionpath_V2.git"
 if [[ "$ORIGIN_URL" == git@github.com:* ]]; then
   SSH_FETCH_URL="$ORIGIN_URL"
 fi
@@ -101,7 +101,7 @@ else
   REMOTE_SHA="$(probe_remote_branch origin)"
   if [[ -z "$REMOTE_SHA" ]]; then
     echo "ERROR: Cannot read origin/$BRANCH (private repo needs a token or SSH)." >&2
-    echo "Switch to SSH: git remote set-url origin git@github.com:skut264/lionpath.git" >&2
+    echo "Switch to SSH: git remote set-url origin git@github.com:antonyanbu25/lionpath_V2.git" >&2
     print_git_auth_help
     exit 1
   fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Emergency VPS repair — run on the VPS after SSH (repo is private; do not curl from GitHub raw).
-#   cd /opt/se-singha-paathai && git fetch origin 2.0.7.2 && git reset --hard origin/2.0.7.2 && cd deploy/vps && bash repair.sh
+#   cd /opt/se-singha-paathai && git fetch origin 2.0.7.4 && git reset --hard origin/2.0.7.4 && cd deploy/vps && bash repair.sh
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"
@@ -10,9 +10,9 @@ echo "=== SE Paathai VPS repair ==="
 echo "Repo: $REPO_ROOT"
 
 cd "$REPO_ROOT"
-bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.7.2"
-git checkout 2.0.7.2 2>/dev/null || git checkout -B 2.0.7.2
-git reset --hard origin/2.0.7.2
+bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.7.4"
+git checkout 2.0.7.4 2>/dev/null || git checkout -B 2.0.7.4
+git reset --hard origin/2.0.7.4
 
 PREP="$REPO_ROOT/worker/src/prep-assets.ts"
 if ! grep -q 'DEMO_ASSET_LABELS' "$PREP" 2>/dev/null; then

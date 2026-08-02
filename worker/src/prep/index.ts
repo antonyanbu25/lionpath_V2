@@ -23,6 +23,7 @@ import { canonicalizePrepSources } from "./canonicalize-sources";
 import { buildRecentNews } from "./recent-news";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
+import { generateRivalComparison } from "./rivals";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
 import { padSources } from "./source-table";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
@@ -352,7 +353,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   });
 
   // Parallel — see the note in runPrepSynthesize.
-  const [prepRaw, guidance] = await Promise.all([
+  const [prepRaw, guidance, rivals] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -381,6 +382,13 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       },
       input.confirmedProspectProfiles || [],
     ),
+    // Its own grounded search: rival funding and headcount are not in the prospect-focused
+    // research above. Returns null unless every figure traces to a citation it retrieved.
+    generateRivalComparison(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      industry: factsToIndustry(facts),
+    }),
   ]);
   timings.synthesize = Date.now() - t1;
 
@@ -395,6 +403,10 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   // registers the new virtual sources — it renumbers nothing already canonical.
   prep = canonicalizePrepSources(prep, { authoritative: paddedSources }).prep;
   if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
+  // Attached after canonicalizePrepSources on purpose: rivals carry their own R1..Rn labels
+  // from their own grounded call and must not be renumbered into the prep source table — a
+  // rival figure and a prep fact are traceable to different searches.
+  if (rivals) prep.rivals = rivals;
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -513,7 +525,7 @@ export async function runPrepSynthesize(
   // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
   // incumbent, never the finished demo script, so it stays off the critical path. It is
   // also the smaller call, so it finishes first and adds ~0s wall clock.
-  const [prepRaw, guidance] = await Promise.all([
+  const [prepRaw, guidance, rivals] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -542,6 +554,13 @@ export async function runPrepSynthesize(
       },
       input.confirmedProspectProfiles || [],
     ),
+    // Its own grounded search: rival funding and headcount are not in the prospect-focused
+    // research above. Returns null unless every figure traces to a citation it retrieved.
+    generateRivalComparison(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      industry: factsToIndustry(facts),
+    }),
   ]);
 
   let { prep, lowConfidence } = validatePrep(prepRaw);
@@ -551,6 +570,10 @@ export async function runPrepSynthesize(
   // Registers the post-synthesis enrichment labels (Kaia / Zoom / LinkedIn PDF).
   prep = canonicalizePrepSources(prep, { authoritative: sources }).prep;
   if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));
+  // Attached after canonicalizePrepSources on purpose: rivals carry their own R1..Rn labels
+  // from their own grounded call and must not be renumbered into the prep source table — a
+  // rival figure and a prep fact are traceable to different searches.
+  if (rivals) prep.rivals = rivals;
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

@@ -142,6 +142,13 @@ export function pruneUnreferencedSources(
 }
 
 /**
+ * Confidence for a source we constructed rather than retrieved. Must stay under the 55 gate
+ * used by validate-prep.ts, recent-news.ts and word-limits.ts, so a padded entry can fill the
+ * schema's minimum without ever counting as evidence for a claim.
+ */
+export const SYNTHETIC_SOURCE_CONFIDENCE = 50;
+
+/**
  * PREP_SCHEMA.sources requires minItems 3 (schema.ts:368). Gap-only search can
  * legitimately produce fewer, so top up with entries we know are real before synthesis.
  */
@@ -165,7 +172,11 @@ export function padSources(
 
   const homepage = `https://${ctx.companyDomain}`;
   if (out.length < min && ctx.companyDomain && !has(homepage)) {
-    push("Company website", homepage, 60);
+    // Below the shared 55 evidence gate on purpose. This URL is synthesised from the domain and
+    // never fetched, so it is a navigational chip, not evidence. At 60 it cleared every gate that
+    // asks "is this claim sourced?" — validate-prep (twice), recent-news, and word-limits' band —
+    // which let an unverified claim render with a Medium-confidence source it was never read from.
+    push("Company website", homepage, SYNTHETIC_SOURCE_CONFIDENCE);
   }
   for (const fileName of ctx.pdfFileNames || []) {
     if (out.length >= min) break;

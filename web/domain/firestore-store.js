@@ -2,8 +2,19 @@
  * Firestore-backed domain store for Firebase auth mode.
  */
 
-import { newId, now } from "./types.js";
+import { newId, now, dealContactId, normalizeDealContactRole } from "./types.js";
 import { collectionCRUD } from "./collection-crud.js";
+import { invalidateSessionListCache } from "./session-list-cache.js";
+
+/**
+ * Drop the listAccountsForSession row cache after writing anything it aggregates —
+ * accounts, deals, lifecycles. Mirrors the guard in local-store.js; without it a list
+ * read inside the 60s TTL returns pre-write rows. Deals and lifecycles do not go through
+ * collectionCRUD, so this is called per writer rather than at one chokepoint.
+ */
+function touchSessionLists() {
+  invalidateSessionListCache();
+}
 
 /** @param {object} fb Firebase helpers from app.js initFirebase */
 export function createFirestoreStore(fb) {
@@ -155,11 +166,33 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    /**
+     * Slug lookup, alias-aware. When an account is re-slugged after its domain is discovered
+     * (name-derived `acme-corp` → canonical `acme.com`) the old slug is kept in
+     * `metadata.slugAliases`. Without checking those, a later name-only lookup misses the
+     * account it just adopted and forks a duplicate — the very thing re-slugging prevents.
+     *
+     * `array-contains` on a nested field is auto-indexed, so no composite index is needed.
+     */
     async findAccountBySlug(slug) {
-      const q = query(collection(db, "accounts"), where("slug", "==", slug), limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      const d = snap.docs[0];
+      const key = String(slug || "").trim();
+      if (!key) return null;
+      const direct = await getDocs(
+        query(collection(db, "accounts"), where("slug", "==", key), limit(1)),
+      );
+      if (!direct.empty) {
+        const d = direct.docs[0];
+        return { id: d.id, ...d.data() };
+      }
+      const aliased = await getDocs(
+        query(
+          collection(db, "accounts"),
+          where("metadata.slugAliases", "array-contains", key),
+          limit(1),
+        ),
+      );
+      if (aliased.empty) return null;
+      const d = aliased.docs[0];
       return { id: d.id, ...d.data() };
     },
 
@@ -174,11 +207,15 @@ export function createFirestoreStore(fb) {
     },
 
     async createAccount(account) {
-      return accountsCrud.create(account);
+      const created = await accountsCrud.create(account);
+      touchSessionLists();
+      return created;
     },
 
     async updateAccount(id, patch) {
-      return accountsCrud.update(id, patch);
+      const updated = await accountsCrud.update(id, patch);
+      touchSessionLists();
+      return updated;
     },
 
     async getAccount(id) {
@@ -253,6 +290,88 @@ export function createFirestoreStore(fb) {
       return snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => String(a.email).localeCompare(String(b.email)));
+    },
+
+    // ---- dealContacts: the Deal↔Contact join (Salesforce OpportunityContactRole) ----
+    // A top-level collection rather than a deal subcollection, because it is read from both
+    // directions: a deal's people, and a person's deals. Single-field equality is auto-indexed,
+    // so firestore.indexes.json needs no change.
+
+    async createDealContact(link) {
+      const id = dealContactId(link.dealId, link.contactId);
+      const ref = doc(db, "dealContacts", id);
+      const existing = await getDoc(ref);
+      const ts = now();
+      const data = {
+        ...(existing.exists() ? existing.data() : {}),
+        ...link,
+        id,
+        role: normalizeDealContactRole(link.role),
+        isPrimary: !!link.isPrimary,
+        createdAt: existing.exists() ? existing.data().createdAt : ts,
+        updatedAt: ts,
+      };
+      await setDoc(ref, data);
+      return data;
+    },
+
+    async findDealContact(dealId, contactId) {
+      const snap = await getDoc(doc(db, "dealContacts", dealContactId(dealId, contactId)));
+      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    },
+
+    async listContactsByDeal(dealId) {
+      const key = String(dealId || "").trim();
+      if (!key) return [];
+      const q = query(collection(db, "dealContacts"), where("dealId", "==", key));
+      const snap = await getDocs(q);
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        // Primary first, then stable by contactId so the order never flickers between reads.
+        .sort(
+          (a, b) =>
+            Number(!!b.isPrimary) - Number(!!a.isPrimary) ||
+            String(a.contactId).localeCompare(String(b.contactId)),
+        );
+    },
+
+    async listDealsByContact(contactId) {
+      const key = String(contactId || "").trim();
+      if (!key) return [];
+      const q = query(collection(db, "dealContacts"), where("contactId", "==", key));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async setPrimaryDealContact(dealId, contactId) {
+      const key = String(dealId || "").trim();
+      const target = String(contactId || "").trim();
+      if (!key || !target) return null;
+      const q = query(collection(db, "dealContacts"), where("dealId", "==", key));
+      const snap = await getDocs(q);
+      let promoted = null;
+      // Exactly one primary per deal: demote the deal's others in the same pass, so a caller
+      // cannot leave two rows both claiming to be primary.
+      await Promise.all(
+        snap.docs.map(async (d) => {
+          const row = { id: d.id, ...d.data() };
+          const isPrimary = row.contactId === target;
+          if (isPrimary) promoted = { ...row, isPrimary: true };
+          if (!!row.isPrimary === isPrimary) return;
+          await updateDoc(d.ref, { isPrimary, updatedAt: now() });
+        }),
+      );
+      return promoted;
+    },
+
+    async removeDealContact(dealId, contactId) {
+      if (!deleteDoc) return false;
+      const id = dealContactId(dealId, contactId);
+      const ref = doc(db, "dealContacts", id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return false;
+      await deleteDoc(ref);
+      return true;
     },
 
     async addContactEvent(event) {
@@ -335,11 +454,13 @@ export function createFirestoreStore(fb) {
       const ref = deal.id ? doc(db, "deals", deal.id) : doc(collection(db, "deals"));
       const data = { ...deal, id: ref.id };
       await setDoc(ref, data);
+      touchSessionLists();
       return data;
     },
 
     async updateDeal(id, patch) {
       await updateDoc(doc(db, "deals", id), { ...patch, updatedAt: now() });
+      touchSessionLists();
       return getById("deals", id);
     },
 
@@ -371,11 +492,13 @@ export function createFirestoreStore(fb) {
       const ref = lifecycle.id ? doc(db, "lifecycles", lifecycle.id) : doc(collection(db, "lifecycles"));
       const data = { ...lifecycle, id: ref.id };
       await setDoc(ref, data);
+      touchSessionLists();
       return data;
     },
 
     async updateLifecycle(id, patch) {
       await updateDoc(doc(db, "lifecycles", id), { ...patch, updatedAt: now() });
+      touchSessionLists();
       return getById("lifecycles", id);
     },
 

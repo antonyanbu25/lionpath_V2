@@ -3,10 +3,19 @@
  * Mirrors Firestore document shapes under se-singha-domain:{collection} keys.
  */
 
-import { newId, now } from "./types.js";
+import { newId, now, dealContactId, normalizeDealContactRole } from "./types.js";
+import { invalidateSessionListCache } from "./session-list-cache.js";
 
 const PREFIX = "se-singha-domain:";
 const _cache = new Map();
+
+/**
+ * Collections that feed listAccountsForSession's row cache. Writing any of them must
+ * drop that cache, or a list read straight after a write returns pre-write rows for up
+ * to its 60s TTL. app.js invalidates on the two UI write paths, but that leaves every
+ * other caller silently stale — so the invariant is enforced here instead.
+ */
+const SESSION_LIST_COLLECTIONS = new Set(["accounts", "deals", "lifecycles"]);
 
 function loadCollection(name) {
   if (_cache.has(name)) return _cache.get(name);
@@ -22,6 +31,7 @@ function loadCollection(name) {
 function saveCollection(name, items) {
   _cache.set(name, items);
   localStorage.setItem(`${PREFIX}${name}`, JSON.stringify(items));
+  if (SESSION_LIST_COLLECTIONS.has(name)) invalidateSessionListCache();
 }
 
 export function clearLocalStoreCache() {
@@ -61,6 +71,15 @@ function findMany(collection, predicate, sortFn) {
   const items = loadCollection(collection).filter(predicate);
   if (sortFn) items.sort(sortFn);
   return items;
+}
+
+/** Hard delete. Only join rows use this — domain records are archived by status, never removed. */
+function removeById(collection, id) {
+  const items = loadCollection(collection);
+  const next = items.filter((d) => d.id !== id);
+  if (next.length === items.length) return false;
+  saveCollection(collection, next);
+  return true;
 }
 
 export function createLocalStore() {
@@ -135,8 +154,19 @@ export function createLocalStore() {
       return findMany("postCalls", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
+    /**
+     * Slug lookup, alias-aware. When an account is re-slugged after its domain is discovered
+     * (name-derived `acme-corp` → canonical `acme.com`) the old slug is kept in
+     * `metadata.slugAliases`. Without checking those, a later name-only lookup misses the
+     * account it just adopted and forks a duplicate — the very thing re-slugging prevents.
+     */
     async findAccountBySlug(slug) {
-      return findOne("accounts", (a) => a.slug === slug);
+      const key = String(slug || "").trim();
+      if (!key) return null;
+      return (
+        findOne("accounts", (a) => a.slug === key) ||
+        findOne("accounts", (a) => (a.metadata?.slugAliases || []).includes(key))
+      );
     },
 
     async findAccountsByDomain(domain) {
@@ -207,6 +237,73 @@ export function createLocalStore() {
 
     async listContactsByAccount(accountId) {
       return findMany("contacts", (c) => c.accountId === accountId, (a, b) => a.email.localeCompare(b.email));
+    },
+
+    // ---- dealContacts: the Deal↔Contact join (Salesforce OpportunityContactRole) ----
+    // An account's contacts are NOT implicitly on all of its deals. Reading
+    // listContactsByAccount to populate a deal's contact panel is what made two deals on one
+    // account show identical people — query this join instead.
+
+    async createDealContact(link = {}) {
+      const id = dealContactId(link.dealId, link.contactId);
+      const existing = findById("dealContacts", id);
+      const ts = now();
+      return upsertById("dealContacts", {
+        createdAt: existing?.createdAt ?? ts,
+        ...existing,
+        ...link,
+        id,
+        role: normalizeDealContactRole(link.role),
+        isPrimary: !!link.isPrimary,
+        updatedAt: ts,
+      });
+    },
+
+    async findDealContact(dealId, contactId) {
+      return findById("dealContacts", dealContactId(dealId, contactId)) || null;
+    },
+
+    async listContactsByDeal(dealId) {
+      const key = String(dealId || "").trim();
+      if (!key) return [];
+      return findMany(
+        "dealContacts",
+        (d) => d.dealId === key,
+        // Primary first, then stable by contactId so the order never flickers between reads.
+        (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.contactId.localeCompare(b.contactId),
+      );
+    },
+
+    async listDealsByContact(contactId) {
+      const key = String(contactId || "").trim();
+      if (!key) return [];
+      return findMany("dealContacts", (d) => d.contactId === key);
+    },
+
+    async setPrimaryDealContact(dealId, contactId) {
+      const key = String(dealId || "").trim();
+      const target = String(contactId || "").trim();
+      if (!key || !target) return null;
+      let promoted = null;
+      // Exactly one primary per deal: demote the deal's others in the same pass, so a caller
+      // cannot leave two rows both claiming to be primary.
+      for (const link of findMany("dealContacts", (d) => d.dealId === key)) {
+        const isPrimary = link.contactId === target;
+        if (!!link.isPrimary === isPrimary) {
+          if (isPrimary) promoted = link;
+          continue;
+        }
+        const saved = upsertById("dealContacts", { ...link, isPrimary, updatedAt: now() });
+        if (isPrimary) promoted = saved;
+      }
+      return promoted;
+    },
+
+    async removeDealContact(dealId, contactId) {
+      const id = dealContactId(dealId, contactId);
+      if (!findById("dealContacts", id)) return false;
+      removeById("dealContacts", id);
+      return true;
     },
 
     async addContactEvent(event) {
@@ -714,6 +811,7 @@ export function createLocalStore() {
         "accounts",
         "contacts",
         "deals",
+        "dealContacts",
         "lifecycles",
         "prepBriefs",
         "postCalls",
@@ -757,6 +855,7 @@ export function exportLocalDomainData() {
     "accounts",
     "contacts",
     "deals",
+    "dealContacts",
     "lifecycles",
     "prepBriefs",
     "postCalls",

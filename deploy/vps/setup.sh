@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-git@github.com:skut264/lionpath.git}"
+REPO_URL="${REPO_URL:-git@github.com:antonyanbu25/lionpath_V2.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/se-singha-paathai}"
 DATA_DIR="${DATA_DIR:-/var/lib/se-paathai}"
 

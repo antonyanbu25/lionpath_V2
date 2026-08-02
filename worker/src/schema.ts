@@ -1,6 +1,7 @@
 // Pre-call (Discovery) output shape (v8): wireframe brief with prospects + ICP fitment.
 
 import type { DemoGuidance } from "./prep/demo-guidance";
+import type { RivalComparison } from "./prep/rivals";
 
 const fitRow = {
   type: "object",
@@ -161,10 +162,46 @@ const meddpiccHintsBlock = {
   description: "Optional MEDDPICC hints populated only when prep evidence supports them.",
 } as const;
 
+const icpCriterionRow = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "state", "evidence"],
+  properties: {
+    id: {
+      type: "string",
+      description:
+        "Criterion id from the ICP CRITERIA list for the chosen product. Never invent an id.",
+    },
+    state: {
+      type: "string",
+      enum: ["met", "unmet", "unknown"],
+      description: "unknown when research is silent — do NOT guess unmet.",
+    },
+    evidence: {
+      type: "string",
+      description: "One line of evidence from the research facts, max 14 words. Empty when unknown.",
+    },
+    sourceLabel: {
+      type: "string",
+      description: "sources[].label backing the evidence. Required whenever state is met or unmet.",
+    },
+    band: {
+      type: "string",
+      description:
+        "[GATING criteria ONLY] Copy exactly one band name from that criterion's band list. Omit for every non-gating criterion. The alignment tier is derived from these server-side.",
+    },
+  },
+} as const;
+
 const icpFitBlock = {
   type: "object",
   additionalProperties: false,
-  required: ["product", "verdict", "highlights", "gaps", "frameworkRefs"],
+  // `criteria` is what makes the rest of the ICP chain live. synthesize.ts already sends the
+  // criteria list to the model under "=== ICP CRITERIA ===", icp-criteria.ts derives the tier
+  // from the returned bands, and precall-render.js renders the tick list — but the schema did
+  // not permit `criteria` in the response, so icpFit.criteria was always undefined and every
+  // brief showed "Unknown alignment" with an empty list. The prompt asked; the schema refused.
+  required: ["product", "verdict", "criteria", "gaps"],
   properties: {
     product: {
       type: "string",
@@ -174,23 +211,25 @@ const icpFitBlock = {
     verdict: {
       type: "string",
       enum: ["Strong", "Medium", "Weak", "Unknown"],
+      description:
+        "Derived server-side from the gating criteria's bands — fill it in, but it is not final.",
     },
-    score: { type: "number", description: "Optional ICP fit score 0-100." },
-    highlights: {
+    criteria: {
       type: "array",
-      maxItems: 2,
-      items: { type: "string", description: "Why fit bullet citing framework trait, max 10 words." },
+      maxItems: 12,
+      items: icpCriterionRow,
+      description:
+        "One row per criterion id for the chosen product. The verdict is derived from the gating criteria's bands.",
     },
     gaps: {
       type: "array",
       maxItems: 2,
       items: { type: "string", description: "ICP gap to probe, max 10 words." },
     },
-    frameworkRefs: {
-      type: "array",
-      maxItems: 2,
-      items: { type: "string", description: "Verbatim framework trait/zone name from ICP doc, max 8 words." },
-    },
+    // `score` removed: an unrubriced 0-100 that nothing derived and the UI no longer renders.
+    // `highlights` removed: it restated the met criteria the tick list now shows directly.
+    // `frameworkRefs` removed: unvalidated free text whose only job — naming the zone — is now
+    // done by the server-derived `zone`, which can only hold a band the ICP document defines.
   },
 } as const;
 
@@ -494,7 +533,7 @@ export interface PrepSource {
 
 export interface PrepAsset {
   label: string;
-  ext: "DOC" | "ENV" | "PDF" | "PPT";
+  ext: "DOC" | "SHEET" | "PDF" | "PPT";
   url: string;
 }
 
@@ -547,6 +586,13 @@ export interface Prep {
   >;
   /** Demo-day talking points, generated separately — see prep/demo-guidance.ts. */
   demoGuidance?: DemoGuidance;
+  /**
+   * The PROSPECT's market rivals and how it sizes up against them. Note the name: `incumbent`
+   * and `ProspectProfile.competitorTouchpoints` already mean *our* competitors (Zendesk,
+   * Intercom), so "competitor" was taken. Absent from PREP_SCHEMA — attached by its own
+   * grounded call (prep/rivals.ts), which drops anything it cannot trace to a citation.
+   */
+  rivals?: RivalComparison;
 }
 
 export const FIT_LABELS = ["Support channels", "Self Serve", "Agent Assist"] as const;

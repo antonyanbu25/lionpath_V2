@@ -6,13 +6,13 @@ cd "$(dirname "$0")"
 REPO_ROOT="$(cd ../.. && pwd)"
 DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 
-echo "=== Fetching origin/2.0.7.2 ==="
-bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.7.2"
+echo "=== Fetching origin/2.0.7.4 ==="
+bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.7.4"
 
-echo "=== Resetting to origin/2.0.7.2 (keeps .env — gitignored) ==="
+echo "=== Resetting to origin/2.0.7.4 (keeps .env — gitignored) ==="
 cd "$REPO_ROOT"
-git checkout 2.0.7.2 2>/dev/null || git checkout -B 2.0.7.2
-git reset --hard "origin/2.0.7.2"
+git checkout 2.0.7.4 2>/dev/null || git checkout -B 2.0.7.4
+git reset --hard "origin/2.0.7.4"
 echo "=== Deployed commit: $(git log -1 --oneline) ==="
 
 if ! grep -q 'precall.css?v=2.0.8-precall-align3' "$REPO_ROOT/web/index.html" 2>/dev/null; then

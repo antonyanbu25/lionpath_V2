@@ -60,10 +60,8 @@ const raw = {
   icpFit: {
     product: "Freshdesk",
     verdict: "Strong",
-    score: 78,
     highlights: ["Winning Zone: 50–500 employees"],
     gaps: ["Confirm agent count"],
-    frameworkRefs: ["Winning Zone"],
   },
   sources: [
     { label: "S1", title: "Website", url: "https://example.com", confidence: 90 },
@@ -83,7 +81,10 @@ const checks: [string, boolean][] = [
   ["fit legacy AI Deflection", out.fitSnapshot[1]?.label === "Self Serve"],
   ["prospects normalized", out.prospects.length >= 1],
   ["icpFit normalized", out.icpFit?.product === "Freshdesk" && out.icpFit.verdict === "Strong"],
-  ["icpFit frameworkRefs", (out.icpFit?.frameworkRefs?.length || 0) >= 1],
+  // No criteria on this fixture, so it takes the legacy path: the stored verdict survives
+  // and no zone is claimed. frameworkRefs was removed — the zone is server-derived now.
+  ["icpFit no zone claimed without criteria", out.icpFit?.zone === undefined],
+  ["icpFit carries no score", (out.icpFit as Record<string, unknown>)?.score === undefined],
   ["use cases empty", out.industryUseCases.length === 0],
   ["demo script rows match pains", out.painCapabilityValue.length === out.likelyPains.length],
   ["demo script pain from likelyPains", out.painCapabilityValue[0]?.pain === "Slow routing"],

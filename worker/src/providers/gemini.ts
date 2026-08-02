@@ -1,7 +1,7 @@
 // Google Gemini adapter — Google AI Studio (GEMINI_API_KEY) or Vertex AI on GCP (ADC).
 
 import { toGeminiResponseSchema } from "../gemini-schema";
-import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
+import type { Citation, LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 /** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
@@ -14,10 +14,71 @@ interface GeminiPart {
   thought?: boolean;
 }
 
+interface GeminiGroundingChunk {
+  /** Verified against a live gemini-3.6-flash response: only uri + title are returned. */
+  web?: { uri?: string; title?: string };
+}
+
+interface GeminiGroundingSupport {
+  segment?: { startIndex?: number; endIndex?: number; text?: string };
+  groundingChunkIndices?: number[];
+}
+
+interface GeminiGroundingMetadata {
+  groundingChunks?: GeminiGroundingChunk[];
+  groundingSupports?: GeminiGroundingSupport[];
+  webSearchQueries?: string[];
+  searchEntryPoint?: { renderedContent?: string };
+}
+
 interface GeminiResponse {
-  candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+  candidates?: {
+    content?: { parts?: GeminiPart[] };
+    finishReason?: string;
+    groundingMetadata?: GeminiGroundingMetadata;
+  }[];
   promptFeedback?: { blockReason?: string };
   error?: { message?: string };
+}
+
+/** Max supporting-text segments joined into one citation snippet. */
+const MAX_CITATION_SEGMENTS = 2;
+const MAX_CITATION_SNIPPET_CHARS = 300;
+
+/**
+ * Turn groundingMetadata into citations. Pure, so it can be tested against a
+ * recorded response (worker/testdata/grounding/).
+ *
+ * Note: Gemini does not return confidenceScores for grounding supports, so callers
+ * must assign a constant confidence rather than deriving one.
+ */
+export function extractCitations(meta: GeminiGroundingMetadata | undefined): Citation[] {
+  const chunks = meta?.groundingChunks || [];
+  if (!chunks.length) return [];
+
+  const citations: (Citation & { segments: string[] })[] = chunks.map((c) => ({
+    uri: c.web?.uri || "",
+    title: c.web?.title || "",
+    segments: [],
+  }));
+
+  for (const support of meta?.groundingSupports || []) {
+    const text = support.segment?.text?.trim();
+    if (!text) continue;
+    for (const idx of support.groundingChunkIndices || []) {
+      const target = citations[idx];
+      if (!target || target.segments.length >= MAX_CITATION_SEGMENTS) continue;
+      if (target.segments.includes(text)) continue;
+      target.segments.push(text);
+    }
+  }
+
+  return citations
+    .filter((c) => c.uri)
+    .map(({ segments, ...rest }) => {
+      const snippet = segments.join(" … ").slice(0, MAX_CITATION_SNIPPET_CHARS);
+      return snippet ? { ...rest, snippet } : rest;
+    });
 }
 
 type GeminiBackend =
@@ -167,7 +228,18 @@ function parseGeminiResponse(data: GeminiResponse): LlmResult {
         `If "MAX_TOKENS", raise maxTokens; if "SAFETY"/"RECITATION", the query was filtered.`,
     );
   }
-  return { text };
+
+  // LlmResult.citations / .searchQueries are declared but were never populated, so every
+  // consumer of grounded provenance read undefined — the source table, the citation
+  // numbering and the confidence gates all degraded silently rather than failing.
+  const out: LlmResult = { text };
+  const meta = cand.groundingMetadata;
+  const citations = extractCitations(meta);
+  if (citations.length) out.citations = citations;
+  if (meta?.webSearchQueries?.length) out.searchQueries = meta.webSearchQueries;
+  const entryPoint = meta?.searchEntryPoint?.renderedContent;
+  if (entryPoint) out.searchEntryPointHtml = entryPoint;
+  return out;
 }
 
 function geminiApiErrorMessage(
