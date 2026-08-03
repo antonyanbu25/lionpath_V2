@@ -242,6 +242,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 | Sources UI | Standalone "Sources & confidence" accordion | Nested inside **Research extras** `<details>` |
 | Default state | — | Collapsed unless `sourcesOpen` true |
 | Rows | — | Label, title, confidence bar (high/medium/low green/amber/red) |
+| Source row alignment | Fixed 36px label column caused **LinkedIn PDF** / **LinkedIn + Kaia** to wrap | Label column uses `max-content`; `.prep-source-label { white-space: nowrap }` keeps rows aligned |
 
 ---
 
@@ -302,6 +303,11 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 - Full: `.prep-v9-attendee` — grid `112px | 1fr | 1.1fr`
 - Thin: `.prep-v9-attendee-thin` — single column (no DISC / behaviour column)
+
+### Research extras source rows
+
+- `.prep-source-row` — grid `max-content | 1fr | 120px | auto`; `align-items: center`
+- `.prep-source-label` — `white-space: nowrap` (prevents **LinkedIn PDF** label wrap vs title column)
 
 ### Demo Prep tab (inherited, not changed in 2.9 commits)
 

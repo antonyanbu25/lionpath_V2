@@ -154,6 +154,17 @@ const discoveryWithEmptySignal = renderKnowTab(
   false,
 );
 const discoverySourcesOpen = renderKnowTab(sampleV8, true);
+const discoveryLinkedInSource = renderKnowTab(
+  {
+    ...sampleV8,
+    sources: [
+      { label: "S1", title: "Company website", url: "https://example.com", confidence: 85 },
+      { label: "LinkedIn PDF", title: "LinkedIn PDF export", url: "linkedin-pdf:upload", confidence: 90 },
+      { label: "S2", title: "LinkedIn company", url: "https://linkedin.com", confidence: 72 },
+    ],
+  },
+  true,
+);
 const discoveryMulti = renderKnowTab(
   { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
   false,
@@ -279,6 +290,11 @@ const checks = [
   ["know tab support JD present", discovery.includes("prep-jd-full")],
   ["know tab research extras collapsed", discovery.includes("prep-research-extras") && !discovery.includes('class="prep-research-extras" open')],
   ["know tab research extras open when requested", discoverySourcesOpen.includes('class="prep-research-extras" open')],
+  [
+    "know tab research extras linkedin pdf row",
+    discoveryLinkedInSource.includes('class="prep-source-label">LinkedIn PDF</span>') &&
+      discoveryLinkedInSource.includes('class="prep-source-title">LinkedIn PDF export</span>'),
+  ],
   ["know tab no verbatim notes card", !renderKnowTab(sampleV8, false, { additionalContext: "AE says Zendesk incumbent" }).includes("prep-se-notes-card")],
   ["know tab no standalone sources accordion", !discovery.includes("prep-sources-card")],
   ["know tab about text", discovery.includes("prep-v9-about")],

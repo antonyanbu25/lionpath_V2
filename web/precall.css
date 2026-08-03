@@ -2118,12 +2118,16 @@
 
 .prep-source-row {
   display: grid;
-  grid-template-columns: 36px 1fr 120px auto;
+  grid-template-columns: max-content 1fr 120px auto;
   gap: 10px;
   align-items: center;
   padding: 8px 0;
   border-top: 1px solid var(--dew-hairline);
   font-size: 12px;
+}
+
+.prep-source-label {
+  white-space: nowrap;
 }
 
 .prep-conf-bar-wrap {
