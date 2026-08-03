@@ -112,6 +112,144 @@ export async function ensureDealTitle(deal) {
   }
 }
 
+/**
+ * One person's link to one deal, as accepted by deal contact linking here.
+ * @typedef {{ contactId: string, role?: import("./types.js").DealContactRole|null, isPrimary?: boolean }} DealContactLink
+ */
+
+/**
+ * Collapse a caller's contact list to unique contacts with exactly one primary.
+ *
+ * `primaryContactId` wins the primary flag because it is the same value written into
+ * `Deal.primaryContactId` — letting a different contact win here makes the join and pointer disagree.
+ *
+ * `role: null` means "caller did not say" — kept distinct from "unknown" so we preserve a
+ * role already recorded on an existing join row (see linkDealContacts).
+ *
+ * @param {(DealContactLink|string)[]} [contacts]
+ * @param {string|null} [primaryContactId]
+ * @returns {DealContactLink[]}
+ */
+function normalizeContactLinks(contacts, primaryContactId = null) {
+  /** @type {Map<string, DealContactLink>} */
+  const byId = new Map();
+  for (const entry of contacts || []) {
+    const isStr = typeof entry === "string";
+    const contactId = String((isStr ? entry : entry?.contactId) || "").trim();
+    if (!contactId || byId.has(contactId)) continue;
+    byId.set(contactId, {
+      contactId,
+      role: isStr ? null : entry?.role || null,
+      isPrimary: isStr ? false : !!entry?.isPrimary,
+    });
+  }
+
+  const explicitPrimary = String(primaryContactId || "").trim();
+  if (explicitPrimary && !byId.has(explicitPrimary)) {
+    byId.set(explicitPrimary, { contactId: explicitPrimary, role: null, isPrimary: true });
+  }
+
+  const list = [...byId.values()];
+  const winner = explicitPrimary || list.find((l) => l.isPrimary)?.contactId || null;
+  return list.map((l) => ({ ...l, isPrimary: !!winner && l.contactId === winner }));
+}
+
+/**
+ * Write the `dealContacts` join rows for a deal and keep `Deal.primaryContactId` in step.
+ *
+ * Writes always go join-first, then patch the pointer. Repointing is backfill-only: a deal that
+ * already names a primary keeps it, and the incoming contact is linked as non-primary.
+ *
+ * @param {object|null} deal
+ * @param {DealContactLink[]} links already normalized by normalizeContactLinks
+ * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
+ */
+async function linkDealContacts(deal, links) {
+  if (!deal?.id || !links?.length) return deal;
+  const store = getStore();
+  if (typeof store.createDealContact !== "function") return deal;
+
+  const nominatesPrimary = links.some((l) => l.isPrimary);
+  let requestedPrimary = null;
+  for (const link of links) {
+    try {
+      const prev = store.findDealContact ? await store.findDealContact(deal.id, link.contactId) : null;
+      await store.createDealContact({
+        dealId: deal.id,
+        contactId: link.contactId,
+        accountId: deal.accountId,
+        role: link.role || prev?.role || "unknown",
+        isPrimary: link.isPrimary || (!!prev?.isPrimary && !nominatesPrimary),
+      });
+      if (link.isPrimary && !requestedPrimary) requestedPrimary = link.contactId;
+    } catch (err) {
+      console.warn("[deal-service] deal contact link failed:", err?.message || err);
+    }
+  }
+
+  if (!requestedPrimary) return deal;
+
+  const currentPrimary = deal.primaryContactId || null;
+  const primaryContactId = currentPrimary || requestedPrimary;
+
+  if (currentPrimary && currentPrimary !== requestedPrimary) {
+    try {
+      await store.createDealContact({
+        dealId: deal.id,
+        contactId: requestedPrimary,
+        accountId: deal.accountId,
+        role: links.find((l) => l.contactId === requestedPrimary)?.role || "unknown",
+        isPrimary: false,
+      });
+      const pointerRow = store.findDealContact
+        ? await store.findDealContact(deal.id, currentPrimary)
+        : null;
+      if (!pointerRow) {
+        await store.createDealContact({
+          dealId: deal.id,
+          contactId: currentPrimary,
+          accountId: deal.accountId,
+          role: "unknown",
+          isPrimary: true,
+        });
+      }
+    } catch (err) {
+      console.warn("[deal-service] deal contact reconcile failed:", err?.message || err);
+    }
+  }
+
+  try {
+    if (store.setPrimaryDealContact) await store.setPrimaryDealContact(deal.id, primaryContactId);
+  } catch (err) {
+    console.warn("[deal-service] set primary deal contact failed:", err?.message || err);
+  }
+
+  if (primaryContactId === currentPrimary) return deal;
+  try {
+    const updated = await store.updateDeal(deal.id, { primaryContactId });
+    return updated || { ...deal, primaryContactId };
+  } catch (err) {
+    console.warn("[deal-service] primaryContactId backfill failed:", err?.message || err);
+    return { ...deal, primaryContactId };
+  }
+}
+
+/**
+ * Link contacts to an existing deal by id — the public route to the join for callers that
+ * already have a deal and are not creating or bumping one (dual-write prep/post-call paths).
+ *
+ * @param {string|null} dealId
+ * @param {{ contacts?: DealContactLink[], primaryContactId?: string|null }} [opts]
+ * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
+ */
+export async function linkContactsToDealRecord(dealId, opts = {}) {
+  if (!dealId || !opts.contacts?.length) return null;
+  const store = getStore();
+  const deal = await store.getDeal(dealId);
+  if (!deal) return null;
+  return linkDealContacts(deal, normalizeContactLinks(opts.contacts, opts.primaryContactId));
+}
+
 /** Mirror deal counters/stage onto linked lifecycle if present. */
 async function syncLifecycleFromDeal(deal, extraPatch = {}) {
   const store = getStore();
