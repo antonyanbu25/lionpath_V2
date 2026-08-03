@@ -80,7 +80,7 @@ const sampleV8 = {
       totalExperience: "12 years",
       priorEmployers: ["Globex", "Initech"],
       competitorTouchpoints: ["Zendesk admin"],
-      sourceLabel: "S2",
+      sourceLabel: "LinkedIn PDF",
       summary: "Seasoned support leader with multi-site operations experience.",
       skills: ["Leadership", "Zendesk"],
       discHint: {
@@ -88,6 +88,9 @@ const sampleV8 = {
         confidence: "medium",
         evidence: ["Led regional turnaround"],
         inferred: true,
+        source: "linkedin_pdf",
+        dos: ["Lead with outcomes, not process"],
+        donts: ["Overwhelm with feature lists"],
       },
     },
     {
@@ -248,7 +251,7 @@ const checks = [
   ["know tab has support stack", discovery.includes("Their support stack")],
   ["know tab has unknowns gaps", discovery.includes("What we could not find")],
   ["know tab has Who is in the room", discovery.includes("Who is in the room")],
-  ["know tab has signals accordion", discovery.includes("prep-signals-details") && discovery.includes("Tech stack &amp; signals")],
+  ["know tab has no signals accordion", !discovery.includes("prep-signals-details") && !discovery.includes("Tech stack &amp; signals")],
   ["know tab 2-column grid", discovery.includes("prep-v9-grid-2")],
   [
     "know tab section order stack unknowns attendees",
@@ -264,8 +267,9 @@ const checks = [
       discovery.indexOf("Discovery kit") >= 0 &&
       discovery.indexOf("Where they sit versus their industry") < discovery.indexOf("Discovery kit"),
   ],
-  ["know tab signals collapsed by default", discovery.includes("prep-signals-details") && !discovery.includes('class="prep-signals-details" open')],
-  ["know tab signals grid layout", discovery.includes("prep-signals-grid") && discovery.includes("prep-signal-cell")],
+  ["know tab renders Do/Dont for linkedin prospect", discovery.includes("prep-v9-beh-do") && discovery.includes("prep-v9-beh-dont")],
+  ["know tab thin attendee without linkedin", discovery.includes("prep-v9-attendee-thin")],
+  ["know tab kaia-only prospect has no disc grid", !discoveryKaia.includes("prep-v9-disc") && discoveryKaia.includes("prep-v9-attendee-thin")],
   [
     "know tab section order jd kit extras",
     discovery.indexOf("prep-jd-full") < discovery.indexOf("Discovery kit") &&
@@ -327,7 +331,7 @@ const checks = [
     facts: [{ key: "Company size", value: "unknown" }],
     businessContext: { users: "200 staff" },
   })[0].value === "200 staff"],
-  ["know tab empty signal not found", discoveryWithEmptySignal.includes("prep-signal-empty")],
+  ["know tab linkedin-only disc count", (discovery.match(/class="prep-v9-disc"/g) || []).length === 1 && (discovery.match(/prep-v9-attendee-thin/g) || []).length === 1],
   ["know tab linkedin competitor touchpoints shown", discoveryLinkedInProspect.includes("Zendesk admin")],
   ["know tab llm competitor touchpoints hidden", !discoveryLlmCompetitorHidden.includes("Hallucinated Vendor")],
   ["isSeNotesSource SE", isSeNotesSource("SE")],

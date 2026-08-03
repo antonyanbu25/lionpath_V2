@@ -501,18 +501,14 @@ function attendeeRow(p, i, sources, renderOpts) {
   const role = isUnknown(p.role) ? "" : String(p.role);
 
   /**
-   * A seat only gets the DISC grid when we actually have a behavioural read.
+   * DISC and Do/Don't render only when a LinkedIn PDF was attached for this seat.
    *
    * The grid used to render unconditionally, so a seat padded to match the typed email count —
-   * no LinkedIn PDF attached, no enrichment run, therefore no discHint at all — showed an empty
-   * 2x2 with "No DISC signal yet" and a name of "unknown". (The literal string "unknown", which
-   * is why the `p.name || "Prospect"` fallback never fired.)
-   *
-   * The test is `linkedIn || hasDisc`, not `linkedIn` alone: enrich.ts can infer DISC from Zoom or
-   * Kaia dialogue as well as from a PDF (discHint.source is one of linkedin_pdf|zoom|kaia|merged),
-   * and gating strictly on LinkedIn would throw away a legitimate read from a recorded call.
+   * no LinkedIn PDF attached — showed an empty 2x2 with "No DISC signal yet" and a name of
+   * "unknown". Kaia/Zoom reads stay in the payload but are not shown here; only LinkedIn-backed
+   * profiles get the behavioural column.
    */
-  if (!linkedIn && !hasDisc) {
+  if (!linkedIn) {
     return `<div class="prep-v9-attendee prep-v9-attendee-thin">
       <div class="prep-v9-attendee-main">
         <span class="prep-v9-attendee-name">${esc(name || renderOpts?.prospectEmails?.[i] || "Prospect")}</span>
@@ -789,7 +785,6 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
     ${renderAttendees(prep.prospects, sources, renderOpts)}
     ${linkedinNote}${kaiaNote}
     ${renderSupportJD(prep.supportJD, sources)}
-    ${renderSignalsGrid(prep.signals, sources)}
     <div class="prep-grid-kit">
       <fw-card class="prep-card">
         ${`<div class="prep-section-head"><span class="prep-section-dot" style="background:var(--dew-primary)"></span><span class="dew-mono-label">Discovery kit · ask this</span></div>`}
