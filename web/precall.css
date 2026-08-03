@@ -969,12 +969,6 @@
   margin-bottom: 16px;
 }
 
-.prep-ai-banner {
-  margin-bottom: 16px;
-  --fw-inline-message-background-color: var(--dew-amber-tint, rgba(247, 144, 9, 0.12));
-  --fw-inline-message-border-color: var(--dew-amber, #f79009);
-}
-
 .prep-signal-label-wrap {
   display: inline-flex;
   align-items: center;

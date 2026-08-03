@@ -336,7 +336,7 @@ const checks = [
   ["know tab llm competitor touchpoints hidden", !discoveryLlmCompetitorHidden.includes("Hallucinated Vendor")],
   ["isSeNotesSource SE", isSeNotesSource("SE")],
   ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals, sampleV8.sources) === 4],
-  ["know tab AI banner", discovery.includes("prep-ai-banner")],
+  ["know tab AI banner absent", !discovery.includes("prep-ai-banner")],
   ["know tab ICP fitment", discovery.includes("ICP fitment")],
   ["know tab kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
   ["know tab DISC svg", discovery.includes("prep-v9-disc")],

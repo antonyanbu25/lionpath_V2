@@ -1,143 +1,471 @@
 # Release 2.9 — Pre-call UI (Know your Customer)
 
-**Base:** `2.0.8.1-merge` @ `930b8d9`  
-**Branch:** `2.9`  
-**Remote:** `antony` → `github.com/antonyanbu25/lionpath_V2`  
-**Date:** 2026-08-03  
-**Tab affected:** Know your Customer (precall v9 layout)
-
-Use this file as the branch reference — everything shipped in `2.9` for the boss-annotated pre-call UI is documented here.
+**Definitive branch reference (AMD file)** for everything an SE sees on branch `2.9`.
 
 ---
 
-## Summary
+## Branch metadata
 
-Release 2.9 completes the **Know your Customer** wireframe feedback from five annotated screenshots. Most items were already implemented on `2.0.8.1-merge`; this release adds the last two UI fixes and bumps the precall cache version.
+| Field | Value |
+|-------|-------|
+| **Base branch** | `2.0.8.1-merge` @ `930b8d9487b86eb7decca4696a8222618fd13023` |
+| **Branch** | `2.9` |
+| **HEAD** | `6febe3f004c5a7a82d1629ef336cdb2021999634` (after this doc commit) |
+| **Remote** | `antony` → `github.com/antonyanbu25/lionpath_V2` |
+| **Tracks** | `antony/2.9` |
+| **Date** | 2026-08-03 |
+| **Primary tab** | Know your Customer (`renderKnowTab` in `web/precall-brief-v9.js`) |
+| **Secondary tab** | Demo Prep (`renderDemoPrepTab` — inherited v9 layout, unchanged in 2.9 commits) |
+| **CSS cache bust** | `web/index.html` → `precall.css?v=2.9` (was `precall.css?v=2.0.8.1-merge`) |
 
----
+### Commits on `2.9` (oldest → newest)
 
-## New in 2.9 (this release)
+| Hash | Message |
+|------|---------|
+| `3a02f4b34ce11e496eb26ab32ba1a0add2f2d5e9` | Release 2.9 precall UI: remove duplicate tech-stack section and gate DISC to LinkedIn profiles. |
+| `bf2af13cc7f2842d3e758e2cd1e6c1b1448e5905` | docs: add RELEASE_2.9 branch reference for precall UI changes. |
+| `6febe3f004c5a7a82d1629ef336cdb2021999634` | Remove add-to-kit controls from unknowns gaps section. |
 
-| Change | Why | File(s) |
-|--------|-----|---------|
-| **Removed "Tech stack & signals" accordion** from Know tab | Duplicated support stack + discovery kit — boss flagged it as repeating | `web/precall-brief-v9.js` |
-| **DISC grid only for LinkedIn-enriched profiles** | When multiple contacts exist but only one has a LinkedIn PDF, empty DISC grids appeared on unknown seats | `web/precall-brief-v9.js` `attendeeRow()` |
-| **Cache-bust precall CSS** | Force browsers/VPS to load updated markup | `web/index.html` → `precall.css?v=2.9` |
-| **Render tests updated** | Lock in new behaviour | `web/scripts/test-precall-render.mjs` |
-
-### DISC / attendee behaviour (2.9)
-
-- **LinkedIn PDF attached** (or email matched to an uploaded PDF): full attendee row — DISC quadrant, summary, Do/Don't, competitor touchpoints.
-- **No LinkedIn**: thin row only — name, role (or email fallback), prompt to attach a PDF. No DISC grid, no Do/Don't column.
-- **Kaia/Zoom-only reads** are still stored in the brief payload but are **not shown** in the UI unless a LinkedIn PDF is attached for that seat.
-
-### Know tab section order (after 2.9)
-
-1. AI banner + "How to read this" legend  
-2. About the company | Recent news  
-3. ICP fitment | How big is this fish?  
-4. Where they sit versus their industry  
-5. Their support stack  
-6. What we could not find  
-7. Who is in the room  
-8. Support agent JD (if found)  
-9. Discovery kit · ask this | Likely pain points  
-10. Research extras  
-
-*(Tech stack & signals accordion removed — was between JD and Discovery kit.)*
-
----
-
-## Inherited from 2.0.8.1-merge (included in 2.9, no extra commit)
-
-These were requested in the same annotation set and are already on the base branch:
-
-### Image 1 — Attendees
-
-| Item | Status |
-|------|--------|
-| Replace **Ask / Watch / Match** with **Do / Don't** | Done |
-| Remove repeating **Tech stack & signals** header | Done in 2.9 commit |
-
-### Image 2 — Industry benchmark & support stack
-
-| Item | Status |
-|------|--------|
-| Fixed maturity axes: **Channel coverage**, **Routing**, **Reporting & analytics**, **AI adoption** | Done (`worker/src/schema.ts` `FIT_LABELS`) |
-| Parameters no longer change per brief | Done (`worker/src/word-limits.ts` `normalizePrepOutput`) |
-| Remove **GAP** text column | Done — gap shown as shaded band only |
-| Fixed **Channels in** chips: Email, Chat, Voice, Social, WhatsApp, Self-serve | Done (`STACK_CHANNELS`) |
-| No dynamic channel prose ("Digital banking", "Evaluating AI Agent") | Done |
-| Remove **Freshworks consolidation** tan banner | Done — only thin-incumbent prompt when platform unknown |
-
-### Image 3 — About the company
-
-| Item | Status |
-|------|--------|
-| Single **INPUT** badge per fact tile (no duplicates) | Done |
-| **S#** citation format instead of literal "Orchestrator" | Done (`prep-source-canon.js`, worker canonicalizer) |
-| **Recent news** from grounded company-news search, not company context | Done (`worker/src/prep/company-news.ts`) |
-| **ICP fitment** as standalone tile (not inside About) | Done |
-
-### Image 4 — Unknowns & DISC
-
-| Item | Status |
-|------|--------|
-| Remove **+ / Add all** on "What we could not find" (no save mechanism yet) | Done (`web/precall-brief-v9.js`) |
-| DISC only for LinkedIn profiles | Done in 2.9 commit |
-
-### Image 5 — Fixed parameters
-
-| Item | Status |
-|------|--------|
-| No dynamic sublabels under maturity rows ("Digital-first", etc.) | Done |
-
----
-
-## Files touched in 2.9 commit
+**Diff vs base (`2.0.8.1-merge..2.9`):** 5 files, +198 / −77 lines.
 
 ```
-web/precall-brief-v9.js          — remove signals accordion; LinkedIn-only DISC gate
-web/scripts/test-precall-render.mjs — updated assertions (65 checks)
-web/index.html                   — precall.css?v=2.9
-docs/RELEASE_2.9.md              — this file
+docs/RELEASE_2.9.md
+web/index.html
+web/precall-brief-v9.js
+web/precall.js
+web/scripts/test-precall-render.mjs
 ```
-
-### Key code references
-
-- Attendee rendering: `web/precall-brief-v9.js` → `attendeeRow()`, `renderAttendees()`
-- Know tab layout: `web/precall-brief-v9.js` → `renderKnowTab()`
-- Fixed fit axes: `worker/src/schema.ts` → `FIT_LABELS`
-- Fit normalization: `worker/src/word-limits.ts` → `normalizePrepOutput()`
-- Add gap to discovery kit: `web/precall.js` → `wireTabInteractions()`
 
 ---
 
-## Validation
+## Executive summary
+
+Release 2.9 completes the **boss-annotated pre-call wireframe** (five screenshot feedback sets). Most UI work landed on `2.0.8.1-merge`; `2.9` adds three finishing commits:
+
+1. Remove the duplicate **Tech stack & signals** accordion from the Know tab.
+2. **Gate DISC / Do / Don't** to LinkedIn-enriched seats only (no empty grids on email-only prospects).
+3. Remove **+ / Add all / Added** controls from **What we could not find** (no persistence path yet).
+4. Bump **precall CSS** cache version to `2.9`.
+
+Everything below documents the **full branch experience** — inherited merge-base work plus 2.9 deltas.
+
+---
+
+## Know tab — section order (top to bottom)
+
+After 2.9, `renderKnowTab()` renders sections in this order:
+
+1. AI warning banner (`fw-inline-message.prep-ai-banner`)
+2. **How to read this** legend (`.prep-v9-read-legend`)
+3. **Two-column grid** (`.prep-v9-grid-2`):
+   - **About the company** (left)
+   - **Recent news** (right)
+4. **Two-column grid**:
+   - **ICP fitment** (`.prep-v9-icp-card`)
+   - **How big is this fish?** (benchmark / rivals)
+5. **Where they sit versus their industry** (maturity chart)
+6. **Their support stack**
+7. **What we could not find** (unknowns / gaps)
+8. **Who is in the room** (attendees)
+9. LinkedIn / Kaia result notes (when applicable)
+10. **Support agent JD · LinkedIn** (if found)
+11. **Discovery kit · ask this** | **Likely pain points** (`.prep-grid-kit`)
+12. **Research extras** (`<details.prep-research-extras>`)
+
+**Removed from order:** **Tech stack & signals** accordion (was between JD and Discovery kit). Function `renderSignalsGrid()` still exists in `precall-brief-v9.js` but is **no longer called** from `renderKnowTab()`.
+
+---
+
+## Changelog by Know tab section
+
+### 1. AI banner
+
+| Aspect | Detail |
+|--------|--------|
+| **Element** | `<fw-inline-message type="warning" open class="prep-ai-banner">` |
+| **Copy** | "Generated by AI, prone to error. Please validate before customer conversations." |
+| **CSS** | Amber tint via `--fw-inline-message-background-color` / `--fw-inline-message-border-color` (`precall.css` `.prep-ai-banner`) |
+| **2.9 delta** | None |
+
+### 2. How to read this
+
+| Badge / symbol | Meaning | CSS |
+|----------------|---------|-----|
+| `S#` + confidence dot | AI-researched web citation | `.prep-v9-src`, dot tiers: high `#5aa88f`, medium `#d6b678`, low `#dba79f` |
+| **INPUT** | SE additional context | `.prep-v9-src-input` — color `#8a7333`, background `#f3ecda` |
+| **Kaia** (named source) | Call / PDF provenance, not S# | Same `.prep-v9-src` chip styling |
+| Dashed box | Not found — ask on the call | `.prep-v9-missing-box` — border `1.3px dashed #ccc3b2` |
+
+**Copy:** Kicker "How to read this" (`.prep-v9-read-kicker`, uppercase mono, color `#a49a88`).
+
+**2.9 delta:** None (legend added on merge base to document Kaia / LinkedIn PDF vs S#).
+
+### 3. About the company
+
+| Change | Before (pre-v9 / old portal) | After (2.9) |
+|--------|---------------------------|-------------|
+| Layout | Facts inside legacy Discovery tab card | Standalone `.prep-v9-card` in 2-col grid |
+| About prose | Truncated `<details>` in v8 | Full `.prep-v9-about` paragraph (13.5px, `#4a463f`) |
+| Website row | — | `.prep-v9-website-row` with link color `#2e897b` |
+| Fact tiles | Duplicate INPUT badges on SE facts | **Single** `.prep-v9-src-input` per tile (`factTile()` — removed duplicate `isSeNotesSource` branch) |
+| Citations | Literal "Orchestrator" label visible | **S#** numbered citations via `srcBadge()` + `prep-source-canon.js` / worker canonicalizer |
+| Financials | Mixed into fact list | Kicker "Financials & funding" + `.prep-v9-tile-grid-3` |
+| Empty facts | — | `.prep-v9-tile-empty` dashed border, `EMPTY_DISPLAY` em dash |
+
+**Fallback:** `resolveDisplayFacts()` fills unknown fact keys from `businessContext` (e.g. Company size ← `users`).
+
+### 4. Recent news
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Data source | Research facts tagged `category: "news"` (could echo SE notes) | **`worker/src/prep/company-news.ts`** — dedicated grounded search, max 4 items, 12-month window |
+| Empty state copy | — | "No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener." |
+| Row styling | — | `.prep-v9-news-dot` `#6fb8ac`; title `#2b2926`; detail muted |
+| Citations | — | `srcBadge(n.sourceLabel, prep.newsSources \|\| sources)` |
+
+### 5. ICP fitment (standalone tile)
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Placement | Nested inside About / Account facts card | **Own card** `.prep-v9-icp-card` in 2-col row with benchmark |
+| Content | `highlights` / `gaps` `<details>` (schema removed) | **Criteria tick list** via `renderIcpFitment()` — met ✓ / unmet ✕ / unknown – |
+| Verdict pill | — | `.prep-icp-pill.good` green, `.ok` amber, `.weak` red |
+| Disqualifier | — | `.prep-icp-tick-dq` red uppercase "disqualifier" |
+| Cap note | — | "Capped at **Weak** — fails …" when disqualifiers fire |
+
+**CSS:** Tick marks — met: green tint; unmet: red tint; unknown: hairline gray (`.prep-icp-tick-*` in `precall.css`).
+
+### 6. How big is this fish?
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Data | Regex over facts (mislabeled rows) | `prep.rivals.axes` — server-sourced rival comparison |
+| Empty copy | — | Title "We could not size this account." + ask for team size |
+| Verdict pills | — | below: `#a9782a` / `#f3ecda`; within & above: `#2e897b` / `#e3efec` |
+| Subtitle | — | "Against {rival names}" when rivals present |
+
+### 7. Where they sit versus their industry (maturity chart)
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Axis labels | Dynamic per brief (model-chosen) | **Fixed four axes** from `FIT_LABELS` in `worker/src/schema.ts`: Channel coverage, Routing, Reporting & analytics, AI adoption |
+| Row count | Variable | Always **4 rows** — `normalizePrepOutput()` pads missing axes with `unknown` |
+| Sublabel under axis | `thisCompany` free text ("Digital banking", etc.) | **Removed** — only axis name + track position |
+| GAP text column | Pill / label column beside track | **Removed** — gap shown as **shaded band only** (`.prep-v9-maturity-band`) |
+| Level headers | — | Manual · Basic · Automated · AI-assisted (`.prep-v9-maturity-levels`) |
+| Legend | — | Them dot `#2b2926`; Norm dot white with `#a49b8d` border |
+| Gap band colors | — | large `#b8544a`; partial `#a9782a`; parity/none `#6f6759`; ahead `#2e897b` |
+| Animation | — | `data-prep-v9-animate="maturity-chart"` + stagger delays 0–280ms |
+
+**Worker:** `normalizeFitLabel()` maps legacy labels (e.g. "Agent Assist" → "AI adoption"); dedupes by label; no loose substring matching.
+
+### 8. Their support stack
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Channels | Comma-split signal prose ("Live chat active", "Digital banking") | **Six fixed chips** `STACK_CHANNELS`: Email, Chat, Voice, Social, WhatsApp, Self-serve |
+| Verified vs missing | Dynamic list | Present → `.prep-v9-stack-box` teal (`#2e897b` / `#eef7f5`); missing → dashed `#ddd6c7` italic |
+| Platform box | — | Known incumbent: sand/orange `#a9614f`; unknown: "Incumbent unknown" + "Ask, then re-run this brief" |
+| Integrations | — | Sand chips `#a5883f` from Integrations signal; or "Integrations not found" |
+| AI layer | — | Signal or dashed "Not found" |
+| Subtitle | — | "Dotted boxes are things we could not verify." |
+| Freshworks banner | Tan **consolidation pitch** on every brief ("a consolidation story, not an add-on") | **Removed** — only thin-incumbent note when platform unknown |
+| Thin-incumbent note | — | Gray box `.prep-v9-stack-note` `#f8f5ef`: "Sketch this live on the call…" |
+
+**Evidence scope:** `verifiedStackChannels()` reads chat widget signal, support portal signal, channel-related fitSnapshot row, JD bullets — not whole brief text.
+
+### 9. What we could not find
+
+| Change | Before (2.0.8.1-merge) | After (2.9 commit `6febe3f`) |
+|--------|------------------------|-------------------------------|
+| **+ button** per row | `.prep-v9-unknown-add` (＋) added question to discovery kit | **Removed** from markup |
+| **Add all** | `.prep-v9-unknown-add-all` header button | **Removed** |
+| **Added** badge | `.prep-v9-unknown-added` when question already in kit | **Removed** |
+| Row highlight | `.prep-v9-unknown-row-added` muted question | **Removed** |
+| `wireTabInteractions()` | `persistCurrentPrep()`, `appendDiscoveryQuestion()`, click handlers | **Removed** (~44 lines in `web/precall.js`) |
+| Subtitle copy | "{n} gap(s). Each one is a question." | Unchanged |
+| Thin vs rich brief | `<3` populated signals → 6 checks; else 3 checks | Unchanged (`buildUnknownsList()`) |
+
+**CSS note:** Rules for `.prep-v9-unknown-add`, `.prep-v9-unknown-add-all`, `.prep-v9-unknown-added` remain in `precall.css` but are **dead** (no longer rendered).
+
+**Gap fields checked:** Incumbent platform, Support channels, Team size, Ticket volume, AI in current stack, After-hours coverage, Support hiring.
+
+### 10. Who is in the room
+
+| Change | Before | After (2.9) |
+|--------|--------|-------------|
+| Section title | "People on this call" (v8) | **"Who is in the room"** |
+| Seat count | — | `.prep-v9-seats-pill` sand `#a5883f` / `#f3ecda` |
+| Behaviour columns | **Ask / Watch / Match** | **Do / Don't** (`.prep-v9-beh-do` `#2e897b`, `.prep-v9-beh-dont` `#b8544a`) |
+| DISC grid | Rendered for all seats (empty 2×2 + "unknown" name) | **LinkedIn-only full row**; others → `.prep-v9-attendee-thin` |
+| DISC gate (2.9) | `if (!linkedIn && !hasDisc)` — Kaia/Zoom could show grid | **`if (!linkedIn)`** — only LinkedIn PDF / merged / matched email |
+| Thin row copy | — | Role fallback: **"No LinkedIn attached — attach a PDF to profile them"** |
+| Full row | DISC SVG + summary + touchpoints + Do/Don't | Competitor touchpoints only when `isLinkedInEnrichedProspect()` |
+| Kaia/Zoom DISC data | Shown in UI when `discHint.source` was kaia/zoom | **Hidden** unless LinkedIn attached; data stays in JSON |
+| DISC SVG colors | D `#b8544a`, I/S `#7c7466`, C `#a5883f`, dot `#2b2926` | Unchanged |
+| Empty behavioural | — | "No behavioural read yet — listen for pace and detail in the first five minutes." |
+| Animation | — | `data-prep-v9-animate="disc-chart"` on `.prep-v9-attendee-disc` |
+
+**Gating helper:** `isLinkedInEnrichedProspect()` in `precall-render.js` — true when:
+
+- `sourceLabel` matches `/linkedin/i`, or
+- `discHint.source` is `linkedin_pdf` or `merged`, or
+- prospect email ∈ `renderOpts.linkedinMatchedEmails`
+
+### 11. Support agent JD
+
+| Element | Detail |
+|---------|--------|
+| Title | "Support agent JD · LinkedIn" |
+| Card class | `.prep-v9-card.prep-jd-full` |
+| Empty | Section omitted entirely if no title and no bullets |
+| Bullets | `.prep-jd-bullets` with purple dot `#` markers |
+
+### 12. Discovery kit · ask this | Likely pain points
+
+| Element | Detail |
+|---------|--------|
+| Layout | `.prep-grid-kit` — 1.3fr / 1fr columns |
+| Kit items | Numbered `.prep-kit-num` teal tint |
+| Pain list | Red dot `.prep-pain-dot` `#` (var `--dew-red`) |
+| 2.9 delta | Unknowns no longer append here via + buttons |
+
+### 13. Research extras
+
+| Change | Before (v8 Discovery tab) | After (2.9) |
+|--------|--------------------------|-------------|
+| Sources UI | Standalone "Sources & confidence" accordion | Nested inside **Research extras** `<details>` |
+| Default state | — | Collapsed unless `sourcesOpen` true |
+| Rows | — | Label, title, confidence bar (high/medium/low green/amber/red) |
+
+---
+
+## Removed features (complete list)
+
+| Feature | Where it lived | Status on 2.9 |
+|---------|----------------|-----------------|
+| **Ask / Watch / Match** attendee columns | Old v8 prospect cards | Replaced by **Do / Don't** (merge base) |
+| **Tech stack & signals** Know-tab accordion | `renderSignalsGrid()` call in `renderKnowTab()` | **Removed** (commit `3a02f4b`); data still in `prep.signals[]` |
+| **GAP text column** on maturity chart | Old v9 maturity row markup | **Removed** — band-only (merge base) |
+| **Dynamic channel prose** as stack chips | Old `buildStackChannels()` | **Removed** — fixed six channels (merge base) |
+| **Freshworks consolidation** tan banner | `buildPlatformBox()` stack note | **Removed** (merge base) |
+| **Duplicate INPUT badge** on SE facts | `factTile()` | **Removed** (merge base) |
+| **ICP highlights/gaps** details panel | `renderIcpBlock()` | **Removed** — tick list only (merge base) |
+| **+ / Add all / Added** on unknowns | `renderUnknownsGaps()` + `wireTabInteractions()` | **Removed** (commit `6febe3f`) |
+| **Kaia-only DISC grid** on Know tab | `attendeeRow()` gate | **Removed** (commit `3a02f4b`) |
+| **Dynamic maturity sublabels** | `maturityRows()` | **Removed** (merge base) |
+| **Standalone sources accordion** on Know tab | v8 `renderResearchExtras` pattern | Not rendered on v9 Know tab (merge base) |
+
+---
+
+## UI / visual reference (CSS classes & colors)
+
+### v9 card shell
+
+- `.prep-v9-card` — white `#fff`, border `#ece7de`, radius 14px, shadow `0 1px 2px rgba(43,41,38,0.03)`
+- `.prep-v9-card-title` — 16px bold
+- `.prep-v9-grid-2` — `1.55fr / 1fr`, gap 14px
+
+### Behaviour (Do / Don't)
+
+| Class | Color | Usage |
+|-------|-------|-------|
+| `.prep-v9-beh-do` | **`#2e897b`** | "Do" verb label |
+| `.prep-v9-beh-dont` | **`#b8544a`** | "Don't" verb label |
+| `.prep-v9-beh-row` | — | Flex row, 12.5px body text |
+
+### Maturity gap bands (`GAP_STYLE` in JS)
+
+| Gap enum | Band color | Label (internal, not shown in UI) |
+|----------|------------|-----------------------------------|
+| large | `#b8544a` | Big gap |
+| partial | `#a9782a` | Gap |
+| parity | `#6f6759` | At par |
+| ahead | `#2e897b` | Ahead |
+
+### Support stack chip tones (`STACK_STYLE`)
+
+| Tone | Border / bg / text |
+|------|-------------------|
+| teal (verified channel) | `#cfe3de` / `#eef7f5` / `#2e897b` |
+| missing (dotted) | dashed `#ddd6c7` / `#fff` / `#7c7466` italic |
+| sand (integration) | `#ece0c8` / `#f9f4ea` / `#a5883f` |
+| platform | `#f0d9c9` / `#fdf3ec` / `#a9614f` |
+
+### Attendee layout
+
+- Full: `.prep-v9-attendee` — grid `112px | 1fr | 1.1fr`
+- Thin: `.prep-v9-attendee-thin` — single column (no DISC / behaviour column)
+
+### Demo Prep tab (inherited, not changed in 2.9 commits)
+
+- Hero panel `.prep-v9-hero` background `#2b2926`
+- Ribbon segment colors: Frame `#c9bfa9`, Discovery `#6fb8ac`, Show `#4f9a8e`, Land it `#d6b678`
+- Sixty-second tiles use dynamic colors from `sixtySeconds()`
+
+---
+
+## Copy / text changes (quick reference)
+
+| Location | Text |
+|----------|------|
+| Attendee thin role fallback | "No LinkedIn attached — attach a PDF to profile them" |
+| Unknowns subtitle | "{n} gap(s). Each one is a question." |
+| Stack subtitle | "Dotted boxes are things we could not verify." |
+| Maturity subtitle | "The shaded distance is your pitch." |
+| Incumbent unknown platform | "Incumbent unknown" / "Ask, then re-run this brief" |
+| Recent news empty | "No public company news found yet. Ask what changed recently…" |
+| Benchmark empty | "We could not size this account." / "Ask for team size — it anchors everything else." |
+| DISC note (no primary) | "No DISC signal yet — listen for pace and detail in the first five minutes." |
+| LinkedIn result note | "Includes LinkedIn PDF you attached ({n} matched)." |
+| Kaia result note | "Includes Kaia meeting summary from your link." |
+
+---
+
+## Code / behaviour changes
+
+### `web/precall-brief-v9.js`
+
+| Function | Change |
+|----------|--------|
+| `renderKnowTab()` | Dropped `${renderSignalsGrid(...)}` between JD and Discovery kit |
+| `attendeeRow()` | Gate: **`!linkedIn`** → thin row; removed `hasDisc` / Kaia / Zoom path to full grid |
+| `renderUnknownsGaps()` | Plain rows only — no `inKit` Set, no + / Added / Add all |
+| `renderSignalsGrid()` | Still defined (used nowhere on Know tab) — legacy / tests reference removed |
+| `maturityRows()` | No sublabel span (merge base) |
+| `buildStackChannels()` | Fixed `STACK_CHANNELS` vocabulary (merge base) |
+| `factTile()` | Single badge path (merge base) |
+| `srcBadge()` | S# for numbered sources; `sourceDisplayName` for reserved labels (merge base) |
+
+### `web/precall.js`
+
+| Function | Change |
+|----------|--------|
+| `wireTabInteractions()` | **Removed** handlers for `.prep-v9-unknown-add` and `.prep-v9-unknown-add-all` |
+| | **Removed** `persistCurrentPrep()`, `appendDiscoveryQuestion()`, `addDiscoveryQuestions()` |
+
+### `web/precall-render.js` (merge base, active on 2.9)
+
+| Export | Role |
+|--------|------|
+| `renderIcpFitment()` | Criteria tick list for ICP card |
+| `isLinkedInEnrichedProspect()` | LinkedIn PDF / merged / email-match detection |
+| `discInferredLabel()` | Source-specific DISC disclaimer text |
+| `resolveDisplayFacts()` | businessContext fallbacks for empty facts |
+| `countPopulatedSignals()` | Unknowns thin-brief threshold |
+| `isSeNotesSource()` | SE → INPUT badge path |
+
+### `web/prep-source-canon.js` (merge base)
+
+- Mirrors `worker/src/prep/canonicalize-sources.ts`
+- Virtual source **Orchestrator** remapped to numbered **S#** labels in UI (not shown as literal "Orchestrator")
+- Reserved labels: SE, Kaia, Zoom, LinkedIn PDF, LinkedIn + Kaia
+- Repairs stale localStorage briefs on read (no migration write)
+
+### Worker / backend (merge base, affects UI)
+
+| File | Change |
+|------|--------|
+| `worker/src/schema.ts` | `FIT_LABELS` enum on `fitSnapshot[].label` — four fixed strings |
+| `worker/src/word-limits.ts` | `normalizePrepOutput()` — always emits 4 fit rows in `FIT_LABELS` order; legacy label map |
+| `worker/src/prep/company-news.ts` | Grounded recent news pipeline; max 4 items; 12-month window; domain verification |
+
+---
+
+## Test coverage (`web/scripts/test-precall-render.mjs`)
+
+**65 checks** (run: `cd web && node scripts/test-precall-render.mjs`).
+
+### Layout & section order
+
+- `know tab has About the company`
+- `know tab has maturity chart`
+- `know tab maturity axis labels` (Manual … AI-assisted)
+- `know tab has support stack`
+- `know tab has unknowns gaps`
+- `know tab has Who is in the room`
+- **`know tab has no signals accordion`** (2.9)
+- `know tab 2-column grid`
+- `know tab section order stack unknowns attendees`
+- `know tab maturity before discovery kit`
+- `know tab section order jd kit extras`
+
+### 2.9-specific attendee / DISC
+
+- **`know tab renders Do/Dont for linkedin prospect`**
+- **`know tab thin attendee without linkedin`**
+- **`know tab kaia-only prospect has no disc grid`**
+- **`know tab linkedin-only disc count`** — exactly 1 DISC grid, 1 thin row in multi-prospect fixture
+
+### Fixed axes & stack (merge base, locked by tests)
+
+- `know tab renders all four fixed axes`
+- `know tab has no GAP column`
+- `know tab axis has no prose sublabel`
+- `know tab axis sublabel text absent`
+- `support stack renders the six fixed channels`
+- `support stack invents no channel chips`
+- `support stack drops the consolidation pitch`
+
+### ICP, news, sources
+
+- `know tab ICP fitment`
+- `know tab recent news from research`
+- `know tab recent news not signals`
+- `know tab fact fallback from businessContext`
+- `know tab no standalone sources accordion`
+- `isSeNotesSource SE`
+- `countPopulatedSignals`
+
+### LinkedIn / competitor gating
+
+- `know tab linkedin competitor touchpoints shown`
+- `know tab llm competitor touchpoints hidden`
+- `isLinkedInEnrichedProspect matched email`
+
+### Demo Prep tab
+
+- `demo has checklist`, `demo has call plan`, hero/ribbon animate hooks, moments, assets, etc.
+
+### Helpers
+
+- `isV8Prep`, `isV7Prep`, `confidenceMeta`, `discConfidenceLabel`, `discInferredLabel`, `SIGNAL_TOOLTIPS` (6 keys)
+
+**Sample fixture updates (2.9):** LinkedIn prospect uses `sourceLabel: "LinkedIn PDF"`, `discHint.source: "linkedin_pdf"`, plus `dos` / `donts` arrays for Do/Don't assertions.
+
+**Removed assertions:** `know tab has signals accordion`, `know tab signals collapsed by default`, `know tab signals grid layout`, `know tab empty signal not found`.
+
+---
+
+## Deploy and verify
+
+### Local validation
 
 ```powershell
 cd web
-node scripts/test-precall-render.mjs    # 65 checks
+node scripts/test-precall-render.mjs    # expect: 65 precall render checks passed
 node scripts/test-prep-source-canon.mjs
 ```
 
-Worker fit-axis normalization (optional):
+Optional worker fit normalization:
 
 ```powershell
 cd worker
-npm run test:prep-normalize   # if script exists; else worker/scripts/test-prep-normalize.ts
+npm run test:prep-normalize
+# or: npx tsx scripts/test-prep-normalize.ts
 ```
 
-Manual smoke:
+### Manual smoke checklist
 
-1. Generate a brief with **one LinkedIn PDF** and **two prospect emails** — second seat should be thin (no DISC).
-2. Confirm Know tab has **no** "Tech stack & signals" accordion.
-3. Confirm maturity chart shows four fixed axes with no GAP column.
-4. Confirm support stack shows six fixed channel chips (verified or dotted).
+1. Brief with **one LinkedIn PDF** + **two prospect emails** → second seat is **thin** (no DISC, no Do/Don't).
+2. Know tab has **no** "Tech stack & signals" accordion.
+3. Maturity chart shows **four fixed axes**, no GAP text column, no prose sublabels.
+4. Support stack shows **six fixed channel chips** (teal or dashed).
+5. **What we could not find** has **no + / Add all / Added**.
+6. LinkedIn seat shows **Do** (`#2e897b`) and **Don't** (`#b8544a`) rows when `discHint.dos/donts` populated.
+7. Kaia-only prospect (no LinkedIn) → thin row, **no** `.prep-v9-disc` SVG.
 
----
-
-## Deploy (VPS / antony git)
+### VPS deploy (`antony` remote)
 
 ```bash
 cd /opt/se-singha-paathai
@@ -147,7 +475,7 @@ git pull antony 2.9
 cd deploy/vps && bash update.sh
 ```
 
-Verify precall CSS version in served HTML:
+Verify served CSS version:
 
 ```bash
 curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
@@ -160,22 +488,64 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 
 | From | To | Notes |
 |------|-----|-------|
-| `2.0.7.4` (old portal) | `2.9` | Full precall UI overhaul — all annotation items |
-| `2.0.8.1-merge` | `2.9` | Small delta: signals accordion removed, DISC gate tightened, cache bump |
+| `2.0.7.4` (old portal) | `2.9` | Full precall v9 overhaul — all annotation items |
+| `2.0.8.1-merge` | `2.9` | Delta: signals accordion removed, DISC gate tightened, unknowns + buttons removed, cache bump |
 
 ---
 
-## Known behaviour changes
+## Known behaviour notes
 
-- **Cached briefs in localStorage**: Re-opening an old brief may still show prior HTML until re-rendered; re-run the brief for fresh attendee rows.
-- **Kaia-only DISC**: Previously shown when `discHint.source` was `kaia` or `zoom`; now hidden unless LinkedIn PDF is attached for that seat.
-- **Signals data**: Still in JSON (`prep.signals[]`); only the duplicate Know-tab accordion UI was removed.
+- **Cached briefs in localStorage:** Re-opening an old brief may show stale HTML until re-rendered; re-run the brief for fresh attendee rows and unknowns layout.
+- **Kaia-only DISC:** Previously shown when `discHint.source` was `kaia` or `zoom`; now hidden unless LinkedIn PDF is attached for that seat.
+- **Signals JSON:** `prep.signals[]` unchanged; only the duplicate Know-tab accordion UI was removed.
+- **Unknowns → kit:** Adding gaps to discovery kit is **not supported** on 2.9; prior `persistCurrentPrep()` path removed with buttons.
+- **CSS dead rules:** `.prep-v9-unknown-add*` / `.prep-v9-unknown-added` styles remain in `precall.css` but are unused until re-wired.
 
 ---
 
-## Commits on branch 2.9
+## Files changed on branch 2.9 (vs `2.0.8.1-merge`)
 
-```
-3a02f4b Release 2.9 precall UI: remove duplicate tech-stack section and gate DISC to LinkedIn profiles.
-(+ docs commit after this README is added)
-```
+| File | One-line description |
+|------|---------------------|
+| `docs/RELEASE_2.9.md` | This definitive branch reference |
+| `web/index.html` | Cache-bust `precall.css?v=2.9` |
+| `web/precall-brief-v9.js` | Remove signals accordion from Know tab; LinkedIn-only DISC/Do/Don't gate; strip unknowns add controls |
+| `web/precall.js` | Remove unknowns → discovery kit persistence and click handlers |
+| `web/scripts/test-precall-render.mjs` | 65 assertions — signals absent, DISC gating, Do/Don't, linkedin-only disc count |
+
+## Key inherited files (on `2.0.8.1-merge`, part of 2.9 experience)
+
+| File | One-line description |
+|------|---------------------|
+| `web/precall-brief-v9.js` | Full v9 Know + Demo Prep layout (most boss annotations) |
+| `web/precall.css` | v9 styles — Do/Don't colors, stack, maturity, ICP ticks, animations |
+| `web/precall-render.js` | ICP ticks, LinkedIn gating, badges, fact fallbacks |
+| `web/prep-source-canon.js` | Client-side S# canonicalization (Orchestrator → numbered sources) |
+| `worker/src/schema.ts` | `FIT_LABELS` four-axis enum |
+| `worker/src/word-limits.ts` | `normalizePrepOutput()` fixed fit rows |
+| `worker/src/prep/company-news.ts` | Grounded recent news pipeline |
+| `worker/src/prep/canonicalize-sources.ts` | Server-side source numbering (mirror of web canon) |
+
+---
+
+## Annotation traceability (boss screenshots)
+
+| Image | Request | Status on 2.9 |
+|-------|---------|---------------|
+| 1 — Attendees | Do/Don't not Ask/Watch/Match | Done (merge base) |
+| 1 | Remove repeating Tech stack header | Done (`3a02f4b`) |
+| 2 — Benchmark & stack | Fixed maturity axes | Done (`FIT_LABELS` + normalization) |
+| 2 | Remove GAP column | Done (band only) |
+| 2 | Fixed channel chips | Done (`STACK_CHANNELS`) |
+| 2 | Remove Freshworks banner | Done |
+| 3 — About | Single INPUT badge | Done |
+| 3 | S# not Orchestrator | Done (canonicalizer) |
+| 3 | Recent news from search | Done (`company-news.ts`) |
+| 3 | ICP standalone tile | Done |
+| 4 — Unknowns & DISC | Remove + / Add all | Done (`6febe3f`) |
+| 4 | DISC only for LinkedIn | Done (`3a02f4b`) |
+| 5 — Fixed parameters | No dynamic sublabels | Done |
+
+---
+
+*Last updated: 2026-08-03 — branch `2.9` @ `6febe3f`.*
