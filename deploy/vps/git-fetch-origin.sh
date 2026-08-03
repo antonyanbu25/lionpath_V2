@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT="${1:-.}"
-BRANCH="${2:-2.0.7.4}"
+BRANCH="${2:-2.0.8.1-merge}"
 
 cd "$REPO_ROOT"
 
