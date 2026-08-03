@@ -293,7 +293,7 @@ function icpTick(row, sources) {
 /** Met first, then not-met, then unevidenced — so the shape of the read is visible. */
 const TICK_ORDER = { met: 0, unmet: 1, unknown: 2 };
 
-function renderIcpFitment(icpFit, sources) {
+export function renderIcpFitment(icpFit, sources) {
   if (!icpFit) return "";
   const rows = icpFit.criteria || [];
 

@@ -6,7 +6,7 @@ import { fetchKaiaShareContent } from "../kaia/fetchShareContent";
 import { isKaiaEngageShareUrl } from "../kaia/shareLink";
 import {
   analysisConfidenceForVideo,
-  VIDEO_DEPENDENT_THEME_KEYS,
+  QIP_PROFILES,
   VIDEO_THEME_NA_REASON,
 } from "../rubric-profiles";
 import {
@@ -36,7 +36,13 @@ function briefSnapshotsFromInput(input: PostCallResolveInput) {
 
 function videoThemesWhenUnavailable(videoAvailable: boolean): VideoThemeApplicability[] {
   if (videoAvailable) return [];
-  return VIDEO_DEPENDENT_THEME_KEYS.map((themeKey) => ({
+  const keys = new Set<string>();
+  for (const profile of QIP_PROFILES) {
+    for (const theme of profile.themes) {
+      if (theme.requiresVideo) keys.add(theme.key);
+    }
+  }
+  return [...keys].map((themeKey) => ({
     themeKey,
     applicable: false as const,
     reason: VIDEO_THEME_NA_REASON,

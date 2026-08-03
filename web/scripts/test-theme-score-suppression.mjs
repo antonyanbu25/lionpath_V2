@@ -27,70 +27,76 @@ try {
 
   const scorecard = {
     callType: "demo",
-    rubricVersion: "1.0",
+    rubricVersion: "2.1",
     provisional: false,
+    overall: 7,
     confidence: 0.9,
     lines: [
       {
         themeKey: "storytelling",
-        score: 70,
-        maxScore: 100,
+        grade: 7,
+        credit: 2,
+        category: "communication_control",
         applicable: true,
-        weight: 5,
-        evidence: [{ atS: 120, quote: "We follow Maya through her shift." }],
+        subParameters: [{ score: 1, evidence: [{ atS: 120, quote: "We follow Maya through her shift." }] }],
         coachingNote: "Name a persona in their industry.",
       },
       {
         themeKey: "value",
-        score: 80,
-        maxScore: 100,
+        grade: 8,
+        credit: 3,
+        category: "business_value",
         applicable: true,
-        weight: 10,
-        evidence: [{ atS: 200, quote: "Cuts handle time by thirty percent." }],
+        subParameters: [{ score: 2, evidence: [{ atS: 200, quote: "Cuts handle time by thirty percent." }] }],
         coachingNote: "Quantify one ROI claim.",
       },
       {
         themeKey: "questions",
-        score: 0,
-        maxScore: 100,
+        grade: 0,
+        credit: 3,
+        category: "discovery_qualification",
         applicable: true,
-        weight: 5,
-        evidence: [{ atS: 30, quote: "Any questions?" }],
+        subParameters: [{ score: 0, evidence: [{ atS: 30, quote: "Any questions?" }] }],
         coachingNote: "Ask one open discovery question.",
       },
       {
         themeKey: "camera_on",
-        score: 0,
-        maxScore: 100,
+        grade: 0,
+        credit: 2,
+        category: "communication_control",
         applicable: false,
-        notApplicableReason: "No video recording — requires Pass 2 video evidence.",
-        weight: 5,
-        evidence: [],
+        evidenceUnavailable: true,
+        notApplicableReason: "No video recording — this theme requires visual evidence from the recording and cannot be scored from transcript alone.",
+        subParameters: [],
         coachingNote: null,
       },
     ],
   };
 
   const composite = typeComposite([scorecard], "demo", { includeIneligible: true });
-  assert(
-    "composite includes suppressed theme weight",
-    composite.score === Math.round(((70 / 100) * 5 + (80 / 100) * 10 + 0) / 20 * 100 * 10) / 10,
-  );
-  assert("composite applicable weight unchanged", composite.applicableWeight === 20);
+  assert("composite uses overall field", composite.score === 7);
 
   const html = renderQipScorecard(scorecard, { callType: "demo", provisional: false });
   assert("suppressed message shown", html.includes("Not shown: this theme&#39;s scoring is still stabilising."));
-  assert("suppressed keeps evidence", html.includes("Maya through her shift"));
-  assert("suppressed keeps coaching", html.includes("Name a persona"));
-  assert("suppressed css class", html.includes("qip-line-suppressed"));
-  assert("zero score still numeric", html.includes('class="qip-line-score weak">0<span class="qip-line-max">/100</span>'));
+  assert("suppressed keeps sub-parameter evidence", html.includes("Maya through her shift"));
+  assert(
+    "suppressed keeps coach line",
+    html.includes("qip-sp-coach") &&
+      (html.includes("Listen back") ||
+        html.includes("concrete fix") ||
+        html.includes("On your next call") ||
+        html.includes("Name a persona")),
+  );
+  assert("suppressed css class", html.includes("qip-theme-row-suppressed"));
+  assert("zero score still numeric", html.includes(">0</strong><span class=\"qip-line-max\"> / 10</span>"));
   assert("NA still badge not zero", html.includes('class="qip-na-badge">N/A</span>'));
   assert("NA reason preserved", html.includes("No video recording"));
   assert(
     "suppressed line not NA",
-    html.includes('class="qip-line qip-line-suppressed"') && html.includes("qip-line-na"),
+    html.includes('class="qip-theme-row qip-theme-row-suppressed"') && html.includes("qip-theme-row-na"),
   );
-  assert("composite header unchanged", html.includes("(demo v1.0)"));
+  assert("overall header /10", html.includes("7 / 10"));
+  assert("no /100 in UI", !html.includes("/ 100"));
 
   __resetThemeSuppressionForTests();
   console.log("OK — theme score suppression tests passed");

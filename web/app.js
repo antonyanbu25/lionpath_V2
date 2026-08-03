@@ -1,4 +1,4 @@
-import { readFieldValue, readFieldValueAsync, setFieldError, fillShadowField } from "./crayons-ui.js";
+import { readFieldValue, readFieldValueAsync, setFieldError, setFieldValue, fillShadowField } from "./crayons-ui.js";
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
@@ -71,8 +71,10 @@ import {
   setOnCallRecordHydrated,
   resetPostCallView,
   clearPostCallForm,
+  ensurePostCallProspectEmailsEmpty,
   hidePostCallLegacyResult,
   isPostCallGenerationBusy,
+  scheduleProspectEmailAutofillGuard,
 } from "./postcall.js";
 import {
   applyAutoCompanyDomain,
@@ -603,6 +605,8 @@ function switchView(name, opts = {}) {
   } else if (name === "accounts") {
     if (opts.accountId) {
       selectedAccountId = opts.accountId;
+      if (opts.contactId) selectedAccountContactId = opts.contactId;
+      else if (!opts.drillDown) selectedAccountContactId = null;
     } else if (!opts.drillDown) {
       selectedAccountId = null;
       selectedAccountDealId = null;
@@ -646,6 +650,9 @@ function switchView(name, opts = {}) {
   }
   if (name === "postcall" && !isPostCallGenerationBusy()) {
     resetPostCallView();
+    void setFieldValue($("login-email"), "");
+    void setFieldValue($("login-password"), "");
+    scheduleProspectEmailAutofillGuard();
   }
 }
 
@@ -958,14 +965,15 @@ async function renderCallPanel() {
         callRecordOwnerEmail = undefined;
         switchView("deals", { dealId, drillDown: true });
       },
-      onOpenAccount: (accountId) => {
+      onOpenAccount: (accountId, contactId) => {
         selectedAccountId = accountId;
         selectedAccountDealId = null;
+        selectedAccountContactId = contactId || null;
         selectedCallId = null;
         callRecordTab = undefined;
         callExpandThemeKey = undefined;
         callRecordOwnerEmail = undefined;
-        switchView("accounts", { accountId, drillDown: true });
+        switchView("accounts", { accountId, contactId, drillDown: true });
       },
       onNewPostCall: () => {
         selectedCallId = null;
@@ -1244,15 +1252,24 @@ function wireUserMenu() {
   });
 }
 
+let signingOut = false;
+
 async function handleSignOut() {
-  if (fb?.auth && fb?.signOut) {
-    try {
-      await fb.signOut(fb.auth);
-    } catch {
-      // ignore sign-out errors
+  if (signingOut) return;
+  signingOut = true;
+  try {
+    if (fb?.auth && fb?.signOut) {
+      try {
+        await fb.signOut(fb.auth);
+      } catch {
+        // ignore sign-out errors
+      }
     }
+    logout();
+    handleSession(null);
+  } finally {
+    signingOut = false;
   }
-  logout();
 }
 
 // ---------- Sidebar mobile ----------
@@ -1341,6 +1358,13 @@ async function showApp(session, opts = {}) {
     setTimelineAuthGetter(tokenFn);
     setProductSignalAuthGetter(tokenFn);
     onSessionReady(currentSession, tokenFn);
+
+    if (opts.freshLogin) {
+      void setFieldValue($("login-email"), "");
+      void setFieldValue($("login-password"), "");
+      void ensurePostCallProspectEmailsEmpty();
+      scheduleProspectEmailAutofillGuard();
+    }
 
     updateNavForRole();
 
@@ -1635,7 +1659,7 @@ async function initFirebase() {
     const allowed =
       user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`));
     if (allowed) {
-      void completeFirebaseLogin(user);
+      if (!signingOut) void completeFirebaseLogin(user);
       return;
     }
     if (user) {
@@ -1666,12 +1690,12 @@ async function warnIfWorkerDown() {
     if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     const config = await res.json();
     const workerBuild = String(config.workerBuild || "");
-    const workerOk = workerBuild.includes("domain-cache");
-    const portalOk =
-      !portalBuild ||
-      portalBuild.includes("domain-cache") ||
-      portalBuild.includes("precall-align");
-    const needsDomainCache = !workerOk || !portalOk;
+    const needsDomainCache =
+      !workerBuild.includes("domain-cache") ||
+      (portalBuild &&
+        !portalBuild.includes("domain-cache") &&
+        !portalBuild.includes("precall-align") &&
+        !portalBuild.includes("2.0.8.1"));
     if (needsDomainCache) {
       banner.setAttribute("type", "warning");
       banner.textContent =
@@ -1792,9 +1816,7 @@ async function boot() {
     }
   });
 
-  // Crayons' internal .field-control does not stretch to a CSS-resized host and this build
-  // exposes no ::part(input), so the only way in is a shadow-root style injection.
-  document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea").forEach((el) => fillShadowField(el));
+  document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea, #postcall-form fw-input, #postcall-form fw-textarea").forEach((el) => fillShadowField(el));
 
   $("prospectEmail")?.addEventListener("fwInput", () => {
     syncAutoCompanyDomain();
@@ -1857,6 +1879,10 @@ async function boot() {
         const { updatePostCallAnalysis } = await import("./history.js");
         await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
           rec.dealId = linkedDealId;
+          if (linked?.accountId) rec.accountId = linked.accountId;
+          if (data?.scorecard?.lines?.length && !rec.scorecard?.lines?.length) {
+            rec.scorecard = data.scorecard;
+          }
           if (rec.result) {
             rec.result = {
               ...rec.result,

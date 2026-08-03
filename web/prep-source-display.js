@@ -8,13 +8,19 @@
  */
 
 /** Labels that carry meaning to regex consumers and must never be renumbered. */
+/**
+ * Mirror of RESERVED_LABELS in worker/src/prep/source-display.ts.
+ *
+ * "Orchestrator" is deliberately absent: it is web/LinkedIn research, i.e. the AI-researched
+ * provenance the legend documents as `S#`, so it is numbered like any other citation. The rest
+ * are non-web provenance with no citation to number.
+ */
 export const RESERVED_LABELS = [
   "SE",
   "Kaia",
   "Zoom",
   "LinkedIn + Kaia",
   "LinkedIn PDF",
-  "Orchestrator",
 ];
 
 /** Label for a row whose provenance cannot be resolved. Renders as unverified. */

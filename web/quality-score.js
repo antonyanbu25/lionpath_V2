@@ -1,24 +1,9 @@
-/** Deterministic overall score + label from dimension scores (matches worker/src/quality-score.ts). */
+/** QIP v2.1 scoring — mirrors worker/src/quality-score.ts */
 
-/** @typedef {{ themeKey: string, score: number, maxScore: number, applicable: boolean, weight: number }} ScorecardLineForComposite */
-/** @typedef {{ callType: string, rubricVersion: string, lines: ScorecardLineForComposite[], provisional?: boolean, confidence?: number|null }} ScorecardForTypeComposite */
-/** @typedef {{ score: number|null, applicableWeight: number, totalWeight: number, applicableCount: number, rubricVersion: string, callType: string }} TypeCompositeResult */
-/** @typedef {{ themeKey: string, score: number, maxScore: number, applicable: boolean }} ScorecardLineForSpine */
-/** @typedef {{ callType?: string, lines: ScorecardLineForSpine[], provisional?: boolean, confidence?: number|null }} ScorecardForSpineComposite */
-/** @typedef {{ score: number|null, themeCount: number, callCount: number, coverage: number }} SpineCompositeResult */
-/** @typedef {{ score: number|null, count: number, themeKey: string, maxScore: number, callTypeFilter: string|null }} ThemeAverageResult */
-/** @typedef {{ requireHighConfidence?: boolean, includeIneligible?: boolean }} AggregateOpts */
+import { CATEGORY_KEYS, profileFor } from "./rubric-profiles.js";
 
-const CORE_FOUR_THEME_KEYS = ["call_flow", "customer_engagement", "objections", "camera_on"];
-
-/** Spec §9. only high-confidence calls feed the coaching queue. */
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
-/**
- * Shadow + confidence gate for averages, coaching queue, spine, and heatmap (§6.6 / §9).
- * @param {{ provisional?: boolean, confidence?: number|null }} scorecard
- * @param {{ minConfidence?: number, requireHighConfidence?: boolean }} [opts]
- */
 export function isEligibleForAggregate(scorecard, opts = {}) {
   if (scorecard?.provisional) return false;
   const min =
@@ -30,10 +15,6 @@ export function isEligibleForAggregate(scorecard, opts = {}) {
   return true;
 }
 
-/**
- * @param {ScorecardForTypeComposite[]} scorecards
- * @param {AggregateOpts} [opts]
- */
 function filterEligibleScorecards(scorecards, opts = {}) {
   if (opts.includeIneligible) return scorecards || [];
   return (scorecards || []).filter((sc) =>
@@ -41,149 +22,128 @@ function filterEligibleScorecards(scorecards, opts = {}) {
   );
 }
 
-/**
- * Weighted composite within one call type.
- * sum(score × weight) over applicable lines ÷ sum(weight) over applicable lines.
- * @param {ScorecardForTypeComposite[]} scorecards
- * @param {string} callType
- * @param {AggregateOpts} [opts]
- * @returns {TypeCompositeResult}
- */
-export function typeComposite(scorecards, callType, opts = {}) {
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function emptyCategoryScores() {
+  return Object.fromEntries(CATEGORY_KEYS.map((k) => [k, 0]));
+}
+
+export function computeThemeGrade(subParameters) {
+  const values =
+    subParameters?.length && typeof subParameters[0] === "object"
+      ? subParameters.map((sp) => sp.score)
+      : subParameters || [];
+  if (values.length !== 5) return 0;
+  return values.reduce((acc, v) => acc + (v ?? 0), 0);
+}
+
+export function scoreCall(profile, themeScores) {
+  const byKey = new Map((themeScores || []).map((t) => [t.themeKey, t]));
+  const themes = [];
+  const categoryTotals = {};
+  let totalGp = 0;
+  let includedCredits = 0;
+
+  for (const theme of profile.themes) {
+    const input = byKey.get(theme.key);
+    const evidenceUnavailable = !!input?.evidenceUnavailable || !!input?.modelOmitted;
+    const subParams = input?.subParameters ?? [];
+    const grade = evidenceUnavailable ? 0 : computeThemeGrade(subParams);
+    const contribution = grade * theme.credit;
+    const includedInDenominator = !evidenceUnavailable;
+
+    themes.push({
+      themeKey: theme.key,
+      grade,
+      credit: theme.credit,
+      category: theme.category,
+      contribution,
+      evidenceUnavailable,
+      includedInDenominator,
+    });
+
+    if (includedInDenominator) {
+      if (!categoryTotals[theme.category]) categoryTotals[theme.category] = [0, 0];
+      categoryTotals[theme.category][0] += contribution;
+      categoryTotals[theme.category][1] += theme.credit;
+      totalGp += contribution;
+      includedCredits += theme.credit;
+    }
+  }
+
+  const categoryScores = emptyCategoryScores();
+  for (const cat of CATEGORY_KEYS) {
+    const pair = categoryTotals[cat];
+    categoryScores[cat] = pair && pair[1] > 0 ? round2(pair[0] / pair[1]) : 0;
+  }
+
+  const overall = includedCredits > 0 ? round2(totalGp / includedCredits) : 0;
+
+  return {
+    overall,
+    totalCredits: profile.totalCredits,
+    includedCredits,
+    categoryScores,
+    themes,
+  };
+}
+
+export function profileAverage(scorecards, callType, opts = {}) {
   const pool = filterEligibleScorecards(scorecards, opts).filter(
     (sc) => !callType || sc.callType === callType,
   );
-
   if (!pool.length) {
-    return {
-      score: null,
-      applicableWeight: 0,
-      totalWeight: 0,
-      applicableCount: 0,
-      rubricVersion: "",
-      callType: callType || "",
-    };
+    return { score: null, callCount: 0, includedCredits: 0, rubricVersion: "", callType: callType || "" };
   }
-
-  let earnedSum = 0;
-  let applicableWeight = 0;
-  let totalWeight = 0;
-  let applicableCount = 0;
-  const rubricVersion = pool[0].rubricVersion || "1.0";
-  const resolvedCallType = callType || pool[0].callType || "";
-
-  for (const scorecard of pool) {
-    for (const line of scorecard.lines || []) {
-      totalWeight += line.weight;
-      if (!line.applicable) continue;
-      applicableCount += 1;
-      applicableWeight += line.weight;
-      const max = line.maxScore > 0 ? line.maxScore : 100;
-      const normalized = Math.min(1, Math.max(0, line.score / max));
-      earnedSum += normalized * line.weight;
+  let sum = 0;
+  let count = 0;
+  for (const sc of pool) {
+    if (typeof sc.overall === "number" && Number.isFinite(sc.overall)) {
+      sum += sc.overall;
+      count += 1;
     }
   }
-
-  const score =
-    applicableWeight > 0 ? Math.round((earnedSum / applicableWeight) * 100 * 10) / 10 : null;
-
+  const profile = profileFor(callType);
   return {
-    score,
-    applicableWeight,
-    totalWeight,
-    applicableCount,
-    rubricVersion,
-    callType: resolvedCallType,
+    score: count > 0 ? round2(sum / count) : null,
+    callCount: count,
+    includedCredits: profile.totalCredits,
+    rubricVersion: pool[0].rubricVersion || "2.1",
+    callType: callType || pool[0].callType || "",
   };
 }
 
-/** @param {TypeCompositeResult} result */
-export function formatTypeComposite(result) {
-  const score = result.score ?? 0;
-  const denom = result.applicableWeight > 0 ? 100 : 0;
-  return `${score} / ${denom} (${result.callType} v${result.rubricVersion})`;
-}
-
-/**
- * Cross-type spine composite — unweighted mean over core-four themes only.
- * @param {ScorecardForSpineComposite[]} scorecards
- * @param {AggregateOpts} [opts]
- * @returns {SpineCompositeResult}
- */
-export function spineComposite(scorecards, opts = {}) {
-  const eligible = filterEligibleScorecards(scorecards, opts);
-  const callCount = eligible.length;
-  if (!callCount) {
-    return { score: null, themeCount: 0, callCount: 0, coverage: 0 };
-  }
-
-  let scoreSum = 0;
-  let themeCount = 0;
-  let fullCoverageCount = 0;
-
-  for (const sc of eligible) {
-    const lineMap = new Map((sc.lines || []).map((l) => [l.themeKey, l]));
-    let allFourApplicable = true;
-
-    for (const key of CORE_FOUR_THEME_KEYS) {
-      const line = lineMap.get(key);
-      if (!line?.applicable) {
-        allFourApplicable = false;
-        continue;
-      }
-      scoreSum += line.score;
-      themeCount += 1;
-    }
-
-    if (allFourApplicable) fullCoverageCount += 1;
-  }
-
-  return {
-    score: themeCount > 0 ? Math.round((scoreSum / themeCount) * 10) / 10 : null,
-    themeCount,
-    callCount,
-    coverage: fullCoverageCount / callCount,
-  };
-}
-
-/**
- * Mean raw score for one theme across scorecards.
- * @param {ScorecardForSpineComposite[]} scorecards
- * @param {string} themeKey
- * @param {string|null} [callTypeFilter]
- * @param {AggregateOpts} [opts]
- * @returns {ThemeAverageResult}
- */
 export function themeAverage(scorecards, themeKey, callTypeFilter = null, opts = {}) {
   const eligible = filterEligibleScorecards(scorecards, opts).filter(
     (sc) => !callTypeFilter || sc.callType === callTypeFilter,
   );
-
-  let scoreSum = 0;
+  let gradeSum = 0;
   let count = 0;
-  let maxScore = 100;
-
   for (const sc of eligible) {
-    const line = (sc.lines || []).find((l) => l.themeKey === themeKey && l.applicable);
+    const line = (sc.lines || []).find(
+      (l) => l.themeKey === themeKey && !l.evidenceUnavailable && !l.modelOmitted,
+    );
     if (!line) continue;
-    scoreSum += line.score;
+    gradeSum += line.grade ?? (line.maxScore === 100 ? (line.score ?? 0) / 10 : line.score ?? 0);
     count += 1;
-    if (line.maxScore > 0) maxScore = line.maxScore;
   }
-
   return {
-    score: count > 0 ? Math.round((scoreSum / count) * 10) / 10 : null,
+    score: count > 0 ? round2(gradeSum / count) : null,
     count,
     themeKey,
-    maxScore,
     callTypeFilter,
   };
 }
 
-/** @param {{ score: number, maxScore: number }[]} dimensions */
+export function formatProfileAverage(result) {
+  const score = result.score ?? 0;
+  return `${score} / 10 (${result.callType} v${result.rubricVersion})`;
+}
+
 export function computeOverallScore(dimensions) {
   if (!dimensions?.length) return null;
-
   let ratioSum = 0;
   let count = 0;
   for (const d of dimensions) {
@@ -194,11 +154,9 @@ export function computeOverallScore(dimensions) {
     }
   }
   if (!count) return null;
-
-  return Math.round((ratioSum / count) * 10 * 10) / 10;
+  return round2((ratioSum / count) * 10);
 }
 
-/** @param {number} score. 0–10 (strict MVP calibration) */
 export function overallLabelFromScore(score) {
   if (score >= 9) return "Excellent";
   if (score >= 7) return "Strong";
@@ -207,42 +165,68 @@ export function overallLabelFromScore(score) {
   return "Needs focus";
 }
 
-/** @param {object} qc */
+export function qipScoreBand(score) {
+  if (score >= 9) return "excellent";
+  if (score >= 7) return "strong";
+  if (score >= 5.5) return "good";
+  if (score >= 4) return "developing";
+  return "needsFocus";
+}
+
+/** Legacy quality-coach band (0–10 scale). */
+export function scoreBand(score) {
+  return qipScoreBand(score);
+}
+
 export function normalizeQualityCoach(qc) {
-  if (!qc) {
-    return {
-      overallScore: 0,
-      overallLabel: overallLabelFromScore(0),
-      dimensions: [],
-      strengths: [],
-      improvements: [],
-      missedOpportunities: [],
-    };
-  }
   const dimensions = qc.dimensions || [];
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);
   return {
     ...qc,
+    dimensions,
     overallScore,
     overallLabel: overallLabelFromScore(overallScore),
+    strengths: qc.strengths || [],
+    improvements: qc.improvements || [],
+    missedOpportunities: qc.missedOpportunities || [],
   };
 }
 
-/** @param {number} overall. 0–10 */
-export function scoreBand(overall) {
-  if (overall >= 9) return "excellent";
-  if (overall >= 7) return "strong";
-  if (overall >= 5.5) return "good";
-  if (overall >= 4) return "developing";
-  return "needsFocus";
+/** @deprecated v2.1 — use profileAverage */
+export function typeComposite(scorecards, callType, opts = {}) {
+  const mapped = (scorecards || []).map((sc) => ({
+    ...sc,
+    overall: sc.overall ?? (typeof sc.rawScore === "number" ? sc.rawScore / 10 : undefined),
+    lines: (sc.lines || []).map((l) => ({
+      themeKey: l.themeKey,
+      grade: l.grade ?? (l.maxScore === 100 ? (l.score ?? 0) / 10 : l.score ?? 0),
+      credit: l.credit ?? l.weight ?? 1,
+      category: l.category ?? "discovery_qualification",
+      evidenceUnavailable: l.evidenceUnavailable ?? !l.applicable,
+    })),
+  }));
+  const result = profileAverage(mapped, callType, opts);
+  return {
+    score: result.score,
+    applicableWeight: result.includedCredits,
+    totalWeight: result.includedCredits,
+    applicableCount: result.callCount,
+    rubricVersion: result.rubricVersion,
+    callType: result.callType,
+  };
 }
 
-/** @param {number} score. 0–100 QIP raw / composite scale */
-export function qipScoreBand(score) {
-  if (score >= 90) return "excellent";
-  if (score >= 70) return "strong";
-  if (score >= 55) return "good";
-  if (score >= 40) return "developing";
-  return "needsFocus";
+/** @deprecated v2.1 — removed */
+export function spineComposite() {
+  return { score: null, themeCount: 0, callCount: 0, coverage: 0 };
+}
+
+/** @deprecated v2.1 — use formatProfileAverage */
+export function formatTypeComposite(result) {
+  return formatProfileAverage({
+    score: result.score,
+    callType: result.callType,
+    rubricVersion: result.rubricVersion,
+  });
 }

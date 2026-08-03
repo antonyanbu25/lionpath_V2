@@ -1,8 +1,8 @@
-// Deterministic overall score + label from dimension scores (model outputs dimensions only).
-// QIP type and spine composites — mirrored in web/quality-score.js.
+// QIP v2.1 scoring — Appendix B score_call. Mirrored in web/quality-score.js.
 
 import type { PostCallAnalysis } from "./postcall-schema";
-import { CORE_FOUR_THEME_KEYS, type CallType } from "./rubric-profiles";
+import type { CallType, CategoryKey, QipProfile } from "./rubric-profiles";
+import { CATEGORY_KEYS, profileFor } from "./rubric-profiles";
 
 /** Spec §9 — only high-confidence calls feed the coaching queue. Mirrored in web. */
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
@@ -13,46 +13,53 @@ type QualityCoachInput = Omit<QualityCoach, "overallScore" | "overallLabel"> & {
   overallLabel?: string;
 };
 
-/** Line input for typeComposite — weight comes from the rubric at score time. */
-export interface ScorecardLineForComposite {
+export type SubParameterValue = 0 | 1 | 2;
+
+export interface SubParameterScore {
+  score: SubParameterValue;
+  evidence?: Array<{ atS?: number | null; quote?: string | null; source?: string | null }>;
+}
+
+export interface ThemeScoreInput {
   themeKey: string;
-  score: number;
-  maxScore: number;
-  applicable: boolean;
-  weight: number;
+  /** Five sub-parameter scores — each 0, 1, or 2. */
+  subParameters: SubParameterScore[];
+  /** requires_video theme with no video — excluded from denominator. */
+  evidenceUnavailable?: boolean;
+  modelOmitted?: boolean;
 }
 
-/** Scorecard + lines passed to typeComposite. */
-export interface ScorecardForTypeComposite {
-  callType: CallType;
-  rubricVersion: string;
-  lines: ScorecardLineForComposite[];
-  provisional?: boolean;
-  confidence?: number | null;
+export interface ThemeScoreResult {
+  themeKey: string;
+  grade: number;
+  credit: number;
+  category: CategoryKey;
+  contribution: number;
+  evidenceUnavailable: boolean;
+  includedInDenominator: boolean;
 }
 
-export interface TypeCompositeResult {
-  score: number | null;
-  applicableWeight: number;
-  totalWeight: number;
-  applicableCount: number;
-  rubricVersion: string;
+export interface ScoreCallResult {
+  overall: number;
+  totalCredits: number;
+  includedCredits: number;
+  categoryScores: Record<CategoryKey, number>;
+  themes: ThemeScoreResult[];
+}
+
+export interface ScorecardLineForScore {
+  themeKey: string;
+  grade: number;
+  credit: number;
+  category: CategoryKey;
+  evidenceUnavailable?: boolean;
+}
+
+export interface ScorecardForAggregate {
   callType: CallType | string;
-}
-
-/** Line input for spineComposite — core-four themes only. */
-export interface ScorecardLineForSpine {
-  themeKey: string;
-  score: number;
-  maxScore: number;
-  applicable: boolean;
-  weight?: number;
-}
-
-export interface ScorecardForSpineComposite {
-  callType?: CallType;
-  lines: ScorecardLineForSpine[];
-  /** Shadow mode — exclude from spine when true (§6.6). */
+  rubricVersion: string;
+  overall?: number;
+  lines: ScorecardLineForScore[];
   provisional?: boolean;
   confidence?: number | null;
 }
@@ -70,8 +77,7 @@ export interface AggregateOpts {
 }
 
 /**
- * Shadow + confidence gate for averages, coaching queue, spine, and heatmap.
- * One boolean (provisional) plus exclusion in every aggregation query (§6.6 / §9).
+ * Shadow + confidence gate for averages, coaching queue, and heatmap.
  */
 export function isEligibleForAggregate(
   scorecard: AggregateEligibility,
@@ -97,135 +103,130 @@ function filterEligibleScorecards<T extends AggregateEligibility>(
   );
 }
 
-export interface SpineCompositeResult {
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function emptyCategoryScores(): Record<CategoryKey, number> {
+  return Object.fromEntries(CATEGORY_KEYS.map((k) => [k, 0])) as Record<CategoryKey, number>;
+}
+
+/** Sum five 0/1/2 sub-parameters → theme grade 0..10. */
+export function computeThemeGrade(subParameters: SubParameterScore[] | SubParameterValue[]): number {
+  let values: number[];
+  if (subParameters.length && typeof subParameters[0] === "object") {
+    values = (subParameters as SubParameterScore[]).map((sp) => sp.score);
+  } else {
+    values = subParameters as SubParameterValue[];
+  }
+  if (values.length !== 5) return 0;
+  return values.reduce((acc, v) => acc + (v ?? 0), 0);
+}
+
+/**
+ * Appendix B score_call — deterministic overall + category scores.
+ * Non-applicable (no evidence): grade 0, stays in denominator.
+ * evidence_unavailable: excluded from denominator, lowers confidence separately.
+ */
+export function scoreCall(profile: QipProfile, themeScores: ThemeScoreInput[]): ScoreCallResult {
+  const byKey = new Map(themeScores.map((t) => [t.themeKey, t]));
+  const themes: ThemeScoreResult[] = [];
+  const categoryTotals: Record<string, [number, number]> = {};
+  let totalGp = 0;
+  let includedCredits = 0;
+
+  for (const theme of profile.themes) {
+    const input = byKey.get(theme.key);
+    const evidenceUnavailable = !!input?.evidenceUnavailable || !!input?.modelOmitted;
+    const subParams = input?.subParameters ?? [];
+    const grade = evidenceUnavailable ? 0 : computeThemeGrade(subParams);
+    const contribution = grade * theme.credit;
+    const includedInDenominator = !evidenceUnavailable;
+
+    themes.push({
+      themeKey: theme.key,
+      grade,
+      credit: theme.credit,
+      category: theme.category,
+      contribution,
+      evidenceUnavailable,
+      includedInDenominator,
+    });
+
+    if (includedInDenominator) {
+      if (!categoryTotals[theme.category]) categoryTotals[theme.category] = [0, 0];
+      categoryTotals[theme.category][0] += contribution;
+      categoryTotals[theme.category][1] += theme.credit;
+      totalGp += contribution;
+      includedCredits += theme.credit;
+    }
+  }
+
+  const categoryScores = emptyCategoryScores();
+  for (const cat of CATEGORY_KEYS) {
+    const pair = categoryTotals[cat];
+    categoryScores[cat] = pair && pair[1] > 0 ? round2(pair[0] / pair[1]) : 0;
+  }
+
+  const overall = includedCredits > 0 ? round2(totalGp / includedCredits) : 0;
+
+  return {
+    overall,
+    totalCredits: profile.totalCredits,
+    includedCredits,
+    categoryScores,
+    themes,
+  };
+}
+
+export interface ProfileAverageResult {
   score: number | null;
-  themeCount: number;
   callCount: number;
-  coverage: number;
+  includedCredits: number;
+  callType: CallType | string;
+  rubricVersion: string;
+}
+
+/** Mean overall QIP for one call type across eligible scorecards. */
+export function profileAverage(
+  scorecards: ScorecardForAggregate[],
+  callType: CallType | string,
+  opts: AggregateOpts = {},
+): ProfileAverageResult {
+  const pool = filterEligibleScorecards(scorecards, opts).filter(
+    (sc) => !callType || sc.callType === callType,
+  );
+  if (!pool.length) {
+    return { score: null, callCount: 0, includedCredits: 0, rubricVersion: "", callType: callType || "" };
+  }
+  let sum = 0;
+  let count = 0;
+  for (const sc of pool) {
+    if (typeof sc.overall === "number" && Number.isFinite(sc.overall)) {
+      sum += sc.overall;
+      count += 1;
+    }
+  }
+  const profile = profileFor(callType as CallType);
+  return {
+    score: count > 0 ? round2(sum / count) : null,
+    callCount: count,
+    includedCredits: profile.totalCredits,
+    rubricVersion: pool[0].rubricVersion || "2.1",
+    callType: callType || pool[0].callType || "",
+  };
 }
 
 export interface ThemeAverageResult {
   score: number | null;
   count: number;
   themeKey: string;
-  maxScore: number;
   callTypeFilter: CallType | string | null;
 }
 
-/**
- * Weighted composite within one call type.
- * sum(score × weight) over applicable lines ÷ sum(weight) over applicable lines.
- * Score is 0..maxScore per line (typically 0..100); normalized before weighting.
- */
-export function typeComposite(
-  scorecards: ScorecardForTypeComposite[],
-  callType: CallType | string,
-  opts: AggregateOpts = {},
-): TypeCompositeResult {
-  const pool = filterEligibleScorecards(scorecards, opts).filter(
-    (sc) => !callType || sc.callType === callType,
-  );
-
-  if (!pool.length) {
-    return {
-      score: null,
-      applicableWeight: 0,
-      totalWeight: 0,
-      applicableCount: 0,
-      rubricVersion: "",
-      callType: callType || "",
-    };
-  }
-
-  let earnedSum = 0;
-  let applicableWeight = 0;
-  let totalWeight = 0;
-  let applicableCount = 0;
-  const rubricVersion = pool[0].rubricVersion || "1.0";
-  const resolvedCallType = callType || pool[0].callType || "";
-
-  for (const scorecard of pool) {
-    for (const line of scorecard.lines || []) {
-      const weight = line.weight ?? 0;
-      totalWeight += weight;
-      if (!line.applicable) continue;
-      applicableCount += 1;
-      applicableWeight += weight;
-      const max = line.maxScore > 0 ? line.maxScore : 100;
-      const normalized = Math.min(1, Math.max(0, line.score / max));
-      earnedSum += normalized * weight;
-    }
-  }
-
-  const score =
-    applicableWeight > 0 ? Math.round((earnedSum / applicableWeight) * 100 * 10) / 10 : null;
-
-  return {
-    score,
-    applicableWeight,
-    totalWeight,
-    applicableCount,
-    rubricVersion,
-    callType: resolvedCallType,
-  };
-}
-
-/** Display string for a type composite — e.g. "86 / 100 (demo v1.0)". */
-export function formatTypeComposite(result: TypeCompositeResult): string {
-  const score = result.score ?? 0;
-  const denom = result.applicableWeight > 0 ? 100 : 0;
-  return `${score} / ${denom} (${result.callType} v${result.rubricVersion})`;
-}
-
-/**
- * Cross-type spine composite over the core four only — unweighted mean of raw theme scores.
- * Never blend weighted type composites across call types (spec §6.1).
- */
-export function spineComposite(
-  scorecards: ScorecardForSpineComposite[],
-  opts: AggregateOpts = {},
-): SpineCompositeResult {
-  const eligible = filterEligibleScorecards(scorecards, opts);
-  const callCount = eligible.length;
-  if (!callCount) {
-    return { score: null, themeCount: 0, callCount: 0, coverage: 0 };
-  }
-
-  let scoreSum = 0;
-  let themeCount = 0;
-  let fullCoverageCount = 0;
-
-  for (const sc of eligible) {
-    const lineMap = new Map((sc.lines || []).map((l) => [l.themeKey, l]));
-    let allFourApplicable = true;
-
-    for (const key of CORE_FOUR_THEME_KEYS) {
-      const line = lineMap.get(key);
-      if (!line?.applicable) {
-        allFourApplicable = false;
-        continue;
-      }
-      scoreSum += line.score;
-      themeCount += 1;
-    }
-
-    if (allFourApplicable) fullCoverageCount += 1;
-  }
-
-  return {
-    score: themeCount > 0 ? Math.round((scoreSum / themeCount) * 10) / 10 : null,
-    themeCount,
-    callCount,
-    coverage: fullCoverageCount / callCount,
-  };
-}
-
-/**
- * Mean raw score for one theme across scorecards.
- * callTypeFilter null — average across every type the theme appears in.
- */
+/** Mean theme grade (0–10) across scorecards. */
 export function themeAverage(
-  scorecards: ScorecardForSpineComposite[],
+  scorecards: ScorecardForAggregate[],
   themeKey: string,
   callTypeFilter: CallType | string | null = null,
   opts: AggregateOpts = {},
@@ -233,32 +234,33 @@ export function themeAverage(
   const eligible = filterEligibleScorecards(scorecards, opts).filter(
     (sc) => !callTypeFilter || sc.callType === callTypeFilter,
   );
-
-  let scoreSum = 0;
+  let gradeSum = 0;
   let count = 0;
-  let maxScore = 100;
-
   for (const sc of eligible) {
-    const line = (sc.lines || []).find((l) => l.themeKey === themeKey && l.applicable);
+    const line = (sc.lines || []).find(
+      (l) => l.themeKey === themeKey && !l.evidenceUnavailable && !(l as { modelOmitted?: boolean }).modelOmitted,
+    );
     if (!line) continue;
-    scoreSum += line.score;
+    gradeSum += line.grade;
     count += 1;
-    if (line.maxScore > 0) maxScore = line.maxScore;
   }
-
   return {
-    score: count > 0 ? Math.round((scoreSum / count) * 10) / 10 : null,
+    score: count > 0 ? round2(gradeSum / count) : null,
     count,
     themeKey,
-    maxScore,
     callTypeFilter,
   };
 }
 
-/** Average dimension performance scaled to 0–10 (e.g. 4.5/5 → 9.0). */
+/** Display string for profile average — e.g. "7.29 / 10 (demo v2.1)". */
+export function formatProfileAverage(result: ProfileAverageResult): string {
+  const score = result.score ?? 0;
+  return `${score} / 10 (${result.callType} v${result.rubricVersion})`;
+}
+
+/** Average dimension performance scaled to 0–10 (legacy quality coach dimensions). */
 export function computeOverallScore(dimensions: { score: number; maxScore: number }[]): number | null {
   if (!dimensions?.length) return null;
-
   let ratioSum = 0;
   let count = 0;
   for (const d of dimensions) {
@@ -269,11 +271,10 @@ export function computeOverallScore(dimensions: { score: number; maxScore: numbe
     }
   }
   if (!count) return null;
-
-  return Math.round((ratioSum / count) * 10 * 10) / 10;
+  return round2((ratioSum / count) * 10);
 }
 
-/** Map 0–10 overall score to a coaching label (strict MVP calibration). */
+/** Map 0–10 overall score to a coaching label. */
 export function overallLabelFromScore(score: number): string {
   if (score >= 9) return "Excellent";
   if (score >= 7) return "Strong";

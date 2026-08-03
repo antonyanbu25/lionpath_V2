@@ -27,6 +27,7 @@ export const THEME_SECTION_ORDER = [
 ];
 
 const THEME_META = {
+  research: { label: "Research", section: "preparation" },
   research_agenda: { label: "Research & agenda", section: "preparation" },
   questions: { label: "Questions", section: "discovery" },
   slide_deck: { label: "Slide deck", section: "delivery" },
@@ -37,6 +38,7 @@ const THEME_META = {
   ai: { label: "AI", section: "delivery" },
   value: { label: "Value", section: "value" },
   objections: { label: "Objections", section: "value" },
+  case_study: { label: "Case study", section: "value" },
   case_study_roi: { label: "Case study & ROI", section: "value" },
   comp_pitch: { label: "Comp pitch", section: "value" },
   summarise: { label: "Summarise", section: "close" },

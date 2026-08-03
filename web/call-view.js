@@ -7,10 +7,16 @@ import {
   listPostCallAnalyses,
   updatePostCallAnalysis,
 } from "./history.js";
-import { getPostCallForSession, normalizeSeEmail } from "./domain/se-access-service.js";
+import { isManagerRole } from "./domain/types.js";
+import { canViewSeProfile, getPostCallForSession, normalizeSeEmail } from "./domain/se-access-service.js";
+import { sessionToUser } from "./domain/rbac.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
-import { formatTypeComposite, isEligibleForAggregate, typeComposite } from "./quality-score.js";
-import { renderQipScorecard } from "./postcall.js";
+import { formatTypeComposite, isEligibleForAggregate, typeComposite, scoreCall } from "./quality-score.js";
+import { RUBRIC_VERSION, profileFor, effectiveRubricVersion } from "./rubric-profiles.js";
+import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
+import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
+import { assembleMomEmailDraft, greetingNameFromDraft } from "./shared/mom-email-draft.js";
+import { renderQipRadar } from "./qip-radar.js";
 import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
 import {
   enrichDealFromHistoryRecords,
@@ -21,8 +27,14 @@ import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPIC
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
-import { esc } from "./shared.js";
+import { esc, titleCaseDisplayName } from "./shared.js";
+import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
 import { renderLoadingPanel } from "./crayons-ui.js";
+import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
+import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType } from "./call-type-labels.js";
+import { mergeCallIdentities } from "./identity-merge.js";
+import { renderCallProductSignalTab } from "./call-product-signal.js";
+import { wireScoreDisputes } from "./score-disputes.js";
 
 const CALL_TYPE_LABELS = {
   demo: "Demo",
@@ -76,12 +88,16 @@ function formatDateTime(ts) {
 }
 
 function resolveDealId(record) {
-  return (
-    record?.result?.confirmed?.dealId ||
-    record?.dealId ||
-    record?.result?.resolve?.deals?.find((d) => d.preselected)?.dealId ||
-    null
-  );
+  const confirmed = record?.result?.confirmed || {};
+  if (confirmed.dealId) return confirmed.dealId;
+  if (record?.dealId) return record.dealId;
+  if (confirmed.createNewDeal || record?.createNewDeal) return null;
+  return record?.result?.resolve?.deals?.find((d) => d.preselected)?.dealId || null;
+}
+
+function recordPendingNewDeal(record) {
+  const confirmed = record?.result?.confirmed || {};
+  return !!(confirmed.createNewDeal || record?.createNewDeal);
 }
 
 function resolveConfirmedIdentities(record) {
@@ -125,6 +141,26 @@ const MARKER_LABELS = {
   weak_cta: "weak CTA",
 };
 
+const MARKER_COLORS = {
+  gap: "#d6455d",
+  objection: "#b7791f",
+  win: "#127a56",
+  weak_cta: "#a4262c",
+};
+
+const MARKER_LEGEND = [
+  ["gap", "Product gap"],
+  ["objection", "Objection handled"],
+  ["win", "What worked"],
+  ["weak_cta", "Weak CTA"],
+];
+
+const OBJECTION_ANSWER_SPLIT =
+  /\s+(?:(?:SE|AE)(?:\/(?:SE|AE))?|the SE|Solution Engineer)(?:\s+and\s+(?:SE|AE|the AE))?\s+(?:emphasized|responded|explained|noted|said|addressed|handled|countered|walked through|showed|demonstrated)/i;
+
+const OBJECTION_FRAMING =
+  /^(?:Customer|Prospect|The customer|The prospect)\s+(?:expressed(?:\s+concern(?:\s+that)?|\s+that|\s+a concern about)?|raised|asked|noted|said|mentioned|was concerned(?:\s+that)?|pushed back(?:\s+on)?|questioned)\s+/i;
+
 const SPINE_LEGEND = [
   ["slides", "Slides", "#EFEBFD", "#4A3BA8"],
   ["product", "Product / CDE", "#E3F5EE", "#0D5C41"],
@@ -143,43 +179,100 @@ function markerDisplayLabel(marker) {
   return String(raw).trim();
 }
 
-function parseCustomerQuestions(scorecard, record) {
-  const lines = scorecard?.lines || [];
-  const eng = lines.find((l) => l.themeKey === "customer_engagement");
-  const texts = [eng?.evidence, eng?.feedback, eng?.summary].filter(Boolean);
-  for (const t of texts) {
-    const m = String(t).match(/(\d+)\s+customer questions?/i);
-    if (m) return Number(m[1]);
-  }
-  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader;
-  if (hdr?.customerQuestions != null && Number.isFinite(Number(hdr.customerQuestions))) {
-    return Number(hdr.customerQuestions);
-  }
-  return null;
-}
-
-function parseLongestMonologue(scorecard) {
-  const line = (scorecard?.lines || []).find((l) => l.themeKey === "call_flow");
-  const texts = [line?.evidence, line?.feedback, line?.summary].filter(Boolean);
-  for (const t of texts) {
-    const m = String(t).match(/(\d+)\s*m\s*(\d+)\s*s|(\d+)m(\d+)s|(\d+):(\d{2})/i);
-    if (m) {
-      if (m[5] != null) {
-        return `${Number(m[5])}m ${String(m[6]).padStart(2, "0")}s`;
-      }
-      const mins = Number(m[1] || m[3]);
-      const secs = Number(m[2] || m[4]);
-      return `${mins}m ${String(secs).padStart(2, "0")}s`;
-    }
-  }
-  return null;
-}
-
 function renderSpineLegend() {
   return `<div class="call-spine-legend" aria-hidden="true">${SPINE_LEGEND.map(
     ([, label, bg, fg]) =>
       `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
   ).join("")}</div>`;
+}
+
+function renderMarkerLegend(markers) {
+  const kinds = [...new Set((markers || []).map((m) => m.kind).filter(Boolean))];
+  if (!kinds.length) return "";
+  const items = MARKER_LEGEND.filter(([kind]) => kinds.includes(kind))
+    .map(([kind, label]) => {
+      const color = MARKER_COLORS[kind] || "#5a6b82";
+      return `<span class="call-spine-legend-item"><span class="call-spine-marker-swatch call-spine-marker-swatch--${esc(kind)}" style="background:${color}"></span>${esc(label)}</span>`;
+    })
+    .join("");
+  return `<div class="call-spine-legend call-spine-marker-legend" aria-hidden="true">${items}</div>`;
+}
+
+function stripObjectionFraming(text) {
+  if (!text) return "";
+  let t = String(text).trim();
+  t = t.replace(OBJECTION_FRAMING, "");
+  t = t.replace(/^["'""]|["'""]$/g, "").trim();
+  return t;
+}
+
+function stripResponseFraming(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(
+      /^(?:(?:SE|AE)(?:\/(?:SE|AE))?|the SE|Solution Engineer)(?:\s+and\s+(?:SE|AE|the AE))?\s+(?:emphasized|responded|explained|noted|said|addressed|handled|countered|walked through|showed|demonstrated)\s+(?:that\s+)?/i,
+      "",
+    )
+    .trim();
+}
+
+/** Split narrative objection blobs into customer Q and SE/AE A when fields are merged. */
+export function resolveObjectionQa(obj) {
+  let question = String(obj?.objectionText || obj?.text || "").trim();
+  let answer = String(obj?.handling || "").trim();
+
+  if (question && !answer && OBJECTION_ANSWER_SPLIT.test(question)) {
+    const idx = question.search(OBJECTION_ANSWER_SPLIT);
+    if (idx > 12) {
+      answer = question.slice(idx).trim();
+      question = question.slice(0, idx).trim().replace(/\.\.\.\s*$/, "").trim();
+    }
+  }
+
+  question = stripObjectionFraming(question);
+  answer = stripResponseFraming(answer);
+
+  if (!question && answer) {
+    if (OBJECTION_ANSWER_SPLIT.test(answer)) {
+      const idx = answer.search(OBJECTION_ANSWER_SPLIT);
+      question = stripObjectionFraming(answer.slice(0, idx).trim());
+      answer = answer.slice(idx).trim();
+    } else {
+      question = stripObjectionFraming(answer);
+      answer = "";
+    }
+  }
+
+  return { question, answer };
+}
+
+export function renderObjectionQaRow(obj) {
+  const { question, answer } = resolveObjectionQa(obj);
+  const landed = obj?.landed === true;
+  const statusCls = landed ? "good" : "bad";
+  const statusPill = landed
+    ? '<span class="pill green">Landed</span>'
+    : '<span class="pill red">Open</span>';
+  const theme = obj?.theme
+    ? `<span class="pill">${esc(String(obj.theme).replace(/_/g, " "))}</span>`
+    : "";
+  const ts =
+    obj?.atS != null && Number.isFinite(Number(obj.atS))
+      ? `<div class="ts num">${esc(formatSegmentTime(obj.atS))}</div>`
+      : "";
+
+  return `<div class="ev ${statusCls} call-objection-qa">
+    ${ts}
+    <div class="call-qa-row">
+      <span class="call-qa-label">Q</span>
+      <p class="call-qa-text">${esc(question || "—")}</p>
+    </div>
+    <div class="call-qa-row call-qa-row--answer">
+      <span class="call-qa-label">A</span>
+      <p class="call-qa-text sub">${esc(answer || "— No response captured")}</p>
+    </div>
+    <div class="call-qa-meta">${theme}${statusPill}</div>
+  </div>`;
 }
 
 function formatSegmentTime(sec) {
@@ -232,21 +325,231 @@ function deltaChangePill(changeType) {
 function resolveCallType(record) {
   const sc = record?.scorecard || record?.result?.scorecard;
   const meta = record?.analysisMeta || record?.result?.analysisMeta || {};
-  return (
+  return canonicalCallType(
     sc?.callType ||
-    meta.callType ||
-    record?.result?.confirmed?.callType ||
-    record?.callType ||
-    "demo"
+      meta.callType ||
+      record?.result?.confirmed?.callType ||
+      record?.callType ||
+      "demo",
   );
 }
 
 function resolveScorecard(record) {
-  return record?.scorecard || record?.result?.scorecard || null;
+  const result = record?.result || {};
+  const raw =
+    record?.scorecard ||
+    result.scorecard ||
+    result.analysis?.scorecard ||
+    result.generate?.scorecard ||
+    null;
+  if (!raw) return null;
+  const lines = coerceScorecardLines(raw.lines);
+  return lines.length || raw.categoryScores || typeof raw.overall === "number"
+    ? { ...raw, lines }
+    : raw;
+}
+
+async function enrichScorecardFromStore(record, scorecard) {
+  const hasUsable =
+    scorecard?.lines?.length ||
+    (scorecard?.categoryScores &&
+      Object.values(scorecard.categoryScores).some((n) => Number(n) > 0)) ||
+    (typeof scorecard?.overall === "number" && Number.isFinite(scorecard.overall));
+  if (hasUsable) return scorecard;
+
+  const store = getStore();
+  if (!store.listScorecardsByCall) return scorecard;
+
+  const storedCards = await safeEnrich(
+    "listScorecardsByCall",
+    () => store.listScorecardsByCall(record.id),
+    [],
+  );
+  const stored = storedCards[0];
+  if (!stored) return scorecard;
+
+  let lines = scorecard?.lines || [];
+  if (!lines.length && store.listScorecardLinesByCall) {
+    const storedLines = await safeEnrich(
+      "listScorecardLinesByCall",
+      () => store.listScorecardLinesByCall(record.id),
+      [],
+    );
+    lines = storedLines.map((line) => ({
+      themeKey: line.themeKey,
+      grade: line.grade,
+      credit: line.credit,
+      category: line.category,
+      subParameters: line.subParameters || [],
+      evidenceUnavailable: !!line.evidenceUnavailable,
+      confidence: line.confidence ?? null,
+      coachingNote: line.coachingNote || null,
+    }));
+  }
+
+  return {
+    callType: stored.callType || record.callType || "demo",
+    rubricVersion: stored.rubricVersion || RUBRIC_VERSION,
+    overall: stored.overall ?? scorecard?.overall ?? null,
+    categoryScores: stored.categoryScores || scorecard?.categoryScores || {},
+    lines,
+    confidence: stored.confidence ?? scorecard?.confidence ?? null,
+    provisional: !!(stored.provisional ?? scorecard?.provisional),
+  };
+}
+
+function isSeRole(role) {
+  return /solution engineer|primary se|secondary se|^se$|\bse\b/i.test(String(role || ""));
+}
+
+function resolveEffectiveRubricVersion(scorecard, analysisMeta = {}) {
+  return effectiveRubricVersion(scorecard, analysisMeta);
+}
+
+function resolveCategoryScores(scorecard, callType) {
+  const raw = scorecard?.categoryScores || {};
+  if (Object.values(raw).some((n) => Number(n) > 0)) return raw;
+  if (!scorecard?.lines?.length) return raw;
+  try {
+    const profile = profileFor(scorecard.callType || callType);
+    const scored = scoreCall(
+      profile,
+      scorecard.lines.map((l) => ({
+        themeKey: l.themeKey,
+        subParameters: (l.subParameters || []).map((sp) => ({ score: sp.score ?? sp.grade ?? 0 })),
+        evidenceUnavailable: !!l.evidenceUnavailable,
+      })),
+    );
+    return scored.categoryScores;
+  } catch {
+    return raw;
+  }
+}
+
+function resolvePass6(record) {
+  const resultBlob = record?.result || {};
+  return record?.pass6 || resultBlob.pass6 || resultBlob.result?.pass6 || null;
+}
+
+function formatQipScoreValue(score) {
+  if (score == null || !Number.isFinite(Number(score))) return "-";
+  const n = Number(score);
+  return n % 1 === 0 ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
+}
+
+function resolveQipOverallScore(scorecard, callType, analysisMeta = {}) {
+  if (!scorecard) return null;
+  const version = resolveEffectiveRubricVersion(scorecard, analysisMeta);
+  if (typeof scorecard.overall === "number" && Number.isFinite(scorecard.overall)) {
+    if (scorecard.overall > 10 && String(version).startsWith("1")) {
+      return Math.round((scorecard.overall / 10) * 10) / 10;
+    }
+    return scorecard.overall;
+  }
+  if (!scorecard.lines?.length) return null;
+  const composite = typeComposite(
+    [{
+      callType: scorecard.callType || callType,
+      rubricVersion: version,
+      lines: scorecard.lines,
+      provisional: scorecard.provisional ?? analysisMeta.provisional,
+      confidence: scorecard.confidence ?? analysisMeta.analysisConfidence,
+    }],
+    scorecard.callType || callType,
+    { includeIneligible: true },
+  );
+  return composite?.score ?? null;
+}
+
+function resolveCallSentiment(analysis) {
+  const status = String(analysis?.momentum?.status || "").trim();
+  const reason = String(analysis?.momentum?.reason || "").trim();
+  const signals = analysis?.signals || {};
+  const objections = (signals.objectionsOpen || []).filter(Boolean).length;
+  const pains = (signals.painsConfirmed || []).filter(Boolean).length;
+
+  if (status === "Advancing") {
+    return { label: "Positive", valueClass: "call-kpi-value--good", sub: reason || "Deal momentum advancing" };
+  }
+  if (status === "At risk") {
+    return { label: "Negative", valueClass: "call-kpi-value--bad", sub: reason || "Deal momentum at risk" };
+  }
+  if (status === "Stalled") {
+    return { label: "Neutral", valueClass: "call-kpi-value--warn", sub: reason || "Deal momentum stalled" };
+  }
+  if (objections >= 2 && pains === 0) {
+    return { label: "Negative", valueClass: "call-kpi-value--bad", sub: "Open objections without confirmed pains" };
+  }
+  if (pains >= 2 && objections === 0) {
+    return { label: "Positive", valueClass: "call-kpi-value--good", sub: "Pains confirmed with few open objections" };
+  }
+  return { label: "Neutral", valueClass: "call-kpi-value--warn", sub: reason || "Mixed signals on this call" };
+}
+
+function normalizeProductSignalRow(row) {
+  if (!row || typeof row !== "object") return null;
+  const area = String(row.productArea || "other").replace(/_/g, " ");
+  const sub = row.subArea && row.subArea !== "other" ? ` › ${String(row.subArea).replace(/_/g, " ")}` : "";
+  const title = row.title || (area + sub) || "Product signal";
+  return { ...row, title };
 }
 
 function resolveAnalysisMeta(record) {
   return record?.analysisMeta || record?.result?.analysisMeta || {};
+}
+
+function identityMatchesName(identity, geminiName) {
+  const idKey = normalizePersonKey(identity);
+  const nameKey = normalizePersonKey(geminiName);
+  if (!idKey || !nameKey) return false;
+  if (idKey === nameKey) return true;
+  if (nameKey.includes(idKey) || idKey.includes(nameKey)) return true;
+  const idFirst = idKey.split(/\s+/)[0] || "";
+  const nameFirst = nameKey.split(/\s+/)[0] || "";
+  if (idFirst.length >= 3 && idFirst === nameFirst) return true;
+  const idLast = idKey.split(/\s+/).pop() || "";
+  const nameLast = nameKey.split(/\s+/).pop() || "";
+  if (idLast.length >= 3 && idLast === nameLast) return true;
+  return false;
+}
+
+function isAttendeeCurveRow(row) {
+  return !!row && typeof row === "object" && !Array.isArray(row);
+}
+
+function finalizeParticipantCameraRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  return rows.filter(isAttendeeCurveRow).map((p) => {
+    let cameraOnPct =
+      p.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))
+        ? Math.max(0, Math.min(100, Math.round(Number(p.cameraOnPct))))
+        : null;
+    let cameraOn = p.cameraOn ?? null;
+    if (cameraOnPct != null) {
+      cameraOn = cameraOnPct >= 50;
+    } else if (cameraOn === true) {
+      cameraOnPct = 100;
+    } else if (cameraOn === false) {
+      cameraOnPct = 0;
+    }
+    return { ...p, cameraOn, cameraOnPct };
+  });
+}
+
+function finalizeVideoFactsCamera(videoFacts) {
+  if (!videoFacts) return videoFacts;
+  const consentDenied = videoFacts.visualAnalysisConsent === false;
+  let curve = coerceAttendeeCurve(videoFacts.attendeeCurveJson);
+  if (!curve.length) return videoFacts;
+  if (consentDenied) {
+    return {
+      ...videoFacts,
+      attendeeCurveJson: curve.map((p) => ({ ...p, cameraOn: null, cameraOnPct: null })),
+      cameraOnPct: null,
+    };
+  }
+  curve = finalizeParticipantCameraRows(curve);
+  return { ...videoFacts, attendeeCurveJson: curve, visualAnalysisConsent: videoFacts.visualAnalysisConsent ?? true };
 }
 
 function curveHasCameraData(curve) {
@@ -259,19 +562,50 @@ function curveHasCameraData(curve) {
   );
 }
 
+function mergeParticipantCameraRows(baseCurve, extraCurve) {
+  const base = coerceAttendeeCurve(baseCurve);
+  const extra = coerceAttendeeCurve(extraCurve);
+  if (!base.length) return extra;
+  if (!extra.length) return base;
+  const byKey = new Map();
+  for (const row of extra) {
+    const name = String(row?.name || row?.displayName || "").trim();
+    if (!name) continue;
+    byKey.set(normalizePersonKey(name), row);
+  }
+  return base.map((row) => {
+    const name = String(row?.name || row?.displayName || "").trim();
+    const key = normalizePersonKey(name);
+    let patch = byKey.get(key);
+    if (!patch && name) {
+      patch = extra.find((r) => identityMatchesName(name, r?.name || r?.displayName || ""));
+    }
+    if (!patch) return row;
+    return {
+      ...row,
+      cameraOn: row.cameraOn ?? patch.cameraOn ?? patch.camOn ?? null,
+      cameraOnPct: row.cameraOnPct ?? patch.cameraOnPct ?? patch.camera_on_pct ?? null,
+    };
+  });
+}
+
 function resolveVideoFactsForBundle(draftVf, timelineFacts, storedFacts) {
-  const candidates = [draftVf, timelineFacts, storedFacts?.[0]].filter(Boolean);
+  const candidates = [draftVf, timelineFacts, ...(storedFacts || [])].filter(Boolean);
   if (!candidates.length) return null;
 
-  let videoFacts = candidates[0];
+  let videoFacts = { ...candidates[0] };
+  let mergedCurve = coerceAttendeeCurve(videoFacts.attendeeCurveJson);
   for (const next of candidates.slice(1)) {
     const hasCam = curveHasCameraData(next?.attendeeCurveJson);
-    const curHasCam = curveHasCameraData(videoFacts?.attendeeCurveJson);
+    const curHasCam = curveHasCameraData(mergedCurve);
+    if (next?.attendeeCurveJson) {
+      mergedCurve = mergeParticipantCameraRows(mergedCurve, next.attendeeCurveJson);
+    }
     if (hasCam && !curHasCam) {
       videoFacts = {
         ...videoFacts,
         ...next,
-        attendeeCurveJson: next.attendeeCurveJson,
+        attendeeCurveJson: mergedCurve.length ? mergedCurve : next.attendeeCurveJson,
         cameraOnPct: next.cameraOnPct ?? videoFacts.cameraOnPct,
         streamKind: next.streamKind || videoFacts.streamKind,
       };
@@ -279,7 +613,19 @@ function resolveVideoFactsForBundle(draftVf, timelineFacts, storedFacts) {
       videoFacts = { ...videoFacts, ...next };
     }
   }
-  return videoFacts;
+  if (mergedCurve.length) {
+    videoFacts = { ...videoFacts, attendeeCurveJson: mergedCurve };
+  }
+  return finalizeVideoFactsCamera(videoFacts);
+}
+
+function isKaiaRecordingUrl(url) {
+  try {
+    const u = new URL(String(url || "").trim().split(/\s/)[0]);
+    return u.hostname.toLowerCase() === "engage.freshworks.com";
+  } catch {
+    return false;
+  }
 }
 
 function resolveVideoAvailable(record) {
@@ -316,7 +662,7 @@ function qipDeltaForType(email, callType, currentScore, excludeId) {
     const meta = resolveAnalysisMeta(rec);
     pool.push({
       callType: ct,
-      rubricVersion: sc.rubricVersion || meta.rubricVersion || "1.0",
+      rubricVersion: sc.rubricVersion || meta.rubricVersion || RUBRIC_VERSION,
       lines: sc.lines,
       provisional: sc.provisional ?? meta.provisional,
       confidence: sc.confidence ?? meta.analysisConfidence,
@@ -384,18 +730,18 @@ function renderTensionBand(line) {
 function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus, confidencePct }) {
   const parts = [];
   if (qipScore != null && qipDelta != null) {
-    if (qipDelta >= 8) parts.push("strong call execution");
-    else if (qipDelta <= -8) parts.push("execution below your usual bar");
-    else if (qipDelta >= 3) parts.push("solid execution");
-    else if (qipDelta <= -3) parts.push("execution lagging your norm");
+    if (qipDelta >= 0.8) parts.push("strong call execution");
+    else if (qipDelta <= -0.8) parts.push("execution below your usual bar");
+    else if (qipDelta >= 0.3) parts.push("solid execution");
+    else if (qipDelta <= -0.3) parts.push("execution lagging your norm");
   }
 
   if (meddpiccScore != null) {
-    if (meddpiccScore >= 70 && qipScore != null && qipScore >= 75) {
+    if (meddpiccScore >= 70 && qipScore != null && qipScore >= 7.5) {
       parts.push("deal qualification keeps pace with delivery");
-    } else if (meddpiccScore < 45 && qipScore != null && qipScore >= 75) {
+    } else if (meddpiccScore < 45 && qipScore != null && qipScore >= 7.5) {
       parts.push("the gap is qualification, not delivery");
-    } else if (meddpiccScore >= 60 && qipScore != null && qipScore < 55) {
+    } else if (meddpiccScore >= 60 && qipScore != null && qipScore < 5.5) {
       parts.push("the deal looks real but this call did not land");
     } else if (meddpiccScore < 40) {
       parts.push("qualification is thin");
@@ -411,9 +757,9 @@ function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus
   }
 
   const lead =
-    qipScore != null && meddpiccScore != null && qipScore >= 75 && meddpiccScore < 45
+    qipScore != null && meddpiccScore != null && qipScore >= 7.5 && meddpiccScore < 45
       ? "Flawless call on a thin deal. "
-      : qipScore != null && meddpiccScore != null && qipScore < 55 && meddpiccScore >= 60
+      : qipScore != null && meddpiccScore != null && qipScore < 5.5 && meddpiccScore >= 60
         ? "Qualified deal, weak call. "
         : "";
 
@@ -550,7 +896,11 @@ function renderVisualSpine(segments, markers, durationSec) {
     const at = Number(m.atS);
     if (!Number.isFinite(at)) continue;
     const left = (at / total) * 100;
-    html += `<div class="mk" style="left:${left}%"></div><div class="mkl" style="left:${left}%">${esc(markerDisplayLabel(m))}</div>`;
+    const kind = m.kind || "gap";
+    const label = markerDisplayLabel(m);
+    const tip = `${formatSegmentTime(at)} · ${label}`;
+    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}" aria-hidden="true"></div>`;
+    html += `<div class="mkl mkl--${esc(kind)}" style="left:${left}%" title="${esc(tip)}">${esc(label)}</div>`;
   }
   html += "</div></div>";
   return html;
@@ -562,97 +912,21 @@ function renderSpineTimeAxis(durationSec) {
   return `<div class="call-spine-axis">${ticks.map((t) => `<span>${esc(t)}</span>`).join("")}</div>`;
 }
 
-function renderSpineMetrics(videoFacts, scorecard, record, stakeholderRows) {
-  const metrics = [];
-  const rows = stakeholderRows?.length
-    ? stakeholderRows
-    : normalizeParticipantStats(videoFacts?.attendeeCurveJson);
-
-  const isSe = (r) => /solution engineer|sales engineer|^se$/i.test(String(r.role || ""));
-  const isAe = (r) => /account executive|account manager|^ae$/i.test(String(r.role || ""));
-  const isCustomer = (r) =>
-    /customer/i.test(String(r.role || "")) || String(r.side || "") === "customer";
-
-  const seRow = rows.find(isSe) || null;
-  const aeRow = rows.find(isAe) || null;
-  const customerRows = rows.filter((r) => isCustomer(r) && !isSe(r) && !isAe(r));
-
-  if (seRow?.talkPct != null) {
-    metrics.push(["SE talk ratio", `${seRow.talkPct}%`, ""]);
-  } else {
-    const internal = rows.filter((r) => String(r.side || "") === "internal");
-    const bestInternal = internal.reduce(
-      (best, r) =>
-        r.talkPct != null && (best == null || r.talkPct > best.talkPct) ? r : best,
-      null,
-    );
-    if (bestInternal?.talkPct != null) {
-      metrics.push(["SE talk ratio", `${bestInternal.talkPct}%`, ""]);
-    } else {
-      metrics.push(["SE talk ratio", "-", ""]);
-    }
+function coerceAttendeeCurve(raw) {
+  let rows = [];
+  if (Array.isArray(raw)) rows = raw;
+  else if (raw && typeof raw === "object") {
+    if (Array.isArray(raw.participants)) rows = raw.participants;
+    else rows = Object.values(raw);
   }
-
-  const customerQuestions = parseCustomerQuestions(scorecard, record);
-  metrics.push([
-    "Customer questions",
-    customerQuestions != null ? String(customerQuestions) : "-",
-    "",
-  ]);
-
-  const monologue = parseLongestMonologue(scorecard);
-  metrics.push(["Longest monologue", monologue || "-", monologue ? "warn" : ""]);
-
-  if (seRow?.cameraOnPct != null) {
-    metrics.push(["SE camera on", `${Math.round(Number(seRow.cameraOnPct))}%`, ""]);
-  } else if (seRow?.cameraOn != null) {
-    metrics.push(["SE camera on", seRow.cameraOn ? "On" : "Off", ""]);
-  } else if (videoFacts?.cameraOnPct != null) {
-    metrics.push(["SE camera on", `${Math.round(Number(videoFacts.cameraOnPct))}%`, ""]);
-  } else {
-    metrics.push(["SE camera on", "-", ""]);
-  }
-
-  if (aeRow?.cameraOnPct != null) {
-    metrics.push(["AE camera on", `${aeRow.cameraOnPct}%`, ""]);
-  } else if (aeRow?.cameraOn != null) {
-    metrics.push(["AE camera on", aeRow.cameraOn ? "On" : "Off", ""]);
-  } else {
-    metrics.push(["AE camera on", "-", ""]);
-  }
-
-  if (customerRows.length) {
-    const onCount = customerRows.filter((p) => p.cameraOn === true).length;
-    const avgPct =
-      customerRows.filter((p) => p.cameraOnPct != null).length > 0
-        ? Math.round(
-            customerRows
-              .filter((p) => p.cameraOnPct != null)
-              .reduce((sum, p) => sum + Number(p.cameraOnPct), 0) /
-              customerRows.filter((p) => p.cameraOnPct != null).length,
-          )
-        : null;
-    metrics.push([
-      "Customer cameras",
-      avgPct != null ? `${onCount} on · avg ${avgPct}%` : `${onCount} of ${customerRows.length} on`,
-      "",
-    ]);
-  } else {
-    metrics.push(["Customer cameras", "-", ""]);
-  }
-
-  return `<div class="call-spine-metrics">${metrics
-    .map(
-      ([label, value, tone]) =>
-        `<div><div class="sub call-spine-metric-label">${esc(label)}</div><div class="call-spine-metric-value num${tone === "warn" ? " call-spine-metric-value--warn" : ""}">${esc(String(value))}</div></div>`,
-    )
-    .join("")}</div>`;
+  return rows.filter(isAttendeeCurveRow);
 }
 
 function normalizeParticipantStats(raw) {
-  if (!Array.isArray(raw)) return [];
+  const rows = coerceAttendeeCurve(raw);
+  if (!rows.length) return [];
   const seen = new Set();
-  return raw
+  return rows
     .map((p) => {
       const name = String(p?.name || p?.displayName || "").trim();
       if (!name) return null;
@@ -716,196 +990,279 @@ function preferPersonLabel(a, b) {
   return String(a).trim().length <= String(b).trim().length ? a : b;
 }
 
-function findParticipantStat(statsByName, label) {
+function findParticipantStat(stats, label) {
   const key = normalizePersonKey(label);
-  return statsByName.get(key) ?? statsByName.get(String(label || "").trim().toLowerCase());
+  const direct = stats.find((p) => normalizePersonKey(p.name) === key);
+  if (direct) return direct;
+  return stats.find((p) => identityMatchesName(label, p.name)) || null;
 }
 
-function buildStakeholderRows(identities, attendees, videoFacts) {
-  const statsByName = new Map();
-  for (const p of normalizeParticipantStats(videoFacts?.attendeeCurveJson)) {
-    statsByName.set(normalizePersonKey(p.name), p);
-    statsByName.set(p.name.toLowerCase(), p);
+function buildStakeholderRows(identities, attendees, videoFacts, contacts = []) {
+  const stats = normalizeParticipantStats(videoFacts?.attendeeCurveJson);
+  const transcriptSpeakers = stats.map((s) => s.name).filter(Boolean);
+
+  /** @type {object[]} */
+  const candidates = [];
+  const pushCandidate = (name, email, role) => {
+    const label = String(name || email || "").trim();
+    if (!label) return;
+    candidates.push({
+      name: String(name || "").trim() || label,
+      email: email ? String(email).trim().toLowerCase() : null,
+      label,
+      role: role || "Attendee",
+    });
+  };
+
+  if (identities?.seIdentity) pushCandidate(identities.seIdentity, null, "Solution Engineer");
+  if (identities?.aeIdentity) pushCandidate(identities.aeIdentity, null, "Account Executive");
+  for (const c of identities?.customerIdentities || []) pushCandidate(c, null, "Customer");
+  for (const a of attendees || []) {
+    pushCandidate(a.name || a.email, a.email, a.role || "Attendee");
   }
 
-  const rows = [];
-  const pushUnique = (name, role, side = "") => {
-    const label = String(name || "").trim();
-    if (!label) return;
-    const key = normalizePersonKey(label);
-    const existing = rows.find((r) => r.key === key);
-    if (existing) {
-      existing.name = preferPersonLabel(existing.name, label);
-      return;
-    }
-    const stat = findParticipantStat(statsByName, label);
+  const merged = mergeCallIdentities(candidates, contacts, transcriptSpeakers);
+
+  const rows = merged.map((att) => {
+    const displayName = String(att.name || att.label || att.email || "").trim();
+    const stat = findParticipantStat(stats, displayName);
     let talkPct = stat?.talkPct ?? null;
     let cameraOnPct = stat?.cameraOnPct ?? null;
-    let cameraOn = stat?.cameraOn;
-    if (cameraOnPct == null && /solution engineer|^se$/i.test(role)) {
-      if (videoFacts?.cameraOnPct != null) {
-        cameraOnPct = Math.round(Number(videoFacts.cameraOnPct));
-      }
-    }
+    let cameraOn = stat?.cameraOn ?? null;
     if (cameraOn == null && cameraOnPct != null) {
       cameraOn = cameraOnPct >= 50;
     }
-    rows.push({
-      key,
-      name: label,
+    const role = att.role || "Attendee";
+    const side = /customer/i.test(role)
+      ? "customer"
+      : /engineer|executive|host|\bse\b|\bae\b/i.test(role)
+        ? "internal"
+        : "";
+    return {
+      key: normalizePersonKey(att.email || displayName),
+      name: displayName,
       role,
       side,
       talkPct,
       cameraOn,
       cameraOnPct,
-    });
-  };
+      email: att.email || stat?.email || null,
+    };
+  });
 
-  if (identities?.seIdentity) pushUnique(identities.seIdentity, "Solution Engineer", "internal");
-  if (identities?.aeIdentity) pushUnique(identities.aeIdentity, "Account Executive", "internal");
-  for (const c of identities?.customerIdentities || []) pushUnique(c, "Customer", "customer");
-  for (const a of attendees || []) {
-    const role = a.role || "Attendee";
-    pushUnique(a.name || a.email, role, /customer/i.test(role) ? "customer" : "");
+  return rows.map((row) => {
+    const finalized = finalizeParticipantCameraRows([
+      {
+        name: row.name,
+        talkPct: row.talkPct,
+        cameraOn: row.cameraOn,
+        cameraOnPct: row.cameraOnPct,
+      },
+    ])[0];
+    if (!finalized) return row;
+    return { ...row, cameraOn: finalized.cameraOn, cameraOnPct: finalized.cameraOnPct };
+  });
+}
+
+async function enrichStakeholderContacts(accountId, rows, contacts = null) {
+  if (!accountId || !rows?.length) return rows;
+  const store = getStore();
+  if (!store?.listContactsByAccount && !contacts?.length) return rows;
+  let resolvedContacts = contacts;
+  if (!resolvedContacts?.length && store?.listContactsByAccount) {
+    try {
+      resolvedContacts = await store.listContactsByAccount(accountId);
+    } catch {
+      return rows;
+    }
   }
-  return rows;
+  if (!resolvedContacts?.length) return rows;
+  const byKey = new Map();
+  for (const c of resolvedContacts) {
+    if (c?.name) byKey.set(normalizePersonKey(c.name), c);
+    if (c?.email) byKey.set(normalizePersonKey(c.email), c);
+  }
+  return rows.map((row) => {
+    let contact = byKey.get(row.key);
+    if (!contact && row.email) {
+      contact = resolvedContacts.find((c) => String(c.email || "").toLowerCase() === row.email) || null;
+    }
+    return {
+      ...row,
+      accountId,
+      contactId: contact?.id || null,
+    };
+  });
 }
 
-function contextItem(label, valueHtml) {
-  return `
-    <div class="call-deal-context-item">
-      <span class="prep-form-eyebrow">${esc(label)}</span>
-      <span class="call-deal-context-value">${valueHtml}</span>
-    </div>`;
+function resolveDealDisplayTitle(deal, account) {
+  const accountName = titleCaseDisplayName(account?.name || account?.slug || "") || account?.name || "";
+  const rawTitle = String(deal?.title || "").trim();
+  if (
+    !rawTitle ||
+    rawTitle === accountName ||
+    rawTitle === account?.slug ||
+    isLegacyDealTitle(rawTitle, accountName)
+  ) {
+    return formatDealTitlePreview(accountName || "Account", deal?.type || "new_business", deal?.createdAt);
+  }
+  return titleCaseDisplayName(rawTitle) || rawTitle;
 }
 
-function renderDealContextStrip(ctx) {
-  const { deal, account, sequence, momentumStatus, arrLabel, technicalCommit } = ctx;
-  const items = [];
+function renderDealContextLine(ctx) {
+  const { deal, account, momentumStatus, arrLabel, technicalCommit } = ctx;
+  const pairs = [];
 
   if (deal?.id || deal?.title || account?.name) {
-    const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "";
-    const dealLabel = account?.name && dealTitle
-      ? `${account.name}. ${dealTitle}`
-      : account?.name || dealTitle;
+    const dealTitle = deal ? resolveDealDisplayTitle(deal, account) : "";
+    const dealLabel = dealTitle || account?.name || "";
     if (dealLabel) {
       const dealLink = deal?.id
         ? `<a href="#deals/${esc(deal.id)}" class="call-deal-link" data-action="open-deal">${esc(dealLabel)}</a>`
         : esc(dealLabel);
-      items.push(contextItem("Deal", dealLink));
+      pairs.push({ label: "Deal", value: dealLink });
     }
   }
 
   const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : null;
-  if (stage) items.push(contextItem("Stage", `<span class="pill">${esc(stage)}</span>`));
+  if (stage) pairs.push({ label: "Stage", value: `<span class="pill">${esc(stage)}</span>` });
 
-  if (arrLabel) items.push(contextItem("ARR", `<span class="num">${esc(arrLabel)}</span>`));
+  if (arrLabel) pairs.push({ label: "ARR", value: `<span class="num">${esc(arrLabel)}</span>` });
 
   const tcStatus = technicalCommit?.status;
   if (tcStatus) {
-    items.push(contextItem("TC",
-      `<span class="pill ${tcStatusPillClass(tcStatus)}">${esc(tcStatusLabel(tcStatus))}</span>`));
+    pairs.push({
+      label: "TC",
+      value: `<span class="pill ${tcStatusPillClass(tcStatus)}">${esc(tcStatusLabel(tcStatus))}</span>`,
+    });
   }
 
   const aiVal = formatTcFieldValue(technicalCommit?.aiAttach);
-  if (aiVal) items.push(contextItem("AI attach", `<span class="pill purple">${esc(aiVal)}</span>`));
+  if (aiVal) pairs.push({ label: "AI attach", value: `<span class="pill purple">${esc(aiVal)}</span>` });
 
   if (momentumStatus && momentumStatus !== "-") {
     const cls = tractionPillClass(momentumStatus);
-    items.push(contextItem("Traction",
-      `<span class="pill${cls ? ` ${cls}` : ""}">${esc(momentumStatus)}</span>`));
+    pairs.push({
+      label: "Traction",
+      value: `<span class="pill${cls ? ` ${cls}` : ""}">${esc(momentumStatus)}</span>`,
+    });
   }
 
-  // Nothing resolved — no empty-dash rail.
-  if (!items.length) return "";
-
-  const seqLabel =
-    sequence.position && sequence.total
-      ? `Call ${sequence.position} of ${sequence.total} on this deal`
-      : sequence.total
-        ? `${sequence.total} call${sequence.total === 1 ? "" : "s"} on deal`
-        : "";
+  if (!pairs.length) return "";
 
   return `
-    <div class="call-deal-context card-wire" aria-label="Deal context">
+    <div class="call-deal-context call-deal-context--line card-wire" aria-label="Deal context">
       <div class="call-deal-context-inner">
-        ${items.join("")}
-        ${seqLabel ? `<div class="call-deal-context-seq muted">${esc(seqLabel)}</div>` : ""}
+        ${pairs
+          .map(
+            (p) =>
+              `<span class="call-deal-context-pair"><span class="prep-form-eyebrow">${esc(p.label)}</span><span class="call-deal-context-value">${p.value}</span></span>`,
+          )
+          .join("")}
       </div>
     </div>`;
 }
 
-function renderVerdictStrip(ctx) {
+function qipMeterPct(score) {
+  if (score == null || !Number.isFinite(Number(score))) return 0;
+  return Math.min(100, Math.max(0, Math.round((Number(score) / 10) * 100)));
+}
+
+function meddpiccPipsHtml(filled) {
+  const n = filled != null ? Math.max(0, Math.min(MEDDPICC_FIELD_KEYS.length, Number(filled))) : 0;
+  return `<div class="pips8">${MEDDPICC_FIELD_KEYS.map((_, i) => `<i${i < n ? ' class="on"' : ""}></i>`).join("")}</div>`;
+}
+
+function confidenceDotsHtml(confidencePct) {
+  const label = confidenceBandLabel(confidencePct);
+  const filled = label === "High" ? 3 : label === "Medium" ? 2 : label === "Low" ? 1 : 0;
+  const short = label === "High" ? "High" : label === "Medium" ? "Med" : label === "Low" ? "Low" : "-";
+  return `<div class="confdots">${[0, 1, 2].map((i) => `<i${i < filled ? ' class="on"' : ""}></i>`).join("")}<span>${esc(short)}</span></div>`;
+}
+
+function sentimentColor(label) {
+  if (label === "Positive") return "#4a7a5c";
+  if (label === "Negative") return "#b8544a";
+  if (label === "Neutral") return "#a5883f";
+  return "#2b2926";
+}
+
+function renderPostcallKpiStack(ctx) {
   const {
     qipScore,
-    qipDeltaPill,
     meddpiccScore,
     meddpiccFilled,
-    momentumStatus,
+    sentiment,
     confidencePct,
-    tensionLine,
     scorecard,
     callType,
+    analysisMeta,
   } = ctx;
-  const qipNum = qipScore != null ? esc(String(Math.round(qipScore))) : "-";
+  const qipNum = formatQipScoreValue(qipScore);
+  const qipPct = qipMeterPct(qipScore);
   const medNum = meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
   const medSub =
     meddpiccFilled != null
       ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced`
       : "-";
-  const traction =
-    momentumStatus && momentumStatus !== "-" ? esc(momentumStatus) : "-";
-  const tractionClass =
-    momentumStatus === "Advancing"
-      ? "call-verdict-big--good"
-      : momentumStatus === "At risk"
-        ? "call-verdict-big--bad"
-        : "call-verdict-big--warn";
+  const sentimentLabel = sentiment?.label || "Neutral";
+  const sentimentSub = sentiment?.sub ? esc(sentiment.sub) : "";
   const confLabel = confidenceBandLabel(confidencePct);
-  // Percentage removed — the band label alone is the signal.
-  const confSub = "";
-  const profileMeta =
-    scorecard?.rubricVersion || scorecard?.callType || callType
-      ? `${esc(CALL_TYPE_LABELS[scorecard?.callType || callType] || callType || "call")} profile v${esc(scorecard?.rubricVersion || "1.0")}`
-      : "-";
 
+  return `<div class="metrics" aria-label="Call KPIs">
+    <div class="mcard" style="--accent:#4a7a5c">
+      <span class="lab">QIP score</span>
+      <span class="big" style="--val:#4a7a5c">${esc(qipNum)}<span class="u"> / 10</span></span>
+      <div class="meter"><span style="width:${qipPct}%;background:#4a7a5c"></span></div>
+    </div>
+    <div class="mcard" style="--accent:#a5883f">
+      <span class="lab">Qualification · MEDDPICC</span>
+      <span class="big" style="--val:#a5883f">${medNum}<span class="u"> / 100</span></span>
+      ${meddpiccPipsHtml(meddpiccFilled)}
+      <span class="subline">${medSub}</span>
+    </div>
+    <div class="mcard" style="--accent:${sentimentColor(sentimentLabel)}">
+      <span class="lab">Overall call sentiment</span>
+      <span class="sentiment" style="color:${sentimentColor(sentimentLabel)}">${esc(sentimentLabel)}</span>
+      ${sentimentSub ? `<span class="subline">${sentimentSub}</span>` : ""}
+    </div>
+    <div class="mcard" style="--accent:#a5883f">
+      <span class="lab">Confidence to closure</span>
+      <span class="sentiment" style="color:#2b2926">${esc(confLabel)}</span>
+      ${confidenceDotsHtml(confidencePct)}
+    </div>
+  </div>`;
+}
+
+function scorecardHasRadarInput(scorecard, categoryScores, qipScore) {
+  if (Object.values(categoryScores).some((n) => Number(n) > 0)) return true;
+  if (qipScore != null && Number.isFinite(Number(qipScore)) && Number(qipScore) > 0) return true;
+  return (scorecard?.lines || []).some(
+    (line) =>
+      !line.modelOmitted &&
+      !line.evidenceUnavailable &&
+      line.applicable !== false &&
+      (Number(line.grade) > 0 ||
+        (line.subParameters || []).some((sp) => Number(sp.score ?? sp.grade) > 0)),
+  );
+}
+
+function renderPostcallSummaryRow(bundle, stakeholderRows) {
+  const categoryScores = resolveCategoryScores(bundle.scorecard, bundle.callType);
+  const hasRadarData = scorecardHasRadarInput(bundle.scorecard, categoryScores, bundle.qipScore);
+  const radarHtml = hasRadarData
+    ? renderQipRadar(categoryScores, {
+        overallScore: bundle.qipScore,
+        title: "Evaluation signal",
+        animate: true,
+      })
+    : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">QIP category scores appear here once analysis completes.</p></div>`;
   return `
-    <div class="call-verdict-card card-wire" aria-label="Verdict">
-      <div class="call-verdict-grid">
-        <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">QIP Score</div>
-          <div class="call-verdict-value-row">
-            <span class="call-verdict-big num call-verdict-big--good">${qipNum}</span>
-            <span class="muted call-verdict-denom">/ 100</span>
-            ${qipDeltaPill || ""}
-          </div>
-          <div class="call-verdict-mono">${profileMeta}</div>
-        </div>
-        <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">Qualification MEDDPICC</div>
-          <div class="call-verdict-value-row">
-            <span class="call-verdict-big num call-verdict-big--warn">${medNum}</span>
-            <span class="muted call-verdict-denom">/ 100</span>
-          </div>
-          <div class="call-verdict-mono">${medSub}</div>
-        </div>
-        <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">Overall Call sentiment</div>
-          <div class="call-verdict-value-row">
-            <span class="call-verdict-mid num ${tractionClass}">${traction}</span>
-          </div>
-          <div class="call-verdict-mono muted">from call momentum</div>
-        </div>
-        <div class="call-verdict-cell">
-          <div class="prep-form-eyebrow">Confidence to Closure</div>
-          <div class="call-verdict-value-row">
-            <span class="call-verdict-mid">${esc(confLabel)}</span>
-          </div>
-          ${confSub ? `<div class="call-verdict-mono">${confSub}</div>` : ""}
-        </div>
-      </div>
-      <div class="call-verdict-tension-band">${renderTensionBand(tensionLine)}</div>
-    </div>`;
+    <section class="toprow call-postcall-summary-row">
+      ${renderPostcallKpiStack({ ...bundle, analysisMeta: bundle.analysisMeta })}
+      ${radarHtml}
+      ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows, bundle.analysisMeta)}
+    </section>`;
 }
 
 function renderVideoEmptySection(title, detail) {
@@ -951,12 +1308,12 @@ function splitSentences(text) {
   return out.map((s) => s.trim()).filter(Boolean);
 }
 
-export function formatCallNotesBullets(notes) {
+export function formatCallNotesBullets(notes, maxLines = 8) {
   const text = String(notes || "").trim();
   if (!text) return [];
 
   const finish = (arr) =>
-    arr.map(stripBulletMarkers).filter(Boolean).slice(0, 8);
+    arr.map(stripBulletMarkers).filter(Boolean).slice(0, maxLines);
 
   const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
   const prefixed = lines.filter((l) => BULLET_MARKER.test(l));
@@ -982,20 +1339,14 @@ export function formatCallNotesBullets(notes) {
   return finish(bullets);
 }
 
-function renderCallNotesBulletsHtml(notes) {
-  const bullets = formatCallNotesBullets(notes);
+function renderCallNotesBulletsHtml(notes, maxLines = 3) {
+  const bullets = formatCallNotesBullets(notes, maxLines);
   if (!bullets.length) {
-    return '<p class="muted call-notes-empty">No call notes yet. Re-run post-call analysis or edit to add.</p>';
+    return '<p class="muted call-notes-empty">No call notes yet.</p>';
   }
   return `<ul class="call-notes-bullets">${bullets
     .map((b) => `<li>${esc(b)}</li>`)
     .join("")}</ul>`;
-}
-
-function renderCallNotesEditPanelHtml(notes) {
-  return `
-          <p class="muted call-notes-hint">Internal: blunt coaching narrative. Not the customer MoM.</p>
-          <textarea id="call-notes-editor" class="call-notes-editor" aria-label="Call notes">${esc(notes || "")}</textarea>`;
 }
 
 function renderCallNotesSection(notes) {
@@ -1004,33 +1355,20 @@ function renderCallNotesSection(notes) {
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
         <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
-        <div id="call-notes-edit" class="call-notes-edit" hidden aria-hidden="true"></div>
-        <div class="call-notes-actions">
-          <fw-button id="call-notes-edit-btn" color="secondary" fill="outline" size="small">Edit notes</fw-button>
-          <fw-button id="call-notes-save" class="call-notes-action--edit" color="secondary" fill="outline" size="small" hidden>Save notes</fw-button>
-          <fw-button id="call-notes-cancel" class="call-notes-action--edit" color="secondary" fill="clear" size="small" hidden>Cancel</fw-button>
-          <span id="call-notes-save-status" class="call-save-status muted" hidden></span>
-        </div>
       </div>
     </section>`;
 }
 
-function formatPass2DebugNote(analysisMeta, videoFacts) {
-  const dbg = analysisMeta?.pass2Debug;
-  const err = videoFacts?.errorMessage;
-  if (!dbg && !err) return "";
-  const parts = [
-    dbg?.route && `route=${dbg.route}`,
-    dbg?.streamKind && `stream=${dbg.streamKind}`,
-    dbg?.sampleCount != null && `samples=${dbg.sampleCount}`,
-    dbg?.keyframeCount != null && `keyframes=${dbg.keyframeCount}`,
-    dbg?.visionCurveRows != null && `visionRows=${dbg.visionCurveRows}`,
-    videoFacts?.streamKind && `vf=${videoFacts.streamKind}`,
-    dbg?.error && `err=${dbg.error}`,
-    err && !dbg?.error && `err=${String(err).slice(0, 100)}`,
-  ].filter(Boolean);
-  if (!parts.length) return "";
-  return `<p class="muted call-stakeholder-note call-pass2-debug" data-pass2-debug>${esc(parts.join(" · "))}</p>`;
+function formatPass2DebugNote(_analysisMeta, _videoFacts) {
+  return "";
+}
+
+function renderStakeholderName(row) {
+  const nameHtml = esc(row.name);
+  if (row.contactId && row.accountId) {
+    return `<a href="#accounts/${esc(row.accountId)}/contacts/${esc(row.contactId)}" class="call-stakeholder-link" data-action="open-contact-account" data-account-id="${esc(row.accountId)}" data-contact-id="${esc(row.contactId)}">${nameHtml}</a>`;
+  }
+  return `<span class="call-stakeholder-name">${nameHtml}</span>`;
 }
 
 function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, stakeholderRows, analysisMeta) {
@@ -1057,18 +1395,13 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">
-            <div class="call-stakeholder-name">${esc(r.name)}</div>
+            <div class="call-stakeholder-name-row">${renderStakeholderName(r)}</div>
             <div class="sub call-stakeholder-role">${esc(r.role)}</div>
             <div class="call-stakeholder-signals">${talkPill}<span class="pill ${camCls} call-stakeholder-pill">cam ${camLabel}</span></div>
           </div>
         </div>`;
       })
-      .join("")}</div>
-    ${
-      hasVideo
-        ? ""
-        : `<p class="muted call-stakeholder-note">Transcript-only call. roles confirmed at intake; camera state is inferred and may read as unknown.</p>`
-    }${formatPass2DebugNote(analysisMeta, videoFacts)}`;
+      .join("")}</div>`;
   } else if (hasVideo) {
     body = renderVideoEmptySection(
       "Stakeholder profiles not loaded",
@@ -1082,7 +1415,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
   }
 
   return `
-    <section class="call-section call-stakeholder-section card-wire card-wire--tight">
+    <section class="call-section call-stakeholder-section card-wire card-wire--tight call-postcall-room">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Who was in the room</div>
         ${body}
@@ -1130,8 +1463,7 @@ function renderTimelineSpine(segments, markers) {
 
 /**
  * Two possible spines, never mixed: Pass 2 screen-share segments, or conversation phases
- * derived from transcript timestamps. The transcript spine is display evidence only —
- * `call_flow` and the other video-dependent themes stay not-applicable without video.
+ * derived from transcript timestamps. The transcript spine is display evidence only.
  */
 export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = {}) {
   const all = timeline?.segments || [];
@@ -1148,10 +1480,10 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   if (segments.length) {
     body += renderVisualSpine(segments, markers, durationSec);
     body += renderSpineLegend();
+    if (markers.length) body += renderMarkerLegend(markers);
     body += renderSpineTimeAxis(durationSec);
-    body += renderSpineMetrics(opts.videoFacts, opts.scorecard, opts.record, opts.stakeholderRows);
     if (usingTranscript) {
-      body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow and engagement stay unscored; those need Pass 2.</p>`;
+      body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
     }
   } else if (markers.length) {
     body = renderTimelineMarkers(markers);
@@ -1164,12 +1496,17 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   } else if (hasVideo) {
     body = renderVideoEmptySection(
       "Timeline not loaded",
-      "Video was available, but Pass 2 did not produce share segments (Gemini transcript inference or VPS ffmpeg).",
+      "Video was available, but visual analysis did not produce share segments for this call.",
+    );
+  } else if (opts.kaiaSource) {
+    body = renderVideoEmptySection(
+      "No timeline yet",
+      "Kaia share links provide an AI summary, not a video file or VTT transcript. Pass 2 infers slide/demo phases from that summary — re-run post-call analysis if this call was processed before that step ran.",
     );
   } else {
     body = renderVideoEmptySection(
       "No timeline",
-      "A timeline needs timestamps: either Pass 2 video or a VTT transcript. A plain-text transcript has no clock to place moments on.",
+      "A timeline needs timestamps: either video analysis or a VTT transcript. A plain-text transcript has no clock to place moments on.",
     );
   }
 
@@ -1198,7 +1535,7 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
   if (!tc && !deltas.length) {
     return renderPhase2TabEmpty(
       "No technical commit yet",
-      "Pass 5 did not return a commit snapshot for this call. Link a deal and re-run analysis; the whiteboard decomposition lands here.",
+      "Technical commit has not been captured for this call yet. Link a deal and re-run analysis.",
     );
   }
 
@@ -1250,7 +1587,6 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
             <h3>Technical commit</h3>
             ${tcPill}
           </div>
-          <p class="sub call-tc-intro">What this call contributed to the commit. Deltas from the previous call are marked.</p>
           ${tc?.justification ? `<p class="call-tc-justification">${esc(tc.justification)}</p>` : ""}
           <div class="call-tc-slots">${slotRows || '<p class="muted">No commit fields on this snapshot.</p>'}</div>
         </div>
@@ -1280,21 +1616,14 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
   if (!deltas.length && !objs.length && !reasons.length && !medList) {
     return renderPhase2TabEmpty(
       "No deal-health movement yet",
-      "Pass 4 MEDDPICC deltas, Pass 7 objections, and Pass 8 traction reasons appear here after analysis on a linked deal.",
+      "MEDDPICC movement, objections, and traction reasons appear here after analysis on a linked deal.",
     );
   }
 
   const objHtml = objs.length
     ? `<div class="card-wire card-wire--tight call-health-side-card">
         <div class="prep-form-eyebrow">Objections</div>
-        ${objs
-          .map(
-            (o, i) => `<div class="call-objection-wire-row${i < objs.length - 1 ? " call-objection-wire-row--border" : ""}">
-              <div class="call-objection-wire-text">${esc(o.objectionText || "")}</div>
-              <div class="sub">${esc(o.handling || "-")} · <span class="${o.landed ? "call-landed" : "call-open"}">${o.landed ? "landed" : "open"}</span></div>
-            </div>`,
-          )
-          .join("")}
+        ${objs.map((o) => renderObjectionQaRow(o)).join("")}
       </div>`
     : "";
 
@@ -1307,7 +1636,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
   const tractionHtml = reasons.length
     ? `<div class="card-wire card-wire--tight call-health-traction-card call-health-traction-card--${tractionClass}">
         <div class="prep-form-eyebrow">Traction${dealSignal?.lean != null ? ` · ${esc(String(dealSignal.lean))}` : ""}</div>
-        <div class="call-traction-bullets">${reasons.map((r) => `· ${esc(typeof r === "string" ? r : r.reason || JSON.stringify(r))}`).join("<br>")}</div>
+        <div class="call-traction-bullets">${reasons.map((r) => `· ${esc(sanitizeUserFacingCopy(typeof r === "string" ? r : r.reason || JSON.stringify(r)))}`).join("<br>")}</div>
       </div>`
     : "";
 
@@ -1316,7 +1645,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
       <div class="card-wire card-wire--tight">
         <h3>MEDDPICC</h3>
         <p class="sub">${meddpiccFilled != null ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced on this call` : "Deal qualification"}</p>
-        <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet. Run Pass 4 qualification on a linked deal.</p>'}</div>
+        <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet. Run deal qualification on a linked deal.</p>'}</div>
       </div>
       <div class="call-health-aside">${objHtml}${tractionHtml}</div>
     </div>
@@ -1327,6 +1656,24 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
  * Resolve MoM for the Minutes tab — prefer stored momDrafts, then Pass 7 blob.
  * Compose Kaia-style sections from structured fields; fall back to flat body + follow-ups.
  */
+function resolveMomGreetingName(record, mom, attendees = []) {
+  const customer = (attendees || []).find((a) =>
+    /customer|prospect|buyer|client/i.test(String(a?.role || a?.type || a?.side || "")),
+  );
+  const name = customer?.name || customer?.displayName || "";
+  if (name.trim()) return name.trim().split(/\s+/)[0];
+  return greetingNameFromDraft(mom?.editedBody || mom?.draftBody || "");
+}
+
+/** Plain legacy draftBody (not a composed email) usable as outcome text. */
+function legacyPlainOutcome(body) {
+  const t = String(body || "").trim();
+  if (!t || /^Dear\s+/i.test(t)) return "";
+  if (/\n\n(?:Meeting outcome|What we covered|Next steps)/i.test(t)) return "";
+  if (t.length < 600) return t;
+  return "";
+}
+
 export function resolveMinutesViewModel(record, momDraft, followUps) {
   const mom =
     momDraft ||
@@ -1334,8 +1681,10 @@ export function resolveMinutesViewModel(record, momDraft, followUps) {
     record?.result?.momDraft ||
     null;
   const fus = followUps || record?.result?.summarise?.followUps || [];
+  const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
+  const attendees = hdr.attendees || [];
 
-  const outcome = (mom?.outcome || "").trim() || (mom?.editedBody || mom?.draftBody || "").trim();
+  const rawOutcome = (mom?.outcome || "").trim();
   const keyPoints = Array.isArray(mom?.keyPoints) ? mom.keyPoints.filter((k) => k?.title) : [];
   let actionItems = Array.isArray(mom?.actionItems) ? mom.actionItems.filter((a) => a?.text) : [];
 
@@ -1349,12 +1698,30 @@ export function resolveMinutesViewModel(record, momDraft, followUps) {
     }));
   }
 
+  const hasStructured = rawOutcome || keyPoints.length || actionItems.length;
+  const legacyBody = (mom?.editedBody || mom?.draftBody || "").trim();
+  const legacyOutcome = legacyPlainOutcome(mom?.editedBody ? "" : mom?.draftBody);
+  const outcome = rawOutcome || legacyOutcome || (!hasStructured ? legacyBody : "");
+
+  const emailDraft = assembleMomEmailDraft({
+    outcome: rawOutcome || legacyOutcome || (!hasStructured ? legacyBody : ""),
+    keyPoints,
+    actionItems,
+    greetingName: resolveMomGreetingName(record, mom, attendees),
+    companyName: hdr.company || hdr.account || record?.company || companyFromCallTitle(hdr.title) || "",
+    meetingTitle: hdr.title || record?.title || "",
+  });
+
+  const editedBody = (mom?.editedBody || "").trim();
+
   return {
     mom,
     outcome,
     keyPoints,
     actionItems,
-    draftBody: mom?.editedBody || mom?.draftBody || "",
+    draftBody: legacyBody,
+    emailDraft,
+    editorBody: editedBody || emailDraft || legacyBody,
     sentAt: mom?.sentAt || null,
   };
 }
@@ -1364,112 +1731,122 @@ function ownerLabel(owner) {
   return map[owner] || owner || "";
 }
 
+function momOwnerChip(owner) {
+  const label = ownerLabel(owner);
+  if (!label) return "";
+  const key = String(owner || "").toLowerCase();
+  const cls =
+    key === "ae" ? "mom-owner--ae" : key === "customer" ? "mom-owner--customer" : "mom-owner--se";
+  return `<span class="mom-owner ${cls}">${esc(label)}</span>`;
+}
+
+function renderMomActionRow(action) {
+  const meta = [
+    momOwnerChip(action.owner),
+    action.dueDate ? `<span class="mom-due">By ${esc(action.dueDate)}</span>` : "",
+    action.atS != null && Number.isFinite(Number(action.atS))
+      ? `<span class="mom-action-ts num">${esc(formatSegmentTime(action.atS))}</span>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  return `<li class="mom-action">
+    <div class="mom-action-main">
+      <span class="mom-action-text">${esc(action.text)}</span>
+      ${meta ? `<div class="mom-action-meta">${meta}</div>` : ""}
+    </div>
+  </li>`;
+}
+
+function renderMomTopicRow(kp) {
+  const detail = kp.detail ? `<span class="mom-topic-detail">${esc(kp.detail)}</span>` : "";
+  return `<li class="mom-topic">
+    <strong class="mom-topic-title">${esc(kp.title)}</strong>
+    ${detail}
+  </li>`;
+}
+
 export function renderMinutesTab(record, opts = {}) {
   const view = resolveMinutesViewModel(record, opts.momDraft, opts.followUps);
-  const { outcome, keyPoints, actionItems, draftBody, sentAt } = view;
+  const { outcome, keyPoints, actionItems, editorBody, sentAt } = view;
 
-  if (!outcome && !keyPoints.length && !actionItems.length && !draftBody.trim()) {
+  if (!outcome && !keyPoints.length && !actionItems.length && !editorBody.trim()) {
     return renderPhase2TabEmpty(
       "No minutes draft yet",
-      "Pass 7 did not return a MoM for this call, or summarisation was skipped. Re-run analysis to generate one.",
+      "Minutes of meeting were not generated for this call, or summarisation was skipped. Re-run analysis to generate one.",
     );
   }
 
   const hdr = record?.analysis?.callHeader || record?.result?.analysis?.callHeader || {};
   const title = hdr.title || record?.title || "Call recap";
   const dateLabel = callDateLabel(record);
+  const bodyText = outcome.trim();
 
-  const nextStepsHtml = actionItems.length
-    ? `<br><br><b>Next steps</b><br>${actionItems
-        .map((a) => {
-          const owner = ownerLabel(a.owner);
-          const due = a.dueDate ? `. <i>${esc(owner || "Owner")}, by ${esc(a.dueDate)}</i>` : owner ? `. <i>${esc(owner)}</i>` : "";
-          return `· ${esc(a.text)}${due}`;
-        })
-        .join("<br>")}`
+  const statusHtml = sentAt
+    ? `<span class="mom-status mom-status--sent">Sent ${esc(formatDateTime(sentAt))}</span>`
     : "";
 
-  const keyPointsHtml = keyPoints.length
-    ? `<br><br><b>What we covered</b><br>${keyPoints.map((kp) => `${esc(kp.title)}${kp.detail ? `: ${esc(kp.detail)}` : ""}`).join("<br>")}`
+  const outcomeHtml = bodyText
+    ? `<section class="mom-section mom-section--outcome">
+        <h3>Outcome</h3>
+        <p class="mom-outcome-text">${esc(bodyText)}</p>
+      </section>`
     : "";
 
-  const bodyText = outcome.trim() || draftBody.trim();
-  const recapHtml = `${esc(bodyText)}${keyPointsHtml}${nextStepsHtml}`;
+  const topicsHtml = keyPoints.length
+    ? `<section class="mom-section mom-section--topics">
+        <h3>What we covered</h3>
+        <ul class="mom-topics">${keyPoints.map(renderMomTopicRow).join("")}</ul>
+      </section>`
+    : "";
 
-  return `
-    <div class="call-mom-panel call-mom-panel--wireframe">
-      <div class="call-mom-wire-head">
-        <h3>Minutes of meeting</h3>
-        <span class="pill blue">Customer facing · never auto-sends</span>
-      </div>
-      <p class="sub call-mom-wire-sub">Drafted from commitments made aloud, with timestamps kept underneath.</p>
-      <div class="call-mom-wire-body">
-        <div class="call-mom-wire-title">${esc(title)}${dateLabel ? `. ${esc(dateLabel)}` : ""}</div>
-        ${recapHtml}
-      </div>
+  const actionsHtml = actionItems.length
+    ? `<section class="mom-section mom-section--actions">
+        <h3>Next steps</h3>
+        <ul class="mom-actions">${actionItems.map(renderMomActionRow).join("")}</ul>
+      </section>`
+    : "";
+
+  return `<section class="card mom-card mom-card--wireframe">
+    <div class="mom-head">
+      <h2>Minutes of meeting</h2>
+      ${statusHtml}
+    </div>
+    <div class="mom-title-row">${esc(title)}${dateLabel ? ` · ${esc(dateLabel)}` : ""}</div>
+    ${outcomeHtml}
+    ${topicsHtml}
+    ${actionsHtml}
+    <div class="mom-email-edit">
+      <p class="mom-edit-intro">Use the below to send an email to the customer.</p>
       <details class="call-mom-edit-wrap">
-        <summary>Edit draft</summary>
-        <textarea id="call-mom-editor" class="call-mom-editor" aria-label="Minutes draft">${esc(draftBody || outcome)}</textarea>
+        <summary>Edit email draft</summary>
+        <textarea id="call-mom-editor" class="call-mom-editor" aria-label="Email draft">${esc(editorBody)}</textarea>
         <div class="call-mom-actions">
           <fw-button id="call-mom-save" color="primary" size="small">Save draft</fw-button>
           <span id="call-mom-save-status" class="call-save-status muted" hidden></span>
-          ${sentAt ? `<span class="muted">Sent ${esc(formatDateTime(sentAt))}</span>` : '<span class="muted">Not sent yet</span>'}
         </div>
       </details>
-    </div>`;
-}
-
-function renderProductSignalTab(productGaps, whatWorks, clusterLabels) {
-  const gaps = productGaps || [];
-  const wins = whatWorks || [];
-  if (!gaps.length && !wins.length) {
-    return `<p class="muted">No product gaps or wins recorded for this call yet. Re-run post-call analysis. Pass 6 extracts gaps from the transcript and call notes.</p>`;
-  }
-
-  const gapRows = gaps.map((g) => {
-    const cluster = g.clusterId ? clusterLabels[g.clusterId] : null;
-    const typeLabel = g.gapType === "enablement_gap" ? "Enablement gap" : "Real gap";
-    const typeCls = g.gapType === "enablement_gap" ? "amber" : "red";
-    const statusLabel = g.status === "published" ? "Roadmap Q3" : "Triage";
-    const ts = g.atS != null ? formatSegmentTime(g.atS) : null;
-    return `<div class="call-product-unified-row">
-      <div class="call-product-unified-main">
-        <div class="call-product-unified-title">${esc(g.title || g.productArea || "Product gap")}</div>
-        ${g.verbatim ? `<div class="ev bad"><div class="ts">${ts ? esc(ts) : "-"}</div>${esc(g.verbatim)}</div>` : ""}
-        <div class="sub call-product-unified-meta">${esc(formatProductAreaLabel(g))}${cluster ? ` · ${esc(cluster)}` : ""} · <span class="pill ${typeCls}">${esc(typeLabel)}</span></div>
-      </div>
-      <span class="pill blue">${esc(statusLabel)}</span>
-    </div>`;
-  });
-
-  const winRows = wins.map((w) => {
-    const ts = w.atS != null ? formatSegmentTime(w.atS) : null;
-    return `<div class="call-product-unified-row call-product-unified-row--win">
-      <div class="call-product-unified-main">
-        <div class="call-product-unified-title">${esc(w.title || w.productArea || "What landed")}</div>
-        ${w.verbatim ? `<div class="ev good"><div class="ts">${ts ? esc(ts) : "-"}</div>${esc(w.verbatim)}</div>` : `<div class="sub">${esc(w.summary || "")}</div>`}
-      </div>
-      <span class="pill green">What's working</span>
-    </div>`;
-  });
-
-  return `<div class="call-product-signal-tab call-product-signal-tab--wireframe">
-    <h3>Raised on this call</h3>
-    <p class="sub">Classified against the taxonomy, clustered on the verbatim</p>
-    ${[...gapRows, ...winRows].join("")}
-  </div>`;
-}
-
-function formatProductAreaLabel(gap) {
-  const area = String(gap.productArea || "other").replace(/_/g, " ");
-  if (!gap.subArea || gap.subArea === "other") return area;
-  return `${area} › ${String(gap.subArea).replace(/_/g, " ")}`;
+    </div>
+  </section>`;
 }
 
 function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
-  const qipHtml = scorecard?.lines?.length
-    ? renderQipScorecard(scorecard, analysisMeta, { context: "call-record" })
-    : `<div class="call-tab-empty"><h4>No QIP scorecard</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
+  const coachAudience = tabs.coachAudience || "se";
+  let qipHtml;
+  try {
+    qipHtml =
+      scorecard?.lines?.length || scorecard?.categoryScores || scorecard?.overall != null
+        ? renderQipScorecard(scorecard, analysisMeta, {
+            context: "call-record",
+            callId: record.id,
+            coachAudience,
+            company: tabs.company || "",
+          })
+        : `<div class="call-tab-empty"><h4>No QIP scorecard</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
+  } catch (err) {
+    console.error("[call-view] QIP scorecard render failed:", err);
+    qipHtml = `<div class="call-tab-empty"><h4>QIP scorecard unavailable</h4><p class="muted">Could not render the scorecard for this call. Try refreshing; if it persists, re-run post-call analysis.</p></div>`;
+  }
 
   const tabDefs = [
     { id: "qip", label: "QIP scorecard", body: `<div class="call-tab-panel-inner call-tab-qip">${qipHtml}</div>` },
@@ -1492,16 +1869,18 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
     {
       id: "signal",
       label: "Product signal",
-      body: `<div class="call-tab-panel-inner">${renderProductSignalTab(
-        tabs.productGaps,
-        tabs.whatWorks,
-        tabs.clusterLabels || {},
-      )}</div>`,
+      body: `<div class="call-tab-panel-inner call-tab-signal">${renderCallProductSignalTab(record, {
+        productGaps: tabs.productGaps,
+        whatWorks: tabs.whatWorks,
+        clusterLabels: tabs.clusterLabels || {},
+        objections: tabs.objections,
+        timelineMarkers: tabs.timelineMarkers,
+      })}</div>`,
     },
     {
       id: "minutes",
       label: "Minutes",
-      body: `<div class="call-tab-panel-inner">${renderMinutesTab(record, {
+      body: `<div class="call-tab-panel-inner call-tab-mom">${renderMinutesTab(record, {
         momDraft: tabs.momDraft,
         followUps: tabs.followUps,
       })}</div>`,
@@ -1554,8 +1933,7 @@ async function promiseAllValues(tasks) {
 
 /** Immediate shell while Firestore enrichments load. */
 function renderCallLoadingShell(record) {
-  const analysis = record?.analysis || record?.result?.analysis || {};
-  const title = analysis.callHeader?.title || record?.title || "Call";
+  const title = resolveCallTitleFromRecord(record);
   return `
     <div class="lifecycle-detail call-record call-record--loading">
       <div class="call-record-page">
@@ -1572,7 +1950,7 @@ async function loadCallBundle(session, record) {
   const store = getStore();
   let dealId = resolveDealId(record);
   const resultBlob = record.result || {};
-  const pass6 = record.pass6 || resultBlob.pass6 || null;
+  const pass6 = resolvePass6(record);
   const draftVf = resultBlob.videoFacts;
   const draftTimeline = resultBlob.timeline;
   const summarise = resultBlob.summarise || {};
@@ -1630,7 +2008,8 @@ async function loadCallBundle(session, record) {
 
   // Tier 3 — the record never got a dealId stamped (dual-write skipped, or confirm
   // had no deals on the account). Recover it from the account's deal list.
-  if (!dealId) {
+  const pendingNewDeal = recordPendingNewDeal(record);
+  if (!dealId && !pendingNewDeal) {
     const accountId =
       record?.result?.confirmed?.accountId ||
       record?.result?.resolve?.account?.accountId ||
@@ -1666,6 +2045,25 @@ async function loadCallBundle(session, record) {
     if (deal?.accountId && store.getAccount) {
       account = await safeEnrich("getAccount", () => store.getAccount(deal.accountId), null);
     }
+  } else if (pendingNewDeal) {
+    const confirmed = record?.result?.confirmed || {};
+    const pendingTitle = confirmed.newDealTitle || record?.newDealTitle || "";
+    if (pendingTitle) {
+      deal = {
+        title: pendingTitle,
+        type: confirmed.newDealType || record?.newDealType || "new_business",
+        stage: "research",
+      };
+    }
+    const accountId =
+      confirmed.accountId ||
+      record?.accountId ||
+      record?.result?.confirmed?.accountId ||
+      parallel.domainCall?.accountId ||
+      null;
+    if (accountId && store.getAccount) {
+      account = await safeEnrich("getAccount", () => store.getAccount(accountId), null);
+    }
   }
 
   // Same enrichment the deal record uses — Firestore metadata.meddpicc lags behind
@@ -1688,31 +2086,43 @@ async function loadCallBundle(session, record) {
   const meddpiccFilled = countMeddpiccFilled(med);
   const sequence = dealSequencePosition(email, dealId, record.id);
   const callType = resolveCallType(record);
-  const scorecard = resolveScorecard(record);
   const analysisMeta = resolveAnalysisMeta(record);
-  const composite = scorecard?.lines?.length
-    ? typeComposite(
-        [{
-          callType: scorecard.callType || callType,
-          rubricVersion: scorecard.rubricVersion || analysisMeta.rubricVersion || "1.0",
-          lines: scorecard.lines,
-          provisional: scorecard.provisional ?? analysisMeta.provisional,
-          confidence: scorecard.confidence ?? analysisMeta.analysisConfidence,
-        }],
-        scorecard.callType || callType,
-        { includeIneligible: true },
-      )
-    : null;
-  const qipScore = composite?.score ?? null;
-  const qipLabel = composite ? formatTypeComposite(composite) : null;
+  let scorecard = await enrichScorecardFromStore(record, resolveScorecard(record));
+  if (scorecard) {
+    const rubric = effectiveRubricVersion(scorecard, analysisMeta);
+    scorecard = { ...scorecard, rubricVersion: rubric };
+  }
+  if (scorecard?.lines?.length) {
+    scorecard = normalizeQipScorecard(scorecard, analysisMeta);
+  } else if (
+    scorecard &&
+    (scorecard.categoryScores || typeof scorecard.overall === "number")
+  ) {
+    scorecard = normalizeQipScorecard({ ...scorecard, lines: scorecard.lines || [] }, analysisMeta);
+  }
+  const categoryScores = resolveCategoryScores(scorecard, callType);
+  const qipScore = resolveQipOverallScore(scorecard, callType, analysisMeta);
+  const qipLabel =
+    qipScore != null
+      ? formatTypeComposite({
+          score: qipScore,
+          callType: scorecard?.callType || callType,
+          rubricVersion: scorecard?.rubricVersion || analysisMeta.rubricVersion || RUBRIC_VERSION,
+        })
+      : null;
   const deltaInfo = qipDeltaForType(email, callType, qipScore, record.id);
   const analysis = record.analysis || resultBlob.analysis || {};
   const momentumStatus = analysis?.momentum?.status || "-";
+  const sentiment = resolveCallSentiment(analysis);
   const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
 
-  let productGaps = pass6?.productGaps?.length ? pass6.productGaps : parallel.productGaps;
-  let whatWorks = pass6?.whatWorks?.length ? pass6.whatWorks : parallel.whatWorks;
+  let productGaps = (pass6?.productGaps?.length ? pass6.productGaps : parallel.productGaps)
+    .map(normalizeProductSignalRow)
+    .filter(Boolean);
+  let whatWorks = (pass6?.whatWorks?.length ? pass6.whatWorks : parallel.whatWorks)
+    .map(normalizeProductSignalRow)
+    .filter(Boolean);
 
   /** @type {Record<string, string>} */
   const clusterLabels = {};
@@ -1777,10 +2187,25 @@ async function loadCallBundle(session, record) {
   const dealSignal = parallel.dealSignals?.[0] || null;
 
   let navigableDealId = dealId;
-  if (dealId && !deal?.accountId) {
+  if (dealId && deal && !deal.accountId) {
     const probe = await safeEnrich("getDeal:probe", () => getDeal(dealId), null);
-    if (!probe?.accountId) navigableDealId = null;
+    if (probe && !probe.accountId) navigableDealId = null;
   }
+
+  const accountId = deal?.accountId || account?.id || null;
+  let accountContacts = [];
+  if (accountId && store?.listContactsByAccount) {
+    accountContacts = await safeEnrich(
+      "listContactsByAccount",
+      () => store.listContactsByAccount(accountId),
+      [],
+    );
+  }
+  const stakeholderRows = await enrichStakeholderContacts(
+    accountId,
+    buildStakeholderRows(identities, attendees, videoFacts, accountContacts),
+    accountContacts,
+  );
 
   return {
     record,
@@ -1800,6 +2225,7 @@ async function loadCallBundle(session, record) {
     meddpiccFilled,
     meddpicc: med,
     momentumStatus,
+    sentiment,
     confidencePct,
     arrLabel,
     tensionLine: buildVerdictTension({
@@ -1810,6 +2236,7 @@ async function loadCallBundle(session, record) {
       confidencePct,
     }),
     hasVideo: resolveVideoAvailable(record),
+    kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
     callNotes: (() => {
       const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
       if (fromAnalysis) return fromAnalysis;
@@ -1828,6 +2255,7 @@ async function loadCallBundle(session, record) {
     followUps,
     momDraft,
     dealSignal,
+    stakeholderRows,
   };
 }
 
@@ -1852,48 +2280,48 @@ function parseDurationMinutesLabel(record, timeline) {
 function renderCallRecord(bundle) {
   const { record, callTypeLabel, account } = bundle;
   const analysis = record.analysis || record.result?.analysis || {};
-  const hdr = analysis.callHeader || {};
-  const title = hdr.title || record.title || "Call";
-  const attendeeCount = Array.isArray(hdr.attendees) ? hdr.attendees.length : null;
+  const title = resolveCallTitleFromRecord(record, { accountName: account?.name });
   const durationLabel = parseDurationMinutesLabel(record, bundle.timeline);
-  const stakeholderRows = buildStakeholderRows(bundle.identities, bundle.attendees, bundle.videoFacts);
+  const stakeholderRows = bundle.stakeholderRows || buildStakeholderRows(bundle.identities, bundle.attendees, bundle.videoFacts);
   const metaBits = [
     account?.id
-      ? `<a href="#accounts/${esc(account.id)}" class="call-meta-link">${esc(account.name)}</a>`
+      ? `<a href="#accounts/${esc(account.id)}" class="call-meta-link">${esc(titleCaseDisplayName(account.name) || account.name)}</a>`
       : account?.name
-        ? esc(account.name)
+        ? esc(titleCaseDisplayName(account.name) || account.name)
         : "",
     callDateLabel(record),
   ].filter(Boolean);
 
+  const canOpenDeal = !!(
+    bundle.deal?.id ||
+    bundle.dealId ||
+    companyFromCallTitle(title)
+  );
+  const dealAction = canOpenDeal
+    ? `<button type="button" class="btn-wire call-record-action call-record-action--deal" data-action="open-deal">Open deal</button>`
+    : "";
+
   return `
     <div class="lifecycle-detail call-record">
       <div class="call-record-page">
-        <header class="call-record-hero">
-          <fw-button class="lifecycle-back call-record-back" color="secondary" fill="clear" data-action="back">← All calls</fw-button>
-          <div class="call-record-hero-main">
-            <div class="call-record-title-row">
+        <div class="call-record-title-block">
+          <div class="call-record-title-row">
+            <div class="call-record-title-main">
               <h1 class="call-record-title">${esc(title)}</h1>
               ${callTypePill(callTypeLabel)}
             </div>
-            ${metaBits.length ? `<p class="call-record-meta-line muted">${metaBits.join(" · ")}</p>` : ""}
+            <div class="call-record-title-actions">
+              <button type="button" class="btn-wire call-record-action" data-action="new-postcall">New post call</button>
+              ${dealAction}
+            </div>
           </div>
-          <div class="call-record-header-actions">
-            <fw-button color="secondary" fill="outline" size="small" data-action="new-postcall">New post call</fw-button>
-            <fw-button color="secondary" fill="outline" size="small" data-action="open-deal" ${bundle.deal?.id || bundle.dealId ? "" : "disabled"}>Open deal</fw-button>
-          </div>
-        </header>
-        ${renderDealContextStrip(bundle)}
-        ${renderVerdictStrip(bundle)}
-        <div class="call-record-notes-row">
-          ${renderCallNotesSection(bundle.callNotes)}
-          ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows, bundle.analysisMeta)}
+          ${metaBits.length ? `<p class="call-record-meta-line muted">${metaBits.join(" · ")}</p>` : ""}
         </div>
+        ${renderDealContextLine(bundle)}
+        ${renderCallNotesSection(bundle.callNotes)}
+        ${renderPostcallSummaryRow(bundle, stakeholderRows)}
         ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
-          videoFacts: bundle.videoFacts,
-          scorecard: bundle.scorecard,
-          record,
-          stakeholderRows,
+          kaiaSource: bundle.kaiaSource,
         })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
@@ -1905,9 +2333,12 @@ function renderCallRecord(bundle) {
           objections: bundle.objections,
           followUps: bundle.followUps,
           whatWorks: bundle.productSignal?.whatWorks,
+          timelineMarkers: bundle.timeline?.markers,
           momDraft: bundle.momDraft,
           dealSignal: bundle.dealSignal,
           deal: bundle.deal,
+          coachAudience: bundle.coachAudience || "se",
+          company: companyFromCallTitle(title) || account?.name || "",
         })}
       </div>
     </div>`;
@@ -1963,6 +2394,16 @@ function wireCallRecord(container, session, bundle, opts) {
     });
   });
 
+  container.querySelectorAll('[data-action="open-contact-account"]').forEach((el) => {
+    const activate = (e) => {
+      e.preventDefault();
+      const accountId = el.getAttribute("data-account-id") || "";
+      const contactId = el.getAttribute("data-contact-id") || "";
+      if (accountId) opts.onOpenAccount?.(accountId, contactId || undefined);
+    };
+    el.addEventListener("click", activate);
+  });
+
   const tablist = container.querySelector(".call-record-tablist");
   if (tablist) {
     const buttons = tablist.querySelectorAll("[data-call-tab]");
@@ -1982,83 +2423,6 @@ function wireCallRecord(container, session, bundle, opts) {
     });
     if (opts.initialTab) activateTab(opts.initialTab);
   }
-
-  let notesEditor = container.querySelector("#call-notes-editor");
-  const notesRead = container.querySelector("#call-notes-read");
-  const notesEditPanel = container.querySelector("#call-notes-edit");
-  const notesEditBtn = container.querySelector("#call-notes-edit-btn");
-  const notesCancelBtn = container.querySelector("#call-notes-cancel");
-  const notesSave = container.querySelector("#call-notes-save");
-  const notesStatus = container.querySelector("#call-notes-save-status");
-
-  const mountNotesEditor = () => {
-    if (!notesEditPanel || notesEditor) return notesEditor;
-    notesEditPanel.innerHTML = renderCallNotesEditPanelHtml(bundle.callNotes);
-    notesEditor = notesEditPanel.querySelector("#call-notes-editor");
-    return notesEditor;
-  };
-
-  const setNotesEditMode = (editing) => {
-    if (editing) mountNotesEditor();
-    if (notesRead) {
-      notesRead.hidden = editing;
-      notesRead.setAttribute("aria-hidden", editing ? "true" : "false");
-    }
-    if (notesEditPanel) {
-      notesEditPanel.hidden = !editing;
-      notesEditPanel.setAttribute("aria-hidden", editing ? "false" : "true");
-      notesEditPanel.classList.toggle("call-notes-edit--open", editing);
-    }
-    if (notesEditBtn) {
-      notesEditBtn.hidden = editing;
-      if (editing) notesEditBtn.setAttribute("hidden", "");
-      else notesEditBtn.removeAttribute("hidden");
-    }
-    for (const el of [notesSave, notesCancelBtn]) {
-      if (!el) continue;
-      el.hidden = !editing;
-      if (!editing) el.setAttribute("hidden", "");
-      else el.removeAttribute("hidden");
-    }
-  };
-
-  setNotesEditMode(false);
-
-  notesEditBtn?.addEventListener("fwClick", () => setNotesEditMode(true));
-  notesEditBtn?.addEventListener("click", () => setNotesEditMode(true));
-  notesCancelBtn?.addEventListener("fwClick", () => {
-    if (notesEditor) notesEditor.value = bundle.callNotes || "";
-    setNotesEditMode(false);
-  });
-  notesCancelBtn?.addEventListener("click", () => {
-    if (notesEditor) notesEditor.value = bundle.callNotes || "";
-    setNotesEditMode(false);
-  });
-
-  const saveNotes = async () => {
-    const notes = notesEditor?.value ?? "";
-    const updated = await updatePostCallAnalysis(email, recordId, (rec) => {
-      rec.analysis = { ...(rec.analysis || {}), callNotes: notes };
-      if (rec.result) {
-        rec.result = {
-          ...rec.result,
-          analysis: { ...(rec.result.analysis || {}), callNotes: notes },
-        };
-      }
-      return rec;
-    });
-    if (updated) {
-      bundle.callNotes = notes;
-      if (notesRead) notesRead.innerHTML = renderCallNotesBulletsHtml(notes);
-      setNotesEditMode(false);
-      flashSaveStatus(notesStatus, "Saved");
-    } else {
-      flashSaveStatus(notesStatus, "Could not save", true);
-    }
-  };
-
-  notesSave?.addEventListener("fwClick", () => { void saveNotes(); });
-  notesSave?.addEventListener("click", () => { void saveNotes(); });
 
   const momEditor = container.querySelector("#call-mom-editor");
   const momSave = container.querySelector("#call-mom-save");
@@ -2086,19 +2450,34 @@ function wireCallRecord(container, session, bundle, opts) {
   momSave?.addEventListener("fwClick", () => { void saveMom(); });
   momSave?.addEventListener("click", () => { void saveMom(); });
 
+  if (typeof document !== "undefined") {
+    wireScoreDisputes(container, email);
+  }
+
+  container.querySelectorAll(".score-override-trigger").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const firstCat = container.querySelector("details.qip-category-row, details.cat");
+      if (!firstCat) return;
+      firstCat.open = true;
+      const firstTheme = firstCat.querySelector("details.thm");
+      if (firstTheme) firstTheme.open = true;
+      firstCat.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  });
+
   if (opts.expandThemeKey) {
     const themeKey = opts.expandThemeKey;
     window.requestAnimationFrame(() => {
-      const lines = container.querySelectorAll(".qip-line");
-      for (const line of lines) {
-        const name = line.querySelector(".qip-theme-name")?.textContent?.trim().toLowerCase();
-        const keyLabel = themeKey.replace(/_/g, " ").toLowerCase();
-        if (name && (name === keyLabel || line.querySelector(`[data-theme-key="${themeKey}"]`))) {
-          if (line.tagName === "DETAILS") line.open = true;
-          line.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          break;
-        }
-      }
+      const match =
+        container.querySelector(`.thm[data-theme-key="${themeKey}"]`) ||
+        container.querySelector(`[data-theme-key="${themeKey}"]`);
+      if (!match) return;
+      const category = match.closest("details.qip-category-row");
+      if (category) category.open = true;
+      if (match.tagName === "DETAILS") match.open = true;
+      match.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
   }
 }
@@ -2143,7 +2522,7 @@ export async function renderCallView(container, session, opts = {}) {
     const selfEmail = normalizeSeEmail(activeSession.email);
     const record =
       !opts.ownerEmail || normalizeSeEmail(ownerEmail) === selfEmail
-        ? getPostCallAnalysis(activeSession.email, opts.callId)
+        ? getPostCallAnalysis(ownerEmail, opts.callId)
         : null;
     const resolvedRecord =
       record || (await getPostCallForSession(activeSession, opts.callId, ownerEmail));
@@ -2154,9 +2533,14 @@ export async function renderCallView(container, session, opts = {}) {
 
     container.innerHTML = renderCallLoadingShell(resolvedRecord);
     const bundle = await loadCallBundle(activeSession, resolvedRecord);
+    const coachAudience =
+      normalizeSeEmail(ownerEmail) !== selfEmail &&
+      isManagerRole(sessionToUser(activeSession)?.role)
+        ? "manager"
+        : "se";
     if (opts.shouldApply && !opts.shouldApply()) return;
-    container.innerHTML = renderCallRecord(bundle);
-    wireCallRecord(container, activeSession, bundle, opts);
+    container.innerHTML = renderCallRecord({ ...bundle, coachAudience });
+    wireCallRecord(container, activeSession, { ...bundle, coachAudience }, opts);
   } catch (err) {
     console.error("[call-view] failed to render call:", err);
     container.innerHTML = renderCallEmptyState(

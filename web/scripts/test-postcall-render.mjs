@@ -98,7 +98,7 @@ const cases = [
   ["v2 QIP scorecard render", {
     analysis: {
       analysisVersion: 2,
-      rubricVersion: "1.0",
+      rubricVersion: "2.1",
       callHeader: { title: "Acme demo", duration: "40 min", date: "Jul 24", attendees: [{ name: "Pat", role: "SE", influence: "high" }] },
       momentum: { status: "Advancing", reason: "Clear next step", topAction: "Send POC plan", topActionDue: "Friday" },
       followUpTable: [],
@@ -107,44 +107,63 @@ const cases = [
       qualityCoach: { dimensions: [], strengths: [], improvements: [], missedOpportunities: [] },
       artifacts: { suggestedFollowUpEmail: { subject: "", body: "" }, crmNotes: "" },
     },
-    analysisMeta: { callType: "demo", provisional: false, analysisConfidence: 0.82, rubricVersion: "1.0" },
+    analysisMeta: { callType: "demo", provisional: false, analysisConfidence: 0.82, rubricVersion: "2.1" },
     scorecard: {
       callType: "demo",
-      rubricVersion: "1.0",
+      rubricVersion: "2.1",
       provisional: false,
-      rawScore: 78,
-      denominator: 100,
+      overall: 7.8,
       confidence: 0.82,
+      categoryScores: {
+        discovery_qualification: 8,
+        solution_technical_fit: 8,
+        business_value: 7,
+        credibility_objections: 7,
+        communication_control: 6,
+      },
       lines: [
         {
           themeKey: "solutioning",
-          score: 80,
-          maxScore: 100,
+          grade: 8,
+          credit: 3,
+          category: "solution_technical_fit",
           applicable: true,
-          weight: 5,
           confidence: 0.7,
-          evidence: [{ atS: 300, quote: "For your agents, ticket routing maps here." }],
+          subParameters: [
+            { score: 2, evidence: [{ atS: 300, quote: "For your agents, ticket routing maps here." }] },
+            { score: 2, evidence: [] },
+            { score: 1, evidence: [] },
+            { score: 2, evidence: [] },
+            { score: 1, evidence: [] },
+          ],
           coachingNote: "Tie each feature to one named pain.",
         },
         {
           themeKey: "questions",
-          score: 90,
-          maxScore: 100,
+          grade: 9,
+          credit: 3,
+          category: "discovery_qualification",
           applicable: true,
-          weight: 20,
           confidence: 0.8,
-          evidence: [{ atS: 60, quote: "What does success look like in 90 days?" }],
+          subParameters: [
+            { score: 2, evidence: [{ atS: 60, quote: "What does success look like in 90 days?" }] },
+            { score: 2, evidence: [] },
+            { score: 2, evidence: [] },
+            { score: 2, evidence: [] },
+            { score: 1, evidence: [] },
+          ],
           coachingNote: "Ask one quantified follow-up.",
         },
         {
           themeKey: "camera_on",
-          score: 0,
-          maxScore: 100,
+          grade: 0,
+          credit: 2,
+          category: "communication_control",
           applicable: false,
-          notApplicableReason: "No video recording — requires Pass 2 video evidence; not inferred from transcript.",
-          weight: 5,
+          evidenceUnavailable: true,
+          notApplicableReason: "No video recording — this theme requires visual evidence from the recording and cannot be scored from transcript alone.",
           confidence: 1,
-          evidence: [],
+          subParameters: [],
           coachingNote: null,
         },
       ],
@@ -197,12 +216,19 @@ for (const [name, data] of cases) {
     }
     if (name === "v2 QIP scorecard render") {
       if (!html.includes("QIP scorecard")) throw new Error("missing QIP scorecard heading");
-      if (!html.includes("(demo v1.0)")) throw new Error("missing denominator/profile label");
-      if (!html.includes("qip-line-heavy")) throw new Error("missing heavy weight styling");
-      if (!html.includes("qip-line-na")) throw new Error("missing NA styling");
+      if (!html.includes("7.8 / 10")) throw new Error("missing overall /10 label");
+      if (!html.includes("What worked")) throw new Error("missing what worked tile");
+      if (!html.includes("What didn")) throw new Error("missing what didn't tile");
+      if (!html.includes("qip-radar-svg")) throw new Error("missing category radar");
+      if (!html.includes("qip-category-row")) throw new Error("missing category rows");
+      if (!html.includes("qip-theme-row-heavy")) throw new Error("missing heavy credit styling");
+      if (!html.includes("qip-theme-row-na")) throw new Error("missing NA styling");
       if (!html.includes("No video recording")) throw new Error("missing NA reason");
       if (!html.includes("05:00") && !html.includes("01:00")) {
         throw new Error("missing timestamped evidence");
+      }
+      if (html.includes("/ 100") || html.includes("weighted")) {
+        throw new Error("legacy /100 or weighted copy rendered");
       }
       if (html.includes('class="qc-dashboard"')) {
         throw new Error("legacy quality coach rendered for v2");
@@ -218,7 +244,21 @@ for (const [name, data] of cases) {
       if (!wireframeHtml.includes("qip-scorecard--wireframe")) throw new Error("missing wireframe class");
       if (!wireframeHtml.includes("Override a score")) throw new Error("missing override action");
       if (!wireframeHtml.includes("Compare to my average")) throw new Error("missing compare action");
-      if (!wireframeHtml.includes("srow")) throw new Error("missing srow class");
+      if (!wireframeHtml.includes("qip-subparam-list")) throw new Error("missing sub-parameter drill-down");
+      if (wireframeHtml.includes("qip-radar-svg")) throw new Error("wireframe QIP tab should not duplicate radar");
+      if (!wireframeHtml.includes("Discovery &amp; qualification")) throw new Error("missing human category label");
+      if (wireframeHtml.includes("Coach note coming in a later pass.")) {
+        throw new Error("coach placeholder still rendered");
+      }
+      const coachNote = renderQipScorecard(data.scorecard, data.analysisMeta, {
+        overrides: [],
+      });
+      if (!coachNote.includes("On the next call") && !coachNote.includes("You started this")) {
+        throw new Error("missing sub-parameter coach note");
+      }
+      if (!coachNote.includes("05:00") && !coachNote.includes("01:00")) {
+        throw new Error("missing coach timestamp anchor");
+      }
     }
     console.log("OK:", name, `(${html.length} chars)`);
   } catch (e) {

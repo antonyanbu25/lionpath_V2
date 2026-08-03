@@ -131,9 +131,14 @@ export function orchestratorToFacts(ctx: ValidatedResearchContext): {
     }
   }
 
-  if (ctx.companySnippets.length && !sources.some((s) => s.label === "Orchestrator")) {
+  // Its own label, not "Orchestrator". These are two different sources — prospect/LinkedIn
+  // research (url "orchestrator") and the company's own website (url "company-web") — and sharing
+  // one label meant the S# row silently changed meaning depending on whether any prospect was
+  // found. Nothing attributes a fact to this one (the facts above all cite the prospect label),
+  // so it can carry its own label and be numbered separately.
+  if (ctx.companySnippets.length && !sources.some((s) => s.url === "company-web")) {
     sources.push({
-      label: "Orchestrator",
+      label: "Company web",
       title: "Company website",
       url: "company-web",
       confidence: 65,

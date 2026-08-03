@@ -107,20 +107,31 @@ function trimBullets(arr: unknown, maxItems?: number): string[] {
   return maxItems ? items.slice(0, maxItems) : items;
 }
 
+/**
+ * Labels from briefs generated before the axes were fixed. Only mappings that genuinely
+ * correspond are listed — a legacy "Self Serve" row has no equivalent among the current axes, so
+ * it falls through to the positional fallback rather than being forced somewhere it does not belong.
+ */
 const FIT_LABEL_LEGACY: Record<string, (typeof FIT_LABELS)[number]> = {
-  "Omnichannel Support": "Support channels",
-  "AI Deflection": "Self Serve",
+  "Support channels": "Channel coverage",
+  "Omnichannel Support": "Channel coverage",
+  "Agent Assist": "AI adoption",
+  "AI Deflection": "AI adoption",
 };
 
 function normalizeFitLabel(label: string, index: number): string {
   const raw = trimCell(label);
   const lower = raw.toLowerCase();
-  for (const [legacy, canonical] of Object.entries(FIT_LABEL_LEGACY)) {
-    if (lower.includes(legacy.toLowerCase()) || lower === legacy.toLowerCase()) return canonical;
-  }
+  // Exact match first — the label is enum-constrained now, so this is the normal path.
   for (const fixed of FIT_LABELS) {
-    if (lower.includes(fixed.split(" ")[0].toLowerCase()) || lower === fixed.toLowerCase()) return fixed;
+    if (lower === fixed.toLowerCase()) return fixed;
   }
+  for (const [legacy, canonical] of Object.entries(FIT_LABEL_LEGACY)) {
+    if (lower === legacy.toLowerCase()) return canonical;
+  }
+  // Deliberately NO loose substring match. The previous version tested
+  // `lower.includes(fixed.split(" ")[0])`, which with "AI adoption" means testing for "ai" — and
+  // "Email routing".includes("ai") is true, so a routing row would be relabelled AI adoption.
   return FIT_LABELS[index] || raw;
 }
 
@@ -429,6 +440,8 @@ function normalizeDiscHint(raw: ProspectProfile["discHint"]): ProspectProfile["d
     secondary: raw.secondary,
     confidence,
     evidence: trimBullets(raw.evidence, 4).map((e) => trimWords(e, 20)).filter(Boolean),
+    dos: trimBullets(raw.dos, 2).map((e) => trimWords(e, 12)).filter(Boolean),
+    donts: trimBullets(raw.donts, 2).map((e) => trimWords(e, 12)).filter(Boolean),
     inferred: raw.inferred,
     source: raw.source,
   };
@@ -577,27 +590,38 @@ export function normalizePrepOutput(
   opts: { authoritative?: PrepSource[] } = {},
 ): Prep {
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
-  const fitRows = (raw.fitSnapshot || []).slice(0, 3).map((row, index) => {
+  // Keyed by axis, not by position. Exactly one row per FIT_LABEL, in FIT_LABELS order, whether
+  // or not research found anything on each — a missing axis renders "unknown", which is honest,
+  // and an SE comparing two briefs is always comparing the same four things.
+  //
+  // Keying also makes the lossy legacy mapping safe: a brief written against the old three axes
+  // can send two rows that both map onto one new axis ("AI Deflection" and "Agent Assist" are
+  // both AI adoption). Positional padding turned that into a DUPLICATE axis; first-wins here
+  // drops the collision instead. Briefs from before the axes were fixed are best re-run.
+  const byLabel = new Map<string, Prep["fitSnapshot"][number]>();
+  (raw.fitSnapshot || []).forEach((row, index) => {
+    const label = normalizeFitLabel(row.label, index);
+    if (byLabel.has(label)) return;
     const gap =
       row.gap === "large" || row.gap === "partial" || row.gap === "parity" ? row.gap : "partial";
-    return {
-      label: normalizeFitLabel(row.label, index),
+    byLabel.set(label, {
+      label,
       thisCompany: trimCell(row.thisCompany),
       industryNorm: trimCell(row.industryNorm),
       gap,
       gapVerdict: trimGapVerdict(row.gapVerdict, gap),
-    };
-  });
-  while (fitRows.length < 3) {
-    const index = fitRows.length;
-    fitRows.push({
-      label: FIT_LABELS[index],
-      thisCompany: "unknown",
-      industryNorm: "unknown",
-      gap: "partial",
-      gapVerdict: "Partial",
     });
-  }
+  });
+  const fitRows = FIT_LABELS.map(
+    (label) =>
+      byLabel.get(label) || {
+        label,
+        thisCompany: "unknown",
+        industryNorm: "unknown",
+        gap: "partial" as const,
+        gapVerdict: "Partial",
+      },
+  );
 
   const sources = normalizeSources(raw, opts.authoritative);
   const likelyPains = trimBullets(raw.likelyPains, 5).map((p) => trimWords(p, 12)).filter(Boolean);

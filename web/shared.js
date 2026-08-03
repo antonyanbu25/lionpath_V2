@@ -14,3 +14,22 @@ export const EMPTY_DISPLAY = "-";
 export function normalizeUserEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
+
+/** Lowercase trim for case-insensitive name/domain comparison. */
+export function normalizeNameKey(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+/** Case-insensitive equality for account/company names (emails stay lowercase-normalized separately). */
+export function namesEqual(a, b) {
+  const ka = normalizeNameKey(a);
+  const kb = normalizeNameKey(b);
+  return !!ka && ka === kb;
+}
+
+/** Title-case a label for display — does not rewrite stored CRM values. */
+export function titleCaseDisplayName(s) {
+  const raw = String(s || "").trim();
+  if (!raw) return raw;
+  return raw.replace(/\w+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}

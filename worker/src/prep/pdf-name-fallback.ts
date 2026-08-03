@@ -34,13 +34,17 @@ export function applyPdfNameFallbacks(
   const liLabel = linkedInSourceLabel(prep.sources);
 
   while (prospects.length < emails.length) {
+  // sourceLabel deliberately absent. These are seats padded to match the typed email count —
+  // no LinkedIn PDF was attached for them. Stamping a "LinkedIn PDF" label made
+  // isLinkedInEnrichedProspect() report true for a profile that does not exist, which is why the
+  // room rendered a DISC grid and "Inferred from LinkedIn PDF" for an unknown/unknown seat.
     prospects.push({
       name: "unknown",
       role: "unknown",
       totalExperience: "unknown",
       priorEmployers: [],
       competitorTouchpoints: [],
-      sourceLabel: liLabel,
+      sourceLabel: "",
     });
   }
 

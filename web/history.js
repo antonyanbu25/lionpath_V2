@@ -6,6 +6,7 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
 import { newId } from "./domain/types.js";
 import { normalizeUserEmail } from "./shared.js";
+import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 
 export { normalizeUserEmail };
 
@@ -252,13 +253,40 @@ export async function savePostCallAnalysis(email, input, result) {
   }
 
   const analysis = result?.analysis;
+  const callType = input?.callType || result?.analysisMeta?.callType || result?.confirmed?.callType || null;
+  const accountName =
+    input?.companyName ||
+    analysis?.callHeader?.company ||
+    analysis?.callHeader?.account ||
+    null;
+  const confirmed = {
+    ...(result?.confirmed || {}),
+    dealId: input?.dealId || result?.confirmed?.dealId || null,
+    callType,
+    accountId: input?.accountId || result?.confirmed?.accountId || null,
+    createNewDeal: !!input?.createNewDeal,
+    newDealTitle: input?.newDealTitle || null,
+    newDealType: input?.newDealType || null,
+  };
   const record = {
     id: newId("postCall"),
     timestamp: Date.now(),
     zoomLink: input?.recordingUrl || "",
-    title: analysis?.callHeader?.title || analysis?.callSummary?.headline || "Call analysis",
-    dealId: input?.dealId || result?.confirmed?.dealId || null,
-    callType: input?.callType || result?.analysisMeta?.callType || result?.confirmed?.callType || null,
+    title: resolveCallTitleFromRecord(
+      {
+        analysis,
+        callType,
+        pass6: result?.pass6,
+        arrCompute: result?.arrCompute,
+      },
+      { accountName },
+    ),
+    dealId: confirmed.dealId,
+    callType,
+    accountId: confirmed.accountId || null,
+    createNewDeal: confirmed.createNewDeal || undefined,
+    newDealTitle: confirmed.newDealTitle || undefined,
+    newDealType: confirmed.newDealType || undefined,
     confirmedIdentities: input?.confirmedIdentities || null,
     analysis,
     transcriptMeta: result?.transcriptMeta || null,
@@ -267,7 +295,7 @@ export async function savePostCallAnalysis(email, input, result) {
     analysisMeta: result?.analysisMeta || null,
     /** Keep Pass 6 on the history blob so Product signal can render even if dual-write lags. */
     pass6: result?.pass6 || null,
-    result,
+    result: { ...result, confirmed },
   };
   const list = readAll(normalized);
   list.unshift(record);

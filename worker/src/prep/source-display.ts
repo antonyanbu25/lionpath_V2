@@ -17,13 +17,21 @@ import { citationDomain } from "./citations";
  * `web/precall-render.js` tests /kaia/i and /linkedin/i against the label, and
  * `isSeNotesSource` compares against "SE" exactly.
  */
+/**
+ * Labels that keep their literal text and consume no citation number.
+ *
+ * "Orchestrator" is deliberately NOT here: it is web/LinkedIn research, i.e. exactly the
+ * AI-researched provenance the brief's legend documents as `S#`. Leaving it reserved put the
+ * literal string "Orchestrator" on screen where a citation number belonged. The rest are
+ * non-web provenance — the SE's own notes, a meeting recording, an uploaded PDF — which have no
+ * citation to number and read better by name.
+ */
 export const RESERVED_LABELS: readonly string[] = [
   "SE",
   "Kaia",
   "Zoom",
   "LinkedIn + Kaia",
   "LinkedIn PDF",
-  "Orchestrator",
 ];
 
 /** Label for a row whose provenance cannot be resolved. Renders as unverified. */
@@ -46,6 +54,9 @@ const RESERVED_DISPLAY: Record<string, string> = {
   Zoom: "Zoom",
   "LinkedIn + Kaia": "LinkedIn + Kaia",
   "LinkedIn PDF": "LinkedIn PDF",
+  // Kept although "Orchestrator" is no longer a RESERVED_LABEL: it is now numbered S#, but the
+  // sources table still needs a readable name for the row, and this is the fallback for a source
+  // that reaches us without an explicit displayName.
   Orchestrator: "Web research",
 };
 

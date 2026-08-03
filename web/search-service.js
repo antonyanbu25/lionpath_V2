@@ -151,6 +151,21 @@ export function invalidateSearchIndex() {
   cache.index = null;
 }
 
+/**
+ * Contact typeahead — debounced search over the contact slice of the index.
+ * @param {object[]} index
+ * @param {string} query
+ * @param {{ accountId?: string, limit?: number }} [opts]
+ */
+export function searchContacts(index, query, opts = {}) {
+  const { accountId, limit = 8 } = opts;
+  let pool = index.filter((i) => i.type === "contact");
+  if (accountId) pool = pool.filter((i) => i.accountId === accountId);
+  const q = String(query || "").trim();
+  if (!q) return [];
+  return searchIndex(pool, q, { limit });
+}
+
 /** @param {object|null} session */
 export async function buildSearchIndex(session) {
   const userId = sessionUserId(session);
@@ -191,6 +206,7 @@ export async function buildSearchIndex(session) {
             id: c.id,
             accountId: row.account.id,
             contactId: c.id,
+            email: c.email || null,
             label: contactLabel,
             subtitle: contactSub,
             tokens: collectTokens([c.name, c.email, c.title, c.role, row.account.name, "contact"]),

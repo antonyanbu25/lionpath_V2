@@ -13,6 +13,7 @@ import {
   meddpiccSignalsFromPostCall,
   recordContactEvent,
   applyPrepContactFrameworks,
+  ensureCustomerContact,
 } from "../domain/contact-service.js";
 import { newId, now } from "../domain/types.js";
 
@@ -171,6 +172,17 @@ const checks = [
     momentum: { topAction: "Schedule demo", topActionDue: "Friday" },
   }).identifyPain],
 ];
+
+const created = await ensureCustomerContact(accountId, {
+  name: "New Customer",
+  email: "new@test.co",
+});
+const duplicate = await ensureCustomerContact(accountId, {
+  name: "New Customer",
+  email: "new@test.co",
+});
+checks.push(["ensureCustomerContact creates", !!created?.id]);
+checks.push(["ensureCustomerContact idempotent", duplicate?.id === created?.id]);
 
 let failed = 0;
 for (const [name, ok] of checks) {

@@ -5,6 +5,7 @@
 import { listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { esc } from "./shared.js";
+import { resolveCallTitleFromRecord, companyFromCallTitle } from "./call-type-labels.js";
 
 const SOON_DAYS = 3;
 const UNKNOWN_DUE = new Set(["unknown", "-", "n/a", "tbd", ""]);
@@ -83,10 +84,8 @@ export function isSeOwner(owner, seName) {
 }
 
 function companyFromRecord(record) {
-  const a = record.analysis || {};
-  const title = a.callHeader?.title || record.title || "Call";
-  const parts = String(title).split(/[·|–—-]/);
-  return (parts[0] || title).trim();
+  const title = resolveCallTitleFromRecord(record);
+  return companyFromCallTitle(title) || title || "Call";
 }
 
 function normalizeSteps(record) {

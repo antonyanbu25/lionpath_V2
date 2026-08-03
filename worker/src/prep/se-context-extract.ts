@@ -19,7 +19,10 @@ const SE_EXTRACT_SCHEMA = {
           value: { type: "string" },
           category: {
             type: "string",
-            enum: ["account", "signal", "prospect", "support", "news"],
+            // No "news": the SE's notes are not a news source, and a fact classified
+            // news here both surfaced as news AND satisfied hasNewsCategoryFacts,
+            // suppressing the real news pass that would have found actual news.
+            enum: ["account", "signal", "prospect", "support"],
           },
         },
       },
@@ -61,7 +64,7 @@ Emit facts the SE stated explicitly — do NOT invent.
 Use sourceLabel "SE" mentally; output key/value/category only.
 For canonical signals use exact keys: ${[...CANONICAL_SIGNALS].join(", ")}.
 Other keys: Champion, Timeline, Budget, Pain, Meeting type, etc. (max 4 words).
-Values max 12 words. categories: account | signal | prospect | support | news.
+Values max 12 words. categories: account | signal | prospect | support.
 OUTPUT: JSON matching schema. No markdown.`,
       user: `SE notes:\n${text.slice(0, 4000)}`,
       maxTokens: 1500,

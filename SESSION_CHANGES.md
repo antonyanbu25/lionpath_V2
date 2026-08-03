@@ -1,25 +1,25 @@
-# Session changes — Contact-primary post-call resolution & identity model
+# Session changes — Release 2.0.8.1-merge
 
-## Release 2.0.7.4 (branch `2.0.7.4` on `antonyanbu25/lionpath_V2`)
+Merged `lionpath-2.0.8.1.zip` (precall pipeline + UI) with `lionpath_V2-2.0.7.3-2026-08-03.zip` (QIP v2.1 post-call UX) onto branch `2.0.7.4`, preserving login SSO and contact-primary identity work.
 
-Merged `lionpath-2.0.8.zip` (`design-2.0.7.3-preview` @ `0f638a0`) onto GitHub `2.0.7.3`, preserving 2.0.7.3 UI fixes (sidebar-align4, account/deal column alignment).
+**From 2.0.8.1 (precall):**
+- Latest prep pipeline (`company-news.ts`, `rivals.ts`, prep validation, source display)
+- Precall web UI (`precall.js`, `precall.css`, `precall-render.js`, `precall-brief-v9.js`, CRM resolve)
 
-**From zip (backend + prep):**
-- Grounded rival comparison for company sizing (`worker/src/prep/rivals.ts`)
-- Deal↔Contact join and deal-resolution fixes
-- Prep grounding/ICP field population, schema updates
-- Worker test suite restoration
+**From 2.0.7.3 (postcall):**
+- QIP v2.1 scoring engine + generated rubric profiles
+- Coach module, QIP radar, redesigned postcall/call-view UX
+- Task F naming for deals and calls
 
-**Preserved from 2.0.7.3:**
-- `styles.css` sidebar avatar centering + topbar search height
-- `precall.css` account/deal column alignment + zip subtitle scoping fix
-- `index.html` sidebar-align4 cache bust + zip icon sizing
+**Preserved from 2.0.7.4 workspace:**
+- Login SSO redesign (`login-showcase`, Google SSO block)
+- Contact-primary post-call identity model (`stampCallIdentities`, CRM matches panel)
+- `contacts-view.js` and sidebar alignment
 
-**Version stamps:** `portal-build: 2.0.7.4-precall-align4`, `workerBuild: 2.0.7.4-domain-cache`
+**Version stamps:** `portal-build: 2.0.8.1-merge`, `workerBuild: 2.0.8.1-merge`
 
 ---
 
-This document summarizes the work done in this session on top of branch `2.0.7`. The
 theme: make the **contact email(s)** the primary identifier for the post-call flow —
 surface existing accounts/deals from typed emails, create/name records meaningfully,
 and record AE / primary SE / secondary SE / contacts as first-class call identifiers.

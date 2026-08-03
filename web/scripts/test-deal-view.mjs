@@ -1,7 +1,7 @@
 /**
  * Smoke tests for Deals nav list + deal record (spec §11.6).
  */
-import { listDealsForSession, invalidateSessionListCache } from "../domain/account-service.js";
+import { listDealsForSession } from "../domain/account-service.js";
 import { initDomainStore, getStore } from "../domain/store.js";
 import {
   renderDealView,
@@ -448,9 +448,6 @@ await store.createDeal({
   updatedAt: ts,
   lastActivityAt: ts,
 });
-// Fixtures above bypass the service layer (dual-write.js) that normally invalidates this
-// cache after a real prep/post-call write — do it explicitly, same as that layer now does.
-invalidateSessionListCache(session);
 const orphanRows = await listDealsForSession(session);
 assert(orphanRows.some((r) => r.deal.id === "deal_orphan_nb"), "orphan deal appears in list");
 const orphanDetailContainer = mockContainer();

@@ -5,6 +5,11 @@
 import { wireThemeMenu, syncThemeMenuState } from "./theme.js";
 
 let globalEventsBound = false;
+let menuCallbacks = {
+  onProfileSettings: null,
+  onSignOut: null,
+  getSession: null,
+};
 
 function initialsFromName(name, email) {
   const n = String(name || "").trim();
@@ -56,6 +61,12 @@ function restoreTeleportHome(el) {
  * @param {{ getSession: () => object|null, onProfileSettings: () => void, onSignOut: () => void }} opts
  */
 export function initUserMenu(opts) {
+  menuCallbacks = {
+    getSession: opts.getSession || null,
+    onProfileSettings: opts.onProfileSettings || null,
+    onSignOut: opts.onSignOut || null,
+  };
+
   const trigger = document.getElementById("sidebar-user") || document.getElementById("user-menu-trigger");
   const panel = document.getElementById("user-menu-panel");
   const backdrop = document.getElementById("user-menu-backdrop");
@@ -64,6 +75,28 @@ export function initUserMenu(opts) {
   if (!trigger || !panel) return;
 
   wireThemeMenu(panel);
+
+  if (panel.dataset.userMenuWired !== "1") {
+    panel.dataset.userMenuWired = "1";
+
+    panel.addEventListener("click", (e) => {
+      const signOutBtn = e.target.closest("#user-menu-signout");
+      if (signOutBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+        menuCallbacks.onSignOut?.();
+        return;
+      }
+      const profileBtn = e.target.closest("#user-menu-profile");
+      if (profileBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+        menuCallbacks.onProfileSettings?.();
+      }
+    });
+  }
 
   function closeMenu() {
     panel.hidden = true;
@@ -90,22 +123,15 @@ export function initUserMenu(opts) {
     else closeMenu();
   }
 
-  trigger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleMenu();
-  });
-
   backdrop?.addEventListener("click", closeMenu);
 
-  document.getElementById("user-menu-profile")?.addEventListener("click", () => {
-    closeMenu();
-    opts.onProfileSettings?.();
-  });
-
-  document.getElementById("user-menu-signout")?.addEventListener("click", () => {
-    closeMenu();
-    opts.onSignOut?.();
-  });
+  if (trigger.dataset.userMenuTriggerWired !== "1") {
+    trigger.dataset.userMenuTriggerWired = "1";
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMenu();
+    });
+  }
 
   themeToggle?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -140,7 +166,7 @@ export function initUserMenu(opts) {
     });
   }
 
-  refreshUserMenu(opts.getSession?.());
+  refreshUserMenu(menuCallbacks.getSession?.());
 }
 
 /** @param {object|null|undefined} session */

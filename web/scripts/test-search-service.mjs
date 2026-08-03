@@ -1,12 +1,7 @@
 /**
  * Smoke tests for search-service (no browser).
  */
-import {
-  searchIndex,
-  filterAccountRows,
-  accountRowTokens,
-  invalidateSearchIndex,
-} from "../search-service.js";
+import { searchIndex, filterAccountRows, accountRowTokens, searchContacts, invalidateSearchIndex } from "../search-service.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -68,6 +63,21 @@ assert(stageFiltered.length === 1 && stageFiltered[0].account.id === "acc_2", "f
 
 const tokens = accountRowTokens(rows[0], rows[0].contacts);
 assert(tokens.includes("alex lee"), "accountRowTokens includes contact name");
+
+const contactIndex = [
+  {
+    type: "contact",
+    id: "c1",
+    accountId: "acc_1",
+    email: "alex@acme.com",
+    label: "Alex Lee",
+    subtitle: "VP · alex@acme.com · Acme Corp",
+    tokens: ["alex lee", "alex@acme.com"],
+    lastActivityAt: 1,
+  },
+];
+const contactHits = searchContacts(contactIndex, "alex");
+assert(contactHits.length === 1 && contactHits[0].id === "c1", "searchContacts finds by name");
 
 invalidateSearchIndex();
 assert(true, "invalidateSearchIndex runs");

@@ -275,7 +275,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
                   <th>Reference candidate</th>
                 </tr>
               </thead>
-              <tbody>${workingTableRows || `<tr><td colspan="4" class="muted">No positive signal yet. What landed rows appear after Pass 6 analysis.</td></tr>`}</tbody>
+              <tbody>${workingTableRows || `<tr><td colspan="4" class="muted">No positive signal yet. What landed rows appear after product signal analysis.</td></tr>`}</tbody>
             </table>
           </div>
         </div>

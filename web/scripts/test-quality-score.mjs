@@ -1,161 +1,67 @@
-/** Unit tests for quality score normalization (Node). */
+/** Web mirror of worker/scripts/test-quality-score.ts — Appendix C tests. */
 import {
-  computeOverallScore,
-  overallLabelFromScore,
-  normalizeQualityCoach,
-  typeComposite,
-  spineComposite,
+  scoreCall,
+  computeThemeGrade,
+  profileAverage,
   themeAverage,
-  formatTypeComposite,
   isEligibleForAggregate,
+  formatProfileAverage,
 } from "../quality-score.js";
+import { QIP_PROFILES, CATEGORY_KEYS } from "../rubric-profiles.js";
 
-const dims = [
-  { name: "Discovery", score: 4, maxScore: 5 },
-  { name: "Demo alignment", score: 5, maxScore: 5 },
-  { name: "Objections", score: 4, maxScore: 5 },
-  { name: "Value articulation", score: 5, maxScore: 5 },
-  { name: "Next-step clarity", score: 5, maxScore: 5 },
-  { name: "Talk balance", score: 4, maxScore: 5 },
-];
+const demo = QIP_PROFILES.find((p) => p.key === "demo");
 
-const demoCard = {
-  callType: "demo",
-  rubricVersion: "1.0",
-  lines: [
-    { themeKey: "call_flow", score: 80, maxScore: 100, applicable: true, weight: 10 },
-    { themeKey: "camera_on", score: 100, maxScore: 100, applicable: false, weight: 5 },
-  ],
-};
+function allSubParams(value) {
+  return demo.themes.map((t) => ({
+    themeKey: t.key,
+    subParameters: Array.from({ length: 5 }, () => ({ score: value })),
+  }));
+}
 
+function allThemesGrade8Except(exceptKey) {
+  const pattern = [2, 2, 2, 1, 1];
+  return demo.themes.map((t) => ({
+    themeKey: t.key,
+    subParameters:
+      t.key === exceptKey
+        ? Array.from({ length: 5 }, () => ({ score: 0 }))
+        : pattern.map((score) => ({ score })),
+  }));
+}
+
+const t1 = scoreCall(demo, allSubParams(0));
 const checks = [
-  ["avg 4.5/5 → 9.0", computeOverallScore(dims) === 9],
-  ["9.0 → Excellent", overallLabelFromScore(9) === "Excellent"],
-  ["8.0 → Strong", overallLabelFromScore(8) === "Strong"],
-  ["7.0 → Strong", overallLabelFromScore(7) === "Strong"],
-  ["6.0 → Good", overallLabelFromScore(6) === "Good"],
-  ["5.0 → Developing", overallLabelFromScore(5) === "Developing"],
-  ["3.0 → Needs focus", overallLabelFromScore(3) === "Needs focus"],
+  ["Test 1 overall", t1.overall === 0],
+  ["Test 2 overall", scoreCall(demo, allSubParams(2)).overall === 10],
+  ["Test 3 overall", scoreCall(demo, allSubParams(1)).overall === 5],
   [
-    "normalize fixes model mismatch",
-    (() => {
-      const n = normalizeQualityCoach({ overallScore: 4.5, overallLabel: "Strong", dimensions: dims });
-      return n.overallScore === 9 && n.overallLabel === "Excellent";
-    })(),
+    "Test 4 credit weighting",
+    scoreCall(demo, allThemesGrade8Except("solutioning")).overall <
+      scoreCall(demo, allThemesGrade8Except("camera_on")).overall,
+  ],
+  ["computeThemeGrade", computeThemeGrade([2, 2, 2, 1, 1]) === 8],
+  [
+    "profileAverage",
+    profileAverage([{ callType: "demo", rubricVersion: "2.1", overall: 7, lines: [] }], "demo").score === 7,
   ],
   [
-    "typeComposite weighted single call",
-    (() => {
-      const r = typeComposite([demoCard], "demo", { includeIneligible: true });
-      return r.score === 80 && r.applicableWeight === 10;
-    })(),
+    "formatProfileAverage",
+    formatProfileAverage({ score: 7.29, callType: "demo", rubricVersion: "2.1", callCount: 1, includedCredits: 34 }).includes(
+      "7.29 / 10",
+    ),
   ],
   [
-    "typeComposite aggregates lines across calls",
-    (() => {
-      const r = typeComposite(
-        [
-          demoCard,
-          {
-            callType: "demo",
-            rubricVersion: "1.0",
-            lines: [
-              { themeKey: "call_flow", score: 60, maxScore: 100, applicable: true, weight: 10 },
-            ],
-          },
-        ],
-        "demo",
-        { includeIneligible: true },
-      );
-      return r.score === 70 && r.applicableWeight === 20;
-    })(),
-  ],
-  [
-    "formatTypeComposite",
-    formatTypeComposite({
-      score: 86,
-      applicableWeight: 100,
-      totalWeight: 100,
-      applicableCount: 10,
-      rubricVersion: "1.0",
-      callType: "demo",
-    }) === "86 / 100 (demo v1.0)",
-  ],
-  [
-    "spineComposite unweighted",
-    spineComposite([
-      {
-        lines: [
-          { themeKey: "call_flow", score: 80, maxScore: 100, applicable: true },
-          { themeKey: "customer_engagement", score: 60, maxScore: 100, applicable: true },
-          { themeKey: "objections", score: 40, maxScore: 100, applicable: true },
-          { themeKey: "camera_on", score: 20, maxScore: 100, applicable: true },
-        ],
-      },
-    ]).score === 50,
-  ],
-  [
-    "spineComposite excludes provisional",
-    spineComposite([
-      {
-        provisional: true,
-        lines: [
-          { themeKey: "call_flow", score: 100, maxScore: 100, applicable: true },
-          { themeKey: "customer_engagement", score: 100, maxScore: 100, applicable: true },
-          { themeKey: "objections", score: 100, maxScore: 100, applicable: true },
-          { themeKey: "camera_on", score: 100, maxScore: 100, applicable: true },
-        ],
-      },
-      {
-        provisional: false,
-        lines: [
-          { themeKey: "call_flow", score: 40, maxScore: 100, applicable: true },
-          { themeKey: "customer_engagement", score: 40, maxScore: 100, applicable: true },
-          { themeKey: "objections", score: 40, maxScore: 100, applicable: true },
-          { themeKey: "camera_on", score: 40, maxScore: 100, applicable: true },
-        ],
-      },
-    ]).score === 40,
-  ],
-  [
-    "themeAverage cross-type",
+    "themeAverage",
     themeAverage(
-      [
-        {
-          callType: "demo",
-          lines: [{ themeKey: "questions", score: 80, maxScore: 100, applicable: true }],
-        },
-        {
-          callType: "discovery",
-          lines: [{ themeKey: "questions", score: 60, maxScore: 100, applicable: true }],
-        },
-      ],
+      [{ callType: "demo", rubricVersion: "2.1", lines: [{ themeKey: "questions", grade: 8, credit: 3, category: "discovery_qualification" }] }],
       "questions",
-      null,
-      { includeIneligible: true },
-    ).score === 70,
+    ).score === 8,
   ],
+  ["isEligibleForAggregate", isEligibleForAggregate({ provisional: true, confidence: 0.9 }) === false],
+  ["Test 6 demo credits", demo.totalCredits === 34],
   [
-    "themeAverage callType filter",
-    themeAverage(
-      [
-        {
-          callType: "demo",
-          lines: [{ themeKey: "questions", score: 80, maxScore: 100, applicable: true }],
-        },
-        {
-          callType: "discovery",
-          lines: [{ themeKey: "questions", score: 60, maxScore: 100, applicable: true }],
-        },
-      ],
-      "questions",
-      "demo",
-      { includeIneligible: true },
-    ).score === 80,
-  ],
-  [
-    "isEligibleForAggregate blocks shadow",
-    isEligibleForAggregate({ provisional: true, confidence: 0.99 }) === false,
+    "Test 7 sub-parameter count",
+    QIP_PROFILES.every((p) => p.themes.every((t) => t.subParameters.length === 5)),
   ],
 ];
 
@@ -164,4 +70,4 @@ if (failed.length) {
   console.error("FAILED:", failed.map(([n]) => n).join(", "));
   process.exit(1);
 }
-console.log("OK — quality score tests passed");
+console.log("OK — web quality-score Appendix C tests passed");

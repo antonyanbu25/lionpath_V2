@@ -3,8 +3,8 @@
  * Used by self-consistency.mjs and unit tests.
  */
 
-import { typeComposite } from "./quality-score";
-import type { CallType } from "./rubric-profiles";
+import { profileAverage } from "./quality-score";
+import type { CallType, CategoryKey } from "./rubric-profiles";
 
 export interface EvidenceSnapshot {
   atS: number | null;
@@ -271,30 +271,44 @@ export function snapshotFromScorecardResult(
   callType: CallType,
   runIndex: number,
   scorecard: {
-    rawScore: number;
+    overall: number;
     lines: Array<{
       themeKey: string;
-      score: number;
-      applicable: boolean;
-      weight: number;
-      evidence?: Array<{ atS?: number | null; quote?: string }>;
+      grade: number;
+      credit: number;
+      category: string;
+      evidenceUnavailable?: boolean;
+      subParameters?: Array<{ evidence?: Array<{ atS?: number | null; quote?: string }> }>;
     }>;
   },
   rubricVersion: string,
 ): RunSnapshot {
   const lines: LineSnapshot[] = scorecard.lines.map((l) => ({
     themeKey: l.themeKey,
-    score: l.score,
-    applicable: l.applicable,
-    weight: l.weight,
-    evidence: (l.evidence || []).map((e) => ({
+    score: l.grade,
+    applicable: !l.evidenceUnavailable,
+    weight: l.credit,
+    evidence: (l.subParameters?.[0]?.evidence || []).map((e) => ({
       atS: e.atS ?? null,
       quote: String(e.quote ?? ""),
     })),
   }));
 
-  const composite = typeComposite(
-    [{ callType, rubricVersion, lines: scorecard.lines.map((l) => ({ ...l, maxScore: 100 })) }],
+  const composite = profileAverage(
+    [
+      {
+        callType,
+        rubricVersion,
+        overall: scorecard.overall,
+        lines: scorecard.lines.map((l) => ({
+          themeKey: l.themeKey,
+          grade: l.grade,
+          credit: l.credit,
+          category: l.category as CategoryKey,
+          evidenceUnavailable: l.evidenceUnavailable,
+        })),
+      },
+    ],
     callType,
     { includeIneligible: true },
   );
@@ -305,7 +319,7 @@ export function snapshotFromScorecardResult(
     runIndex,
     lines,
     compositeScore: composite.score,
-    applicableWeight: composite.applicableWeight,
+    applicableWeight: composite.includedCredits,
   };
 }
 

@@ -1,7 +1,7 @@
 /** Timeline card — wireframe spine, inline markers, five-metric row. */
 import assert from "node:assert/strict";
 
-import { renderTimelineSection } from "../call-view.js";
+import { renderTimelineSection, resolveObjectionQa, renderObjectionQaRow } from "../call-view.js";
 
 const videoSegments = [
   { source: "video", startS: 0, endS: 300, segmentType: "slides", label: "Intro deck" },
@@ -55,14 +55,8 @@ function testVideoSpineWireframe() {
   assert.doesNotMatch(html, /call-timeline-sub/);
   assert.match(html, /call-spine-legend/);
   assert.match(html, /Product \/ CDE/);
-  assert.match(html, /SE talk ratio/);
-  assert.match(html, /Customer questions/);
-  assert.match(html, /Longest monologue/);
-  assert.match(html, /6m 40s/);
-  assert.match(html, /SE camera on/);
-  assert.match(html, /Customer cameras/);
-  assert.match(html, /1 of 2/);
-  assert.match(html, /class="mkl"/);
+  assert.match(html, /call-spine-marker-legend/);
+  assert.match(html, /mkl--objection/);
   assert.doesNotMatch(html, /call-timeline-list/);
   assert.doesNotMatch(html, /Built from transcript timestamps/);
 }
@@ -73,7 +67,7 @@ function testTranscriptSpine() {
   assert.match(html, /Intro and agenda/);
   assert.doesNotMatch(html, /feeds call flow scoring directly/);
   assert.match(html, /Conversation phases from the transcript clock/);
-  assert.match(html, /Camera, CDE, call flow and engagement stay unscored/);
+  assert.match(html, /require video analysis and stay unscored here/);
   assert.doesNotMatch(html, /call-timeline-list/);
 }
 
@@ -82,6 +76,21 @@ function testInlineMarkersOnBar() {
   assert.match(html, /gap raised/);
   assert.match(html, /what worked/);
   assert.match(html, /weak CTA/);
+  assert.match(html, /mk--gap/);
+  assert.match(html, /mk--objection/);
+  assert.match(html, /call-spine-marker-legend/);
+  assert.match(html, /Product gap/);
+  assert.match(html, /Objection handled/);
+}
+
+function testNoMarkerLegendWhenEmpty() {
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: [],
+    facts: { durationSec: 900 },
+  });
+  assert.doesNotMatch(html, /call-spine-marker-legend/);
+  assert.doesNotMatch(html, /class="mk"/);
 }
 
 function testMarkersWithoutSpine() {
@@ -106,6 +115,30 @@ function testVideoWinsWhenBothExist() {
   assert.doesNotMatch(html, /Conversation phases from the transcript clock/);
 }
 
+function testObjectionQaFormat() {
+  const merged = resolveObjectionQa({
+    objectionText:
+      "Customer expressed concern that Zendesk was promised to do many things but failed to deliver. SE and AE emphasized that Freshdesk is straightforward to migrate.",
+    landed: true,
+  });
+  assert.match(merged.question, /Zendesk was promised/i);
+  assert.match(merged.answer, /Freshdesk is straightforward/i);
+  assert.doesNotMatch(merged.question, /Customer expressed/i);
+
+  const html = renderObjectionQaRow({
+    objectionText: "Do you support SSO with Okta?",
+    handling: "Walked through SAML setup and shared admin guide.",
+    landed: true,
+    theme: "security",
+    atS: 2100,
+  });
+  assert.match(html, /call-qa-label/);
+  assert.match(html, /Do you support SSO/);
+  assert.match(html, /Walked through SAML/);
+  assert.match(html, /pill green/);
+  assert.match(html, /35:00/);
+}
+
 function testEscaping() {
   const html = renderTimelineSection(false, {
     segments: [],
@@ -118,8 +151,10 @@ function testEscaping() {
 testVideoSpineWireframe();
 testTranscriptSpine();
 testInlineMarkersOnBar();
+testNoMarkerLegendWhenEmpty();
 testMarkersWithoutSpine();
 testEmptyStateIsHonest();
 testVideoWinsWhenBothExist();
+testObjectionQaFormat();
 testEscaping();
 console.log("test-call-timeline-render: ok");

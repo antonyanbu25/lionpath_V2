@@ -1,16 +1,28 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
 import { isFirebaseAuthEnabled, getSession } from "./auth.js";
-import { savePostCallHistory, normalizeUserEmail } from "./history.js";
-import { normalizeQualityCoach, formatTypeComposite, typeComposite } from "./quality-score.js";
+import { savePostCallHistory, getPostCallAnalysis, normalizeUserEmail } from "./history.js";
+import {
+  normalizeQipScorecard,
+  coerceScorecardLines,
+  coerceSubParameters,
+  isThemeExcludedFromAggregate,
+  lineGradeForDisplay,
+  legacySubParametersFromLine,
+} from "./shared/qip-scorecard-normalize.js";
+export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
+import { normalizeQualityCoach } from "./quality-score.js";
+import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
 import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
+import { isFreeMailDomain } from "./domain/constants.js";
 import {
   bindActionOnce,
   readFieldValue,
   readFieldValueAsync,
+  setFieldValue,
   setButtonLoading,
   setFieldError,
   setFormFieldsDisabled,
@@ -24,10 +36,26 @@ import {
   linkedinProfileExportsForPayload,
   linkedinProfileExportsForStorage,
 } from "./prep-linkedin-pdf.js";
-import { esc, $, show, EMPTY_DISPLAY } from "./shared.js";
+import {
+  clearContextAttachments,
+  contextAttachmentsForPayload,
+  initContextFileUpload,
+} from "./prep-context-files.js";
+import { mergeContextAttachments } from "./prep-context-attachments.js";
+import { esc, $, show, EMPTY_DISPLAY, namesEqual, titleCaseDisplayName } from "./shared.js";
 import { companyNameFromEmail } from "./prep-domain.js";
 export { companyNameFromEmail };
 import { deriveCallTimeline } from "./domain/timeline-service.js";
+import { formatDealTitlePreview, inferDealTypeFromTitle as inferDealTypeFromTitleDomain } from "./domain/deal-service.js";
+import { STAGE_LABELS } from "./domain/types.js";
+import { buildSearchIndex, searchContacts } from "./search-service.js";
+import { ensureCustomerContact } from "./domain/contact-service.js";
+import {
+  dedupePersonLabels,
+  mergeCallIdentities,
+  normalizePersonKey,
+  preferPersonLabel,
+} from "./identity-merge.js";
 import {
   barClass,
   scorePct,
@@ -35,11 +63,18 @@ import {
   radarDimensionLabel,
   renderRadarLabelText,
 } from "./chart-shared.js";
-import { groupLinesBySection, themeLabel } from "./theme-library.js";
+import { renderQipRadar } from "./qip-radar.js";
+import { themeLabel } from "./theme-library.js";
 import {
   isThemeScoreSuppressed,
   THEME_SCORE_SUPPRESSION_MESSAGE,
 } from "./theme-score-suppression.js";
+import {
+  sanitizeUserFacingCopy,
+  resolveThemeNaReason,
+} from "./user-facing-copy.js";
+import { canonicalCallType } from "./call-type-labels.js";
+import { buildCoachOutput, coachTextForSubParameter, insightfulCoachTip, loadScoreOverrides } from "./coach/index.js";
 
 
 const RESOLVE_URL = `${WORKER_BASE_URL}/api/postcall/resolve`;
@@ -82,16 +117,185 @@ const VIDEO_THEME_LABELS = {
   customer_engagement: "Customer engagement",
 };
 
+const CONFIRM_ROLE_SET = ["Customer", "Primary SE", "Secondary SE", "AE", "Partner"];
+const CONFIRM_ROLE_TONE = {
+  Customer: { bg: "#f4e7df", color: "#b0785b" },
+  "Primary SE": { bg: "#e3efec", color: "#2f8a7b" },
+  "Secondary SE": { bg: "#dbe8e6", color: "#37746e" },
+  AE: { bg: "#f3ecda", color: "#a5883f" },
+  Partner: { bg: "#ece8de", color: "#877b63" },
+};
+
 let linkedinParsing = false;
+let contextParsing = false;
 let generating = false;
 let confirmGateAccountLookupTeardown = null;
+/** @type {(() => void)[]} */
+let confirmGateContactLookupTeardowns = [];
+/** @type {object[]|null} */
+let confirmGateAttendees = null;
 let companyNameTouched = false;
+let newDealTitleTouched = false;
 let suppressCompanyTouch = false;
 let pcResolvedAccount = null;
 let pcCreateNewAccount = false;
+/** @type {string|null} */
+let pcSelectedDealId = null;
+let pcCreateNewDeal = false;
+/** @type {'new_business'|'expansion'} */
+let pcNewDealType = "new_business";
+/** @type {object[]} */
+let pcLastAccountDeals = [];
+/** Last SE-authored company name — survives preview re-renders at submit. */
+let pcDraftAccountName = "";
+/** Editable new-deal title on intake preview (prefilled from formatDealTitlePreview). */
+let pcDraftNewDealTitle = "";
+/** After + New deal, focus and select the title input once preview re-renders. */
+let pcFocusNewDealInput = false;
+/** @type {(() => void) | null} */
+let intakeAccountLookupTeardown = null;
+
+function companyMono(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "??";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function defaultNewDealTitle(accountName, dealType = pcNewDealType) {
+  const displayName = titleCaseDisplayName(accountName) || String(accountName || "Account").trim() || "Account";
+  return formatDealTitlePreview(displayName, dealType);
+}
+
+/** Intake deal choice (page 1) carried into confirm + save — payload wins after pipeline starts. */
+function getIntakeDealSelection() {
+  const payload = pipelineState?.payload;
+  const createNewDeal = !!(pcCreateNewDeal || payload?.createNewDeal);
+  const selectedDealId = createNewDeal
+    ? null
+    : pcSelectedDealId || payload?.dealId || null;
+  const newDealTitle = (
+    pcDraftNewDealTitle ||
+    payload?.newDealTitle ||
+    (createNewDeal && (pcDraftAccountName.trim() || payload?.companyName)
+      ? defaultNewDealTitle(pcDraftAccountName.trim() || payload?.companyName)
+      : "")
+  ).trim();
+  const newDealType =
+    inferDealTypeFromTitle(newDealTitle) ||
+    payload?.newDealType ||
+    pcNewDealType;
+  return { createNewDeal, selectedDealId, newDealTitle, newDealType };
+}
+
+/** Intake account choice — payload wins over worker resolve on confirm. */
+function getIntakeAccountSelection() {
+  const payload = pipelineState?.payload;
+  const createNewAccount = !!(pcCreateNewAccount || payload?.createNewAccount);
+  const accountId = createNewAccount
+    ? null
+    : pcResolvedAccount?.id || payload?.accountId || null;
+  const accountName = (
+    pcDraftAccountName ||
+    payload?.companyName ||
+    ""
+  ).trim();
+  return { createNewAccount, accountId, accountName };
+}
+
+/** Confirm gate account — never let stale worker resolve override intake. */
+export function resolveConfirmAccount(resolve) {
+  const intake = getIntakeAccountSelection();
+  if (intake.createNewAccount) {
+    const name =
+      intake.accountName ||
+      pipelineState?.payload?.companyName ||
+      resolve?.noMatch?.suggestedCompanyName ||
+      "";
+    return name
+      ? { accountName: titleCaseDisplayName(name) || name, fromIntake: true }
+      : null;
+  }
+  if (intake.accountId) {
+    if (resolve?.account?.accountId === intake.accountId) return resolve.account;
+    const name =
+      intake.accountName ||
+      pcResolvedAccount?.name ||
+      resolve?.account?.accountName ||
+      "Account";
+    return {
+      accountId: intake.accountId,
+      accountName: name,
+      fromIntake: true,
+      reasons: [{ rank: "✓", detail: "Selected at intake" }],
+    };
+  }
+  if (resolve?.account) return resolve.account;
+  if (pcResolvedAccount?.id && !pcCreateNewAccount) {
+    return {
+      accountId: pcResolvedAccount.id,
+      accountName: pcResolvedAccount.name,
+      fromIntake: true,
+    };
+  }
+  const fallbackName =
+    intake.accountName ||
+    pipelineState?.payload?.companyName ||
+    resolve?.noMatch?.suggestedCompanyName;
+  if (fallbackName) {
+    return { accountName: titleCaseDisplayName(fallbackName) || fallbackName, fromIntake: true };
+  }
+  return null;
+}
+
+function resolveConfirmSelectedDeal(deals = []) {
+  const intakeAccount = getIntakeAccountSelection();
+  const { createNewDeal, selectedDealId, newDealTitle } = getIntakeDealSelection();
+  if (intakeAccount.createNewAccount || createNewDeal) return null;
+  if (selectedDealId) {
+    const fromResolve = deals.find((d) => d.dealId === selectedDealId);
+    if (fromResolve) return fromResolve;
+    const fromIntake = pcLastAccountDeals.find((d) => d.id === selectedDealId);
+    return {
+      dealId: selectedDealId,
+      title: fromIntake?.title || newDealTitle || "Selected deal",
+      stage: fromIntake?.stage,
+    };
+  }
+  return deals.find((d) => d.preselected) || deals[0] || null;
+}
+
+function syncNewDealTitlePrefill(accountName) {
+  if (!newDealTitleTouched) {
+    pcDraftNewDealTitle = defaultNewDealTitle(accountName);
+    pcNewDealType = inferDealTypeFromTitle(pcDraftNewDealTitle);
+  }
+}
+
+export function inferDealTypeFromTitle(title) {
+  return inferDealTypeFromTitleDomain(title);
+}
+
+async function readAccountNameValue() {
+  const raw = pcDraftAccountName.trim();
+  return titleCaseDisplayName(raw) || raw;
+}
+
+function writeAccountName(name, { touch = false, titleCaseOnWrite = false } = {}) {
+  let trimmed = String(name || "").trim();
+  if (titleCaseOnWrite) trimmed = titleCaseDisplayName(trimmed) || trimmed;
+  pcDraftAccountName = trimmed;
+  if (touch) companyNameTouched = true;
+  syncNewDealTitlePrefill(trimmed);
+}
 let companyPrefillTimer = null;
 let crmMatchesTimer = null;
 let crmMatchesToken = 0;
+/** @type {null | { byEmail: object[] }} */
+let lastCrmMatchResult = null;
 
 /** @type {null | { payload: object, resolve: object|null, classify: object|null, generated: boolean, recordId: string|null }} */
 let pipelineState = null;
@@ -106,61 +310,19 @@ const isUnknown = (v) => {
 };
 const dash = (v) => (isUnknown(v) ? `<span class="muted">${EMPTY_DISPLAY}</span>` : esc(v));
 
-/** Collapse duplicate display names (case-insensitive; strip role suffixes; email → local part). */
-function normalizePersonKey(label) {
-  let key = String(label || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s*\([^)]*\)\s*/g, " ")
-    .replace(/\s*\|.*$/, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const at = key.indexOf("@");
-  if (at >= 0) {
-    key = key
-      .slice(0, at)
-      .replace(/[._-]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-  return key;
-}
-
-/** Prefer a spoken name over an email or noisier variant when merging duplicates. */
-function preferPersonLabel(a, b) {
-  const score = (s) => {
-    const t = String(s || "").trim();
-    if (!t) return -1;
-    if (/@/.test(t)) return 0;
-    if (/\s/.test(t)) return 3;
-    return 2;
-  };
-  const sa = score(a);
-  const sb = score(b);
-  if (sa !== sb) return sa > sb ? a : b;
-  return String(a).trim().length <= String(b).trim().length ? a : b;
-}
-
-function dedupePersonLabels(labels) {
-  const byKey = new Map();
-  for (const raw of labels || []) {
-    const label = String(raw || "").trim();
-    if (!label) continue;
-    const key = normalizePersonKey(label);
-    if (!key) continue;
-    const prev = byKey.get(key);
-    byKey.set(key, prev ? preferPersonLabel(prev, label) : label);
-  }
-  return [...byKey.values()];
-}
-
-export { normalizePersonKey, dedupePersonLabels, preferPersonLabel };
+export { normalizePersonKey, dedupePersonLabels, preferPersonLabel, mergeCallIdentities };
 
 function truncateWords(text, max) {
   const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
   if (words.length <= max) return esc(words.join(" "));
   return `${esc(words.slice(0, max).join(" "))}<span class="trunc-ellipsis">…</span>`;
+}
+
+/** Plain-text truncation for insight bullets (no HTML — those get escaped on render). */
+function truncateWordsPlain(text, max) {
+  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= max) return words.join(" ");
+  return `${words.slice(0, max).join(" ")}…`;
 }
 
 async function authHeaders() {
@@ -319,6 +481,318 @@ function scheduleCrmMatches() {
   crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 350);
 }
 
+/** Show the per-email CRM panel only when tiles alone are not enough to act. */
+export function shouldShowCrmMatchesPanel(result, resolvedAccount = pcResolvedAccount) {
+  const matchedEntries = result.byEmail.filter((e) => e.matched);
+  if (!matchedEntries.length) return false;
+  if (resolvedAccount?.id) return false;
+  if (result.accounts.length > 1) return true;
+  if (matchedEntries.some((e) => e.accounts.length > 1)) return true;
+  return false;
+}
+
+/** @param {object[]} accounts @param {string} name */
+function findAccountByName(accounts, name) {
+  if (!name) return null;
+  return accounts.find((a) => namesEqual(a.name, name)) || null;
+}
+
+/** True when a previously picked account is still among CRM matches for typed emails. */
+export function isResolvedAccountValidForResult(resolvedAccount, result) {
+  if (!resolvedAccount?.id) return false;
+  return (result.accounts || []).some((a) => a.id === resolvedAccount.id);
+}
+
+/** Drop stale account/deal picks that no longer match the current CRM lookup. */
+export function reconcileIntakeStateWithCrmResult(result) {
+  const prevAccountId = pcResolvedAccount?.id || null;
+  if (pcResolvedAccount?.id && !isResolvedAccountValidForResult(pcResolvedAccount, result)) {
+    pcResolvedAccount = null;
+    pcCreateNewAccount = false;
+    pcSelectedDealId = null;
+    pcCreateNewDeal = false;
+  }
+  return prevAccountId;
+}
+
+/** Resolve which account the intake preview should reflect. */
+export function resolveIntakeAccount(result, typedCompany, resolvedAccount = pcResolvedAccount) {
+  if (resolvedAccount?.id && isResolvedAccountValidForResult(resolvedAccount, result)) {
+    return resolvedAccount;
+  }
+  if (result.accounts.length === 1) {
+    const a = result.accounts[0];
+    return { id: a.id, name: a.name, domain: a.domain || null };
+  }
+  const byName = findAccountByName(result.accounts, typedCompany);
+  if (byName) {
+    return { id: byName.id, name: byName.name, domain: byName.domain || null };
+  }
+  return null;
+}
+
+/** Keep deal pick state aligned with deals on the active account. */
+export function syncIntakeDealSelection(deals, state = {}) {
+  const createNewDeal = state.createNewDeal ?? pcCreateNewDeal;
+  const selectedDealId = state.selectedDealId ?? pcSelectedDealId;
+  pcLastAccountDeals = deals;
+
+  if (createNewDeal) {
+    pcCreateNewDeal = true;
+    pcSelectedDealId = null;
+    if (!pcDraftNewDealTitle.trim()) {
+      const accountName =
+        pcDraftAccountName.trim() ||
+        pipelineState?.payload?.companyName ||
+        "";
+      if (accountName) syncNewDealTitlePrefill(accountName);
+    }
+    return;
+  }
+  if (!deals.length) {
+    pcSelectedDealId = null;
+    pcCreateNewDeal = !!pcCreateNewAccount;
+    if (pcCreateNewDeal && !pcDraftNewDealTitle.trim()) {
+      const accountName =
+        pcDraftAccountName.trim() ||
+        pipelineState?.payload?.companyName ||
+        "";
+      if (accountName) syncNewDealTitlePrefill(accountName);
+    }
+    return;
+  }
+  if (selectedDealId && deals.some((d) => d.id === selectedDealId)) {
+    pcSelectedDealId = selectedDealId;
+    pcCreateNewDeal = false;
+    return;
+  }
+  pcSelectedDealId = deals[0].id;
+  pcCreateNewDeal = false;
+}
+
+function dealsForAccount(result, accountId) {
+  if (!accountId) return [];
+  return (result.deals || []).filter((d) => d.accountId === accountId);
+}
+
+function renderDealTile(d, selected) {
+  const stage = STAGE_LABELS[d.stage] || d.stage || d.status || "Active";
+  return `<button type="button" class="nb-deal-card pc-deal-tile${selected ? " is-selected" : ""}" data-action="pick-deal" data-deal-id="${esc(d.id)}">
+      <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
+      <div class="nb-deal-card-body">
+        <span class="nb-deal-card-title">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>
+        <span class="nb-deal-card-stage">${esc(stage)}</span>
+      </div>
+    </button>`;
+}
+
+function renderNewDealEditor(displayName, newDealType, newDealTitle, selected = true) {
+  const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
+  return `<div class="pc-new-deal-field${selected ? " is-selected" : ""}">
+      <input type="text" class="pc-new-deal-title-input" data-action="edit-new-deal-title"
+        value="${esc(title)}" placeholder="${esc(defaultNewDealTitle(displayName, newDealType))}"
+        autocomplete="off" aria-label="New deal name" />
+      <span class="pc-new-deal-hint muted">Create on confirm</span>
+    </div>`;
+}
+
+function focusAndSelectNewDealInput(previewEl) {
+  const input = previewEl?.querySelector?.('[data-action="edit-new-deal-title"]');
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+}
+
+/** Enter new-deal pick mode: deselect existing deal tiles and optionally focus the title field. */
+function activateNewDealMode(previewEl, { focusInput = false } = {}) {
+  const changed = !pcCreateNewDeal || pcSelectedDealId !== null;
+  pcCreateNewDeal = true;
+  pcSelectedDealId = null;
+  if (focusInput) pcFocusNewDealInput = true;
+  if (changed) {
+    void renderCrmMatchesPanel();
+  } else if (focusInput && previewEl) {
+    focusAndSelectNewDealInput(previewEl);
+  }
+}
+
+function renderStaticDealCard(title, stage) {
+  return `<div class="nb-deal-card pc-deal-tile pc-deal-tile--static">
+      <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
+      <div class="nb-deal-card-body">
+        <span class="nb-deal-card-title">${esc(title)}</span>
+        <span class="nb-deal-card-stage">${esc(stage)}</span>
+      </div>
+    </div>`;
+}
+
+/**
+ * Account + deal preview grid for post-call intake page 1.
+ * @param {{
+ *   accountName: string,
+ *   accountMatched: boolean,
+ *   deals?: object[],
+ *   selectedDealId?: string|null,
+ *   createNewDeal?: boolean,
+ *   newDealType?: 'new_business'|'expansion',
+ *   newDealTitle?: string,
+ * }} opts
+ */
+export function renderAccountDealPreviewHtml(opts) {
+  const {
+    accountName,
+    accountMatched,
+    deals = [],
+    selectedDealId = null,
+    createNewDeal = false,
+    newDealType = "new_business",
+    newDealTitle = "",
+  } = opts;
+
+  const displayName = titleCaseDisplayName(accountName) || "Account";
+  const accountBadge = accountMatched
+    ? "Matched · existing account"
+    : "New account · will be created on confirm";
+
+  const showNewDealLink = accountMatched || deals.length > 0;
+  const dealHead = `<div class="nb-deal-head">
+      <span class="nb-label">Deal</span>
+      ${showNewDealLink ? `<button type="button" class="nb-deal-new-link${createNewDeal ? " is-active" : ""}" data-action="pick-new-deal">＋ New deal</button>` : ""}
+    </div>`;
+
+  let dealTilesHtml = "";
+  if (!accountMatched) {
+    const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
+    dealTilesHtml = renderStaticDealCard(title, "Create on confirm");
+  } else if (!deals.length) {
+    const defaultTitle = newDealTitle || formatDealTitlePreview(displayName, newDealType);
+    dealTilesHtml = createNewDeal
+      ? renderNewDealEditor(displayName, newDealType, defaultTitle)
+      : renderStaticDealCard(defaultTitle, "Create on confirm");
+  } else if (createNewDeal) {
+    dealTilesHtml = deals.map((d) => renderDealTile(d, false)).join("");
+    dealTilesHtml += renderNewDealEditor(displayName, newDealType, newDealTitle || formatDealTitlePreview(displayName, newDealType));
+  } else {
+    dealTilesHtml = deals.map((d) => renderDealTile(d, selectedDealId === d.id)).join("");
+  }
+
+  return `<div class="nb-account-column">
+    <span class="nb-label">Account</span>
+    <div class="nb-account-slot">
+      <div class="nb-account-card prep-account-card pc-account-card-editable" aria-live="polite">
+        <span class="nb-account-card-mono">${esc(companyMono(displayName))}</span>
+        <div class="nb-account-card-body">
+          <div class="pc-account-name-wrap pc-lookup-field">
+            <input type="text" class="pc-account-name-input" data-action="edit-account-name"
+              value="${esc(displayName)}" placeholder="Account name" autocomplete="off" aria-label="Account name" />
+            <div class="pc-account-suggest pc-lookup-menu" role="listbox" hidden></div>
+          </div>
+          <span class="nb-account-card-badge">${esc(accountBadge)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="nb-deal-slot pc-deal-showcase">
+    ${dealHead}
+    <div class="pc-deal-tiles-row">${dealTilesHtml}</div>
+  </div>`;
+}
+
+function wireAccountDealPreview(previewEl) {
+  if (!previewEl) return;
+
+  intakeAccountLookupTeardown?.();
+  intakeAccountLookupTeardown = null;
+
+  previewEl.querySelectorAll('[data-action="pick-deal"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pcSelectedDealId = btn.dataset.dealId || null;
+      pcCreateNewDeal = false;
+      pcFocusNewDealInput = false;
+      void renderCrmMatchesPanel();
+    });
+  });
+  previewEl.querySelectorAll('[data-action="pick-new-deal"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      syncNewDealTitlePrefill(pcDraftAccountName);
+      activateNewDealMode(previewEl, { focusInput: true });
+    });
+  });
+
+  const accountInput = previewEl.querySelector('[data-action="edit-account-name"]');
+  const accountSuggest = previewEl.querySelector(".pc-account-suggest");
+  if (accountInput) {
+    accountInput.addEventListener("input", () => {
+      if (!suppressCompanyTouch) companyNameTouched = true;
+      pcDraftAccountName = accountInput.value;
+      syncNewDealTitlePrefill(pcDraftAccountName);
+    });
+    accountInput.addEventListener("blur", () => {
+      const cased = titleCaseDisplayName(accountInput.value.trim()) || accountInput.value.trim();
+      if (cased && cased !== accountInput.value) {
+        suppressCompanyTouch = true;
+        accountInput.value = cased;
+        pcDraftAccountName = cased;
+        suppressCompanyTouch = false;
+      }
+      const err = $("pc-account-name-error");
+      if (err && cased) {
+        err.hidden = true;
+        err.textContent = "";
+      }
+      void renderCrmMatchesPanel();
+    });
+    if (accountSuggest) {
+      intakeAccountLookupTeardown = attachAccountLookup({
+        inputEl: accountInput,
+        menuEl: accountSuggest,
+        onPick: (account, typedName) => {
+          writeAccountName(typedName, { touch: true, titleCaseOnWrite: true });
+          if (!account) {
+            pcCreateNewAccount = true;
+            pcResolvedAccount = null;
+            pcSelectedDealId = null;
+            pcCreateNewDeal = true;
+          } else {
+            pcCreateNewDeal = false;
+            pcSelectedDealId = null;
+          }
+          scheduleCrmMatches();
+        },
+      }) || null;
+    }
+  }
+
+  previewEl.querySelectorAll('[data-action="edit-new-deal-title"]').forEach((input) => {
+    input.addEventListener("focus", () => {
+      if (!pcCreateNewDeal || pcSelectedDealId !== null) {
+        activateNewDealMode(previewEl, { focusInput: true });
+      }
+    });
+    input.addEventListener("click", () => {
+      if (pcCreateNewDeal) input.select();
+    });
+    input.addEventListener("input", () => {
+      if (!pcCreateNewDeal || pcSelectedDealId !== null) {
+        pcCreateNewDeal = true;
+        pcSelectedDealId = null;
+      }
+      newDealTitleTouched = true;
+      pcDraftNewDealTitle = input.value;
+      pcNewDealType = inferDealTypeFromTitle(input.value);
+    });
+    input.addEventListener("blur", () => {
+      const trimmed = input.value.trim();
+      if (trimmed) {
+        pcDraftNewDealTitle = trimmed;
+        pcNewDealType = inferDealTypeFromTitle(trimmed);
+      }
+    });
+  });
+}
+
 /**
  * Contact-primary surfacing: for every typed email, show which existing Account(s)
  * and Deal(s) already exist in the CRM, or that a new account will be created.
@@ -326,11 +800,14 @@ function scheduleCrmMatches() {
  */
 async function renderCrmMatchesPanel() {
   const panel = $("pc-crm-matches");
+  const preview = $("pc-account-deal-preview");
   if (!panel) return;
-  const emails = parseProspectEmails(await readFieldValueAsync($("pc-prospect-emails")));
+  const emails = await getProspectEmailsFromField();
+  const typedCompany = await readAccountNameValue();
   if (!emails.length) {
     panel.hidden = true;
     panel.innerHTML = "";
+    if (preview) preview.hidden = true;
     return;
   }
 
@@ -341,48 +818,119 @@ async function renderCrmMatchesPanel() {
   } catch (err) {
     console.warn("[postcall] CRM match lookup failed:", err?.message || err);
     panel.hidden = true;
+    if (preview) preview.hidden = true;
     return;
   }
-  if (token !== crmMatchesToken) return; // a newer lookup superseded this one
-
-  const rows = result.byEmail
-    .map((entry) => {
-      const accountChips = entry.accounts
-        .map((a) => {
-          const dealsForAccount = entry.deals.filter((d) => d.accountId === a.id);
-          const dealBits = dealsForAccount.length
-            ? dealsForAccount
-                .map(
-                  (d) =>
-                    `<span class="pc-crm-deal" title="${esc(d.stage || "")} · ${esc(d.status || "")}">${esc(d.title || "Deal")}</span>`,
-                )
-                .join("")
-            : `<span class="pc-crm-deal pc-crm-deal--none">no deal yet</span>`;
-          return `<button type="button" class="pc-crm-account" data-action="pick-crm-account" data-account-id="${esc(a.id)}" data-account-name="${esc(a.name || "")}" data-account-domain="${esc(a.domain || "")}">
-              <span class="pc-crm-account-name">${esc(a.name || a.domain || "Account")}</span>
-              <span class="pc-crm-deals">${dealBits}</span>
-            </button>`;
-        })
-        .join("");
-
-      const status = entry.matched
-        ? accountChips
-        : `<span class="pc-crm-new">＋ New account — will be created on confirm</span>`;
-
-      return `<div class="pc-crm-row">
-          <span class="pc-crm-email">${esc(entry.email)}</span>
-          <span class="pc-crm-matchset">${status}</span>
-        </div>`;
-    })
-    .join("");
+  if (token !== crmMatchesToken) return;
+  lastCrmMatchResult = result;
 
   const matchedCount = result.byEmail.filter((e) => e.matched).length;
-  const header = matchedCount
-    ? `Found in CRM — ${result.accounts.length} account${result.accounts.length === 1 ? "" : "s"}, ${result.deals.length} deal${result.deals.length === 1 ? "" : "s"}`
-    : "No CRM match yet — a new account will be created";
+  const prevAccountId = reconcileIntakeStateWithCrmResult(result);
+  const derivedFromEmail =
+    titleCaseDisplayName(companyNameFromEmail(emails[0])) || companyNameFromEmail(emails[0]) || "";
+  const resolved = resolveIntakeAccount(result, typedCompany);
+  if (resolved?.id && !pcResolvedAccount?.id) {
+    pcResolvedAccount = resolved;
+    pcCreateNewAccount = false;
+    pcCreateNewDeal = false;
+    pcSelectedDealId = null;
+  } else if (
+    !resolved?.id &&
+    typedCompany &&
+    !pcResolvedAccount?.id &&
+    !findAccountByName(result.accounts, typedCompany)
+  ) {
+    pcCreateNewAccount = true;
+    pcCreateNewDeal = true;
+  }
 
-  panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${rows}`;
-  panel.hidden = false;
+  const accountMatched = !!(pcResolvedAccount?.id || resolved?.id);
+  const activeAccount = pcResolvedAccount || resolved;
+  const newAccountId = activeAccount?.id || null;
+  if (prevAccountId !== newAccountId) {
+    pcSelectedDealId = null;
+    pcCreateNewDeal = false;
+    newDealTitleTouched = false;
+  }
+
+  const accountDeals = dealsForAccount(result, activeAccount?.id);
+  syncIntakeDealSelection(accountDeals, {
+    createNewDeal: pcCreateNewDeal,
+    selectedDealId: pcSelectedDealId,
+  });
+
+  const accountName =
+    activeAccount?.name ||
+    derivedFromEmail ||
+    typedCompany ||
+    result.accounts[0]?.name ||
+    "New account";
+
+  if (!accountMatched && derivedFromEmail && !companyNameTouched) {
+    writeAccountName(derivedFromEmail, { titleCaseOnWrite: true });
+  }
+
+  syncNewDealTitlePrefill(accountName);
+
+  if (preview) {
+    preview.hidden = false;
+    preview.innerHTML = renderAccountDealPreviewHtml({
+      accountName,
+      accountMatched,
+      deals: pcLastAccountDeals,
+      selectedDealId: pcSelectedDealId,
+      createNewDeal: pcCreateNewDeal,
+      newDealType: pcNewDealType,
+      newDealTitle: pcDraftNewDealTitle,
+    });
+    wireAccountDealPreview(preview);
+    if (pcFocusNewDealInput && pcCreateNewDeal) {
+      pcFocusNewDealInput = false;
+      focusAndSelectNewDealInput(preview);
+    }
+  }
+
+  if (!shouldShowCrmMatchesPanel(result)) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  } else {
+    const rows = result.byEmail
+      .filter((entry) => entry.matched)
+      .map((entry) => {
+        const accountChips = entry.accounts
+          .map((a) => {
+            const dealsForAccountRow = entry.deals.filter((d) => d.accountId === a.id);
+            const dealBits = dealsForAccountRow.length
+              ? dealsForAccountRow
+                  .map(
+                    (d) =>
+                      `<span class="pc-crm-deal" title="${esc(d.stage || "")} · ${esc(d.status || "")}">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>`,
+                  )
+                  .join("")
+              : `<span class="pc-crm-deal pc-crm-deal--none">no deal yet</span>`;
+            return `<button type="button" class="pc-crm-account" data-action="pick-crm-account" data-account-id="${esc(a.id)}" data-account-name="${esc(a.name || "")}" data-account-domain="${esc(a.domain || "")}">
+                <span class="pc-crm-account-name">${esc(titleCaseDisplayName(a.name || a.domain || "Account"))}</span>
+                <span class="pc-crm-deals">${dealBits}</span>
+              </button>`;
+          })
+          .join("");
+
+        return `<div class="pc-crm-row">
+            <span class="pc-crm-email">${esc(entry.email)}</span>
+            <span class="pc-crm-matchset">${accountChips}</span>
+          </div>`;
+      })
+      .join("");
+
+    const header = `Found in CRM — ${result.accounts.length} account${result.accounts.length === 1 ? "" : "s"}, ${result.deals.length} deal${result.deals.length === 1 ? "" : "s"}`;
+    panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${rows}`;
+    panel.hidden = false;
+  }
+
+  if (!matchedCount && typedCompany && !pcResolvedAccount?.id) {
+    pcCreateNewAccount = true;
+  }
+
   wireCrmMatchesPanel(panel, result);
 }
 
@@ -398,15 +946,12 @@ function wireCrmMatchesPanel(panel, result) {
         domain: account.domain || null,
       };
       pcCreateNewAccount = false;
-      const companyEl = $("pc-company-name");
-      if (companyEl) {
-        suppressCompanyTouch = true;
-        companyEl.value = account.name || "";
-        window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
-        companyNameTouched = true;
-      }
+      pcCreateNewDeal = false;
+      pcSelectedDealId = null;
+      void writeAccountName(account.name || "", { touch: true, titleCaseOnWrite: true });
       panel.querySelectorAll(".pc-crm-account").forEach((el) => el.classList.remove("pc-crm-account--selected"));
       btn.classList.add("pc-crm-account--selected");
+      void renderCrmMatchesPanel();
     });
   });
 }
@@ -430,9 +975,15 @@ async function tryMatchEmail(ctx, email) {
   if (account?.name) {
     return { name: account.name, account };
   }
+  const derived = companyNameFromEmail(email);
+  if (derived) {
+    const byName = (ctx.accounts || []).find((a) => namesEqual(a.name, derived));
+    if (byName?.name) return { name: byName.name, account: byName };
+  }
   const brief = (ctx.briefs || []).find((b) =>
     (b.prospectEmails || []).some((e) => e === email) ||
-    String(b.domain || "").toLowerCase() === domain,
+    String(b.domain || "").toLowerCase() === domain ||
+    (derived && namesEqual(b.meta?.company || b.companyName, derived)),
   );
   if (brief?.companyName) {
     return { name: brief.companyName, account: null };
@@ -442,19 +993,41 @@ async function tryMatchEmail(ctx, email) {
 
 async function prefillCompanyFromEmails() {
   if (companyNameTouched) return;
-  const companyEl = $("pc-company-name");
-  if (!companyEl) return;
-  // Only an SE-typed company blocks the prefill. A value we filled ourselves is replaceable.
-  const existing = (await readFieldValueAsync(companyEl))?.trim();
-  if (existing && companyNameTouched) return;
-  if (existing && pcResolvedAccount && existing === pcResolvedAccount.name) {
-    // fall through — emails may have changed to a different account
-  } else if (existing) {
+
+  const emails = await getProspectEmailsFromField();
+  if (!emails.length) {
+    if (pcResolvedAccount) {
+      pcResolvedAccount = null;
+      pcSelectedDealId = null;
+      pcCreateNewDeal = false;
+    }
     return;
   }
 
-  const emails = parseProspectEmails(await readFieldValueAsync($("pc-prospect-emails")));
-  if (!emails.length) return;
+  if (pcResolvedAccount?.id) {
+    try {
+      const check = await resolveContactsForEmails(emails);
+      if (!isResolvedAccountValidForResult(pcResolvedAccount, check)) {
+        pcResolvedAccount = null;
+        pcSelectedDealId = null;
+        pcCreateNewDeal = false;
+        pcDraftAccountName = "";
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  if (
+    pcDraftAccountName.trim() &&
+    pcResolvedAccount &&
+    namesEqual(pcDraftAccountName, pcResolvedAccount.name)
+  ) {
+    return;
+  }
+  if (pcDraftAccountName.trim() && !pcResolvedAccount) {
+    pcDraftAccountName = "";
+  }
 
   const ownerId = effectiveSessionUserId(currentSession);
   if (!ownerId) return;
@@ -469,9 +1042,7 @@ async function prefillCompanyFromEmails() {
       }
     }
     if (match) {
-      suppressCompanyTouch = true;
-      companyEl.value = match.name;
-      window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
+      writeAccountName(match.name, { titleCaseOnWrite: true });
       if (match.account) {
         pcResolvedAccount = {
           id: match.account.id,
@@ -484,9 +1055,7 @@ async function prefillCompanyFromEmails() {
     }
     const derived = companyNameFromEmail(primary);
     if (derived) {
-      suppressCompanyTouch = true;
-      companyEl.value = derived;
-      window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
+      writeAccountName(derived, { titleCaseOnWrite: true });
     }
   } catch {
     /* prefills are best-effort */
@@ -529,13 +1098,13 @@ function attachAccountLookup(cfg) {
       : [];
 
     const exactMatch = matches.some(
-      (a) => String(a.name || "").toLowerCase() === q,
+      (a) => namesEqual(a.name, typed) || String(a.domain || "").toLowerCase() === q,
     );
     const html = matches
       .map(
         (a) =>
           `<button type="button" class="pc-lookup-option" role="option" data-account-id="${esc(a.id)}">
-            <span>${esc(a.name)}</span>
+            <span>${esc(titleCaseDisplayName(a.name))}</span>
             ${a.domain ? `<span class="pc-lookup-option-sub">${esc(a.domain)}</span>` : ""}
           </button>`,
       )
@@ -544,7 +1113,7 @@ function attachAccountLookup(cfg) {
     const createRow =
       q && !exactMatch
         ? `<button type="button" class="pc-lookup-option pc-lookup-option--create" role="option" data-create="1">
-            ＋ Create new account "${esc(typed.trim())}"
+            ＋ Create new account "${esc(titleCaseDisplayName(typed.trim()))}"
           </button>`
         : "";
 
@@ -565,6 +1134,8 @@ function attachAccountLookup(cfg) {
       onPick(null, typed);
       pcCreateNewAccount = true;
       pcResolvedAccount = null;
+      pcSelectedDealId = null;
+      pcCreateNewDeal = true;
       if (noteEl) {
         noteEl.textContent = "New account (will be created on confirm)";
         noteEl.hidden = false;
@@ -582,6 +1153,8 @@ function attachAccountLookup(cfg) {
               domain: account.domain || null,
             };
             pcCreateNewAccount = false;
+            pcSelectedDealId = null;
+            pcCreateNewDeal = false;
             if (noteEl) noteEl.hidden = true;
           }
         })
@@ -664,7 +1237,129 @@ function attachAccountLookup(cfg) {
   };
 }
 
-const CATEGORY_LABELS = {
+/**
+ * Debounced contact search for confirm-gate attendee rows.
+ * @param {{ inputEl: HTMLInputElement, menuEl: HTMLElement, accountId?: string|null,
+ *           onPick: (contact: object) => void }} cfg
+ */
+function attachContactLookup(cfg) {
+  const { inputEl, menuEl, accountId, onPick } = cfg;
+  if (!inputEl || !menuEl) return undefined;
+
+  let debounceTimer = null;
+  let activeIndex = -1;
+  let rows = [];
+  let blurTimer = null;
+
+  const closeMenu = () => {
+    menuEl.hidden = true;
+    activeIndex = -1;
+    rows = [];
+    menuEl.innerHTML = "";
+  };
+
+  const renderContactRows = (matches) => {
+    if (!matches.length) {
+      closeMenu();
+      return;
+    }
+    menuEl.innerHTML = matches
+      .map(
+        (c) =>
+          `<button type="button" class="pc-lookup-option" role="option" data-contact-id="${esc(c.id)}" data-contact-email="${esc(c.email || "")}">
+            <span>${esc(c.label)}</span>
+            ${c.subtitle ? `<span class="pc-lookup-option-sub">${esc(c.subtitle)}</span>` : ""}
+          </button>`,
+      )
+      .join("");
+    rows = [...menuEl.querySelectorAll(".pc-lookup-option")];
+    menuEl.hidden = false;
+    activeIndex = -1;
+  };
+
+  const pickRow = (btn) => {
+    if (!btn) return;
+    onPick({
+      id: btn.dataset.contactId,
+      email: btn.dataset.contactEmail || "",
+      label: btn.querySelector("span")?.textContent?.trim() || "",
+      subtitle: btn.querySelector(".pc-lookup-option-sub")?.textContent?.trim() || "",
+    });
+    closeMenu();
+  };
+
+  const refreshMenu = () => {
+    const typed = readFieldValue(inputEl)?.trim() || "";
+    if (typed.length < 2) {
+      closeMenu();
+      return;
+    }
+    buildSearchIndex(currentSession)
+      .then((index) => {
+        const matches = searchContacts(index, typed, { accountId: accountId || undefined, limit: 8 });
+        renderContactRows(matches);
+      })
+      .catch((err) => {
+        console.warn("[postcall] contact lookup failed:", err?.message || err);
+        closeMenu();
+      });
+  };
+
+  const scheduleRefresh = () => {
+    window.clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(refreshMenu, 200);
+  };
+
+  const onKeydown = (ev) => {
+    if (menuEl.hidden || !rows.length) return;
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, rows.length - 1);
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === activeIndex));
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === activeIndex));
+    } else if (ev.key === "Enter" && activeIndex >= 0) {
+      ev.preventDefault();
+      pickRow(rows[activeIndex]);
+    } else if (ev.key === "Escape") {
+      closeMenu();
+    }
+  };
+
+  const onMenuClick = (ev) => {
+    const btn = ev.target?.closest?.(".pc-lookup-option");
+    if (btn) pickRow(btn);
+  };
+
+  const onBlur = () => {
+    window.clearTimeout(blurTimer);
+    blurTimer = window.setTimeout(closeMenu, 120);
+  };
+
+  const onOutsidePointerdown = (ev) => {
+    if (!inputEl.contains(ev.target) && !menuEl.contains(ev.target)) closeMenu();
+  };
+
+  inputEl.addEventListener("input", scheduleRefresh);
+  inputEl.addEventListener("keydown", onKeydown);
+  menuEl.addEventListener("click", onMenuClick);
+  inputEl.addEventListener("blur", onBlur);
+  document.addEventListener("pointerdown", onOutsidePointerdown);
+
+  return () => {
+    window.clearTimeout(debounceTimer);
+    window.clearTimeout(blurTimer);
+    inputEl.removeEventListener("input", scheduleRefresh);
+    inputEl.removeEventListener("keydown", onKeydown);
+    menuEl.removeEventListener("click", onMenuClick);
+    inputEl.removeEventListener("blur", onBlur);
+    document.removeEventListener("pointerdown", onOutsidePointerdown);
+  };
+}
+
+const FOLLOWUP_CATEGORY_LABELS = {
   decision: "Decision",
   commitment: "Commitment",
   se_action: "SE action",
@@ -1028,178 +1723,564 @@ function formatEvidenceAt(atS) {
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-function renderQipEvidence(evidence) {
-  const items = (evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
-  if (!items.length) return '<p class="muted qip-evidence-empty">No timestamped evidence</p>';
-  return `<ul class="qip-evidence-list">${items
-    .map((e) => {
-      const ts = formatEvidenceAt(e.atS);
-      return `<li class="qip-evidence">
-        ${ts != null ? `<span class="qip-evidence-ts">${esc(ts)}</span>` : '<span class="qip-evidence-ts muted">-</span>'}
-        <blockquote class="qip-evidence-quote">${truncateWords(e.quote, 40)}</blockquote>
-      </li>`;
-    })
-    .join("")}</ul>`;
+function qipScoreTone(score) {
+  if (score >= 8) return "good";
+  if (score >= 6) return "ok";
+  return "weak";
 }
 
-function qipLineConfidencePill(line, fallbackConf) {
-  if (!line.applicable) return "";
-  const c = line.confidence ?? fallbackConf;
-  if (c == null) return `<span class="pill">-</span>`;
-  if (c >= 0.65) return '<span class="pill green">High</span>';
-  if (c >= 0.4) return '<span class="pill amber">Med</span>';
-  return '<span class="pill red">Low</span>';
-}
-
-function renderQipEvidenceBlocks(evidence, tone) {
-  const items = (evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
-  if (!items.length) return "";
-  return items
-    .map((e) => {
-      const ts = formatEvidenceAt(e.atS);
-      const evCls = tone ? ` ev ${tone}` : " ev";
-      return `<div class="${evCls.trim()}">${ts != null ? `<div class="ts">${esc(ts)}</div>` : ""}${truncateWords(e.quote, 40)}</div>`;
-    })
-    .join("");
-}
-
-function qipScoreColor(pct) {
-  if (pct >= 0.8) return "var(--green)";
-  if (pct >= 0.6) return "var(--amber)";
+function qipScoreColor(score) {
+  if (score >= 8) return "var(--green)";
+  if (score >= 6) return "var(--amber)";
   return "var(--red)";
 }
 
-/** v2 QIP scorecard. wireframe srow layout: theme, score, weighted bar, confidence. */
+function qipConfidenceTier(conf) {
+  if (conf == null) return null;
+  if (conf >= 0.65) return "High";
+  if (conf >= 0.4) return "Med";
+  return "Low";
+}
+
+function qipConfidencePill(conf, fallbackConf) {
+  const c = conf ?? fallbackConf;
+  const tier = qipConfidenceTier(c);
+  if (!tier) return `<span class="pill">-</span>`;
+  if (tier === "High") return '<span class="pill high">High</span>';
+  if (tier === "Med") return '<span class="pill med">Med</span>';
+  return '<span class="pill low">Low</span>';
+}
+
+function qipLineGrade(line) {
+  return lineGradeForDisplay(line);
+}
+
+function qipLineCredit(line) {
+  if (typeof line.credit === "number") return line.credit;
+  if ((line.weight || 0) >= 10) return 3;
+  if ((line.weight || 0) >= 5) return 2;
+  return 1;
+}
+
+function qipThemeContribution(line) {
+  if (isThemeExcludedFromAggregate(line)) return -1;
+  if (isThemeScoreSuppressed(line.themeKey)) return -1;
+  const grade = qipLineGrade(line);
+  if (grade == null) return -1;
+  return grade * qipLineCredit(line);
+}
+
+function qipInsightText(line) {
+  const label = themeLabel(line.themeKey);
+  const note =
+    line.coachingNote && !isUnknown(line.coachingNote)
+      ? truncateWordsPlain(sanitizeUserFacingCopy(line.coachingNote), 18)
+      : null;
+  const grade = qipLineGrade(line);
+  if (note) return `${label} — ${note}`;
+  if (grade != null) return `${label} scored ${grade} / 10 on this call.`;
+  return label;
+}
+
+function deriveQipInsights(lines) {
+  const ranked = coerceScorecardLines(lines)
+    .filter((l) => qipThemeContribution(l) >= 0)
+    .sort((a, b) => qipThemeContribution(b) - qipThemeContribution(a));
+  return {
+    good: ranked.slice(0, 3).map(qipInsightText),
+    bad: [...ranked].reverse().slice(0, 3).map(qipInsightText),
+  };
+}
+
+function qipCategoryLines(lines, categoryKey, callType) {
+  const safeCallType = canonicalCallType(callType || "demo");
+  const safeLines = coerceScorecardLines(lines);
+  const filtered = safeLines.filter((line) => {
+    if (line.category) return line.category === categoryKey;
+    try {
+      const profile = profileFor(canonicalCallType(line.callType || safeCallType));
+      const theme = profile.themes.find((t) => t.key === line.themeKey);
+      return theme?.category === categoryKey;
+    } catch {
+      return false;
+    }
+  });
+  try {
+    const profile = profileFor(safeCallType);
+    const order = profile.themes.filter((t) => t.category === categoryKey).map((t) => t.key);
+    return order.map((key) => filtered.find((l) => l.themeKey === key)).filter(Boolean);
+  } catch {
+    return filtered;
+  }
+}
+
+function qipCategoryConfidence(lines, fallbackConf) {
+  const vals = (lines || [])
+    .filter((l) => !isThemeExcludedFromAggregate(l))
+    .map((l) => l.confidence)
+    .filter((c) => c != null);
+  if (!vals.length) return fallbackConf;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+const QIP_CHEV_SVG =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+const QIP_CHEV_SVG_SM =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+const QIP_STAR_SVG =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2.6a.5.5 0 0 1 .9 0l2.5 5.1 5.6.8a.5.5 0 0 1 .3.9l-4 3.9 1 5.6a.5.5 0 0 1-.8.5L12 17.3l-5 2.6a.5.5 0 0 1-.8-.5l1-5.6-4-3.9a.5.5 0 0 1 .3-.9l5.6-.8Z"/></svg>';
+
+function qipScoreHex(score) {
+  if (score >= 8) return "#4a7a5c";
+  if (score >= 6) return "#a5883f";
+  return "#b8544a";
+}
+
+function renderQipSparkline(subParameters) {
+  const scores = (subParameters || []).slice(0, 5).map((sp) => Math.max(0, Math.min(2, Number(sp?.score ?? sp?.grade ?? 0) || 0)));
+  while (scores.length < 5) scores.push(0);
+  const bars = scores
+    .map((s) => {
+      if (s >= 2) return '<i class="v2"></i>';
+      if (s >= 1) return '<i class="v1"></i>';
+      return '<i class="v0"></i>';
+    })
+    .join("");
+  return `<span class="spark" aria-label="checks: ${esc(scores.join(","))}">${bars}</span>`;
+}
+
+function renderQipWeightBars(credit, title) {
+  const n = Math.max(0, Math.min(3, Number(credit) || 0));
+  const bars = [0, 1, 2].map((i) => `<i${i < n ? ' class="on"' : ""}></i>`).join("");
+  return `<span class="wt" title="${esc(title || `Credit ${n}`)}">${bars}</span>`;
+}
+
+function renderQipStateChip(score) {
+  const n = Math.max(0, Math.min(2, Number(score) || 0));
+  if (n >= 2) return '<span class="chip done">✓ Done <span class="frac">2/2</span></span>';
+  if (n >= 1) return '<span class="chip part">◐ Partial <span class="frac">1/2</span></span>';
+  return '<span class="chip miss">○ Missed <span class="frac">0/2</span></span>';
+}
+
+function renderWireframeSubParameter(spLabel, sp, coachOutput, themeKey, spIndex, lineCoachingNote) {
+  const score = sp?.score ?? 0;
+  const evidence = (sp?.evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
+  const evidenceHtml = evidence.length
+    ? evidence
+        .map((e) => {
+          const ts = formatEvidenceAt(e.atS);
+          return `<div class="ev">${ts != null ? `<span class="t">${esc(ts)}</span>` : ""}<span class="q">${truncateWords(e.quote, 35)}</span></div>`;
+        })
+        .join("")
+    : "";
+  const coachText = resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabel, lineCoachingNote);
+  const nailed = score >= 2 ? '<div class="nailed">✓ Nailed it</div>' : "";
+  const coach =
+    score < 2 && coachText
+      ? `<div class="coach"><span class="k">Coach</span><span class="c">${esc(coachText)}</span></div>`
+      : "";
+  return `
+    <div class="sp">
+      <div class="state">${renderQipStateChip(score)}</div>
+      <div>
+        <div class="txt">${esc(spLabel)}</div>
+        ${evidenceHtml}
+        ${nailed}
+        ${coach}
+      </div>
+    </div>`;
+}
+
+function renderWireframeThemeRow(line, profileTheme, fallbackConf, coachOutput, profile) {
+  const na = line.evidenceUnavailable || line.applicable === false;
+  const grade = qipLineGrade(line);
+  const credit = profileTheme?.credit ?? qipLineCredit(line);
+  const creditLabel =
+    credit >= 3 ? "Credit 3 — carries the call" : credit >= 2 ? "Credit 2 — matters" : "Credit 1 — polish";
+  const subLabels = profileTheme?.subParameters || [];
+  const subParams = na
+    ? []
+    : (() => {
+        const coerced = coerceSubParameters(line.subParameters);
+        return coerced.length ? coerced : legacySubParametersFromLine(line);
+      })();
+
+  if (na) {
+    return `
+      <details class="thm" data-theme-key="${esc(line.themeKey)}">
+        <summary class="thm-sum">
+          <span class="thm-name"><span class="nm">${esc(themeLabel(line.themeKey))}</span>${renderQipWeightBars(credit, creditLabel)}</span>
+          <span></span>
+          <span class="thm-na">N/A</span>
+          <span></span><span></span>
+          <span class="chev">${QIP_CHEV_SVG_SM}</span>
+        </summary>
+        <div class="thm-body">
+          <p class="thm-note">${esc(resolveThemeNaReason(line, profile))}</p>
+        </div>
+      </details>`;
+  }
+
+  const scoreHtml =
+    grade != null
+      ? `<span class="thm-score" style="color:${qipScoreHex(grade)}">${esc(grade)}<span class="d"> / 10</span></span>`
+      : `<span class="thm-na">N/A</span>`;
+  const subRows = subParams.length
+    ? subParams
+        .map((sp, i) =>
+          renderWireframeSubParameter(
+            subLabels[i] || `Check ${i + 1}`,
+            sp,
+            coachOutput,
+            line.themeKey,
+            i,
+            line.coachingNote,
+          ),
+        )
+        .join("")
+    : "";
+
+  return `
+    <details class="thm" data-theme-key="${esc(line.themeKey)}">
+      <summary class="thm-sum">
+        <span class="thm-name"><span class="nm">${esc(themeLabel(line.themeKey))}</span>${renderQipWeightBars(credit, creditLabel)}</span>
+        ${renderQipSparkline(subParams)}
+        ${scoreHtml}
+        ${qipConfidencePill(line.confidence, fallbackConf)}
+        <span></span>
+        <span class="chev">${QIP_CHEV_SVG_SM}</span>
+      </summary>
+      <div class="thm-body">${subRows ? `<div class="qip-subparam-list">${subRows}</div>` : `<p class="thm-note muted">No checks scored.</p>`}</div>
+    </details>`;
+}
+
+function renderWireframeCategoryRow(categoryKey, score, lines, profile, callType, fallbackConf, coachOutput) {
+  const name = qipCategoryDisplayLabel(categoryKey);
+  const catLines = qipCategoryLines(lines, categoryKey, callType);
+  const catConf = qipCategoryConfidence(catLines, fallbackConf);
+  const themes = catLines
+    .map((line) => {
+      const profileTheme = profile?.themes?.find((t) => t.key === line.themeKey) || null;
+      return renderWireframeThemeRow(line, profileTheme, fallbackConf, coachOutput, profile);
+    })
+    .join("");
+  const summaryNote =
+    !themes && catLines.length === 0
+      ? `<p class="thm-note">Open to see themes and checks for this category.</p>`
+      : "";
+
+  return `
+    <details class="cat">
+      <summary class="cat-sum">
+        <span class="cat-star" style="color:${qipScoreHex(score)}">${QIP_STAR_SVG}</span>
+        <span class="cat-name">${esc(name)}</span>
+        <span class="cat-score" style="color:${qipScoreHex(score)}">${esc(score)}<span class="d"> / 10</span></span>
+        ${qipConfidencePill(catConf, fallbackConf)}
+        <span class="chev">${QIP_CHEV_SVG}</span>
+      </summary>
+      <div class="cat-body">${themes || summaryNote}</div>
+    </details>`;
+}
+
+function renderQipInsightTile(items, title, tone) {
+  const list = (items || []).slice(0, 3);
+  const iconGood =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>';
+  const iconBad =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+  const body = list.length
+    ? `<ul>${list.map((text) => `<li><span class="ic">${tone === "good" ? iconGood : iconBad}</span>${esc(text)}</li>`).join("")}</ul>`
+    : `<ul><li class="muted">None flagged.</li></ul>`;
+  return `<div class="col ${tone === "good" ? "good" : "bad"}"><div class="h">${esc(title)}</div>${body}</div>`;
+}
+
+function renderQipInsightTileLegacy(items, title, tone) {
+  const icon = tone === "good" ? "✓" : "!";
+  const list = (items || []).slice(0, 3);
+  const body = list.length
+    ? list
+        .map(
+          (text) =>
+            `<div class="qip-insight-row qip-insight-row--${tone}"><span class="qip-insight-icon" aria-hidden="true">${icon}</span><span>${esc(text)}</span></div>`,
+        )
+        .join("")
+    : `<p class="muted qip-insight-empty">None flagged.</p>`;
+  return `<div class="qip-insight-col qip-insight-col--${tone}"><span class="qip-insight-title">${esc(title)}</span>${body}</div>`;
+}
+
+function renderSubParameterScoreBar(score) {
+  const filled = Math.max(0, Math.min(2, Number(score) || 0));
+  return `<div class="qip-sp-bar" role="img" aria-label="Score ${filled} of 2">${[0, 1]
+    .map((i) => `<span class="qip-sp-bar-seg${i < filled ? " is-filled" : ""}"></span>`)
+    .join("")}</div>`;
+}
+
+function resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabel, lineCoachingNote) {
+  const coachText = coachTextForSubParameter(coachOutput, themeKey, spIndex);
+  const score = sp?.score ?? 0;
+  if (coachText) {
+    return truncateWords(sanitizeUserFacingCopy(coachText), 45);
+  }
+  const tip = insightfulCoachTip(spLabel, themeKey, spIndex, score);
+  if (tip) return truncateWords(sanitizeUserFacingCopy(tip), 45);
+  if (lineCoachingNote && score < 2 && !isUnknown(lineCoachingNote)) {
+    return truncateWords(sanitizeUserFacingCopy(lineCoachingNote), 45);
+  }
+  if (score >= 2) return "Full credit — no coaching needed here.";
+  return "Listen back for a moment where this rubric bar was missed, then plan one concrete fix for next call.";
+}
+
+function renderQipSubParameter(spLabel, sp, coachOutput, themeKey, spIndex, themeCredit) {
+  const score = sp?.score ?? 0;
+  const evidence = (sp?.evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
+  const evidenceHtml = evidence.length
+    ? evidence
+        .map((e) => {
+          const ts = formatEvidenceAt(e.atS);
+          return `<div class="qip-sp-evidence">${ts != null ? `<span class="qip-sp-ts">${esc(ts)}</span>` : ""}<blockquote>${truncateWords(e.quote, 35)}</blockquote></div>`;
+        })
+        .join("")
+    : "";
+  const coachText = resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabel);
+  const creditBadge =
+    themeCredit != null ? `<span class="qip-sp-credit muted">${esc(String(themeCredit))} cr</span>` : "";
+  return `
+    <div class="qip-sp-row">
+      <div class="qip-sp-label">${esc(spLabel)} ${creditBadge}</div>
+      <div class="qip-sp-score">${renderSubParameterScoreBar(score)}</div>
+      <div class="qip-sp-evidence-wrap">${evidenceHtml || '<span class="muted qip-sp-no-evidence">No evidence</span>'}</div>
+      <p class="qip-sp-coach muted">${esc(coachText)}</p>
+    </div>`;
+}
+
+function renderQipThemeRow(line, profileTheme, fallbackConf, wireframe, coachOutput, profile) {
+  const na = line.evidenceUnavailable || line.applicable === false;
+  const suppressed = !na && isThemeScoreSuppressed(line.themeKey);
+  const heavy = qipLineCredit(line) >= 3;
+  const grade = qipLineGrade(line);
+  const tone = grade != null ? qipScoreTone(grade) : "weak";
+  const pct = grade != null ? Math.min(100, Math.max(0, (grade / 10) * 100)) : 0;
+  const cls = [
+    "qip-theme-row",
+    wireframe ? "srow" : "",
+    suppressed ? "qip-theme-row-suppressed" : "",
+    heavy ? "qip-theme-row-heavy" : "",
+    na ? "qip-theme-row-na" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const scoreCol = na
+    ? `<span class="qip-na-badge">N/A</span>`
+    : suppressed
+      ? `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`
+      : `<span class="qip-theme-score ${tone}"><strong style="color:${qipScoreColor(grade)}">${esc(grade)}</strong><span class="qip-line-max"> / 10</span></span>`;
+
+  const barCol =
+    na || suppressed || grade == null
+      ? `<span class="muted">-</span>`
+      : `<div class="bar qip-theme-bar"><span style="width:${Math.max(pct, grade === 0 ? 0 : 4)}%;background:${qipScoreColor(grade)}"></span></div>`;
+
+  const subLabels = profileTheme?.subParameters || [];
+  const subParams = na
+    ? []
+    : (() => {
+        const coerced = coerceSubParameters(line.subParameters);
+        return coerced.length ? coerced : legacySubParametersFromLine(line);
+      })();
+  const subRows =
+    !na && subParams.length
+      ? subParams
+          .map((sp, i) =>
+            renderQipSubParameter(
+              subLabels[i] || `Sub-parameter ${i + 1}`,
+              sp,
+              coachOutput,
+              line.themeKey,
+              i,
+              profileTheme?.credit,
+            ),
+          )
+          .join("")
+      : "";
+
+  const reason =
+    na
+      ? `<p class="qip-na-reason">${esc(resolveThemeNaReason(line, profile))}</p>`
+      : "";
+
+  return `
+    <details class="${cls}" data-theme-key="${esc(line.themeKey)}">
+      <summary class="qip-theme-summary${wireframe ? " srow-hd" : ""}">
+        <div class="qip-theme-cell">
+          <span class="qip-theme-name${heavy ? " qip-theme-name--heavy" : ""}">${esc(themeLabel(line.themeKey))}</span>
+          ${heavy ? '<span class="pill purple qip-heavy-pill">3 cr</span>' : ""}
+          ${line.sourceHint && !isUnknown(line.sourceHint) ? `<div class="sub qip-theme-hint">${esc(line.sourceHint)}</div>` : ""}
+        </div>
+        <div class="qip-score-cell">${scoreCol}</div>
+        <div class="qip-bar-cell">${barCol}</div>
+        <div class="qip-conf-cell">${na ? "" : qipConfidencePill(line.confidence, fallbackConf)}</div>
+        <div class="chev" aria-hidden="true">›</div>
+      </summary>
+      <div class="qip-theme-body${wireframe ? " srow-bd" : ""}">
+        ${reason}
+        ${subRows ? `<div class="qip-subparam-list">${subRows}</div>` : ""}
+      </div>
+    </details>`;
+}
+
+function qipCategoryDisplayLabel(categoryKey) {
+  const radar = QIP_RADAR_LABELS[categoryKey];
+  if (radar) return radar.replace(/\n/g, " ");
+  return CATEGORY_LABELS[categoryKey] || categoryKey;
+}
+
+function renderQipCategoryRow(categoryKey, score, lines, profile, callType, fallbackConf, wireframe, coachOutput) {
+  if (wireframe) {
+    return renderWireframeCategoryRow(categoryKey, score, lines, profile, callType, fallbackConf, coachOutput);
+  }
+  const name = qipCategoryDisplayLabel(categoryKey);
+  const catLines = qipCategoryLines(lines, categoryKey, callType);
+  const catConf = qipCategoryConfidence(catLines, fallbackConf);
+  const themes = catLines
+    .map((line) => {
+      const profileTheme = profile?.themes?.find((t) => t.key === line.themeKey) || null;
+      return renderQipThemeRow(line, profileTheme, fallbackConf, wireframe, coachOutput, profile);
+    })
+    .join("");
+
+  return `
+    <details class="qip-category-row qip-category-row--${qipScoreTone(score)}">
+      <summary class="qip-category-summary">
+        <span class="qip-category-star" style="color:${qipScoreColor(score)}" aria-hidden="true">★</span>
+        <span class="qip-category-name">${esc(name)}</span>
+        <span class="qip-category-score"><strong style="color:${qipScoreColor(score)}">${esc(score)}</strong><span class="qip-line-max"> / 10</span></span>
+        ${qipConfidencePill(catConf, fallbackConf)}
+        <span class="chev" aria-hidden="true">›</span>
+      </summary>
+      <div class="qip-category-body">${themes || '<p class="muted">No themes in this category.</p>'}</div>
+    </details>`;
+}
+
+/** v2.1 QIP scorecard — /10 categories, radar, insight tiles, theme → sub-parameter drill-down. */
 export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
-  if (!scorecard?.lines?.length) {
+  if (!scorecard) {
     return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
   }
 
   const wireframe = opts.context === "call-record";
-  const provisional = !!(scorecard.provisional ?? analysisMeta.provisional);
-  const callType = scorecard.callType || analysisMeta.callType || "demo";
-  const rubricVersion = scorecard.rubricVersion || analysisMeta.rubricVersion || "1.0";
-  const composite = typeComposite(
-    [{
-      callType,
-      rubricVersion,
-      lines: scorecard.lines,
-      provisional: scorecard.provisional ?? analysisMeta.provisional,
-      confidence: scorecard.confidence ?? analysisMeta.analysisConfidence,
-    }],
-    callType,
-    { includeIneligible: true },
-  );
-  const totalLabel = formatTypeComposite(composite);
-  const conf = scorecard.confidence ?? analysisMeta.analysisConfidence;
-  const confPct = conf != null ? Math.round(conf * 100) : null;
+  const normalized = normalizeQipScorecard(scorecard, analysisMeta);
+  if (!normalized.lines?.length && normalized.overall == null) {
+    return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
+  }
+  const { callType, overall, categoryScores, lines, provisional, confidence } = normalized;
   const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
-  const heavyCount = scorecard.lines.filter((l) => (l.weight || 0) >= 10 && l.applicable).length;
-  const subCopy = wireframe
-    ? `Click any theme for the evidence.${heavyCount ? ` ${heavyCount} theme${heavyCount === 1 ? "" : "s"} carry extra weight on the 100 points.` : " Heavy themes carry more of the 100 points."}`
-    : "Click any theme for the evidence. Heavy themes carry more of the 100 points.";
+  const confPct = confidence != null ? Math.round(confidence * 100) : null;
+  const overallLabel = overall != null ? `${overall} / 10` : "- / 10";
+  const { good, bad } = deriveQipInsights(lines);
 
-  const lineGroups = wireframe
-    ? [{ label: "", lines: scorecard.lines }]
-    : groupLinesBySection(scorecard.lines);
+  let profile = null;
+  try {
+    profile = profileFor(callType);
+  } catch {
+    profile = null;
+  }
 
-  const renderLine = (line) => {
-    const heavy = (line.weight || 0) >= 10;
-    const na = !line.applicable;
-    const suppressed = !na && isThemeScoreSuppressed(line.themeKey);
-    const maxScore = line.maxScore || 100;
-    const pct = na || suppressed ? 0 : scorePct(line.score, maxScore);
-    const cls = [
-      "qip-line",
-      wireframe ? "srow" : "",
-      suppressed ? "qip-line-suppressed" : "",
-      heavy ? "qip-line-heavy" : "",
-      na ? "qip-line-na" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const scoreCol = na
-      ? `<span class="qip-na-badge">N/A</span>`
-      : suppressed
-        ? `<span class="qip-suppressed-badge">${esc(THEME_SCORE_SUPPRESSION_MESSAGE)}</span>`
-        : wireframe
-          ? `<span class="qip-line-score num" style="font-weight:700;color:${qipScoreColor(pct)}">${esc(line.score)}<span class="qip-line-max"> / ${esc(maxScore)}</span></span>`
-          : `<span class="qip-line-score ${barClass(line.score, maxScore)}">${esc(line.score)}<span class="qip-line-max">/${esc(maxScore)}</span></span>`;
-    const barCls = barClass(line.score, maxScore);
-    const barColor =
-      barCls === "strong" ? "var(--green)" : barCls === "weak" ? "var(--red)" : "var(--amber)";
-    const barCol = na || suppressed
-      ? `<span class="muted">-</span>`
-      : `<div class="bar qip-weight-bar"><span style="width:${Math.max(pct, line.score === 0 ? 0 : 4)}%;background:${barColor}"></span></div>`;
-    const reason = na && line.notApplicableReason
-      ? `<p class="qip-na-reason">${esc(line.notApplicableReason)}</p>`
-      : "";
-    const note =
-      !na && line.coachingNote && !isUnknown(line.coachingNote)
-        ? `<p class="qip-coaching"><span class="qip-coaching-label">Coach</span> ${truncateWords(line.coachingNote, 20)}</p>`
-        : "";
-    const evidenceHtml = na
-      ? ""
-      : renderQipEvidenceBlocks(line.evidence || line.evidenceJson) ||
-        renderQipEvidence(line.evidence || line.evidenceJson);
-    return `<details class="${cls}" data-theme-key="${esc(line.themeKey)}">
-      <summary class="qip-line-summary srow-hd">
-        <div class="qip-theme-cell">
-          <span class="qip-theme-name${heavy ? " qip-theme-name--heavy" : ""}">${esc(themeLabel(line.themeKey))}</span>
-          ${heavy ? '<span class="pill purple qip-heavy-pill">10 pt</span>' : ""}
-          ${line.sourceHint && !isUnknown(line.sourceHint) ? `<div class="sub qip-theme-hint">${esc(line.sourceHint)}</div>` : ""}
-        </div>
-        <div class="qip-score-cell">${scoreCol}</div>
-        <div class="qip-weighted-cell">${barCol}</div>
-        <div class="qip-conf-cell">${na ? "" : qipLineConfidencePill(line, conf)}</div>
-        <div class="chev" aria-hidden="true">›</div>
-      </summary>
-      <div class="qip-line-body srow-bd">
-        ${reason}
-        ${evidenceHtml}
-        ${note}
-      </div>
-    </details>`;
-  };
+  const coachOutput =
+    opts.coachOutput ??
+    buildCoachOutput({
+      callId: opts.callId,
+      callType,
+      lines,
+      overrides: opts.overrides ?? loadScoreOverrides(),
+      audience: opts.coachAudience ?? "se",
+    });
 
-  const rowHtml = lineGroups
-    .map((sec) => {
-      const rows = sec.lines.map(renderLine).join("");
-      return sec.label && !wireframe
-        ? `<div class="qip-section">
-            <h3 class="qip-section-title">${esc(sec.label)}</h3>
-            <div class="qip-section-lines">${rows}</div>
-          </div>`
-        : `<div class="qip-section-lines">${rows}</div>`;
-    })
-    .join("");
+  const categoryRows = CATEGORY_KEYS.map((key) =>
+    renderQipCategoryRow(
+      key,
+      categoryScores[key] ?? 0,
+      lines,
+      profile,
+      callType,
+      confidence,
+      wireframe,
+      coachOutput,
+    ),
+  ).join("");
 
   const actionsHtml = wireframe
-    ? `<div class="qip-scorecard-actions">
+    ? ""
+    : `<div class="qip-scorecard-actions">
         <button type="button" class="btn-wire sm" disabled title="Score override (coming soon)">Override a score</button>
-        <button type="button" class="btn-wire sm" disabled title="Compare to your average (coming soon)">Compare to my average</button>
-      </div>`
-    : "";
+        <button type="button" class="btn-wire sm" disabled title="Compare to my average (coming soon)">Compare to my average</button>
+      </div>`;
+
+  if (wireframe) {
+    const overallDisplay = overall != null ? esc(String(overall)) : "-";
+    const callIdAttr = opts.callId ? ` data-call-id="${esc(opts.callId)}"` : "";
+    const companyAttr = opts.company ? ` data-company="${esc(opts.company)}"` : "";
+    const scoreAttr =
+      overall != null
+        ? ` data-score="${esc(String(overall))}" data-grade="${esc(String(overall))}"`
+        : "";
+    const wireActionsHtml = `<div class="qip-wire-actions" aria-label="Score actions">
+          <button type="button" class="btn-wire sm score-dispute-trigger"${callIdAttr}${companyAttr}${scoreAttr}>Dispute a score</button>
+          <button type="button" class="btn-wire sm score-override-trigger"${callIdAttr}>Override a score</button>
+          <button type="button" class="btn-wire sm" disabled title="Compare to my average (coming soon)">Compare to my average</button>
+        </div>`;
+    return `
+      <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
+        <div class="qip-head">
+          <div>
+            <h2>QIP scorecard ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <p class="sub">Open a category for its themes; open a theme for the five checks behind its score.</p>
+          </div>
+          <span class="qip-total"><b>${overallDisplay}</b> / 10 · overall</span>
+        </div>
+        <div class="legend" aria-label="How to read this scorecard">
+          <span class="lk">How to read this</span>
+          <span class="item">Each theme is scored <b style="color:#2b2926;font-weight:800">/10</b> from five checks —</span>
+          <span class="item"><span class="chip done">✓ Done <span class="frac">2</span></span></span>
+          <span class="item"><span class="chip part">◐ Partial <span class="frac">1</span></span></span>
+          <span class="item"><span class="chip miss">○ Missed <span class="frac">0</span></span></span>
+          <span class="item" style="margin-left:4px">Weight
+            <span class="wt" title="carries the call"><i class="on"></i><i class="on"></i><i class="on"></i></span>carries the call ·
+            <span class="wt" title="matters"><i class="on"></i><i class="on"></i><i></i></span>matters ·
+            <span class="wt" title="polish"><i class="on"></i><i></i><i></i></span>polish
+          </span>
+        </div>
+        <div class="wd">
+          ${renderQipInsightTile(good, "What worked", "good")}
+          ${renderQipInsightTile(bad, "What didn't", "bad")}
+        </div>
+        <div class="cats">${categoryRows}</div>
+        ${wireActionsHtml}
+      </section>`;
+  }
 
   return `
-    <div class="qip-scorecard${provisional ? " qip-provisional" : ""}${wireframe ? " qip-scorecard--wireframe" : ""}">
-      <div class="qip-scorecard-head">
-        <div>
-          <h2 class="qip-scorecard-title">QIP · ${esc(callTypeLabel.toLowerCase())} profile</h2>
-          <p class="sub qip-scorecard-sub">${subCopy}</p>
+    <div class="qip-scorecard${provisional ? " qip-provisional" : ""}">
+      <div class="qip-scorecard-card qip-scorecard-head-card">
+        <div class="qip-scorecard-head">
+          <div>
+            <h2 class="qip-scorecard-title">QIP · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
+          </div>
+          <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
         </div>
-        <span class="pill qip-total-pill">${esc(totalLabel)} · weighted</span>
+        <div class="qip-insights-grid">
+          ${renderQipInsightTileLegacy(good, "What worked", "good")}
+          ${renderQipInsightTileLegacy(bad, "What didn't", "bad")}
+        </div>
       </div>
-      ${provisional ? '<span class="qip-provisional-badge" title="Shadow mode (excluded from averages)">Provisional</span>' : ""}
-      ${confPct != null ? `<p class="muted qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
-      <div class="qip-grid-header eyebrow">
-        <div>Theme</div><div>Score</div><div>Weighted</div><div>Conf</div><div></div>
+      ${renderQipRadar(categoryScores, { overallScore: overall, title: "Evaluation signal", animate: true })}
+      <div class="qip-scorecard-card qip-category-card">
+        ${categoryRows}
       </div>
-      ${rowHtml}
       ${actionsHtml}
     </div>`;
 }
-
 function renderVideoNaBanner(data) {
   const themes =
     data?.analysisMeta?.videoThemesNotApplicable ||
@@ -1293,7 +2374,7 @@ export function renderPostCall(data, meta = {}) {
     .filter((row) => !isUnknown(row.thisCall) || !isUnknown(row.followUp))
     .map(
       (row) => `<tr>
-        <th class="prep-row-label">${esc(CATEGORY_LABELS[row.category] || row.category)}</th>
+        <th class="prep-row-label">${esc(FOLLOWUP_CATEGORY_LABELS[row.category] || row.category)}</th>
         <td>${truncateWords(row.thisCall, 8)}</td>
         <td>${truncateWords(row.followUp, 8)}</td>
       </tr>`,
@@ -1615,18 +2696,17 @@ function renderProgressStep(label, status, index) {
 function showPipelineProgress(steps) {
   const host = $("postcall-progress");
   if (!host) return;
+  if ($("postcall-confirm-view") && !$("postcall-confirm-view").hidden) {
+    show(host, false);
+    return;
+  }
   const doneCount = steps.filter((s) => s.status === "done").length;
   const pct = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
   host.innerHTML = `
-    <div class="postcall-pipeline-card">
-      <div class="postcall-pipeline-head">
-        <span class="prep-form-eyebrow">Pipeline</span>
-        <span class="muted postcall-pipeline-meta">${esc(String(doneCount))} of ${esc(String(steps.length))} complete</span>
-      </div>
+    <div class="postcall-pipeline-card postcall-pipeline-card--subtle" aria-label="Analysis progress">
       <div class="postcall-pipeline-bar" role="progressbar" aria-valuenow="${esc(String(pct))}" aria-valuemin="0" aria-valuemax="100">
         <span style="width:${pct}%"></span>
       </div>
-      <ol class="postcall-step-list">${steps.map((s, i) => renderProgressStep(s.label, s.status, i)).join("")}</ol>
     </div>`;
   show(host, true);
 }
@@ -1674,283 +2754,316 @@ function looksLikeSeIdentity(label) {
   );
 }
 
-function identityOptionList(resolve) {
-  const fromResolve = resolve?.identityOptions || [];
+function nextConfirmRole(role) {
+  const idx = CONFIRM_ROLE_SET.indexOf(role);
+  return CONFIRM_ROLE_SET[(idx + 1) % CONFIRM_ROLE_SET.length];
+}
+
+function personInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "??";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function personMonoTone(label, role) {
+  if (role === "Customer" || role === "Partner") {
+    return { bg: "#f6e7e1", color: "#c2603f" };
+  }
+  return { bg: "#e3efec", color: "#2e897b" };
+}
+
+function parseAttendeeIdentity(label) {
+  const raw = String(label || "").trim();
+  const emailMatch = raw.match(/[^\s,]+@[^\s,]+/);
+  const email = emailMatch ? emailMatch[0].toLowerCase() : "";
+  let name = raw.replace(/\([^)]*\)/g, " ").replace(/\|.*$/, "").trim();
+  if (email && name.toLowerCase().includes(email.toLowerCase())) {
+    name = name.replace(email, "").trim();
+  }
+  if (!name && email) name = email.split("@")[0].replace(/[._-]+/g, " ");
+  return { name: name || raw || "Attendee", email: email || null, label: raw || name || email };
+}
+
+function inferAttendeeRole(label, resolve, sessionLabel) {
+  const sessionKey = normalizePersonKey(sessionLabel);
+  const key = normalizePersonKey(label);
+  if (sessionKey && key && sessionKey === key) return "Primary SE";
+  if (looksLikeAeIdentity(label)) return "AE";
+  if (looksLikeSeIdentity(label)) return "Secondary SE";
+  if (isInternalIdentity(label)) {
+    return normalizePersonKey(resolve?.seIdentity) === key ? "Primary SE" : "Secondary SE";
+  }
+  const customers = (resolve?.customerIdentities || []).map(normalizePersonKey);
+  if (customers.includes(key)) return "Customer";
+  return "Customer";
+}
+
+function contactsForIdentityMerge(resolve) {
+  /** @type {object[]} */
+  const contacts = [];
+  for (const email of resolve?.participantEmails || []) {
+    contacts.push({ email });
+  }
+  for (const entry of lastCrmMatchResult?.byEmail || []) {
+    if (entry?.contact) {
+      contacts.push({
+        name: entry.contact.name || entry.contact.label || "",
+        email: entry.contact.email || entry.email,
+        label: entry.contact.label || entry.contact.name || "",
+      });
+    }
+  }
+  return contacts;
+}
+
+/** @param {object} resolve */
+export function buildConfirmAttendees(resolve) {
   const speakers = resolve?.transcriptMeta?.speakers || [];
   const emails = resolve?.participantEmails || [];
-  const extras = [
-    currentSession?.name,
-    currentSession?.displayName,
-    currentSession?.email,
-  ].filter(Boolean);
-  // Session SE first so dropdown default never collapses to speaker[0] (often the AE).
-  return dedupePersonLabels([...extras, ...fromResolve, ...speakers, ...emails]);
-}
-
-function pickIdentityDefaults(resolve) {
-  const speakers = resolve?.transcriptMeta?.speakers || [];
-  const options = identityOptionList(resolve);
+  const fromResolve = resolve?.identityOptions || [];
+  const contacts = contactsForIdentityMerge(resolve);
   const sessionLabel =
-    currentSession?.name || currentSession?.displayName || currentSession?.email || "";
+    currentSession?.name || currentSession?.displayName || currentSession?.email || "se@freshworks.com";
+  const labels = dedupePersonLabels([
+    sessionLabel,
+    resolve?.seIdentity,
+    resolve?.aeIdentity,
+    ...(resolve?.customerIdentities || []),
+    ...fromResolve,
+    ...speakers,
+  ]).filter(Boolean);
 
-  // Prefer speakers on the call; session user is fallback (reviewer ≠ call SE).
-  let se = resolve?.seIdentity || "";
-  if (!se || looksLikeAeIdentity(se)) {
-    se =
-      speakers.find((s) => looksLikeSeIdentity(s)) ||
-      speakers.find((s) => !looksLikeAeIdentity(s)) ||
-      (sessionLabel && !looksLikeAeIdentity(sessionLabel) ? sessionLabel : "") ||
-      "";
-  }
-  if (!se || looksLikeAeIdentity(se)) {
-    se =
-      options.find((o) => looksLikeSeIdentity(o)) ||
-      options.find((o) => !looksLikeAeIdentity(o) && !isInternalIdentity(o)) ||
-      sessionLabel ||
-      "";
-  }
-
-  let ae = resolve?.aeIdentity || speakers.find((s) => looksLikeAeIdentity(s)) || "";
-  if (ae && se && ae.trim().toLowerCase() === se.trim().toLowerCase()) {
-    ae = speakers.find((s) => looksLikeAeIdentity(s) && s.trim().toLowerCase() !== se.trim().toLowerCase()) || "";
-  }
-
-  const used = new Set([se, ae].filter(Boolean).map((s) => normalizePersonKey(s)));
-  const customerCandidates = (resolve?.customerIdentities || []).filter((c) => {
-    const key = normalizePersonKey(c);
-    if (!key || used.has(key) || isInternalIdentity(c) || looksLikeAeIdentity(c) || looksLikeSeIdentity(c)) {
-      return false;
-    }
-    return true;
-  });
-  let customers = dedupePersonLabels(customerCandidates);
-  if (!customers.length) {
-    customers = dedupePersonLabels(
-      speakers.filter((s) => {
-        const key = normalizePersonKey(s);
-        return (
-          key &&
-          !used.has(key) &&
-          !looksLikeAeIdentity(s) &&
-          !looksLikeSeIdentity(s) &&
-          !isInternalIdentity(s)
-        );
-      }),
-    );
-  }
-  return { seDefault: se, aeDefault: ae, customers, options };
-}
-
-function renderIdentitySelect(id, label, selected, options, { required = false, allowEmpty = false } = {}) {
-  const selectedKey = normalizePersonKey(selected);
-  const opts = [];
-  if (allowEmpty) {
-    opts.push(`<option value="">(None)</option>`);
-  }
-  let hasSelected = false;
-  for (const opt of options) {
-    const isSel = normalizePersonKey(opt) === selectedKey;
-    if (isSel) hasSelected = true;
-    opts.push(`<option value="${esc(opt)}"${isSel ? " selected" : ""}>${esc(opt)}</option>`);
-  }
-  if (selected && !hasSelected) {
-    opts.push(`<option value="${esc(selected)}" selected>${esc(selected)}</option>`);
-  }
-  return `<div class="postcall-identity-field">
-    <label for="${esc(id)}">${esc(label)}${required ? " *" : ""}</label>
-    <select id="${esc(id)}" class="postcall-confirm-select"${required ? " required" : ""}>
-      ${opts.join("")}
-    </select>
-  </div>`;
-}
-
-function renderCustomerChecks(selected, options) {
-  const selectedKeys = new Set(
-    (selected || []).map((s) => normalizePersonKey(s)).filter(Boolean),
-  );
-  if (!options.length) {
-    return `<p class="muted">No speakers/emails to pick; type names into AE notes if needed.</p>`;
-  }
-  return `<div class="postcall-customer-checks" role="group" aria-label="Customer identities">
-    ${options
-      .map((opt, i) => {
-        const checked = selectedKeys.has(normalizePersonKey(opt)) ? " checked" : "";
-        const id = `pc-confirm-customer-${i}`;
-        return `<label class="postcall-customer-option" for="${esc(id)}">
-          <input id="${esc(id)}" type="checkbox" name="postcall-customer" value="${esc(opt)}"${checked} />
-          <span>${esc(opt)}</span>
-        </label>`;
-      })
-      .join("")}
-  </div>`;
-}
-
-function renderIdentityConfirm(resolve) {
-  const { seDefault, aeDefault, customers, options } = pickIdentityDefaults(resolve);
-  const customerOptions = dedupePersonLabels(options.filter((o) => !isInternalIdentity(o)));
-  return `<div class="postcall-confirm-block postcall-identity-block">
-    <h3>Call identities</h3>
-    <p class="muted">Confirm SE, AE, and customer before analysis. guesses are often wrong.</p>
-    ${renderIdentitySelect("pc-confirm-se", "SE", seDefault, options, { required: true })}
-    ${renderIdentitySelect("pc-confirm-ae", "AE", aeDefault, options, { allowEmpty: true })}
-    <div class="postcall-identity-field">
-      <span class="postcall-identity-label">Customer</span>
-      ${renderCustomerChecks(customers, customerOptions.length ? customerOptions : options)}
-    </div>
-  </div>`;
-}
-
-function renderDerivedFacts(resolve) {
-  const domains = resolve?.participantDomains || [];
-  const speakers = resolve?.transcriptMeta?.speakers || [];
-  const duration = resolve?.durationMinutes ?? resolve?.transcriptMeta?.durationMinutes;
-  const rows = [
-    ["Domains", domains.length ? domains.join(", ") : "-"],
-    ["Duration", formatDurationMinutes(duration)],
-    ["Source", resolve?.sourceKind || "-"],
-  ];
-  if (speakers.length) {
-    rows.push(["Speakers", dedupePersonLabels(speakers).join(", ")]);
-  }
-  return `<div class="postcall-confirm-block">
-    <h3>Derived from recording</h3>
-    <p class="muted">Confirm these; we don't ask for them again.</p>
-    <dl class="postcall-derived-facts">
-      ${rows
-        .map(
-          ([k, v]) =>
-            `<div class="postcall-derived-row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`,
-        )
-        .join("")}
-    </dl>
-  </div>`;
-}
-
-function renderVideoThemeWarning(resolve) {
-  const themes = resolve?.videoThemesNotApplicable || [];
-  if (!themes.length || resolve?.videoAvailable) return "";
-  const confPct = Math.round((resolve?.analysisConfidence ?? 0.55) * 100);
-  const items = themes
-    .map((t) => {
-      const label = VIDEO_THEME_LABELS[t.themeKey] || t.themeKey;
-      return `<li><strong>${esc(label)}</strong>. ${esc(t.reason || "Not applicable without video.")}</li>`;
-    })
-    .join("");
-  return `<div class="postcall-confirm-block postcall-video-na">
-    <h3>Video themes not scored</h3>
-    <p class="muted">No video stream. denominator will renormalise. Analysis confidence: ${esc(confPct)}%.</p>
-    <ul class="postcall-video-na-list">${items}</ul>
-  </div>`;
-}
-
-function renderConfirmationGate(resolve, classify) {
-  // Honor an account the SE already matched/picked at intake (Found-in-CRM panel or
-  // company lookup). Only fall through to the gate's "search or create" when neither
-  // the worker resolve nor the intake produced an account — e.g. a brand-new company.
-  let account = resolve?.account;
-  if (!account && pcResolvedAccount?.id && !pcCreateNewAccount) {
-    account = {
-      accountId: pcResolvedAccount.id,
-      accountName: pcResolvedAccount.name,
-      fromIntake: true,
-      reasons: [{ rank: "✓", detail: "Selected from CRM match at intake" }],
+  const candidates = labels.map((label) => {
+    const parsed = parseAttendeeIdentity(label);
+    const role = inferAttendeeRole(label, resolve, sessionLabel);
+    return {
+      id: normalizePersonKey(label),
+      name: parsed.name,
+      email: parsed.email,
+      label: parsed.label,
+      detail: parsed.email || parsed.label,
+      role,
+      manual: false,
     };
+  });
+
+  for (const email of emails) {
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized) continue;
+    const parsed = parseAttendeeIdentity(normalized);
+    candidates.push({
+      id: normalizePersonKey(normalized),
+      name: parsed.name,
+      email: parsed.email,
+      label: parsed.label,
+      detail: parsed.email || parsed.label,
+      role: inferAttendeeRole(normalized, resolve, sessionLabel),
+      manual: false,
+    });
   }
-  const deals = resolve?.deals || [];
-  const selectedDealId = deals.find((d) => d.preselected)?.dealId || deals[0]?.dealId || "";
-  const selectedDeal = deals.find((d) => d.dealId === selectedDealId) || deals[0] || null;
-  const callType = classify?.primary || "discovery";
-  const confidencePct = Math.round((classify?.confidence ?? 0) * 100);
+
+  let merged = mergeCallIdentities(candidates, contacts, speakers);
+
+  const sessionKey = normalizePersonKey(sessionLabel);
+  if (sessionKey) {
+    const sessionParsed = parseAttendeeIdentity(sessionLabel);
+    const existing = merged.find(
+      (a) =>
+        normalizePersonKey(a.name) === sessionKey ||
+        normalizePersonKey(a.email) === sessionKey ||
+        normalizePersonKey(a.label) === sessionKey,
+    );
+    if (existing) {
+      existing.role = "Primary SE";
+      if (!existing.email && sessionParsed.email) existing.email = sessionParsed.email;
+    } else {
+      merged.push({
+        id: sessionKey,
+        name: sessionParsed.name,
+        email: sessionParsed.email || "se@freshworks.com",
+        label: sessionLabel,
+        detail: sessionParsed.email || sessionLabel,
+        role: "Primary SE",
+        manual: false,
+      });
+    }
+  }
+
+  let primarySeen = false;
+  for (const att of merged) {
+    if (att.role === "Primary SE") {
+      if (primarySeen) att.role = "Secondary SE";
+      primarySeen = true;
+    }
+  }
+
+  return merged.map((att) => {
+    const mono = personMonoTone(att.name, att.role);
+    return {
+      ...att,
+      detail: att.email || att.detail || att.label,
+      monoBg: mono.bg,
+      monoColor: mono.color,
+    };
+  });
+}
+
+function renderRoleSelect(role, index) {
+  const options = CONFIRM_ROLE_SET.map(
+    (r) => `<option value="${esc(r)}"${r === role ? " selected" : ""}>${esc(r)}</option>`,
+  ).join("");
+  return `<select class="postcall-role-select" data-attendee-index="${index}" aria-label="Role for attendee">${options}</select>`;
+}
+
+function renderConfirmAccountDealShowcase(account, selectedDeal, resolve) {
   const formCompany = pipelineState?.payload?.companyName || "";
-  const dealScore = selectedDeal?.score ?? account?.score;
-  const dealPill = matchConfidencePill(dealScore);
-  const callTypePill =
+  const suggestedName = resolve?.noMatch?.suggestedCompanyName || formCompany || "";
+  const displayName = titleCaseDisplayName(account?.accountName || suggestedName || "Account");
+  const intakeAccount = getIntakeAccountSelection();
+  const accountBadge = account?.accountId
+    ? "Matched · existing account"
+    : "New account · will be created on confirm";
+  const intakeDeal = getIntakeDealSelection();
+  const dealTitle = selectedDeal
+    ? titleCaseDisplayName(selectedDeal.title)
+    : intakeDeal.createNewDeal && intakeDeal.newDealTitle
+      ? titleCaseDisplayName(intakeDeal.newDealTitle)
+      : account
+        ? titleCaseDisplayName(intakeDeal.newDealTitle) ||
+          formatDealTitlePreview(displayName, intakeDeal.newDealType)
+        : "No deal yet";
+  const dealStage = selectedDeal
+    ? STAGE_LABELS[selectedDeal.stage] || selectedDeal.stage || ""
+    : account && (intakeDeal.createNewDeal || !selectedDeal)
+      ? "Create on confirm"
+      : "";
+
+  const editBlock = "";
+
+  const showDealPicker =
+    !intakeAccount.createNewAccount &&
+    !intakeDeal.createNewDeal &&
+    !intakeDeal.selectedDealId &&
+    (resolve?.deals?.length || 0) > 1;
+  const dealPicker = showDealPicker
+      ? `<div class="postcall-deal-picker-inline">
+          <span class="nb-label">Pick deal</span>
+          <div class="postcall-deal-list">${resolve.deals
+            .map((d) => {
+              const checked = d.dealId === (selectedDeal?.dealId || "") ? " checked" : "";
+              return `<label class="postcall-deal-option postcall-deal-option--compact">
+                <input type="radio" name="postcall-deal" value="${esc(d.dealId)}"${checked} />
+                <span>${esc(titleCaseDisplayName(d.title))}</span>
+              </label>`;
+            })
+            .join("")}</div>
+        </div>`
+      : "";
+
+  return `<div class="nb-account-deal-grid postcall-confirm-showcase">
+      <div class="nb-account-column">
+        <span class="nb-label">Account</span>
+        <div class="nb-account-slot">
+          <div class="nb-account-card prep-account-card" aria-live="polite">
+            <span class="nb-account-card-mono">${esc(companyMono(displayName))}</span>
+            <div class="nb-account-card-body">
+              <span class="nb-account-card-name">${esc(displayName)}</span>
+              <span class="nb-account-card-badge">${esc(accountBadge)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nb-deal-slot">
+        <div class="nb-deal-head"><span class="nb-label">Deal</span></div>
+        <div class="nb-deal-card prep-deal-card">
+          <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
+          <div class="nb-deal-card-body">
+            <span class="nb-deal-card-title">${esc(dealTitle)}</span>
+            ${dealStage ? `<span class="nb-deal-card-stage">${esc(dealStage)}</span>` : ""}
+          </div>
+        </div>
+      </div>
+      ${editBlock}
+      ${dealPicker}
+    </div>`;
+}
+
+function renderAttendeeRow(att, index) {
+  const editable = att.manual;
+  const body = editable
+    ? `<input type="text" class="postcall-confirm-input postcall-attendee-name" placeholder="Name" value="${esc(att.name === "Attendee" ? "" : att.name)}" />
+       <div class="pc-lookup-field postcall-attendee-lookup">
+         <input type="email" class="postcall-confirm-input postcall-attendee-email" placeholder="Email" value="${esc(att.email || "")}" autocomplete="off" />
+         <div class="pc-lookup-menu postcall-contact-suggest" role="listbox" hidden></div>
+       </div>`
+    : `<div class="postcall-attendee-text">
+         <span class="postcall-attendee-name">${esc(att.name)}</span>
+         <span class="postcall-attendee-detail muted">${esc(att.detail || "")}</span>
+       </div>`;
+
+  return `<div class="postcall-attendee-row${editable ? " postcall-attendee-row--manual" : ""}" data-attendee-index="${index}"${!editable ? ` data-name="${esc(att.name)}" data-email="${esc(att.email || "")}"` : ""}>
+    <span class="postcall-attendee-avatar" style="background:${esc(att.monoBg)};color:${esc(att.monoColor)}">${esc(personInitials(att.name))}</span>
+    <div class="postcall-attendee-body">${body}</div>
+    ${renderRoleSelect(att.role, index)}
+    ${editable ? `<button type="button" class="postcall-attendee-remove" data-attendee-index="${index}" aria-label="Remove attendee">×</button>` : ""}
+  </div>`;
+}
+
+function renderAttendeesSection(attendees) {
+  return `<div class="postcall-confirm-block postcall-attendees-block">
+    <div class="postcall-section-head">
+      <h3>Who was on the call</h3>
+      <span class="postcall-ai-badge"><span class="postcall-ai-dot" aria-hidden="true"></span>AI detected</span>
+    </div>
+    <p class="muted postcall-attendee-hint">Assign a role to each person on the call.</p>
+    <div id="postcall-attendee-list" class="postcall-attendee-list">${attendees.map(renderAttendeeRow).join("")}</div>
+    <button type="button" id="postcall-add-attendee-btn" class="postcall-add-attendee">＋ Add attendee</button>
+  </div>`;
+}
+
+function renderCallTypeChips(selected, confidencePct) {
+  const selectedType = selected || "discovery";
+  const chips = CALL_TYPES.map((t) => {
+    const isSel = t === selectedType;
+    const label = CALL_TYPE_LABELS[t] || t;
+    const cls = isSel ? " postcall-call-type-chip is-selected" : " postcall-call-type-chip";
+    return `<button type="button" class="${cls.trim()}" data-call-type="${esc(t)}" aria-pressed="${isSel ? "true" : "false"}">${esc(label)}</button>`;
+  }).join("");
+  const pill =
     confidencePct >= 80
       ? '<span class="pill green">Confident</span>'
       : `<span class="pill amber">${esc(String(confidencePct))}% sure</span>`;
+  return `<div class="postcall-confirm-block postcall-calltype-block">
+    <div class="postcall-section-head">
+      <h3>Call type</h3>
+      <span class="postcall-ai-badge"><span class="postcall-ai-dot" aria-hidden="true"></span>AI detected</span>
+      ${pill}
+    </div>
+    <div class="postcall-call-type-chips" role="group" aria-label="Call type">${chips}</div>
+    <input type="hidden" id="pc-confirm-call-type" value="${esc(selectedType)}" />
+  </div>`;
+}
 
-  const callTypeOptions = CALL_TYPES.map(
-    (t) =>
-      `<option value="${esc(t)}"${t === callType ? " selected" : ""}>${esc(CALL_TYPE_LABELS[t] || t)}</option>`,
-  ).join("");
+function renderConfirmTopCard(resolve, account, selectedDeal) {
+  return renderConfirmAccountDealShowcase(account, selectedDeal, resolve);
+}
 
-  const dealOptions = deals.length
-    ? deals
-        .map((d) => {
-          const checked = d.dealId === selectedDealId ? " checked" : "";
-          return `<label class="postcall-deal-option">
-            <input type="radio" name="postcall-deal" value="${esc(d.dealId)}"${checked} />
-            <span class="postcall-deal-option-body">
-              <strong>${esc(d.title)}</strong>
-              <span class="muted">${esc(d.type)} · ${esc(d.stage)}</span>
-              ${formatMatchReasons(d.reasons)}
-            </span>
-          </label>`;
-        })
-        .join("")
-    : "";
+function renderVideoThemeWarning(_resolve) {
+  return "";
+}
 
-  const accountMatchDetail = account ? formatMatchReasons(account.reasons) : "";
+export function renderConfirmationGate(resolve, classify) {
+  const account = resolveConfirmAccount(resolve);
+  const selectedDeal = resolveConfirmSelectedDeal(resolve?.deals || []);
+  const callType = classify?.primary || "discovery";
+  const confidencePct = Math.round((classify?.confidence ?? 0) * 100);
+  confirmGateAttendees = buildConfirmAttendees(resolve);
 
-  const dealHeadline =
-    account && selectedDeal
-      ? `<div class="postcall-match-row">
-          <div>
-            <div class="postcall-match-title"><strong>${esc(account.accountName)} · ${esc(selectedDeal.title)} · ${esc(selectedDeal.stage)}</strong></div>
-            <div class="postcall-match-detail">${accountMatchDetail}</div>
-          </div>
-          <button type="button" class="postcall-change-btn btn-wire" id="postcall-deal-change-btn">Change</button>
-        </div>`
-      : account
-        ? `<div class="postcall-match-row">
-            <div><div class="postcall-match-title"><strong>${esc(account.accountName)}</strong></div></div>
-            <button type="button" class="postcall-change-btn btn-wire" id="postcall-deal-change-btn">Change</button>
-          </div>`
-        : "";
-
-  const accountFieldsHidden = account ? ' hidden' : '';
-
-  const accountFields = account
-    ? `<label class="postcall-confirm-edit" for="pc-confirm-account">Change account name</label>
-        <input id="pc-confirm-account" class="postcall-confirm-input" type="text" value="${esc(account.accountName)}" />`
-    : `<label for="pc-confirm-account">Company name</label>
-        <input id="pc-confirm-account" class="postcall-confirm-input" type="text"
-          value="${esc(resolve?.noMatch?.suggestedCompanyName || formCompany || "")}" placeholder="Company name" />
-        <label for="pc-confirm-search">Search accounts</label>
-        <div class="pc-lookup-field">
-          <input id="pc-confirm-search" class="postcall-confirm-input" type="search" placeholder="Type to search…" />
-          <div id="pc-confirm-suggest" class="pc-lookup-menu" role="listbox" hidden></div>
-        </div>`;
-
-  const accountBlock = account
-    ? `<div class="postcall-match-banner postcall-match-banner--deal">
-        <div class="postcall-match-banner-head">
-          <div class="prep-form-eyebrow">${selectedDeal ? "Deal matched" : "Account matched"}</div>
-          ${dealPill}
-        </div>
-        ${dealHeadline}
-        <div class="postcall-confirm-block postcall-confirm-block--nested postcall-match-edit"${accountFieldsHidden}>
-          ${accountFields}
-        </div>
-        ${dealOptions ? `<div class="postcall-confirm-block postcall-confirm-block--nested postcall-deal-picker"${accountFieldsHidden}>
-          <h3 class="postcall-confirm-subhead">Deal on account</h3>
-          <div class="postcall-deal-list">${dealOptions}</div>
-        </div>` : ""}
-      </div>`
-    : `<div class="postcall-match-banner postcall-match-banner--neutral">
-        <div class="postcall-match-banner-head">
-          <div class="prep-form-eyebrow">Account match</div>
-        </div>
-        <div class="postcall-confirm-block postcall-confirm-block--nested">
-          <h3 class="postcall-confirm-subhead">No account matched</h3>
-          <p class="muted">Search or create from participant hints.</p>
-          ${accountFields}
-        </div>
-        ${dealOptions ? `<div class="postcall-confirm-block postcall-confirm-block--nested">
-          <h3 class="postcall-confirm-subhead">Deal on account</h3>
-          <div class="postcall-deal-list">${dealOptions}</div>
-        </div>` : ""}
-      </div>`;
+  const dealOptions = "";
 
   const freeMailBlock = resolve?.needsCompanyDomain
     ? `<div class="postcall-confirm-block">
@@ -1963,23 +3076,14 @@ function renderConfirmationGate(resolve, classify) {
 
   return `
     <header class="postcall-confirm-header">
-      <h2>Confirm before analysis</h2>
-      <p class="muted">Review identities, match, and call type. Nothing runs until you confirm.</p>
+      <h2>Confirm call details</h2>
     </header>
-    ${renderDerivedFacts(resolve)}
-    ${renderIdentityConfirm(resolve)}
+    ${renderConfirmTopCard(resolve, account, selectedDeal)}
+    ${dealOptions}
+    ${renderCallTypeChips(callType, confidencePct)}
+    ${renderAttendeesSection(confirmGateAttendees)}
     ${renderVideoThemeWarning(resolve)}
-    ${accountBlock}
     ${freeMailBlock}
-    <div class="postcall-match-banner postcall-match-banner--type">
-      <div class="postcall-match-banner-head">
-        <div class="prep-form-eyebrow">Call type · confirm before we score</div>
-        ${callTypePill}
-      </div>
-      <label class="postcall-confirm-sr" for="pc-confirm-call-type">Call type</label>
-      <select id="pc-confirm-call-type" class="postcall-confirm-select">${callTypeOptions}</select>
-      <p class="muted postcall-type-hint">Pick the primary; the rubric and its weights follow from this.</p>
-    </div>
     <div class="postcall-confirm-actions">
       <fw-button id="postcall-confirm-btn" color="primary" class="prep-form-submit">Confirm and generate</fw-button>
       <fw-button id="postcall-restart-btn" color="secondary" fill="outline">Discard and start over</fw-button>
@@ -1987,19 +3091,109 @@ function renderConfirmationGate(resolve, classify) {
     <p class="prep-form-footnote">Analysis usually finishes in 20–45 seconds after confirm.</p>`;
 }
 
-function wireDealChangeToggle(card) {
-  const btn = card?.querySelector("#postcall-deal-change-btn");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    card.querySelectorAll(".postcall-match-edit, .postcall-deal-picker").forEach((el) => {
-      el.hidden = !el.hidden;
+function syncAttendeeListDom(card) {
+  const list = card?.querySelector("#postcall-attendee-list");
+  if (!list || !confirmGateAttendees) return;
+  list.innerHTML = confirmGateAttendees.map(renderAttendeeRow).join("");
+  wireConfirmAttendeeRows(card);
+}
+
+function wireConfirmAttendeeRows(card) {
+  confirmGateContactLookupTeardowns.forEach((fn) => fn());
+  confirmGateContactLookupTeardowns = [];
+
+  const accountId =
+    pipelineState?.resolve?.account?.accountId ||
+    pcResolvedAccount?.id ||
+    pipelineState?.payload?.accountId ||
+    null;
+
+  card.querySelectorAll(".postcall-attendee-row--manual").forEach((row) => {
+    const emailInput = row.querySelector(".postcall-attendee-email");
+    const menu = row.querySelector(".postcall-contact-suggest");
+    const nameInput = row.querySelector(".postcall-attendee-name");
+    if (!emailInput || !menu) return;
+    const teardown = attachContactLookup({
+      inputEl: emailInput,
+      menuEl: menu,
+      accountId,
+      onPick: (contact) => {
+        if (contact.email) emailInput.value = contact.email;
+        if (nameInput && !nameInput.value.trim()) {
+          nameInput.value = contact.label || "";
+        }
+      },
+    });
+    if (teardown) confirmGateContactLookupTeardowns.push(teardown);
+  });
+
+  card.querySelectorAll(".postcall-role-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      const idx = Number(select.dataset.attendeeIndex);
+      const att = confirmGateAttendees?.[idx];
+      if (!att) return;
+      const nextRole = select.value || "Customer";
+      att.role = nextRole;
+      if (nextRole === "Primary SE") {
+        confirmGateAttendees.forEach((a, i) => {
+          if (i !== idx && a.role === "Primary SE") a.role = "Secondary SE";
+        });
+        syncAttendeeListDom(card);
+      }
     });
   });
+
+  card.querySelectorAll(".postcall-attendee-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.attendeeIndex);
+      if (!confirmGateAttendees || idx < 0) return;
+      confirmGateAttendees.splice(idx, 1);
+      syncAttendeeListDom(card);
+    });
+  });
+}
+
+function wireConfirmGateInteractions(card) {
+  wireConfirmAttendeeRows(card);
+
+  card.querySelectorAll(".postcall-call-type-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      card.querySelectorAll(".postcall-call-type-chip").forEach((c) => {
+        c.classList.remove("is-selected");
+        c.setAttribute("aria-pressed", "false");
+      });
+      chip.classList.add("is-selected");
+      chip.setAttribute("aria-pressed", "true");
+      const hidden = card.querySelector("#pc-confirm-call-type");
+      if (hidden) hidden.value = chip.dataset.callType || "discovery";
+    });
+  });
+
+  const addBtn = card.querySelector("#postcall-add-attendee-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      if (!confirmGateAttendees) confirmGateAttendees = [];
+      const mono = personMonoTone("", "Customer");
+      confirmGateAttendees.push({
+        id: `manual_${Date.now()}`,
+        name: "",
+        email: "",
+        detail: "",
+        role: "Customer",
+        manual: true,
+        monoBg: mono.bg,
+        monoColor: mono.color,
+      });
+      syncAttendeeListDom(card);
+    });
+  }
 }
 
 function showConfirmationGate(resolve, classify) {
   import("./domain/store.js").catch(() => {});
   import("./domain/arr-service.js").catch(() => {});
+
+  show($("postcall-progress"), false);
 
   const card = $("postcall-confirm-view");
   if (!card) return;
@@ -2012,10 +3206,10 @@ function showConfirmationGate(resolve, classify) {
   bindActionOnce($("postcall-confirm-btn"), (e) => { void confirmAndGenerate(e); });
   bindActionOnce($("postcall-restart-btn"), (e) => { void restartPipeline(e); });
 
-  wireDealChangeToggle(card);
-
   confirmGateAccountLookupTeardown?.();
   confirmGateAccountLookupTeardown = null;
+  confirmGateContactLookupTeardowns.forEach((fn) => fn());
+  confirmGateContactLookupTeardowns = [];
 
   const confirmSearch = card.querySelector("#pc-confirm-search");
   const confirmSuggest = card.querySelector("#pc-confirm-suggest");
@@ -2026,6 +3220,7 @@ function showConfirmationGate(resolve, classify) {
       menuEl: confirmSuggest,
       onPick: (account, typedName) => {
         confirmAccount.value = typedName;
+        pcDraftAccountName = typedName.trim();
         if (account) {
           pcResolvedAccount = {
             id: account.id,
@@ -2034,40 +3229,151 @@ function showConfirmationGate(resolve, classify) {
           };
           pcCreateNewAccount = false;
         }
+        wireConfirmAttendeeRows(card);
       },
     });
   }
 
+  wireConfirmGateInteractions(card);
+
   card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+}
+
+function readAttendeeSelections() {
+  const rows = document.querySelectorAll(".postcall-attendee-row");
+  /** @type {object[]} */
+  const attendees = [];
+  let seIdentity = "";
+  let aeIdentity = "";
+  /** @type {string[]} */
+  const customerIdentities = [];
+  /** @type {string[]} */
+  const secondarySeIdentities = [];
+  /** @type {string[]} */
+  const partnerIdentities = [];
+
+  rows.forEach((row) => {
+    const nameInput = row.querySelector("input.postcall-attendee-name");
+    const emailInput = row.querySelector("input.postcall-attendee-email");
+    const name =
+      (nameInput?.value || row.dataset.name || "").trim() ||
+      (row.querySelector(".postcall-attendee-text .postcall-attendee-name")?.textContent || "").trim();
+    const email =
+      (emailInput?.value || row.dataset.email || "").trim() ||
+      (row.querySelector(".postcall-attendee-detail")?.textContent || "").trim();
+    const role = row.querySelector(".postcall-role-select")?.value || "Customer";
+    const label = name || email;
+    if (!label) return;
+    attendees.push({ name, email, role, label });
+    if (role === "Primary SE" && !seIdentity) seIdentity = label;
+    else if (role === "Secondary SE") secondarySeIdentities.push(label);
+    else if (role === "AE" && !aeIdentity) aeIdentity = label;
+    else if (role === "Partner") partnerIdentities.push(label);
+    else if (role === "Customer") customerIdentities.push(label);
+  });
+
+  const speakers = pipelineState?.resolve?.transcriptMeta?.speakers || [];
+  const contacts = contactsForIdentityMerge(pipelineState?.resolve || {});
+  const mergedAttendees = mergeCallIdentities(attendees, contacts, speakers);
+
+  let se = seIdentity;
+  let ae = aeIdentity;
+  /** @type {string[]} */
+  const customers = [];
+  /** @type {string[]} */
+  const secondarySes = [];
+  /** @type {string[]} */
+  const partners = [];
+
+  for (const att of mergedAttendees) {
+    const label = att.name || att.email || att.label;
+    if (!label) continue;
+    if (att.role === "Primary SE" && !se) se = label;
+    else if (att.role === "Secondary SE") secondarySes.push(label);
+    else if (att.role === "AE" && !ae) ae = label;
+    else if (att.role === "Partner") partners.push(label);
+    else if (att.role === "Customer") customers.push(label);
+  }
+
+  return {
+    attendees: mergedAttendees,
+    seIdentity: se,
+    aeIdentity: ae,
+    customerIdentities: customers,
+    secondarySeIdentities: secondarySes,
+    partnerIdentities: partners,
+  };
 }
 
 function readConfirmationSelections() {
   const callTypeEl = $("pc-confirm-call-type");
   const callType = callTypeEl?.value || pipelineState?.classify?.primary || "discovery";
+  const intakeDeal = getIntakeDealSelection();
   const dealRadio = document.querySelector('input[name="postcall-deal"]:checked');
-  const dealId = dealRadio?.value || null;
+  const dealId = intakeDeal.createNewDeal
+    ? null
+    : dealRadio?.value ||
+      intakeDeal.selectedDealId ||
+      pipelineState?.resolve?.deals?.find((d) => d.preselected)?.dealId ||
+      pipelineState?.resolve?.deals?.[0]?.dealId ||
+      null;
   const accountName = ($("pc-confirm-account")?.value || "").trim();
   const companyDomain = ($("pc-confirm-domain")?.value || "").trim().toLowerCase();
-  const seIdentity = ($("pc-confirm-se")?.value || "").trim();
-  const aeIdentity = ($("pc-confirm-ae")?.value || "").trim();
-  const customerIdentities = [
-    ...document.querySelectorAll('input[name="postcall-customer"]:checked'),
-  ]
-    .map((el) => String(el.value || "").trim())
-    .filter(Boolean);
-  return { callType, dealId, accountName, companyDomain, seIdentity, aeIdentity, customerIdentities };
+  const {
+    attendees,
+    seIdentity,
+    aeIdentity,
+    customerIdentities,
+    secondarySeIdentities,
+    partnerIdentities,
+  } = readAttendeeSelections();
+  return {
+    callType,
+    dealId,
+    accountName,
+    companyDomain,
+    seIdentity,
+    aeIdentity,
+    customerIdentities,
+    secondarySeIdentities,
+    partnerIdentities,
+    attendees,
+  };
 }
 
-function formatConfirmedIdentitiesContext({ seIdentity, aeIdentity, customerIdentities }) {
+function formatConfirmedIdentitiesContext({
+  seIdentity,
+  aeIdentity,
+  customerIdentities,
+  secondarySeIdentities,
+  partnerIdentities,
+}) {
   const lines = ["Confirmed call identities (authoritative; use these for attendees/roles):"];
-  if (seIdentity) lines.push(`- SE: ${seIdentity}`);
+  if (seIdentity) lines.push(`- Primary SE: ${seIdentity}`);
+  if (secondarySeIdentities?.length) {
+    lines.push(`- Secondary SE: ${secondarySeIdentities.join(", ")}`);
+  }
   if (aeIdentity) lines.push(`- AE: ${aeIdentity}`);
   if (customerIdentities?.length) {
     lines.push(`- Customer: ${customerIdentities.join(", ")}`);
   } else {
     lines.push("- Customer: (none selected)");
   }
+  if (partnerIdentities?.length) {
+    lines.push(`- Partner: ${partnerIdentities.join(", ")}`);
+  }
   return lines.join("\n");
+}
+
+function stampGenerateQipVersions(data) {
+  if (!data?.scorecard) return data;
+  const rubric = effectiveRubricVersion(data.scorecard, data.analysisMeta || {});
+  data.scorecard = { ...data.scorecard, rubricVersion: rubric };
+  data.analysisMeta = { ...(data.analysisMeta || {}), rubricVersion: rubric };
+  if (data.analysis) {
+    data.analysis = { ...data.analysis, rubricVersion: rubric, analysisVersion: 2 };
+  }
+  return data;
 }
 
 async function confirmAndGenerate(e) {
@@ -2085,10 +3391,13 @@ async function confirmAndGenerate(e) {
     seIdentity,
     aeIdentity,
     customerIdentities,
+    secondarySeIdentities,
+    partnerIdentities,
+    attendees,
   } = readConfirmationSelections();
 
   if (!seIdentity) {
-    showInlineStatus(status, { type: "error", message: "Confirm who the SE is before continuing." });
+    showInlineStatus(status, { type: "error", message: "Confirm who the Primary SE is before continuing." });
     return;
   }
 
@@ -2097,9 +3406,37 @@ async function confirmAndGenerate(e) {
     return;
   }
 
-  pipelineState.confirmedIdentities = { seIdentity, aeIdentity, customerIdentities };
+  pipelineState.confirmedIdentities = {
+    seIdentity,
+    aeIdentity,
+    customerIdentities,
+    secondarySeIdentities,
+    partnerIdentities,
+    attendees,
+  };
+
+  const intakeAccount = getIntakeAccountSelection();
+  const accountIdForContacts = intakeAccount.createNewAccount
+    ? null
+    : intakeAccount.accountId || pipelineState.payload.accountId || null;
+  if (accountIdForContacts) {
+    const actorId = effectiveSessionUserId(currentSession) || "system";
+    for (const att of attendees) {
+      if (att.role !== "Customer" || !att.email) continue;
+      try {
+        await ensureCustomerContact(
+          accountIdForContacts,
+          { name: att.name, email: att.email },
+          { actorId, source: "postcall_confirm" },
+        );
+      } catch (err) {
+        console.warn("[postcall] ensure customer contact failed:", err?.message || err);
+      }
+    }
+  }
 
   const classify = pipelineState.classify;
+  const intakeDeal = getIntakeDealSelection();
   const preselectedId = pipelineState.resolve.deals?.find((d) => d.preselected)?.dealId || null;
   const callTypeOverride =
     callType !== classify.primary
@@ -2119,14 +3456,20 @@ async function confirmAndGenerate(e) {
     accountName ||
     pipelineState.payload.companyName ||
     pipelineState.resolve.account?.accountName;
+  ensureIntakePayloadSynced({
+    ...pipelineState.payload,
+    companyName,
+  });
+  pipelineState.payload = { ...pipelineState.payload, companyName };
   const identityContext = formatConfirmedIdentitiesContext(
     pipelineState.confirmedIdentities || { seIdentity, aeIdentity, customerIdentities },
   );
   const additionalContext = [identityContext, pipelineState.payload.additionalContext]
     .filter(Boolean)
     .join("\n\n");
-  const accountId =
-    pipelineState.resolve.account?.accountId || pipelineState.payload.accountId || null;
+  const accountId = intakeAccount.createNewAccount
+    ? null
+    : intakeAccount.accountId || pipelineState.payload.accountId || null;
   const qualifyBody = {
     transcript: pipelineState.resolve.transcript,
     dealId: dealId || null,
@@ -2224,7 +3567,7 @@ async function confirmAndGenerate(e) {
     showInlineStatus(status, {
       type: "info",
       message: pass2Transcript
-        ? "Running Pass 2 via Gemini (slide/PPT + screen-share inference from transcript)…"
+        ? "Inferring slides and screen-share cues from transcript…"
         : "Sampling Zoom video for camera / share facts… (ffmpeg on VPS when available)",
       loading: true,
     });
@@ -2238,7 +3581,7 @@ async function confirmAndGenerate(e) {
         transcript: pass2Transcript || undefined,
         durationSec: pass2DurationSec,
         callType,
-        visualAnalysisConsent: !!pipelineState.payload.visualAnalysisConsent,
+        visualAnalysisConsent: true,
         seIdentity,
         aeIdentity,
         customerIdentities,
@@ -2314,6 +3657,7 @@ async function confirmAndGenerate(e) {
         data.analysis = { ...(data.analysis || {}), callNotes: summarise.callNotes };
       }
     }
+    stampGenerateQipVersions(data);
 
     pipelineState.generated = true;
 
@@ -2328,9 +3672,24 @@ async function confirmAndGenerate(e) {
     if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
-        dealId,
+        dealId: intakeDeal.createNewDeal ? undefined : dealId,
+        accountId: accountId || undefined,
+        createNewDeal: intakeDeal.createNewDeal || undefined,
+        newDealType: intakeDeal.createNewDeal ? intakeDeal.newDealType : undefined,
+        newDealTitle: intakeDeal.createNewDeal
+          ? intakeDeal.newDealTitle || defaultNewDealTitle(companyName)
+          : undefined,
         callType,
         companyName,
+        companyDomain:
+          companyDomain ||
+          pipelineState.payload.companyDomain ||
+          domainFromEmail(pipelineState.payload.prospectEmails?.[0] || "") ||
+          undefined,
+        createNewAccount:
+          pipelineState.payload.createNewAccount ||
+          (!accountId && !!companyName) ||
+          undefined,
         confirmedIdentities: pipelineState.confirmedIdentities || {
           seIdentity,
           aeIdentity,
@@ -2347,18 +3706,17 @@ async function confirmAndGenerate(e) {
       });
       if (record?.id) {
         pipelineState.recordId = record.id;
-        navigateToCallRecord(record.id);
         invalidatePostCallResolveContext();
         invalidateDealListCache();
-        const DUAL_WRITE_BUDGET_MS = 2000;
         if (onAnalysisSaved) {
-          void Promise.race([
-            onAnalysisSaved(record, savePayload, data).catch((err) =>
-              console.warn("[postcall] analysis-saved hook failed:", err?.message || err),
-            ),
-            new Promise((r) => window.setTimeout(r, DUAL_WRITE_BUDGET_MS)),
-          ]);
+          try {
+            await onAnalysisSaved(record, savePayload, data);
+          } catch (err) {
+            console.warn("[postcall] analysis-saved hook failed:", err?.message || err);
+          }
         }
+        const refreshed = getPostCallAnalysis(sessionEmail, record.id) || record;
+        navigateToCallRecord(refreshed.id);
       }
     }
 
@@ -2377,12 +3735,81 @@ async function confirmAndGenerate(e) {
     // Hydrate the slow passes after the SE is already looking at the analysis.
     void (async () => {
       try {
-        const arrInputs = await arrInputsP;
+        if (!record?.id || !sessionEmail) return;
+
+        const latest = getPostCallAnalysis(sessionEmail, record.id) || record;
+        const effectiveDealId =
+          latest.dealId ||
+          latest.result?.confirmed?.dealId ||
+          dealId ||
+          null;
+        const effectiveAccountId =
+          latest.accountId ||
+          latest.result?.confirmed?.accountId ||
+          accountId ||
+          null;
+
+        let technicalCommit = data.technicalCommit || null;
+        let tcDeltas = data.tcDeltas || [];
+
+        if (effectiveDealId && !technicalCommit) {
+          const prevCommit = await import("./domain/store.js")
+            .then(({ getStore }) => {
+              const store = getStore();
+              return store.getTechnicalCommitByDeal
+                ? store.getTechnicalCommitByDeal(effectiveDealId)
+                : null;
+            })
+            .catch(() => null);
+          const commitRes = await postJson(COMMIT_URL, {
+            transcript: pipelineState.resolve.transcript,
+            dealId: effectiveDealId,
+            companyName,
+            meetingTitle: pipelineState.payload.meetingTitle || companyName,
+            callType,
+            additionalContext,
+            meetingDate: meetingDateFromResolve(pipelineState.resolve),
+            callId: record.id,
+            previous: prevCommit,
+          }).catch((err) => {
+            console.warn("[postcall] deferred commit soft-fail:", err?.message || err);
+            return null;
+          });
+          if (commitRes?.technicalCommit) {
+            technicalCommit = commitRes.technicalCommit;
+            tcDeltas = commitRes.tcDeltas || [];
+          }
+        }
+
+        let arrInputs = await arrInputsP;
+        if (!arrInputs && effectiveDealId && effectiveAccountId) {
+          arrInputs = await postJson(ARR_INPUTS_URL, {
+            transcript: pipelineState.resolve.transcript,
+            dealId: effectiveDealId,
+            callId: record.id,
+            companyName,
+            meetingTitle: pipelineState.payload.meetingTitle || companyName,
+            callType,
+            additionalContext,
+          }).catch((err) => {
+            console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
+            return null;
+          });
+        }
+
         let arrCompute = null;
-        if (arrInputs && dealId && accountId) {
+        if (arrInputs && effectiveDealId && effectiveAccountId) {
+          const allowance = await Promise.all([
+            import("./domain/store.js"),
+            import("./domain/arr-service.js"),
+          ])
+            .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
+              accountAllowanceConsumedForDeal(getStore(), effectiveAccountId, effectiveDealId),
+            )
+            .catch(() => null);
           arrCompute = await postJson(ARR_COMPUTE_URL, {
             ...arrInputs,
-            accountAllowanceConsumed: await allowanceP,
+            accountAllowanceConsumed: allowance,
           }).catch((err) => {
             console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
             return null;
@@ -2402,8 +3829,8 @@ async function confirmAndGenerate(e) {
           .join("\n\n");
         const pass6 = await postJson(GAPS_URL, {
           transcript: pipelineState.resolve.transcript,
-          dealId: dealId || null,
-          accountId,
+          dealId: effectiveDealId,
+          accountId: effectiveAccountId,
           companyName,
           meetingTitle: pipelineState.payload.meetingTitle || companyName,
           callType,
@@ -2420,11 +3847,25 @@ async function confirmAndGenerate(e) {
           objections: data.summarise?.objections || [],
           scorecardLines: data.scorecard?.lines || [],
         });
-        if (!record?.id || !sessionEmail) return;
         const { updatePostCallAnalysis } = await import("./history.js");
         await updatePostCallAnalysis(sessionEmail, record.id, (rec) => {
           rec.pass6 = pass6 || rec.pass6 || null;
-          rec.result = { ...(rec.result || {}), arrInputs, arrCompute, pass6, timeline };
+          if (effectiveDealId) rec.dealId = effectiveDealId;
+          if (effectiveAccountId) rec.accountId = effectiveAccountId;
+          rec.result = {
+            ...(rec.result || {}),
+            arrInputs,
+            arrCompute,
+            pass6,
+            timeline,
+            technicalCommit: technicalCommit || rec.result?.technicalCommit || null,
+            tcDeltas: tcDeltas.length ? tcDeltas : rec.result?.tcDeltas || [],
+            confirmed: {
+              ...(rec.result?.confirmed || {}),
+              dealId: effectiveDealId || rec.result?.confirmed?.dealId || null,
+              accountId: effectiveAccountId || rec.result?.confirmed?.accountId || null,
+            },
+          };
           return rec;
         });
         onCallRecordHydrated?.(record.id);
@@ -2457,27 +3898,147 @@ const PC_TEXT_FIELD_IDS = [
   "pc-recording-url",
   "pc-recording-pwd",
   "pc-prospect-emails",
-  "pc-company-name",
   "pc-deck-link",
   "pc-additional-context",
   "pc-transcript",
 ];
 
+const PROSPECT_EMAIL_AUTOFILL_GUARD_MS = [0, 100, 300, 500];
+const SESSION_EMAIL_IN_PROSPECT_MSG =
+  "Your login email isn't a prospect contact — add customer attendee emails.";
+
+function getNormalizedSessionEmail() {
+  const email = currentSession?.email;
+  return email ? String(email).trim().toLowerCase() : "";
+}
+
+/** @param {string} email @param {string} [sessionEmail] */
+export function isSessionProspectEmail(email, sessionEmail = getNormalizedSessionEmail()) {
+  if (!sessionEmail || !email) return false;
+  return String(email).trim().toLowerCase() === sessionEmail;
+}
+
+/** @param {string[]} emails @param {string} [sessionEmail] */
+export function filterSessionEmailFromProspects(emails, sessionEmail = getNormalizedSessionEmail()) {
+  if (!sessionEmail) return emails;
+  return emails.filter((e) => !isSessionProspectEmail(e, sessionEmail));
+}
+
+function configureProspectEmailShadowInput(el) {
+  if (!el) return;
+  const inner = el.shadowRoot?.querySelector("input, textarea");
+  if (!inner) return;
+  inner.setAttribute("autocomplete", "off");
+  inner.setAttribute("autocapitalize", "off");
+  inner.setAttribute("autocorrect", "off");
+  inner.setAttribute("spellcheck", "false");
+  inner.setAttribute("name", "pc-attendee-emails");
+  inner.setAttribute("data-lpignore", "true");
+  inner.setAttribute("data-1p-ignore", "true");
+  inner.setAttribute("data-form-type", "other");
+  inner.setAttribute("inputmode", "email");
+  if (el.dataset.pcAutofillUnlocked !== "1") inner.readOnly = true;
+}
+
+function configureProspectEmailAntiAutofill(el) {
+  if (!el) return;
+  const apply = () => configureProspectEmailShadowInput(el);
+  apply();
+  if (typeof el.componentOnReady === "function") el.componentOnReady().then(apply);
+
+  const unlock = () => {
+    el.dataset.pcAutofillUnlocked = "1";
+    const inner = el.shadowRoot?.querySelector("input, textarea");
+    if (inner) inner.readOnly = false;
+  };
+  el.addEventListener("focus", unlock, true);
+  el.addEventListener("fwFocus", unlock);
+
+  const observer = new MutationObserver(apply);
+  const observeRoot = () => {
+    if (el.shadowRoot) observer.observe(el.shadowRoot, { childList: true });
+    else requestAnimationFrame(observeRoot);
+  };
+  observeRoot();
+}
+
+async function rejectSessionEmailInProspectField(el) {
+  if (!el) return false;
+  const raw = await readFieldValueAsync(el);
+  const sessionEmail = getNormalizedSessionEmail();
+  if (!raw || !sessionEmail) return false;
+  const parsed = parseProspectEmails(raw);
+  const filtered = filterSessionEmailFromProspects(parsed, sessionEmail);
+  if (filtered.length === parsed.length) return false;
+  const next = filtered.join(", ");
+  await setFieldValue(el, next);
+  if (!next) clearFwInputField(el);
+  else el.dispatchEvent(new CustomEvent("fwInput", { bubbles: true, detail: { value: next } }));
+  setFieldError(el, SESSION_EMAIL_IN_PROSPECT_MSG);
+  return true;
+}
+
+async function getProspectEmailsFromField() {
+  const raw = await readFieldValueAsync($("pc-prospect-emails"));
+  return filterSessionEmailFromProspects(parseProspectEmails(raw));
+}
+
+export function scheduleProspectEmailAutofillGuard() {
+  for (const ms of PROSPECT_EMAIL_AUTOFILL_GUARD_MS) {
+    window.setTimeout(() => { void ensurePostCallProspectEmailsEmpty(); }, ms);
+  }
+}
+
+function clearFwInputField(el) {
+  if (!el) return;
+  try { el.value = ""; } catch { /* crayons guard */ }
+  el.dispatchEvent(new CustomEvent("fwInput", { bubbles: true, detail: { value: "" } }));
+  setFieldError(el);
+}
+
+/** Prospect emails must stay empty on load — never prefill the logged-in SE address. */
+export async function ensurePostCallProspectEmailsEmpty() {
+  const el = $("pc-prospect-emails");
+  if (!el) return;
+
+  if (el.dataset.pcAutofillUnlocked === "1") {
+    await rejectSessionEmailInProspectField(el);
+    return;
+  }
+
+  const current = await readFieldValueAsync(el);
+  if (current) {
+    const parsed = parseProspectEmails(current);
+    const hadSessionEmail = parsed.some((e) => isSessionProspectEmail(e));
+    await setFieldValue(el, "");
+    clearFwInputField(el);
+    if (hadSessionEmail) setFieldError(el, SESSION_EMAIL_IN_PROSPECT_MSG);
+    return;
+  }
+
+  await setFieldValue(el, "");
+  clearFwInputField(el);
+  configureProspectEmailShadowInput(el);
+}
+
 /** Blank every post-call intake field so "New post call" starts genuinely empty. */
 export function clearPostCallForm() {
   for (const id of PC_TEXT_FIELD_IDS) {
-    const el = $(id);
-    if (!el) continue;
-    try { el.value = ""; } catch { /* crayons guard */ }
-    setFieldError(el);
+    clearFwInputField($(id));
   }
 
   const suggest = $("pc-company-suggest");
   if (suggest) { suggest.innerHTML = ""; suggest.hidden = true; }
   const note = $("pc-company-lookup-note");
   if (note) { note.textContent = ""; note.hidden = true; }
+  const accountErr = $("pc-account-name-error");
+  if (accountErr) { accountErr.textContent = ""; accountErr.hidden = true; }
+  intakeAccountLookupTeardown?.();
+  intakeAccountLookupTeardown = null;
   const crmMatches = $("pc-crm-matches");
   if (crmMatches) { crmMatches.innerHTML = ""; crmMatches.hidden = true; }
+  const preview = $("pc-account-deal-preview");
+  if (preview) { preview.innerHTML = ""; preview.hidden = true; }
   crmMatchesToken++;
 
   const fileInput = $("pc-transcript-file");
@@ -2491,9 +4052,23 @@ export function clearPostCallForm() {
   if (fallback) fallback.open = false;
 
   clearLinkedInAttachments("postcall");
+  clearContextAttachments("postcall");
+  const ctxList = $("pc-context-file-list");
+  if (ctxList) ctxList.innerHTML = "";
+  const ctxErr = $("pc-context-error");
+  if (ctxErr) ctxErr.hidden = true;
   companyNameTouched = false;
+  newDealTitleTouched = false;
+  pcDraftAccountName = "";
+  pcDraftNewDealTitle = "";
   pcResolvedAccount = null;
   pcCreateNewAccount = false;
+  pcSelectedDealId = null;
+  pcCreateNewDeal = false;
+  pcNewDealType = "new_business";
+  pcLastAccountDeals = [];
+  const emailsEl = $("pc-prospect-emails");
+  if (emailsEl) delete emailsEl.dataset.pcAutofillUnlocked;
   syncPasscodeVisibility();
 }
 
@@ -2501,6 +4076,8 @@ export function clearPostCallForm() {
 export function resetPostCallView() {
   pipelineState = null;
   clearPostCallForm();
+  void ensurePostCallProspectEmailsEmpty();
+  scheduleProspectEmailAutofillGuard();
   show($("postcall-confirm-view"), false);
   show($("postcall-progress"), false);
   show($("postcall-result"), false);
@@ -2518,27 +4095,34 @@ export function isPostCallGenerationBusy() {
 
 async function collectIntakePayload() {
   const recordingField = $("pc-recording-url");
-  const companyField = $("pc-company-name");
   const emailsField = $("pc-prospect-emails");
+  const accountErr = $("pc-account-name-error");
   const { recordingUrl, recordingPassword } = parseRecordingInput(
     await readFieldValueAsync(recordingField),
     await readFieldValueAsync($("pc-recording-pwd")),
   );
-  const companyName = (await readFieldValueAsync(companyField))?.trim() || "";
+  const companyName = await readAccountNameValue();
   const prospectEmailsRaw = (await readFieldValueAsync(emailsField))?.trim() || "";
-  const prospectEmails = parseProspectEmails(prospectEmailsRaw);
+  const allProspectEmails = parseProspectEmails(prospectEmailsRaw);
+  const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
   const transcript = (await readFieldValueAsync($("pc-transcript")))?.trim() || "";
   const deckLink = (await readFieldValueAsync($("pc-deck-link")))?.trim() || undefined;
-  const additionalContext =
+  const additionalContextRaw =
     (await readFieldValueAsync($("pc-additional-context")))?.trim() || undefined;
+  const contextAttachments = contextAttachmentsForPayload("postcall");
+  const additionalContext =
+    mergeContextAttachments(additionalContextRaw, contextAttachments) || undefined;
   const linkedinProfileExports = linkedinProfileExportsForPayload("postcall");
   // SEs are obliged to visual analysis by policy — no per-call checkbox.
   // Kept in the payload because the worker (Pass 2 + scorecard camera_on) reads it.
   const visualAnalysisConsent = true;
 
   setFieldError(recordingField);
-  setFieldError(companyField);
   setFieldError(emailsField);
+  if (accountErr) {
+    accountErr.hidden = true;
+    accountErr.textContent = "";
+  }
 
   if (!recordingUrl && !transcript) {
     const message = "Paste a Zoom/Kaia recording link, or a transcript below.";
@@ -2546,14 +4130,32 @@ async function collectIntakePayload() {
     return { error: message };
   }
   if (!companyName) {
-    const message = "Company name is required.";
-    setFieldError(companyField, message);
+    const message = "Enter an account name on the preview tile.";
+    if (accountErr) {
+      accountErr.textContent = message;
+      accountErr.hidden = false;
+    }
+    const preview = $("pc-account-deal-preview");
+    preview?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     return { error: message };
   }
   if (!prospectEmails.length) {
-    const message = "Add at least one prospect email (comma separated).";
+    const message = allProspectEmails.length
+      ? SESSION_EMAIL_IN_PROSPECT_MSG
+      : "Add at least one prospect email (comma separated).";
     setFieldError(emailsField, message);
     return { error: message };
+  }
+
+  const prospectDomain = domainFromEmail(prospectEmails[0] || "");
+  const shouldCreateAccount =
+    pcCreateNewAccount || (!pcResolvedAccount?.id && !!companyName);
+
+  let newDealTitle =
+    pcCreateNewDeal || !pcSelectedDealId ? pcDraftNewDealTitle.trim() : "";
+  if ((pcCreateNewDeal || !pcSelectedDealId) && !newDealTitle) {
+    newDealTitle = defaultNewDealTitle(companyName);
+    pcDraftNewDealTitle = newDealTitle;
   }
 
   return {
@@ -2562,22 +4164,51 @@ async function collectIntakePayload() {
       recordingPassword: recordingUrl ? recordingPassword : undefined,
       transcript: transcript || undefined,
       companyName,
+      companyDomain: prospectDomain && !isFreeMailDomain(prospectDomain) ? prospectDomain : undefined,
       prospectEmails,
       participantEmails: prospectEmails,
       deckLink,
       additionalContext,
+      contextAttachments,
       linkedinProfileExports,
       linkedinProfileExportsStored: linkedinProfileExportsForStorage("postcall"),
       visualAnalysisConsent,
       accountId: pcResolvedAccount?.id || undefined,
-      createNewAccount: pcCreateNewAccount || undefined,
+      createNewAccount: shouldCreateAccount || undefined,
+      dealId: pcCreateNewDeal ? undefined : pcSelectedDealId || undefined,
+      createNewDeal: pcCreateNewDeal || undefined,
+      newDealType: pcCreateNewDeal || !pcSelectedDealId ? inferDealTypeFromTitle(newDealTitle) : undefined,
+      newDealTitle: pcCreateNewDeal || !pcSelectedDealId ? newDealTitle || undefined : undefined,
     },
   };
 }
 
+function ensureIntakePayloadSynced(payload) {
+  const intakeAccount = getIntakeAccountSelection();
+  const intakeDeal = getIntakeDealSelection();
+  if (intakeAccount.createNewAccount) {
+    payload.createNewAccount = true;
+    payload.accountId = undefined;
+  }
+  if (intakeDeal.createNewDeal) {
+    payload.createNewDeal = true;
+    payload.dealId = undefined;
+    if (!intakeDeal.newDealTitle?.trim() && payload.companyName) {
+      const title = defaultNewDealTitle(payload.companyName);
+      pcDraftNewDealTitle = title;
+      payload.newDealTitle = title;
+      payload.newDealType = inferDealTypeFromTitle(title);
+    } else if (intakeDeal.newDealTitle) {
+      payload.newDealTitle = intakeDeal.newDealTitle;
+      payload.newDealType = intakeDeal.newDealType;
+    }
+  }
+  return payload;
+}
+
 async function startPipeline(e) {
   e?.preventDefault?.();
-  if (linkedinParsing) return;
+  if (linkedinParsing || contextParsing) return;
   const btn = $("analyze-call");
   const status = $("postcall-status");
 
@@ -2601,7 +4232,7 @@ async function startPipeline(e) {
   ]);
   showInlineStatus(status, {
     type: "info",
-    message: "Pass 0: fetching transcript and matching account…",
+    message: "Fetching transcript and matching account…",
     loading: true,
   });
 
@@ -2615,6 +4246,7 @@ async function startPipeline(e) {
       recordingUrl: payload.recordingUrl,
       recordingPassword: payload.recordingPassword,
       companyName: payload.companyName,
+      meetingTitle: payload.companyName,
       participantEmails: payload.participantEmails,
       accountId: payload.accountId,
       ownerId,
@@ -2637,7 +4269,7 @@ async function startPipeline(e) {
     ]);
     showInlineStatus(status, {
       type: "info",
-      message: "Pass 1: classifying call type from transcript…",
+      message: "Classifying call type from transcript…",
       loading: true,
     });
 
@@ -2653,6 +4285,21 @@ async function startPipeline(e) {
       { label: "Generate analysis", status: "pending" },
     ]);
     showInlineStatus(status, { open: false });
+    const intakeAccount = getIntakeAccountSelection();
+    const dealsForConfirm = intakeAccount.createNewAccount
+      ? []
+      : (resolve.deals || []).filter(
+          (d) =>
+            !intakeAccount.accountId ||
+            d.accountId === intakeAccount.accountId ||
+            d.accountId === resolve.account?.accountId,
+        );
+    syncIntakeDealSelection(dealsForConfirm, {
+      createNewDeal: pcCreateNewDeal || intakeAccount.createNewAccount || payload.createNewDeal,
+      selectedDealId: pcSelectedDealId || payload.dealId,
+    });
+    ensureIntakePayloadSynced(payload);
+    pipelineState.payload = payload;
     showConfirmationGate(resolve, classify);
   } catch (err) {
     const msg = err.message || "Something went wrong.";
@@ -2693,8 +4340,15 @@ export function onSessionCleared() {
   getAuthToken = null;
   pipelineState = null;
   companyNameTouched = false;
+  newDealTitleTouched = false;
+  pcDraftAccountName = "";
+  pcDraftNewDealTitle = "";
   pcResolvedAccount = null;
   pcCreateNewAccount = false;
+  pcSelectedDealId = null;
+  pcCreateNewDeal = false;
+  pcNewDealType = "new_business";
+  pcLastAccountDeals = [];
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
   show($("postcall-form-view"), true);
@@ -2703,7 +4357,39 @@ export function onSessionCleared() {
   show($("postcall-progress"), false);
 }
 
+/** Test-only: set intake deal state for confirm gate smoke tests. */
+export function __setIntakeDealStateForTests(state = {}) {
+  if (state.createNewDeal != null) pcCreateNewDeal = state.createNewDeal;
+  if (state.selectedDealId !== undefined) pcSelectedDealId = state.selectedDealId;
+  if (state.newDealTitle !== undefined) pcDraftNewDealTitle = state.newDealTitle;
+  if (state.createNewAccount != null) pcCreateNewAccount = state.createNewAccount;
+  if (state.resolvedAccount !== undefined) pcResolvedAccount = state.resolvedAccount;
+  if (state.accountName !== undefined) pcDraftAccountName = state.accountName;
+  if (state.payload !== undefined) {
+    pipelineState = state.payload ? { payload: state.payload } : null;
+  }
+}
+
+export function __resetIntakeDealStateForTests() {
+  pcCreateNewDeal = false;
+  pcSelectedDealId = null;
+  pcDraftNewDealTitle = "";
+  pcCreateNewAccount = false;
+  pcResolvedAccount = null;
+  pcDraftAccountName = "";
+  if (pipelineState && !pipelineState.resolve) pipelineState = null;
+}
+
 export function initPostcall() {
+  const emailsEl = $("pc-prospect-emails");
+  configureProspectEmailAntiAutofill(emailsEl);
+  void ensurePostCallProspectEmailsEmpty();
+  scheduleProspectEmailAutofillGuard();
+
+  window.addEventListener("pageshow", () => {
+    scheduleProspectEmailAutofillGuard();
+  });
+
   $("postcall-form")?.addEventListener("submit", (e) => { void analyzeCall(e); });
   $("analyze-call")?.addEventListener("fwClick", (e) => { void analyzeCall(e); });
 
@@ -2723,30 +4409,10 @@ export function initPostcall() {
   transcriptFileBtn?.addEventListener("click", () => transcriptFile?.click());
   transcriptFile?.addEventListener("change", (e) => { void handleTranscriptFileChange(e); });
 
-  const companyEl = $("pc-company-name");
-  companyEl?.addEventListener("fwInput", () => { if (!suppressCompanyTouch) companyNameTouched = true; });
-  companyEl?.addEventListener("input", () => { if (!suppressCompanyTouch) companyNameTouched = true; });
-
-  const emailsEl = $("pc-prospect-emails");
-  emailsEl?.addEventListener("fwBlur", () => { void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
-  emailsEl?.addEventListener("blur", () => { void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
-  emailsEl?.addEventListener("fwInput", scheduleCompanyPrefill);
-  emailsEl?.addEventListener("input", scheduleCompanyPrefill);
-
-  attachAccountLookup({
-    inputEl: $("pc-company-name"),
-    menuEl: $("pc-company-suggest"),
-    noteEl: $("pc-company-lookup-note"),
-    onPick: (account, typedName) => {
-      const companyEl = $("pc-company-name");
-      if (companyEl) {
-        suppressCompanyTouch = true;
-        companyEl.value = typedName;
-        window.setTimeout(() => { suppressCompanyTouch = false; }, 0);
-      }
-      companyNameTouched = true;
-    },
-  });
+  emailsEl?.addEventListener("fwBlur", () => { void rejectSessionEmailInProspectField(emailsEl); void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
+  emailsEl?.addEventListener("blur", () => { void rejectSessionEmailInProspectField(emailsEl); void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
+  emailsEl?.addEventListener("fwInput", () => { void rejectSessionEmailInProspectField(emailsEl); scheduleCompanyPrefill(); });
+  emailsEl?.addEventListener("input", () => { void rejectSessionEmailInProspectField(emailsEl); scheduleCompanyPrefill(); });
 
   initLinkedInPdfUpload({
     bag: "postcall",
@@ -2758,8 +4424,24 @@ export function initPostcall() {
     setParsing: (on) => {
       linkedinParsing = on;
       const btn = $("analyze-call");
-      if (btn) btn.disabled = on;
+      if (btn) btn.disabled = on || contextParsing;
       const addBtn = $("pc-linkedin-add-btn");
+      if (addBtn) addBtn.disabled = on;
+    },
+  });
+
+  initContextFileUpload({
+    bag: "postcall",
+    fileInputId: "pc-context-files",
+    addBtnId: "pc-context-add-btn",
+    listElId: "pc-context-file-list",
+    errElId: "pc-context-error",
+    parsingElId: "pc-context-parsing",
+    setParsing: (on) => {
+      contextParsing = on;
+      const btn = $("analyze-call");
+      if (btn) btn.disabled = on || linkedinParsing;
+      const addBtn = $("pc-context-add-btn");
       if (addBtn) addBtn.disabled = on;
     },
   });

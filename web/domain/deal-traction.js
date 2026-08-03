@@ -209,7 +209,7 @@ export function pickRecommendedAction(ctx) {
     return `Re-engage the customer. ${daysSilent} days since last activity`;
   }
   if (technicalCommitPending) {
-    return "Complete Pass 5 technical commit assessment on this deal";
+    return "Complete the technical commit assessment on this deal";
   }
   if (momentumTopAction) {
     return momentumTopAction;
@@ -340,7 +340,7 @@ export function computeDealTraction(input) {
 
   score += tc.lean;
   if (tc.reason) reasonsJson.push(tc.reason);
-  if (tc.pending) reasonsJson.push("Technical commit (Pass 5) not yet on file");
+  if (tc.pending) reasonsJson.push("Technical commit not yet on file");
 
   if (daysInStage > stageMedianDays * 1.5) {
     score -= 2;

@@ -15,6 +15,8 @@ const gaps = normalizeProductGapsOutput(
       subArea: "whatsapp",
       crossCuttingTags: ["data_residency", "security_compliance", "bogus_tag"],
       verbatim: "We cannot use WhatsApp unless data stays in Singapore.",
+      headline: "WhatsApp residency",
+      atS: 540,
       disposition: "hard_blocker",
       dealImpact: "blocker",
       gapType: "real_gap",
@@ -43,6 +45,8 @@ checks.push(
   ["arrTouched on all gaps", gaps.every((g) => g.arrTouched === 88000)],
   ["competitorNamed preserved", gaps[0].competitorNamed?.name === "Zendesk"],
   ["competitor saidBetter", gaps[0].competitorNamed?.saidBetter === true],
+  ["headline preserved", gaps[0].headline === "WhatsApp residency"],
+  ["atS preserved", gaps[0].atS === 540],
   ["se_didnt_know disposition", gaps[1].disposition === "se_didnt_know"],
   ["se_didnt_know → enablement_gap", gaps[1].gapType === "enablement_gap"],
   ["taxonomyVersion set", gaps[0].taxonomyVersion === "1.0"],
@@ -57,6 +61,8 @@ const wins = normalizeWhatWorksOutput([
   {
     productArea: "knowledge",
     verbatim: "Your KB search actually found the answer on the first try.",
+    headline: "KB search works",
+    atS: 1200,
     referenceCandidate: true,
   },
   {
@@ -70,6 +76,8 @@ const wins = normalizeWhatWorksOutput([
 checks.push(
   ["whatWorks length 2", wins.length === 2],
   ["referenceCandidate true", wins[0].referenceCandidate === true],
+  ["win headline", wins[0].headline === "KB search works"],
+  ["win atS", wins[0].atS === 1200],
   ["invalid area → other", wins[1].productArea === "other"],
   ["taxonomyVersion on wins", wins[0].taxonomyVersion === "1.0"],
   ["blank verbatim dropped", !wins.some((w) => !w.verbatim.trim())],

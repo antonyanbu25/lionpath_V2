@@ -76,6 +76,7 @@ const GAP_ITEM_SCHEMA = {
     "subArea",
     "crossCuttingTags",
     "verbatim",
+    "headline",
     "disposition",
     "dealImpact",
     "gapType",
@@ -88,6 +89,8 @@ const GAP_ITEM_SCHEMA = {
       items: { type: "string", enum: [...CROSS_CUTTING_TAGS] },
     },
     verbatim: { type: "string" },
+    headline: { type: "string" },
+    atS: { type: "number", nullable: true },
     disposition: { type: "string", enum: [...GAP_DISPOSITIONS] },
     dealImpact: { type: "string", enum: [...DEAL_IMPACTS] },
     gapType: { type: "string", enum: [...GAP_TYPES] },
@@ -98,10 +101,12 @@ const GAP_ITEM_SCHEMA = {
 const WHAT_WORKS_ITEM_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["productArea", "verbatim", "referenceCandidate"],
+  required: ["productArea", "verbatim", "headline", "referenceCandidate"],
   properties: {
     productArea: { type: "string", enum: [...PRODUCT_AREAS] },
     verbatim: { type: "string" },
+    headline: { type: "string" },
+    atS: { type: "number", nullable: true },
     referenceCandidate: { type: "boolean" },
   },
 };
@@ -142,6 +147,8 @@ Each productGap:
 - productArea + subArea: fixed taxonomy only (no free text). Use other/other when nothing fits.
 - crossCuttingTags: zero or more orthogonal tags (data_residency, security_compliance, etc.)
 - verbatim: customer's own words — short direct quote, always retained, prefer their phrasing
+- headline: 2–5 word Title Case label for UI chips (e.g. "AI value unproven", "Easy to configure")
+- atS: seconds from call start when said ([mm:ss] prefixes in transcript), or null
 - disposition: hard_blocker | workaround_offered | roadmap_deflection | se_didnt_know
   se_didnt_know = customer wanted something we already ship but the SE did not know / mis-demoed.
   This routes to enablement, not product — use it when transcript evidence supports it.
@@ -154,6 +161,8 @@ WHAT WORKS — positive signal. First-class, not an afterthought.
 Each whatWorks row:
 - productArea: fixed taxonomy
 - verbatim: customer praise or confirmed value in their words
+- headline: 2–5 word Title Case label for win pills (e.g. "Complimentary onboarding")
+- atS: seconds from call start when said, or null
 - referenceCandidate: true when they volunteered reference/case-study potential or strong advocacy
 
 ${taxonomyPromptBlock()}
@@ -237,6 +246,27 @@ function trimVerbatim(raw: unknown, maxWords = 60): string {
   return words.slice(0, maxWords).join(" ");
 }
 
+function trimHeadline(raw: unknown, maxWords = 6): string {
+  const text = String(raw || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!text) return "";
+  const words = text.split(/\s+/);
+  return words.slice(0, maxWords).join(" ");
+}
+
+function normalizeAtS(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) return null;
+  return Math.round(raw);
+}
+
+function headlineFromVerbatim(verbatim: string, subArea: string): string {
+  const fromSub = trimHeadline(subArea.replace(/_/g, " "), 5);
+  if (fromSub && fromSub.toLowerCase() !== "other") return fromSub;
+  const words = verbatim.replace(/["""]/g, "").split(/\s+/).slice(0, 5);
+  return words.join(" ");
+}
+
 function resolveArrTouched(arrSnapshot: ArrSnapshotInput | null | undefined): number | null {
   const point = arrSnapshot?.arrEstimatePoint;
   if (point == null || Number.isNaN(Number(point))) return null;
@@ -248,6 +278,8 @@ interface RawGapRow {
   subArea?: unknown;
   crossCuttingTags?: unknown;
   verbatim?: unknown;
+  headline?: unknown;
+  atS?: unknown;
   disposition?: unknown;
   dealImpact?: unknown;
   gapType?: unknown;
@@ -257,6 +289,8 @@ interface RawGapRow {
 interface RawWhatWorksRow {
   productArea?: unknown;
   verbatim?: unknown;
+  headline?: unknown;
+  atS?: unknown;
   referenceCandidate?: unknown;
 }
 
@@ -285,6 +319,8 @@ export function normalizeProductGapsOutput(
       subArea,
       crossCuttingTags: normalizeCrossCuttingTags(r.crossCuttingTags),
       verbatim,
+      headline: trimHeadline(r.headline) || headlineFromVerbatim(verbatim, subArea),
+      atS: normalizeAtS(r.atS),
       disposition,
       dealImpact: normalizeDealImpact(r.dealImpact),
       gapType,
@@ -313,6 +349,8 @@ export function normalizeWhatWorksOutput(raw: unknown): WhatWorksDraft[] {
     out.push({
       productArea: normalizeProductArea(r.productArea),
       verbatim,
+      headline: trimHeadline(r.headline) || headlineFromVerbatim(verbatim, normalizeProductArea(r.productArea)),
+      atS: normalizeAtS(r.atS),
       referenceCandidate: !!r.referenceCandidate,
       taxonomyVersion: PRODUCT_TAXONOMY_VERSION,
     });

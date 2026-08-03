@@ -19,37 +19,28 @@ import {
  * @param {string} ownerId
  * @param {string} accountId
  * @param {string} teamId
- * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean }} [opts]
+ * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string }} [opts]
  */
 export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}) {
   const store = getStore();
 
-  // `createNewDeal` skips every reuse branch. It has no dealId yet by definition, so without this
-  // guard the `else` below found the account's existing active lifecycle and returned it — the
-  // request never reached deal resolution at all, which is the real reason "+ New deal" could not
-  // create one.
-  if (!opts.createNewDeal) {
-    if (opts.dealId && store.findActiveLifecycleByDeal) {
-      const byDeal = await store.findActiveLifecycleByDeal(ownerId, accountId, opts.dealId);
-      if (byDeal) return byDeal;
-    } else {
-      const existing = await store.findActiveLifecycle(ownerId, accountId);
-      if (existing) {
-        if (!existing.dealId) {
-          await ensureDealForLifecycle(existing);
-          return store.getLifecycle(existing.id);
-        }
-        if (!opts.dealId || existing.dealId === opts.dealId) {
-          return existing;
-        }
+  if (opts.dealId && store.findActiveLifecycleByDeal) {
+    const byDeal = await store.findActiveLifecycleByDeal(ownerId, accountId, opts.dealId);
+    if (byDeal) return byDeal;
+  } else {
+    const existing = await store.findActiveLifecycle(ownerId, accountId);
+    if (existing) {
+      if (!existing.dealId) {
+        await ensureDealForLifecycle(existing);
+        return store.getLifecycle(existing.id);
+      }
+      if (!opts.dealId || existing.dealId === opts.dealId) {
+        return existing;
       }
     }
   }
 
-  // Opening a second deal is a deal switch: one active lifecycle per (owner, account) is the
-  // invariant every findActiveLifecycle caller relies on, so the outgoing one is archived rather
-  // than left to race the new one. The deal itself stays active and reachable from its account.
-  if (opts.dealId || opts.createNewDeal) {
+  if (opts.dealId) {
     const stale = await store.findActiveLifecycle(ownerId, accountId);
     if (stale && stale.dealId !== opts.dealId) {
       await archiveLifecycle(stale.id, opts.actorId || ownerId, "deal_switch");
@@ -61,7 +52,6 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
     prepType: opts.prepType,
     title: opts.title,
     primaryContactId: opts.primaryContactId,
-    createNewDeal: opts.createNewDeal,
     useSessionContext: opts.useSessionContext,
   });
 

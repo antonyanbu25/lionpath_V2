@@ -68,6 +68,12 @@ for (const [token, value] of Object.entries({
 expectDecls(".prep-form-center", { "max-width": "720px", margin: "6px auto 0" });
 
 // Heading is precall-scoped so post-call keeps its own size and subtitle.
+expectDecls(".nb-form-heading", { "margin-bottom": "22px" });
+expectDecls(".nb-form-heading h1", {
+  "font-size": "26px",
+  "font-weight": "800",
+  "letter-spacing": "-0.03em",
+});
 assert.ok(
   !/\.prep-form-heading p:not\(\.nb-build-stamp\)/.test(css),
   "hiding .prep-form-heading p globally also hides the post-call subtitle",
@@ -110,13 +116,11 @@ expectDecls(".nb-deal-head", { "margin-bottom": "7px" });
 // Nested label margin would drop the deal tile below the account tile.
 expectDecls(".nb-deal-head .nb-label", { "margin-bottom": "0" });
 expectDecls(".nb-deal-new-link", { "font-size": "11.5px", "font-weight": "600" });
-expectDecls(".nb-deal-card-icon", {
-  width: "30px",
-  height: "30px",
-  "border-radius": "50%",
-  background: "#f3ecda",
-  color: "#a5883f",
-});
+// Design renders the deal glyph inline — no tinted tile behind it.
+const dealIcon = rule(css, ".nb-deal-card-icon");
+assert.ok(!/background/.test(dealIcon), ".nb-deal-card-icon must not have a tile background");
+assert.ok(!/border-radius/.test(dealIcon), ".nb-deal-card-icon must not be a rounded tile");
+assert.equal(decl(css, ".nb-deal-card-icon", "color"), "#a5883f");
 
 // --- LinkedIn rows -----------------------------------------------------------
 expectDecls(".nb-linkedin-attendees", { gap: "8px" });
@@ -164,9 +168,8 @@ assert.ok(/<h1>New pre-call brief<\/h1>/.test(html), "heading text changed");
 // Cache-bust marker must stay in lockstep with the deploy guards.
 const portalBuild = html.match(/portal-build" content="([^"]+)"/)?.[1];
 const precallCss = html.match(/precall\.css\?v=([^"]+)"/)?.[1];
-assert.ok(portalBuild?.includes("precall-align"), `portal-build must contain precall-align, got ${portalBuild}`);
-assert.equal(precallCss, "2.0.7.4-precall-align4");
-assert.ok(portalBuild.startsWith("2.0.7.4-"), `portal-build must be on the 2.0.7.4 train, got ${portalBuild}`);
+assert.ok(portalBuild?.includes("2.0.8.1"), `portal-build must contain 2.0.8.1, got ${portalBuild}`);
+assert.equal(precallCss, "2.0.8.1-merge");
 
 for (const [file, needle] of [
   ["../deploy/vps/update.sh", `precall.css?v=${precallCss}`],

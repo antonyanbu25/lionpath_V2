@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
  * Retro-rename legacy deal titles to the canonical scheme:
- *   "<Account> - Deal <N> - <yyyy-mm-dd>"
+ *   "<Company> - New Business|Expansion - <yyyy-mm-dd>"
  *
  * A deal is renamed when its title is a legacy/default value ("New business",
- * "Expansion", "Account", or empty). N is the deal's 1-based position within its
- * account, ordered by createdAt. Meaningful titles (e.g. "Acme. Expansion") are
- * left untouched. Mirrors the client-side ensureDealTitle() lazy rename.
+ * "Expansion", "Account", empty, old "Deal N" scheme, or undated New Business/Expansion).
+ * Meaningful custom titles are left untouched. Mirrors client-side ensureDealTitle().
  *
  * Usage:
  *   node worker/scripts/migrate-deal-titles.mjs --dry-run
@@ -16,10 +15,25 @@
  */
 
 const LEGACY_DEAL_TITLES = new Set(["New business", "Expansion", "Account"]);
+const OLD_DEAL_N_RE = / - Deal \d+ - \d{4}-\d{2}-\d{2}$/;
+const NEW_BUSINESS_DATED_RE = / - New Business - \d{4}-\d{2}-\d{2}$/;
+const EXPANSION_DATED_RE = / - Expansion - \d{4}-\d{2}-\d{2}$/;
 
-function isLegacyDealTitle(title) {
+function dealTypeTitleSegment(dealType) {
+  return dealType === "expansion" ? "Expansion" : "New Business";
+}
+
+function isLegacyDealTitle(title, accountName) {
   const s = String(title || "").trim();
-  return !s || LEGACY_DEAL_TITLES.has(s);
+  const name = String(accountName || "").trim();
+  if (!s) return true;
+  if (LEGACY_DEAL_TITLES.has(s)) return true;
+  if (name && (s === name || s === `${name} — New Business` || s === `${name} - New Business`)) return true;
+  if (OLD_DEAL_N_RE.test(s)) return true;
+  if (/ — (New Business|Expansion)$/.test(s)) return true;
+  if (/ - New Business$/.test(s) && !NEW_BUSINESS_DATED_RE.test(s)) return true;
+  if (/ - Expansion$/.test(s) && !EXPANSION_DATED_RE.test(s)) return true;
+  return false;
 }
 
 function dealDateStr(ts) {
@@ -27,6 +41,10 @@ function dealDateStr(ts) {
   return Number.isNaN(d.getTime())
     ? new Date().toISOString().slice(0, 10)
     : d.toISOString().slice(0, 10);
+}
+
+function nextDealTitle(name, dealType, createdAt) {
+  return `${name} - ${dealTypeTitleSegment(dealType)} - ${dealDateStr(createdAt)}`;
 }
 
 function parseArgs(argv) {
@@ -71,30 +89,21 @@ async function main() {
   }
 
   const dealsSnap = await db.collection("deals").get();
-  const dealsByAccount = new Map();
+
+  let renamed = 0;
   for (const doc of dealsSnap.docs) {
     const deal = { id: doc.id, ref: doc.ref, ...doc.data() };
     if (!deal.accountId) continue;
-    if (!dealsByAccount.has(deal.accountId)) dealsByAccount.set(deal.accountId, []);
-    dealsByAccount.get(deal.accountId).push(deal);
-  }
-
-  let renamed = 0;
-  for (const [accountId, deals] of dealsByAccount.entries()) {
-    const name = accountNameById.get(accountId) || "Account";
-    const sorted = [...deals].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    for (let i = 0; i < sorted.length; i++) {
-      const deal = sorted[i];
-      if (!isLegacyDealTitle(deal.title)) continue;
-      const title = `${name} - Deal ${i + 1} - ${dealDateStr(deal.createdAt)}`;
-      if (title === deal.title) continue;
-      renamed++;
-      if (args.dryRun) {
-        console.log(`[dry-run] deals/${deal.id}: "${deal.title || ""}" → "${title}"`);
-      } else {
-        await deal.ref.update({ title, updatedAt: ts });
-        console.log(`Renamed deals/${deal.id}: "${deal.title || ""}" → "${title}"`);
-      }
+    const name = accountNameById.get(deal.accountId) || "Account";
+    if (!isLegacyDealTitle(deal.title, name)) continue;
+    const title = nextDealTitle(name, deal.type || "new_business", deal.createdAt);
+    if (title === deal.title) continue;
+    renamed++;
+    if (args.dryRun) {
+      console.log(`[dry-run] deals/${deal.id}: "${deal.title || ""}" → "${title}"`);
+    } else {
+      await deal.ref.update({ title, updatedAt: ts });
+      console.log(`Renamed deals/${deal.id}: "${deal.title || ""}" → "${title}"`);
     }
   }
 

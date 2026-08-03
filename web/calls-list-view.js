@@ -13,17 +13,7 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc } from "./shared.js";
-
-const CALL_TYPE_LABELS = {
-  demo: "Demo",
-  discovery: "Discovery",
-  technical_deep_dive: "Technical deep dive",
-  reverse_demo: "Reverse demo",
-  use_case_discussion: "Use case discussion",
-  trial_setup: "Trial setup",
-  troubleshooting: "Troubleshooting",
-  qa_session: "Q&A session",
-};
+import { resolveCallTitleFromRecord, companyFromCallTitle, CALL_TYPE_LABELS } from "./call-type-labels.js";
 
 export const CALL_TYPES = Object.keys(CALL_TYPE_LABELS);
 
@@ -72,8 +62,12 @@ function formatShortDate(ts) {
 }
 
 function resolveCallTitle(record) {
-  const a = record.analysis || record.result?.analysis || {};
-  return record.title || a.callHeader?.title || companyFromRecord(record) || "Call";
+  return resolveCallTitleFromRecord(record);
+}
+
+function companyFromRecord(record) {
+  const title = resolveCallTitle(record);
+  return companyFromCallTitle(title) || title || "Call";
 }
 
 function windowLabel(windowId) {
@@ -86,13 +80,6 @@ function formatLength(minutes) {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return m ? `${h}h ${m}m` : `${h}h`;
-}
-
-function companyFromRecord(record) {
-  const a = record.analysis || record.result?.analysis || {};
-  const title = a.callHeader?.title || record.title || "Call";
-  const parts = String(title).split(/[·|–—-]/);
-  return (parts[0] || title).trim();
 }
 
 export function resolveDurationMinutes(record) {

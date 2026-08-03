@@ -216,6 +216,8 @@ Passes 3–7 run in parallel, all consuming passes 1 and 2 plus the pre-call bri
 
 ## 6. Scoring framework
 
+> **Superseded for scoring math and profiles:** Implementation must follow [QIP_SCORING_V2_1.md](./QIP_SCORING_V2_1.md) — credits (3/2/1), five sub-parameters (0/1/2), overall QIP out of 10, five category scores, deal risk log. The v1.0 weight tables below are historical reference only.
+
 ### 6.1 Shared theme library, per-type weight profiles
 
 **Do not build eight unrelated rubrics.** One vocabulary of themes; each call type selects a subset and assigns weights summing to 100.

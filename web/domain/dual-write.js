@@ -12,6 +12,7 @@ import {
   regenerateSummariesAfterPostCall,
   persistArrAfterPostCall,
   linkContactsToDealRecord,
+  createDealWithExplicitTitle,
 } from "./deal-service.js";
 import { persistScorecardDraft } from "./scorecard-service.js";
 import { persistVideoFactsDraft } from "./video-facts-service.js";
@@ -24,7 +25,7 @@ import {
 import { getStore } from "./store.js";
 import { newId, now } from "./types.js";
 import { callIdentityKey } from "../call-identity.js";
-import { callTitleFor } from "../call-type-labels.js";
+import { callTitleFor, productDiscussedFromContext, aiShortFormFromAnalysis } from "../call-type-labels.js";
 import { getAccountEngagementContext } from "./account-context.js";
 import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
@@ -257,11 +258,26 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const engagementCtx = getAccountEngagementContext();
   const ctxMatchesAccount = engagementCtx.accountId === account.id;
   const prepType = payload?.prepType || (ctxMatchesAccount ? engagementCtx.prepType : undefined);
-  const dealId =
+  let dealId =
     payload?.dealId ||
     record?.dealId ||
-    (ctxMatchesAccount ? engagementCtx.dealId : null) ||
+    (ctxMatchesAccount && !payload?.createNewDeal ? engagementCtx.dealId : null) ||
     null;
+
+  if (payload?.createNewDeal) {
+    const newDeal = await createDealWithExplicitTitle(
+      account.id,
+      ownerId,
+      session.teamId,
+      session.orgId || null,
+      {
+        title: payload.newDealTitle,
+        type: payload.newDealType,
+        accountName: account.name || company,
+      },
+    );
+    dealId = newDeal.id;
+  }
 
   const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
     title: account.name || company,
@@ -277,12 +293,24 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const identityKey = callIdentityKey(record || { zoomLink: payload?.recordingUrl, analysis, id: record?.id });
   const qip = data?.scorecard;
   const qualityScore =
-    typeof qip?.rawScore === "number"
-      ? qip.rawScore
-      : analysis?.qualityCoach?.overall ?? analysis?.qualityCoach?.overallScore ?? null;
+    typeof qip?.overall === "number"
+      ? qip.overall
+      : typeof qip?.rawScore === "number"
+        ? qip.rawScore
+        : analysis?.qualityCoach?.overall ?? analysis?.qualityCoach?.overallScore ?? null;
 
   const callType = data?.analysisMeta?.callType || data?.confirmed?.callType || payload?.callType || null;
-  const callTitle = callTitleFor(callType, account.name) || record?.title || null;
+  const callTitle =
+    callTitleFor(callType, account.name, {
+      productDiscussed: productDiscussedFromContext({
+        pass6: data?.pass6,
+        arrCompute: data?.arrCompute,
+        analysis,
+      }),
+      aiShortForm: aiShortFormFromAnalysis(analysis),
+    }) ||
+    record?.title ||
+    null;
 
   const postCall = await attachPostCall(
     lifecycle.id,

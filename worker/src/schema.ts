@@ -2,13 +2,30 @@
 
 import type { DemoGuidance } from "./prep/demo-guidance";
 import type { RivalComparison } from "./prep/rivals";
+import type { NewsSource } from "./prep/company-news";
+
+/**
+ * The four axes every brief compares an account on. Fixed, not model-chosen: an SE reading two
+ * briefs side by side has to be comparing the same things, and the rows used to differ per brief
+ * because the label was only *described* to the model — and gemini-schema.ts strips descriptions
+ * before sending, so nothing constrained it at all. Declared here so `fitRow` can enum it.
+ */
+export const FIT_LABELS = [
+  "Channel coverage",
+  "Routing",
+  "Reporting & analytics",
+  "AI adoption",
+] as const;
 
 const fitRow = {
   type: "object",
   additionalProperties: false,
   required: ["label", "thisCompany", "industryNorm", "gap", "gapVerdict"],
   properties: {
-    label: { type: "string", description: "Row label, max 8 words." },
+    // enum, not description: descriptions are stripped from the responseSchema by
+    // stripSchemaDescriptions (gemini-schema.ts), so a described-only label reached the model as
+    // an unconstrained string. GEMINI_RESPONSE_SCHEMA_KEYS keeps `enum`, so this one sticks.
+    label: { type: "string", enum: FIT_LABELS },
     thisCompany: { type: "string", description: "Max 8 words." },
     industryNorm: { type: "string", description: "Max 8 words." },
     gap: {
@@ -128,6 +145,8 @@ const prospectRow = {
         secondary: { type: "string" },
         confidence: { type: "string", enum: ["low", "medium", "high"] },
         evidence: { type: "array", items: { type: "string" }, maxItems: 4 },
+        dos: { type: "array", items: { type: "string" }, maxItems: 2 },
+        donts: { type: "array", items: { type: "string" }, maxItems: 2 },
         inferred: { type: "boolean" },
         source: { type: "string" },
       },
@@ -288,11 +307,11 @@ export const PREP_SCHEMA = {
     },
     fitSnapshot: {
       type: "array",
-      minItems: 3,
-      maxItems: 3,
+      minItems: 4,
+      maxItems: 4,
       items: fitRow,
       description:
-        "FIT section — exactly 3 rows: Support channels, Self Serve, Agent Assist. Max 8 words per cell.",
+        "FIT section — exactly one row per label in the label enum, in that order. Max 8 words per cell.",
     },
     facts: {
       type: "array",
@@ -462,6 +481,16 @@ export interface ProspectDiscHint {
   secondary?: string;
   confidence?: "low" | "medium" | "high";
   evidence?: string[];
+  /**
+   * How to run the conversation with this person: 2 dos, 2 don'ts, from the DISC read.
+   *
+   * These replace the old Ask/Watch/Match display, which relabelled `evidence[0..2]` with verbs
+   * by array index — evidence is a set of quotes, so calling quote #1 "Ask" and quote #3 "Match"
+   * meant nothing. Because they live on the enrichment, they exist only for a contact with a
+   * profile, which is also the only case where a DISC read exists at all.
+   */
+  dos?: string[];
+  donts?: string[];
   inferred?: boolean;
   source?: string;
 }
@@ -577,8 +606,14 @@ export interface Prep {
   prospects: ProspectProfile[];
   icpFit: IcpFit;
   sources: PrepSource[];
-  /** Populated server-side from research facts with category "news". */
+  /** Populated server-side, primarily by the grounded search in prep/company-news.ts. */
   recentNews?: RecentNewsItem[];
+  /**
+   * Publishers behind `recentNews`, carrying their own N1..Nn labels. Deliberately NOT merged
+   * into `sources`: a news item and a prep fact are traceable to different searches, and
+   * collapsing them would misattribute both.
+   */
+  newsSources?: NewsSource[];
   assets?: PrepAsset[];
   meddpiccHints?: Record<
     string,
@@ -594,8 +629,6 @@ export interface Prep {
    */
   rivals?: RivalComparison;
 }
-
-export const FIT_LABELS = ["Support channels", "Self Serve", "Agent Assist"] as const;
 
 export const SIGNAL_LABELS = [
   "Incumbent tool",

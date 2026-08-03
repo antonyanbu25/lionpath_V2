@@ -6,6 +6,10 @@ import type { ProductArea } from "./product-taxonomy";
 export interface WhatWorksDraft {
   productArea: ProductArea;
   verbatim: string;
+  /** Short UI label for win pills (2–5 words). */
+  headline?: string | null;
+  /** Seconds from call start when the customer said this, if known. */
+  atS?: number | null;
   referenceCandidate: boolean;
   taxonomyVersion: string;
 }

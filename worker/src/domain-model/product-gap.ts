@@ -20,6 +20,10 @@ export interface ProductGapDraft {
   subArea: string;
   crossCuttingTags: CrossCuttingTag[];
   verbatim: string;
+  /** Short UI label for pills/cards (2–5 words). */
+  headline?: string | null;
+  /** Seconds from call start when the customer said this, if known. */
+  atS?: number | null;
   disposition: GapDisposition;
   dealImpact: DealImpact;
   gapType: GapType;

@@ -31,6 +31,11 @@ export function hasNewsCategoryFacts(facts: ResearchFact[]): boolean {
  * When the main extract pass omits category "news", run a focused pass on news-query
  * snippets only and force category news on every fact returned.
  */
+function isSeSourced(f: { sourceLabel?: string; sourceUrl?: string }): boolean {
+  return String(f.sourceLabel || "").trim().toUpperCase() === "SE"
+    || String(f.sourceUrl || "").trim().toLowerCase() === "se-context";
+}
+
 export async function supplementNewsFacts(
   env: Env,
   snippets: ResearchSnippet[],
@@ -57,10 +62,13 @@ export async function supplementNewsFacts(
     sourceOffset: sources.length,
   });
 
-  const newsFacts = (extracted.facts || []).map((f) => ({
-    ...f,
-    category: "news" as const,
-  }));
+  // Stamp only what the model actually classified as news, and never an SE-sourced fact.
+  // This mapped over EVERY fact extractFacts returned — and extractFacts unshifts the
+  // regex-derived SE context facts into its own result — so the SE's typed notes were
+  // relabelled category "news" and read straight back to them in the Recent news panel.
+  const newsFacts = (extracted.facts || [])
+    .filter((f) => f.category === "news" && !isSeSourced(f))
+    .map((f) => ({ ...f, category: "news" as const }));
   if (!newsFacts.length) {
     return { facts, sources };
   }

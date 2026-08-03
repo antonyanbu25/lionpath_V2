@@ -110,8 +110,10 @@ checks.push(
   ["structured outcome", structured.outcome.includes("Salesforce")],
   ["keyPoints length 1", structured.keyPoints?.length === 1],
   ["action item stamped atS", structured.actionItems?.[0]?.atS === 372],
-  ["assembled draftBody has Key points", structured.draftBody.includes("Key points")],
-  ["assembled draftBody has Action items", structured.draftBody.includes("Action items")],
+  ["assembled draftBody has What we covered", structured.draftBody.includes("What we covered")],
+  ["assembled draftBody has Next steps", structured.draftBody.includes("Next steps")],
+  ["assembled draftBody has line breaks", structured.draftBody.includes("\n\n")],
+  ["assembled draftBody has greeting", structured.draftBody.startsWith("Hello,") || structured.draftBody.startsWith("Dear")],
 );
 
 // Call notes and MoM must remain independent — normalize does not copy one into the other.

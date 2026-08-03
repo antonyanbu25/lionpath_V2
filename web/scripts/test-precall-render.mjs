@@ -18,10 +18,13 @@ const sampleV8 = {
   description: "B2B SaaS customer support platform",
   about: "Endurance Doors manufactures commercial door systems for healthcare and education facilities across North America.",
   incumbent: { incumbent_name: "Zendesk", displacement: "entrenched" },
+  // The four fixed axes, in FIT_LABELS order. thisCompany is still in the payload (other
+  // consumers keyword-match on it) but must never reach the chart as a sublabel.
   fitSnapshot: [
-    { label: "Support channels", thisCompany: "Email only", industryNorm: "Omnichannel", gap: "large", gapVerdict: "Behind" },
-    { label: "Self Serve", thisCompany: "No AI", industryNorm: "AI chatbots", gap: "large", gapVerdict: "Behind" },
-    { label: "Agent Assist", thisCompany: "Manual macros", industryNorm: "Copilot tools", gap: "partial", gapVerdict: "Partial" },
+    { label: "Channel coverage", thisCompany: "Email only", industryNorm: "Omnichannel", gap: "large", gapVerdict: "Behind" },
+    { label: "Routing", thisCompany: "Manual triage", industryNorm: "Skill-based", gap: "large", gapVerdict: "Behind" },
+    { label: "Reporting & analytics", thisCompany: "Spreadsheets", industryNorm: "Dashboards", gap: "partial", gapVerdict: "Partial" },
+    { label: "AI adoption", thisCompany: "None", industryNorm: "Copilot tools", gap: "parity", gapVerdict: "Aligned" },
   ],
   facts: [
     { key: "Industry", value: "Manufacturing", sourceLabel: "S1" },
@@ -290,6 +293,22 @@ const checks = [
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has call plan", demo.includes("Your call plan")],
   ["know tab maturity chart animate hook", discovery.includes('data-prep-v9-animate="maturity-chart"')],
+  // Fixed axes: all four render, every brief, so two briefs compare like for like.
+  ["know tab renders all four fixed axes", ["Channel coverage", "Routing", "Reporting &amp; analytics", "AI adoption"].every((a) => discovery.includes(a))],
+  // The GAP column is gone. Asserting its absence, because nothing asserted its presence and its
+  // removal was therefore invisible to this suite.
+  ["know tab has no GAP column", !discovery.includes("prep-v9-gap-pill") && !discovery.includes("prep-v9-maturity-gap-label")],
+  // No free-text sublabel under an axis — that is what drifted to "Digital banking".
+  ["know tab axis has no prose sublabel", !discovery.includes("prep-v9-maturity-them ")],
+  ["know tab axis sublabel text absent", !discovery.includes("Manual triage") && !discovery.includes("Spreadsheets")],
+  // Fixed channel vocabulary: the six always render, and nothing that is not a channel does.
+  ["support stack renders the six fixed channels", ["Email", "Chat", "Voice", "Social", "WhatsApp", "Self-serve"].every((c) => discovery.includes(`>${c}</div>`))],
+  // Scoped to stack-box chips. These signal VALUES legitimately appear in the tech-stack
+  // accordion as <div class="prep-signal-val">, so a bare `>text</div>` check would match there
+  // too — the point is only that they must never become channel chips, as "Live chat active" did.
+  ["support stack invents no channel chips", !/prep-v9-stack-box[^>]*>Live chat enabled</.test(discovery) && !/prep-v9-stack-box[^>]*>Zendesk Help Center</.test(discovery)],
+  // The fixed Freshworks pitch is gone; only the actionable thin-incumbent prompt may remain.
+  ["support stack drops the consolidation pitch", !discovery.includes("a consolidation story, not an add-on")],
   ["demo hero animate hook", demo.includes('data-prep-v9-animate="hero-panel"')],
   ["demo call plan animate hook", demo.includes('data-prep-v9-animate="call-plan"')],
   ["know tab disc animate hook", discovery.includes('data-prep-v9-animate="disc-chart"')],

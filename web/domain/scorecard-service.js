@@ -1,5 +1,5 @@
 /**
- * Persist Pass 3 QIP drafts to scorecards / scorecardLines collections.
+ * Persist Pass 3 QIP drafts to scorecards / scorecardLines collections (v2.1).
  */
 
 import { getStore } from "./store.js";
@@ -16,7 +16,6 @@ export async function persistScorecardDraft(draft, ctx) {
   const existing = store.listScorecardsByCall
     ? await store.listScorecardsByCall(ctx.callId)
     : [];
-  // One scorecard per call — replace prior draft lines if re-analyzed
   for (const prev of existing || []) {
     if (store.deleteScorecardLinesByScorecardId) {
       await store.deleteScorecardLinesByScorecardId(prev.id);
@@ -32,16 +31,19 @@ export async function persistScorecardDraft(draft, ctx) {
     id: scorecardId,
     callId: ctx.callId,
     rubricId: draft.rubricId,
-    rawScore: draft.rawScore,
-    denominator: draft.denominator,
+    overall: draft.overall,
+    totalCredits: draft.totalCredits,
+    includedCredits: draft.includedCredits,
+    categoryScores: draft.categoryScores || {},
     confidence: draft.confidence ?? null,
     provisional: !!draft.provisional,
+    dealRiskFlags: draft.dealRiskFlags || [],
     ownerId: ctx.ownerId,
     teamId: ctx.teamId || "",
     orgId: ctx.orgId || "",
     accountId: ctx.accountId || "",
     callType: draft.callType,
-    rubricVersion: draft.rubricVersion || "1.0",
+    rubricVersion: draft.rubricVersion || "2.1",
     createdAt: ts,
     updatedAt: ts,
   };
@@ -55,14 +57,13 @@ export async function persistScorecardDraft(draft, ctx) {
       scorecardId,
       callId: ctx.callId,
       themeKey: line.themeKey,
-      score: line.score,
-      maxScore: line.maxScore ?? 100,
-      applicable: !!line.applicable,
-      notApplicableReason: line.notApplicableReason || null,
+      subParameters: line.subParameters || [],
+      grade: line.grade,
+      credit: line.credit,
+      category: line.category,
+      evidenceUnavailable: !!line.evidenceUnavailable,
       confidence: line.confidence ?? null,
-      evidenceJson: line.evidence || line.evidenceJson || [],
       coachingNote: line.coachingNote || null,
-      weight: line.weight,
       ownerId: ctx.ownerId,
       teamId: ctx.teamId || "",
       orgId: ctx.orgId || "",
@@ -75,7 +76,7 @@ export async function persistScorecardDraft(draft, ctx) {
 }
 
 /**
- * Team heatmap query helper — excludes provisional and non-applicable lines (§6.6).
+ * Team heatmap query helper — excludes provisional and evidence-unavailable lines.
  * @param {string} teamId
  * @param {string} themeKey
  */
@@ -84,12 +85,11 @@ export async function averageThemeScoreForTeam(teamId, themeKey) {
   if (!store.listScorecardLinesByTeamTheme) return null;
   const rows = await store.listScorecardLinesByTeamTheme(teamId, themeKey);
   const eligible = (rows || []).filter((r) => {
-    if (!r.applicable) return false;
-    // Join provisional via parent scorecard when available
+    if (r.evidenceUnavailable) return false;
     if (r.provisional) return false;
     return true;
   });
   if (!eligible.length) return null;
-  const sum = eligible.reduce((acc, r) => acc + (r.score || 0), 0);
-  return Math.round((sum / eligible.length) * 10) / 10;
+  const sum = eligible.reduce((acc, r) => acc + (r.grade ?? r.score ?? 0), 0);
+  return Math.round((sum / eligible.length) * 100) / 100;
 }

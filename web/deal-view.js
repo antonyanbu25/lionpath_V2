@@ -21,6 +21,7 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { resolveCallType } from "./call-view.js";
 import { resolveDurationMinutes } from "./calls-list-view.js";
+import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import { filterDealRows } from "./search-service.js";
 import { filterDealRowsForList } from "./domain/se-access-service.js";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
@@ -497,13 +498,9 @@ function formatLength(minutes) {
 }
 
 function callTitle(postCall) {
-  const analysis = postCall?.analysis || {};
-  return (
-    postCall?.title ||
-    analysis?.callHeader?.title ||
-    analysis?.company ||
-    "Post-call"
-  );
+  return resolveCallTitleFromRecord(postCall, {
+    accountName: postCall?.analysis?.callHeader?.company || postCall?.analysis?.callHeader?.account,
+  });
 }
 
 function meddpiccListTag(score) {
@@ -832,7 +829,7 @@ function renderTechnicalCommitSection(tc) {
     return `
       <section class="account-record-section deal-record-section deal-record-tc deal-record-tc--empty">
         <h3 class="account-record-section-title">Technical commit</h3>
-        <p class="muted">Technical commit snapshot appears after Pass 5 commit on a post-call.</p>
+        <p class="muted">Technical commit snapshot appears after post-call analysis on a linked deal.</p>
       </section>`;
   }
 

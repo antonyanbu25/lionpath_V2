@@ -14,22 +14,23 @@ globalThis.localStorage = {
 const TEST_EMAIL = "test-se@freshworks.com";
 const STORAGE_KEY = storageKey(TEST_EMAIL);
 
-function sampleResult(callFlowScore, objectionsScore) {
+function sampleResult(overall, objectionsGrade) {
   return {
     scorecard: {
       callType: "demo",
-      rubricVersion: "1.0",
+      rubricVersion: "2.1",
       provisional: false,
+      overall,
       confidence: 0.9,
       lines: [
-        { themeKey: "call_flow", score: callFlowScore, maxScore: 100, applicable: true, weight: 10 },
-        { themeKey: "customer_engagement", score: 80, maxScore: 100, applicable: true, weight: 10 },
-        { themeKey: "objections", score: objectionsScore, maxScore: 100, applicable: true, weight: 5 },
-        { themeKey: "camera_on", score: 70, maxScore: 100, applicable: true, weight: 5 },
+        { themeKey: "call_flow", grade: overall, credit: 3, category: "communication_control", applicable: true },
+        { themeKey: "customer_engagement", grade: 8, credit: 3, category: "communication_control", applicable: true },
+        { themeKey: "objections", grade: objectionsGrade, credit: 2, category: "credibility_objections", applicable: true },
+        { themeKey: "camera_on", grade: 7, credit: 2, category: "communication_control", applicable: true },
       ],
     },
     analysis: {
-      callSummary: { headline: `Call ${callFlowScore}` },
+      callSummary: { headline: `Call ${overall}` },
       momentum: { status: "Advancing" },
     },
     transcriptMeta: { wordCount: 100 },
@@ -38,9 +39,9 @@ function sampleResult(callFlowScore, objectionsScore) {
 
 store.delete(STORAGE_KEY);
 
-savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/1" }, sampleResult(80, 70));
-savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/2" }, sampleResult(60, 50));
-savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/3" }, sampleResult(40, 30));
+savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/1" }, sampleResult(8, 7));
+savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/2" }, sampleResult(6, 5));
+savePostCallAnalysis(TEST_EMAIL, { recordingUrl: "https://zoom.us/rec/3" }, sampleResult(4, 3));
 
 const list = listPostCallAnalyses(TEST_EMAIL);
 const metrics = aggregateQualityMetrics(list);
@@ -48,12 +49,12 @@ const metrics = aggregateQualityMetrics(list);
 const checks = [
   ["3 analyses saved", list.length === 3],
   ["uses QIP scorecards", metrics.usesLegacyCoach === false],
-  ["spine composite present", metrics.spine?.score != null],
+  ["avg overall present", metrics.avgOverall != null],
   ["per-type demo composite", metrics.byType?.some((t) => t.callType === "demo" && t.score != null)],
   ["theme averages", metrics.dimensions.length >= 4],
   ["best theme exists", !!metrics.bestDimension],
   ["recent calls", metrics.recentCalls.length === 3],
-  ["no blended avgOverall across legacy dims", metrics.avgOverall === metrics.spine?.score],
+  ["demo avg matches stored overalls", metrics.byType?.find((t) => t.callType === "demo")?.score === 6],
   ["score bands populated", metrics.scoreBands.excellent + metrics.scoreBands.strong + metrics.scoreBands.good + metrics.scoreBands.developing + metrics.scoreBands.needsFocus === 3],
 ];
 

@@ -50,6 +50,23 @@ export function readFieldValue(el) {
   return host != null ? String(host).trim() : "";
 }
 
+/** @param {HTMLElement | null | undefined} el @param {string} value */
+export async function setFieldValue(el, value) {
+  if (!el) return;
+  const str = value != null ? String(value) : "";
+  if (typeof el.setValue === "function") {
+    try {
+      await el.setValue(str);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+  el.value = str;
+  const inner = el.shadowRoot?.querySelector("input, textarea");
+  if (inner) inner.value = str;
+}
+
 /** @param {HTMLElement | null | undefined} el */
 export async function readFieldValueAsync(el) {
   if (!el) return "";

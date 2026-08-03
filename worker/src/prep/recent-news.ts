@@ -13,6 +13,20 @@ function isUnknown(v: unknown): boolean {
   return !s || s === UNKNOWN || s === "-";
 }
 
+/**
+ * The SE's own notes are not news, however confidently we hold them.
+ *
+ * The confidence gate below was written to reject *unsourced* claims, and SE_SOURCE carries
+ * confidence 88 with a non-empty url ("se-context") — so it sailed straight through and the panel
+ * read the SE's typed context back to them as "Recent news" under an INPUT badge. Provenance, not
+ * confidence, is the right test here.
+ */
+function isSeSourced(fact: ResearchFact, src: SourceRef | undefined): boolean {
+  if (String(fact.sourceLabel || "").trim().toUpperCase() === "SE") return true;
+  if (String(fact.sourceUrl || "").trim().toLowerCase() === "se-context") return true;
+  return String(src?.url || "").trim().toLowerCase() === "se-context";
+}
+
 function isLowConfidenceSource(src: SourceRef | undefined): boolean {
   if (!src) return true;
   const url = String(src.url || "").trim().toLowerCase();
@@ -30,8 +44,10 @@ function trimWords(s: string, max: number): string {
 }
 
 /**
- * Build Recent news from Gemini research facts (category "news" only).
- * Research snippets come from playbook queries like `"Acme" news OR funding`.
+ * Build Recent news from research facts already classified `news`.
+ *
+ * Fallback path only. The primary source is generateCompanyNews (prep/company-news.ts), a
+ * dedicated grounded search whose items are verified against the citations Gemini returned.
  */
 export function buildRecentNews(
   facts: ResearchFact[],
@@ -48,6 +64,7 @@ export function buildRecentNews(
     if (SIGNAL_LIKE_KEY.test(String(f.key || ""))) continue;
 
     const src = srcByLabel.get(f.sourceLabel);
+    if (isSeSourced(f, src)) continue;
     if (isLowConfidenceSource(src)) continue;
 
     const headline = trimWords(String(f.key || "News"), 8);
@@ -63,27 +80,6 @@ export function buildRecentNews(
     });
     if (out.length >= maxItems) break;
   }
-
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
-    body: JSON.stringify({
-      sessionId: "c9d8c5",
-      runId: "post-fix",
-      hypothesisId: "A",
-      location: "recent-news.ts:buildRecentNews",
-      message: "recent news built",
-      data: {
-        totalFacts: facts.length,
-        newsCategoryFacts: facts.filter((f) => f.category === "news").length,
-        outputCount: out.length,
-        headlines: out.map((n) => n.headline),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   return out;
 }

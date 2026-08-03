@@ -640,6 +640,36 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
 }
 
 /** @param {string} contactId @param {import("./types.js").ContactEventType} type @param {string} actorId @param {object} payload */
+/**
+ * Ensure a customer attendee exists on the account (confirm gate / manual add).
+ * @param {string} accountId
+ * @param {{ name?: string, email?: string, title?: string }} attendee
+ * @param {{ actorId?: string, source?: string }} [ctx]
+ */
+export async function ensureCustomerContact(accountId, attendee, ctx = {}) {
+  const store = getStore();
+  const email = String(attendee.email || "").trim().toLowerCase();
+  if (!accountId || !email || !email.includes("@")) return null;
+
+  let contact = await store.findContactByAccountEmail(accountId, email);
+  if (contact) return contact;
+
+  contact = await store.createContact({
+    id: newId("contact"),
+    accountId,
+    email,
+    name: attendee.name || email.split("@")[0],
+    title: attendee.title || null,
+    role: "Customer",
+    createdAt: now(),
+    updatedAt: now(),
+  });
+  await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
+    source: ctx.source || "postcall_confirm",
+  });
+  return contact;
+}
+
 export async function recordContactEvent(contactId, type, actorId, payload = {}) {
   const store = getStore();
   if (!store.addContactEvent) return null;

@@ -13,6 +13,7 @@ import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
 import { formatTimestampedTranscript, parseTranscript, parseTranscriptCues } from "../transcript";
 import { trimWords } from "../word-limits";
+import { assembleMomEmailDraft } from "./mom-email-draft.js";
 import { locateQuoteAtS } from "./timeline";
 import type {
   FollowUpDraft,
@@ -187,21 +188,23 @@ This is NOT internal call notes — do not include coaching critique or blame.
 
 Emit JSON with four fields:
 
-outcome — 2–5 sentence narrative of what the meeting covered and what was agreed. Customer-facing.
+outcome — 2–5 sentences. Lead with explicit decisions and agreements (trial agreed, POC scheduled, pricing sent, security review booked). Then briefly frame what the meeting covered. Customer-facing; no vague filler like "demonstration of X to centralize..." unless that was literally the agreed outcome.
 keyPoints — 3–8 topic headers the call covered. Each:
   - title: short topic label (max 12 words)
   - detail: 1–3 sentences expanding the point, or null
 actionItems — concrete next steps with owners. Each:
   - text: what will happen (max 25 words)
   - owner: se | ae | customer | null
-  - dueDate: ISO or relative phrase when stated, else null
+  - dueDate: ISO date or relative phrase (e.g. "Friday", "next week") when stated or implied in transcript; null only if no timing was discussed
   - atS: seconds from call start when the commitment was made (from [mm:ss] transcript prefixes), or null
   - sourceQuote: short verbatim supporting the item, or null
-draftBody — a flat email-ready MoM assembling the same content (Outcome, then Key points as bullets, then Action items). Max ~400 words.
+draftBody — leave as empty string ""; the server assembles the email from structured fields.
 
 Rules:
 - Customer-facing only. No internal coaching language.
-- Do not invent decisions or commitments not in the transcript.
+- Do not invent decisions, dates, or commitments not in the transcript.
+- When the transcript states or implies a deadline, capture it in dueDate — do not leave action items undated if timing was mentioned.
+- Avoid generic recap filler; every sentence should reflect a specific outcome, topic, or commitment from this call.
 - Prefer atS from the [mm:ss] prefixes on the transcript lines.
 - This draft will be human-edited before send. Never imply it was already sent.
 - Do NOT reuse or lightly edit internal call notes — write the MoM from the transcript directly.`;
@@ -339,26 +342,13 @@ function assembleMomDraftBody(
   actionItems: MomActionItem[],
   fallbackBody: string,
 ): string {
+  const hasStructured =
+    outcome.trim().length > 0 || keyPoints.length > 0 || actionItems.length > 0;
+  if (hasStructured) {
+    return assembleMomEmailDraft({ outcome, keyPoints, actionItems });
+  }
   if (fallbackBody.trim()) return trimWords(fallbackBody, 450);
-  const parts: string[] = [];
-  if (outcome) {
-    parts.push(outcome);
-  }
-  if (keyPoints.length) {
-    parts.push("Key points");
-    for (const kp of keyPoints) {
-      parts.push(kp.detail ? `· ${kp.title} — ${kp.detail}` : `· ${kp.title}`);
-    }
-  }
-  if (actionItems.length) {
-    parts.push("Action items");
-    for (const a of actionItems) {
-      const who = a.owner ? ` (${a.owner})` : "";
-      const when = a.dueDate ? ` — ${a.dueDate}` : "";
-      parts.push(`· ${a.text}${who}${when}`);
-    }
-  }
-  return trimWords(parts.join("\n\n"), 450);
+  return "";
 }
 
 /**

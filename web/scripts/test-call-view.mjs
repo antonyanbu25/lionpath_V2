@@ -65,10 +65,25 @@ const saved = await savePostCallAnalysis(
     },
     scorecard: {
       callType: "demo",
-      rubricVersion: "1.0",
+      rubricVersion: "2.1",
       provisional: false,
+      overall: 7.8,
       confidence: 0.85,
-      lines: [{ themeKey: "call_flow", score: 78, maxScore: 100, applicable: true, weight: 10 }],
+      categoryScores: {
+        discovery_qualification: 7,
+        solution_technical_fit: 8,
+        business_value: 7,
+        credibility_objections: 7,
+        communication_control: 7.8,
+      },
+      lines: [{
+        themeKey: "call_flow",
+        grade: 7.8,
+        credit: 3,
+        category: "communication_control",
+        applicable: true,
+        subParameters: [{ score: 2, evidence: [] }, { score: 2, evidence: [] }, { score: 1, evidence: [] }, { score: 2, evidence: [] }, { score: 1, evidence: [] }],
+      }],
     },
     analysisMeta: { callType: "demo", analysisConfidence: 0.85 },
   },
@@ -92,14 +107,56 @@ await renderCallView(container, firebaseSession, { callId });
 assert(container.innerHTML.includes("call-record"), "renders call record shell");
 assert(!container.innerHTML.includes("call-record--loading"), "finished render replaces loading shell");
 assert(container.innerHTML.includes("Acme · Demo"), "shows call title");
-assert(container.innerHTML.includes("QIP"), "shows verdict strip");
+assert(container.innerHTML.includes("call-postcall-summary-row"), "shows KPI+star+room row");
+assert(container.innerHTML.includes('class="metrics"'), "shows metrics column");
+assert(container.innerHTML.includes("QIP score"), "shows QIP KPI");
+assert(container.innerHTML.includes("Qualification · MEDDPICC"), "shows MEDDPICC KPI");
 assert(container.innerHTML.includes("How the 48 minutes went"), "timeline title from duration");
+assert(!container.innerHTML.includes("call-spine-metrics"), "metrics strip removed from timeline");
+assert(!container.innerHTML.includes("Call 3 of 3"), "no call sequence phrasing");
+assert(!container.innerHTML.includes("call-record-notes-row"), "old notes+room row removed");
+assert(!container.innerHTML.includes("← All calls"), "no All calls back button");
+assert(!container.innerHTML.includes("Transcript-only call"), "no transcript-only dev copy");
+const starCount = (container.innerHTML.match(/class="[^"]*\bqip-star-svg\b[^"]*"/g) || []).length;
+assert(starCount === 1, "star radar shown once at top");
+assert(container.innerHTML.includes('viewBox="0 0 700 600"'), "star uses 700x600 radar viewBox");
+assert(container.innerHTML.includes("-dataClip"), "star has dataClip clipPath");
+assert(container.innerHTML.includes("qip-star-core"), "star has glowing core group");
+assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in star core");
+assert(container.innerHTML.includes("qip-star-animated"), "star has entrance animations");
+assert(container.innerHTML.includes('class="legend"'), "scorecard has legend");
+assert(container.innerHTML.includes('class="chip done"'), "scorecard has done chip");
+assert(container.innerHTML.includes('class="chip part"'), "scorecard has partial chip");
+assert(container.innerHTML.includes('class="chip miss"'), "scorecard has missed chip");
+assert(container.innerHTML.includes('class="pill high"') || container.innerHTML.includes('class="pill med"'), "scorecard uses wireframe confidence pills");
+assert(container.innerHTML.includes("-g0"), "star has jewel gradient wedges");
+assert(!container.innerHTML.includes("Demo profile"), "no profile version subline on KPI");
+assert(!container.innerHTML.includes('viewBox="0 0 400 400"'), "old 400x400 radar removed");
+assert(!container.innerHTML.includes("qip-radar-data"), "old teal polygon radar removed");
+assert(container.innerHTML.includes("Who was in the room"), "shows room panel");
 assert(container.innerHTML.includes("QIP scorecard"), "shows QIP tab");
 assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
-assert(container.innerHTML.includes("qip-grid-header"), "shows QIP column header");
-assert(container.innerHTML.includes("Weighted"), "shows weighted column");
+assert(container.innerHTML.includes("What worked"), "shows what worked tile");
+assert(container.innerHTML.includes("What didn"), "shows what didn't tile");
+assert(container.innerHTML.includes("/ 10"), "shows /10 scores");
+assert(
+  !/QIP Score[\s\S]{0,120}\/ 100/.test(container.innerHTML),
+  "QIP KPI uses /10 not /100",
+);
+assert(container.innerHTML.includes("Positive"), "shows positive sentiment for advancing call");
+assert(container.innerHTML.includes("Overall call sentiment"), "sentiment KPI on side column");
+assert(container.innerHTML.includes("Evaluation signal"), "QIP star radar in center column");
+assert(!container.innerHTML.includes("from call momentum"), "sentiment not momentum placeholder");
+assert(!container.innerHTML.includes("Provisional"), "no provisional badge");
+assert(!container.innerHTML.includes("Weighted"), "no weighted column");
 assert(container.innerHTML.includes("call-notes-bullets"), "shows call notes bullets");
-assert(container.innerHTML.includes("Edit notes"), "shows edit notes action");
+const notesStart = container.innerHTML.indexOf("call-notes-bullets");
+const notesEnd = container.innerHTML.indexOf("</ul>", notesStart);
+const notesSection = container.innerHTML.slice(notesStart, notesEnd);
+const notesLiCount = (notesSection.match(/<li>/g) || []).length;
+assert(notesLiCount <= 3, "call notes capped to 3 lines");
+assert(container.innerHTML.includes("Open deal"), "shows open deal action");
+assert(!container.innerHTML.includes("Edit notes"), "no edit notes action");
 assert(!container.innerHTML.includes("call-notes-editor"), "textarea not mounted until edit mode");
 assert(container.innerHTML.includes("Re-run"), "shows re-run action");
 assert(
@@ -145,5 +202,140 @@ await renderCallView(camContainer, firebaseSession, { callId: camSaved.id });
 assert(camContainer.innerHTML.includes("talk 75%"), "shows talk pct from videoFacts");
 assert(camContainer.innerHTML.includes("cam On"), "shows camera on when videoFacts has camera data");
 assert(camContainer.innerHTML.includes("cam Off"), "shows camera off for AE when vision says off");
+
+const emmaSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/emma-merge",
+    confirmedIdentities: {
+      seIdentity: "Antony S.",
+      customerIdentities: ["Emma Wark"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "Gamersheek · Demo",
+        duration: "45 min",
+        attendees: [
+          { name: "Emma Wark", role: "Customer" },
+          { name: "emma w", email: "emma.w@gamersheek.co.uk", role: "Customer" },
+        ],
+      },
+    },
+    analysisMeta: { callType: "demo" },
+    videoFacts: {
+      attendeeCurveJson: [
+        { name: "Antony S.", role: "Solution Engineer", talkPct: 60, cameraOn: true },
+        { name: "emma w", role: "Customer", talkPct: 40, cameraOn: true },
+      ],
+    },
+  },
+);
+const emmaContainer = { innerHTML: "" };
+Object.defineProperty(emmaContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(emmaContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(emmaContainer, firebaseSession, { callId: emmaSaved.id });
+const emmaNameMatches = (emmaContainer.innerHTML.match(/Emma Wark/g) || []).length;
+const emmaLowerMatches = (emmaContainer.innerHTML.match(/>\s*emma w\s*</gi) || []).length;
+assert(emmaNameMatches >= 1, "shows merged Emma Wark name");
+assert(emmaLowerMatches === 0, "does not show duplicate emma w row label");
+const emmaStakeholderCards = (emmaContainer.innerHTML.match(/class="call-stakeholder-card(?: |")/g) || []).length;
+assert(emmaStakeholderCards === 2, `room shows SE + one merged customer, got ${emmaStakeholderCards} cards`);
+
+const junkCurveSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/junk-curve" },
+  {
+    analysis: {
+      callHeader: { title: "Junk Curve · Demo", duration: "30 min", attendees: [{ name: "Pat", role: "Customer" }] },
+    },
+    scorecard: {
+      callType: "demo",
+      overall: 7.2,
+      categoryScores: {
+        discovery_qualification: 7,
+        solution_technical_fit: 7,
+        business_value: 7,
+        credibility_objections: 7,
+        communication_control: 7.2,
+      },
+      lines: [{
+        themeKey: "call_flow",
+        grade: 7.2,
+        credit: 3,
+        category: "communication_control",
+        subParameters: [{ score: 2 }, { score: 2 }, { score: 1 }, { score: 1 }, { score: 1 }],
+      }],
+    },
+    videoFacts: {
+      attendeeCurveJson: {
+        0: { name: "Pat", role: "Customer", talkPct: 40, cameraOn: true, cameraOnPct: 70 },
+        junk: null,
+      },
+    },
+  },
+);
+const junkCurveContainer = { innerHTML: "" };
+Object.defineProperty(junkCurveContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(junkCurveContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(junkCurveContainer, firebaseSession, { callId: junkCurveSaved.id });
+assert(!junkCurveContainer.innerHTML.includes("Could not load this call"), "malformed attendee curve must not break call record");
+assert(junkCurveContainer.innerHTML.includes("qip-star-svg"), "star still renders with sanitized attendee curve");
+
+const legacyLabelSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/legacy-label" },
+  {
+    analysis: {
+      callHeader: { title: "Gamersheek · Demo", duration: "33 min", attendees: [{ name: "Emma", role: "Customer" }] },
+    },
+    scorecard: {
+      callType: "Demo",
+      rubricVersion: "1.0",
+      overall: 0,
+      lines: [{
+        themeKey: "call_flow",
+        grade: 0,
+        credit: 3,
+        category: "communication_control",
+        subParameters: [{ score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }],
+      }],
+    },
+  },
+);
+const legacyLabelContainer = { innerHTML: "" };
+Object.defineProperty(legacyLabelContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(legacyLabelContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(legacyLabelContainer, firebaseSession, { callId: legacyLabelSaved.id });
+assert(!legacyLabelContainer.innerHTML.includes("Could not load this call"), "display-label callType (Demo) must not break call record");
+assert(legacyLabelContainer.innerHTML.includes("Gamersheek"), "legacy label callType still shows call title");
+
+const objectLinesSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/object-lines" },
+  {
+    analysis: { callHeader: { title: "Gamersheek · Demo", duration: "33 min" } },
+    scorecard: {
+      callType: "Demo",
+      rubricVersion: "1.0",
+      overall: 0,
+      lines: {
+        0: {
+          themeKey: "call_flow",
+          grade: 0,
+          credit: 3,
+          category: "communication_control",
+          subParameters: [{ score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }],
+        },
+      },
+    },
+  },
+);
+const objectLinesContainer = { innerHTML: "" };
+Object.defineProperty(objectLinesContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(objectLinesContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(objectLinesContainer, firebaseSession, { callId: objectLinesSaved.id });
+assert(!objectLinesContainer.innerHTML.includes("Could not load this call"), "object-map scorecard lines must not break call record");
 
 console.log("test-call-view: ok");

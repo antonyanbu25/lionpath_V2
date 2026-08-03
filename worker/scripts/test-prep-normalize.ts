@@ -1,4 +1,5 @@
 import { normalizePrepOutput, confidenceBand, clampConfidence } from "../src/word-limits.ts";
+import { FIT_LABELS } from "../src/schema.ts";
 import type { Prep } from "../src/schema.ts";
 
 const raw = {
@@ -77,8 +78,14 @@ const checks: [string, boolean][] = [
   ["facts normalized", out.facts.length >= 1],
   ["six signals", out.signals.length === 6],
   ["legacy AI signal renamed", out.signals.some((s) => s.label === "AI in their current tech stack")],
-  ["fit labels renamed", out.fitSnapshot[0]?.label === "Support channels"],
-  ["fit legacy AI Deflection", out.fitSnapshot[1]?.label === "Self Serve"],
+  // Axes are fixed and keyed: exactly one row per FIT_LABEL, in order, never a duplicate.
+  ["fit rows are the fixed axis set", JSON.stringify(out.fitSnapshot.map((r) => r.label)) === JSON.stringify([...FIT_LABELS])],
+  ["fit legacy Omnichannel Support maps to Channel coverage", out.fitSnapshot[0]?.label === "Channel coverage" && out.fitSnapshot[0]?.thisCompany === "Email"],
+  // The fixture sends both "AI Deflection" and "Agent Assist"; both map to AI adoption, so the
+  // second must be dropped rather than producing a second AI adoption row.
+  ["fit legacy collision does not duplicate an axis", out.fitSnapshot.filter((r) => r.label === "AI adoption").length === 1],
+  // An axis research said nothing about is present and honest, not absent.
+  ["unsourced axis is present as unknown", out.fitSnapshot.find((r) => r.label === "Routing")?.thisCompany === "unknown"],
   ["prospects normalized", out.prospects.length >= 1],
   ["icpFit normalized", out.icpFit?.product === "Freshdesk" && out.icpFit.verdict === "Strong"],
   // No criteria on this fixture, so it takes the legacy path: the stored verdict survives

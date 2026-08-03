@@ -4,8 +4,9 @@
  * Given the emails typed into the post-call form, find every existing Account and
  * Deal already associated with those contacts — so the SE can see "this person
  * already has a deal/account" before an analysis is run. Contacts are the primary
- * identifier: we resolve email -> contact(s) -> account(s) -> deals, and also fall
- * back to a corporate-domain match against accounts.
+ * identifier: we resolve email -> contact(s) -> account(s) -> deals. When no contact
+ * exists for that email, we fall back to an exact corporate-domain match on accounts
+ * (never free-mail domains like gmail.com).
  *
  * Accounts and contacts are org-shared (readable by any signed-in user); deals are
  * team/owner scoped, so a deal a cross-team SE cannot read simply won't appear.
@@ -87,8 +88,8 @@ export async function resolveContactsForEmails(emails) {
         /* best-effort */
       }
 
-      // 2. Corporate-domain fallback (skip free-mail like gmail.com).
-      if (domain && !isFreeMailDomain(domain)) {
+      // 2. Corporate-domain fallback only when no contact-linked account (skip free-mail).
+      if (accountIds.size === 0 && domain && !isFreeMailDomain(domain)) {
         try {
           const domAccts = store.findAccountsByDomain ? await store.findAccountsByDomain(domain) : [];
           for (const a of domAccts) {

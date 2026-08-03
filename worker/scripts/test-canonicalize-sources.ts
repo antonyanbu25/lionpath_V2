@@ -152,7 +152,9 @@ function prep(over: Partial<Prep>): Prep {
 // ---------------------------------------------------------------------------
 // C. Orphan promotion. FAILS today — these labels were never in sources[].
 // ---------------------------------------------------------------------------
-for (const orphan of ["Kaia", "Zoom", "LinkedIn + Kaia", "LinkedIn PDF", "Orchestrator", "SE"]) {
+// "Orchestrator" is deliberately absent: it is web research, so it is numbered like any other
+// citation rather than kept verbatim. Asserted separately below.
+for (const orphan of ["Kaia", "Zoom", "LinkedIn + Kaia", "LinkedIn PDF", "SE"]) {
   const { prep: out } = canonicalizePrepSources(
     prep({
       sources: [src("S1", "https://a.com"), src("S2", "https://b.com"), src("S3", "https://c.com")],
@@ -167,6 +169,30 @@ for (const orphan of ["Kaia", "Zoom", "LinkedIn + Kaia", "LinkedIn PDF", "Orches
   assert.ok(entry!.confidence >= 55, `${orphan} confidence ${entry!.confidence} avoids UNVERIFIED`);
   assert.equal(out.prospects[0].sourceLabel, orphan, `${orphan} label is preserved verbatim`);
   assert.ok(entry!.displayName, `${orphan} has a displayName`);
+}
+
+// Orchestrator is web/LinkedIn research, so it is numbered like any other citation. The brief's
+// legend documents AI-researched provenance as "S#", and rendering the literal join key
+// "Orchestrator" in a citation slot read as a numbering bug.
+{
+  const { prep: out } = canonicalizePrepSources(
+    prep({
+      sources: [src("S1", "https://a.com"), src("S2", "https://b.com")],
+      prospects: [{ name: "Emma", role: "CS Manager", sourceLabel: "Orchestrator" }],
+    } as Partial<Prep>),
+  );
+  const label = out.prospects[0].sourceLabel;
+  assert.match(label, /^S\d+$/, `Orchestrator is renumbered, got ${label}`);
+  assert.ok(
+    !out.sources.some((s) => s.label === "Orchestrator"),
+    "no source keeps the literal Orchestrator label",
+  );
+  const entry = out.sources.find((s) => s.label === label);
+  assert.ok(entry, "the renumbered Orchestrator source is in sources[]");
+  assert.equal(entry!.url, "orchestrator", "it keeps its sentinel url");
+  // The badge shows S#, but the sources table still needs a readable name for the row.
+  assert.equal(entry!.displayName, "Web research", "it keeps a readable displayName");
+  assert.ok(entry!.confidence >= 55, `confidence ${entry!.confidence} avoids UNVERIFIED`);
 }
 
 // R-labels are NOT reserved — they merge by domain into a normal S-label.

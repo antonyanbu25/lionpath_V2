@@ -14,6 +14,18 @@ function isUnknown(v) {
   return !s || s === UNKNOWN || s === "-";
 }
 
+/**
+ * The SE's own notes are not news. MIRROR of isSeSourced in worker/src/prep/recent-news.ts.
+ *
+ * The confidence gate below rejects *unsourced* claims; SE_SOURCE carries confidence 88 and a
+ * non-empty url ("se-context"), so it passed and the SE's typed context came back as news.
+ */
+function isSeSourced(fact, src) {
+  if (String(fact.sourceLabel || "").trim().toUpperCase() === "SE") return true;
+  if (String(fact.sourceUrl || "").trim().toLowerCase() === "se-context") return true;
+  return String(src?.url || "").trim().toLowerCase() === "se-context";
+}
+
 function isLowConfidenceSource(src) {
   if (!src) return true;
   const url = String(src.url || "").trim().toLowerCase();
@@ -43,6 +55,7 @@ export function buildRecentNews(facts, sources, maxItems = 4) {
     if (SIGNAL_LIKE_KEY.test(String(f.key || ""))) continue;
 
     const src = srcByLabel.get(f.sourceLabel);
+    if (isSeSourced(f, src)) continue;
     if (isLowConfidenceSource(src)) continue;
 
     const headline = trimWords(String(f.key || "News"), 8);

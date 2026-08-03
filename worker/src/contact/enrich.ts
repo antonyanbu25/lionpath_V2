@@ -50,6 +50,9 @@ export interface ContactEnrichDisc {
   secondary?: string;
   confidence: "low" | "medium";
   evidence: string[];
+  /** 2 dos + 2 don'ts for running the call with this person, from the DISC read. */
+  dos?: string[];
+  donts?: string[];
   inferred: true;
   source: "linkedin_pdf" | "zoom" | "kaia" | "merged";
 }
@@ -102,6 +105,8 @@ const ENRICH_SCHEMA = {
         secondary: { type: "string", enum: ["D", "I", "S", "C", "unknown"] },
         confidence: { type: "string", enum: ["low", "medium"] },
         evidence: { type: "array", maxItems: 4, items: { type: "string" } },
+        dos: { type: "array", maxItems: 2, items: { type: "string" } },
+        donts: { type: "array", maxItems: 2, items: { type: "string" } },
         inferred: { type: "boolean" },
         source: { type: "string", enum: ["linkedin_pdf", "zoom", "kaia", "merged"] },
       },
@@ -311,6 +316,7 @@ Profile: fill name, role, totalExperience (e.g. "28+ years" from Experience sect
 
 DISC: This is an INFERRED behavioral guess, NOT a formal assessment. primary must be D, I, S, or C (or unknown if insufficient). Include 1-4 short evidence quotes from the source text. confidence: low unless multiple consistent cues; medium only with strong textual evidence. ${linkedInOnly ? "LinkedIn-only sources: confidence MUST be low or medium, never high." : "If Zoom/Kaia dialogue present, medium is allowed for DISC."}
 ${kaiaSpeakerScoped ? "Kaia excerpt is speaker-scoped: use ONLY quotes from speaker-specific segments for DISC evidence when present." : ""}
+dos / donts: exactly 2 each — how to run THIS conversation given the DISC read. Imperative, max 12 words, specific to this person's evidence. A do is a behaviour that lands with them; a don't is one that loses them. Not restatements of the DISC letter, and not generic sales advice.
 source field: ${discSource}
 inferred: true
 

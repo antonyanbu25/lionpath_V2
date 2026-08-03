@@ -24,6 +24,7 @@ import { buildRecentNews } from "./recent-news";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
 import { generateRivalComparison } from "./rivals";
+import { generateCompanyNews } from "./company-news";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
 import { padSources } from "./source-table";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
@@ -353,7 +354,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   });
 
   // Parallel — see the note in runPrepSynthesize.
-  const [prepRaw, guidance, rivals] = await Promise.all([
+  const [prepRaw, guidance, rivals, companyNews] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -389,6 +390,12 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
     }),
+    // Its own grounded search. The research pass surfaces news only incidentally, and the three
+    // paths that used to fill this panel let SE context through as "news" instead.
+    generateCompanyNews(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+    }),
   ]);
   timings.synthesize = Date.now() - t1;
 
@@ -397,7 +404,13 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
   // Build from full research facts + authoritative sources before canonicalize remaps labels.
-  prep.recentNews = buildRecentNews(research.facts, paddedSources);
+  // Grounded search wins; the fact-derived build is the fallback for when it returns nothing.
+  if (companyNews) {
+    prep.recentNews = companyNews.items;
+    prep.newsSources = companyNews.sources;
+  } else {
+    prep.recentNews = buildRecentNews(research.facts, paddedSources);
+  }
   // The two calls above mint "Kaia"/"Zoom"/"LinkedIn PDF" labels after synthesis, so
   // they are invisible to the pass inside synthesizePrep. Idempotent, so this only
   // registers the new virtual sources — it renumbers nothing already canonical.
@@ -525,7 +538,7 @@ export async function runPrepSynthesize(
   // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
   // incumbent, never the finished demo script, so it stays off the critical path. It is
   // also the smaller call, so it finishes first and adds ~0s wall clock.
-  const [prepRaw, guidance, rivals] = await Promise.all([
+  const [prepRaw, guidance, rivals, companyNews] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -561,12 +574,24 @@ export async function runPrepSynthesize(
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
     }),
+    // Its own grounded search. The research pass surfaces news only incidentally, and the three
+    // paths that used to fill this panel let SE context through as "news" instead.
+    generateCompanyNews(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+    }),
   ]);
 
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   const researchFacts = rawInput.researchBundle?.facts || facts;
-  prep.recentNews = buildRecentNews(researchFacts, sources);
+  // Grounded search wins; the fact-derived build is the fallback for when it returns nothing.
+  if (companyNews) {
+    prep.recentNews = companyNews.items;
+    prep.newsSources = companyNews.sources;
+  } else {
+    prep.recentNews = buildRecentNews(researchFacts, sources);
+  }
   // Registers the post-synthesis enrichment labels (Kaia / Zoom / LinkedIn PDF).
   prep = canonicalizePrepSources(prep, { authoritative: sources }).prep;
   if (guidance) prep.demoGuidance = pruneLeadAssets(guidance, assetLabelsOf(prep));

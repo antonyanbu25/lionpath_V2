@@ -6,6 +6,10 @@
 import { listTeamSeEmailsAsync } from "../auth.js";
 import { listAnalysesWithQuality, getPostCallAnalysis } from "../history.js";
 import { dedupeAnalysesByCallIdentity } from "../call-identity.js";
+import {
+  postCallRecordsToAnalyses,
+  hydratePostCallAnalyses,
+} from "./postcall-hydrate.js";
 import { listAccountsForSession } from "./account-service.js";
 import { canSessionAction, sessionToUser } from "./rbac.js";
 import { isManagerRole } from "./types.js";
@@ -71,7 +75,25 @@ export async function getPostCallForSession(session, callId, ownerEmail) {
     if (!(await canViewSeProfile(session, owner))) return null;
   }
 
-  return getPostCallAnalysis(owner, callId);
+  const local = getPostCallAnalysis(owner, callId);
+  if (local) return local;
+
+  const store = getStore();
+  if (!store.getPostCall) return null;
+  try {
+    const postCall = await store.getPostCall(callId);
+    if (!postCall) return null;
+    const ownerUid = await resolveUidForEmail(owner);
+    if (postCall.ownerId && postCall.ownerId !== ownerUid) return null;
+    const [analysis] = await hydratePostCallAnalyses(
+      postCallRecordsToAnalyses([postCall]),
+      store,
+    );
+    return analysis || null;
+  } catch (err) {
+    console.warn("[se-access] Firestore postCall fallback failed:", err?.message || err);
+    return null;
+  }
 }
 
 /**

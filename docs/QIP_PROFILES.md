@@ -1,5 +1,7 @@
 # QIP Profiles
 
+> **Superseded for scoring:** [QIP_SCORING_V2_1.md](./QIP_SCORING_V2_1.md) is the canonical v2.1 scoring spec (credits, sub-parameters, 0–10 scale). This document remains as historical reference for v1.0 profile weights and the core-four amendment.
+
 Canonical scoring profiles for post-call analysis. Extracted from
 `POST_CALL_SPEC_V2.md` §6.2 with the core-four amendment applied.
 

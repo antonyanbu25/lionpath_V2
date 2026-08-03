@@ -13,8 +13,10 @@ import {
   discInferredLabel,
   isSeNotesSource,
   confidenceMeta,
+  renderIcpFitment,
 } from "./precall-render.js";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
+import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
 
 const isUnknown = (v) => {
   const s = String(v || "").trim();
@@ -23,11 +25,18 @@ const isUnknown = (v) => {
   return s === "-" || s === "–" || s === "—";
 };
 
+const VERDICT_LABEL = { below: "Smaller than its rivals", within: "In range", above: "Larger than its rivals" };
+
 const MATURITY_LEVELS = ["Manual", "Basic", "Automated", "AI-assisted"];
 
+// Keyed by the schema's `gap` enum: large | partial | parity. `parity` was missing, so a parity
+// row fell through to `partial` and drew an amber gap on the scale while its pill read "Aligned" —
+// the chart contradicted its own label. small/none/ahead are unreachable from the schema and kept
+// only so a stored brief written against an older enum still renders.
 const GAP_STYLE = {
   large: { them: 1.5, norm: 4, label: "Big gap", color: "#b8544a", bg: "#f6ece7", text: "#b8544a" },
   partial: { them: 2.5, norm: 3.5, label: "Gap", color: "#a9782a", bg: "#f3ecda", text: "#8a7333" },
+  parity: { them: 3.5, norm: 3.5, label: "At par", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
   small: { them: 3, norm: 3.5, label: "Close", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
   none: { them: 3.5, norm: 3.5, label: "At par", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
   ahead: { them: 4, norm: 3, label: "Ahead", color: "#2e897b", bg: "#e3efec", text: "#2e897b" },
@@ -59,18 +68,25 @@ function srcBadge(label, sources) {
   const src = sources?.find((s) => s.label === label);
   if (!src) return "";
   const meta = confidenceMeta(src.confidence);
-  return `<span class="prep-v9-src" title="${esc(meta.word)} confidence">${esc(label)}<span class="prep-v9-src-dot prep-v9-src-dot-${meta.tier}"></span></span>`;
+  // A numbered source keeps its S# — that is what the legend documents, and it is the citation
+  // the sources table is keyed by. Anything else is a reserved label whose raw text is a join key
+  // ("Kaia", "LinkedIn PDF"), so it renders through the display layer instead. Note we must NOT
+  // use sourceDisplayName for numbered sources: it resolves an http source to its publisher
+  // domain, which would replace "S1" with "reuters.com".
+  const text = citationNumber(label) === null ? sourceDisplayName(src) : label;
+  return `<span class="prep-v9-src" title="${esc(meta.word)} confidence">${esc(text)}<span class="prep-v9-src-dot prep-v9-src-dot-${meta.tier}"></span></span>`;
 }
 
 function factTile(f, sources) {
   const empty = isUnknown(f.value);
-  const seNotes = isSeNotesSource(f.sourceLabel);
+  // One badge only. srcBadge already returns the INPUT chip for an SE-sourced fact, so the
+  // separate `isSeNotesSource` branch that used to live here emitted a second identical span —
+  // same predicate, not mutually exclusive — and every SE fact rendered "INPUT INPUT".
   return `<div class="prep-v9-tile${empty ? " prep-v9-tile-empty" : ""}">
     <span class="prep-v9-tile-label">${esc(f.key)}</span>
     <div class="prep-v9-tile-row">
       <span class="prep-v9-tile-val${empty ? " muted" : ""}">${empty ? EMPTY_DISPLAY : esc(f.value)}</span>
       ${!empty ? srcBadge(f.sourceLabel, sources) : ""}
-      ${seNotes && !empty ? '<span class="prep-v9-src prep-v9-src-input">INPUT</span>' : ""}
     </div>
   </div>`;
 }
@@ -100,18 +116,52 @@ function splitListValue(value) {
     .filter(Boolean);
 }
 
+/**
+ * The channels every brief reports on, in order. Mirrors CHANNELS in
+ * worker/src/postcall/arr-inputs.ts so pre-call and post-call talk about the same six.
+ * `match` is what marks a channel present in the evidence we have.
+ */
+const STACK_CHANNELS = [
+  { label: "Email", match: /\bemail\b/i },
+  { label: "Chat", match: /\b(?:live\s*)?chat\b|messaging/i },
+  { label: "Voice", match: /\bvoice\b|\bphone\b|\bcall centre\b|\bcall center\b/i },
+  { label: "Social", match: /\bsocial\b|twitter|facebook|instagram|\bx\.com\b/i },
+  { label: "WhatsApp", match: /whats\s*app/i },
+  { label: "Self-serve", match: /self[-\s]?serve|self[-\s]?service|help\s*cent|knowledge\s*base|\bportal\b|\bfaq\b/i },
+];
+
+/**
+ * Which of the fixed channels the evidence actually supports.
+ *
+ * Scoped to evidence that speaks to channels — not the whole brief, or every channel would look
+ * present the moment the word "email" appeared anywhere in it.
+ */
+function verifiedStackChannels(prep) {
+  const haystack = [
+    signalByLabel(prep.signals, /web chat|chat widget/i)?.value,
+    signalByLabel(prep.signals, /support portal/i)?.value,
+    (prep.fitSnapshot || []).find((r) => /channel/i.test(r.label || ""))?.thisCompany,
+    (prep.supportJD?.bullets || []).join(" "),
+  ]
+    .filter((v) => !isUnknown(v))
+    .join(" · ");
+  return new Set(STACK_CHANNELS.filter(({ match }) => match.test(haystack)).map((c) => c.label));
+}
+
+/**
+ * A fixed six rows, each verified or dotted — never a list assembled from prose.
+ *
+ * This used to comma-split `fitSnapshot[].thisCompany` and whole 12-word signal *values*, so the
+ * column filled with things that are not channels: "Live chat active", "Evaluating AI Agent",
+ * "Digital banking". Splitting free text on commas cannot yield a channel list, and the column
+ * silently changed shape per brief. Now the vocabulary is fixed and only presence is inferred,
+ * which is what the card's own "Dotted boxes are things we could not verify" already promised.
+ */
 function buildStackChannels(prep) {
-  const chat = signalByLabel(prep.signals, /web chat|chat widget/i);
-  const portal = signalByLabel(prep.signals, /support portal/i);
-  const channelRow = (prep.fitSnapshot || []).find((r) => /channel/i.test(r.label || ""));
-  const fromFit = splitListValue(channelRow?.thisCompany);
-  const fromSignals = [
-    ...splitListValue(chat?.value),
-    ...splitListValue(portal?.value),
-  ].filter(Boolean);
-  const channels = [...new Set([...fromFit, ...fromSignals])];
-  if (!channels.length) return [stackChip("Channels not found", "missing")];
-  return channels.map((c) => stackChip(c, "teal"));
+  const present = verifiedStackChannels(prep);
+  return STACK_CHANNELS.map(({ label }) =>
+    stackChip(label, present.has(label) ? "teal" : "missing"),
+  );
 }
 
 function buildStackIntegrations(prep) {
@@ -159,11 +209,13 @@ function renderSupportStack(prep) {
   const integrations = buildStackIntegrations(prep);
   const platform = buildPlatformBox(prep);
   const ai = buildAiLayerBox(prep);
+  // Only the thin-incumbent prompt survives — it tells the SE something actionable about THIS
+  // account. The other branch asserted a fixed Freshworks pitch ("a consolidation story, not an
+  // add-on") on every brief regardless of what research found, and its two ternary arms returned
+  // the identical string, so the condition never did anything anyway.
   const stackNote = platform.thin
     ? "Sketch this live on the call. Naming the incumbent is the highest-value thing you can leave with — everything else improves once we have it."
-    : prep.incumbent?.displacement
-      ? `Freshworks replaces the platform box and adds the missing AI layer — a consolidation story, not an add-on.`
-      : "Freshworks replaces the platform box and adds the missing AI layer — a consolidation story, not an add-on.";
+    : "";
   return `<div class="prep-v9-card prep-v9-stack-card">
     <h2 class="prep-v9-card-title">Their support stack</h2>
     <p class="muted prep-v9-card-sub">Dotted boxes are things we could not verify.</p>
@@ -184,10 +236,14 @@ function renderSupportStack(prep) {
         ${integrations.join("")}
       </div>
     </div>
-    <div class="prep-v9-stack-note">
+    ${
+      stackNote
+        ? `<div class="prep-v9-stack-note">
       <span class="prep-v9-stack-note-icon" aria-hidden="true">◆</span>
       <p>${esc(stackNote)}</p>
-    </div>
+    </div>`
+        : ""
+    }
   </div>`;
 }
 
@@ -203,7 +259,9 @@ const UNKNOWN_CHECKS = [
   {
     field: "Support channels",
     question: "How can customers reach you — chat, phone, email?",
-    missing: (prep) => buildStackChannels(prep).some((h) => h.includes("Channels not found")),
+    // Every channel now renders either verified or dotted, so "missing" means none of the six
+    // could be verified — not the absence of a placeholder chip that no longer exists.
+    missing: (prep) => verifiedStackChannels(prep).size === 0,
   },
   {
     field: "Team size",
@@ -256,16 +314,29 @@ function buildUnknownsList(prep) {
 function renderUnknownsGaps(prep) {
   const unknowns = buildUnknownsList(prep);
   if (!unknowns.length) return "";
+  // Which gaps are already in the kit. buildUnknownsList derives rows from signals/facts and never
+  // consults discoveryKit, so a row used to look untouched after being added — the "+" stayed live
+  // and the only sign anything happened was the kit growing further down the page.
+  const inKit = new Set(
+    (prep.discoveryKit || []).map((k) => String(k.question || "").trim().toLowerCase()),
+  );
   const subtitle = `${unknowns.length} gap${unknowns.length === 1 ? "" : "s"}. Each one is a question.`;
   const rows = unknowns
     .map(
-      (u) => `<div class="prep-v9-unknown-row">
+      (u) => {
+        const added = inKit.has(u.question.trim().toLowerCase());
+        return `<div class="prep-v9-unknown-row${added ? " prep-v9-unknown-row-added" : ""}">
         <div class="prep-v9-unknown-body">
           <div class="prep-v9-unknown-field">${esc(u.field)}</div>
           <div class="prep-v9-unknown-question">${esc(u.question)}</div>
         </div>
-        <button type="button" class="prep-v9-unknown-add" data-unknown-question="${esc(u.question)}" title="Add to discovery kit" aria-label="Add to my questions">＋</button>
-      </div>`,
+        ${
+          added
+            ? '<span class="prep-v9-unknown-added" title="Already in your discovery kit">Added</span>'
+            : `<button type="button" class="prep-v9-unknown-add" data-unknown-question="${esc(u.question)}" title="Add to discovery kit" aria-label="Add to my questions">＋</button>`
+        }
+      </div>`;
+      },
     )
     .join("");
   return `<div class="prep-v9-card prep-v9-unknowns-card">
@@ -281,7 +352,7 @@ function renderUnknownsGaps(prep) {
 }
 
 function maturityRows(fitSnapshot) {
-  const rows = (fitSnapshot || []).slice(0, 5);
+  const rows = fitSnapshot || [];
   if (!rows.length) return "";
   const body = rows
     .map((ft, rowIdx) => {
@@ -290,10 +361,14 @@ function maturityRows(fitSnapshot) {
       const norm = g.norm;
       const bandLeft = posPct(Math.min(them, norm));
       const bandWidth = `${Math.abs(norm - them) * 25}%`;
+      // No sublabel. It rendered `thisCompany`, which is model free text capped at 8 words and
+      // never vocabulary-checked, so it drifted to whatever the context happened to say —
+      // "Digital banking" under Channel coverage, "Banking operations" under Agent Assist. The
+      // axis name plus the position on the scale is the whole signal; a prose caption under a
+      // fixed axis only invited the model to redefine the axis.
       return `<div class="prep-v9-maturity-row" data-prep-v9-stagger="${rowIdx}">
         <div class="prep-v9-maturity-label">
           <span class="prep-v9-maturity-name">${esc(ft.label)}</span>
-          <span class="prep-v9-maturity-them muted">${esc(ft.thisCompany || "Unknown")}</span>
         </div>
         <div class="prep-v9-maturity-track" aria-hidden="true">
           <span class="prep-v9-maturity-rail"></span>
@@ -301,7 +376,6 @@ function maturityRows(fitSnapshot) {
           <span class="prep-v9-maturity-norm" style="left:${posPct(norm)}"></span>
           <span class="prep-v9-maturity-them-dot" style="left:${posPct(them)}"></span>
         </div>
-        <span class="prep-v9-gap-pill" style="color:${g.text};background:${g.bg}">${esc(ft.gapVerdict || g.label)}</span>
       </div>`;
     })
     .join("");
@@ -319,23 +393,26 @@ function maturityRows(fitSnapshot) {
     <div class="prep-v9-maturity-head">
       <span></span>
       <div class="prep-v9-maturity-levels">${MATURITY_LEVELS.map((l) => `<span>${esc(l)}</span>`).join("")}</div>
-      <span class="prep-v9-maturity-gap-label">Gap</span>
     </div>
     ${body}
   </div>`;
 }
 
+/**
+ * "How big is this fish?" — the prospect against sourced market rivals.
+ *
+ * Replaces a regex-over-facts version that mislabelled its own rows: `size` matched the FIRST
+ * fact key containing size|employee|agent|team, which is always "Company size" — whose value is
+ * businessContext.users — so "Team size" showed "Millions of interactions annually". "Funding
+ * raised" matched "Ownership" the same way.
+ *
+ * Everything here comes from prep.rivals, where each figure is traceable to a citation and the
+ * range and verdict are derived server-side rather than asked of the model.
+ */
 function benchmarkRows(prep) {
-  const agents = prep.companySizeAgents?.agents;
-  const facts = resolveDisplayFacts(prep);
-  const funding = facts.find((f) => /fund|raised|ownership/i.test(f.key))?.value;
-  const size = facts.find((f) => /size|employee|agent|team/i.test(f.key))?.value;
-  const items = [
-    agents && !isUnknown(agents) ? { label: "Support agents", value: agents } : null,
-    funding && !isUnknown(funding) ? { label: "Funding raised", value: funding } : null,
-    size && !isUnknown(size) ? { label: "Team size", value: size } : null,
-  ].filter(Boolean);
-  if (!items.length) {
+  const rivals = prep.rivals;
+  const axes = rivals?.axes || [];
+  if (!axes.length) {
     return `<div class="prep-v9-card">
       <h2 class="prep-v9-card-title">How big is this fish?</h2>
       <div class="prep-v9-empty-box">
@@ -344,39 +421,35 @@ function benchmarkRows(prep) {
       </div>
     </div>`;
   }
+  const rows = axes
+    .map((axis) => {
+      const own = axis.prospect;
+      const verdict = own && axis.verdict ? VERDICT_LABEL[axis.verdict] : null;
+      return `<div class="prep-v9-benchmark">
+        <div class="prep-v9-benchmark-head">
+          <span>${esc(axis.label)}${axis.unit ? ` <span class="muted">(${esc(axis.unit)})</span>` : ""}</span>
+          <strong>${own ? esc(own.display) : `<span class="muted">${EMPTY_DISPLAY}</span>`}</strong>
+        </div>
+        <div class="prep-v9-benchmark-range muted">
+          Rivals ${esc(axis.min.display)} – ${esc(axis.max.display)}
+          <span class="prep-v9-benchmark-n">${axis.sourcedCount} sourced</span>
+          ${verdict ? `<span class="prep-v9-benchmark-verdict prep-v9-benchmark-${esc(axis.verdict)}">${esc(verdict)}</span>` : ""}
+          ${own ? srcBadge(own.sourceLabel, rivals.sources) : ""}
+        </div>
+        ${axis.rationale ? `<p class="prep-v9-benchmark-why muted">${esc(axis.rationale)}</p>` : ""}
+      </div>`;
+    })
+    .join("");
+  const names = (rivals.rivals || []).map((r) => esc(r.name)).join(" · ");
   return `<div class="prep-v9-card">
     <h2 class="prep-v9-card-title">How big is this fish?</h2>
-    <div class="prep-v9-benchmark-list">${items
-      .map(
-        (b) => `<div class="prep-v9-benchmark">
-          <div class="prep-v9-benchmark-head"><span>${esc(b.label)}</span><strong>${esc(b.value)}</strong></div>
-        </div>`,
-      )
-      .join("")}</div>
+    ${names ? `<p class="muted prep-v9-card-sub">Against ${names}</p>` : ""}
+    <div class="prep-v9-benchmark-list">${rows}</div>
   </div>`;
 }
 
 function renderRecentNews(recentNews, sources) {
   const items = (recentNews || []).filter((n) => !isUnknown(n.detail) && !isUnknown(n.headline));
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
-    body: JSON.stringify({
-      sessionId: "c9d8c5",
-      runId: "post-fix",
-      hypothesisId: "E",
-      location: "precall-brief-v9.js:renderRecentNews",
-      message: "render recent news",
-      data: {
-        inputCount: (recentNews || []).length,
-        renderedCount: items.length,
-        headlines: items.slice(0, 3).map((n) => n.headline),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!items.length) {
     return `<div class="prep-v9-empty-box"><p class="muted">No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener.</p></div>`;
   }
@@ -420,22 +493,49 @@ function attendeeRow(p, i, sources, renderOpts) {
   const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
   const linkedIn = isLinkedInEnrichedProspect(p, renderOpts, i);
   const summary = String(p.summary || "").trim();
-  const behaviour = (p.discHint?.evidence || []).slice(0, 3).map((text, idx) => ({
-    verb: ["Ask", "Watch", "Match"][idx] || "Note",
-    text,
-  }));
-  const hasDisc = !!String(p.discHint?.primary || "").trim();
+  const dos = (p.discHint?.dos || []).filter((d) => !isUnknown(d)).slice(0, 2);
+  const donts = (p.discHint?.donts || []).filter((d) => !isUnknown(d)).slice(0, 2);
+  const primary = String(p.discHint?.primary || "").trim();
+  const hasDisc = !!primary && primary !== "unknown";
+  const name = isUnknown(p.name) ? "" : String(p.name);
+  const role = isUnknown(p.role) ? "" : String(p.role);
+
+  /**
+   * A seat only gets the DISC grid when we actually have a behavioural read.
+   *
+   * The grid used to render unconditionally, so a seat padded to match the typed email count —
+   * no LinkedIn PDF attached, no enrichment run, therefore no discHint at all — showed an empty
+   * 2x2 with "No DISC signal yet" and a name of "unknown". (The literal string "unknown", which
+   * is why the `p.name || "Prospect"` fallback never fired.)
+   *
+   * The test is `linkedIn || hasDisc`, not `linkedIn` alone: enrich.ts can infer DISC from Zoom or
+   * Kaia dialogue as well as from a PDF (discHint.source is one of linkedin_pdf|zoom|kaia|merged),
+   * and gating strictly on LinkedIn would throw away a legitimate read from a recorded call.
+   */
+  if (!linkedIn && !hasDisc) {
+    return `<div class="prep-v9-attendee prep-v9-attendee-thin">
+      <div class="prep-v9-attendee-main">
+        <span class="prep-v9-attendee-name">${esc(name || renderOpts?.prospectEmails?.[i] || "Prospect")}</span>
+        <p class="muted prep-v9-attendee-role">${esc(role || "No LinkedIn attached — attach a PDF to profile them")}</p>
+      </div>
+    </div>`;
+  }
+
   return `<div class="prep-v9-attendee">
     <div class="prep-v9-attendee-disc"${hasDisc ? ' data-prep-v9-animate="disc-chart"' : ""}>${discSvg(p)}</div>
     <div class="prep-v9-attendee-main">
-      <span class="prep-v9-attendee-name">${esc(p.name || "Prospect")}</span>
-      <p class="muted prep-v9-attendee-role">${esc(p.role || "—")}</p>
+      <span class="prep-v9-attendee-name">${esc(name || "Prospect")}</span>
+      <p class="muted prep-v9-attendee-role">${esc(role || "—")}</p>
       ${summary && !isUnknown(summary) ? `<p class="prep-v9-attendee-summary">${esc(summary.slice(0, 220))}${summary.length > 220 ? "…" : ""}</p>` : ""}
       ${linkedIn && touchpoints.length ? `<div class="prep-v9-touchpoints"><span class="muted">Has used</span>${touchpoints.map((t) => `<span class="prep-v9-touch-chip">${esc(t)}</span>`).join("")}</div>` : ""}
     </div>
-    <div class="prep-v9-attendee-behaviour">${behaviour
-      .map((b) => `<div class="prep-v9-beh-row"><span class="prep-v9-beh-verb">${esc(b.verb)}</span><span>${esc(b.text)}</span></div>`)
-      .join("")}</div>
+    <div class="prep-v9-attendee-behaviour">${
+      dos.length || donts.length
+        ? `${dos.map((d) => `<div class="prep-v9-beh-row"><span class="prep-v9-beh-verb prep-v9-beh-do">Do</span><span>${esc(d)}</span></div>`).join("")}${donts
+            .map((d) => `<div class="prep-v9-beh-row"><span class="prep-v9-beh-verb prep-v9-beh-dont">Don't</span><span>${esc(d)}</span></div>`)
+            .join("")}`
+        : '<p class="muted prep-v9-beh-empty">No behavioural read yet — listen for pace and detail in the first five minutes.</p>'
+    }</div>
   </div>`;
 }
 
@@ -451,10 +551,14 @@ function renderAttendees(prospects, sources, renderOpts) {
 }
 
 function renderHowToRead() {
+  // Documents every badge that can appear. The named entry matters: a badge reading "Kaia" or
+  // "LinkedIn PDF" is not a citation number and never will be, so leaving it undocumented made
+  // those look like a bug in the S# numbering rather than a different kind of provenance.
   return `<div class="prep-v9-read-legend muted">
     <span class="prep-v9-read-kicker">How to read this</span>
     <span><span class="prep-v9-src">S#<span class="prep-v9-src-dot prep-v9-src-dot-high"></span></span> AI-researched · confidence</span>
     <span><span class="prep-v9-src prep-v9-src-input">INPUT</span> From your input</span>
+    <span><span class="prep-v9-src">Kaia<span class="prep-v9-src-dot prep-v9-src-dot-high"></span></span> Named source — a call, a PDF, not a web citation</span>
     <span><span class="prep-v9-missing-box"></span> Not found — ask on the call</span>
   </div>`;
 }
@@ -507,21 +611,18 @@ function renderResearchExtras(sources, open) {
   </details>`;
 }
 
+/**
+ * The ICP tile. Delegates to the criteria tick list in precall-render.js.
+ *
+ * The v9 block used to render `icpFit.highlights` and `gaps` in a <details>. `highlights` was
+ * removed from the schema when the criteria replaced it (the tick list shows the met criteria
+ * directly), so that panel had become permanently empty — and the tick list itself was dead code,
+ * reachable only from the uncalled renderDiscoveryTab.
+ */
 function renderIcpBlock(icpFit, sources) {
   if (!icpFit) return "";
-  const src = sources?.[0];
-  return `<div class="prep-icp-block prep-v9-icp">
-    <div class="prep-icp-head">
-      <span class="dew-mono-label">ICP fitment</span>
-      <span class="prep-icp-verdict prep-icp-pill">${esc(icpFit.verdict || "Unknown")}</span>
-      ${src ? srcBadge(src.label, sources) : ""}
-    </div>
-    <details class="prep-icp-details"><summary class="prep-icp-details-summary">Highlights &amp; gaps</summary>
-      <div class="prep-icp-details-body">
-        ${(icpFit.highlights || []).length ? `<ul class="prep-icp-list">${icpFit.highlights.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
-        ${(icpFit.gaps || []).length ? `<ul class="prep-icp-list prep-icp-gaps">${icpFit.gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}
-      </div>
-    </details>
+  return `<div class="prep-v9-card prep-v9-icp-card">
+    ${renderIcpFitment(icpFit, sources)}
   </div>`;
 }
 
@@ -672,17 +773,17 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
         ${domain ? `<div class="prep-v9-website-row"><span class="prep-v9-tile-label">Website</span><a class="prep-v9-domain-link" href="https://${esc(domain)}" target="_blank" rel="noopener noreferrer">${esc(domain)} ↗</a></div>` : ""}
         <div class="prep-v9-tile-grid">${firm.map((f) => factTile(f, sources)).join("")}</div>
         ${fin.length ? `<div class="prep-v9-section-kicker">Financials &amp; funding</div><div class="prep-v9-tile-grid prep-v9-tile-grid-3">${fin.map((f) => factTile(f, sources)).join("")}</div>` : ""}
-        ${renderIcpBlock(prep.icpFit, sources)}
       </div>
       <div class="prep-v9-card">
         <h2 class="prep-v9-card-title">Recent news</h2>
-        ${renderRecentNews(prep.recentNews, sources)}
+        ${renderRecentNews(prep.recentNews, prep.newsSources || sources)}
       </div>
     </div>
     <div class="prep-v9-grid-2">
-      ${maturityRows(prep.fitSnapshot)}
+      ${renderIcpBlock(prep.icpFit, sources)}
       ${benchmarkRows(prep)}
     </div>
+    ${maturityRows(prep.fitSnapshot)}
     ${renderSupportStack(prep)}
     ${renderUnknownsGaps(prep)}
     ${renderAttendees(prep.prospects, sources, renderOpts)}

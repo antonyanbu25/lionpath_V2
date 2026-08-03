@@ -27,6 +27,15 @@ import { countPrepsGenerated, loadLocalBriefs } from "./precall.js";
 import { buildLaunchpadCallMetrics } from "./calls-list-view.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
+import { resolveCallTitleFromRecord } from "./call-type-labels.js";
+import {
+  hasCoachingAnalysis,
+  postCallRecordsToAnalyses,
+  hydratePostCallAnalyses,
+  loadTeamPostCallsFromStore,
+} from "./domain/postcall-hydrate.js";
+import { loadScoreOverridesForSession } from "./domain/score-override-service.js";
+import { applyScoreOverridesToScorecard } from "./shared/qip-scorecard-normalize.js";
 import { getSessionGreeting } from "./greeting.js";
 import {
   normalizeDimensionKey,
@@ -85,18 +94,21 @@ const TREND_TYPE_COLORS = [
   { stroke: "#D97706", dash: "6 3" },
 ];
 
-/** @param {object} rec */
-function scorecardFromRecord(rec) {
+/** @param {object} rec @param {object[]} [overrides] */
+function scorecardFromRecord(rec, overrides = []) {
   const scorecard = rec.scorecard || rec.result?.scorecard;
   const meta = rec.analysisMeta || rec.result?.analysisMeta || {};
   if (!scorecard?.lines?.length) return null;
-  return {
+  const base = {
     callType: scorecard.callType || meta.callType || "demo",
-    rubricVersion: scorecard.rubricVersion || meta.rubricVersion || "1.0",
+    rubricVersion: scorecard.rubricVersion || meta.rubricVersion || "2.1",
+    overall: scorecard.overall ?? (typeof scorecard.rawScore === "number" ? scorecard.rawScore / 10 : null),
     lines: scorecard.lines,
     provisional: scorecard.provisional ?? meta.provisional,
     confidence: scorecard.confidence ?? meta.analysisConfidence,
+    callId: rec.id,
   };
+  return applyScoreOverridesToScorecard(base, overrides);
 }
 
 /** Shadow + low-confidence exclusion for coaching averages (§6.6 / §9). */
@@ -208,9 +220,14 @@ function collectWeakestThemeReceipts(coachingRecords, themeKey, limit = COACHING
   for (const rec of coachingRecords) {
     const sc = scorecardFromRecord(rec);
     if (!sc) continue;
-    const line = (sc.lines || []).find((l) => l.themeKey === themeKey && l.applicable);
+    const line = (sc.lines || []).find(
+      (l) => l.themeKey === themeKey && l.applicable !== false && !l.evidenceUnavailable && !l.modelOmitted,
+    );
     if (!line) continue;
-    const evidence = (line.evidence || line.evidenceJson || []).filter((e) => e?.quote);
+    const evidence = (line.subParameters || [])
+      .flatMap((sp) => sp?.evidence || [])
+      .concat(line.evidence || line.evidenceJson || [])
+      .filter((e) => e?.quote);
     if (!evidence.length) continue;
     const ev = evidence[0];
     receipts.push({
@@ -218,7 +235,7 @@ function collectWeakestThemeReceipts(coachingRecords, themeKey, limit = COACHING
       company: companyFromRecord(rec),
       timestamp: rec.timestamp,
       themeKey,
-      lineScore: line.score,
+      lineScore: line.grade ?? line.score,
       quote: ev.quote,
       atS: ev.atS,
       provisional: !!sc.provisional,
@@ -252,7 +269,7 @@ function buildScoredCallsList(deduped) {
       return {
         id: rec.id,
         company,
-        callTitle: rec.analysis?.callSummary?.headline || rec.title || company,
+        callTitle: resolveCallTitleFromRecord(rec, { accountName: company }),
         timestamp: rec.timestamp,
         callType,
         callTypeLabel: CALL_TYPE_LABELS[callType] || callType,
@@ -343,7 +360,7 @@ export function aggregateQualityMetrics(analyses) {
         ? typeComposite([sc], sc.callType, { includeIneligible: true })
         : { score: null, callType: sc?.callType };
       const perCallSpine = sc ? spineComposite([sc], { includeIneligible: true }).score : null;
-      const trendScore = perCall.score ?? perCallSpine;
+      const trendScore = sc?.overall ?? perCall.score ?? perCallSpine;
       if (trendScore != null) scoreBands[qipScoreBand(trendScore)] += 1;
       const mom = r.analysis?.momentum || {};
       const company = companyFromRecord(r);
@@ -371,7 +388,9 @@ export function aggregateQualityMetrics(analyses) {
       trendByType,
       weakestReceipts,
       scoredCalls,
-      avgOverall: spine.score,
+      avgOverall:
+        spine.score ??
+        (byType.length === 1 ? byType[0].score : null),
       dimensions,
       bestDimension,
       worstDimension,
@@ -1393,34 +1412,6 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   });
 }
 
-function postCallRecordsToAnalyses(records) {
-  return (records || []).map((r) => ({
-    id: r.id,
-    timestamp: r.createdAt,
-    title: r.title,
-    zoomLink: r.zoomLink,
-    analysis: r.analysis,
-    result: { analysis: r.analysis, transcriptMeta: r.transcriptMeta },
-  }));
-}
-
-async function loadTeamPostCallsFromStore(session) {
-  try {
-    const store = getStore();
-    if (session?.isOrgDirector && session?.orgId && store.listPostCallsByOrg) {
-      const records = await store.listPostCallsByOrg(session.orgId);
-      if (records?.length) return postCallRecordsToAnalyses(records);
-    }
-    if (session?.teamId) {
-      const records = await store.listPostCallsByTeam(session.teamId);
-      if (records?.length) return postCallRecordsToAnalyses(records);
-    }
-  } catch (err) {
-    console.warn("Could not load team postCalls from domain store:", err);
-  }
-  return [];
-}
-
 async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
   const { dummyUidForEmail } = await import("./domain/seed-dev.js");
   const emailToUid = new Map();
@@ -1477,7 +1468,7 @@ async function buildTeamMetrics(session) {
 
     if (!analyses.length && storePostCalls.length && uid) {
       const fromStore = storePostCalls.filter((r) => r.ownerId === uid);
-      analyses = postCallRecordsToAnalyses(fromStore).filter((r) => r.analysis?.qualityCoach);
+      analyses = fromStore.filter(hasCoachingAnalysis);
     }
 
     const deduped = dedupeAnalysesByCallIdentity(analyses);
@@ -1499,7 +1490,7 @@ async function buildTeamMetrics(session) {
 
   if (!allAnalyses.length && storePostCalls.length) {
     const dedupedStore = dedupeAnalysesByCallIdentity(
-      postCallRecordsToAnalyses(storePostCalls).filter((r) => r.analysis?.qualityCoach)
+      storePostCalls.filter(hasCoachingAnalysis),
     );
     allAnalyses.push(...dedupedStore);
   }
@@ -1631,6 +1622,7 @@ function buildTeamCoachingQueue(allDeduped) {
 
 async function buildManagerTeamView(session) {
   const base = await buildTeamMetrics(session);
+  const scoreOverrides = await loadScoreOverridesForSession(session);
   const isOrgView = session?.isOrgDirector === true;
   const seEmails = session ? await listTeamSeEmailsAsync(session) : listTeamSeEmails();
   const storePostCalls = await loadTeamPostCallsFromStore(session);
@@ -1648,7 +1640,7 @@ async function buildManagerTeamView(session) {
     const uid = emailToUid.get(email);
     if (!analyses.length && storePostCalls.length && uid) {
       const fromStore = storePostCalls.filter((r) => r.ownerId === uid);
-      analyses = postCallRecordsToAnalyses(fromStore).filter((r) => r.analysis?.qualityCoach);
+      analyses = fromStore.filter(hasCoachingAnalysis);
     }
     const deduped = dedupeAnalysesByCallIdentity(analyses).map((rec) => ({
       ...rec,
@@ -1659,14 +1651,14 @@ async function buildManagerTeamView(session) {
 
     const eligibleRecords = deduped.filter(isCoachingQueueEligible);
     allEligibleRecords.push(...eligibleRecords);
-    const scorecards = eligibleRecords.map(scorecardFromRecord).filter(Boolean);
+    const scorecards = eligibleRecords.map((rec) => scorecardFromRecord(rec, scoreOverrides)).filter(Boolean);
     seScorecardsByEmail.set(email, scorecards);
     allEligibleScorecards.push(...scorecards);
   }
 
   if (!allDeduped.length && storePostCalls.length) {
     const dedupedStore = dedupeAnalysesByCallIdentity(
-      postCallRecordsToAnalyses(storePostCalls).filter((r) => r.analysis?.qualityCoach),
+      storePostCalls.filter(hasCoachingAnalysis),
     );
     allDeduped.push(...dedupedStore);
   }
@@ -2162,4 +2154,9 @@ export async function renderDashboard(container, email, opts = {}) {
   await renderSeLaunchpad(container, email, opts);
 }
 
-export { buildManagerTeamView, renderManagerHeatmap, renderManagerFilterBanner, teamThemeAveragesFromAccess as buildTeamThemeAverages };
+export {
+  buildManagerTeamView,
+  renderManagerHeatmap,
+  renderManagerFilterBanner,
+  teamThemeAveragesFromAccess as buildTeamThemeAverages,
+};

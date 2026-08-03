@@ -11,7 +11,6 @@ export {
   buildScorecardSystemPrompt,
   normalizeScorecardLines,
   buildScorecardDraft,
-  UNANCHORED_CONFIDENCE_CAP,
   type ScorecardDraft,
   type ScorecardLineDraft,
   type PostCallScorecardInput,

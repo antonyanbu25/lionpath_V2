@@ -8,15 +8,15 @@ import { esc } from "../shared.js";
 const scorecardsA = [
   {
     callType: "demo",
-    rubricVersion: "1.0",
+    rubricVersion: "2.1",
     provisional: false,
     confidence: 0.9,
     lines: [
-      { themeKey: "call_flow", score: 80, maxScore: 100, applicable: true, weight: 10 },
-      { themeKey: "customer_engagement", score: 70, maxScore: 100, applicable: true, weight: 10 },
-      { themeKey: "objections", score: 60, maxScore: 100, applicable: true, weight: 5 },
-      { themeKey: "camera_on", score: 90, maxScore: 100, applicable: true, weight: 5 },
-      { themeKey: "comp_pitch", score: 48, maxScore: 100, applicable: true, weight: 5 },
+      { themeKey: "call_flow", grade: 8, credit: 3, category: "communication_control", applicable: true },
+      { themeKey: "customer_engagement", grade: 7, credit: 3, category: "communication_control", applicable: true },
+      { themeKey: "objections", grade: 6, credit: 2, category: "credibility_objections", applicable: true },
+      { themeKey: "camera_on", grade: 9, credit: 2, category: "communication_control", applicable: true },
+      { themeKey: "comp_pitch", grade: 4.8, credit: 2, category: "business_value", applicable: true },
     ],
   },
 ];
@@ -24,15 +24,15 @@ const scorecardsA = [
 const scorecardsB = [
   {
     callType: "demo",
-    rubricVersion: "1.0",
+    rubricVersion: "2.1",
     provisional: false,
     confidence: 0.85,
     lines: [
-      { themeKey: "call_flow", score: 75, maxScore: 100, applicable: true, weight: 10 },
-      { themeKey: "customer_engagement", score: 72, maxScore: 100, applicable: true, weight: 10 },
-      { themeKey: "objections", score: 55, maxScore: 100, applicable: true, weight: 5 },
-      { themeKey: "camera_on", score: 88, maxScore: 100, applicable: true, weight: 5 },
-      { themeKey: "comp_pitch", score: 44, maxScore: 100, applicable: true, weight: 5 },
+      { themeKey: "call_flow", grade: 7.5, credit: 3, category: "communication_control", applicable: true },
+      { themeKey: "customer_engagement", grade: 7.2, credit: 3, category: "communication_control", applicable: true },
+      { themeKey: "objections", grade: 5.5, credit: 2, category: "credibility_objections", applicable: true },
+      { themeKey: "camera_on", grade: 8.8, credit: 2, category: "communication_control", applicable: true },
+      { themeKey: "comp_pitch", grade: 4.4, credit: 2, category: "business_value", applicable: true },
     ],
   },
 ];
@@ -67,7 +67,7 @@ const checks = [
   ["column summary more prominent", spineHtml.includes("team-heatmap-cell--col-summary")],
   ["demo profile columns in heatmap", demoHtml.includes("Comp pitch")],
   ["filter banner names call type", bannerHtml.includes("Demo only")],
-  ["comp pitch team avg computed", compColAvg != null && compColAvg < 50],
+  ["comp pitch team avg computed", compColAvg != null && compColAvg < 5],
   ["esc helper wired", esc("<test>") === "&lt;test&gt;"],
 ];
 

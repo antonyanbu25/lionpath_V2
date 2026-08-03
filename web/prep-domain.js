@@ -101,16 +101,6 @@ export function applyAutoCompanyDomain(domainField, rawEmails, opts = {}) {
   }
 
   const display = formatCompanyWebsiteDisplay(inferred);
-  // setDomainValue() dispatches input/fwInput synchronously, which
-  // onCompanyDomainInput() (app.js) catches to detect manual edits. Update
-  // opts.lastAutoValue *before* that dispatch so the nested handler sees the
-  // value it's about to compare against already in sync — otherwise it
-  // always reads the stale pre-update value, mismatches, and incorrectly
-  // marks the field as user-edited on every auto-fill (blocking all further
-  // auto-fills after the first, which is invisible on paste — one shot,
-  // already correct — but breaks typing, where the domain regex can match a
-  // partial/wrong domain mid-keystroke and then get stuck).
-  opts.lastAutoValue = inferred;
   setDomainValue(domainField, display);
   return { applied: inferred, lastAutoValue: inferred };
 }
