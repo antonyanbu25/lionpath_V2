@@ -10,7 +10,7 @@
 |-------|-------|
 | **Base branch** | `2.0.8.1-merge` @ `930b8d9487b86eb7decca4696a8222618fd13023` |
 | **Branch** | `2.9` |
-| **HEAD** | `0ba748a82e2cf2bb9d484b804da0947b731196ca` |
+| **HEAD** | `e096daa` (docs metadata sync; see commits below) |
 | **Remote** | `antony` → `github.com/antonyanbu25/lionpath_V2` |
 | **Tracks** | `antony/2.9` |
 | **Date** | 2026-08-03 |
@@ -26,6 +26,7 @@
 | `bf2af13cc7f2842d3e758e2cd1e6c1b1448e5905` | docs: add RELEASE_2.9 branch reference for precall UI changes. |
 | `6febe3f004c5a7a82d1629ef336cdb2021999634` | Remove add-to-kit controls from unknowns gaps section. |
 | `0ba748a82e2cf2bb9d484b804da0947b731196ca` | Remove AI disclaimer banner from precall brief tabs; expand this AMD doc. |
+| `e096daa` | docs: sync RELEASE_2.9 metadata with 0ba748a banner removal. |
 
 **Diff vs base (`2.0.8.1-merge..HEAD`):** 7 files, +569 / −90 lines.
 
@@ -556,4 +557,4 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 
 ---
 
-*Last updated: 2026-08-03 — branch `2.9` @ `0ba748a`.*
+*Last updated: 2026-08-03 — branch `2.9` @ `e096daa`.*
