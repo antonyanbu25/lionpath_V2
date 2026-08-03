@@ -1688,21 +1688,6 @@ async function warnIfWorkerDown() {
     const config = await res.json();
     const workerBuild = String(config.workerBuild || "");
     const schemaFix = config.geminiSchemaEnumFix || null;
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d8cd23" },
-      body: JSON.stringify({
-        sessionId: "d8cd23",
-        runId: "post-fix",
-        hypothesisId: "F",
-        location: "app.js:warnIfWorkerDown:config",
-        message: "worker config loaded",
-        data: { portalBuild, workerBuild, schemaFix },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     if (!schemaFix) {
       banner.setAttribute("type", "warning");
       banner.textContent =
@@ -1724,20 +1709,6 @@ async function warnIfWorkerDown() {
         `Speed fixes not deployed (portal: ${portalBuild || "unknown"}, worker: ${workerBuild || "missing"}). ` +
         "On VPS run: cd /opt/se-singha-paathai/deploy/vps && bash update.sh";
       banner.hidden = false;
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-        body: JSON.stringify({
-          sessionId: "1a2090",
-          hypothesisId: "H-deploy",
-          location: "app.js:warnIfWorkerDown:stale",
-          message: "stale deploy detected",
-          data: { portalBuild, workerBuild },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       return true;
     }
     banner.hidden = true;

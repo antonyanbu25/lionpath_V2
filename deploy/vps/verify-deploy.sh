@@ -11,6 +11,8 @@ echo "$CONFIG" | head -c 400
 echo ""
 
 SCHEMA_FIX="$(echo "$CONFIG" | grep -o '"geminiSchemaEnumFix":"[^"]*"' | cut -d'"' -f4 || true)"
+WORKER_BUILD="$(echo "$CONFIG" | grep -o '"workerBuild":"[^"]*"' | cut -d'"' -f4 || true)"
+echo "workerBuild=${WORKER_BUILD:-MISSING}"
 echo "geminiSchemaEnumFix=${SCHEMA_FIX:-MISSING}"
 
 echo ""

@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { QIP_PROFILES } from "../src/rubric-profiles.ts";
 import { toGeminiResponseSchema } from "../src/gemini-schema.ts";
 import { runPostCallScorecard } from "../src/postcall/scorecard.ts";
-import { debugLog } from "../src/debug-log.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,7 +47,6 @@ function scoreFieldEnum(schema) {
 async function main() {
   const demo = QIP_PROFILES.find((p) => p.key === "demo");
   if (!demo) throw new Error("demo profile missing");
-  const themeKeys = demo.themes.map((t) => t.key);
   const rawSchema = {
     type: "object",
     properties: {
@@ -71,13 +69,6 @@ async function main() {
   };
   const gemini = toGeminiResponseSchema(rawSchema);
   const scoreEnum = scoreFieldEnum(gemini);
-  debugLog({
-    runId: "post-fix",
-    hypothesisId: "A",
-    location: "verify-postcall-schema.mjs",
-    message: "converted score enum",
-    data: { scoreEnum, ok: JSON.stringify(scoreEnum) === '["0","1","2"]' },
-  });
   console.log("score enum:", scoreEnum);
   if (JSON.stringify(scoreEnum) !== '["0","1","2"]') {
     process.exit(1);
@@ -102,24 +93,10 @@ async function main() {
     callType: "demo",
     videoAvailable: false,
   });
-  debugLog({
-    runId: "post-fix",
-    hypothesisId: "A",
-    location: "verify-postcall-schema.mjs",
-    message: "live scorecard ok",
-    data: { callType: "demo" },
-  });
   console.log("Live scorecard OK");
 }
 
 main().catch((err) => {
-  debugLog({
-    runId: "post-fix",
-    hypothesisId: "A",
-    location: "verify-postcall-schema.mjs:error",
-    message: "verification failed",
-    data: { error: err instanceof Error ? err.message.slice(0, 500) : String(err) },
-  });
   console.error(err);
   process.exit(1);
 });

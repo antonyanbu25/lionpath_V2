@@ -4,7 +4,6 @@
  */
 
 import { extractJson } from "../json";
-import { debugLog } from "../debug-log";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
 import {
@@ -579,49 +578,16 @@ export async function runPostCallScorecard(
   const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
 
   const provider = getPostCallProvider(env);
-  const jsonSchema = scorecardJsonSchema(themeKeys);
-  // #region agent log
-  debugLog({
-    runId: "post-fix",
-    hypothesisId: "B",
-    location: "scorecard.ts:runPostCallScorecard",
-    message: "scorecard schema before provider",
-    data: { callType: input.callType, themeCount: themeKeys.length },
+  const result = await provider.generate({
+    maxTokens: 12000,
+    system: buildScorecardSystemPrompt(profile),
+    user: userPrompt(input, profile),
+    effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
+    research: false,
+    thinkingBudget: 0,
+    jsonSchema: scorecardJsonSchema(themeKeys),
+    step: "postcall-scorecard",
   });
-  // #endregion
-  let result;
-  try {
-    result = await provider.generate({
-      maxTokens: 12000,
-      system: buildScorecardSystemPrompt(profile),
-      user: userPrompt(input, profile),
-      effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
-      research: false,
-      thinkingBudget: 0,
-      jsonSchema,
-      step: "postcall-scorecard",
-    });
-  } catch (err) {
-    // #region agent log
-    debugLog({
-      runId: "post-fix",
-      hypothesisId: "A",
-      location: "scorecard.ts:runPostCallScorecard:error",
-      message: "scorecard provider failed",
-      data: { error: err instanceof Error ? err.message.slice(0, 500) : String(err) },
-    });
-    // #endregion
-    throw err;
-  }
-  // #region agent log
-  debugLog({
-    runId: "post-fix",
-    hypothesisId: "A",
-    location: "scorecard.ts:runPostCallScorecard:success",
-    message: "scorecard provider returned",
-    data: { textLen: result.text?.length ?? 0 },
-  });
-  // #endregion
 
   const parsed = extractJson<{
     lines?: Array<Record<string, unknown>>;
