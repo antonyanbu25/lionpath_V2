@@ -1574,7 +1574,7 @@ async function completeFirebaseLogin(user, opts = {}) {
 function configureFirebaseLoginUi() {
   show($("login-form"), false);
   show($("login-hint"), false);
-  const divider = $("firebase-signin-block")?.querySelector(".or-divider");
+  const divider = $("login-or-divider");
   if (divider) divider.hidden = true;
   show($("firebase-signin-block"), true);
   const subtitle = $("login-subtitle");

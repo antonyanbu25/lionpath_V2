@@ -75,7 +75,7 @@ export function applyProductionLoginShell() {
   show($("login-form"), false);
   show($("login-hint"), false);
   const block = $("firebase-signin-block");
-  const divider = block?.querySelector(".or-divider");
+  const divider = $("login-or-divider");
   if (divider) divider.hidden = true;
   show(block, true);
   const subtitle = $("login-subtitle");
