@@ -1601,10 +1601,7 @@ function configureFirebaseLoginUi() {
   const divider = $("login-or-divider");
   if (divider) divider.hidden = true;
   show($("firebase-signin-block"), true);
-  const subtitle = $("login-subtitle");
-  if (subtitle) {
-    subtitle.textContent = "Sign in with your @freshworks.com Google account.";
-  }
+  show($("login-subtitle"), false);
 }
 
 async function initFirebase() {

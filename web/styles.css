@@ -143,78 +143,46 @@ body.splash-lock { overflow: hidden; }
   box-shadow: var(--dew-shadow-island);
 }
 
-/* Login — Intercom-inspired split layout */
+/* Login — center-aligned minimal SSO */
 .login-page {
+  position: relative;
   min-height: 100vh;
-  background: var(--dew-bg);
-}
-
-.login-layout {
   display: flex;
-  min-height: 100vh;
-}
-
-.login-showcase {
-  display: none;
-  flex: 0 0 45%;
-  max-width: 560px;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 40px;
-  background: linear-gradient(160deg, var(--dew-brand-tint) 0%, var(--dew-bg) 100%);
-  border-right: 1px solid var(--dew-border);
+  padding: 32px 20px;
+  background: var(--dew-bg);
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.login-video-frame {
-  position: relative;
-  width: 100%;
-  max-width: 420px;
-  aspect-ratio: 4 / 3;
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid var(--dew-border);
-  box-shadow: var(--dew-shadow-island);
-  background: var(--dew-brand-tint);
+.login-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .login-bg-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+  transform: scale(1.03);
 }
 
-.login-video-overlay {
+.login-bg-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(227, 239, 236, 0.35) 0%, rgba(46, 137, 123, 0.18) 100%),
-    radial-gradient(circle at 20% 20%, rgba(111, 184, 172, 0.2), transparent 55%);
-}
-
-.login-showcase-tagline {
-  margin: 20px 0 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--dew-text-secondary);
-  text-align: center;
-}
-
-.login-panel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 24px;
-  background: var(--dew-bg);
+    linear-gradient(135deg, rgba(253, 252, 250, 0.78) 0%, rgba(253, 252, 250, 0.62) 50%, rgba(227, 239, 236, 0.52) 100%),
+    radial-gradient(circle at 50% 40%, rgba(111, 184, 172, 0.18), transparent 55%);
 }
 
 .login-page-inner {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   animation: login-rise 0.55s ease;
 }
 
@@ -234,8 +202,8 @@ body.splash-lock { overflow: hidden; }
   background: var(--dew-surface);
   border: 1px solid var(--dew-border);
   border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(43, 41, 38, 0.05);
-  padding: 8px 4px;
+  box-shadow: 0 4px 24px rgba(43, 41, 38, 0.06);
+  padding: 12px 8px 16px;
 }
 
 .login-card-head {
@@ -251,11 +219,11 @@ body.splash-lock { overflow: hidden; }
   height: 48px;
   border-radius: 12px;
   object-fit: contain;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .login-card-head h1 {
-  margin: 0 0 8px;
+  margin: 0 0 0;
   font-size: 26px;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -263,21 +231,25 @@ body.splash-lock { overflow: hidden; }
 }
 
 .login-card-head .muted {
-  margin: 0;
+  margin: 10px 0 0;
   font-size: 14px;
   line-height: 1.55;
   color: var(--dew-text-secondary);
   max-width: 340px;
 }
 
+.login-card-head .muted[hidden] {
+  display: none;
+}
+
 .login-google-btn-wrap {
   position: relative;
-  margin-top: 28px;
+  margin-top: 32px;
 }
 
 .login-google-icon {
   position: absolute;
-  left: 16px;
+  left: 20px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
@@ -291,22 +263,19 @@ body.splash-lock { overflow: hidden; }
 
 .login-google-btn-wrap fw-button.login-google-btn::part(native) {
   width: 100%;
-  min-height: 44px;
+  min-height: 48px;
   justify-content: center;
-  padding-left: 44px;
-  border-color: var(--dew-border);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  padding-left: 48px;
+  background: var(--dew-text);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .login-google-btn-wrap fw-button.login-google-btn:hover::part(native) {
-  background: var(--dew-brand-tint);
-  border-color: var(--dew-primary);
-}
-
-.login-sso-note {
-  margin: 14px 0 0;
-  font-size: 12px;
-  text-align: center;
+  background: #3d3a36;
 }
 
 .login-card form {
@@ -350,50 +319,12 @@ body.splash-lock { overflow: hidden; }
   display: none;
 }
 
-@media (min-width: 768px) {
-  .login-showcase {
-    display: flex;
-  }
-}
-
-@media (max-width: 767px) {
-  .login-layout {
-    flex-direction: column;
-  }
-
-  .login-showcase {
-    display: flex;
-    flex: none;
-    max-width: none;
-    width: 100%;
-    padding: 20px 20px 0;
-    background: var(--dew-bg);
-    border-right: none;
-    border-bottom: none;
-  }
-
-  .login-video-frame {
-    max-width: none;
-    aspect-ratio: auto;
-    height: 140px;
-    border-radius: 14px;
-  }
-
-  .login-showcase-tagline {
-    display: none;
-  }
-
-  .login-panel {
-    padding-top: 16px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .login-bg-video {
     display: none;
   }
 
-  .login-video-frame {
+  .login-bg-overlay {
     background: linear-gradient(160deg, #1f2b28 0%, var(--dew-brand) 100%);
   }
 
