@@ -452,18 +452,19 @@
             <div id="postcall-form-view" class="prep-form-wrap">
               <div class="prep-form-center">
                 <div class="prep-form-heading">
-                  <h1>Post-call analysis</h1>
-                  <p class="muted">Paste the recording. We pull transcript and video, find the deal, and score the call.</p>
+                  <h1>New call analysis</h1>
+                  <p class="muted">Paste a Zoom or Kaia recording link — or upload a transcript. We match the account and score the call.</p>
                 </div>
-                <fw-card class="prep-form-card">
-                  <form id="postcall-form">
+                <fw-card class="prep-form-card postcall-intake-card">
+                  <form id="postcall-form" autocomplete="off">
                     <div class="postcall-recording-block">
+                      <div class="postcall-field-label">Call recording <span class="postcall-required">*</span></div>
                       <fw-input
                         id="pc-recording-url"
                         label="Recording link"
                         type="text"
-                        placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123"
-                        hint-text="Add Kaia share link or Zoom share link with Transcript enabled for viewers. Otherwise download the transcript from Zoom and upload it below."
+                        placeholder="https://freshworks.zoom.us/rec/share/…"
+                        hint-text="Paste the Zoom or Kaia recording link and its passcode — we'll pull it in to transcribe and analyze."
                         clear-input
                       ></fw-input>
                       <div id="pc-passcode-wrap" hidden>
@@ -471,42 +472,59 @@
                           id="pc-recording-pwd"
                           label="Passcode"
                           type="password"
-                          placeholder="Passcode from Zoom email"
+                          placeholder="Recording passcode"
                           autocomplete="off"
                           clear-input
                         ></fw-input>
                       </div>
                     </div>
-                    <div class="prep-form-grid">
-                      <div class="prep-email-field">
-                        <fw-input
-                          id="pc-prospect-emails"
-                          label="Prospect emails"
-                          type="text"
-                          placeholder="alex@acme.com, sam@acme.com"
-                          hint-text="Multiple emails can be added with comma separation"
-                          required
-                          clear-input
-                        ></fw-input>
+                    <details class="prep-enrich-advanced postcall-transcript-fallback" id="pc-transcript-fallback">
+                      <summary>No recording? Paste or upload a transcript</summary>
+                      <div class="prep-linkedin-upload">
+                        <span class="prep-linkedin-label">Transcript file</span>
+                        <p class="muted prep-linkedin-hint">In Zoom: open the recording → Audio Transcript → Download. Drop the .vtt here.</p>
+                        <input type="file" id="pc-transcript-file" accept=".vtt,.srt,.txt,text/vtt,text/plain" hidden />
+                        <div class="prep-linkedin-actions">
+                          <fw-button id="pc-transcript-file-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Upload VTT</fw-button>
+                        </div>
+                        <p id="pc-transcript-file-name" class="field-hint" hidden></p>
+                        <p id="pc-transcript-file-error" class="field-hint warn" hidden></p>
                       </div>
-                      <div class="pc-lookup-field">
-                        <fw-input
-                          id="pc-company-name"
-                          label="Company"
-                          type="text"
-                          placeholder="Acme Corp"
-                          autocomplete="off"
-                          required
-                          clear-input
-                        ></fw-input>
-                        <div id="pc-company-suggest" class="pc-lookup-menu" role="listbox" hidden></div>
-                        <p id="pc-company-lookup-note" class="field-hint" hidden></p>
+                      <fw-textarea
+                        id="pc-transcript"
+                        label="Transcript"
+                        rows="6"
+                        placeholder="Paste the full call transcript here…"
+                      ></fw-textarea>
+                      <p class="muted postcall-transcript-note">A recording or transcript is required — whichever you have.</p>
+                    </details>
+                    <div class="prep-email-field postcall-contact-field">
+                      <div class="postcall-autofill-decoys" aria-hidden="true">
+                        <input type="text" name="username" tabindex="-1" autocomplete="username" />
+                        <input type="password" name="password" tabindex="-1" autocomplete="current-password" />
                       </div>
+                      <fw-input
+                        id="pc-prospect-emails"
+                        name="pc-attendee-emails"
+                        label="Contact email"
+                        type="text"
+                        placeholder="alex@acme.com, sam@acme.com"
+                        hint-text="Comma-separate attendee emails. We look up accounts and deals tied to those contacts — matches show below. No match? We'll create the account when you confirm."
+                        autocomplete="nope"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-form-type="other"
+                        required
+                        clear-input
+                      ></fw-input>
                     </div>
+                    <div id="pc-account-deal-preview" class="pc-account-deal-preview" hidden></div>
+                    <p id="pc-account-name-error" class="field-hint warn pc-account-name-error" hidden></p>
                     <div id="pc-crm-matches" class="pc-crm-matches" hidden></div>
-                    <div class="prep-form-optional">
-                      <div class="prep-form-eyebrow">Optional</div>
-                      <div class="prep-optional-grid">
+                    <details class="prep-enrich-advanced postcall-optional-block">
+                      <summary>Add deck link &amp; LinkedIn profiles <span class="muted">· optional</span></summary>
+                      <div class="postcall-optional-body">
+                      <div class="prep-optional-grid postcall-optional-grid">
                         <fw-input
                           id="pc-deck-link"
                           label="Deck link"
@@ -526,33 +544,27 @@
                           <p id="pc-linkedin-error" class="field-hint warn" hidden></p>
                         </div>
                       </div>
-                      <fw-textarea
-                        id="pc-additional-context"
-                        label="Discovery/Additional context"
-                        hint-text="Optional · AE notes, anything the recording won't show"
-                        rows="2"
-                        placeholder="AE notes, anything the recording won't show"
-                      ></fw-textarea>
-                    </div>
-                    <details class="prep-enrich-advanced postcall-transcript-fallback" id="pc-transcript-fallback">
-                      <summary>No recording? Upload or paste transcript</summary>
-                      <div class="prep-linkedin-upload">
-                        <span class="prep-linkedin-label">Transcript file</span>
-                        <p class="muted prep-linkedin-hint">In Zoom: open the recording → Audio Transcript → Download. Drop the .vtt here.</p>
-                        <input type="file" id="pc-transcript-file" accept=".vtt,.srt,.txt,text/vtt,text/plain" hidden />
-                        <div class="prep-linkedin-actions">
-                          <fw-button id="pc-transcript-file-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Upload VTT</fw-button>
-                        </div>
-                        <p id="pc-transcript-file-name" class="field-hint" hidden></p>
-                        <p id="pc-transcript-file-error" class="field-hint warn" hidden></p>
+                      <div class="postcall-context-field">
+                        <label class="postcall-field-label" for="pc-additional-context">Discovery / additional context</label>
+                        <fw-textarea
+                          id="pc-additional-context"
+                          label=""
+                          rows="2"
+                          placeholder="AE notes, anything the recording won't show"
+                        ></fw-textarea>
                       </div>
-                      <fw-textarea
-                        id="pc-transcript"
-                        label="Transcript"
-                        hint-text="Video-dependent themes (camera, CDE, call flow, engagement) will be marked not applicable"
-                        rows="6"
-                        placeholder="Paste the call transcript…"
-                      ></fw-textarea>
+                      <div class="prep-linkedin-upload postcall-context-upload">
+                        <span class="prep-linkedin-label">Attach documents</span>
+                        <p class="muted prep-linkedin-hint">PDF, Word, Excel, or text files — optional context for analysis.</p>
+                        <input type="file" id="pc-context-files" accept=".pdf,.doc,.docx,.pptx,.xlsx,.xlsm,.txt,.md,.csv,.tsv,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel" multiple hidden />
+                        <div class="prep-linkedin-actions">
+                          <fw-button id="pc-context-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Attach files</fw-button>
+                          <span id="pc-context-parsing" class="muted prep-linkedin-parsing" hidden>Reading files…</span>
+                        </div>
+                        <ul id="pc-context-file-list" class="prep-linkedin-file-list" aria-label="Attached context documents"></ul>
+                        <p id="pc-context-error" class="field-hint warn" hidden></p>
+                      </div>
+                      </div>
                     </details>
                     <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit">Analyse call</fw-button>
                     <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>
