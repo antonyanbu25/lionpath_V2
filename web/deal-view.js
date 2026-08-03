@@ -2,7 +2,7 @@
  * Deals nav: global deal list + deal record (spec §11.6).
  */
 
-import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js";
+import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js?v=2.1";
 import { buildDealExtrasFromHistory } from "./domain/history-deal-enrichment.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";

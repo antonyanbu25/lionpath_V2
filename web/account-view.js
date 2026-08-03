@@ -8,7 +8,7 @@ import {
   updateAccountSeTeam,
   enrichAccountListRow,
   listAccountRowsFromHistory,
-} from "./domain/account-service.js";
+} from "./domain/account-service.js?v=2.1";
 import { mergeAccountListRows } from "./domain/history-deal-enrichment.js";
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
@@ -2090,7 +2090,8 @@ async function loadAccountListRows(session, onPreview) {
 
     const baseRows = mergeAccountListRows(storeRows, historyRows);
     const rows = await Promise.all(baseRows.map((row) => enrichAccountListRow(store, row)));
-    return rows.filter((row) => row?.account?.id);
+    const filtered = rows.filter((row) => row?.account?.id);
+    return filtered;
   } catch (err) {
     console.warn("[account-view] loadAccountListRows failed:", err?.message || err);
     const historyRows = listAccountRowsFromHistory(session);

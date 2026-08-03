@@ -6,6 +6,7 @@ import { getStore } from "./store.js";
 import { safeStoreOp } from "./safe-store.js";
 import { listPostCallAnalyses } from "../history.js";
 import { normalizeUserEmail } from "../shared.js";
+import { companyNameFromPrimaryEmail } from "../prep-domain.js";
 import { normalizeAccountSlug, domainFromEmail, newId, now, can, MAX_SE_TEAM_SIZE } from "./types.js";
 import { isFreeMailDomain } from "./constants.js";
 import {
@@ -256,6 +257,24 @@ function companyFromHistoryRecord(rec) {
   ).trim();
 }
 
+function prospectEmailsFromHistoryRecord(rec) {
+  return [
+    ...(rec?.prospectEmails || []),
+    ...(rec?.result?.prospectEmails || []),
+    ...(rec?.result?.confirmed?.prospectEmails || []),
+  ];
+}
+
+/** Company label for history fallback rows — matches contacts preview sources. */
+function accountNameFromHistoryRecord(rec) {
+  const direct = companyFromHistoryRecord(rec);
+  if (direct) return direct;
+  const fromEmail = companyNameFromPrimaryEmail(prospectEmailsFromHistoryRecord(rec).join(", "));
+  if (fromEmail) return fromEmail;
+  const fromTitle = (rec?.title || "").split(/[·|–—-]/)[0]?.trim();
+  return fromTitle || "";
+}
+
 function resolveHistoryAccountId(rec, fallbackKey) {
   return (
     rec.result?.confirmed?.accountId ||
@@ -265,6 +284,61 @@ function resolveHistoryAccountId(rec, fallbackKey) {
   );
 }
 
+function loadBriefsFromStorage() {
+  try {
+    const raw = localStorage.getItem("lionpath_briefs");
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list.slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function companyFromBriefRecord(brief) {
+  const direct = String(
+    brief?.company || brief?.meta?.company || brief?.input?.companyName || "",
+  ).trim();
+  if (direct) return direct;
+  const emails = brief?.meta?.prospectEmails || brief?.input?.prospectEmails || [];
+  return companyNameFromPrimaryEmail(emails.join(", ")) || "";
+}
+
+function upsertHistoryFallbackRow(byKey, session, name, ts, accountId) {
+  const key = name.toLowerCase();
+  let row = byKey.get(key);
+  if (!row) {
+    row = {
+      account: { id: accountId, name, domain: "" },
+      lifecycle: {
+        id: `lc_hist_${accountId}`,
+        accountId,
+        ownerId: effectiveSessionUserId(session),
+        title: name,
+        stage: "demo",
+        status: "active",
+        lastActivityAt: ts,
+      },
+      seTeamDisplay: [],
+      secondaryCount: 0,
+      lastActivityAt: ts,
+      dealType: "new_business",
+      dealTypeLabel: DEAL_TYPE_LABELS.new_business,
+      dealStage: "demo",
+      deals: [],
+      canonicalDealId: null,
+      historyCallCount: 0,
+      _historyFallback: true,
+    };
+    byKey.set(key, row);
+  }
+  if (ts > (row.lastActivityAt || 0)) {
+    row.lastActivityAt = ts;
+    row.lifecycle.lastActivityAt = ts;
+  }
+  return row;
+}
+
 /**
  * Minimal account rows from local post-call history when Firestore lists fail or are empty.
  * @param {object} session
@@ -272,49 +346,72 @@ function resolveHistoryAccountId(rec, fallbackKey) {
 export function listAccountRowsFromHistory(session) {
   const email = normalizeUserEmail(session?.email);
   if (!email) return [];
-  const ownerId = effectiveSessionUserId(session);
   const byKey = new Map();
 
   for (const rec of listPostCallAnalyses(email)) {
-    const name = companyFromHistoryRecord(rec);
+    const name = accountNameFromHistoryRecord(rec);
     if (!name) continue;
     const key = name.toLowerCase();
     const ts = rec.timestamp || 0;
-    let row = byKey.get(key);
-    if (!row) {
-      const accountId = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
-      row = {
-        account: { id: accountId, name, domain: "" },
-        lifecycle: {
-          id: `lc_hist_${accountId}`,
-          accountId,
-          ownerId: effectiveSessionUserId(session),
-          title: name,
-          stage: "demo",
-          status: "active",
-          lastActivityAt: ts,
-        },
-        seTeamDisplay: [],
-        secondaryCount: 0,
-        lastActivityAt: ts,
-        dealType: "new_business",
-        dealTypeLabel: DEAL_TYPE_LABELS.new_business,
-        dealStage: "demo",
-        deals: [],
-        canonicalDealId: rec.result?.confirmed?.dealId || null,
-        historyCallCount: 0,
-        _historyFallback: true,
-      };
-      byKey.set(key, row);
-    }
+    const accountId = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
+    const row = upsertHistoryFallbackRow(byKey, session, name, ts, accountId);
     row.historyCallCount = (row.historyCallCount || 0) + 1;
-    if (ts > (row.lastActivityAt || 0)) {
-      row.lastActivityAt = ts;
-      row.lifecycle.lastActivityAt = ts;
-    }
+  }
+
+  for (const brief of loadBriefsFromStorage()) {
+    const name = companyFromBriefRecord(brief);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (byKey.has(key)) continue;
+    const slug = key.replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+    const ts = brief.savedAt || brief.createdAt || brief.when || 0;
+    upsertHistoryFallbackRow(byKey, session, name, ts, `hist_${slug}`);
   }
 
   return [...byKey.values()].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+}
+
+/**
+ * Prospect contacts from local briefs + post-call history (same sources as the contacts preview).
+ * @param {object} session
+ */
+export function historyPreviewContactsForSession(session) {
+  const email = normalizeUserEmail(session?.email);
+  if (!email) return { contacts: [], accountNameById: {} };
+  const seen = new Set();
+  const contacts = [];
+  const accountNameById = {};
+
+  const addContact = (addr, company) => {
+    const e = String(addr || "").trim().toLowerCase();
+    if (!e || seen.has(e)) return;
+    seen.add(e);
+    const display = e.split("@")[0].replace(/[._-]+/g, " ");
+    const accountKey = String(company || e.split("@")[1] || "Contact").trim();
+    const accountId = `hist_${accountKey.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`;
+    accountNameById[accountId] = accountKey;
+    contacts.push({
+      id: `hist_${e}`,
+      email: e,
+      name: display.charAt(0).toUpperCase() + display.slice(1),
+      accountId,
+      _preview: true,
+    });
+  };
+
+  for (const brief of loadBriefsFromStorage()) {
+    const company = companyFromBriefRecord(brief);
+    for (const addr of brief.meta?.prospectEmails || brief.input?.prospectEmails || []) {
+      addContact(addr, company);
+    }
+  }
+  for (const rec of listPostCallAnalyses(email)) {
+    const company = accountNameFromHistoryRecord(rec);
+    for (const addr of prospectEmailsFromHistoryRecord(rec)) addContact(addr, company);
+  }
+
+  contacts.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return { contacts, accountNameById };
 }
 
 /** @param {object} session @param {string} accountId */
@@ -328,7 +425,7 @@ export function historyRecordsForAccount(session, accountId) {
   if (!email) return [];
   const out = [];
   for (const rec of listPostCallAnalyses(email)) {
-    const name = companyFromHistoryRecord(rec);
+    const name = accountNameFromHistoryRecord(rec);
     if (!name) continue;
     const key = name.toLowerCase();
     const id = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
@@ -530,7 +627,9 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
 export async function listAccountsForSession(session, opts = {}) {
   if (!opts.skipCache) {
     const cached = getCachedAccountListRows(session);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
   }
   try {
     const store = getStore();
@@ -603,7 +702,7 @@ export async function listAccountsForSession(session, opts = {}) {
     const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
     const historyRows = listAccountRowsFromHistory(session);
     const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
-    setCachedAccountListRows(session, merged);
+    if (merged.length) setCachedAccountListRows(session, merged);
     return merged;
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
@@ -642,12 +741,24 @@ export async function listContactsForSession(session) {
         [],
       );
       for (const c of list) {
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
+        const key = String(c.email || c.id || "").toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
         contacts.push({ ...c, _isPrimary: !!primaryContactId && c.id === primaryContactId });
       }
     }),
   );
+
+  const preview = historyPreviewContactsForSession(session);
+  for (const c of preview.contacts) {
+    const key = String(c.email || c.id || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    contacts.push(c);
+  }
+  for (const [accountId, name] of Object.entries(preview.accountNameById)) {
+    if (!accountNameById[accountId]) accountNameById[accountId] = name;
+  }
 
   contacts.sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email)));
   return { contacts, accountNameById };

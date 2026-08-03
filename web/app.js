@@ -21,9 +21,9 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js";
+import { renderAccountView } from "./account-view.js?v=2.1";
 import { renderDealView } from "./deal-view.js";
-import { renderContactsView } from "./contacts-view.js";
+import { renderContactsView } from "./contacts-view.js?v=2.1";
 import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
@@ -48,7 +48,7 @@ import { renderSeDetailView } from "./se-detail-view.js";
 import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
-import { invalidateSessionListCache } from "./domain/account-service.js";
+import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
@@ -113,6 +113,9 @@ function workerDownMessage(status, errName) {
 let fb = null;
 /** Resolves once Firebase auth state is restored (dummy mode: already resolved). */
 let authReadyPromise = Promise.resolve();
+/** @type {Promise<void>} */
+let firebaseBootstrapPromise = Promise.resolve();
+
 let currentSession = null;
 let currentView = "dashboard";
 
@@ -1306,12 +1309,14 @@ async function savePrep(input, prep, meta) {
 // ---------- Auth UI ----------
 
 function showLogin() {
+  showAppInFlight = false;
   show($("app-loading"), false);
   show($("login-view"), true);
   show($("app-shell"), false);
   currentSession = null;
   resetSessionGreeting();
   clearLocalStoreCache();
+  invalidateSessionListCache();
   clearHistoryAuthGetter();
   clearTasksAuthGetter();
   clearSummariesAuthGetter();
@@ -1326,7 +1331,14 @@ let showAppInFlight = false;
 async function showApp(session, opts = {}) {
   if (showAppInFlight) return;
   showAppInFlight = true;
+  const expectedEmail = String(session?.email || "").trim().toLowerCase();
+  const sessionStillValid = () => {
+    const live = getSession();
+    return !!(live?.email && String(live.email).trim().toLowerCase() === expectedEmail);
+  };
   show($("app-loading"), true);
+  show($("login-view"), false);
+  show($("app-shell"), true);
   try {
     let enriched = session;
     try {
@@ -1336,11 +1348,11 @@ async function showApp(session, opts = {}) {
       console.warn("Domain store session sync failed:", err);
     }
 
+    if (!sessionStillValid()) return;
+
     currentSession = enriched?.email
       ? { ...enriched, email: String(enriched.email).trim().toLowerCase() }
       : enriched;
-    show($("login-view"), false);
-    show($("app-shell"), true);
     refreshUserMenuFromSession();
     updateTopbarDate();
 
@@ -1367,6 +1379,11 @@ async function showApp(session, opts = {}) {
     }
 
     updateNavForRole();
+
+    await loadPersistedHistory();
+    invalidateSessionListCache(currentSession);
+
+    if (!sessionStillValid()) return;
 
     const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
     const { path: hashPath, params: hashParams } = parseLocationHash();
@@ -1478,8 +1495,11 @@ async function showApp(session, opts = {}) {
         }
       }
     }
-    await loadPersistedHistory();
   } finally {
+    if (!getSession()?.email) {
+      show($("login-view"), true);
+      show($("app-shell"), false);
+    }
     show($("app-loading"), false);
     showAppInFlight = false;
   }
@@ -1579,20 +1599,24 @@ function initDummyAuth() {
 
 // ---------- Firebase auth (optional) ----------
 
-let firebaseLoginInFlight = false;
+/** @type {Promise<object|null>|null} */
+let firebaseLoginPromise = null;
 
 async function completeFirebaseLogin(user, opts = {}) {
-  if (firebaseLoginInFlight) return;
-  firebaseLoginInFlight = true;
-  try {
-    const hadSession = !!getSession();
-    const session = await persistFirebaseSession(user, { persist: false });
-    if (!session) return;
-    const enriched = await syncSessionWithDomainStore(session);
-    setSession(enriched || session, { freshLogin: opts.freshLogin ?? !hadSession });
-  } finally {
-    firebaseLoginInFlight = false;
-  }
+  if (firebaseLoginPromise) return firebaseLoginPromise;
+  firebaseLoginPromise = (async () => {
+    try {
+      const hadSession = !!getSession();
+      const session = await persistFirebaseSession(user, { persist: false });
+      if (!session) return null;
+      const enriched = await syncSessionWithDomainStore(session);
+      setSession(enriched || session, { freshLogin: opts.freshLogin ?? !hadSession });
+      return enriched || session;
+    } finally {
+      firebaseLoginPromise = null;
+    }
+  })();
+  return firebaseLoginPromise;
 }
 
 function configureFirebaseLoginUi() {
@@ -1666,14 +1690,37 @@ async function initFirebase() {
     }
     // user === null. Before the first resolution this only means "not restored yet".
     if (!authResolved) return;
+    const cached = getSession();
+    if (cached?.email && !cached.authUid) {
+      return;
+    }
     logout();
   });
 
-  // Optimistic boot — show the app from the cached session so a refresh doesn't flash login.
-  const cached = getSession();
-  if (cached) handleSession(cached, { restored: true });
-
   onSessionChange(handleSession);
+
+  // Restore dummy/local session immediately so refresh does not sit on the login shell.
+  const cachedEarly = getSession();
+  if (cachedEarly?.email && !cachedEarly.authUid) {
+    handleSession(cachedEarly, { restored: true });
+  }
+
+  firebaseBootstrapPromise = authReady.then(async () => {
+    const user = fb.auth.currentUser;
+    const existing = getSession();
+    if (user) {
+      if (existing) {
+        handleSession(existing, { restored: true });
+        return;
+      }
+      await completeFirebaseLogin(user, { restored: true });
+      return;
+    }
+    // Firebase signed out — still restore local/dummy tab session (no authUid).
+    if (existing?.email) {
+      handleSession(existing, { restored: true });
+    }
+  });
 }
 
 async function warnIfWorkerDown() {
@@ -1922,12 +1969,17 @@ async function boot() {
   if (authMode() === "firebase") {
     await initFirebase();
     await authReadyPromise;
-    if (!getSession()) showLogin();
+    await firebaseBootstrapPromise;
+    const bootDeadline = Date.now() + 8000;
+    while (showAppInFlight && Date.now() < bootDeadline) {
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    if (!getSession() && !showAppInFlight) showLogin();
   } else {
     initDummyAuth();
     await authReadyPromise;
     const existing = getSession();
-    if (!existing) showLogin();
+    if (!existing && !showAppInFlight) showLogin();
   }
 
   startWorkerHealthMonitoring();

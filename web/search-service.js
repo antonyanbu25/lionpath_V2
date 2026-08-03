@@ -2,7 +2,7 @@
  * Client-side search index for accounts, discovery briefs, and call reviews.
  */
 
-import { listAccountsForSession } from "./domain/account-service.js";
+import { listAccountsForSession } from "./domain/account-service.js?v=2.1";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";

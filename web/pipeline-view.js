@@ -3,7 +3,7 @@
  * Same enriched deal rows as the SE list; default sort is agent count / ARR, not traction.
  */
 
-import { listDealsForSession } from "./domain/account-service.js";
+import { listDealsForSession } from "./domain/account-service.js?v=2.1";
 import { getStore } from "./domain/store.js";
 import { resolveOrgForUser } from "./domain/org-service.js";
 import { sessionUserId } from "./domain/session.js";

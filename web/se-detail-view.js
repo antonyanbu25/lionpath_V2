@@ -13,7 +13,7 @@ import {
   enrichDealRowsWithTraction,
   normalizeSeEmail,
 } from "./domain/se-access-service.js";
-import { listDealsForSession, deriveAccountHealth } from "./domain/account-service.js";
+import { listDealsForSession, deriveAccountHealth } from "./domain/account-service.js?v=2.1";
 import { getStore } from "./domain/store.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { displayNameForEmail } from "./auth.js";

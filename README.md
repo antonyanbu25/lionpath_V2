@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.0.7`** — multi-pass **post-call pipeline** (WIP), **Discovery tab call-ready layout** (Option A), built on **`2.0.6`** CRM Accounts/Deals ([tree/2.0.7](https://github.com/skut264/lionpath/tree/2.0.7)) |
-| **Previous release** | **`2.0.6`** — CRM **Accounts** / **Deals** nav, MEDDPICC on deal, compact command deck ([tree/2.0.6](https://github.com/skut264/lionpath/tree/2.0.6)) |
+| **Current branch** | **`2.1`** — session restore on refresh, accounts/contacts from prep/post-call history, prep typo-domain fix ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Previous release** | **`2.9`** — Know tab pre-call UI ([tree/2.9](https://github.com/skut264/lionpath/tree/2.9)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
 | **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |
@@ -473,13 +473,13 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 
 See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
 
-**Deploy branch `2.0.7` when ready (WIP — test locally first):**
+**Deploy branch `2.1`:**
 
 ```bash
 cd /opt/se-singha-paathai
 git fetch origin
-git checkout 2.0.7
-git pull origin 2.0.7
+git checkout 2.1
+git pull origin 2.1
 cd deploy/vps
 docker compose build --no-cache worker web
 docker compose up -d
@@ -487,7 +487,13 @@ docker compose up -d
 docker compose restart caddy
 ```
 
-**Stable production today:** branch **`2.0.7`**.
+**Or one command:**
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
+```
+
+**Stable production today:** branch **`2.1`**.
 
 First-time setup:
 

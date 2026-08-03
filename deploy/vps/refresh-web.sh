@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"
-BRANCH="2.9"
+BRANCH="2.1"
 DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 INDEX="$REPO_ROOT/web/index.html"
 
@@ -18,8 +18,8 @@ git checkout -B "$BRANCH" "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 echo "=== Checked out: $(git log -1 --oneline) ==="
 
-if ! grep -q 'precall.css?v=2.9' "$INDEX"; then
-  echo "ERROR: $INDEX missing precall.css?v=2.9 after git reset." >&2
+if ! grep -q 'precall.css?v=2.1' "$INDEX"; then
+  echo "ERROR: $INDEX missing precall.css?v=2.1 after git reset." >&2
   grep -E 'portal-build|precall.css|postcall.css' "$INDEX" | head -5 >&2 || true
   exit 1
 fi
