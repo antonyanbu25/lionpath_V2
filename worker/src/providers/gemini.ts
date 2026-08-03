@@ -1,6 +1,7 @@
 // Google Gemini adapter — Google AI Studio (GEMINI_API_KEY) or Vertex AI on GCP (ADC).
 
 import { toGeminiResponseSchema } from "../gemini-schema";
+import { debugLog } from "../debug-log";
 import type { Citation, LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
@@ -183,7 +184,22 @@ function buildGenerationConfig(req: LlmRequest, model: string, env?: ProviderEnv
 
   if (req.jsonSchema) {
     generationConfig.responseMimeType = "application/json";
-    generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);
+    const geminiSchema = toGeminiResponseSchema(req.jsonSchema);
+    generationConfig.responseSchema = geminiSchema;
+    // #region agent log
+    if (req.step === "postcall-scorecard") {
+      const scoreEnum = JSON.stringify(geminiSchema)
+        .match(/"score":\{[^}]+\}/)?.[0]
+        ?.slice(0, 160);
+      debugLog({
+        runId: "post-fix",
+        hypothesisId: "A",
+        location: "gemini.ts:buildGenerationConfig",
+        message: "postcall scorecard gemini schema",
+        data: { step: req.step, scoreEnumSnippet: scoreEnum || null },
+      });
+    }
+    // #endregion
   } else if (req.jsonMimeOnly) {
     generationConfig.responseMimeType = "application/json";
   }

@@ -4,6 +4,7 @@
  */
 
 import { extractJson } from "../json";
+import { debugLog } from "../debug-log";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
 import {
@@ -152,8 +153,6 @@ function scorecardJsonSchema(themeKeys: string[]): Record<string, unknown> {
             themeKey: { type: "string", enum: themeKeys },
             subParameters: {
               type: "array",
-              minItems: 5,
-              maxItems: 5,
               items: subParamSchema,
             },
             confidence: { type: "number", minimum: 0, maximum: 1 },
@@ -298,7 +297,13 @@ function clamp01(n: number): number {
 }
 
 function clampSubScore(n: unknown): 0 | 1 | 2 {
-  const v = typeof n === "number" && Number.isFinite(n) ? Math.round(n) : 0;
+  let v = 0;
+  if (typeof n === "number" && Number.isFinite(n)) {
+    v = Math.round(n);
+  } else if (typeof n === "string" && n.trim() !== "") {
+    const parsed = Number(n);
+    if (Number.isFinite(parsed)) v = Math.round(parsed);
+  }
   return Math.max(0, Math.min(2, v)) as 0 | 1 | 2;
 }
 
@@ -574,16 +579,49 @@ export async function runPostCallScorecard(
   const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
 
   const provider = getPostCallProvider(env);
-  const result = await provider.generate({
-    maxTokens: 12000,
-    system: buildScorecardSystemPrompt(profile),
-    user: userPrompt(input, profile),
-    effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
-    research: false,
-    thinkingBudget: 0,
-    jsonSchema: scorecardJsonSchema(themeKeys),
-    step: "postcall-scorecard",
+  const jsonSchema = scorecardJsonSchema(themeKeys);
+  // #region agent log
+  debugLog({
+    runId: "post-fix",
+    hypothesisId: "B",
+    location: "scorecard.ts:runPostCallScorecard",
+    message: "scorecard schema before provider",
+    data: { callType: input.callType, themeCount: themeKeys.length },
   });
+  // #endregion
+  let result;
+  try {
+    result = await provider.generate({
+      maxTokens: 12000,
+      system: buildScorecardSystemPrompt(profile),
+      user: userPrompt(input, profile),
+      effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
+      research: false,
+      thinkingBudget: 0,
+      jsonSchema,
+      step: "postcall-scorecard",
+    });
+  } catch (err) {
+    // #region agent log
+    debugLog({
+      runId: "post-fix",
+      hypothesisId: "A",
+      location: "scorecard.ts:runPostCallScorecard:error",
+      message: "scorecard provider failed",
+      data: { error: err instanceof Error ? err.message.slice(0, 500) : String(err) },
+    });
+    // #endregion
+    throw err;
+  }
+  // #region agent log
+  debugLog({
+    runId: "post-fix",
+    hypothesisId: "A",
+    location: "scorecard.ts:runPostCallScorecard:success",
+    message: "scorecard provider returned",
+    data: { textLen: result.text?.length ?? 0 },
+  });
+  // #endregion
 
   const parsed = extractJson<{
     lines?: Array<Record<string, unknown>>;

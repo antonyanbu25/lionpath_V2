@@ -61,7 +61,7 @@ import {
   parseProspectEmails,
   resetPrecallForm,
   syncPrepEngagementMotion,
-} from "./precall.js";
+} from "./precall.js?v=2.0.8.1-merge";
 import {
   initPostcall,
   onSessionReady,
@@ -75,7 +75,7 @@ import {
   hidePostCallLegacyResult,
   isPostCallGenerationBusy,
   scheduleProspectEmailAutofillGuard,
-} from "./postcall.js";
+} from "./postcall.js?v=2.0.8.1-merge";
 import {
   applyAutoCompanyDomain,
   domainFromFirstProspectEmail,
@@ -1687,12 +1687,37 @@ async function warnIfWorkerDown() {
     if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
     const config = await res.json();
     const workerBuild = String(config.workerBuild || "");
+    const schemaFix = config.geminiSchemaEnumFix || null;
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d8cd23" },
+      body: JSON.stringify({
+        sessionId: "d8cd23",
+        runId: "post-fix",
+        hypothesisId: "F",
+        location: "app.js:warnIfWorkerDown:config",
+        message: "worker config loaded",
+        data: { portalBuild, workerBuild, schemaFix },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    if (!schemaFix) {
+      banner.setAttribute("type", "warning");
+      banner.textContent =
+        `Worker missing schema fix (workerBuild: ${workerBuild || "unknown"}). ` +
+        "Rebuild worker from branch with geminiSchemaEnumFix, or run deploy without git reset --hard.";
+      banner.hidden = false;
+      return true;
+    }
     const needsDomainCache =
-      !workerBuild.includes("domain-cache") ||
-      (portalBuild &&
-        !portalBuild.includes("domain-cache") &&
-        !portalBuild.includes("precall-align") &&
-        !portalBuild.includes("2.0.8.1"));
+      !workerBuild.includes("domain-cache") &&
+      !workerBuild.includes("2.0.8.1") &&
+      !!portalBuild &&
+      !portalBuild.includes("domain-cache") &&
+      !portalBuild.includes("precall-align") &&
+      !portalBuild.includes("2.0.8.1");
     if (needsDomainCache) {
       banner.setAttribute("type", "warning");
       banner.textContent =

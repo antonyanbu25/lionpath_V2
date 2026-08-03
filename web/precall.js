@@ -16,8 +16,8 @@ import {
   renderSourcePopover,
   renderLegacyFallback,
   companyMono,
-} from "./precall-render.js";
-import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js";
+} from "./precall-render.js?v=2.0.8.1-merge";
+import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.0.8.1-merge";
 import { wirePrepV9ScrollAnimations } from "./prep-v9-animate.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
@@ -331,21 +331,40 @@ function renderActiveTab() {
   const meta = state.currentMeta;
   if (!prep || !isV8Prep(prep)) return;
 
-  const disc = $("prep-tab-discovery");
-  const demo = $("prep-tab-demo");
-  if (disc) {
-    disc.innerHTML = renderKnowTab(prep, state.srcOpen, {
-      domain: meta?.domain,
-      linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
-      kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
-      additionalContext: meta?.additionalContext || meta?.seAdditionalContext,
-      peopleProspectTab: state.peopleProspectTab,
-      prospectEmails: meta?.prospectEmails || meta?.researchMeta?.prospectEmails,
-    });
-  }
-  if (demo) demo.innerHTML = renderDemoPrepTab(prep, state.checks, accountId(meta));
+  try {
+    const disc = $("prep-tab-discovery");
+    const demo = $("prep-tab-demo");
+    if (disc) {
+      disc.innerHTML = renderKnowTab(prep, state.srcOpen, {
+        domain: meta?.domain,
+        linkedinMatchedEmails: meta?.linkedinMatchedEmails || meta?.researchMeta?.linkedinMatchedEmails,
+        kaiaFetched: !!(meta?.kaiaFetched || meta?.researchMeta?.kaiaFetched),
+        additionalContext: meta?.additionalContext || meta?.seAdditionalContext,
+        peopleProspectTab: state.peopleProspectTab,
+        prospectEmails: meta?.prospectEmails || meta?.researchMeta?.prospectEmails,
+      });
+    }
+    if (demo) demo.innerHTML = renderDemoPrepTab(prep, state.checks, accountId(meta));
 
-  wireTabInteractions();
+    wireTabInteractions();
+  } catch (err) {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d8cd23" },
+      body: JSON.stringify({
+        sessionId: "d8cd23",
+        runId: "post-fix",
+        hypothesisId: "E",
+        location: "precall.js:renderActiveTab:error",
+        message: "precall render failed",
+        data: { error: err instanceof Error ? err.message : String(err) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    throw err;
+  }
 }
 
 function clearFwInput(id) {
@@ -456,6 +475,27 @@ function showFormView() {
 }
 
 function showResultView(prep, meta) {
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d8cd23" },
+    body: JSON.stringify({
+      sessionId: "d8cd23",
+      runId: "post-fix",
+      hypothesisId: "D",
+      location: "precall.js:showResultView",
+      message: "precall result view",
+      data: {
+        isV8: isV8Prep(prep),
+        isV7: isV7Prep(prep),
+        prospects: prep?.prospects?.length ?? 0,
+        signals: prep?.signals?.length ?? 0,
+        hasAbout: !!prep?.about,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!isV8Prep(prep)) {
     const legacy = $("prep-legacy-fallback");
     if (legacy) {

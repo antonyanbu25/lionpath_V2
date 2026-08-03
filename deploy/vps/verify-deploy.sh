@@ -10,8 +10,8 @@ CONFIG="$(curl -sf "$API")"
 echo "$CONFIG" | head -c 400
 echo ""
 
-WORKER_BUILD="$(echo "$CONFIG" | grep -o '"workerBuild":"[^"]*"' | cut -d'"' -f4 || true)"
-echo "workerBuild=${WORKER_BUILD:-MISSING}"
+SCHEMA_FIX="$(echo "$CONFIG" | grep -o '"geminiSchemaEnumFix":"[^"]*"' | cut -d'"' -f4 || true)"
+echo "geminiSchemaEnumFix=${SCHEMA_FIX:-MISSING}"
 
 echo ""
 echo "=== Portal HTML ==="
@@ -22,6 +22,10 @@ echo "portal-build=${PORTAL_BUILD:-MISSING}"
 FAIL=0
 if [[ -z "$WORKER_BUILD" ]] || [[ "$WORKER_BUILD" != *2.0.8.1-merge* ]]; then
   echo "FAIL: worker missing 2.0.8.1-merge build — run: bash update.sh" >&2
+  FAIL=1
+fi
+if [[ -z "$SCHEMA_FIX" ]]; then
+  echo "FAIL: worker missing geminiSchemaEnumFix — postcall scorecard Gemini 400 not patched" >&2
   FAIL=1
 fi
 if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *2.0.8.1-merge* ]]; then

@@ -65,7 +65,7 @@ import {
 import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
-import { WORKER_BUILD } from "./build-id";
+import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -98,6 +98,7 @@ export async function handleConfig(
   return json(
     {
       workerBuild: WORKER_BUILD,
+      geminiSchemaEnumFix: GEMINI_SCHEMA_ENUM_FIX,
       prep: {
         provider: prepProvider,
         model: prepModel,

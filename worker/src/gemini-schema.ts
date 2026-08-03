@@ -22,10 +22,27 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Gemini responseSchema enum values must be strings (TYPE_STRING), not numbers. */
+function coerceEnumForGemini(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const enumValues = schema.enum;
+  if (!Array.isArray(enumValues) || !enumValues.some((v) => typeof v === "number")) {
+    return schema;
+  }
+  const out: Record<string, unknown> = {
+    ...schema,
+    enum: enumValues.map((v) => String(v)),
+  };
+  const t = out.type;
+  if (t === "integer" || t === "number") out.type = "string";
+  return out;
+}
+
 /** Recursively remove JSON Schema keywords unsupported by Gemini responseSchema. */
 export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<string, unknown> {
   const requiredList = Array.isArray(schema.required) ? (schema.required as string[]) : [];
-  const out: Record<string, unknown> = {};
+  let out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(schema)) {
     if (!GEMINI_RESPONSE_SCHEMA_KEYS.has(key)) continue;
@@ -61,6 +78,7 @@ export function toGeminiResponseSchema(schema: Record<string, unknown>): Record<
     out[key] = value;
   }
 
+  out = coerceEnumForGemini(out);
   return out;
 }
 
