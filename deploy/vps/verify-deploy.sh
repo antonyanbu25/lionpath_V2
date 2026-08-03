@@ -30,21 +30,27 @@ if [[ -z "$SCHEMA_FIX" ]]; then
   echo "FAIL: worker missing geminiSchemaEnumFix — postcall scorecard Gemini 400 not patched" >&2
   FAIL=1
 fi
-if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *2.0.8.1-merge* ]]; then
-  echo "FAIL: portal missing 2.0.8.1-merge build — run: bash update.sh" >&2
+if [[ "$PORTAL_BUILD" != "2.1" ]]; then
+  echo "FAIL: portal-build must be 2.1 (got: ${PORTAL_BUILD:-MISSING}) — run: bash refresh-web.sh" >&2
   FAIL=1
 fi
 PRECALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*precall\.css[^"]*"' | head -1 || true)"
 POSTCALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*postcall\.css[^"]*"' | head -1 || true)"
+APP_JS="$(echo "$HTML" | grep -o 'app\.js?v=[^"]*' | head -1 || true)"
 echo "precall-link=${PRECALL_HREF:-MISSING}"
 echo "postcall-link=${POSTCALL_HREF:-MISSING}"
+echo "app-js=${APP_JS:-MISSING}"
 
 if ! echo "$HTML" | grep -q 'precall.css?v=2.1'; then
   echo "FAIL: precall.css?v=2.1 missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
+if ! echo "$HTML" | grep -q 'app.js?v=2.1'; then
+  echo "FAIL: app.js?v=2.1 missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
+  FAIL=1
+fi
 if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
-  echo "FAIL: postcall.css cache-bust missing — portal HTML is stale (git checkout or refresh-web.sh)" >&2
+  echo "FAIL: postcall.css?v=2.0.8.1-merge missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall-intake-card'; then

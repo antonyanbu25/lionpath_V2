@@ -27,6 +27,13 @@ cd "$DEPLOY_DIR"
 if ! grep -q 'precall.css?v=2.1' "$REPO_ROOT/web/index.html" 2>/dev/null; then
   echo "ERROR: web/index.html missing 2.1 precall cache-bust after reset — git pull did not apply." >&2
   echo "       Run: bash $DEPLOY_DIR/git-auth-diagnose.sh" >&2
+  grep -E 'portal-build|precall.css|app.js' "$REPO_ROOT/web/index.html" 2>/dev/null | head -5 >&2 || true
+  exit 1
+fi
+
+if ! grep -q 'portal-build" content="2.1"' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html portal-build is not 2.1 after reset — still on old branch." >&2
+  grep 'portal-build' "$REPO_ROOT/web/index.html" 2>/dev/null | head -1 >&2 || true
   exit 1
 fi
 
