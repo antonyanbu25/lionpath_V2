@@ -32,6 +32,22 @@ if ! echo "$HTML" | grep -q 'precall.css?v=2.0.8.1-merge'; then
   echo "FAIL: precall.css cache-bust missing — portal HTML is stale" >&2
   FAIL=1
 fi
+if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
+  echo "FAIL: postcall.css cache-bust missing — portal HTML is stale" >&2
+  FAIL=1
+fi
+if ! echo "$HTML" | grep -q 'postcall-intake-card'; then
+  echo "FAIL: postcall intake UI missing (postcall-intake-card) — old post-call form still deployed" >&2
+  FAIL=1
+fi
+if ! echo "$HTML" | grep -q 'pc-account-deal-preview'; then
+  echo "FAIL: postcall account-deal preview missing — old post-call form still deployed" >&2
+  FAIL=1
+fi
+if echo "$HTML" | grep -q 'id="pc-company-name"'; then
+  echo "FAIL: legacy pc-company-name field still present — old post-call form deployed" >&2
+  FAIL=1
+fi
 if [[ "$FAIL" -eq 0 ]]; then
   echo "OK: 2.0.8.1-merge release is live on portal and worker."
 fi

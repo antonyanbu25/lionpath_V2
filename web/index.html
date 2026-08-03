@@ -23,8 +23,8 @@
     <link rel="stylesheet" href="./dew-theme.css?v=2.0.8" />
     <link rel="stylesheet" href="./styles.css?v=2.0.8-login-sso2" />
     <link rel="stylesheet" href="./precall.css?v=2.0.8.1-merge" />
-    <link rel="stylesheet" href="./postcall.css?v=2.0.8" />
-    <link rel="stylesheet" href="./call-view.css?v=2.0.8" />
+    <link rel="stylesheet" href="./postcall.css?v=2.0.8.1-merge" />
+    <link rel="stylesheet" href="./call-view.css?v=2.0.8.1-merge" />
     <link rel="stylesheet" href="./lifecycle.css?v=2.0.8" />
     <style id="prep-dispute-critical-css">
       #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
@@ -751,7 +751,7 @@
     </script>
     <script type="module">
       import "./firebase-config.js?v=2.0.8";
-      import("./app.js?v=2.0.8").catch(function (err) {
+      import("./app.js?v=2.0.8.1-merge").catch(function (err) {
         console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {

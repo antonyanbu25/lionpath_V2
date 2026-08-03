@@ -30,6 +30,11 @@ if ! grep -q 'precall.css?v=2.0.8.1-merge' "$REPO_ROOT/web/index.html" 2>/dev/nu
   exit 1
 fi
 
+if ! grep -q 'postcall-intake-card' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing postcall-intake-card — git reset did not apply 2.0.8.1-merge postcall UI." >&2
+  exit 1
+fi
+
 if [[ ! -f .env ]]; then
   echo "Missing .env — copy .env.example and set GEMINI_API_KEY." >&2
   exit 1
