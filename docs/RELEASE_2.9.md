@@ -83,7 +83,7 @@ These were requested in the same annotation set and are already on the base bran
 
 | Item | Status |
 |------|--------|
-| Keep **+ / Add all** on "What we could not find" (add-to-kit is wired) | Done (`web/precall.js`) |
+| Remove **+ / Add all** on "What we could not find" (no save mechanism yet) | Done (`web/precall-brief-v9.js`) |
 | DISC only for LinkedIn profiles | Done in 2.9 commit |
 
 ### Image 5 — Fixed parameters

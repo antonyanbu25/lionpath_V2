@@ -314,29 +314,15 @@ function buildUnknownsList(prep) {
 function renderUnknownsGaps(prep) {
   const unknowns = buildUnknownsList(prep);
   if (!unknowns.length) return "";
-  // Which gaps are already in the kit. buildUnknownsList derives rows from signals/facts and never
-  // consults discoveryKit, so a row used to look untouched after being added — the "+" stayed live
-  // and the only sign anything happened was the kit growing further down the page.
-  const inKit = new Set(
-    (prep.discoveryKit || []).map((k) => String(k.question || "").trim().toLowerCase()),
-  );
   const subtitle = `${unknowns.length} gap${unknowns.length === 1 ? "" : "s"}. Each one is a question.`;
   const rows = unknowns
     .map(
-      (u) => {
-        const added = inKit.has(u.question.trim().toLowerCase());
-        return `<div class="prep-v9-unknown-row${added ? " prep-v9-unknown-row-added" : ""}">
+      (u) => `<div class="prep-v9-unknown-row">
         <div class="prep-v9-unknown-body">
           <div class="prep-v9-unknown-field">${esc(u.field)}</div>
           <div class="prep-v9-unknown-question">${esc(u.question)}</div>
         </div>
-        ${
-          added
-            ? '<span class="prep-v9-unknown-added" title="Already in your discovery kit">Added</span>'
-            : `<button type="button" class="prep-v9-unknown-add" data-unknown-question="${esc(u.question)}" title="Add to discovery kit" aria-label="Add to my questions">＋</button>`
-        }
-      </div>`;
-      },
+      </div>`,
     )
     .join("");
   return `<div class="prep-v9-card prep-v9-unknowns-card">
@@ -345,7 +331,6 @@ function renderUnknownsGaps(prep) {
         <h2 class="prep-v9-card-title">What we could not find</h2>
         <p class="muted prep-v9-card-sub">${esc(subtitle)}</p>
       </div>
-      <button type="button" class="prep-v9-unknown-add-all">Add all</button>
     </div>
     <div class="prep-v9-unknown-list">${rows}</div>
   </div>`;

@@ -608,50 +608,6 @@ function wireTabInteractions() {
     state.srcOpen = ev.target.open;
   });
 
-  /**
-   * Add a gap question to the discovery kit, and keep it.
-   *
-   * This used to mutate state.currentPrep only, with no write-back, so every question the SE added
-   * was lost on reload — the button looked like it worked and quietly forgot. Persisting to the
-   * stored brief makes the affordance mean what it appears to mean.
-   */
-  function persistCurrentPrep() {
-    if (!state.activeBriefId || !state.currentPrep) return;
-    const list = loadLocalBriefs();
-    const idx = list.findIndex((b) => b.id === state.activeBriefId);
-    if (idx < 0) return;
-    list[idx] = { ...list[idx], prep: state.currentPrep };
-    saveLocalBriefs(list);
-  }
-
-  function appendDiscoveryQuestion(question) {
-    const q = String(question || "").trim();
-    if (!q || !state.currentPrep) return false;
-    if (!Array.isArray(state.currentPrep.discoveryKit)) state.currentPrep.discoveryKit = [];
-    const exists = state.currentPrep.discoveryKit.some((k) => String(k.question || "").trim() === q);
-    if (exists) return false;
-    state.currentPrep.discoveryKit.push({ question: q, because: "Gap from brief research — ask on the call." });
-    return true;
-  }
-
-  /** Batch the re-render and the write: adding 5 gaps should not re-render 5 times. */
-  function addDiscoveryQuestions(questions) {
-    const added = questions.map((q) => appendDiscoveryQuestion(q)).some(Boolean);
-    if (!added) return;
-    persistCurrentPrep();
-    renderActiveTab();
-  }
-
-  root.querySelector(".prep-v9-unknown-add-all")?.addEventListener("click", () => {
-    addDiscoveryQuestions(
-      [...root.querySelectorAll(".prep-v9-unknown-add")].map((btn) => btn.dataset.unknownQuestion),
-    );
-  });
-
-  root.querySelectorAll(".prep-v9-unknown-add").forEach((btn) => {
-    btn.addEventListener("click", () => addDiscoveryQuestions([btn.dataset.unknownQuestion]));
-  });
-
   const peopleTabs = root.querySelector("#prep-people-tabs");
   if (peopleTabs) {
     peopleTabs.addEventListener("fwChange", (ev) => {
