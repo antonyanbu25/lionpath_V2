@@ -34,12 +34,17 @@ if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *2.0.8.1-merge* ]]; then
   echo "FAIL: portal missing 2.0.8.1-merge build — run: bash update.sh" >&2
   FAIL=1
 fi
+PRECALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*precall\.css[^"]*"' | head -1 || true)"
+POSTCALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*postcall\.css[^"]*"' | head -1 || true)"
+echo "precall-link=${PRECALL_HREF:-MISSING}"
+echo "postcall-link=${POSTCALL_HREF:-MISSING}"
+
 if ! echo "$HTML" | grep -q 'precall.css?v=2.0.8.1-merge'; then
-  echo "FAIL: precall.css cache-bust missing — portal HTML is stale" >&2
+  echo "FAIL: precall.css cache-bust missing — portal HTML is stale (git checkout or refresh-web.sh)" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
-  echo "FAIL: postcall.css cache-bust missing — portal HTML is stale" >&2
+  echo "FAIL: postcall.css cache-bust missing — portal HTML is stale (git checkout or refresh-web.sh)" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall-intake-card'; then

@@ -40,8 +40,8 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-chmod +x start.sh setup.sh doctor.sh update.sh verify-deploy.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
-sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh verify-deploy.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
+chmod +x start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
+sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
 
 if ! grep -q 'DEMO_ASSET_LABELS' "$REPO_ROOT/worker/src/prep-assets.ts" 2>/dev/null; then
   echo "ERROR: worker/src/prep-assets.ts missing DEMO_ASSET_LABELS — git reset did not apply." >&2

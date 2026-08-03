@@ -33,6 +33,9 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+echo "WARN: This script does NOT update web/index.html — portal HTML may stay stale." >&2
+echo "      After worker hotfix, run: bash $REPO_ROOT/deploy/vps/refresh-web.sh" >&2
+
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker
 docker compose up -d
