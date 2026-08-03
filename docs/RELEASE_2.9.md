@@ -472,21 +472,39 @@ npm run test:prep-normalize
 6. LinkedIn seat shows **Do** (`#2e897b`) and **Don't** (`#b8544a`) rows when `discHint.dos/donts` populated.
 7. Kaia-only prospect (no LinkedIn) → thin row, **no** `.prep-v9-disc` SVG.
 
-### VPS deploy (`antony` remote)
+### VPS deploy
+
+**One command (recommended):** `deploy/vps/upgrade-now.sh` fetches `origin/2.9`, hard-resets the repo, rebuilds the worker, and restarts web. As of this release the script targets branch **`2.9`** (not `2.0.8.1-merge`).
 
 ```bash
+cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
+```
+
+Manual equivalent (origin = `https://github.com/antonyanbu25/lionpath_V2.git`):
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash git-fetch-origin.sh /opt/se-singha-paathai 2.9
 cd /opt/se-singha-paathai
-git fetch antony 2.9
-git checkout 2.9
-git pull antony 2.9
-cd deploy/vps && bash update.sh
+git checkout -B 2.9 origin/2.9
+git reset --hard origin/2.9
+bash deploy/vps/update.sh
+```
+
+Web-only refresh (no worker rebuild):
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh
 ```
 
 Verify served CSS version:
 
 ```bash
+bash deploy/vps/verify-deploy.sh
+# or:
 curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 # expect: precall.css?v=2.9
+# portal-build meta stays 2.0.8.1-merge on 2.9 branch
 ```
 
 ---

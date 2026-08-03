@@ -9,13 +9,13 @@ DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 # Fetch + reset first, then re-exec so post-reset guards read the freshly pulled update.sh
 # (otherwise a running copy still checks old cache-bust strings from before git reset --hard).
 if [[ "${UPDATE_POST_RESET:-}" != "1" ]]; then
-  echo "=== Fetching origin/2.0.8.1-merge ==="
-  bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.0.8.1-merge"
+  echo "=== Fetching origin/2.9 ==="
+  bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.9"
 
-  echo "=== Resetting to origin/2.0.8.1-merge (keeps .env — gitignored) ==="
+  echo "=== Resetting to origin/2.9 (keeps .env — gitignored) ==="
   cd "$REPO_ROOT"
-  git checkout 2.0.8.1-merge 2>/dev/null || git checkout -B 2.0.8.1-merge
-  git reset --hard "origin/2.0.8.1-merge"
+  git checkout 2.9 2>/dev/null || git checkout -B 2.9
+  git reset --hard "origin/2.9"
   echo "=== Deployed commit: $(git log -1 --oneline) ==="
 
   export UPDATE_POST_RESET=1
@@ -24,14 +24,14 @@ fi
 
 cd "$DEPLOY_DIR"
 
-if ! grep -q 'precall.css?v=2.0.8.1-merge' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html missing 2.0.8.1-merge precall cache-bust after reset — git pull did not apply." >&2
+if ! grep -q 'precall.css?v=2.9' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing 2.9 precall cache-bust after reset — git pull did not apply." >&2
   echo "       Run: bash $DEPLOY_DIR/git-auth-diagnose.sh" >&2
   exit 1
 fi
 
 if ! grep -q 'postcall-intake-card' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html missing postcall-intake-card — git reset did not apply 2.0.8.1-merge postcall UI." >&2
+  echo "ERROR: web/index.html missing postcall-intake-card — git reset did not apply 2.9 postcall UI." >&2
   exit 1
 fi
 

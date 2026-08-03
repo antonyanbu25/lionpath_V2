@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Upgrade VPS from 2.0.7.x → 2.0.8.1-merge (postcall QIP UI + precall merge).
+# Upgrade VPS to 2.9 (pre-call Know tab UI + postcall intake from 2.0.8.1-merge base).
 # Run on the VPS as root or deploy user:
 #   cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"
-BRANCH="2.0.8.1-merge"
+BRANCH="2.9"
 DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 
 echo "=============================================="
-echo " UPGRADE → $BRANCH (new post-call intake UI)"
+echo " UPGRADE → $BRANCH (pre-call Know tab UI)"
 echo " Repo: $REPO_ROOT"
 echo "=============================================="
 
