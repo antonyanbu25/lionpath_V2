@@ -165,7 +165,7 @@ assert.ok(/<h1>New pre-call brief<\/h1>/.test(html), "heading text changed");
 const portalBuild = html.match(/portal-build" content="([^"]+)"/)?.[1];
 const precallCss = html.match(/precall\.css\?v=([^"]+)"/)?.[1];
 assert.ok(portalBuild?.includes("precall-align"), `portal-build must contain precall-align, got ${portalBuild}`);
-assert.equal(precallCss, "2.0.8-precall-align3");
+assert.equal(precallCss, "2.0.7.4-precall-align4");
 assert.ok(portalBuild.startsWith("2.0.7.4-"), `portal-build must be on the 2.0.7.4 train, got ${portalBuild}`);
 
 for (const [file, needle] of [

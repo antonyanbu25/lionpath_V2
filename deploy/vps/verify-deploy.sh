@@ -28,7 +28,7 @@ if [[ -z "$PORTAL_BUILD" ]] || [[ "$PORTAL_BUILD" != *2.0.7.4-precall-align4* ]]
   echo "FAIL: portal missing 2.0.7.4-precall-align4 build — run: bash update.sh" >&2
   FAIL=1
 fi
-if ! echo "$HTML" | grep -q 'precall.css?v=2.0.8-precall-align3'; then
+if ! echo "$HTML" | grep -q 'precall.css?v=2.0.7.4-precall-align4'; then
   echo "FAIL: precall.css cache-bust missing — portal HTML is stale" >&2
   FAIL=1
 fi
