@@ -212,7 +212,7 @@ button.pc-deal-tile {
   margin: -4px 0 12px;
 }
 
-.nb-deal-new-link.is-active {
+#view-postcall .nb-deal-new-link.is-active {
   text-decoration: underline;
 }
 
@@ -312,7 +312,7 @@ button.pc-deal-tile {
   display: none !important;
 }
 
-.nb-deal-card-icon {
+#view-postcall .nb-deal-card-icon {
   color: #a5883f;
   font-size: 14px;
   flex-shrink: 0;

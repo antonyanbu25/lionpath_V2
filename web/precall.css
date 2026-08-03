@@ -1077,6 +1077,80 @@
   color: var(--dew-text-muted);
 }
 
+.prep-icp-zone {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dew-text-muted);
+}
+
+.prep-icp-cap,
+.prep-icp-legacy {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prep-icp-tick-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.prep-icp-tick {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.prep-icp-tick-mark {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.prep-icp-tick-met .prep-icp-tick-mark {
+  color: var(--dew-green);
+  background: var(--dew-green-tint, rgba(10, 160, 110, 0.12));
+}
+
+.prep-icp-tick-unmet .prep-icp-tick-mark {
+  color: var(--dew-red);
+  background: var(--dew-red-tint, rgba(229, 72, 77, 0.12));
+}
+
+.prep-icp-tick-unknown .prep-icp-tick-mark {
+  color: var(--dew-text-muted);
+  background: var(--dew-hairline);
+}
+
+.prep-icp-tick-label {
+  flex: 1;
+  min-width: 0;
+  color: var(--dew-text);
+}
+
+.prep-icp-tick-dq {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-red);
+}
+
 .prep-signals-section {
   margin-bottom: 16px;
 }
@@ -2464,7 +2538,14 @@
 .prep-v9-moment-values { display: flex; flex-direction: column; gap: 6px; }
 .prep-v9-value-row { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.5; color: #3d3a34; }
 .prep-v9-value-row span:first-child { width: 5px; height: 5px; border-radius: 50%; background: #4a7a5c; margin-top: 6px; flex-shrink: 0; }
-.prep-v9-sandbox-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-bottom: 1px solid #f8f5ef; }
+.prep-v9-sandbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f8f5ef;
+}
 .prep-v9-sandbox-done { text-decoration: line-through; }
 .prep-v9-asset-row {
   display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid #f8f5ef;
@@ -2690,7 +2771,7 @@
 /* The model's reason for choosing the industry-specific third axis — shown so the choice is
    inspectable rather than taken on trust. */
 .prep-v9-benchmark-why { font-size: 11.5px; margin: 4px 0 0; line-height: 1.45; }
-.prep-v9-icp-card .prep-icp-block { margin-top: 0; }
+.prep-v9-icp-card .prep-icp-block { margin-top: 0; border-top: none; padding-top: 0; }
 
 /* --- Room: a seat with no LinkedIn profile has no DISC grid to sit beside ------- */
 .prep-v9-attendee-thin { grid-template-columns: minmax(0, 1fr); }
