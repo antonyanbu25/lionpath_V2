@@ -13,7 +13,7 @@ import {
   recentFromIndex,
   invalidateSearchIndex,
   SEARCH_TYPES,
-} from "./search-service.js?v=2.1.12";
+} from "./search-service.js?v=2.1.14";
 import { esc } from "./shared.js";
 
 export { invalidateSearchIndex };

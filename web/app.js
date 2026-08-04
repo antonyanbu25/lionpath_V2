@@ -22,13 +22,13 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js?v=2.1";
+import { renderAccountView } from "./account-view.js?v=2.1.14";
 import { renderDealView } from "./deal-view.js";
-import { renderContactsView } from "./contacts-view.js?v=2.1";
+import { renderContactsView } from "./contacts-view.js?v=2.1.14";
 import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
-import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.12";
+import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
   syncTasksOnLogin,
@@ -50,7 +50,7 @@ import { renderSeDetailView } from "./se-detail-view.js";
 import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
-import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1";
+import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1.14";
 import { stableUserIdForEmail } from "./domain/id.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
@@ -80,7 +80,7 @@ import {
   hidePostCallLegacyResult,
   isPostCallGenerationBusy,
   scheduleProspectEmailAutofillGuard,
-} from "./postcall.js?v=2.0.8.1-merge";
+} from "./postcall.js?v=2.1.14";
 import {
   applyAutoCompanyDomain,
   domainFromFirstProspectEmail,
@@ -1829,10 +1829,6 @@ async function showApp(session, opts = {}) {
     updateNavForRole();
     refreshSidebarRecentWork();
 
-    // #region agent log
-    const bootT0 = Date.now();
-    // #endregion
-
     try {
       await seedDevDomainIfNeeded();
       const enriched = (await syncSessionWithDomainStore(session)) || session;
@@ -1856,35 +1852,8 @@ async function showApp(session, opts = {}) {
       return;
     }
 
-    // #region agent log
-    const historyMs = Date.now() - bootT0;
-    // #endregion
-
     await applyInitialRouteFromHash(currentSession);
     await paintAuthenticatedShell();
-
-    // #region agent log
-    const perfPayload = {
-      sessionId: "e10083",
-      runId: "nav-perf",
-      hypothesisId: "H4-loginBoot",
-      location: "app.js:showApp",
-      message: "login boot timing",
-      data: { historyMs, totalMs: Date.now() - bootT0, view: currentView },
-      timestamp: Date.now(),
-    };
-    console.info("[perf]", perfPayload);
-    try {
-      sessionStorage.setItem("lionpath:perf:last", JSON.stringify(perfPayload));
-    } catch {
-      /* ignore */
-    }
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
-      body: JSON.stringify(perfPayload),
-    }).catch(() => {});
-    // #endregion
 
     setTimeout(() => warmSearchIndex(() => currentSession), 2000);
 

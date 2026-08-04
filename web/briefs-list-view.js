@@ -2,8 +2,8 @@
  * All briefs list — dashboard KPI drill-down (#precall/briefs).
  */
 
-import { loadAllLocalBriefs } from "./precall.js";
-import { companyMono } from "./precall-render.js?v=2.0.8.1-merge";
+import { loadAllLocalBriefs } from "./precall.js?v=2.1.14";
+import { companyMono } from "./precall-render.js?v=2.1.14";
 import { esc } from "./shared.js";
 
 function briefDedupeKey(b) {

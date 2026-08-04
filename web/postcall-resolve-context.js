@@ -3,7 +3,7 @@
  */
 
 import { getStore } from "./domain/store.js";
-import { loadLocalBriefs } from "./precall.js";
+import { loadLocalBriefs } from "./precall.js?v=2.1.14";
 import { domainFromEmail } from "./domain/types.js";
 import { listDealsForAccount } from "./domain/deal-service.js";
 

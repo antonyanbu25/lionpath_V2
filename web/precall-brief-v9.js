@@ -14,7 +14,7 @@ import {
   isSeNotesSource,
   confidenceMeta,
   confidenceMetaForSource,
-} from "./precall-render.js";
+} from "./precall-render.js?v=2.1.14";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
 import { fishBucketFromMetric } from "./fish-sizing-buckets.js";

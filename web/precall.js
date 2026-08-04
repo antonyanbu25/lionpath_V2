@@ -17,10 +17,10 @@ import {
   renderSourcePopover,
   renderLegacyFallback,
   companyMono,
-} from "./precall-render.js?v=2.0.8.1-merge";
+} from "./precall-render.js?v=2.1.14";
 import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.1.14";
 import { wirePrepV9ScrollAnimations } from "./prep-v9-animate.js";
-import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js?v=2.1";
+import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js?v=2.1.14";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
 import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain, resetPrepDomainState } from "./prep-domain.js";
 import {

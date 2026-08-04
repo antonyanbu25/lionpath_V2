@@ -8,7 +8,7 @@ import {
   updateAccountSeTeam,
   enrichAccountListRows,
   listAccountRowsFromHistory,
-} from "./domain/account-service.js?v=2.1";
+} from "./domain/account-service.js?v=2.1.14";
 import { mergeAccountListRows } from "./domain/history-deal-enrichment.js";
 import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
@@ -19,7 +19,7 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
 import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS, resolveDealMeddpicc } from "./domain/contact-service.js";
-import { filterAccountRows } from "./search-service.js";
+import { filterAccountRows } from "./search-service.js?v=2.1.14";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { formatCompactUsd, formatDealListMoneyBand } from "./deal-view.js";
@@ -2063,9 +2063,6 @@ function renderAccountsListView(rows, opts) {
 }
 
 async function loadAccountListRows(session, onPreview) {
-  // #region agent log
-  const loadT0 = Date.now();
-  // #endregion
   try {
     const historyRows = listAccountRowsFromHistory(session);
     const store = getStore();
@@ -2096,21 +2093,6 @@ async function loadAccountListRows(session, onPreview) {
 
     const baseRows = mergeAccountListRows(storeRows, historyRows);
     const rows = (await enrichAccountListRows(store, baseRows)).filter((row) => row?.account?.id);
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
-      body: JSON.stringify({
-        sessionId: "e10083",
-        runId: "nav-perf",
-        hypothesisId: "H3-accountEnrich",
-        location: "account-view.js:loadAccountListRows",
-        message: "account list load timing",
-        data: { ms: Date.now() - loadT0, rowCount: rows.length },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return rows;
   } catch (err) {
     console.warn("[account-view] loadAccountListRows failed:", err?.message || err);

@@ -23,7 +23,7 @@ import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
-import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js";
+import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js?v=2.1.14";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { renderLoadingPanel, wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";

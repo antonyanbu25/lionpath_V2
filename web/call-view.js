@@ -13,7 +13,7 @@ import { sessionToUser } from "./domain/rbac.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { formatTypeComposite, isEligibleForAggregate, typeComposite, scoreCall } from "./quality-score.js";
 import { RUBRIC_VERSION, profileFor, effectiveRubricVersion } from "./rubric-profiles.js";
-import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
+import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js?v=2.1.14";
 import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
 import { assembleMomEmailDraft, greetingNameFromDraft } from "./shared/mom-email-draft.js";
 import { renderQipRadar } from "./qip-radar.js";

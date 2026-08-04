@@ -5,7 +5,7 @@
 import {
   listContactsForSession,
   historyPreviewContactsForSession,
-} from "./domain/account-service.js?v=2.1";
+} from "./domain/account-service.js?v=2.1.14";
 import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactTileList, wireContactTiles } from "./contact-tile.js";
 

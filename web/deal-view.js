@@ -2,7 +2,7 @@
  * Deals nav: global deal list + deal record (spec §11.6).
  */
 
-import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js?v=2.1";
+import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js?v=2.1.14";
 import { buildDealExtrasFromHistory } from "./domain/history-deal-enrichment.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
@@ -22,12 +22,12 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { resolveCallType } from "./call-view.js";
 import { resolveDurationMinutes } from "./calls-list-view.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
-import { filterDealRows } from "./search-service.js";
+import { filterDealRows } from "./search-service.js?v=2.1.14";
 import { filterDealRowsForList } from "./domain/se-access-service.js";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { displayMrrFromArr, formatUsd, mountDealArrModule, renderDealArrModule } from "./deal-arr-module.js";
 import { selectLatestArrLines } from "./domain/arr-service.js";
-import { getWorkerAuthHeaders } from "./postcall.js";
+import { getWorkerAuthHeaders } from "./postcall.js?v=2.1.14";
 import { esc } from "./shared.js";
 
 const MEDDPICC_LETTERS = {

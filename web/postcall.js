@@ -59,7 +59,7 @@ export { companyNameFromEmail };
 import { deriveCallTimeline } from "./domain/timeline-service.js";
 import { formatDealTitlePreview, inferDealTypeFromTitle as inferDealTypeFromTitleDomain } from "./domain/deal-service.js";
 import { STAGE_LABELS } from "./domain/types.js";
-import { buildSearchIndex, searchContacts } from "./search-service.js";
+import { buildSearchIndex, searchContacts } from "./search-service.js?v=2.1.14";
 import { ensureCustomerContact } from "./domain/contact-service.js";
 import {
   dedupePersonLabels,
@@ -4009,27 +4009,6 @@ export function clearPostCallForm() {
 
 /** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
 export function resetPostCallView() {
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a8151a" },
-    body: JSON.stringify({
-      sessionId: "a8151a",
-      runId: "postcall-ui-check",
-      hypothesisId: "H1",
-      location: "postcall.js:resetPostCallView",
-      message: "postcall UI shell markers",
-      data: {
-        portalBuild: document.querySelector('meta[name="portal-build"]')?.getAttribute("content") || null,
-        hasIntakeCard: !!document.querySelector(".postcall-intake-card"),
-        hasAccountPreview: !!document.getElementById("pc-account-deal-preview"),
-        hasOldCompanyField: !!document.getElementById("pc-company-name"),
-        heading: document.querySelector("#view-postcall h1")?.textContent?.trim() || null,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   pipelineState = null;
   clearPostCallForm();
   void ensurePostCallProspectEmailsEmpty();

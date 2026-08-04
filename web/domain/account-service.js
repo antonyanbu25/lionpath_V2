@@ -664,9 +664,6 @@ export async function listAccountsForSession(session, opts = {}) {
     if (inFlight) return inFlight;
   }
   const fetchRows = (async () => {
-  // #region agent log
-  const listT0 = Date.now();
-  // #endregion
   try {
     const store = getStore();
     const { effectiveSessionUserId } = await import("./session.js");
@@ -739,21 +736,6 @@ export async function listAccountsForSession(session, opts = {}) {
     const historyRows = listAccountRowsFromHistory(session);
     const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
     if (merged.length) setCachedAccountListRows(session, merged);
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
-      body: JSON.stringify({
-        sessionId: "e10083",
-        runId: "nav-perf",
-        hypothesisId: "H2-listAccounts",
-        location: "account-service.js:listAccountsForSession",
-        message: "account list fetch timing",
-        data: { ms: Date.now() - listT0, rowCount: merged.length, skipCache: !!opts.skipCache },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return merged;
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);

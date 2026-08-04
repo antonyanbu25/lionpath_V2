@@ -6,7 +6,7 @@ import { esc } from "./shared.js";
 import { titleCaseDisplayName } from "./shared.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { formatDealTitlePreview } from "./domain/deal-service.js";
-import { companyMono } from "./precall-render.js";
+import { companyMono } from "./precall-render.js?v=2.1.14";
 
 export function renderDealTile(d, selected) {
   const stage = STAGE_LABELS[d.stage] || d.stage || d.status || "Active";

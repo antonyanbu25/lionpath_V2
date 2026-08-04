@@ -10,7 +10,7 @@ import {
   postCallRecordsToAnalyses,
   hydratePostCallAnalyses,
 } from "./postcall-hydrate.js";
-import { listAccountsForSession } from "./account-service.js?v=2.1";
+import { listAccountsForSession } from "./account-service.js?v=2.1.14";
 import { canSessionAction, sessionToUser } from "./rbac.js";
 import { isManagerRole } from "./types.js";
 import { getStore } from "./store.js";
