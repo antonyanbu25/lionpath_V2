@@ -2,7 +2,7 @@
 
 **Branch:** `2.1`  
 **Base:** `2.0.8.2` + `feature/fix-prep-typo-domain` (already merged in history)  
-**Portal build:** `2.1` (`web/index.html` meta + `app.js?v=2.1`, `precall.css?v=2.1`)
+**Portal build:** `2.1` (`web/index.html` meta + `app.js?v=2.1.6`, `precall.css?v=2.1.2`, `precall-brief-v9.js?v=2.1.3`)
 
 ## Fixes
 
@@ -29,24 +29,27 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 
 **Files:** `web/precall-brief-v9.js`, `web/precall.css`, `web/scripts/test-precall-render.mjs`
 
-## Pre-call: LinkedIn validation, Recent news crawl, fish context fallback
+## Pre-call: LinkedIn validation, Recent news, fish sizing
 
 | Feature | Detail |
 |---------|--------|
 | **LinkedIn PDF required** | `buildPayload()` blocks submit until every prospect email has an attached LinkedIn PDF (`emailsMissingLinkedInPdf` in `web/prep-linkedin-pdf.js`) |
-| **Recent news pipeline** | (1) Gemini grounded search with redirect URL resolution → (2) DuckDuckGo HTML fallback (`company-news-search.ts`) → (3) empty state. No research-fact or SE-context backfill. Each item has **Read article →** link. |
-| **Fish sizing pipeline** | (1) Grounded rival comparison with redirect resolution → (2) `rivals-context.ts` extracts company sizing from AE notes when web finds nothing → (3) empty state. Context rows show **INPUT** badge; incumbent/integration/requirement lines excluded. |
+| **Recent news pipeline** | **Parallel:** Gemini grounded search + web crawl (Google News RSS + DuckDuckGo, merged up to 5). Redirect URL resolution before citation verify. **Newsroom fallback** when RSS/DDG return 0. **No** research-fact or SE-context backfill. Each item: headline + **Read article →** (RSS HTML stripped — no `&lt;a href=` detail lines). |
+| **Fish sizing pipeline** | **Parallel:** grounded rival comparison + AE context extraction when notes present. Web benchmark bars first; non-overlapping AE metrics append with **INPUT** badge. Context-only card when web finds nothing. Incumbent/integration/requirement lines excluded. |
 
 **Worker files:** `worker/src/prep/company-news.ts`, `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `worker/src/schema.ts`
 
-**Web files:** `web/precall.js`, `web/prep-linkedin-pdf.js`, `web/precall-brief-v9.js`, `web/recent-news.js`, `web/precall.css`
+**Web files:** `web/precall.js`, `web/prep-linkedin-pdf.js`, `web/precall-brief-v9.js`, `web/recent-news.js`, `web/precall.css`, `web/app.js`
 
-**Tests:** `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs`
+**Tests:** `worker/scripts/test-company-news.ts` (32 checks), `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` (74 checks)
+
+**Ops:** Recent news and fish sizing run during `POST /api/prep/synthesize` — redeploy **worker + web** (`upgrade-now.sh`). Generate a **new** brief to pick up pipeline changes; history entries keep old `recentNews` unless regenerated.
 
 ## VPS deploy
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
+docker compose logs worker | grep company-news   # optional: gemini=X web=Y merged=Z
 ```
 
 Or see [docs/VPS_DEPLOY.md](./VPS_DEPLOY.md).
@@ -57,4 +60,4 @@ Or see [docs/VPS_DEPLOY.md](./VPS_DEPLOY.md).
 bash /opt/se-singha-paathai/deploy/vps/verify-deploy.sh
 ```
 
-Expect `portal-build" content="2.1"` and `precall.css?v=2.1` on the live portal HTML.
+Expect `portal-build" content="2.1"` and current cache-bust query strings on the live portal HTML (`app.js?v=2.1.6` or later).

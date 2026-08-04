@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — session restore, accounts/contacts cache, Know tab UI, **LinkedIn PDF required**, **Recent news web crawl**, **fish sizing from AE context** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — session restore, accounts/contacts cache, Know tab UI, **LinkedIn PDF required**, **Recent news (Gemini + RSS + DDG + newsroom)**, **parallel fish sizing (web + AE context)** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** — Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -50,30 +50,38 @@ The **Recent news** card (Know tab, row 1) no longer back-fills from research fa
 
 | Stage | Module | Behaviour |
 |-------|--------|-----------|
-| **1 — Grounded search** | `worker/src/prep/company-news.ts` | Gemini `google_search` grounding; items verified against citation publisher domains |
-| **1b — Redirect resolve** | `worker/src/prep/citations.ts` | Grounding redirect URLs resolved to publisher URLs **before** domain verification (fixes “always empty” panel) |
-| **2 — DDG fallback** | `worker/src/research/providers/company-news-search.ts` | DuckDuckGo HTML crawl when Gemini returns nothing; up to **5** results, news-like URLs only (excludes LinkedIn, careers, login) |
-| **3 — Empty state** | `web/precall-brief-v9.js` | “No public company news found yet…” when both stages fail |
+| **1 — Parallel fetch** | `worker/src/prep/company-news.ts` | **Gemini** `google_search` grounding and **web crawl** run **at the same time** (`Promise.all`), then merged and deduped (up to **5** items) |
+| **1a — Redirect resolve** | `worker/src/prep/citations.ts` | Grounding redirect URLs resolved to publisher URLs **before** domain verification |
+| **1b — Web crawl** | `worker/src/research/providers/company-news-search.ts` | **Google News RSS** (primary when DDG rate-limits) + **DuckDuckGo** HTML (parallel queries + retries); news-like URLs only (excludes LinkedIn, careers, login) |
+| **1c — Newsroom fallback** | same | If RSS + DDG both return 0 (common on VPS), scrape company `/company/newsroom/`, `/press/`, etc. |
+| **2 — Detail hygiene** | same + `web/precall-brief-v9.js` | RSS descriptions embed HTML entities — stripped at ingest; UI shows **headline + Read article** only (no raw `&lt;a href=` lines) |
+| **3 — Empty state** | `web/precall-brief-v9.js` | “No public company news found yet…” when all stages fail |
 
 | UI | Detail |
 |----|--------|
 | **Article link** | Each item shows **Read article →** (`prep-v9-news-link`) opening the publisher URL in a new tab |
+| **Layout** | Headline, source badge (N1..Nn), and link — no duplicate HTML snippet under the title |
 | **Sources** | `prep.newsSources` (N1..Nn labels) separate from main prep `sources` |
+| **Debug** | `researchMeta.recentNewsDebug.pipeline` reports `{ gemini, web }` counts after synthesize |
 | **No backfill** | `buildRecentNews()` fallback removed from `worker/src/prep/index.ts`; `hydrateRecentNews()` in `web/recent-news.js` no longer rehydrates from cached research bundles |
 
-### 3. How big is this fish? — web first, then AE context
+**Deploy note:** Recent news is generated in the **worker** during `POST /api/prep/synthesize`. Web-only cache bust is not enough — run `bash upgrade-now.sh` on the VPS and generate a **fresh** brief (not an old history entry).
+
+### 3. How big is this fish? — web + AE context in parallel
 
 | Stage | Module | Behaviour |
 |-------|--------|-----------|
-| **1 — Grounded rivals** | `worker/src/prep/rivals.ts` | Web search for 2–4 market rivals; benchmark bars from sourced headcount / funding / industry axis; redirect URLs resolved before verification |
-| **2 — Context fallback** | `worker/src/prep/rivals-context.ts` | When rivals search returns no axes, LLM extracts **company sizing only** from merged AE context (typed notes + attachments + Kaia) |
+| **1 — Parallel fetch** | `worker/src/prep/index.ts` | **Grounded rivals** (`rivals.ts`) and **AE context extraction** (`rivals-context.ts`) run **together** when additional context is present |
+| **1a — Grounded rivals** | `worker/src/prep/rivals.ts` | Web search for 2–4 market rivals; benchmark bars from sourced headcount / funding / industry axis; redirect URLs resolved before verification |
+| **1b — Context supplement** | `worker/src/prep/rivals-context.ts` | LLM extracts **company sizing only** from merged AE context (typed notes + attachments + Kaia); metrics that overlap web axes are deduped |
 | **Context filter** | `filterFishContextMetrics()` | Keeps headcount, agents, funding, revenue, volume; **drops** deal requirements (incumbent, integrations, timeline, budget, pain, etc.) even if mis-tagged |
-| **3 — Empty state** | `web/precall-brief-v9.js` | “We could not size this account…” when neither stage finds data |
+| **2 — Empty state** | `web/precall-brief-v9.js` | “We could not size this account…” when neither stage finds data |
 
 | UI | Detail |
 |----|--------|
-| **Web sizing** | Horizontal benchmark bars from `prep.rivals.axes` (unchanged) |
-| **Context sizing** | Metric rows with **INPUT** badge and note “From your additional context — not verified on the web” (`prep.fishContext`) |
+| **Web sizing** | Horizontal benchmark bars from `prep.rivals.axes` (wireframe-style rail + rival band + prospect dot) |
+| **Context supplement** | Non-overlapping AE metrics append below web bars with **INPUT** badge (`prep.fishContext`) |
+| **Context-only** | When web finds nothing, full INPUT bar card from AE notes only |
 
 ### Files touched (this release)
 
@@ -95,7 +103,7 @@ cd worker && npx tsx scripts/test-company-news.ts && npx tsx scripts/test-rivals
 cd web && node scripts/test-precall-render.mjs
 
 # Manual: open pre-call form — Generate brief without LinkedIn PDF should error;
-# with PDF + public company (e.g. Stripe, Notion) Recent news should show items + Read article links.
+# with PDF + public company (e.g. Freshworks, Stripe) Recent news should show headlines + Read article links (no HTML junk under titles).
 ```
 
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.
@@ -415,8 +423,8 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 | Area | What changed |
 |------|--------------|
 | **`2.1` — Pre-call validation** | LinkedIn PDF required per prospect email before Generate brief |
-| **`2.1` — Recent news** | Gemini grounded search + redirect resolve + DDG fallback; article links; no SE-context / research-fact backfill |
-| **`2.1` — Fish sizing** | Grounded rivals + AE-context fallback (`prep.fishContext` with INPUT badge); requirement lines filtered out |
+| **`2.1` — Recent news** | Parallel Gemini + Google News RSS + DDG + newsroom fallback; article links; RSS HTML stripped from detail; no SE-context / research-fact backfill |
+| **`2.1` — Fish sizing** | Parallel grounded rivals + AE context; web benchmark bars + supplemental INPUT rows; requirement lines filtered out |
 | **`2.0.6` — Discovery UX** | Call-ready Discovery tab (Option A): account/people hero, collapsed 2×3 signals grid, kit/pains up, Research extras; SE context → signals on first generate; **Your notes** trust badge |
 | **`2.0.6` — CRM IA** | Accounts overview vs opportunity routes; **Deals** sidebar + `#deals/{id}`; Type in summary row; MEDDPICC on deal ([ADR 004](./docs/adr/004-account-record-crm-ia.md), [ADR 005](./docs/adr/005-meddpicc-on-deal.md)) |
 | **`2.0.5` — Kaia** | `POST /api/kaia/share-content`, research hash v2, per-prospect excerpts — [CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) |
