@@ -17,6 +17,7 @@ import {
 } from "./precall-render.js";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
+import { fishBucketFromMetric } from "./fish-sizing-buckets.js";
 
 const isUnknown = (v) => {
   const s = String(v || "").trim();
@@ -422,10 +423,40 @@ function fishContextSupplement(metrics, axisLabels) {
   });
 }
 
-function renderFishContextRows(metrics) {
-  return metrics
-    .map(
-      (m) => `<div class="prep-v9-benchmark prep-v9-benchmark-context">
+function renderFishContextRow(m) {
+  const bucket = fishBucketFromMetric(m.label, m.value);
+  if (bucket) {
+    const bucketFoot = bucket.labels
+      .map(
+        (lbl, i) =>
+          `<span class="prep-v9-benchmark-bucket${i === bucket.bucketIndex ? " prep-v9-benchmark-bucket-active" : ""}">${esc(lbl)}</span>`,
+      )
+      .join("");
+    const unitHint =
+      bucket.unitNote === "millions USD"
+        ? `<span class="prep-v9-benchmark-bucket-unit muted">(${esc(bucket.unitNote)})</span>`
+        : "";
+    return `<div class="prep-v9-benchmark prep-v9-benchmark-context prep-v9-benchmark-bucketed">
+        <div class="prep-v9-benchmark-head">
+          <span>${esc(m.label)}</span>
+          <strong>${esc(m.value)}</strong>
+        </div>
+        <div class="prep-v9-benchmark-bar prep-v9-benchmark-bar-bucketed" aria-hidden="true">
+          <span class="prep-v9-benchmark-bar-rail"></span>
+          <span class="prep-v9-benchmark-bar-tick" style="left:33.33%"></span>
+          <span class="prep-v9-benchmark-bar-tick" style="left:66.66%"></span>
+          <span class="prep-v9-benchmark-bar-dot" style="left:${bucket.dotPercent.toFixed(2)}%"></span>
+        </div>
+        <div class="prep-v9-benchmark-bar-foot prep-v9-benchmark-buckets">
+          <div class="prep-v9-benchmark-bucket-row">${bucketFoot}</div>
+          <div class="prep-v9-benchmark-bucket-meta">
+            <span class="prep-v9-src prep-v9-src-input">INPUT</span>${unitHint}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return `<div class="prep-v9-benchmark prep-v9-benchmark-context">
         <div class="prep-v9-benchmark-head">
           <span>${esc(m.label)}</span>
           <strong>${esc(m.value)}</strong>
@@ -439,9 +470,11 @@ function renderFishContextRows(metrics) {
           <span class="prep-v9-benchmark-bar-verdict"><span class="prep-v9-src prep-v9-src-input">INPUT</span></span>
           <span class="prep-v9-benchmark-bar-max"></span>
         </div>
-      </div>`,
-    )
-    .join("");
+      </div>`;
+}
+
+function renderFishContextRows(metrics) {
+  return metrics.map((m) => renderFishContextRow(m)).join("");
 }
 
 function benchmarkRows(prep) {
@@ -576,8 +609,8 @@ function attendeeRow(p, i, sources, renderOpts) {
   const touchpoints = (p.competitorTouchpoints || []).filter((t) => !isUnknown(t));
   const linkedIn = isLinkedInEnrichedProspect(p, renderOpts, i);
   const summary = String(p.summary || "").trim();
-  const dos = (p.discHint?.dos || []).filter((d) => !isUnknown(d)).slice(0, 2);
-  const donts = (p.discHint?.donts || []).filter((d) => !isUnknown(d)).slice(0, 2);
+  const dos = (p.discHint?.dos || []).filter((d) => !isUnknown(d)).slice(0, 3);
+  const donts = (p.discHint?.donts || []).filter((d) => !isUnknown(d)).slice(0, 3);
   const primary = String(p.discHint?.primary || "").trim();
   const hasDisc = !!primary && primary !== "unknown";
   const name = isUnknown(p.name) ? "" : String(p.name);
@@ -606,7 +639,7 @@ function attendeeRow(p, i, sources, renderOpts) {
       <span class="prep-v9-attendee-name">${esc(name || "Prospect")}</span>
       <p class="muted prep-v9-attendee-role">${esc(role || "—")}</p>
       ${summary && !isUnknown(summary) ? `<p class="prep-v9-attendee-summary">${esc(summary.slice(0, 220))}${summary.length > 220 ? "…" : ""}</p>` : ""}
-      ${linkedIn && touchpoints.length ? `<div class="prep-v9-touchpoints"><span class="muted">Has used</span>${touchpoints.map((t) => `<span class="prep-v9-touch-chip">${esc(t)}</span>`).join("")}</div>` : ""}
+      ${linkedIn && touchpoints.length ? `<div class="prep-v9-touchpoints"><span class="prep-v9-touch-label">Has used</span>${touchpoints.map((t) => `<span class="prep-v9-touch-chip">${esc(t)}</span>`).join("")}</div>` : ""}
     </div>
     <div class="prep-v9-attendee-behaviour">${
       dos.length || donts.length

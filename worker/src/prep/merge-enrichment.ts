@@ -1,5 +1,5 @@
 import type { ContactEnrichDisc, ContactEnrichProfile, ContactEnrichResponse } from "../contact/enrich";
-import type { Prep, ProspectProfile } from "../schema";
+import type { Prep, ProspectDiscHint, ProspectProfile } from "../schema";
 
 export interface ConfirmedProspectProfile {
   email: string;
@@ -35,6 +35,35 @@ function enrichmentSourceLabel(
     default:
       return liLabel;
   }
+}
+
+/** Only expose dos when donts are present — incomplete reads mislead the SE. */
+function discHintFromEnrich(disc: ContactEnrichDisc): ProspectDiscHint {
+  const donts = disc.donts || [];
+  const dos = donts.length ? disc.dos || [] : [];
+  return {
+    primary: disc.primary || "unknown",
+    secondary: disc.secondary,
+    confidence: disc.confidence || "low",
+    evidence: disc.evidence || [],
+    dos,
+    donts,
+    inferred: true,
+    source: disc.source,
+  };
+}
+
+/** Remove LLM-synthesized discHint — behavioural dos/donts come only from contact enrich merge. */
+export function stripProspectDiscHints(prep: Prep): Prep {
+  if (!prep?.prospects?.length) return prep;
+  return {
+    ...prep,
+    prospects: prep.prospects.map((p) => {
+      if (!p.discHint) return p;
+      const { discHint: _removed, ...rest } = p;
+      return rest;
+    }),
+  };
 }
 
 /** Deterministic merge: enrichment wins over model output for matching emails (by index). */
@@ -88,16 +117,7 @@ export function mergeEnrichmentsIntoPrep(
       languages: profile.languages?.length ? profile.languages : p.languages,
       education: profile.education?.length ? profile.education : p.education,
       sourceLabel: enrichmentSourceLabel(en.disc.source, liLabel),
-      discHint: {
-        primary: en.disc.primary || "unknown",
-        secondary: en.disc.secondary,
-        confidence: en.disc.confidence || "low",
-        evidence: en.disc.evidence || [],
-        dos: en.disc.dos || [],
-        donts: en.disc.donts || [],
-        inferred: true,
-        source: en.disc.source,
-      },
+      discHint: discHintFromEnrich(en.disc),
       influence: en.influence || p.influence,
     };
   }

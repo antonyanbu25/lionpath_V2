@@ -3,6 +3,24 @@
  */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+/** Strict TLD (≥2 chars) — aligned with precall.js / app.js submit validation. */
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/;
+
+let programmaticDomainUpdate = false;
+
+/** Tracks manual edits vs auto-filled company domain on pre-call form. */
+export const prepDomainUiState = { userEdited: false, lastAutoValue: null };
+
+/** Reset auto-fill tracking when the pre-call form is cleared. */
+export function resetPrepDomainState() {
+  prepDomainUiState.userEdited = false;
+  prepDomainUiState.lastAutoValue = null;
+}
+
+/** True while setDomainValue is dispatching synthetic input events. */
+export function isProgrammaticDomainUpdate() {
+  return programmaticDomainUpdate;
+}
 
 export function parseProspectEmailsForDomain(raw) {
   const parts = String(raw || "")
@@ -39,8 +57,6 @@ export const PERSONAL_EMAIL_DOMAINS = new Set([
   "zoho.com",
 ]);
 
-const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
-
 export function normalizeCompanyDomain(raw) {
   return String(raw || "")
     .trim()
@@ -63,17 +79,28 @@ function emailDomain(email) {
 }
 
 /**
- * Corporate domain from first parsed prospect email, or null for personal/invalid.
+ * True when email is syntactically valid and its domain has a complete TLD (≥2 chars).
+ * Rejects mid-typing states like user@getgo.s while allowing user@getgo.sg.
+ * @param {string} email
+ */
+export function isCompleteEmailForDomainInfer(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(normalized)) return false;
+  const domain = normalizeCompanyDomain(emailDomain(normalized));
+  if (!domain || !DOMAIN_RE.test(domain)) return false;
+  if (PERSONAL_EMAIL_DOMAINS.has(domain)) return false;
+  return true;
+}
+
+/**
+ * Corporate domain from first parsed prospect email, or null for personal/invalid/incomplete.
  * @param {string} rawEmails
  */
 export function domainFromFirstProspectEmail(rawEmails) {
   const emails = parseProspectEmailsForDomain(rawEmails);
   const first = emails[0];
-  if (!first) return null;
-  const domain = normalizeCompanyDomain(emailDomain(first));
-  if (!domain || !DOMAIN_RE.test(domain)) return null;
-  if (PERSONAL_EMAIL_DOMAINS.has(domain)) return null;
-  return domain;
+  if (!first || !isCompleteEmailForDomainInfer(first)) return null;
+  return normalizeCompanyDomain(emailDomain(first));
 }
 
 /**
@@ -101,8 +128,9 @@ export function applyAutoCompanyDomain(domainField, rawEmails, opts = {}) {
   }
 
   const display = formatCompanyWebsiteDisplay(inferred);
+  const nextLastAuto = inferred;
   setDomainValue(domainField, display);
-  return { applied: inferred, lastAutoValue: inferred };
+  return { applied: inferred, lastAutoValue: nextLastAuto };
 }
 
 function readDomainValue(field) {
@@ -112,13 +140,18 @@ function readDomainValue(field) {
 }
 
 function setDomainValue(field, value) {
-  if ("value" in field) {
-    field.value = value;
+  programmaticDomainUpdate = true;
+  try {
+    if ("value" in field) {
+      field.value = value;
+    }
+    const inner = field.querySelector?.("input");
+    if (inner) inner.value = value;
+    field.dispatchEvent?.(new Event("input", { bubbles: true }));
+    field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value } }));
+  } finally {
+    programmaticDomainUpdate = false;
   }
-  const inner = field.querySelector?.("input");
-  if (inner) inner.value = value;
-  field.dispatchEvent?.(new Event("input", { bubbles: true }));
-  field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value } }));
 }
 
 /** Resolve domain for submit: field value, else infer from emails. */

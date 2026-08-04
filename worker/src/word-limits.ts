@@ -442,8 +442,8 @@ function normalizeDiscHint(raw: ProspectProfile["discHint"]): ProspectProfile["d
     secondary: raw.secondary,
     confidence,
     evidence: trimBullets(raw.evidence, 4).map((e) => trimWords(e, 20)).filter(Boolean),
-    dos: trimBullets(raw.dos, 2).map((e) => trimWords(e, 12)).filter(Boolean),
-    donts: trimBullets(raw.donts, 2).map((e) => trimWords(e, 12)).filter(Boolean),
+    dos: trimBullets(raw.dos, 3).map((e) => trimWords(e, 12)).filter(Boolean),
+    donts: trimBullets(raw.donts, 3).map((e) => trimWords(e, 12)).filter(Boolean),
     inferred: raw.inferred,
     source: raw.source,
   };

@@ -253,6 +253,23 @@ function enrichmentSourceLabel(discSource, liLabel) {
   }
 }
 
+/** Drop synthesize-only dos when donts are missing (stale brief / failed enrich). */
+export function sanitizeIncompleteDiscHints(prep) {
+  if (!prep?.prospects?.length) return prep;
+  return {
+    ...prep,
+    prospects: prep.prospects.map((p) => {
+      if (!p.discHint) return p;
+      const dos = (p.discHint.dos || []).filter((d) => d && d !== "unknown");
+      const donts = (p.discHint.donts || []).filter((d) => d && d !== "unknown");
+      if (dos.length > 0 && donts.length === 0) {
+        return { ...p, discHint: { ...p.discHint, dos: [], donts: [] } };
+      }
+      return p;
+    }),
+  };
+}
+
 /** Deterministic merge: enrichment wins over model output (mirrors worker merge-enrichment.ts). */
 export function mergeEnrichmentsIntoPrep(prep, emails, enrichments) {
   if (!prep || !enrichments?.length) return prep;
@@ -295,14 +312,20 @@ export function mergeEnrichmentsIntoPrep(prep, emails, enrichments) {
       education: profile.education?.length ? profile.education : p.education,
       sourceLabel: enrichmentSourceLabel(en.disc?.source, liLabel),
       discHint: en.disc
-        ? {
-            primary: en.disc.primary || "unknown",
-            secondary: en.disc.secondary,
-            confidence: en.disc.confidence || "low",
-            evidence: en.disc.evidence || [],
-            inferred: true,
-            source: en.disc.source,
-          }
+        ? (() => {
+            const donts = en.disc.donts || [];
+            const dos = donts.length ? en.disc.dos || [] : [];
+            return {
+              primary: en.disc.primary || "unknown",
+              secondary: en.disc.secondary,
+              confidence: en.disc.confidence || "low",
+              evidence: en.disc.evidence || [],
+              dos,
+              donts,
+              inferred: true,
+              source: en.disc.source,
+            };
+          })()
         : p.discHint,
       influence: en.influence || p.influence,
     };
