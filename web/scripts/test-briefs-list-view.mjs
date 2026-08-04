@@ -7,7 +7,7 @@ import {
   buildBriefListRow,
   normalizeRemoteBrief,
 } from "../briefs-list-view.js";
-import { countPrepsGenerated } from "../precall.js";
+import { countPrepsGenerated, loadAllLocalBriefs } from "../precall.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -42,6 +42,8 @@ const localBriefs = [
 
 localStorage.setItem(BRIEFS_KEY, JSON.stringify(localBriefs));
 
+assert(loadAllLocalBriefs().length === 2, "loadAllLocalBriefs reads every cached brief");
+
 const remoteRaw = [
   {
     id: "fs-doc-1",
@@ -70,11 +72,11 @@ const row = buildBriefListRow(merged[0]);
 assert(row.companyMono.length >= 2, "mono initials");
 assert(row.kind === "Discovery", "kind label");
 
-async function mockFetchRemote() {
+async function mockFetchAllRemote() {
   return remoteRaw.map(normalizeRemoteBrief);
 }
 
-const kpiCount = await countPrepsGenerated(mockFetchRemote);
+const kpiCount = await countPrepsGenerated(mockFetchAllRemote);
 assert(kpiCount === merged.length, "KPI count matches merged list length");
 
 console.log("test-briefs-list-view: ok");

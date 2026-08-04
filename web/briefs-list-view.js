@@ -2,7 +2,7 @@
  * All briefs list — dashboard KPI drill-down (#precall/briefs).
  */
 
-import { loadLocalBriefs } from "./precall.js";
+import { loadAllLocalBriefs } from "./precall.js";
 import { companyMono } from "./precall-render.js?v=2.0.8.1-merge";
 import { esc } from "./shared.js";
 
@@ -170,7 +170,7 @@ export async function renderBriefsListView(container, session, opts = {}) {
   }
 
   try {
-    const local = loadLocalBriefs();
+    const local = loadAllLocalBriefs();
     let remote = [];
     if (typeof opts.fetchAllRemotePreps === "function") {
       try {

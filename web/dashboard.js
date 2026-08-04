@@ -1222,13 +1222,17 @@ function renderSideStats(taskMetrics, callMetrics, prepsCount = 0) {
     </section>`;
 }
 
-async function updateSideStats(container, email, fetchRemotePreps) {
+function briefsCountFetcher(opts = {}) {
+  return opts.fetchAllRemotePreps ?? opts.fetchRemotePreps;
+}
+
+async function updateSideStats(container, email, opts = {}) {
   const m = aggregateTaskMetrics(listTasks(email));
   const open = container.querySelector('[data-stat="open"]');
   const preps = container.querySelector('[data-stat="preps"]');
   const doneWeek = container.querySelector('[data-stat="done-week"]');
   if (open) open.textContent = String(m.openTotal);
-  if (preps) preps.textContent = String(await countPrepsGenerated(fetchRemotePreps));
+  if (preps) preps.textContent = String(await countPrepsGenerated(briefsCountFetcher(opts)));
   if (doneWeek) doneWeek.textContent = String(m.completedThisWeek);
 }
 
@@ -1308,30 +1312,29 @@ function mountDashboardTasks(container, email, opts = {}) {
   const boardMount = container.querySelector("#task-board-mount");
   if (!boardMount) return;
 
-  const fetchRemotePreps = opts.fetchRemotePreps;
   const taskOpts = {
     ...opts,
     onTasksChanged: () => {
       opts.onTasksChanged?.();
-      void updateLaunchKpis(container, email, fetchRemotePreps);
+      void updateLaunchKpis(container, email, opts);
     },
   };
 
   renderTaskBoard(boardMount, email, taskOpts);
 }
 
-async function updateLaunchKpis(container, email, fetchRemotePreps) {
+async function updateLaunchKpis(container, email, opts = {}) {
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const callMetrics = buildLaunchpadCallMetrics(email);
-  const prepsCount = await countPrepsGenerated(fetchRemotePreps);
+  const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
     grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
-    wireLaunchKpiNav(container, email, fetchRemotePreps);
+    wireLaunchKpiNav(container, email, opts);
   }
 }
 
-function wireLaunchKpiNav(container, email, fetchRemotePreps) {
+function wireLaunchKpiNav(container, email, opts = {}) {
   container.querySelectorAll("[data-kpi-nav]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const nav = btn.dataset.kpiNav;
@@ -1361,7 +1364,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   const metrics = buildDashboardMetrics(email);
   const launchCallMetrics = buildLaunchpadCallMetrics(email);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const prepsCount = await countPrepsGenerated(opts.fetchRemotePreps);
+  const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
   const seName = opts.seName || displayNameForEmail(email) || "there";
   const { greeting } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
@@ -1383,12 +1386,12 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     </div>`;
 
   container._launchpadOpts = opts;
-  wireLaunchKpiNav(container, email, opts.fetchRemotePreps);
+  wireLaunchKpiNav(container, email, opts);
 
   mountDashboardTasks(container, email, {
     ...opts,
     onTasksChanged: () => {
-      void updateLaunchKpis(container, email, opts.fetchRemotePreps);
+      void updateLaunchKpis(container, email, opts);
     },
   });
 

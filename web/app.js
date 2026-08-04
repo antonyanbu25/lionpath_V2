@@ -370,9 +370,72 @@ function normalizeCompanyDomainField(raw) {
     .split("/")[0];
 }
 
+function prepDocToBrief(doc) {
+  const data = doc.data();
+  const when =
+    data.createdAt?.toDate?.()?.toLocaleDateString?.() ||
+    data.when ||
+    "";
+  return normalizeRemoteBrief({
+    id: doc.id,
+    company: data.company,
+    when,
+    prep: data.prep,
+    prospectEmail: data.prospectEmail,
+    additionalContext: data.additionalContext,
+    meta: data.meta,
+    input: data.input,
+    lifecycleId: data.lifecycleId,
+  });
+}
+
+/** Lazy Firestore fetch — checks auth at call time so dashboard KPI is not stuck at 0. */
+function buildFetchAllRemotePreps() {
+  return async () => {
+    if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return [];
+    const user = fb.auth.currentUser;
+    const email = String(user.email || currentSession?.email || "")
+      .trim()
+      .toLowerCase();
+    const seen = new Set();
+    const docs = [];
+
+    const collect = (snap) => {
+      for (const doc of snap.docs) {
+        if (seen.has(doc.id)) continue;
+        seen.add(doc.id);
+        docs.push(doc);
+      }
+    };
+
+    try {
+      collect(
+        await fb.getDocs(
+          fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid)),
+        ),
+      );
+    } catch (err) {
+      console.warn("[app] preps uid query failed:", err?.message || err);
+    }
+
+    if (email) {
+      try {
+        collect(
+          await fb.getDocs(
+            fb.query(fb.collection(fb.db, "preps"), fb.where("email", "==", email)),
+          ),
+        );
+      } catch (err) {
+        console.warn("[app] preps email query failed:", err?.message || err);
+      }
+    }
+
+    return docs.map(prepDocToBrief).filter(Boolean);
+  };
+}
+
 function buildFetchRemotePreps() {
   const fetchAll = buildFetchAllRemotePreps();
-  if (!fetchAll) return undefined;
   return async () => {
     const all = await fetchAll();
     return (all || []).map((b) => ({
@@ -383,30 +446,10 @@ function buildFetchRemotePreps() {
   };
 }
 
-function buildFetchAllRemotePreps() {
-  if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
-  return async () => {
-    const user = fb.auth.currentUser;
-    const q = fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid));
-    const snap = await fb.getDocs(q);
-    return snap.docs.map((d) => {
-      const data = d.data();
-      const when = data.createdAt?.toDate?.()?.toLocaleDateString?.() || "";
-      return normalizeRemoteBrief({
-        id: d.id,
-        company: data.company,
-        when,
-        prep: data.prep,
-        prospectEmail: data.prospectEmail,
-        additionalContext: data.additionalContext,
-      });
-    });
-  };
-}
-
 function dashboardOpts() {
   return {
     seName: currentSession?.name,
+    fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
     onPrep: () => {
@@ -2205,6 +2248,9 @@ async function boot() {
       await new Promise((r) => requestAnimationFrame(r));
     }
     if (!getSession() && !showAppInFlight) showLogin();
+    else if (getSession()?.email && currentView === "dashboard" && !isManagerRole(currentSession)) {
+      refreshDashboardFromStorage();
+    }
   } else {
     initDummyAuth();
     await authReadyPromise;

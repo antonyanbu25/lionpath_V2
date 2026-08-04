@@ -208,15 +208,20 @@ function saveChecks() {
   localStorage.setItem(CHECKS_KEY, JSON.stringify(state.checks));
 }
 
-export function loadLocalBriefs() {
+/** All cached briefs in localStorage (no cap — used for KPI + all-briefs list). */
+export function loadAllLocalBriefs() {
   try {
     const raw = localStorage.getItem(BRIEFS_KEY);
     if (!raw) return [];
     const list = JSON.parse(raw);
-    return Array.isArray(list) ? list.slice(0, MAX_BRIEFS) : [];
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
+}
+
+export function loadLocalBriefs() {
+  return loadAllLocalBriefs().slice(0, MAX_BRIEFS);
 }
 
 function isQuotaExceededError(err) {
@@ -302,26 +307,19 @@ export function compactBriefForStorage(record) {
   };
 }
 
-/** Count preps from localStorage; optionally merge Firestore preps for signed-in users. */
-export async function countPrepsGenerated(fetchRemotePreps) {
-  const local = loadLocalBriefs();
-  const seen = new Set(local.map((b) => `${b.company || ""}|${b.when || ""}|${b.id || ""}`));
-  let count = local.length;
-  if (typeof fetchRemotePreps === "function") {
+/** Count preps from localStorage + optional Firestore (same merge as all-briefs list). */
+export async function countPrepsGenerated(fetchAllRemotePreps) {
+  const { mergeAllBriefs } = await import("./briefs-list-view.js");
+  const local = loadAllLocalBriefs();
+  let remote = [];
+  if (typeof fetchAllRemotePreps === "function") {
     try {
-      const remote = await fetchRemotePreps();
-      for (const r of remote || []) {
-        const key = `${r.company || ""}|${r.when || ""}|${r.id || ""}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          count++;
-        }
-      }
+      remote = await fetchAllRemotePreps();
     } catch {
       // demo / offline — local count only
     }
   }
-  return count;
+  return mergeAllBriefs(local, remote).length;
 }
 
 function saveLocalBriefs(list) {
