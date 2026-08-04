@@ -533,6 +533,7 @@ function switchView(name, opts = {}) {
     name = "coaching";
   }
   name = normalizeViewName(name);
+  const prevView = currentView;
   currentView = name;
   const isManager = isManagerRole(currentSession);
   const panels = {
@@ -648,6 +649,9 @@ function switchView(name, opts = {}) {
                 : name;
   history.replaceState(null, "", `#${hash}`);
   closeSidebar();
+  if (prevView === "precall" && name !== "precall") {
+    resetPrecallForm();
+  }
   if (name === "precall") {
     if (!opts.keepBrief) resetPrecallForm();
     syncPrepEngagementMotion();
@@ -1030,10 +1034,28 @@ function openCallRecord(id, opts = {}) {
 }
 
 /** Apply top-level hash routes when the user navigates with back/forward. */
+function restoreAuthenticatedShell() {
+  if (!getSession()?.email) return false;
+  show($("login-view"), false);
+  show($("app-shell"), true);
+  show($("app-loading"), false);
+  return true;
+}
+
 function applyRouteFromHash() {
-  if (!currentSession?.email) return;
+  if (!currentSession?.email) {
+    if (getSession()?.email) restoreAuthenticatedShell();
+    return;
+  }
   const { path: hashPath, params: hashParams } = parseLocationHash();
   const hash = hashPath;
+
+  if (!hash) {
+    restoreAuthenticatedShell();
+    switchView("dashboard");
+    history.replaceState(null, "", "#dashboard");
+    return;
+  }
 
   const dealNavMatch = /^deals\/([^/?]+)$/.exec(hash);
   if (dealNavMatch) {
@@ -1805,6 +1827,7 @@ function startWorkerHealthMonitoring() {
 }
 
 async function boot() {
+  restoreAuthenticatedShell();
   assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
 
@@ -1905,6 +1928,11 @@ async function boot() {
   });
 
   window.addEventListener("hashchange", () => applyRouteFromHash());
+  window.addEventListener("popstate", () => {
+    if (!getSession()?.email) return;
+    restoreAuthenticatedShell();
+    applyRouteFromHash();
+  });
   window.addEventListener("pageshow", (ev) => {
     if (!ev.persisted) return;
     const session = getSession();

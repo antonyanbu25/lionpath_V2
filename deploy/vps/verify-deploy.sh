@@ -30,7 +30,7 @@ if [[ -z "$SCHEMA_FIX" ]]; then
   echo "FAIL: worker missing geminiSchemaEnumFix — postcall scorecard Gemini 400 not patched" >&2
   FAIL=1
 fi
-if [[ "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
+if [[ "$PORTAL_BUILD" != "2.1.2" && "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
   echo "FAIL: portal-build must be 2.1.1 (got: ${PORTAL_BUILD:-MISSING}) — run: bash refresh-web.sh" >&2
   FAIL=1
 fi
@@ -45,7 +45,7 @@ if ! echo "$HTML" | grep -q 'precall.css?v=2.1'; then
   echo "FAIL: precall.css?v=2.1 missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
-if ! echo "$HTML" | grep -qE 'app\.js\?v=2\.1(\.1)?'; then
+if ! echo "$HTML" | grep -qE 'app\.js\?v=2\.1(\.[0-9]+)?'; then
   echo "FAIL: app.js cache-bust missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
