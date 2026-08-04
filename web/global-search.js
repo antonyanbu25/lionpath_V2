@@ -6,14 +6,24 @@ import { readFieldValueAsync, fillShadowField } from "./crayons-ui.js";
 import { withEffectiveUserId } from "./domain/session.js";
 import {
   buildSearchIndex,
-  hybridSearch,
+  getCachedSearchIndex,
+  getSearchIndexStats,
+  searchIndex,
+  rerankWithRag,
   recentFromIndex,
   invalidateSearchIndex,
   SEARCH_TYPES,
-} from "./search-service.js";
+} from "./search-service.js?v=2.1.10";
 import { esc } from "./shared.js";
 
 export { invalidateSearchIndex };
+
+/** Prefetch index after login or data change — fire-and-forget. */
+export function warmSearchIndex(getSessionFn) {
+  const session = withEffectiveUserId(getSessionFn?.());
+  if (!session?.email) return;
+  void buildSearchIndex(session);
+}
 
 const TYPE_LABELS = {
   account: "Accounts",
@@ -43,6 +53,8 @@ const FILTER_CHIPS = [
   { id: "call", label: "Calls" },
   { id: "task", label: "Tasks" },
 ];
+
+const SEARCH_DEBOUNCE_MS = 200;
 
 function isEditableTarget(el) {
   if (!el) return false;
@@ -116,9 +128,14 @@ export function initGlobalSearch(deps) {
   let currentResults = [];
   let debounceTimer = null;
   let activeFilter = "all";
+  let searchGeneration = 0;
 
   const PANEL_GAP = 6;
   const VIEWPORT_MARGIN = 8;
+
+  function resolveSession() {
+    return withEffectiveUserId(deps.getSession?.());
+  }
 
   /** Anchor the omni-search panel to the topbar search input. */
   function positionSearchPanel() {
@@ -235,7 +252,7 @@ export function initGlobalSearch(deps) {
   }
 
   function wireResultButtons() {
-    const session = withEffectiveUserId(deps.getSession?.());
+    const session = resolveSession();
     const recentViews = session ? loadRecentList(session, "views") : [];
 
     resultsEl.querySelectorAll(".omni-result").forEach((btn) => {
@@ -314,31 +331,87 @@ export function initGlobalSearch(deps) {
     active?.scrollIntoView({ block: "nearest" });
   }
 
+  function filterTypes() {
+    return activeFilter === "all" ? undefined : [activeFilter];
+  }
+
+  function tokenSearch(index, query) {
+    const trimmed = String(query || "").trim();
+    const types = filterTypes();
+    if (!trimmed) {
+      const pool = activeFilter === "all" ? index : index.filter((i) => i.type === activeFilter);
+      return recentFromIndex(pool, 5);
+    }
+    return searchIndex(index, trimmed, { types, limit: 12 });
+  }
+
   async function runSearch(query, { openIfEmpty = false } = {}) {
-    const session = withEffectiveUserId(deps.getSession?.());
+    const gen = ++searchGeneration;
+    const session = resolveSession();
     if (!session?.email) {
       renderResults([], query);
       return;
     }
 
+    const trimmed = String(query || "").trim();
+    const types = filterTypes();
+
+    if (!trimmed) {
+      renderResults([], "");
+      if (openIfEmpty) showPalette();
+      const cached = getCachedSearchIndex(session);
+      if (!cached) {
+        void buildSearchIndex(session).catch(() => {});
+      }
+      return;
+    }
+
+    if (openIfEmpty || trimmed) showPalette();
+
+    const cached = getCachedSearchIndex(session);
+    if (cached?.length) {
+      const instant = tokenSearch(cached, trimmed);
+      renderResults(instant, trimmed);
+      if (instant.length >= 2) {
+        void rerankWithRag(
+          searchIndex(cached, trimmed, { types, limit: Math.max(36, 12) }),
+          trimmed,
+          12,
+        ).then((reranked) => {
+          if (gen !== searchGeneration) return;
+          renderResults(reranked, trimmed);
+          pushRecentSearch(session, trimmed);
+        });
+      } else if (instant.length) {
+        pushRecentSearch(session, trimmed);
+      }
+    }
+
     try {
       const index = await buildSearchIndex(session);
-      const trimmed = String(query || "").trim();
-      const types = activeFilter === "all" ? undefined : [activeFilter];
+      if (gen !== searchGeneration) return;
 
-      const results = trimmed
-        ? await hybridSearch(index, trimmed, { types, limit: 12 })
-        : recentFromIndex(
-            activeFilter === "all" ? index : index.filter((i) => i.type === activeFilter),
-            5,
-          );
-
-      if (trimmed) pushRecentSearch(session, trimmed);
+      const results = tokenSearch(index, trimmed);
       renderResults(results, trimmed);
-      if (openIfEmpty || trimmed) showPalette();
+
+      if (results.length >= 2) {
+        void rerankWithRag(
+          searchIndex(index, trimmed, { types, limit: Math.max(36, 12) }),
+          trimmed,
+          12,
+        ).then((reranked) => {
+          if (gen !== searchGeneration) return;
+          renderResults(reranked, trimmed);
+        });
+      }
+
+      if (results.length) pushRecentSearch(session, trimmed);
+      else if (!cached?.length) {
+        console.warn("[global-search] no hits", getSearchIndexStats(session));
+      }
     } catch (err) {
       console.warn("[global-search] search failed:", err?.message || err);
-      renderResults([], query);
+      if (gen === searchGeneration) renderResults([], query);
     }
   }
 
@@ -346,7 +419,7 @@ export function initGlobalSearch(deps) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       void runSearch(query);
-    }, 200);
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   renderFilterChips();
@@ -361,7 +434,9 @@ export function initGlobalSearch(deps) {
   topbarInput.addEventListener("focus", () => {
     void readFieldValueAsync(topbarInput).then((v) => {
       paletteInput.value = v;
-      void runSearch(v, { openIfEmpty: true });
+      renderResults([], v);
+      showPalette();
+      scheduleSearch(v);
     });
   });
 
@@ -414,8 +489,9 @@ export function initGlobalSearch(deps) {
       ev.preventDefault();
       void readFieldValueAsync(topbarInput).then((v) => {
         paletteInput.value = v;
-        void runSearch(v, { openIfEmpty: true });
+        renderResults([], v);
         showPalette();
+        scheduleSearch(v);
         paletteInput.focus?.();
       });
     }

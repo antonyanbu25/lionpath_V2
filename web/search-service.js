@@ -4,8 +4,10 @@
 
 import {
   historyPreviewContactsForSession,
+  listAccountRowsFromHistory,
   listAccountsForSession,
   listDealsForSession,
+  listDealsFromHistory,
 } from "./domain/account-service.js?v=2.1";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
@@ -15,8 +17,14 @@ import { loadLocalBriefs } from "./precall.js";
 import { listPostCallAnalyses } from "./history.js";
 import { WORKER_BASE_URL } from "./firebase-config.js";
 
-/** @type {{ key: string|null, index: object[]|null }} */
-const cache = { key: null, index: null };
+/** @type {{ key: string|null, index: object[]|null, builtAt: number }} */
+const cache = { key: null, index: null, builtAt: 0 };
+
+/** @type {Promise<object[]>|null} */
+let buildInFlight = null;
+
+/** @type {string|null} */
+let buildInFlightKey = null;
 
 export const SEARCH_TYPES = ["account", "contact", "deal", "brief", "call", "task"];
 
@@ -39,6 +47,29 @@ function collectTokens(parts) {
 
 function itemSearchText(item) {
   return [item.label, item.subtitle, ...(item.tokens || [])].filter(Boolean).join(" ");
+}
+
+function sessionCacheKey(session) {
+  const normalized = withEffectiveUserId(session);
+  const ownerId = effectiveSessionUserId(normalized);
+  const email = normalized?.email ? String(normalized.email).trim().toLowerCase() : "";
+  return `${ownerId || ""}|${email}`;
+}
+
+function companyFromCallRecord(rec) {
+  const a = rec?.analysis || rec?.result?.analysis || {};
+  const fromTitle = (rec?.title || a.callHeader?.title || "")
+    .split(/[·|–—-]/)[0]
+    ?.trim();
+  return (
+    a.company ||
+    a.callHeader?.company ||
+    a.callHeader?.account ||
+    rec?.result?.confirmed?.company ||
+    rec?.result?.resolve?.account?.name ||
+    fromTitle ||
+    ""
+  ).trim();
 }
 
 /** Build searchable token list for an account row. */
@@ -148,20 +179,14 @@ export function searchIndex(index, query, opts = {}) {
 }
 
 /**
- * Hybrid search: token match first, then optional RAG embedding rerank via worker.
- * @param {object[]} index
+ * Optional RAG embedding rerank — does not block token search.
+ * @param {object[]} tokenHits
  * @param {string} query
- * @param {{ types?: string[], limit?: number, useRag?: boolean }} [opts]
+ * @param {number} [limit]
  */
-export async function hybridSearch(index, query, opts = {}) {
-  const { types, limit = 12, useRag = true } = opts;
+export async function rerankWithRag(tokenHits, query, limit = 12) {
   const trimmed = String(query || "").trim();
-  if (!trimmed) {
-    return searchIndex(index, "", { types, limit });
-  }
-
-  const tokenHits = searchIndex(index, trimmed, { types, limit: Math.max(limit * 3, 30) });
-  if (!useRag || tokenHits.length < 2) return tokenHits.slice(0, limit);
+  if (!trimmed || tokenHits.length < 2) return tokenHits.slice(0, limit);
 
   try {
     const res = await fetch(`${WORKER_BASE_URL}/api/search/rag`, {
@@ -198,6 +223,24 @@ export async function hybridSearch(index, query, opts = {}) {
   }
 }
 
+/**
+ * Hybrid search: token match first, then optional RAG embedding rerank via worker.
+ * @param {object[]} index
+ * @param {string} query
+ * @param {{ types?: string[], limit?: number, useRag?: boolean }} [opts]
+ */
+export async function hybridSearch(index, query, opts = {}) {
+  const { types, limit = 12, useRag = true } = opts;
+  const trimmed = String(query || "").trim();
+  if (!trimmed) {
+    return searchIndex(index, "", { types, limit });
+  }
+
+  const tokenHits = searchIndex(index, trimmed, { types, limit: Math.max(limit * 3, 30) });
+  if (!useRag) return tokenHits.slice(0, limit);
+  return rerankWithRag(tokenHits, trimmed, limit);
+}
+
 /** Recent items when query is empty (top 5 each type cap). */
 export function recentFromIndex(index, limit = 5) {
   const byType = { account: [], contact: [], deal: [], brief: [], call: [], task: [] };
@@ -218,6 +261,34 @@ export function recentFromIndex(index, limit = 5) {
 export function invalidateSearchIndex() {
   cache.key = null;
   cache.index = null;
+  cache.builtAt = 0;
+  buildInFlight = null;
+  buildInFlightKey = null;
+}
+
+/** Cached index for the session, if warm. */
+export function getCachedSearchIndex(session) {
+  const cacheKey = sessionCacheKey(session);
+  if (cache.key === cacheKey && cache.index?.length) return cache.index;
+  return null;
+}
+
+/** Console-safe diagnostics for production debugging. */
+export function getSearchIndexStats(session) {
+  const cacheKey = session ? sessionCacheKey(session) : cache.key;
+  const counts = {};
+  for (const item of cache.index || []) {
+    counts[item.type] = (counts[item.type] || 0) + 1;
+  }
+  return {
+    cacheKey: cache.key,
+    sessionKey: cacheKey,
+    cached: !!(cache.key === cacheKey && cache.index?.length),
+    size: cache.index?.length || 0,
+    builtAt: cache.builtAt || 0,
+    building: !!(buildInFlight && buildInFlightKey === cacheKey),
+    counts,
+  };
 }
 
 /**
@@ -235,147 +306,85 @@ export function searchContacts(index, query, opts = {}) {
   return searchIndex(pool, q, { limit });
 }
 
-/** @param {object|null} session */
-export async function buildSearchIndex(session) {
-  const normalized = withEffectiveUserId(session);
-  const ownerId = effectiveSessionUserId(normalized);
+/**
+ * Sync pass: localStorage history, briefs, and calls — available before Firestore resolves.
+ * @param {object[]} index
+ * @param {object} normalized
+ * @param {Set<string>} seenItemKeys
+ * @param {Set<string>} seenContactIds
+ */
+function indexLocalSources(index, normalized, seenItemKeys, seenContactIds) {
   const email = normalized?.email ? String(normalized.email).trim().toLowerCase() : "";
-  const cacheKey = `${ownerId || ""}|${email}`;
-  if (cache.key === cacheKey && cache.index?.length) return cache.index;
 
-  const index = [];
-  const store = getStore();
-  const seenContactIds = new Set();
+  function pushItem(item) {
+    const key = `${item.type}:${item.id}`;
+    if (seenItemKeys.has(key)) return;
+    seenItemKeys.add(key);
+    index.push(item);
+  }
 
-  if (email || ownerId) {
-    let rows = [];
-    try {
-      rows = await listAccountsForSession(normalized);
-    } catch (err) {
-      console.warn("[search] listAccountsForSession failed:", err?.message || err);
+  for (const row of listAccountRowsFromHistory(normalized)) {
+    if (!row?.account?.id) continue;
+    const lifecycle = row.lifecycle || {};
+    const label = row.account.name || lifecycle.title || "Account";
+    const subtitle = [row.account.domain, STAGE_LABELS[lifecycle.stage] || lifecycle.stage]
+      .filter(Boolean)
+      .join(" · ");
+    pushItem({
+      type: "account",
+      id: row.account.id,
+      accountId: row.account.id,
+      label,
+      subtitle,
+      tokens: accountRowTokens(row, row.contacts || []),
+      lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
+    });
+  }
+
+  try {
+    const { contacts: previewContacts, accountNameById } = historyPreviewContactsForSession(normalized);
+    for (const c of previewContacts) {
+      if (!c?.id || seenContactIds.has(c.id)) continue;
+      seenContactIds.add(c.id);
+      const accountName = accountNameById[c.accountId] || "";
+      pushItem({
+        type: "contact",
+        id: c.id,
+        accountId: c.accountId || null,
+        contactId: c.id,
+        email: c.email || null,
+        label: c.name || c.email || "Contact",
+        subtitle: [c.email, accountName].filter(Boolean).join(" · "),
+        tokens: collectTokens([c.name, c.email, accountName, "contact"]),
+        lastActivityAt: 0,
+      });
     }
+  } catch {
+    /* history contacts optional */
+  }
 
-    await Promise.all(
-      rows.map(async (row) => {
-        if (!row?.account?.id) return;
-        try {
-          const contacts = store.listContactsByAccount
-            ? await store.listContactsByAccount(row.account.id)
-            : [];
-          const lifecycle = row.lifecycle || {};
-          const label = row.account.name || lifecycle.title || "Account";
-          const subtitle = [row.account.domain, STAGE_LABELS[lifecycle.stage] || lifecycle.stage]
-            .filter(Boolean)
-            .join(" · ");
-          index.push({
-            type: "account",
-            id: row.account.id,
-            accountId: row.account.id,
-            label,
-            subtitle,
-            tokens: accountRowTokens(row, contacts),
-            lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
-          });
-
-          for (const c of contacts) {
-            if (!c?.id || seenContactIds.has(c.id)) continue;
-            seenContactIds.add(c.id);
-            const contactLabel = c.name || c.email || "Contact";
-            const contactSub = [c.title, c.email && c.email !== contactLabel ? c.email : "", row.account.name]
-              .filter(Boolean)
-              .join(" · ");
-            index.push({
-              type: "contact",
-              id: c.id,
-              accountId: row.account.id,
-              contactId: c.id,
-              email: c.email || null,
-              label: contactLabel,
-              subtitle: contactSub,
-              tokens: collectTokens([c.name, c.email, c.title, c.role, row.account.name, "contact"]),
-              lastActivityAt: c.updatedAt || lifecycle.lastActivityAt || row.lastActivityAt || 0,
-            });
-          }
-        } catch (err) {
-          console.warn("[search] account row index failed:", row.account?.id, err?.message || err);
-        }
-      }),
-    );
-
-    try {
-      const { contacts: previewContacts, accountNameById } = historyPreviewContactsForSession(normalized);
-      for (const c of previewContacts) {
-        if (!c?.id || seenContactIds.has(c.id)) continue;
-        seenContactIds.add(c.id);
-        const accountName = accountNameById[c.accountId] || "";
-        index.push({
-          type: "contact",
-          id: c.id,
-          accountId: c.accountId || null,
-          contactId: c.id,
-          email: c.email || null,
-          label: c.name || c.email || "Contact",
-          subtitle: [c.email, accountName].filter(Boolean).join(" · "),
-          tokens: collectTokens([c.name, c.email, accountName, "contact"]),
-          lastActivityAt: 0,
-        });
-      }
-    } catch {
-      /* history contacts optional */
-    }
-
-    try {
-      const dealRows = await listDealsForSession(normalized);
-      for (const row of dealRows) {
-        const { deal, account, primarySeName } = row;
-        if (!deal?.id) continue;
-        const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
-        const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
-        index.push({
-          type: "deal",
-          id: deal.id,
-          accountId: account?.id || deal.accountId,
-          dealId: deal.id,
-          label: deal.title || account?.name || "Deal",
-          subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
-          tokens: dealRowTokens(row),
-          lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
-        });
-      }
-    } catch (err) {
-      console.warn("[search] listDealsForSession failed:", err?.message || err);
-    }
-
-    if (ownerId && store.listLifecyclesByOwner) {
-      try {
-        const lifecycles = await store.listLifecyclesByOwner(ownerId);
-        for (const lc of lifecycles) {
-          const tasks = store.listTasksByLifecycle ? await store.listTasksByLifecycle(lc.id) : [];
-          for (const t of tasks) {
-            if (t.status === "completed" || t.status === "dismissed") continue;
-            index.push({
-              type: "task",
-              id: t.id,
-              accountId: t.accountId || lc.accountId,
-              lifecycleId: lc.id,
-              label: t.title || "Task",
-              subtitle: [t.status, lc.title].filter(Boolean).join(" · "),
-              tokens: collectTokens([t.title, t.description, t.status, "task"]),
-              lastActivityAt: t.updatedAt || t.createdAt || 0,
-            });
-          }
-        }
-      } catch {
-        /* tasks optional */
-      }
-    }
+  for (const row of listDealsFromHistory(normalized)) {
+    const { deal, account, primarySeName } = row;
+    if (!deal?.id) continue;
+    const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
+    const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
+    pushItem({
+      type: "deal",
+      id: deal.id,
+      accountId: account?.id || deal.accountId,
+      dealId: deal.id,
+      label: deal.title || account?.name || "Deal",
+      subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
+      tokens: dealRowTokens(row),
+      lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
+    });
   }
 
   for (const b of loadLocalBriefs()) {
     const label = b.company || b.meta?.company || "Discovery brief";
     const domain = b.meta?.domain || b.meta?.companyDomain || "";
     const subtitle = [domain, b.when, "Discovery brief"].filter(Boolean).join(" · ");
-    index.push({
+    pushItem({
       type: "brief",
       id: b.id,
       accountId: null,
@@ -388,29 +397,189 @@ export async function buildSearchIndex(session) {
 
   if (email) {
     for (const r of listPostCallAnalyses(email)) {
-      const headline = r.analysis?.callSummary?.headline || "";
-      const label = r.title || headline || "Call review";
-      const subtitle = [headline, r.timestamp ? new Date(r.timestamp).toLocaleDateString() : ""]
+      const company = companyFromCallRecord(r);
+      const headline = r.analysis?.callSummary?.headline || r.result?.analysis?.callSummary?.headline || "";
+      const label = r.title || headline || company || "Call review";
+      const subtitle = [company, headline, r.timestamp ? new Date(r.timestamp).toLocaleDateString() : ""]
         .filter(Boolean)
         .join(" · ");
-      index.push({
+      pushItem({
         type: "call",
         id: r.id,
         accountId: r.accountId || null,
         label,
         subtitle,
-        tokens: collectTokens([label, headline, "call", "review"]),
+        tokens: collectTokens([label, company, headline, "call", "review"]),
         lastActivityAt: r.timestamp || 0,
       });
     }
+  }
+}
+
+/**
+ * Async pass: Firestore/domain store rows (accounts, deals, tasks).
+ * @param {object[]} index
+ * @param {object} normalized
+ * @param {string|null} ownerId
+ * @param {Set<string>} seenItemKeys
+ * @param {Set<string>} seenContactIds
+ */
+async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds) {
+  const store = getStore();
+
+  function pushItem(item) {
+    const key = `${item.type}:${item.id}`;
+    if (seenItemKeys.has(key)) return;
+    seenItemKeys.add(key);
+    index.push(item);
+  }
+
+  let rows = [];
+  try {
+    rows = await listAccountsForSession(normalized, { skipCache: true });
+  } catch (err) {
+    console.warn("[search] listAccountsForSession failed:", err?.message || err);
+  }
+
+  await Promise.all(
+    rows.map(async (row) => {
+      if (!row?.account?.id) return;
+      try {
+        const contacts = store.listContactsByAccount
+          ? await store.listContactsByAccount(row.account.id)
+          : [];
+        const lifecycle = row.lifecycle || {};
+        const label = row.account.name || lifecycle.title || "Account";
+        const subtitle = [row.account.domain, STAGE_LABELS[lifecycle.stage] || lifecycle.stage]
+          .filter(Boolean)
+          .join(" · ");
+        pushItem({
+          type: "account",
+          id: row.account.id,
+          accountId: row.account.id,
+          label,
+          subtitle,
+          tokens: accountRowTokens(row, contacts),
+          lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
+        });
+
+        for (const c of contacts) {
+          if (!c?.id || seenContactIds.has(c.id)) continue;
+          seenContactIds.add(c.id);
+          const contactLabel = c.name || c.email || "Contact";
+          const contactSub = [c.title, c.email && c.email !== contactLabel ? c.email : "", row.account.name]
+            .filter(Boolean)
+            .join(" · ");
+          pushItem({
+            type: "contact",
+            id: c.id,
+            accountId: row.account.id,
+            contactId: c.id,
+            email: c.email || null,
+            label: contactLabel,
+            subtitle: contactSub,
+            tokens: collectTokens([c.name, c.email, c.title, c.role, row.account.name, "contact"]),
+            lastActivityAt: c.updatedAt || lifecycle.lastActivityAt || row.lastActivityAt || 0,
+          });
+        }
+      } catch (err) {
+        console.warn("[search] account row index failed:", row.account?.id, err?.message || err);
+      }
+    }),
+  );
+
+  try {
+    const dealRows = await listDealsForSession(normalized);
+    for (const row of dealRows) {
+      const { deal, account, primarySeName } = row;
+      if (!deal?.id) continue;
+      const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
+      const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
+      pushItem({
+        type: "deal",
+        id: deal.id,
+        accountId: account?.id || deal.accountId,
+        dealId: deal.id,
+        label: deal.title || account?.name || "Deal",
+        subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
+        tokens: dealRowTokens(row),
+        lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
+      });
+    }
+  } catch (err) {
+    console.warn("[search] listDealsForSession failed:", err?.message || err);
+  }
+
+  if (ownerId && store.listLifecyclesByOwner) {
+    try {
+      const lifecycles = await store.listLifecyclesByOwner(ownerId);
+      for (const lc of lifecycles) {
+        const tasks = store.listTasksByLifecycle ? await store.listTasksByLifecycle(lc.id) : [];
+        for (const t of tasks) {
+          if (t.status === "completed" || t.status === "dismissed") continue;
+          pushItem({
+            type: "task",
+            id: t.id,
+            accountId: t.accountId || lc.accountId,
+            lifecycleId: lc.id,
+            label: t.title || "Task",
+            subtitle: [t.status, lc.title].filter(Boolean).join(" · "),
+            tokens: collectTokens([t.title, t.description, t.status, "task"]),
+            lastActivityAt: t.updatedAt || t.createdAt || 0,
+          });
+        }
+      }
+    } catch {
+      /* tasks optional */
+    }
+  }
+}
+
+async function buildSearchIndexInternal(normalized, cacheKey) {
+  const ownerId = effectiveSessionUserId(normalized);
+  const email = normalized?.email ? String(normalized.email).trim().toLowerCase() : "";
+  const index = [];
+  const seenItemKeys = new Set();
+  const seenContactIds = new Set();
+
+  indexLocalSources(index, normalized, seenItemKeys, seenContactIds);
+
+  if (email || ownerId) {
+    await indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds);
   }
 
   if (index.length) {
     cache.key = cacheKey;
     cache.index = index;
+    cache.builtAt = Date.now();
+    if (typeof console !== "undefined" && console.debug) {
+      console.debug("[search] index built", getSearchIndexStats(normalized));
+    }
   } else {
     cache.key = null;
     cache.index = null;
+    cache.builtAt = 0;
+    console.warn("[search] index empty", { email, ownerId, cacheKey });
   }
   return index;
+}
+
+/** @param {object|null} session */
+export async function buildSearchIndex(session) {
+  const normalized = withEffectiveUserId(session);
+  const cacheKey = sessionCacheKey(normalized);
+  if (cache.key === cacheKey && cache.index?.length) return cache.index;
+
+  if (buildInFlight && buildInFlightKey === cacheKey) {
+    return buildInFlight;
+  }
+
+  buildInFlightKey = cacheKey;
+  buildInFlight = buildSearchIndexInternal(normalized, cacheKey).finally(() => {
+    if (buildInFlightKey === cacheKey) {
+      buildInFlight = null;
+      buildInFlightKey = null;
+    }
+  });
+  return buildInFlight;
 }

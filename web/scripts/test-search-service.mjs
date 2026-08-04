@@ -1,7 +1,18 @@
 /**
- * Smoke tests for search-service (no browser).
+ * Smoke + integration tests for search-service (no browser).
  */
-import { searchIndex, filterAccountRows, accountRowTokens, searchContacts, invalidateSearchIndex } from "../search-service.js";
+import { initDomainStore } from "../domain/store.js";
+import { savePostCallAnalysis, storageKey } from "../history.js";
+import {
+  searchIndex,
+  filterAccountRows,
+  accountRowTokens,
+  searchContacts,
+  invalidateSearchIndex,
+  buildSearchIndex,
+  getSearchIndexStats,
+  getCachedSearchIndex,
+} from "../search-service.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -93,7 +104,67 @@ const freshworksIndex = [
 const fwHits = searchIndex(freshworksIndex, "freshworks");
 assert(fwHits.length === 1 && fwHits[0].id === "acc_fw", "freshworks token match");
 
+const fwPartial = searchIndex(freshworksIndex, "freshwo");
+assert(fwPartial.length === 1 && fwPartial[0].id === "acc_fw", "partial freshwo matches freshworks");
+
 invalidateSearchIndex();
 assert(true, "invalidateSearchIndex runs");
+
+// Integration: buildSearchIndex from localStorage history + briefs
+const TEST_EMAIL = "search-test@freshworks.com";
+const session = {
+  email: TEST_EMAIL,
+  name: "Search Test SE",
+  userId: "usr_search_test",
+  uid: "usr_search_test",
+  teamId: "team_demo",
+};
+
+const lsStore = new Map();
+globalThis.localStorage = {
+  getItem: (k) => lsStore.get(k) ?? null,
+  setItem: (k, v) => lsStore.set(k, v),
+  removeItem: (k) => lsStore.delete(k),
+};
+
+initDomainStore(null);
+invalidateSearchIndex();
+
+localStorage.setItem(
+  storageKey(TEST_EMAIL),
+  JSON.stringify([
+    {
+      id: "pc_fw_1",
+      timestamp: Date.now(),
+      title: "Freshworks · Discovery",
+      analysis: { company: "Freshworks", callHeader: { company: "Freshworks" } },
+      prospectEmails: ["ceo@freshworks.com"],
+    },
+  ]),
+);
+localStorage.setItem(
+  "lionpath_briefs",
+  JSON.stringify([
+    {
+      id: "brief_fw_1",
+      company: "Freshworks",
+      meta: { company: "Freshworks", domain: "freshworks.com" },
+      savedAt: Date.now(),
+    },
+  ]),
+);
+
+const built = await buildSearchIndex(session);
+assert(built.length >= 2, "buildSearchIndex indexes history + briefs");
+const builtFw = searchIndex(built, "freshwo");
+assert(builtFw.some((r) => /freshworks/i.test(r.label)), "built index matches freshwo");
+assert(getCachedSearchIndex(session)?.length === built.length, "getCachedSearchIndex returns warm index");
+const stats = getSearchIndexStats(session);
+assert(stats.cached && stats.size >= 2, "getSearchIndexStats reports cached index");
+
+localStorage.removeItem(storageKey(TEST_EMAIL));
+localStorage.removeItem("lionpath_briefs");
+lsStore.clear();
+invalidateSearchIndex();
 
 console.log("test-search-service: ok");

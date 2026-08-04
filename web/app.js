@@ -26,7 +26,7 @@ import { renderDealView } from "./deal-view.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1";
 import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
-import { initGlobalSearch, invalidateSearchIndex } from "./global-search.js";
+import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.10";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
   syncTasksOnLogin,
@@ -1425,6 +1425,7 @@ async function showApp(session, opts = {}) {
     await loadPersistedHistory();
     invalidateSessionListCache(currentSession);
     invalidateSearchIndex();
+    warmSearchIndex(() => currentSession);
 
     if (!sessionStillValid()) return;
 
@@ -1836,7 +1837,7 @@ async function boot() {
   wireUserMenu();
   updateTopbarDate();
   initGlobalSearch({
-    getSession: () => withEffectiveUserId(currentSession),
+    getSession: () => withEffectiveUserId(currentSession || getSession()),
     switchView,
     openPrepBriefItem,
     openHistoryItem,
@@ -1889,6 +1890,7 @@ async function boot() {
       if (currentView === "deals") void renderDealPanel();
       if (currentView === "calls") void renderCallPanel();
       invalidateSearchIndex();
+      warmSearchIndex(() => currentSession);
       await refreshSidebarRecentWork();
       return lifecycleId;
     },
@@ -2016,6 +2018,7 @@ async function boot() {
       if (currentView === "signal") void renderProductSignalPanel();
       invalidateSearchIndex();
       invalidateSessionListCache(currentSession);
+      warmSearchIndex(() => currentSession);
       refreshSidebarRecentWork();
     } catch (err) {
       console.warn("[app] post-call history refresh failed:", err?.message || err);
