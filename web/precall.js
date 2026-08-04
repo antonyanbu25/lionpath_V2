@@ -506,22 +506,24 @@ export function displayPrepResult(prep, meta = {}) {
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
   merged = hydrateRecentNews(merged, meta);
+  const newsDebug = {
+    serverRecentNews: prep?.recentNews?.length ?? 0,
+    hydratedRecentNews: merged?.recentNews?.length ?? 0,
+    headlines: (merged?.recentNews || []).slice(0, 3).map((n) => n.headline),
+    pipeline: meta?.researchMeta?.recentNewsDebug || null,
+  };
+  logPrepDebug("recent-news-display", newsDebug);
   // #region agent log
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c9d8c5" },
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
     body: JSON.stringify({
-      sessionId: "c9d8c5",
-      runId: "post-fix-v2",
-      hypothesisId: "C",
+      sessionId: "57a252",
+      runId: "post-fix-v3",
+      hypothesisId: "H-news-ui",
       location: "precall.js:displayPrepResult",
       message: "recent news display",
-      data: {
-        serverRecentNews: prep?.recentNews?.length ?? 0,
-        hydratedRecentNews: merged?.recentNews?.length ?? 0,
-        headlines: (merged?.recentNews || []).slice(0, 3).map((n) => n.headline),
-        debug: meta?.researchMeta?.recentNewsDebug || null,
-      },
+      data: newsDebug,
       timestamp: Date.now(),
     }),
   }).catch(() => {});

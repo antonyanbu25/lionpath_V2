@@ -86,11 +86,16 @@ function assetLabelsOf(prep: import("../schema").Prep): string[] {
   return (prep.assets || []).map((a) => a.label);
 }
 
-function recentNewsDebug(researchFacts: ResearchFact[], prep: import("../schema").Prep) {
+function recentNewsDebug(
+  researchFacts: ResearchFact[],
+  prep: import("../schema").Prep,
+  pipeline?: { gemini?: number; web?: number },
+) {
   return {
     newsCategoryFacts: researchFacts.filter((f) => f.category === "news").length,
     recentNewsCount: prep.recentNews?.length ?? 0,
     headlines: (prep.recentNews || []).map((n) => n.headline).slice(0, 4),
+    pipeline: pipeline || null,
   };
 }
 
@@ -438,7 +443,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       playbookSkipped: research.playbookSkipped,
       steps: timings,
       linkedinMatchedEmails: research.linkedinMatchedEmails,
-      recentNewsDebug: recentNewsDebug(research.facts, prep),
+      recentNewsDebug: recentNewsDebug(research.facts, prep, companyNews?.pipeline),
     },
     inputHash,
     [...lowConfidence, ...findLowConfidenceFacts(facts)],
@@ -620,7 +625,7 @@ export async function runPrepSynthesize(
         cacheHit: false,
         playbookSkipped: true,
         steps: { synthesize: 0 },
-        recentNewsDebug: recentNewsDebug(researchFacts, prep),
+        recentNewsDebug: recentNewsDebug(researchFacts, prep, companyNews?.pipeline),
       },
       computeInputHash(input, emails),
       lowConfidence,

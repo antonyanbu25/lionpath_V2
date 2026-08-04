@@ -297,7 +297,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
 export async function generateCompanyNews(
   env: Env,
   input: { companyName: string; companyDomain?: string },
-): Promise<CompanyNews | null> {
+): Promise<(CompanyNews & { pipeline?: { gemini: number; web: number } }) | null> {
   if (!input?.companyName) return null;
 
   const { searchCompanyNewsWeb } = await import("../research/providers/company-news-search");
@@ -311,18 +311,20 @@ export async function generateCompanyNews(
   ]);
 
   const merged = mergeCompanyNews(gemini, ddg);
+  const geminiCount = gemini?.items.length ?? 0;
+  const webCount = ddg?.items.length ?? 0;
   console.info(
-    `[prep/company-news] ${input.companyName}: gemini=${gemini?.items.length ?? 0} ddg=${ddg?.items.length ?? 0} merged=${merged?.items.length ?? 0}`,
+    `[prep/company-news] ${input.companyName}: gemini=${geminiCount} web=${webCount} merged=${merged?.items.length ?? 0}`,
   );
   if (merged) {
-    if (gemini?.items.length && ddg?.items.length) {
+    if (geminiCount && webCount) {
       console.info(
-        `[prep/company-news] merged gemini=${gemini.items.length} ddg=${ddg.items.length} → ${merged.items.length}`,
+        `[prep/company-news] merged gemini=${geminiCount} web=${webCount} → ${merged.items.length}`,
       );
-    } else if (ddg?.items.length && !gemini?.items.length) {
-      console.info(`[prep/company-news] DDG returned ${ddg.items.length} item(s)`);
+    } else if (webCount && !geminiCount) {
+      console.info(`[prep/company-news] web/RSS returned ${webCount} item(s)`);
     }
-    return merged;
+    return { ...merged, pipeline: { gemini: geminiCount, web: webCount } };
   }
   return null;
 }

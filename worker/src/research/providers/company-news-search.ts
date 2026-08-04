@@ -267,6 +267,65 @@ async function fetchGoogleNewsRss(companyName: string): Promise<DdgNewsHit[]> {
   }
 }
 
+/** Company press/newsroom page when RSS and DDG both fail (common on VPS). */
+async function fetchCompanyNewsroom(domain: string, companyName: string): Promise<DdgNewsHit[]> {
+  const host = String(domain || "")
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+  if (!host) return [];
+
+  const paths = ["/company/newsroom/", "/press/", "/news/", "/about/press/", "/company/news/"];
+  const bases = [`https://www.${host}`, `https://${host}`];
+  const out: DdgNewsHit[] = [];
+  const seen = new Set<string>();
+
+  for (const base of bases) {
+    for (const path of paths) {
+      const pageUrl = `${base}${path}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(pageUrl, {
+          signal: controller.signal,
+          headers: {
+            "user-agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            accept: "text/html",
+          },
+        });
+        if (!res.ok) continue;
+        const html = await res.text();
+        if (html.length < 400) continue;
+        const linkRe = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = linkRe.exec(html)) && out.length < MAX_DDG_RESULTS * 2) {
+          let href = m[1].replace(/&amp;/g, "&");
+          const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+          if (!text || text.length < 12) continue;
+          if (href.startsWith("/")) href = `${base}${href}`;
+          if (!/^https?:\/\//i.test(href)) continue;
+          if (!isNewsLikeUrl(href)) continue;
+          if (!/\b(press|news|announce|launch|funding|acquire|partnership)\b/i.test(`${href} ${text}`)) {
+            continue;
+          }
+          const key = href.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ title: text, snippet: text, url: href });
+        }
+        if (out.length >= 2) return out;
+      } catch {
+        /* try next path */
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  return rankNewsHits(out, companyName);
+}
+
 /** Crawl DuckDuckGo for recent news — all queries in parallel. */
 export async function searchCompanyNewsWeb(input: {
   companyName: string;
@@ -298,6 +357,19 @@ export async function searchCompanyNewsWeb(input: {
       const batch = collectHitsFromPages([html], seen, MAX_NEWS_ITEMS * 2);
       hits.push(...batch);
       if (hits.length >= 3) break;
+    }
+  }
+
+  if (!hits.length && input.companyDomain) {
+    const room = await fetchCompanyNewsroom(input.companyDomain, input.companyName);
+    for (const hit of room) {
+      const key = hit.url.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push(hit);
+    }
+    if (room.length) {
+      console.info(`[prep/company-news/ddg] ${input.companyName}: newsroom fallback ${room.length} hit(s)`);
     }
   }
 
