@@ -376,11 +376,15 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
   });
 }
 
-/** @param {string} accountId @param {string} [ownerId] */
-export async function listDealsForAccount(accountId, ownerId) {
+/**
+ * All opportunities on an account (global — any SE's deal on the account).
+ * Deals are account-scoped, not owner-scoped, so post-call / prep can link to the same opp.
+ * @param {string} accountId
+ */
+export async function listDealsForAccount(accountId) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  const deals = await store.listDealsByAccount(accountId, ownerId);
+  const deals = await store.listDealsByAccount(accountId);
   return Promise.all(deals.map((d) => ensureDealTitle(d)));
 }
 

@@ -5,6 +5,7 @@
 import { getStore } from "./domain/store.js";
 import { loadLocalBriefs } from "./precall.js";
 import { domainFromEmail } from "./domain/types.js";
+import { listDealsForAccount } from "./domain/deal-service.js";
 
 const CONTEXT_TTL_MS = 60_000;
 const contextCache = new Map(); // ownerId -> { at: number, value: object }
@@ -53,6 +54,18 @@ function briefSnapshotFromLocal(record) {
     companyName: record.company || meta.company || input.companyName || "",
     domain: meta.domain || meta.companyDomain || input.companyDomain || domainFromEmail(input.prospectEmail),
     prospectEmails: prospectEmailsFromBrief({ input, meta }),
+  };
+}
+
+function dealSnapshot(deal) {
+  return {
+    id: deal.id,
+    accountId: deal.accountId,
+    title: deal.title,
+    type: deal.type,
+    stage: deal.stage,
+    status: deal.status,
+    ownerId: deal.ownerId,
   };
 }
 
@@ -107,6 +120,16 @@ export async function buildPostCallResolveContext(ownerId) {
       }
     }
 
+    // Accounts where this SE is on the deal team — cross-SE visibility on shared accounts.
+    if (store.listAccounts) {
+      const allAccounts = await store.listAccounts();
+      for (const account of allAccounts) {
+        if ((account.seTeam || []).some((m) => m.seUserId === ownerId)) {
+          accountIds.add(account.id);
+        }
+      }
+    }
+
     const accountResults = await Promise.all(
       [...accountIds].map(async (accountId) => {
         const account = store.getAccount ? await store.getAccount(accountId) : null;
@@ -123,21 +146,15 @@ export async function buildPostCallResolveContext(ownerId) {
       if (account) accountsById.set(account.id, account);
     }
 
+    // Global deals per account — every SE's opportunity on the account, not just ownerId's.
     const deals = [];
-    const accountIdSet = accountIds;
-    if (store.listDealsByOwner) {
-      const ownedDeals = await store.listDealsByOwner(ownerId, 500);
-      for (const deal of ownedDeals) {
-        if (!accountIdSet.has(deal.accountId)) continue;
-        deals.push({
-          id: deal.id,
-          accountId: deal.accountId,
-          title: deal.title,
-          type: deal.type,
-          stage: deal.stage,
-          status: deal.status,
-          ownerId: deal.ownerId,
-        });
+    const seenDealIds = new Set();
+    for (const accountId of accountIds) {
+      const accountDeals = await listDealsForAccount(accountId);
+      for (const deal of accountDeals) {
+        if (seenDealIds.has(deal.id)) continue;
+        seenDealIds.add(deal.id);
+        deals.push(dealSnapshot(deal));
       }
     }
 
@@ -160,4 +177,53 @@ export async function buildPostCallResolveContext(ownerId) {
     }
     throw err;
   }
+}
+
+/**
+ * Merge all account-scoped deals into a resolve result (Pass 0 worker output).
+ * Ensures confirm-gate deal picker shows Saketh's deal when Nivedha runs the call.
+ * @param {object|null|undefined} resolve
+ * @param {string|null|undefined} accountId
+ */
+export async function enrichResolveDealsForAccount(resolve, accountId) {
+  if (!resolve || !accountId) return resolve;
+  const globalDeals = await listDealsForAccount(accountId);
+  if (!globalDeals.length) return resolve;
+
+  const byId = new Map();
+  for (const d of resolve.deals || []) {
+    const id = d.dealId || d.id;
+    if (id) byId.set(id, d);
+  }
+  for (const deal of globalDeals) {
+    if (byId.has(deal.id)) continue;
+    byId.set(deal.id, {
+      dealId: deal.id,
+      accountId: deal.accountId,
+      title: deal.title,
+      type: deal.type,
+      stage: deal.stage,
+      score: 1,
+      reasons: [
+        {
+          rank: 2,
+          signal: "same_account",
+          detail: "Opportunity on this account (shared deal list)",
+        },
+      ],
+      preselected: false,
+    });
+  }
+
+  const merged = [...byId.values()].sort(
+    (a, b) => (b.score || 0) - (a.score || 0) || String(a.title).localeCompare(String(b.title)),
+  );
+  const priorPre = (resolve.deals || []).find((d) => d.preselected);
+  if (priorPre?.dealId && byId.has(priorPre.dealId)) {
+    for (const d of merged) d.preselected = d.dealId === priorPre.dealId;
+  } else if (merged.length && !merged.some((d) => d.preselected)) {
+    merged[0].preselected = true;
+  }
+
+  return { ...resolve, deals: merged };
 }

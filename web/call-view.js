@@ -1640,16 +1640,15 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
     </div>`;
 }
 
-function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, meddpiccFilled) {
+function renderDealHealthTab(meddpiccDeltas, objections, meddpicc, meddpiccFilled) {
   const deltas = meddpiccDeltas || [];
   const objs = objections || [];
-  const reasons = dealSignal?.reasonsJson || dealSignal?.reasons || [];
   const medList = renderMeddpiccList(meddpicc, deltas);
 
-  if (!deltas.length && !objs.length && !reasons.length && !medList) {
+  if (!deltas.length && !objs.length && !medList) {
     return renderPhase2TabEmpty(
       "No deal-health movement yet",
-      "MEDDPICC movement, objections, and traction reasons appear here after analysis on a linked deal.",
+      "MEDDPICC movement and objections appear here after analysis on a linked deal.",
     );
   }
 
@@ -1660,19 +1659,6 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
       </div>`
     : "";
 
-  const tractionClass =
-    dealSignal?.lean === "hot" || dealSignal?.lean === "Hot"
-      ? "green"
-      : dealSignal?.lean === "cold" || dealSignal?.lean === "Cold"
-        ? "red"
-        : "amber";
-  const tractionHtml = reasons.length
-    ? `<div class="card-wire card-wire--tight call-health-traction-card call-health-traction-card--${tractionClass}">
-        <div class="prep-form-eyebrow">Traction${dealSignal?.lean != null ? ` · ${esc(String(dealSignal.lean))}` : ""}</div>
-        <div class="call-traction-bullets">${reasons.map((r) => `· ${esc(sanitizeUserFacingCopy(typeof r === "string" ? r : r.reason || JSON.stringify(r)))}`).join("<br>")}</div>
-      </div>`
-    : "";
-
   return `<div class="call-health-tab call-health-tab--wireframe">
     <div class="call-health-grid">
       <div class="card-wire card-wire--tight">
@@ -1680,7 +1666,7 @@ function renderDealHealthTab(meddpiccDeltas, objections, dealSignal, meddpicc, m
         <p class="sub">${meddpiccFilled != null ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced on this call` : "Deal qualification"}</p>
         <div class="call-medp-list">${medList || '<p class="muted">No MEDDPICC surfaced yet. Run deal qualification on a linked deal.</p>'}</div>
       </div>
-      <div class="call-health-aside">${objHtml}${tractionHtml}</div>
+      <div class="call-health-aside">${objHtml}</div>
     </div>
   </div>`;
 }
@@ -1894,7 +1880,6 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
       body: `<div class="call-tab-panel-inner">${renderDealHealthTab(
         tabs.meddpiccDeltas,
         tabs.objections,
-        tabs.dealSignal,
         tabs.meddpicc,
         tabs.meddpiccFilled,
       )}</div>`,
@@ -2049,10 +2034,9 @@ async function loadCallBundle(session, record) {
       parallel.domainCall?.accountId ||
       null;
     if (accountId && store.listDealsByAccount) {
-      const ownerId = record?.ownerId || session?.userId || undefined;
       const accountDeals = await safeEnrich(
         "listDealsForAccount",
-        () => listDealsForAccount(accountId, ownerId),
+        () => listDealsForAccount(accountId),
         [],
       );
       // Newest open deal wins; archived last.

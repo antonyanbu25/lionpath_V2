@@ -8,8 +8,8 @@
  * exists for that email, we fall back to an exact corporate-domain match on accounts
  * (never free-mail domains like gmail.com).
  *
- * Accounts and contacts are org-shared (readable by any signed-in user); deals are
- * team/owner scoped, so a deal a cross-team SE cannot read simply won't appear.
+ * Accounts and contacts are org-shared (readable by any signed-in user). Deals on an
+ * account are global — any SE on the account sees the same opportunity list.
  */
 
 import { getStore } from "./domain/store.js";

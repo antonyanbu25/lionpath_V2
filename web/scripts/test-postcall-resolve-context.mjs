@@ -91,12 +91,34 @@ async function main() {
     lastActivityAt: ts,
   });
 
+  await store.createDeal({
+    id: "deal_other_owner",
+    accountId,
+    ownerId: "usr_other_se",
+    teamId: "team_other",
+    orgId: "org_test",
+    title: "Euphotic — Saketh's deal",
+    type: "new_business",
+    stage: "demo",
+    status: "open",
+    createdAt: ts,
+    updatedAt: ts,
+    lastActivityAt: ts,
+  });
+
   const ctx = await buildPostCallResolveContext(ownerId);
   assert(ctx.briefs.length === 1, "one prep brief");
   assert(ctx.accounts.length === 1, "one account");
   assert(ctx.accounts[0].domain === "euphotic.io", "account domain");
-  assert(ctx.deals.length === 1, "deals scoped to lifecycle accounts");
-  assert(ctx.deals[0].id === "deal_euphotic", "matching deal only");
+  assert(ctx.deals.length === 2, "global deals on account (own + other SE)");
+  assert(
+    ctx.deals.some((d) => d.id === "deal_euphotic") && ctx.deals.some((d) => d.id === "deal_other_owner"),
+    "both deals on account",
+  );
+
+  const { enrichResolveDealsForAccount } = await import("../postcall-resolve-context.js");
+  const enriched = await enrichResolveDealsForAccount({ deals: [] }, accountId);
+  assert(enriched.deals.length === 2, "enrich adds global deals for confirm gate");
 
   const originalList = store.listLifecyclesByOwner;
   store.listLifecyclesByOwner = async () => {

@@ -16,11 +16,10 @@ assert.equal(draft.id, null, "draft account has no CRM id");
 assert.equal(draft.name, "Bixpress");
 assert.equal(draft.domain, "bixpress.co.za");
 
-// renderDealRow hides only when prepResolvedAccount is null — draft object prevents flicker.
+// renderPrepAccountDealPreview hides only when prepResolvedAccount is null — draft object prevents flicker.
 assert.ok(draft.name && draft.id === null, "draft account keeps grid visible after lookup");
 
-assert.ok(indexHtml.includes('class="nb-account-column"'), "Account column wrapper present");
-assert.ok(indexHtml.includes(">Account</span>"), "Account label present");
+assert.ok(indexHtml.includes('id="prep-account-deal-preview"'), "pre-call tile picker container present");
 assert.ok(!indexHtml.includes('id="prep-motion-row"'), "Meeting motion row removed from new-brief form");
 assert.ok(!indexHtml.includes('id="prep-meeting-motion"'), "Meeting motion select removed from new-brief form");
 

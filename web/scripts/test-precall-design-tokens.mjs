@@ -152,8 +152,7 @@ expectDecls(".nb-recent-mono", { width: "34px", height: "34px", "border-radius":
 // --- Markup contract ---------------------------------------------------------
 for (const id of [
   "prospectEmail",
-  "prep-account-deal-grid",
-  "prep-deal-new-btn",
+  "prep-account-deal-preview",
   "companyDomain",
   "prep-linkedin-attendees",
   "additionalContext",

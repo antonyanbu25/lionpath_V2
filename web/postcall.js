@@ -12,7 +12,7 @@ import {
 export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
-import { buildPostCallResolveContext, invalidatePostCallResolveContext } from "./postcall-resolve-context.js";
+import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
 import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
@@ -43,6 +43,8 @@ import {
 } from "./prep-context-files.js";
 import { mergeContextAttachments } from "./prep-context-attachments.js";
 import { esc, $, show, EMPTY_DISPLAY, namesEqual, titleCaseDisplayName } from "./shared.js";
+import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
+export { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 import { companyNameFromEmail } from "./prep-domain.js";
 export { companyNameFromEmail };
 import { deriveCallTimeline } from "./domain/timeline-service.js";
@@ -575,25 +577,20 @@ function dealsForAccount(result, accountId) {
   return (result.deals || []).filter((d) => d.accountId === accountId);
 }
 
-function renderDealTile(d, selected) {
-  const stage = STAGE_LABELS[d.stage] || d.stage || d.status || "Active";
-  return `<button type="button" class="nb-deal-card pc-deal-tile${selected ? " is-selected" : ""}" data-action="pick-deal" data-deal-id="${esc(d.id)}">
-      <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
-      <div class="nb-deal-card-body">
-        <span class="nb-deal-card-title">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>
-        <span class="nb-deal-card-stage">${esc(stage)}</span>
-      </div>
-    </button>`;
-}
-
-function renderNewDealEditor(displayName, newDealType, newDealTitle, selected = true) {
-  const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
-  return `<div class="pc-new-deal-field${selected ? " is-selected" : ""}">
-      <input type="text" class="pc-new-deal-title-input" data-action="edit-new-deal-title"
-        value="${esc(title)}" placeholder="${esc(defaultNewDealTitle(displayName, newDealType))}"
-        autocomplete="off" aria-label="New deal name" />
-      <span class="pc-new-deal-hint muted">Create on confirm</span>
-    </div>`;
+/**
+ * Account + deal preview grid for post-call intake page 1.
+ * @param {{
+ *   accountName: string,
+ *   accountMatched: boolean,
+ *   deals?: object[],
+ *   selectedDealId?: string|null,
+ *   createNewDeal?: boolean,
+ *   newDealType?: 'new_business'|'expansion',
+ *   newDealTitle?: string,
+ * }} opts
+ */
+function renderPostcallAccountDealPreviewHtml(opts) {
+  return renderAccountDealPreviewHtml({ ...opts, editableAccount: true });
 }
 
 function focusAndSelectNewDealInput(previewEl) {
@@ -616,88 +613,6 @@ function activateNewDealMode(previewEl, { focusInput = false } = {}) {
   } else if (focusInput && previewEl) {
     focusAndSelectNewDealInput(previewEl);
   }
-}
-
-function renderStaticDealCard(title, stage) {
-  return `<div class="nb-deal-card pc-deal-tile pc-deal-tile--static">
-      <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
-      <div class="nb-deal-card-body">
-        <span class="nb-deal-card-title">${esc(title)}</span>
-        <span class="nb-deal-card-stage">${esc(stage)}</span>
-      </div>
-    </div>`;
-}
-
-/**
- * Account + deal preview grid for post-call intake page 1.
- * @param {{
- *   accountName: string,
- *   accountMatched: boolean,
- *   deals?: object[],
- *   selectedDealId?: string|null,
- *   createNewDeal?: boolean,
- *   newDealType?: 'new_business'|'expansion',
- *   newDealTitle?: string,
- * }} opts
- */
-export function renderAccountDealPreviewHtml(opts) {
-  const {
-    accountName,
-    accountMatched,
-    deals = [],
-    selectedDealId = null,
-    createNewDeal = false,
-    newDealType = "new_business",
-    newDealTitle = "",
-  } = opts;
-
-  const displayName = titleCaseDisplayName(accountName) || "Account";
-  const accountBadge = accountMatched
-    ? "Existing account"
-    : "New account · on confirm";
-
-  const showNewDealLink = accountMatched || deals.length > 0;
-  const dealHead = `<div class="nb-deal-head">
-      <span class="nb-label">Deal</span>
-      ${showNewDealLink ? `<button type="button" class="nb-deal-new-link${createNewDeal ? " is-active" : ""}" data-action="pick-new-deal">＋ New deal</button>` : ""}
-    </div>`;
-
-  let dealTilesHtml = "";
-  if (!accountMatched) {
-    const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
-    dealTilesHtml = renderStaticDealCard(title, "Create on confirm");
-  } else if (!deals.length) {
-    const defaultTitle = newDealTitle || formatDealTitlePreview(displayName, newDealType);
-    dealTilesHtml = createNewDeal
-      ? renderNewDealEditor(displayName, newDealType, defaultTitle)
-      : renderStaticDealCard(defaultTitle, "Create on confirm");
-  } else if (createNewDeal) {
-    dealTilesHtml = deals.map((d) => renderDealTile(d, false)).join("");
-    dealTilesHtml += renderNewDealEditor(displayName, newDealType, newDealTitle || formatDealTitlePreview(displayName, newDealType));
-  } else {
-    dealTilesHtml = deals.map((d) => renderDealTile(d, selectedDealId === d.id)).join("");
-  }
-
-  return `<div class="nb-account-column">
-    <span class="nb-label">Account</span>
-    <div class="nb-account-slot">
-      <div class="nb-account-card prep-account-card pc-account-card-editable" aria-live="polite">
-        <span class="nb-account-card-mono">${esc(companyMono(displayName))}</span>
-        <div class="nb-account-card-body">
-          <div class="pc-account-name-wrap pc-lookup-field">
-            <input type="text" class="pc-account-name-input" data-action="edit-account-name"
-              value="${esc(displayName)}" placeholder="Account name" autocomplete="off" aria-label="Account name" />
-            <div class="pc-account-suggest pc-lookup-menu" role="listbox" hidden></div>
-          </div>
-          <span class="nb-account-card-badge">${esc(accountBadge)}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="nb-deal-slot pc-deal-showcase">
-    ${dealHead}
-    <div class="pc-deal-tiles-row">${dealTilesHtml}</div>
-  </div>`;
 }
 
 function wireAccountDealPreview(previewEl) {
@@ -874,7 +789,7 @@ async function renderCrmMatchesPanel() {
 
   if (preview) {
     preview.hidden = false;
-    preview.innerHTML = renderAccountDealPreviewHtml({
+    preview.innerHTML = renderPostcallAccountDealPreviewHtml({
       accountName,
       accountMatched,
       deals: pcLastAccountDeals,
@@ -2234,7 +2149,6 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
         <div class="qip-head">
           <div>
             <h2>QIP scorecard ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
-            <p class="sub">Open a category for its themes; open a theme for the five checks behind its score.</p>
           </div>
           <span class="qip-total"><b>${overallDisplay}</b> / 10 · overall</span>
         </div>
@@ -4277,10 +4191,15 @@ async function startPipeline(e) {
       accounts: domainContext.accounts,
       deals: domainContext.deals,
     });
-    pipelineState.resolve = resolve;
+    const accountIdForDeals =
+      resolve?.account?.accountId ||
+      getIntakeAccountSelection().accountId ||
+      pcResolvedAccount?.id ||
+      null;
+    pipelineState.resolve = await enrichResolveDealsForAccount(resolve, accountIdForDeals);
     // Prefer form company when resolve did not match; keep for generate.
-    if (!payload.companyName && resolve.account?.accountName) {
-      payload.companyName = resolve.account.accountName;
+    if (!payload.companyName && pipelineState.resolve.account?.accountName) {
+      payload.companyName = pipelineState.resolve.account.accountName;
     }
 
     showPipelineProgress([
@@ -4295,8 +4214,8 @@ async function startPipeline(e) {
     });
 
     const classify = await postJson(CLASSIFY_URL, {
-      transcript: resolve.transcript,
-      meetingTitle: resolve.meetingTitle,
+      transcript: pipelineState.resolve.transcript,
+      meetingTitle: pipelineState.resolve.meetingTitle,
     });
     pipelineState.classify = classify;
 
@@ -4309,11 +4228,11 @@ async function startPipeline(e) {
     const intakeAccount = getIntakeAccountSelection();
     const dealsForConfirm = intakeAccount.createNewAccount
       ? []
-      : (resolve.deals || []).filter(
+      : (pipelineState.resolve.deals || []).filter(
           (d) =>
             !intakeAccount.accountId ||
             d.accountId === intakeAccount.accountId ||
-            d.accountId === resolve.account?.accountId,
+            d.accountId === pipelineState.resolve.account?.accountId,
         );
     syncIntakeDealSelection(dealsForConfirm, {
       createNewDeal: pcCreateNewDeal || intakeAccount.createNewAccount || payload.createNewDeal,
@@ -4321,7 +4240,7 @@ async function startPipeline(e) {
     });
     ensureIntakePayloadSynced(payload);
     pipelineState.payload = payload;
-    showConfirmationGate(resolve, classify);
+    showConfirmationGate(pipelineState.resolve, classify);
   } catch (err) {
     const msg = err.message || "Something went wrong.";
     showPipelineProgress([

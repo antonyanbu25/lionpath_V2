@@ -699,7 +699,7 @@ export async function listAccountsForSession(session, opts = {}) {
           const deals = store.listDealsByAccount
             ? await safeStoreOp(
                 "listDealsByAccount",
-                () => store.listDealsByAccount(accountId, ownerId || undefined),
+                () => store.listDealsByAccount(accountId),
                 [],
               )
             : [];

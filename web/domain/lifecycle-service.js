@@ -20,7 +20,7 @@ import {
  * @param {string} ownerId
  * @param {string} accountId
  * @param {string} teamId
- * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean, useSessionContext?: boolean }} [opts]
+ * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean, dealTitle?: string|null, dealType?: string|null, useSessionContext?: boolean }} [opts]
  */
 export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}) {
   const store = getStore();
@@ -30,9 +30,10 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
     if (stale) {
       await archiveLifecycle(stale.id, opts.actorId || ownerId, "new_deal");
     }
-    const dealType = opts.prepType === "expansion" ? "expansion" : "new_business";
+    const dealType =
+      opts.dealType || (opts.prepType === "expansion" ? "expansion" : "new_business");
     const deal = await createDealWithExplicitTitle(accountId, ownerId, teamId, opts.orgId || null, {
-      title: opts.title,
+      title: opts.dealTitle || opts.title,
       type: dealType,
       primaryContactId: opts.primaryContactId,
       accountName: opts.title,

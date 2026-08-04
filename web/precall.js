@@ -423,8 +423,8 @@ export function resetPrecallForm() {
   clearContextAttachments();
   const contextListEl = $("prep-context-file-list");
   if (contextListEl) contextListEl.innerHTML = "";
-  const grid = $("prep-account-deal-grid");
-  if (grid) grid.hidden = true;
+  const preview = $("prep-account-deal-preview");
+  if (preview) preview.hidden = true;
   renderPrepRecentBriefs();
   resetPrepCrmUi();
   syncPrepEngagementMotion();
@@ -846,6 +846,8 @@ async function buildPayload() {
       // what made the choice a no-op. createNewDeal and dealId are mutually exclusive.
       dealId: crm.createNewDeal ? undefined : crm.dealId || engagementCtx.dealId || undefined,
       createNewDeal: crm.createNewDeal || undefined,
+      newDealTitle: crm.createNewDeal ? crm.newDealTitle || undefined : undefined,
+      newDealType: crm.createNewDeal ? crm.newDealType || undefined : undefined,
       accountId: crm.accountId || engagementCtx.accountId || undefined,
       lifecycleId: crm.createNewDeal ? undefined : engagementCtx.lifecycleId || undefined,
       cachedResearch: cachedResearch || undefined,
@@ -1433,7 +1435,7 @@ function logPrecallDeployFingerprint(trigger) {
   const hasLabelTight = !!document.querySelector("#view-precall .nb-label-tight");
   const prospectIcon = document.querySelector("#prospectEmail")?.closest(".nb-input-shell")?.querySelector(".nb-field-icon svg path")?.getAttribute("d") || "";
   const hasPersonIcon = prospectIcon.includes("M20 21");
-  const accountGrid = $("prep-account-deal-grid");
+  const accountPreview = $("prep-account-deal-preview");
   const payload = {
     trigger,
     portalBuild,
@@ -1442,7 +1444,7 @@ function logPrecallDeployFingerprint(trigger) {
     h1FontWeight: h1Style?.fontWeight || null,
     hasLabelTight,
     hasPersonIcon,
-    accountGridHidden: accountGrid?.hidden ?? null,
+    accountGridHidden: accountPreview?.hidden ?? null,
     prospectEmailValue: ($("prospectEmail")?.value || "").length,
   };
   console.info("[precall-deploy]", payload);

@@ -7,8 +7,8 @@ import { resolveContactsForEmails, resolveAccountsForCompany } from "./postcall-
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domain.js";
-import { formatDealTitlePreview } from "./domain/deal-service.js";
-import { STAGE_LABELS } from "./domain/types.js";
+import { formatDealTitlePreview, inferDealTypeFromTitle } from "./domain/deal-service.js";
+import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc, $ } from "./shared.js";
 
@@ -26,6 +26,11 @@ let prepResolvedAccount = null;
 /** @type {string|null} */
 let prepSelectedDealId = null;
 let prepCreateNewDeal = false;
+/** @type {string} */
+let prepDraftNewDealTitle = "";
+/** @type {'new_business'|'expansion'} */
+let prepNewDealType = "new_business";
+let prepFocusNewDealInput = false;
 /** @type {object[]} */
 let lastDeals = [];
 /** @type {string|null} */
@@ -125,8 +130,21 @@ function resolveDefaultAccountName(domain, domainAccounts) {
 }
 
 function readAccountNameInput() {
-  const input = $("prep-account-name");
-  return (input?.value || prepDraftAccountName || "").trim();
+  return (prepDraftAccountName || prepResolvedAccount?.name || "").trim();
+}
+
+function syncNewDealTitlePrefill(accountName) {
+  if (!prepCreateNewDeal && prepSelectedDealId) return;
+  if (prepDraftNewDealTitle) return;
+  prepDraftNewDealTitle = formatDealTitlePreview(accountName, prepNewDealType);
+}
+
+function hideAccountDealPreview() {
+  const preview = $("prep-account-deal-preview");
+  if (preview) {
+    preview.hidden = true;
+    preview.innerHTML = "";
+  }
 }
 
 /** @returns {{ id: null, name: string, domain: string|null }} */
@@ -147,68 +165,25 @@ export function ensureDraftAccount(domain, name) {
   // Wait for CRM lookup to confirm whether deals already exist before flagging new deal.
 }
 
-function hideAccountDealGrid() {
-  const grid = $("prep-account-deal-grid");
-  const accountCard = $("prep-account-card");
-  const dealRow = $("prep-deal-row");
-  if (grid) grid.hidden = true;
-  if (accountCard) {
-    accountCard.hidden = true;
-    accountCard.innerHTML = "";
-  }
-  if (dealRow) dealRow.hidden = true;
-}
-
-function syncEngagementContext() {
-  const ctx = {};
-  if (prepResolvedAccount?.id) ctx.accountId = prepResolvedAccount.id;
-  if (prepSelectedDealId && !prepCreateNewDeal) ctx.dealId = prepSelectedDealId;
-  if (Object.keys(ctx).length) setAccountEngagementContext(ctx);
-}
-
-export function getPrepCrmSelection() {
-  const accountName = readAccountNameInput() || prepResolvedAccount?.name || null;
-  return {
-    accountId: prepResolvedAccount?.id || null,
-    account: prepResolvedAccount,
-    accountName,
-    dealId: prepCreateNewDeal ? null : prepSelectedDealId,
-    createNewDeal: prepCreateNewDeal,
-  };
-}
-
-export function resetPrepCrmSelection() {
-  prepResolvedAccount = null;
-  prepSelectedDealId = null;
-  prepCreateNewDeal = false;
-  lastDeals = [];
-  prepDraftAccountName = null;
-  prepAccountNameUserEdited = false;
-}
-
-/** Clear CRM UI after starting a fresh brief. */
-export function resetPrepCrmUi() {
-  resetPrepCrmSelection();
-  previewToken = ++lookupToken;
-  const panel = $("prep-crm-matches");
-  if (panel) {
-    panel.hidden = true;
-    panel.innerHTML = "";
-  }
-  hideAccountDealGrid();
-  const nameInput = $("prep-account-name");
-  if (nameInput) nameInput.value = "";
-}
-
 async function applyAccount(account, deals = []) {
   previewToken = ++lookupToken;
+  const prevAccountId = prepResolvedAccount?.id || null;
   prepResolvedAccount = account
     ? { id: account.id, name: account.name, domain: account.domain || null }
     : null;
   if (!prepAccountNameUserEdited) {
     prepDraftAccountName = account?.name || prepDraftAccountName;
   }
-  lastDeals = deals.filter((d) => !account || d.accountId === account.id);
+  if (account?.id) {
+    const { listDealsForAccount } = await import("./domain/deal-service.js");
+    lastDeals = await listDealsForAccount(account.id);
+  } else {
+    lastDeals = deals.filter((d) => !account || d.accountId === account.id);
+  }
+  if (prevAccountId !== (account?.id || null)) {
+    prepDraftNewDealTitle = "";
+    prepNewDealType = "new_business";
+  }
   if (account?.id && lastDeals.length) {
     prepCreateNewDeal = false;
     if (lastDeals.length === 1) {
@@ -231,78 +206,156 @@ async function applyAccount(account, deals = []) {
     }
   }
   syncEngagementContext();
-  renderDealRow();
-  const nameInput = $("prep-account-name");
-  if (nameInput && !prepAccountNameUserEdited) {
-    nameInput.value = prepDraftAccountName || account?.name || "";
-  }
+  renderPrepAccountDealPreview();
 }
 
 function renderAccountDealPreview(domain, accountName) {
-  if (!$("prep-account-deal-grid")) return;
+  if (!$("prep-account-deal-preview")) return;
   ensureDraftAccount(domain, accountName);
-  renderDealRow();
+  renderPrepAccountDealPreview();
 }
 
-function renderDealRow() {
-  const row = $("prep-deal-row");
-  const select = $("prep-deal-select");
-  const accountCard = $("prep-account-card");
-  const dealDisplay = $("prep-deal-display");
-  const grid = $("prep-account-deal-grid");
-  if (!row || !select) return;
+function syncEngagementContext() {
+  const ctx = {};
+  if (prepResolvedAccount?.id) ctx.accountId = prepResolvedAccount.id;
+  if (prepSelectedDealId && !prepCreateNewDeal) ctx.dealId = prepSelectedDealId;
+  if (Object.keys(ctx).length) setAccountEngagementContext(ctx);
+}
+
+export function getPrepCrmSelection() {
+  const accountName = readAccountNameInput() || prepResolvedAccount?.name || null;
+  return {
+    accountId: prepResolvedAccount?.id || null,
+    account: prepResolvedAccount,
+    accountName,
+    dealId: prepCreateNewDeal ? null : prepSelectedDealId,
+    createNewDeal: prepCreateNewDeal,
+    newDealTitle: prepCreateNewDeal ? prepDraftNewDealTitle.trim() || null : null,
+    newDealType: prepCreateNewDeal ? prepNewDealType : null,
+  };
+}
+
+export function resetPrepCrmSelection() {
+  prepResolvedAccount = null;
+  prepSelectedDealId = null;
+  prepCreateNewDeal = false;
+  prepDraftNewDealTitle = "";
+  prepNewDealType = "new_business";
+  prepFocusNewDealInput = false;
+  lastDeals = [];
+  prepDraftAccountName = null;
+  prepAccountNameUserEdited = false;
+}
+
+/** Clear CRM UI after starting a fresh brief. */
+export function resetPrepCrmUi() {
+  resetPrepCrmSelection();
+  previewToken = ++lookupToken;
+  const panel = $("prep-crm-matches");
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+  }
+  hideAccountDealPreview();
+}
+
+function focusAndSelectNewDealInput(previewEl) {
+  const input = previewEl?.querySelector?.('[data-action="edit-new-deal-title"]');
+  if (!input) return;
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+}
+
+function activateNewDealMode(previewEl, { focusInput = false } = {}) {
+  const changed = !prepCreateNewDeal || prepSelectedDealId !== null;
+  prepCreateNewDeal = true;
+  prepSelectedDealId = null;
+  if (focusInput) prepFocusNewDealInput = true;
+  syncEngagementContext();
+  if (changed) {
+    renderPrepAccountDealPreview();
+  } else if (focusInput && previewEl) {
+    focusAndSelectNewDealInput(previewEl);
+  }
+}
+
+function wirePrepAccountDealPreview(previewEl) {
+  if (!previewEl) return;
+
+  previewEl.querySelectorAll('[data-action="pick-deal"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      prepSelectedDealId = btn.dataset.dealId || null;
+      prepCreateNewDeal = false;
+      prepFocusNewDealInput = false;
+      syncEngagementContext();
+      renderPrepAccountDealPreview();
+    });
+  });
+  previewEl.querySelectorAll('[data-action="pick-new-deal"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      syncNewDealTitlePrefill(readAccountNameInput());
+      activateNewDealMode(previewEl, { focusInput: true });
+    });
+  });
+  previewEl.querySelectorAll('[data-action="edit-new-deal-title"]').forEach((input) => {
+    input.addEventListener("focus", () => {
+      if (!prepCreateNewDeal || prepSelectedDealId !== null) {
+        activateNewDealMode(previewEl, { focusInput: true });
+      }
+    });
+    input.addEventListener("click", () => {
+      if (prepCreateNewDeal) input.select();
+    });
+    input.addEventListener("input", () => {
+      if (!prepCreateNewDeal || prepSelectedDealId !== null) {
+        prepCreateNewDeal = true;
+        prepSelectedDealId = null;
+      }
+      prepDraftNewDealTitle = input.value;
+      prepNewDealType = inferDealTypeFromTitle(input.value);
+      syncEngagementContext();
+    });
+    input.addEventListener("blur", () => {
+      const trimmed = input.value.trim();
+      if (trimmed) {
+        prepDraftNewDealTitle = trimmed;
+        prepNewDealType = inferDealTypeFromTitle(trimmed);
+      }
+    });
+  });
+}
+
+function renderPrepAccountDealPreview() {
+  const preview = $("prep-account-deal-preview");
+  if (!preview) return;
 
   if (!prepResolvedAccount) {
-    hideAccountDealGrid();
+    hideAccountDealPreview();
     return;
   }
 
-  if (grid) grid.hidden = false;
+  const accountName = readAccountNameInput() || prepResolvedAccount.name || prepResolvedAccount.domain || "Account";
+  const accountMatched = !!prepResolvedAccount.id;
+  syncNewDealTitlePrefill(accountName);
 
-  const displayName = readAccountNameInput() || prepResolvedAccount.name || prepResolvedAccount.domain || "Account";
-  const mono = displayName.slice(0, 2).toUpperCase();
-  if (accountCard) {
-    accountCard.hidden = false;
-    accountCard.innerHTML = `<div class="nb-account-card">
-      <span class="nb-account-card-mono">${esc(mono)}</span>
-      <div class="nb-account-card-body">
-        <span class="nb-account-card-name">${esc(displayName)}</span>
-        <span class="nb-account-card-badge">${prepResolvedAccount.id ? "Existing account" : "New account · on generate"}</span>
-      </div>
-    </div>`;
+  preview.hidden = false;
+  preview.innerHTML = renderAccountDealPreviewHtml({
+    accountName,
+    accountMatched,
+    deals: lastDeals,
+    selectedDealId: prepSelectedDealId,
+    createNewDeal: prepCreateNewDeal,
+    newDealType: prepNewDealType,
+    newDealTitle: prepDraftNewDealTitle,
+    editableAccount: false,
+  });
+  wirePrepAccountDealPreview(preview);
+  if (prepFocusNewDealInput && prepCreateNewDeal) {
+    prepFocusNewDealInput = false;
+    focusAndSelectNewDealInput(preview);
   }
-
-  const options = lastDeals.map(
-    (d) => `<fw-select-option value="${esc(d.id)}">${esc(d.title || "Deal")}</fw-select-option>`,
-  );
-  select.innerHTML = [
-    ...options,
-    `<fw-select-option value="__new__">+ Create new deal</fw-select-option>`,
-  ].join("");
-
-  if (prepCreateNewDeal || !prepSelectedDealId) {
-    select.value = prepCreateNewDeal ? "__new__" : prepSelectedDealId || "__new__";
-  } else {
-    select.value = prepSelectedDealId;
-  }
-
-  const selectedDeal = lastDeals.find((d) => d.id === prepSelectedDealId);
-  if (dealDisplay) {
-    const isNewDeal = prepCreateNewDeal || !selectedDeal;
-    const title = isNewDeal ? formatDealTitlePreview(displayName, "new_business") : selectedDeal.title || "Deal";
-    const stage = isNewDeal
-      ? "New deal · on generate"
-      : STAGE_LABELS[selectedDeal.stage] || selectedDeal.stage || selectedDeal.status || "Active";
-    dealDisplay.innerHTML = `<div class="nb-deal-card">
-      <span class="nb-deal-card-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-      <div class="nb-deal-card-body">
-        <span class="nb-deal-card-title">${esc(title)}</span>
-        <span class="nb-deal-card-stage">${esc(stage)}</span>
-      </div>
-    </div>`;
-  }
-
-  row.hidden = false;
   if (typeof window !== "undefined") window.__logPrecallDeploy?.();
 }
 
@@ -328,7 +381,7 @@ async function renderCrmPanel() {
     resetPrepCrmSelection();
     panel.hidden = true;
     panel.innerHTML = "";
-    hideAccountDealGrid();
+    hideAccountDealPreview();
     return;
   }
 
@@ -395,7 +448,7 @@ async function renderCrmPanel() {
 
   if (groupAccounts.length <= 1) {
     panel.hidden = true;
-    panel.innerHTML = `<input id="prep-account-name" type="hidden" value="${esc(prepDraftAccountName || defaultName)}" />`;
+    panel.innerHTML = "";
   } else {
     const header = "Multiple accounts found — pick one";
     panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${domainRows}`;
@@ -413,7 +466,7 @@ async function renderCrmPanel() {
     });
   }
 
-  renderDealRow();
+  renderPrepAccountDealPreview();
 }
 
 function scheduleLookup() {
@@ -431,13 +484,13 @@ async function showInstantAccountPreview() {
   if (seq !== previewToken) return;
   if (prepResolvedAccount?.id) return;
   if (!emails.length) {
-    hideAccountDealGrid();
+    hideAccountDealPreview();
     return;
   }
   const domain = emails[0].split("@")[1]?.toLowerCase();
   if (!domain || isFreeMailDomain(domain)) {
     if (!prepResolvedAccount?.id) prepResolvedAccount = null;
-    hideAccountDealGrid();
+    hideAccountDealPreview();
     return;
   }
   if (seq !== previewToken || prepResolvedAccount?.id) return;
@@ -452,26 +505,4 @@ export function initPrepCrmResolve() {
 
   $("companyDomain")?.addEventListener("fwInput", scheduleLookup);
   $("companyDomain")?.addEventListener("input", scheduleLookup);
-
-  $("prep-deal-select")?.addEventListener("fwChange", (ev) => {
-    const val = ev.detail?.value || $("prep-deal-select")?.value;
-    if (val === "__new__") {
-      prepCreateNewDeal = true;
-      prepSelectedDealId = null;
-    } else {
-      prepCreateNewDeal = false;
-      prepSelectedDealId = val || null;
-    }
-    syncEngagementContext();
-    renderDealRow();
-  });
-
-  $("prep-deal-new-btn")?.addEventListener("click", () => {
-    prepCreateNewDeal = true;
-    prepSelectedDealId = null;
-    const select = $("prep-deal-select");
-    if (select) select.value = "__new__";
-    syncEngagementContext();
-    renderDealRow();
-  });
 }

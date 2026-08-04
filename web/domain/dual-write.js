@@ -147,6 +147,8 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     // Set only by the "+ New deal" choice in the pre-call CRM panel. Strict === true so a
     // truthy leftover in a re-submitted stored payload cannot silently fork a second deal.
     createNewDeal: payload.createNewDeal === true,
+    dealTitle: payload.newDealTitle || null,
+    dealType: payload.newDealType || null,
   });
 
   const prepBrief = await attachPrep(
