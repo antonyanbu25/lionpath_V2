@@ -1366,9 +1366,19 @@ function formatPass2DebugNote(analysisMeta, videoFacts, stakeholderRows) {
   const allCamUnknown = rows.every((r) => r.cameraOn !== true && r.cameraOn !== false);
   if (!hasTalk || !allCamUnknown) return "";
 
-  const route = analysisMeta?.pass2Debug?.route || null;
+  const dbg = analysisMeta?.pass2Debug || {};
+  const route = dbg.route || null;
   const streamKind = videoFacts?.streamKind || null;
   if (route === "transcript" || streamKind === "transcript_infer") {
+    if (dbg.ffmpegOk === false && dbg.hasRecordingUrl) {
+      return (
+        "Camera state unavailable — Pass 2 could not run ffmpeg on the recording. " +
+        "On VPS check GET /api/config → videoPass.ffmpeg is true and VIDEO_PASS_ENABLED=1, then redeploy the worker."
+      );
+    }
+    if (dbg.fallbackReason) {
+      return `Camera state unavailable — Pass 2 used transcript only (${dbg.fallbackReason}).`;
+    }
     return "Camera state unavailable — Pass 2 used transcript only. Re-run with a Zoom recording on the VPS for cam On/Off.";
   }
   if (videoFacts?.errorMessage) {

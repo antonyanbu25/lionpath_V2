@@ -54,12 +54,15 @@ export interface Pass2Debug {
   ffmpegOk?: boolean;
   consent?: boolean;
   hasStream?: boolean;
+  hasRecordingUrl?: boolean;
   streamKind?: string | null;
   sampleCount?: number;
   keyframeCount?: number;
   visionCurveRows?: number;
   mergedTalk?: boolean;
   freshMedia?: boolean;
+  /** Why transcript route was chosen over ffmpeg vision (for UI / ops). */
+  fallbackReason?: string;
 }
 
 function curveHasCameraData(
@@ -360,7 +363,27 @@ export async function runVideoPass(
   }
 
   const cap = await videoPassReady(env);
+  const hasRecordingUrl = !!input.recordingUrl?.trim();
   if (!cap.ready) {
+    // Zoom recording + face consent needs ffmpeg on VPS — do not silently downgrade to transcript.
+    if (hasRecordingUrl && !!input.visualAnalysisConsent) {
+      const reason =
+        cap.reason ||
+        "Pass 2 video unavailable — enable VIDEO_PASS_ENABLED and ffmpeg on the VPS worker";
+      return {
+        ok: false,
+        unavailable: true,
+        reason,
+        videoFacts: unavailableDraft(reason),
+        pass2Debug: {
+          route: "unavailable",
+          ffmpegOk: false,
+          consent: true,
+          hasRecordingUrl: true,
+          fallbackReason: reason,
+        },
+      };
+    }
     if (input.transcript?.trim()) {
       return runTranscriptPass(env, input);
     }
@@ -403,6 +426,7 @@ export async function runVideoPass(
     ffmpegOk,
     consent,
     hasStream: !!stream,
+    hasRecordingUrl,
     streamKind: stream?.kind ?? null,
     freshMedia,
   };
@@ -415,7 +439,8 @@ export async function runVideoPass(
 
   if (stream && ffmpegOk) {
     let ffmpegResult = await runFfmpegPass(env, input, media!, stream, consent);
-    if (!ffmpegResult.ok && input.recordingUrl?.trim() && input.media?.streams?.length) {
+    // Post-call confirm does not pass Pass 0 media (signed URLs expire) — always refresh on failure.
+    if (!ffmpegResult.ok && hasRecordingUrl) {
       const refreshed = await resolvePass2Media({
         ...input,
         media: undefined,
@@ -445,17 +470,21 @@ export async function runVideoPass(
           );
         }
         const ffErr = ffmpegResult.videoFacts.errorMessage?.trim();
+        const fallbackReason = ffErr
+          ? `ffmpeg failed: ${ffErr.slice(0, 200)}`
+          : "ffmpeg produced no usable frames";
         return {
           ...fallback,
           videoFacts: {
             ...fallback.videoFacts,
             errorMessage: ffErr
-              ? `Pass 2 used transcript fallback (ffmpeg failed: ${ffErr.slice(0, 200)})`
+              ? `Pass 2 used transcript fallback (${fallbackReason})`
               : fallback.videoFacts.errorMessage,
           },
           pass2Debug: {
             ...baseDebug,
             route: "transcript",
+            fallbackReason,
             ...(fallback.pass2Debug || {}),
           },
         };
@@ -466,13 +495,29 @@ export async function runVideoPass(
   }
 
   if (input.transcript?.trim()) {
-    if (consent && stream) {
+    const fallbackReason = !ffmpegOk
+      ? hasRecordingUrl
+        ? "ffmpeg not available on API server — check /api/config videoPass.ffmpeg on VPS"
+        : "ffmpeg not available on this runtime"
+      : !stream
+        ? "no Zoom media stream resolved"
+        : undefined;
+    if (consent && stream && !ffmpegOk) {
       console.warn(
         "[video/pass2] visual consent set but ffmpeg unavailable on this runtime — transcript fallback",
+        fallbackReason,
       );
     }
     const r = await runTranscriptPass(env, input);
-    return { ...r, pass2Debug: { ...baseDebug, route: "transcript", ...(r.pass2Debug || {}) } };
+    return {
+      ...r,
+      pass2Debug: {
+        ...baseDebug,
+        route: "transcript",
+        fallbackReason,
+        ...(r.pass2Debug || {}),
+      },
+    };
   }
 
   if (!stream) {

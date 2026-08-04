@@ -280,6 +280,47 @@ assert(
   "shows pass2 hint when talk present but camera unknown on transcript path",
 );
 
+const ffmpegMissingSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/ffmpeg-missing",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "FfmpegMissing · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: {
+      callType: "demo",
+      videoAvailable: true,
+      pass2Debug: { route: "transcript", ffmpegOk: false, hasRecordingUrl: true },
+    },
+    videoFacts: {
+      status: "ready",
+      streamKind: "transcript_infer",
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 30, cameraOn: null },
+      ],
+    },
+  },
+);
+const ffmpegMissingContainer = { innerHTML: "" };
+Object.defineProperty(ffmpegMissingContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(ffmpegMissingContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(ffmpegMissingContainer, firebaseSession, { callId: ffmpegMissingSaved.id });
+assert(
+  ffmpegMissingContainer.innerHTML.includes("videoPass.ffmpeg"),
+  "shows VPS ffmpeg hint when recording present but ffmpeg unavailable",
+);
+
 const emmaSaved = await savePostCallAnalysis(
   email,
   {

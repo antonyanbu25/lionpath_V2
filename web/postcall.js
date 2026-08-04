@@ -3472,14 +3472,14 @@ async function confirmAndGenerate(e) {
 
   let videoFacts = null;
   const pass2Transcript = pipelineState.resolve.transcript?.trim() || "";
+  const pass2RecordingUrl = pipelineState.payload.recordingUrl?.trim() || "";
   const pass2DurationSec =
     pipelineState.resolve.media?.durationSec ??
     (pipelineState.resolve.durationMinutes != null
       ? Math.round(Number(pipelineState.resolve.durationMinutes) * 60)
       : null);
   const canRunPass2 =
-    (pipelineState.resolve.videoAvailable && pipelineState.payload.recordingUrl) ||
-    pass2Transcript.length > 0;
+    (pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0;
 
   if (canRunPass2) {
     showPostCallPipeline([
@@ -3487,23 +3487,24 @@ async function confirmAndGenerate(e) {
       { label: "Classify call type", status: "done" },
       { label: "Generate analysis + qualification + commitments", status: "active" },
     ]);
+    const pass2UsesFfmpeg = pass2RecordingUrl.length > 0;
     showInlineStatus(status, {
       type: "info",
-      message: pass2Transcript
-        ? "Inferring slides and screen-share cues from transcript…"
-        : "Sampling Zoom video for camera / share facts… (ffmpeg on VPS when available)",
+      message: pass2UsesFfmpeg
+        ? "Sampling Zoom video for camera / share facts… (ffmpeg + vision on VPS)"
+        : "Inferring slides and screen-share cues from transcript…",
       loading: true,
     });
     updatePrepGenOverlay({
-      message: pass2Transcript
-        ? "Inferring slides and screen-share cues from transcript…"
-        : "Sampling Zoom video for camera and screen-share…",
+      message: pass2UsesFfmpeg
+        ? "Sampling Zoom video for camera and screen-share…"
+        : "Inferring slides and screen-share cues from transcript…",
     });
     try {
       const provisionalCallId = `call_pending_${Date.now()}`;
       const videoRes = await postJson(VIDEO_PASS_URL, {
         callId: provisionalCallId,
-        recordingUrl: pipelineState.payload.recordingUrl,
+        recordingUrl: pass2RecordingUrl || undefined,
         recordingPassword: pipelineState.payload.recordingPassword,
         // Do not pass resolve.media — Zoom signed URLs expire during the confirm gate.
         transcript: pass2Transcript || undefined,

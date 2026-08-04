@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
+import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
 import type { HistoryEnv } from "./history";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
@@ -173,7 +174,10 @@ createServer(async (req, res) => {
       ? `History storage: file (${historyDir})`
       : "History storage: not configured (set HISTORY_FILE_DIR)",
   );
-  console.log(
-    `Video Pass 2: ${process.env.VIDEO_PASS_ENABLED === "0" ? "disabled" : "enabled (ffmpeg)"} → ${process.env.VIDEO_DATA_DIR || "/data/video"}`,
-  );
+  const passEnabled = videoPassEnvEnabled(env);
+  void ffmpegAvailable().then((ffmpegOk) => {
+    console.log(
+      `Video Pass 2: ${passEnabled ? "enabled" : "disabled (VIDEO_PASS_ENABLED=0)"} → ${process.env.VIDEO_DATA_DIR || "/data/video"} · ffmpeg=${ffmpegOk ? "ok" : "MISSING — camera vision will fall back to transcript"}`,
+    );
+  });
 });
