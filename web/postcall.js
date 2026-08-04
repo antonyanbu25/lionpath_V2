@@ -64,6 +64,7 @@ import {
   momentumClass,
   radarDimensionLabel,
   renderRadarLabelText,
+  qipScoreHex,
 } from "./chart-shared.js";
 import { renderQipRadar } from "./qip-radar.js";
 import { themeLabel } from "./theme-library.js";
@@ -1745,11 +1746,6 @@ const QIP_CHEV_SVG_SM =
 const QIP_STAR_SVG =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2.6a.5.5 0 0 1 .9 0l2.5 5.1 5.6.8a.5.5 0 0 1 .3.9l-4 3.9 1 5.6a.5.5 0 0 1-.8.5L12 17.3l-5 2.6a.5.5 0 0 1-.8-.5l1-5.6-4-3.9a.5.5 0 0 1 .3-.9l5.6-.8Z"/></svg>';
 
-function qipScoreHex(score) {
-  if (score >= 8) return "#4a7a5c";
-  if (score >= 6) return "#a5883f";
-  return "#b8544a";
-}
 
 function renderQipSparkline(subParameters) {
   const scores = (subParameters || []).slice(0, 5).map((sp) => Math.max(0, Math.min(2, Number(sp?.score ?? sp?.grade ?? 0) || 0)));

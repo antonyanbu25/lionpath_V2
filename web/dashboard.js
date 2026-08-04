@@ -44,6 +44,9 @@ import {
   momentumClass,
   radarDimensionLabel,
   renderRadarLabelText,
+  heatmapShadeForScore,
+  TREND_LINE_COLORS,
+  CHART_SCORE_BANDS,
 } from "./chart-shared.js";
 
 export { radarDimensionLabel } from "./chart-shared.js";
@@ -87,12 +90,7 @@ const CALL_TYPE_LABELS = {
   qa_session: "Q&A session",
 };
 
-const TREND_TYPE_COLORS = [
-  { stroke: "var(--accent)", dash: "" },
-  { stroke: "#2563EB", dash: "5 4" },
-  { stroke: "#059669", dash: "2 3" },
-  { stroke: "#D97706", dash: "6 3" },
-];
+const TREND_TYPE_COLORS = TREND_LINE_COLORS;
 
 /** @param {object} rec @param {object[]} [overrides] */
 function scorecardFromRecord(rec, overrides = []) {
@@ -1590,13 +1588,7 @@ function formatArrBand(low, high, point) {
 }
 
 function heatmapShade(score) {
-  if (score == null) return { bg: "var(--surface-muted)", fg: "var(--muted)", label: "-" };
-  const v = score;
-  if (v < 55) return { bg: "#F5CDD5", fg: "#8C2237", label: String(Math.round(v)) };
-  if (v < 65) return { bg: "#FBE3C8", fg: "#8A5A11", label: String(Math.round(v)) };
-  if (v < 75) return { bg: "#E9EEF4", fg: "#4A5A72", label: String(Math.round(v)) };
-  if (v < 85) return { bg: "#C9EADC", fg: "#0D5C41", label: String(Math.round(v)) };
-  return { bg: "#8FD6BA", fg: "#0A4732", label: String(Math.round(v)) };
+  return heatmapShadeForScore(score);
 }
 
 function renderHeatmapCell(score, opts = {}) {
@@ -1894,11 +1886,7 @@ function renderManagerHeatmap(view, filter) {
     <p class="team-heatmap-foot muted"><b>Read the columns, not the rows.</b> A red column is an enablement problem, not a person problem. Click any cell to see the calls behind it.</p>
     <div class="team-heatmap-legend muted">
       <span>Weak</span>
-      <span class="team-heatmap-swatch" style="background:#F5CDD5"></span>
-      <span class="team-heatmap-swatch" style="background:#FBE3C8"></span>
-      <span class="team-heatmap-swatch" style="background:#E9EEF4"></span>
-      <span class="team-heatmap-swatch" style="background:#C9EADC"></span>
-      <span class="team-heatmap-swatch" style="background:#8FD6BA"></span>
+      ${CHART_SCORE_BANDS.map((band) => `<span class="team-heatmap-swatch" style="background:${band.bg}"></span>`).join("")}
       <span>Strong</span>
     </div>`;
 }

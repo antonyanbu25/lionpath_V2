@@ -17,6 +17,7 @@ import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
 import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
 import { assembleMomEmailDraft, greetingNameFromDraft } from "./shared/mom-email-draft.js";
 import { renderQipRadar } from "./qip-radar.js";
+import { CHART_PALETTE, SPINE_SEGMENT_PALETTE, TIMELINE_MARKER_COLORS } from "./chart-shared.js";
 import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
 import {
   enrichDealFromHistoryRecords,
@@ -141,12 +142,7 @@ const MARKER_LABELS = {
   weak_cta: "weak CTA",
 };
 
-const MARKER_COLORS = {
-  gap: "#d6455d",
-  objection: "#b7791f",
-  win: "#127a56",
-  weak_cta: "#a4262c",
-};
+const MARKER_COLORS = TIMELINE_MARKER_COLORS;
 
 const MARKER_LEGEND = [
   ["gap", "Product gap"],
@@ -162,10 +158,10 @@ const OBJECTION_FRAMING =
   /^(?:Customer|Prospect|The customer|The prospect)\s+(?:expressed(?:\s+concern(?:\s+that)?|\s+that|\s+a concern about)?|raised|asked|noted|said|mentioned|was concerned(?:\s+that)?|pushed back(?:\s+on)?|questioned)\s+/i;
 
 const SPINE_LEGEND = [
-  ["slides", "Slides", "#EFEBFD", "#4A3BA8"],
-  ["product", "Product / CDE", "#E3F5EE", "#0D5C41"],
-  ["customer_screen", "Customer screen", "#E8F0FE", "#1D4FD8"],
-  ["none", "No share", "#F1F3F7", "#5A6B82"],
+  ["slides", "Slides", SPINE_SEGMENT_PALETTE.slides[0], SPINE_SEGMENT_PALETTE.slides[1]],
+  ["product", "Product / CDE", SPINE_SEGMENT_PALETTE.product[0], SPINE_SEGMENT_PALETTE.product[1]],
+  ["customer_screen", "Customer screen", SPINE_SEGMENT_PALETTE.customer_screen[0], SPINE_SEGMENT_PALETTE.customer_screen[1]],
+  ["none", "No share", SPINE_SEGMENT_PALETTE.none[0], SPINE_SEGMENT_PALETTE.none[1]],
 ];
 
 function spineSegmentLabel(type, customLabel) {
@@ -860,19 +856,7 @@ function renderFitmentCard(deal) {
   </div>`;
 }
 
-const SPINE_SEGMENT_COLORS = {
-  slides: ["#EFEBFD", "#4A3BA8"],
-  product: ["#E3F5EE", "#0D5C41"],
-  cde: ["#E3F5EE", "#0D5C41"],
-  customer_screen: ["#E8F0FE", "#1D4FD8"],
-  none: ["#F1F3F7", "#5A6B82"],
-  intro: ["#EFEBFD", "#4A3BA8"],
-  discovery: ["#E8F0FE", "#1D4FD8"],
-  demo: ["#E3F5EE", "#0D5C41"],
-  pricing: ["#FDF3E2", "#B7791F"],
-  objection_handling: ["#FDECEF", "#D6455D"],
-  next_steps: ["#E3F5EE", "#0D5C41"],
-};
+const SPINE_SEGMENT_COLORS = SPINE_SEGMENT_PALETTE;
 
 function renderVisualSpine(segments, markers, durationSec) {
   const total = durationSec && Number.isFinite(durationSec) && durationSec > 0
@@ -1197,10 +1181,10 @@ function confidenceDotsHtml(confidencePct) {
 }
 
 function sentimentColor(label) {
-  if (label === "Positive") return "#4a7a5c";
-  if (label === "Negative") return "#b8544a";
-  if (label === "Neutral") return "#a5883f";
-  return "#2b2926";
+  if (label === "Positive") return CHART_PALETTE.green;
+  if (label === "Negative") return CHART_PALETTE.red;
+  if (label === "Neutral") return CHART_PALETTE.amber;
+  return CHART_PALETTE.text;
 }
 
 function renderPostcallKpiStack(ctx) {
@@ -1226,14 +1210,14 @@ function renderPostcallKpiStack(ctx) {
   const confLabel = confidenceBandLabel(confidencePct);
 
   return `<div class="metrics" aria-label="Call KPIs">
-    <div class="mcard" style="--accent:#4a7a5c">
+    <div class="mcard" style="--accent:${CHART_PALETTE.green}">
       <span class="lab">QIP score</span>
-      <span class="big" style="--val:#4a7a5c">${esc(qipNum)}<span class="u"> / 10</span></span>
-      <div class="meter"><span style="width:${qipPct}%;background:#4a7a5c"></span></div>
+      <span class="big" style="--val:${CHART_PALETTE.green}">${esc(qipNum)}<span class="u"> / 10</span></span>
+      <div class="meter"><span style="width:${qipPct}%;background:${CHART_PALETTE.green}"></span></div>
     </div>
-    <div class="mcard" style="--accent:#a5883f">
+    <div class="mcard" style="--accent:${CHART_PALETTE.amber}">
       <span class="lab">Qualification · MEDDPICC</span>
-      <span class="big" style="--val:#a5883f">${medNum}<span class="u"> / 100</span></span>
+      <span class="big" style="--val:${CHART_PALETTE.amber}">${medNum}<span class="u"> / 100</span></span>
       ${meddpiccPipsHtml(meddpiccFilled)}
       <span class="subline">${medSub}</span>
     </div>
@@ -1242,9 +1226,9 @@ function renderPostcallKpiStack(ctx) {
       <span class="sentiment" style="color:${sentimentColor(sentimentLabel)}">${esc(sentimentLabel)}</span>
       ${sentimentSub ? `<span class="subline">${sentimentSub}</span>` : ""}
     </div>
-    <div class="mcard" style="--accent:#a5883f">
+    <div class="mcard" style="--accent:${CHART_PALETTE.amber}">
       <span class="lab">Confidence to closure</span>
-      <span class="sentiment" style="color:#2b2926">${esc(confLabel)}</span>
+      <span class="sentiment" style="color:${CHART_PALETTE.text}">${esc(confLabel)}</span>
       ${confidenceDotsHtml(confidencePct)}
     </div>
   </div>`;
