@@ -30,7 +30,7 @@ if [[ -z "$SCHEMA_FIX" ]]; then
   echo "FAIL: worker missing geminiSchemaEnumFix — postcall scorecard Gemini 400 not patched" >&2
   FAIL=1
 fi
-if [[ "$PORTAL_BUILD" != "2.1.3" && "$PORTAL_BUILD" != "2.1.2" && "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
+if [[ "$PORTAL_BUILD" != "2.1.5" && "$PORTAL_BUILD" != "2.1.4" && "$PORTAL_BUILD" != "2.1.3" && "$PORTAL_BUILD" != "2.1.2" && "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
   echo "FAIL: portal-build must be 2.1.x (got: ${PORTAL_BUILD:-MISSING}) — run: bash refresh-web.sh" >&2
   FAIL=1
 fi

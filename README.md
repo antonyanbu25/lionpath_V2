@@ -31,6 +31,22 @@ Both flows share the same polished one-pager layout, personal dashboard, and sid
 
 ## Pre-call improvements (branch `2.1`)
 
+### Login page refresh (2.1.5)
+
+Split-layout sign-in ported from **`2.0.8.1-merge`** and polished for **`2.1`**:
+
+| Item | Detail |
+|------|--------|
+| **Layout** | Form panel left, ambient video showcase right (mobile stacks video strip above form) |
+| **Branding** | Freshworks logomark in brand bar + **browser favicon** (`assets/freshworks-logomark.webp`) |
+| **Dark mode** | Top-right crescent moon toggle with slow glow pulse (dims/brightens on a 4s loop); sun icon when dark mode is active |
+| **Animations** | Staggered panel/card field fade-in, gentle logo float, video drift, button hover lift — all respect `prefers-reduced-motion` |
+| **SSO** | Google sign-in pill on production; demo email/password on localhost |
+
+Key paths: `web/index.html`, `web/styles.css`, `web/theme.js`.
+
+After deploy, hard-refresh the portal (Ctrl+Shift+R) to pick up the new favicon and CSS cache bust.
+
 ### Account / deal deduplication & linking (2.1)
 
 | Issue | Fix |
@@ -116,6 +132,7 @@ The **Recent news** card (Know tab, row 1) no longer back-fills from research fa
 
 | Area | Paths |
 |------|-------|
+| Login refresh | `web/index.html`, `web/styles.css`, `web/theme.js`, `web/about.html` |
 | Account/deal dedup | `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`, `web/postcall-contact-resolve.js` |
 | Omni search | `web/search-service.js`, `web/global-search.js`, `web/index.html`, `web/styles.css`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts` |
 | Form validation | `web/prep-linkedin-pdf.js`, `web/precall.js`, `web/precall.css` |

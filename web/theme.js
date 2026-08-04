@@ -16,7 +16,16 @@ function applyTheme(theme) {
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     const isDark = theme === "dark";
     btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
-    btn.textContent = isDark ? "☀️" : "🌙";
+    const iconHost = btn.querySelector(".theme-toggle-icon");
+    if (iconHost) {
+      btn.classList.toggle("theme-is-dark", isDark);
+      const moon = iconHost.querySelector(".theme-moon-icon");
+      const sun = iconHost.querySelector(".theme-sun-icon");
+      if (moon) moon.hidden = isDark;
+      if (sun) sun.hidden = !isDark;
+    } else {
+      btn.textContent = isDark ? "☀️" : "🌙";
+    }
   });
   syncThemeMenuState(document);
 }

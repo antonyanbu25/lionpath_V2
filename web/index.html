@@ -3,7 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.4" />
+    <meta name="portal-build" content="2.1.5" />
+    <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
+    <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -21,7 +23,7 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.0.8" />
-    <link rel="stylesheet" href="./styles.css?v=2.1.9-omni-search-align" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.10-login-refresh" />
     <link rel="stylesheet" href="./precall.css?v=2.1.2" />
     <link rel="stylesheet" href="./postcall.css?v=2.0.8.1-merge" />
     <link rel="stylesheet" href="./call-view.css?v=2.0.8.1-merge" />
@@ -63,6 +65,17 @@
 
     <!-- Login — split layout: form left, ambient video right (iofrm login19-inspired) -->
     <div id="login-view" class="login-page">
+      <button type="button" class="login-theme-toggle theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
+        <span class="theme-toggle-icon" aria-hidden="true">
+          <svg class="theme-moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" fill="currentColor" fill-opacity="0.12"/>
+          </svg>
+          <svg class="theme-sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" hidden>
+            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.75"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          </svg>
+        </span>
+      </button>
       <div class="login-split">
         <div class="login-form-panel">
           <div class="login-brand-bar">
