@@ -2460,7 +2460,7 @@
 }
 
 .prep-v9-benchmark-context .prep-v9-src-input {
-  margin-top: 4px;
+  margin-top: 0;
 }
 .prep-v9-maturity-head {
   display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px;
@@ -2777,9 +2777,21 @@
 .prep-v9-benchmark-list { display: flex; flex-direction: column; gap: 15px; }
 .prep-v9-benchmark-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 7px; font-size: 12.5px; color: #6f6759;
 }
-.prep-v9-benchmark-head strong { font-size: 13.5px; font-weight: 700; color: #2b2926; }
+.prep-v9-benchmark-head > span:first-child { flex: 1; min-width: 0; }
+.prep-v9-benchmark-head strong {
+  font-size: 13.5px; font-weight: 700; color: #2b2926;
+  max-width: 58%; text-align: right; line-height: 1.35; flex-shrink: 0;
+}
+.prep-v9-benchmark-context .prep-v9-benchmark-bar-foot-context .prep-v9-benchmark-bar-min,
+.prep-v9-benchmark-context .prep-v9-benchmark-bar-foot-context .prep-v9-benchmark-bar-max {
+  visibility: hidden;
+}
+.prep-v9-benchmark-context .prep-v9-benchmark-bar-foot-context .prep-v9-benchmark-bar-verdict {
+  flex: 1; text-align: center;
+}
 .prep-v9-benchmark-bar {
   position: relative; height: 18px; display: flex; align-items: center;
 }

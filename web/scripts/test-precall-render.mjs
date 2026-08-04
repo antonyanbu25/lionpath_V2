@@ -353,7 +353,7 @@ const checks = [
   ["know tab about text", discovery.includes("prep-v9-about")],
   ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
   ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
-  ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-src-input")],
+  ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({

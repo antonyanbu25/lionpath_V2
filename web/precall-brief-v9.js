@@ -406,27 +406,40 @@ function benchmarkRows(prep) {
   const rivals = prep.rivals;
   const axes = rivals?.axes || [];
   if (axes.length) {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
+      body: JSON.stringify({
+        sessionId: "57a252",
+        hypothesisId: "B",
+        location: "precall-brief-v9.js:benchmarkRows",
+        message: "fish rivals branch",
+        data: { axisCount: axes.length },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     return renderFishBenchmarkCard(axes, rivals);
   }
 
   const ctxMetrics = prep.fishContext?.metrics || [];
   if (ctxMetrics.length) {
-    const rows = ctxMetrics
-      .map(
-        (m) => `<div class="prep-v9-benchmark prep-v9-benchmark-context">
-        <div class="prep-v9-benchmark-head">
-          <span class="prep-v9-benchmark-label">${esc(m.label)}</span>
-          <span class="prep-v9-benchmark-val">${esc(m.value)}</span>
-        </div>
-        <span class="prep-v9-src prep-v9-src-input">INPUT</span>
-      </div>`,
-      )
-      .join("");
-    return `<div class="prep-v9-card">
-      <h2 class="prep-v9-card-title">How big is this fish?</h2>
-      <p class="muted prep-v9-fish-context-note">From your additional context — not verified on the web.</p>
-      ${rows}
-    </div>`;
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
+      body: JSON.stringify({
+        sessionId: "57a252",
+        hypothesisId: "A",
+        location: "precall-brief-v9.js:benchmarkRows",
+        message: "fish context branch",
+        data: { metricCount: ctxMetrics.length, labels: ctxMetrics.map((m) => m.label) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    return renderFishContextCard(ctxMetrics);
   }
 
   return `<div class="prep-v9-card">
@@ -436,6 +449,34 @@ function benchmarkRows(prep) {
         <p class="muted">No headcount, funding or volume figures are public. Ask for team size — it anchors everything else.</p>
       </div>
     </div>`;
+}
+
+/** Context-only sizing — same bar layout as wireframe, INPUT badge in verdict slot. */
+function renderFishContextCard(metrics) {
+  const rows = metrics
+    .map(
+      (m) => `<div class="prep-v9-benchmark prep-v9-benchmark-context">
+        <div class="prep-v9-benchmark-head">
+          <span>${esc(m.label)}</span>
+          <strong>${esc(m.value)}</strong>
+        </div>
+        <div class="prep-v9-benchmark-bar" aria-hidden="true">
+          <span class="prep-v9-benchmark-bar-rail"></span>
+          <span class="prep-v9-benchmark-bar-dot" style="left:50%"></span>
+        </div>
+        <div class="prep-v9-benchmark-bar-foot prep-v9-benchmark-bar-foot-context">
+          <span class="prep-v9-benchmark-bar-min"></span>
+          <span class="prep-v9-benchmark-bar-verdict"><span class="prep-v9-src prep-v9-src-input">INPUT</span></span>
+          <span class="prep-v9-benchmark-bar-max"></span>
+        </div>
+      </div>`,
+    )
+    .join("");
+  return `<div class="prep-v9-card">
+    <h2 class="prep-v9-card-title">How big is this fish?</h2>
+    <div class="prep-v9-benchmark-list">${rows}</div>
+    <p class="prep-v9-benchmark-note muted">From your additional context — not verified on the web.</p>
+  </div>`;
 }
 
 function renderFishBenchmarkCard(axes, rivals) {
