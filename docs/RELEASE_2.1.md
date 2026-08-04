@@ -2,7 +2,7 @@
 
 **Branch:** `2.1`  
 **Base:** `2.0.8.2` + prior 2.1 prep fixes  
-**Portal build:** `2.1.12` (`web/index.html` meta + `app.js?v=2.1.12`)  
+**Portal build:** `2.1.13` (`web/index.html` meta + cache-bust query strings)  
 **Worker build:** `2.1.5` (`worker/src/build-id.ts`)
 
 ## Account / deal deduplication
@@ -18,6 +18,20 @@
 **Files:** `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`
 
 **Test:** `node web/scripts/test-contact-deal-mapping.mjs` (13 checks)
+
+## Splash screen & favicon (2.1.13)
+
+| Feature | Detail |
+|---------|--------|
+| **Splash theme** | Replaced green full-page gradient with warm cream + subtle teal glow (`--dew-bg`, `--splash-glow`) |
+| **Loader card** | White Dew surface card with Freshworks logomark **center-aligned**; spinner absolute at bottom |
+| **Animations** | Glow breathe, logo float, rise/fade entrance; 2s display then 0.85s fade-out |
+| **Favicon bounce** | `favicon-bounce.js` — canvas redraw with ±2.5px sine bounce; skips `prefers-reduced-motion` |
+| **Replay / reset** | `?splash=1`, `?splash=reset`, or delete `lionpath_splash_seen` cookie |
+
+**Files:** `web/styles.css`, `web/dew-theme.css`, `web/splash.js`, `web/favicon-bounce.js`, `web/index.html`, `web/about.html`
+
+**Ops:** Web-only — `bash refresh-web.sh` on VPS; hard-refresh portal after deploy.
 
 ## RAG omni-search
 

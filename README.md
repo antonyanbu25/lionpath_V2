@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** â€” account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** â€” Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** â€” Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -46,6 +46,22 @@ Centered sign-in restored from **`2.0.8.1-merge`** â€” full-screen ambient 
 Key paths: `web/index.html`, `web/styles.css`, `web/theme.js`.
 
 After deploy, hard-refresh the portal (Ctrl+Shift+R) to pick up the new favicon and CSS cache bust.
+
+### Splash screen & favicon (2.1.13)
+
+First-visit intro on `index.html` — once per browser (`lionpath_splash_seen` cookie):
+
+| Item | Detail |
+|------|--------|
+| **Theme** | Warm cream background (`--dew-bg`) with soft teal radial glow; card-style loader matches login card |
+| **Logo** | Freshworks logomark centered in the white loader card; spinner pinned to card bottom (does not shift logo) |
+| **Animation** | Gentle glow breathe (4s), logo float (2.8s), content rise/fade; respects `prefers-reduced-motion` |
+| **Favicon bounce** | Canvas-based tab icon bounce (±2.5px, 2.2s) on index + about; pauses when tab hidden |
+| **Replay** | `index.html?splash=1` or clear `lionpath_splash_seen` cookie |
+
+Key paths: `web/styles.css`, `web/dew-theme.css`, `web/splash.js`, `web/favicon-bounce.js`, `web/index.html`, `web/about.html`.
+
+Web-only deploy: `bash refresh-web.sh` on VPS.
 
 ### Account / deal deduplication & linking (2.1)
 

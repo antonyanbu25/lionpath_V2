@@ -30,6 +30,13 @@ function shouldShowSplash() {
     return true;
   }
   if (params.get("splash") === "1") return true;
+  try {
+    if (sessionStorage.getItem("se-sp-session") || localStorage.getItem("se-sp-session-local")) {
+      return false;
+    }
+  } catch {
+    // ignore storage errors
+  }
   return getCookie(COOKIE_NAME) !== "1";
 }
 
