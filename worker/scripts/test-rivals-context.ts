@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 
-import { filterFishContextMetrics } from "../src/prep/rivals-context.ts";
+import { filterFishContextMetrics, fishContextSupplementMetrics } from "../src/prep/rivals-context.ts";
 
 let checks = 0;
 const ok = (c: unknown, m: string) => {
@@ -42,6 +42,18 @@ const eq = (a: unknown, b: unknown, m: string) => {
     { label: "Employees", value: "500 globally", aboutCompany: true },
   ]);
   eq(out.length, 1, "duplicate metrics collapsed");
+}
+
+{
+  const sup = fishContextSupplementMetrics(
+    [
+      { label: "Support agents", value: "500" },
+      { label: "Customer base", value: "2M users" },
+    ],
+    ["Support agents"],
+  );
+  eq(sup.length, 1, "drops axis already covered by web");
+  eq(sup[0].label, "Customer base", "keeps non-overlapping context metric");
 }
 
 console.log(`test-rivals-context.ts: ok (${checks} checks)`);

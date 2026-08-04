@@ -354,7 +354,9 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   });
 
   // Parallel — see the note in runPrepSynthesize.
-  const [prepRaw, guidance, rivals, companyNews] = await Promise.all([
+  const mergedContext = research.mergedContext || input.additionalContext;
+  const hasAeContext = !!String(mergedContext || "").trim();
+  const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -390,12 +392,14 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
     }),
-    // Its own grounded search. The research pass surfaces news only incidentally, and the three
-    // paths that used to fill this panel let SE context through as "news" instead.
+    // Gemini + DDG in parallel inside generateCompanyNews.
     generateCompanyNews(env, {
       companyName: input.companyName,
       companyDomain: input.companyDomain,
     }),
+    hasAeContext
+      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
+      : Promise.resolve(null),
   ]);
   timings.synthesize = Date.now() - t1;
 
@@ -417,11 +421,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
-  if (!rivals?.axes?.length) {
-    const mergedContext = research.mergedContext || input.additionalContext;
-    const fishContext = await extractFishSizingFromContext(env, mergedContext, input.companyName);
-    if (fishContext) prep.fishContext = fishContext;
-  }
+  if (fishContext) prep.fishContext = fishContext;
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -540,7 +540,8 @@ export async function runPrepSynthesize(
   // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
   // incumbent, never the finished demo script, so it stays off the critical path. It is
   // also the smaller call, so it finishes first and adds ~0s wall clock.
-  const [prepRaw, guidance, rivals, companyNews] = await Promise.all([
+  const hasAeContext = !!String(mergedContext || "").trim();
+  const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
       {
@@ -582,6 +583,9 @@ export async function runPrepSynthesize(
       companyName: input.companyName,
       companyDomain: input.companyDomain,
     }),
+    hasAeContext
+      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
+      : Promise.resolve(null),
   ]);
 
   let { prep, lowConfidence } = validatePrep(prepRaw);
@@ -599,10 +603,7 @@ export async function runPrepSynthesize(
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
-  if (!rivals?.axes?.length) {
-    const fishContext = await extractFishSizingFromContext(env, mergedContext, input.companyName);
-    if (fishContext) prep.fishContext = fishContext;
-  }
+  if (fishContext) prep.fishContext = fishContext;
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

@@ -159,6 +159,19 @@ const sampleV8 = {
 const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
 
 const discovery = renderKnowTab(sampleV8, false);
+const discoveryFishCombined = renderKnowTab(
+  {
+    ...sampleV8,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Customer base", value: "2M users" },
+        { label: "Support agents", value: "120 agents" },
+      ],
+    },
+  },
+  false,
+);
 const discoveryFishContext = renderKnowTab(
   {
     ...sampleV8,
@@ -354,6 +367,7 @@ const checks = [
   ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
   ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
   ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
+  ["know tab fish web plus context supplement", discoveryFishCombined.includes("2M users") && discoveryFishCombined.includes("prep-v9-benchmark-bar")],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({

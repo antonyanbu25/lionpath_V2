@@ -20,7 +20,7 @@ import type { Citation } from "../providers/types";
 import type { LlmResult } from "../providers/types";
 import type { Env } from "./types";
 
-export const MAX_NEWS_ITEMS = 4;
+export const MAX_NEWS_ITEMS = 5;
 /** Recency bar. Anything older is not "recent news" to an SE on a call today. */
 export const NEWS_WINDOW_MONTHS = 12;
 
@@ -204,7 +204,7 @@ export function shapeCompanyNews(
  * Grounded company news. Returns null whenever nothing is traceable — an absent panel is honest,
  * and is much better than the SE's own notes handed back as news.
  */
-export async function generateCompanyNews(
+async function fetchGeminiCompanyNews(
   env: Env,
   input: { companyName: string; companyDomain?: string },
 ): Promise<CompanyNews | null> {
@@ -218,39 +218,108 @@ export async function generateCompanyNews(
       user: buildUserPrompt(input),
       maxTokens: 1200,
       temperature: 0.2,
-      // Grounded: the citation set this returns is the only thing an item can be traced to.
       research: true,
       jsonSchema: NEWS_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/company-news",
     });
   } catch (err) {
     console.warn("prep/company-news skipped:", (err as Error).message);
-    result = null;
+    return null;
   }
 
-  if (result) {
-    try {
-      const normalized = dedupeCitations(normalizeCitations(result.citations));
-      const resolved = await resolveRedirectUrls(normalized);
-      const shaped = shapeCompanyNews(
-        extractJson<{ items?: RawNewsItem[] }>(result.text),
-        resolved,
-      );
-      if (shaped) return shaped;
-    } catch (err) {
-      console.warn("prep/company-news unparsable:", (err as Error).message);
-    }
+  try {
+    const normalized = dedupeCitations(normalizeCitations(result.citations));
+    const resolved = await resolveRedirectUrls(normalized);
+    return shapeCompanyNews(extractJson<{ items?: RawNewsItem[] }>(result.text), resolved);
+  } catch (err) {
+    console.warn("prep/company-news unparsable:", (err as Error).message);
+    return null;
   }
+}
+
+/** Merge Gemini + DDG (or other) news; Gemini items first, dedupe by headline. */
+export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): CompanyNews | null {
+  const dropped: string[] = [];
+  type Raw = { headline: string; detail: string; articleUrl?: string; domain: string; url: string };
+  const merged: Raw[] = [];
+  const seenHeadlines = new Set<string>();
+
+  for (const part of parts) {
+    if (!part?.items?.length) continue;
+    if (part.dropped?.length) dropped.push(...part.dropped);
+    for (const item of part.items) {
+      const key = item.headline.trim().toLowerCase();
+      if (!key || seenHeadlines.has(key)) continue;
+      seenHeadlines.add(key);
+      const src = part.sources.find((s) => s.label === item.sourceLabel);
+      merged.push({
+        headline: item.headline,
+        detail: item.detail,
+        articleUrl: item.articleUrl,
+        domain: src?.domain || "",
+        url: item.articleUrl || src?.url || "",
+      });
+      if (merged.length >= MAX_NEWS_ITEMS) break;
+    }
+    if (merged.length >= MAX_NEWS_ITEMS) break;
+  }
+
+  if (!merged.length) return null;
+
+  const items: RecentNewsItem[] = [];
+  const sources: NewsSource[] = [];
+  const byDomain = new Map<string, NewsSource>();
+
+  for (const row of merged) {
+    const domain = row.domain || "web";
+    let source = byDomain.get(domain);
+    if (!source) {
+      source = {
+        label: `N${sources.length + 1}`,
+        domain,
+        url: row.url,
+        title: domain,
+      };
+      byDomain.set(domain, source);
+      sources.push(source);
+    }
+    items.push({
+      headline: row.headline,
+      detail: row.detail,
+      sourceLabel: source.label,
+      ...(row.articleUrl || row.url ? { articleUrl: row.articleUrl || row.url } : {}),
+    });
+  }
+
+  return { items, sources, dropped };
+}
+
+export async function generateCompanyNews(
+  env: Env,
+  input: { companyName: string; companyDomain?: string },
+): Promise<CompanyNews | null> {
+  if (!input?.companyName) return null;
 
   const { searchCompanyNewsWeb } = await import("../research/providers/company-news-search");
-  try {
-    const ddg = await searchCompanyNewsWeb(input);
-    if (ddg) {
-      console.info(`[prep/company-news] DDG fallback returned ${ddg.items.length} item(s)`);
-      return ddg;
+
+  const [gemini, ddg] = await Promise.all([
+    fetchGeminiCompanyNews(env, input),
+    searchCompanyNewsWeb(input).catch((err) => {
+      console.warn("prep/company-news DDG skipped:", (err as Error).message);
+      return null;
+    }),
+  ]);
+
+  const merged = mergeCompanyNews(gemini, ddg);
+  if (merged) {
+    if (gemini?.items.length && ddg?.items.length) {
+      console.info(
+        `[prep/company-news] merged gemini=${gemini.items.length} ddg=${ddg.items.length} → ${merged.items.length}`,
+      );
+    } else if (ddg?.items.length && !gemini?.items.length) {
+      console.info(`[prep/company-news] DDG returned ${ddg.items.length} item(s)`);
     }
-  } catch (err) {
-    console.warn("prep/company-news DDG fallback skipped:", (err as Error).message);
+    return merged;
   }
   return null;
 }

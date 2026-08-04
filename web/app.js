@@ -61,7 +61,7 @@ import {
   parseProspectEmails,
   resetPrecallForm,
   syncPrepEngagementMotion,
-} from "./precall.js?v=2.1.1";
+} from "./precall.js?v=2.1.2";
 import {
   initPostcall,
   onSessionReady,

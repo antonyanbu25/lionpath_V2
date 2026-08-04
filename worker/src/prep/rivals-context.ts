@@ -79,14 +79,42 @@ export function filterFishContextMetrics(
   return out;
 }
 
-/** Extract company sizing from merged AE context when grounded rivals search found nothing. */
+/** Labels already covered by a web-sourced rival axis (fuzzy). */
+export function fishContextSupplementMetrics(
+  metrics: FishContextMetric[] | undefined,
+  axisLabels: string[] | undefined,
+): FishContextMetric[] {
+  if (!metrics?.length) return [];
+  const axes = (axisLabels || []).map((l) => l.toLowerCase());
+  const out: FishContextMetric[] = [];
+  for (const m of metrics) {
+    const label = String(m.label || "").toLowerCase();
+    if (!label) continue;
+    const dup = axes.some(
+      (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
+    );
+    if (dup) continue;
+    out.push(m);
+  }
+  return out;
+}
+
+function tokenOverlap(a: string, b: string): number {
+  const ta = new Set(a.split(/\W+/).filter((w) => w.length > 2));
+  const tb = new Set(b.split(/\W+/).filter((w) => w.length > 2));
+  let n = 0;
+  for (const t of ta) if (tb.has(t)) n++;
+  return n;
+}
+
+/** Extract company sizing from merged AE context (runs in parallel with web rivals search). */
 export async function extractFishSizingFromContext(
   env: Env,
   additionalContext: string | undefined,
   companyName: string,
 ): Promise<FishContextSizing | null> {
   const text = String(additionalContext || "").trim();
-  if (text.length < 30 || !companyName) return null;
+  if (text.length < 20 || !companyName) return null;
 
   const provider = getProvider(env);
   let result;

@@ -402,30 +402,27 @@ function benchmarkBarPos(value, min, max) {
  * Everything here comes from prep.rivals, where each figure is traceable to a citation and the
  * range and verdict are derived server-side rather than asked of the model.
  */
-function benchmarkRows(prep) {
-  const rivals = prep.rivals;
-  const axes = rivals?.axes || [];
-  if (axes.length) {
-    return renderFishBenchmarkCard(axes, rivals);
-  }
-
-  const ctxMetrics = prep.fishContext?.metrics || [];
-  if (ctxMetrics.length) {
-    return renderFishContextCard(ctxMetrics);
-  }
-
-  return `<div class="prep-v9-card">
-      <h2 class="prep-v9-card-title">How big is this fish?</h2>
-      <div class="prep-v9-empty-box">
-        <p class="prep-v9-empty-title">We could not size this account.</p>
-        <p class="muted">No headcount, funding or volume figures are public. Ask for team size — it anchors everything else.</p>
-      </div>
-    </div>`;
+function fishContextSupplement(metrics, axisLabels) {
+  if (!metrics?.length) return [];
+  const axes = (axisLabels || []).map((l) => String(l || "").toLowerCase());
+  const tokenOverlap = (a, b) => {
+    const ta = new Set(a.split(/\W+/).filter((w) => w.length > 2));
+    const tb = new Set(b.split(/\W+/).filter((w) => w.length > 2));
+    let n = 0;
+    for (const t of ta) if (tb.has(t)) n++;
+    return n;
+  };
+  return metrics.filter((m) => {
+    const label = String(m.label || "").toLowerCase();
+    if (!label) return false;
+    return !axes.some(
+      (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
+    );
+  });
 }
 
-/** Context-only sizing — same bar layout as wireframe, INPUT badge in verdict slot. */
-function renderFishContextCard(metrics) {
-  const rows = metrics
+function renderFishContextRows(metrics) {
+  return metrics
     .map(
       (m) => `<div class="prep-v9-benchmark prep-v9-benchmark-context">
         <div class="prep-v9-benchmark-head">
@@ -444,14 +441,41 @@ function renderFishContextCard(metrics) {
       </div>`,
     )
     .join("");
+}
+
+function benchmarkRows(prep) {
+  const rivals = prep.rivals;
+  const axes = rivals?.axes || [];
+  const allCtx = prep.fishContext?.metrics || [];
+  const supplemental = fishContextSupplement(allCtx, axes.map((a) => a.label));
+
+  if (axes.length) {
+    return renderFishBenchmarkCard(axes, rivals, supplemental);
+  }
+
+  if (allCtx.length) {
+    return renderFishContextCard(allCtx);
+  }
+
+  return `<div class="prep-v9-card">
+      <h2 class="prep-v9-card-title">How big is this fish?</h2>
+      <div class="prep-v9-empty-box">
+        <p class="prep-v9-empty-title">We could not size this account.</p>
+        <p class="muted">No headcount, funding or volume figures are public. Ask for team size — it anchors everything else.</p>
+      </div>
+    </div>`;
+}
+
+/** Context-only sizing — same bar layout as wireframe, INPUT badge in verdict slot. */
+function renderFishContextCard(metrics) {
   return `<div class="prep-v9-card">
     <h2 class="prep-v9-card-title">How big is this fish?</h2>
-    <div class="prep-v9-benchmark-list">${rows}</div>
+    <div class="prep-v9-benchmark-list">${renderFishContextRows(metrics)}</div>
     <p class="prep-v9-benchmark-note muted">From your additional context — not verified on the web.</p>
   </div>`;
 }
 
-function renderFishBenchmarkCard(axes, rivals) {
+function renderFishBenchmarkCard(axes, rivals, supplementalCtx = []) {
   const rows = axes
     .map((axis) => {
       const own = axis.prospect;
@@ -490,11 +514,16 @@ function renderFishBenchmarkCard(axes, rivals) {
     .join("");
   const names = (rivals.rivals || []).map((r) => esc(r.name)).join(" · ");
   const sizingNote = axes.find((a) => a.rationale)?.rationale;
+  const ctxExtra = supplementalCtx?.length ? renderFishContextRows(supplementalCtx) : "";
+  const ctxNote = supplementalCtx?.length
+    ? `<p class="prep-v9-benchmark-note muted">Additional sizing from your notes (INPUT) — web rivals shown above.</p>`
+    : "";
   return `<div class="prep-v9-card">
     <h2 class="prep-v9-card-title">How big is this fish?</h2>
     ${names ? `<p class="muted prep-v9-card-sub">Against ${names}</p>` : ""}
-    <div class="prep-v9-benchmark-list">${rows}</div>
+    <div class="prep-v9-benchmark-list">${rows}${ctxExtra}</div>
     ${sizingNote ? `<p class="prep-v9-benchmark-note muted">${esc(sizingNote)}</p>` : ""}
+    ${ctxNote}
   </div>`;
 }
 
@@ -504,7 +533,7 @@ function renderRecentNews(recentNews, sources) {
     return `<div class="prep-v9-empty-box"><p class="muted">No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener.</p></div>`;
   }
   return items
-    .slice(0, 4)
+    .slice(0, 5)
     .map((n) => {
       const showDetail = n.detail && n.detail.toLowerCase() !== n.headline.toLowerCase();
       const src = (sources || []).find((s) => s.label === n.sourceLabel);

@@ -1,5 +1,5 @@
 /**
- * Fallback company news via DuckDuckGo HTML search when grounded Gemini returns nothing.
+ * Parallel DuckDuckGo news crawl — runs alongside Gemini grounded search.
  */
 
 import type { CompanyNews, NewsSource } from "../../prep/company-news";
@@ -11,6 +11,9 @@ const MAX_DDG_RESULTS = 5;
 
 const SKIP_URL_RE =
   /linkedin\.com|facebook\.com|twitter\.com|x\.com|instagram\.com|glassdoor\.com|indeed\.com|\/careers|\/jobs|login|signin|wikipedia\.org\/wiki\/list/i;
+
+const NEWS_TITLE_RE =
+  /\b(news|funding|raised|series|acquisition|merger|launch|announc|partnership|appoint|ceo|cfo|revenue|earnings|ipo|expand|invest)\b/i;
 
 function trimWords(v: string, max: number): string {
   const parts = String(v || "")
@@ -101,6 +104,23 @@ async function ddgSearch(query: string): Promise<string> {
   }
 }
 
+/** Prefer titles/snippets that read like news, not generic homepages. */
+export function rankNewsHits(hits: DdgNewsHit[], companyName: string): DdgNewsHit[] {
+  const needle = String(companyName || "").trim().toLowerCase();
+  return [...hits].sort((a, b) => {
+    const score = (h: DdgNewsHit) => {
+      let s = 0;
+      const blob = `${h.title} ${h.snippet}`.toLowerCase();
+      if (needle && blob.includes(needle)) s += 2;
+      if (NEWS_TITLE_RE.test(h.title)) s += 2;
+      if (NEWS_TITLE_RE.test(h.snippet)) s += 1;
+      if (/freshworks\.com\/\w/i.test(h.url) && !/\/(blog|news|press)/i.test(h.url)) s -= 1;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+}
+
 /** Turn parsed DDG hits into the same shape as grounded company news. */
 export function companyNewsFromHits(hits: DdgNewsHit[]): CompanyNews | null {
   const items: RecentNewsItem[] = [];
@@ -141,34 +161,43 @@ export function companyNewsFromHits(hits: DdgNewsHit[]): CompanyNews | null {
   return { items, sources: sources.filter((s) => cited.has(s.label)), dropped: [] };
 }
 
-/** Crawl DuckDuckGo for recent news about a company. */
+function buildNewsQueries(companyName: string, companyDomain?: string): string[] {
+  const name = String(companyName || "").trim();
+  if (!name) return [];
+  const domain = String(companyDomain || "").trim();
+  const queries = [
+    `"${name}" news`,
+    `"${name}" funding OR acquisition OR launch`,
+    `${name} latest news`,
+    `${name} company announcement`,
+  ];
+  if (domain) queries.push(`"${name}" news site:${domain}`);
+  return queries;
+}
+
+/** Crawl DuckDuckGo for recent news — all queries in parallel. */
 export async function searchCompanyNewsWeb(input: {
   companyName: string;
   companyDomain?: string;
 }): Promise<CompanyNews | null> {
   if (!input?.companyName) return null;
 
-  const domainHint = input.companyDomain ? ` site:${input.companyDomain}` : "";
-  const queries = [
-    `"${input.companyName}" news OR funding OR acquisition${domainHint}`,
-    `${input.companyName} company news latest`,
-  ];
+  const queries = buildNewsQueries(input.companyName, input.companyDomain);
+  const htmlPages = await Promise.all(queries.map((q) => ddgSearch(q)));
 
   const seen = new Set<string>();
   const hits: DdgNewsHit[] = [];
 
-  for (const query of queries) {
-    const html = await ddgSearch(query);
+  for (const html of htmlPages) {
     if (!html) continue;
     for (const hit of extractNewsHitsFromHtml(html, MAX_DDG_RESULTS)) {
       const key = hit.url.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       hits.push(hit);
-      if (hits.length >= MAX_NEWS_ITEMS) break;
     }
-    if (hits.length >= 3) break;
   }
 
-  return companyNewsFromHits(hits);
+  const ranked = rankNewsHits(hits, input.companyName).slice(0, MAX_NEWS_ITEMS);
+  return companyNewsFromHits(ranked);
 }

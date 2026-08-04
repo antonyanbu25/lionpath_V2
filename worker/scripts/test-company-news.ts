@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 
-import { buildNewsSources, shapeCompanyNews, MAX_NEWS_ITEMS } from "../src/prep/company-news.ts";
+import { buildNewsSources, shapeCompanyNews, mergeCompanyNews, MAX_NEWS_ITEMS } from "../src/prep/company-news.ts";
 import { buildRecentNews } from "../src/prep/recent-news.ts";
 import {
   companyNewsFromHits,
@@ -149,6 +149,25 @@ eq(shapeCompanyNews(null, CITES), null, "an unparsable answer yields no panel");
     0,
     "SE context alone produces no news, however confident",
   );
+}
+
+// Merge gemini + DDG without duplicate headlines.
+{
+  const gemini = {
+    items: [{ headline: "Raised Series B", detail: "a", sourceLabel: "N1" }],
+    sources: [{ label: "N1", domain: "reuters.com", url: "https://reuters.com/a", title: "Reuters" }],
+    dropped: [],
+  };
+  const ddg = {
+    items: [
+      { headline: "Raised Series B", detail: "dup", sourceLabel: "N1", articleUrl: "https://reuters.com/a" },
+      { headline: "Opened Berlin office", detail: "b", sourceLabel: "N1", articleUrl: "https://tc.com/b" },
+    ],
+    sources: [{ label: "N1", domain: "techcrunch.com", url: "https://tc.com/b", title: "TC" }],
+    dropped: [],
+  };
+  const merged = mergeCompanyNews(gemini, ddg);
+  eq(merged!.items.length, 2, "dedupes headline then adds ddg item");
 }
 
 // ---------------------------------------------------------------------------
