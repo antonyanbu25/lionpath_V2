@@ -79,6 +79,20 @@ const contactIndex = [
 const contactHits = searchContacts(contactIndex, "alex");
 assert(contactHits.length === 1 && contactHits[0].id === "c1", "searchContacts finds by name");
 
+const freshworksIndex = [
+  {
+    type: "account",
+    id: "acc_fw",
+    accountId: "acc_fw",
+    label: "Freshworks",
+    subtitle: "freshworks.com · Demo",
+    tokens: ["freshworks", "freshworks.com", "demo"],
+    lastActivityAt: 2000,
+  },
+];
+const fwHits = searchIndex(freshworksIndex, "freshworks");
+assert(fwHits.length === 1 && fwHits[0].id === "acc_fw", "freshworks token match");
+
 invalidateSearchIndex();
 assert(true, "invalidateSearchIndex runs");
 

@@ -1424,6 +1424,7 @@ async function showApp(session, opts = {}) {
 
     await loadPersistedHistory();
     invalidateSessionListCache(currentSession);
+    invalidateSearchIndex();
 
     if (!sessionStillValid()) return;
 
@@ -1835,7 +1836,7 @@ async function boot() {
   wireUserMenu();
   updateTopbarDate();
   initGlobalSearch({
-    getSession: () => currentSession,
+    getSession: () => withEffectiveUserId(currentSession),
     switchView,
     openPrepBriefItem,
     openHistoryItem,

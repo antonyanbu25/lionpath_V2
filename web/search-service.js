@@ -2,10 +2,14 @@
  * Client-side search index + RAG rerank for accounts, deals, briefs, calls, contacts, tasks.
  */
 
-import { listAccountsForSession, listDealsForSession } from "./domain/account-service.js?v=2.1";
+import {
+  historyPreviewContactsForSession,
+  listAccountsForSession,
+  listDealsForSession,
+} from "./domain/account-service.js?v=2.1";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
-import { sessionUserId } from "./domain/session.js";
+import { effectiveSessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { loadLocalBriefs } from "./precall.js";
 import { listPostCallAnalyses } from "./history.js";
@@ -233,74 +237,118 @@ export function searchContacts(index, query, opts = {}) {
 
 /** @param {object|null} session */
 export async function buildSearchIndex(session) {
-  const userId = sessionUserId(session);
-  const email = session?.email ? String(session.email).trim().toLowerCase() : "";
-  const cacheKey = `${userId || ""}|${email}`;
-  if (cache.key === cacheKey && cache.index) return cache.index;
+  const normalized = withEffectiveUserId(session);
+  const ownerId = effectiveSessionUserId(normalized);
+  const email = normalized?.email ? String(normalized.email).trim().toLowerCase() : "";
+  const cacheKey = `${ownerId || ""}|${email}`;
+  if (cache.key === cacheKey && cache.index?.length) return cache.index;
 
   const index = [];
   const store = getStore();
+  const seenContactIds = new Set();
 
-  if (userId) {
-    const rows = await listAccountsForSession(session);
+  if (email || ownerId) {
+    let rows = [];
+    try {
+      rows = await listAccountsForSession(normalized);
+    } catch (err) {
+      console.warn("[search] listAccountsForSession failed:", err?.message || err);
+    }
+
     await Promise.all(
       rows.map(async (row) => {
-        const contacts = await store.listContactsByAccount(row.account.id);
-        const label = row.account.name || row.lifecycle.title || "Account";
-        const subtitle = [row.account.domain, STAGE_LABELS[row.lifecycle.stage]]
-          .filter(Boolean)
-          .join(" · ");
-        index.push({
-          type: "account",
-          id: row.account.id,
-          accountId: row.account.id,
-          label,
-          subtitle,
-          tokens: accountRowTokens(row, contacts),
-          lastActivityAt: row.lifecycle.lastActivityAt || 0,
-        });
-
-        for (const c of contacts) {
-          const contactLabel = c.name || c.email || "Contact";
-          const contactSub = [c.title, c.email && c.email !== contactLabel ? c.email : "", row.account.name]
+        if (!row?.account?.id) return;
+        try {
+          const contacts = store.listContactsByAccount
+            ? await store.listContactsByAccount(row.account.id)
+            : [];
+          const lifecycle = row.lifecycle || {};
+          const label = row.account.name || lifecycle.title || "Account";
+          const subtitle = [row.account.domain, STAGE_LABELS[lifecycle.stage] || lifecycle.stage]
             .filter(Boolean)
             .join(" · ");
           index.push({
-            type: "contact",
-            id: c.id,
+            type: "account",
+            id: row.account.id,
             accountId: row.account.id,
-            contactId: c.id,
-            email: c.email || null,
-            label: contactLabel,
-            subtitle: contactSub,
-            tokens: collectTokens([c.name, c.email, c.title, c.role, row.account.name, "contact"]),
-            lastActivityAt: c.updatedAt || row.lifecycle.lastActivityAt || 0,
+            label,
+            subtitle,
+            tokens: accountRowTokens(row, contacts),
+            lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
           });
+
+          for (const c of contacts) {
+            if (!c?.id || seenContactIds.has(c.id)) continue;
+            seenContactIds.add(c.id);
+            const contactLabel = c.name || c.email || "Contact";
+            const contactSub = [c.title, c.email && c.email !== contactLabel ? c.email : "", row.account.name]
+              .filter(Boolean)
+              .join(" · ");
+            index.push({
+              type: "contact",
+              id: c.id,
+              accountId: row.account.id,
+              contactId: c.id,
+              email: c.email || null,
+              label: contactLabel,
+              subtitle: contactSub,
+              tokens: collectTokens([c.name, c.email, c.title, c.role, row.account.name, "contact"]),
+              lastActivityAt: c.updatedAt || lifecycle.lastActivityAt || row.lastActivityAt || 0,
+            });
+          }
+        } catch (err) {
+          console.warn("[search] account row index failed:", row.account?.id, err?.message || err);
         }
       }),
     );
 
-    const dealRows = await listDealsForSession(session);
-    for (const row of dealRows) {
-      const { deal, account, primarySeName } = row;
-      if (!deal?.id) continue;
-      const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
-      const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
-      index.push({
-        type: "deal",
-        id: deal.id,
-        accountId: account?.id || deal.accountId,
-        dealId: deal.id,
-        label: deal.title || account?.name || "Deal",
-        subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
-        tokens: dealRowTokens(row),
-        lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
-      });
+    try {
+      const { contacts: previewContacts, accountNameById } = historyPreviewContactsForSession(normalized);
+      for (const c of previewContacts) {
+        if (!c?.id || seenContactIds.has(c.id)) continue;
+        seenContactIds.add(c.id);
+        const accountName = accountNameById[c.accountId] || "";
+        index.push({
+          type: "contact",
+          id: c.id,
+          accountId: c.accountId || null,
+          contactId: c.id,
+          email: c.email || null,
+          label: c.name || c.email || "Contact",
+          subtitle: [c.email, accountName].filter(Boolean).join(" · "),
+          tokens: collectTokens([c.name, c.email, accountName, "contact"]),
+          lastActivityAt: 0,
+        });
+      }
+    } catch {
+      /* history contacts optional */
     }
 
-    if (store.listLifecyclesByOwner) {
+    try {
+      const dealRows = await listDealsForSession(normalized);
+      for (const row of dealRows) {
+        const { deal, account, primarySeName } = row;
+        if (!deal?.id) continue;
+        const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
+        const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
+        index.push({
+          type: "deal",
+          id: deal.id,
+          accountId: account?.id || deal.accountId,
+          dealId: deal.id,
+          label: deal.title || account?.name || "Deal",
+          subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
+          tokens: dealRowTokens(row),
+          lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
+        });
+      }
+    } catch (err) {
+      console.warn("[search] listDealsForSession failed:", err?.message || err);
+    }
+
+    if (ownerId && store.listLifecyclesByOwner) {
       try {
-        const lifecycles = await store.listLifecyclesByOwner(userId);
+        const lifecycles = await store.listLifecyclesByOwner(ownerId);
         for (const lc of lifecycles) {
           const tasks = store.listTasksByLifecycle ? await store.listTasksByLifecycle(lc.id) : [];
           for (const t of tasks) {
@@ -357,7 +405,12 @@ export async function buildSearchIndex(session) {
     }
   }
 
-  cache.key = cacheKey;
-  cache.index = index;
+  if (index.length) {
+    cache.key = cacheKey;
+    cache.index = index;
+  } else {
+    cache.key = null;
+    cache.index = null;
+  }
   return index;
 }

@@ -3,6 +3,7 @@
  */
 
 import { readFieldValueAsync, fillShadowField } from "./crayons-ui.js";
+import { withEffectiveUserId } from "./domain/session.js";
 import {
   buildSearchIndex,
   hybridSearch,
@@ -84,7 +85,17 @@ function pushRecentView(session, item) {
   if (!item?.type || !item?.id) return;
   const key = `${item.type}:${item.id}`;
   const list = loadRecentList(session, "views").filter((x) => x.key !== key);
-  list.unshift({ key, type: item.type, id: item.id, label: item.label, subtitle: item.subtitle || "" });
+  list.unshift({
+    key,
+    type: item.type,
+    id: item.id,
+    label: item.label,
+    subtitle: item.subtitle || "",
+    accountId: item.accountId || null,
+    dealId: item.dealId || null,
+    contactId: item.contactId || null,
+    lifecycleId: item.lifecycleId || null,
+  });
   saveRecentList(session, "views", list);
 }
 
@@ -224,9 +235,18 @@ export function initGlobalSearch(deps) {
   }
 
   function wireResultButtons() {
+    const session = withEffectiveUserId(deps.getSession?.());
+    const recentViews = session ? loadRecentList(session, "views") : [];
+
     resultsEl.querySelectorAll(".omni-result").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const i = Number(btn.dataset.idx);
+        const idxRaw = btn.dataset.idx || "";
+        if (idxRaw.startsWith("recent-")) {
+          const i = Number(idxRaw.slice("recent-".length));
+          if (!Number.isNaN(i) && recentViews[i]) selectResult(recentViews[i]);
+          return;
+        }
+        const i = Number(idxRaw);
         if (!Number.isNaN(i)) selectResult(currentResults[i]);
       });
     });
@@ -295,26 +315,31 @@ export function initGlobalSearch(deps) {
   }
 
   async function runSearch(query, { openIfEmpty = false } = {}) {
-    const session = deps.getSession?.();
-    if (!session) {
+    const session = withEffectiveUserId(deps.getSession?.());
+    if (!session?.email) {
       renderResults([], query);
       return;
     }
 
-    const index = await buildSearchIndex(session);
-    const trimmed = String(query || "").trim();
-    const types = activeFilter === "all" ? undefined : [activeFilter];
+    try {
+      const index = await buildSearchIndex(session);
+      const trimmed = String(query || "").trim();
+      const types = activeFilter === "all" ? undefined : [activeFilter];
 
-    const results = trimmed
-      ? await hybridSearch(index, trimmed, { types, limit: 12 })
-      : recentFromIndex(
-          activeFilter === "all" ? index : index.filter((i) => i.type === activeFilter),
-          5,
-        );
+      const results = trimmed
+        ? await hybridSearch(index, trimmed, { types, limit: 12 })
+        : recentFromIndex(
+            activeFilter === "all" ? index : index.filter((i) => i.type === activeFilter),
+            5,
+          );
 
-    if (trimmed) pushRecentSearch(session, trimmed);
-    renderResults(results, trimmed);
-    if (openIfEmpty || trimmed) showPalette();
+      if (trimmed) pushRecentSearch(session, trimmed);
+      renderResults(results, trimmed);
+      if (openIfEmpty || trimmed) showPalette();
+    } catch (err) {
+      console.warn("[global-search] search failed:", err?.message || err);
+      renderResults([], query);
+    }
   }
 
   function scheduleSearch(query) {
