@@ -1864,7 +1864,7 @@ async function boot() {
     switchView,
     onGenerated: async (payload, prep, meta) => {
       let lifecycleId = null;
-      if (currentSession?.uid && currentSession?.teamId) {
+      if (sessionUserId(currentSession) && currentSession?.teamId) {
         try {
           const linked = await linkPrepToLifecycle(currentSession, payload, prep, meta);
           lifecycleId = linked?.lifecycle?.id || null;

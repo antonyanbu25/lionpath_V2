@@ -3,7 +3,7 @@
  * Contacts are grouped by corporate email domain — one account per domain, not per contact.
  */
 
-import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
+import { resolveContactsForEmails, resolveAccountsForCompany } from "./postcall-contact-resolve.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domain.js";
@@ -33,6 +33,7 @@ let prepDraftAccountName = null;
 let prepAccountNameUserEdited = false;
 let lookupTimer = 0;
 let lookupToken = 0;
+let previewToken = 0;
 
 function parseEmails(raw) {
   return String(raw || "")
@@ -67,6 +68,53 @@ function groupByDomain(byEmail) {
   }));
 }
 
+function dedupeAccounts(accounts) {
+  const byId = new Map();
+  for (const account of accounts || []) {
+    if (account?.id && !byId.has(account.id)) byId.set(account.id, account);
+  }
+  return [...byId.values()];
+}
+
+function dedupeDeals(deals) {
+  const byId = new Map();
+  for (const deal of deals || []) {
+    if (deal?.id && !byId.has(deal.id)) byId.set(deal.id, deal);
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Email-first CRM resolve with company/domain fallback (exported for tests).
+ * @param {string[]} emails
+ * @param {{ companyName?: string, companyDomain?: string }} [opts]
+ */
+export async function lookupPrepCrmMatches(emails, opts = {}) {
+  const list = parseEmails(emails.join(", "));
+  const empty = { accounts: [], deals: [], byEmail: [] };
+  if (!list.length) return empty;
+
+  let result = await resolveContactsForEmails(list);
+  let accounts = dedupeAccounts(result.accounts);
+  let deals = dedupeDeals(result.deals);
+
+  const emailDomain = list[0]?.split("@")[1]?.toLowerCase() || null;
+  const companyDomain = normalizeDomain(opts.companyDomain) || (emailDomain && !isFreeMailDomain(emailDomain) ? emailDomain : null);
+  const companyName = String(opts.companyName || "").trim() || (companyDomain ? companyNameFromDomain(companyDomain) : "");
+
+  if (!accounts.length && (companyName || companyDomain)) {
+    try {
+      const byCompany = await resolveAccountsForCompany(companyName, companyDomain || undefined);
+      accounts = dedupeAccounts([...accounts, ...(byCompany.accounts || [])]);
+      deals = dedupeDeals([...deals, ...(byCompany.deals || [])]);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  return { accounts, deals, byEmail: result.byEmail || [] };
+}
+
 function resolveDefaultAccountName(domain, domainAccounts) {
   if (prepAccountNameUserEdited && prepDraftAccountName) return prepDraftAccountName;
   if (prepResolvedAccount?.name) return prepResolvedAccount.name;
@@ -93,6 +141,7 @@ export function buildDraftAccount(domain, name) {
 
 /** Stable draft account for new-domain previews (fixes post-lookup flicker). */
 export function ensureDraftAccount(domain, name) {
+  if (prepResolvedAccount?.id) return;
   prepResolvedAccount = buildDraftAccount(domain, name);
   if (!prepAccountNameUserEdited) prepDraftAccountName = prepResolvedAccount.name;
   // Wait for CRM lookup to confirm whether deals already exist before flagging new deal.
@@ -140,6 +189,7 @@ export function resetPrepCrmSelection() {
 /** Clear CRM UI after starting a fresh brief. */
 export function resetPrepCrmUi() {
   resetPrepCrmSelection();
+  previewToken = ++lookupToken;
   const panel = $("prep-crm-matches");
   if (panel) {
     panel.hidden = true;
@@ -151,6 +201,7 @@ export function resetPrepCrmUi() {
 }
 
 async function applyAccount(account, deals = []) {
+  previewToken = ++lookupToken;
   prepResolvedAccount = account
     ? { id: account.id, name: account.name, domain: account.domain || null }
     : null;
@@ -255,6 +306,20 @@ function renderDealRow() {
   if (typeof window !== "undefined") window.__logPrecallDeploy?.();
 }
 
+async function readCompanyLookupContext() {
+  const companyDomain = normalizeDomain(await readFieldValueAsync($("companyDomain")));
+  const accountName = readAccountNameInput();
+  const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
+  const emailDomain = emails[0]?.split("@")[1]?.toLowerCase() || null;
+  const domain =
+    companyDomain || (emailDomain && !isFreeMailDomain(emailDomain) ? emailDomain : null);
+  const companyName =
+    accountName ||
+    (domain ? companyNameFromDomain(domain) : "") ||
+    (emailDomain && !isFreeMailDomain(emailDomain) ? companyNameFromDomain(emailDomain) : "");
+  return { companyName, companyDomain: domain };
+}
+
 async function renderCrmPanel() {
   const panel = $("prep-crm-matches");
   if (!panel) return;
@@ -268,9 +333,11 @@ async function renderCrmPanel() {
   }
 
   const seq = ++lookupToken;
+  previewToken = seq;
   let result;
   try {
-    result = await resolveContactsForEmails(emails);
+    const ctx = await readCompanyLookupContext();
+    result = await lookupPrepCrmMatches(emails, ctx);
   } catch (err) {
     console.warn("[prep] CRM lookup failed:", err?.message || err);
     panel.hidden = true;
@@ -281,14 +348,18 @@ async function renderCrmPanel() {
   const accounts = result.accounts || [];
   const domainGroups = groupByDomain(result.byEmail || []);
   const primaryGroup = domainGroups.find((g) => g.domain) || domainGroups[0];
-  const defaultName = resolveDefaultAccountName(primaryGroup?.domain, primaryGroup?.accounts || accounts);
+  const groupAccounts = dedupeAccounts([...accounts, ...(primaryGroup?.accounts || [])]);
+  const defaultName = resolveDefaultAccountName(primaryGroup?.domain, groupAccounts);
   if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
 
-  if (accounts.length === 1) {
-    await applyAccount(accounts[0], result.deals || []);
-  } else if (accounts.length > 1 && !prepResolvedAccount) {
+  if (groupAccounts.length === 1) {
+    await applyAccount(groupAccounts[0], result.deals || []);
+  } else if (groupAccounts.length > 1) {
     prepSelectedDealId = null;
     prepCreateNewDeal = false;
+    if (prepResolvedAccount?.id && !groupAccounts.some((a) => a.id === prepResolvedAccount.id)) {
+      prepResolvedAccount = null;
+    }
   } else if (primaryGroup?.domain && !prepResolvedAccount?.id) {
     ensureDraftAccount(primaryGroup.domain, defaultName);
   } else if (!primaryGroup?.domain && !prepResolvedAccount?.id) {
@@ -322,7 +393,7 @@ async function renderCrmPanel() {
     })
     .join("");
 
-  if (accounts.length <= 1) {
+  if (groupAccounts.length <= 1) {
     panel.hidden = true;
     panel.innerHTML = `<input id="prep-account-name" type="hidden" value="${esc(prepDraftAccountName || defaultName)}" />`;
   } else {
@@ -332,7 +403,7 @@ async function renderCrmPanel() {
 
     panel.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
       btn.addEventListener("click", () => {
-        const account = accounts.find((a) => a.id === btn.dataset.accountId);
+        const account = groupAccounts.find((a) => a.id === btn.dataset.accountId);
         if (!account) return;
         prepCreateNewDeal = false;
         void applyAccount(account, (result.deals || []).filter((d) => d.accountId === account.id));
@@ -355,7 +426,10 @@ function scheduleLookup() {
 
 async function showInstantAccountPreview() {
   if (prepResolvedAccount?.id) return;
+  const seq = ++previewToken;
   const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
+  if (seq !== previewToken) return;
+  if (prepResolvedAccount?.id) return;
   if (!emails.length) {
     hideAccountDealGrid();
     return;
@@ -366,6 +440,7 @@ async function showInstantAccountPreview() {
     hideAccountDealGrid();
     return;
   }
+  if (seq !== previewToken || prepResolvedAccount?.id) return;
   const name = companyNameFromDomain(domain) || domain;
   renderAccountDealPreview(domain, name);
 }
@@ -374,6 +449,9 @@ export function initPrepCrmResolve() {
   const emailField = $("prospectEmail");
   emailField?.addEventListener("fwInput", scheduleLookup);
   emailField?.addEventListener("input", scheduleLookup);
+
+  $("companyDomain")?.addEventListener("fwInput", scheduleLookup);
+  $("companyDomain")?.addEventListener("input", scheduleLookup);
 
   $("prep-deal-select")?.addEventListener("fwChange", (ev) => {
     const val = ev.detail?.value || $("prep-deal-select")?.value;
