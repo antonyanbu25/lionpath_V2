@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Current branch** | **`2.1`** — session restore, accounts/contacts cache, **Know tab layout aligned to reference UI** (no ICP tile, maturity + fish side-by-side) ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
-| **Previous release** | **`2.9`** — Know tab pre-call UI ([tree/2.9](https://github.com/skut264/lionpath/tree/2.9)) |
+| **Previous release** | **`2.0.8.2`** — Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
 | **API** | **[https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com)** |

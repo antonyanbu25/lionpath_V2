@@ -1,6 +1,6 @@
-# Release 2.9 — Pre-call UI (Know your Customer)
+# Release 2.0.8.2 — Pre-call UI (Know your Customer)
 
-**Definitive branch reference (AMD file)** for everything an SE sees on branch `2.9`.
+**Definitive branch reference (AMD file)** for everything an SE sees on branch `2.0.8.2`.
 
 ---
 
@@ -9,29 +9,29 @@
 | Field | Value |
 |-------|-------|
 | **Base branch** | `2.0.8.1-merge` @ `930b8d9487b86eb7decca4696a8222618fd13023` |
-| **Branch** | `2.9` |
+| **Branch** | `2.0.8.2` |
 | **HEAD** | `e096daa` (docs metadata sync; see commits below) |
 | **Remote** | `antony` → `github.com/antonyanbu25/lionpath_V2` |
-| **Tracks** | `antony/2.9` |
+| **Tracks** | `antony/2.0.8.2` |
 | **Date** | 2026-08-03 |
 | **Primary tab** | Know your Customer (`renderKnowTab` in `web/precall-brief-v9.js`) |
-| **Secondary tab** | Demo Prep (`renderDemoPrepTab` — inherited v9 layout, unchanged in 2.9 commits) |
-| **CSS cache bust** | `web/index.html` → `precall.css?v=2.9` (was `precall.css?v=2.0.8.1-merge`) |
+| **Secondary tab** | Demo Prep (`renderDemoPrepTab` — inherited v9 layout, unchanged in 2.0.8.2 commits) |
+| **CSS cache bust** | `web/index.html` → `precall.css?v=2.0.8.2` (was `precall.css?v=2.0.8.1-merge`) |
 
-### Commits on `2.9` (oldest → newest)
+### Commits on `2.0.8.2` (oldest → newest)
 
 | Hash | Message |
 |------|---------|
-| `3a02f4b34ce11e496eb26ab32ba1a0add2f2d5e9` | Release 2.9 precall UI: remove duplicate tech-stack section and gate DISC to LinkedIn profiles. |
-| `bf2af13cc7f2842d3e758e2cd1e6c1b1448e5905` | docs: add RELEASE_2.9 branch reference for precall UI changes. |
+| `3a02f4b34ce11e496eb26ab32ba1a0add2f2d5e9` | Release 2.0.8.2 precall UI: remove duplicate tech-stack section and gate DISC to LinkedIn profiles. |
+| `bf2af13cc7f2842d3e758e2cd1e6c1b1448e5905` | docs: add RELEASE_2.0.8.2 branch reference for precall UI changes. |
 | `6febe3f004c5a7a82d1629ef336cdb2021999634` | Remove add-to-kit controls from unknowns gaps section. |
 | `0ba748a82e2cf2bb9d484b804da0947b731196ca` | Remove AI disclaimer banner from precall brief tabs; expand this AMD doc. |
-| `e096daa` | docs: sync RELEASE_2.9 metadata with 0ba748a banner removal. |
+| `e096daa` | docs: sync RELEASE_2.0.8.2 metadata with 0ba748a banner removal. |
 
 **Diff vs base (`2.0.8.1-merge..HEAD`):** 7 files, +569 / −90 lines.
 
 ```
-docs/RELEASE_2.9.md
+docs/RELEASE_2.0.8.2.md
 web/index.html
 web/precall-brief-v9.js
 web/precall-render.js
@@ -44,21 +44,21 @@ web/scripts/test-precall-render.mjs
 
 ## Executive summary
 
-Release 2.9 completes the **boss-annotated pre-call wireframe** (five screenshot feedback sets). Most UI work landed on `2.0.8.1-merge`; `2.9` adds three finishing commits:
+Release 2.0.8.2 completes the **boss-annotated pre-call wireframe** (five screenshot feedback sets). Most UI work landed on `2.0.8.1-merge`; `2.0.8.2` adds three finishing commits:
 
 1. Remove the duplicate **Tech stack & signals** accordion from the Know tab.
 2. **Gate DISC / Do / Don't** to LinkedIn-enriched seats only (no empty grids on email-only prospects).
 3. Remove **+ / Add all / Added** controls from **What we could not find** (no persistence path yet).
-4. Bump **precall CSS** cache version to `2.9`.
+4. Bump **precall CSS** cache version to `2.0.8.2`.
 5. Remove the **AI disclaimer banner** from Know and legacy Discovery tabs (`0ba748a`).
 
-Everything below documents the **full branch experience** — inherited merge-base work plus 2.9 deltas.
+Everything below documents the **full branch experience** — inherited merge-base work plus 2.0.8.2 deltas.
 
 ---
 
 ## Know tab — section order (top to bottom)
 
-After 2.9, `renderKnowTab()` renders sections in this order:
+After 2.0.8.2, `renderKnowTab()` renders sections in this order:
 
 1. **How to read this** legend (`.prep-v9-read-legend`)
 2. **Two-column grid** (`.prep-v9-grid-2`):
@@ -103,11 +103,11 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 **Copy:** Kicker "How to read this" (`.prep-v9-read-kicker`, uppercase mono, color `#a49a88`).
 
-**2.9 delta:** None (legend added on merge base to document Kaia / LinkedIn PDF vs S#).
+**2.0.8.2 delta:** None (legend added on merge base to document Kaia / LinkedIn PDF vs S#).
 
 ### 3. About the company
 
-| Change | Before (pre-v9 / old portal) | After (2.9) |
+| Change | Before (pre-v9 / old portal) | After (2.0.8.2) |
 |--------|---------------------------|-------------|
 | Layout | Facts inside legacy Discovery tab card | Standalone `.prep-v9-card` in 2-col grid |
 | About prose | Truncated `<details>` in v8 | Full `.prep-v9-about` paragraph (13.5px, `#4a463f`) |
@@ -121,7 +121,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 4. Recent news
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Data source | Research facts tagged `category: "news"` (could echo SE notes) | **`worker/src/prep/company-news.ts`** — dedicated grounded search, max 4 items, 12-month window |
 | Empty state copy | — | "No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener." |
@@ -130,7 +130,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 5. ICP fitment (standalone tile)
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Placement | Nested inside About / Account facts card | **Own card** `.prep-v9-icp-card` in 2-col row with benchmark |
 | Content | `highlights` / `gaps` `<details>` (schema removed) | **Criteria tick list** via `renderIcpFitment()` — met ✓ / unmet ✕ / unknown – |
@@ -142,7 +142,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 6. How big is this fish?
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Data | Regex over facts (mislabeled rows) | `prep.rivals.axes` — server-sourced rival comparison |
 | Empty copy | — | Title "We could not size this account." + ask for team size |
@@ -151,7 +151,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 7. Where they sit versus their industry (maturity chart)
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Axis labels | Dynamic per brief (model-chosen) | **Fixed four axes** from `FIT_LABELS` in `worker/src/schema.ts`: Channel coverage, Routing, Reporting & analytics, AI adoption |
 | Row count | Variable | Always **4 rows** — `normalizePrepOutput()` pads missing axes with `unknown` |
@@ -166,7 +166,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 8. Their support stack
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Channels | Comma-split signal prose ("Live chat active", "Digital banking") | **Six fixed chips** `STACK_CHANNELS`: Email, Chat, Voice, Social, WhatsApp, Self-serve |
 | Verified vs missing | Dynamic list | Present → `.prep-v9-stack-box` teal (`#2e897b` / `#eef7f5`); missing → dashed `#ddd6c7` italic |
@@ -181,7 +181,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 9. What we could not find
 
-| Change | Before (2.0.8.1-merge) | After (2.9 commit `6febe3f`) |
+| Change | Before (2.0.8.1-merge) | After (2.0.8.2 commit `6febe3f`) |
 |--------|------------------------|-------------------------------|
 | **+ button** per row | `.prep-v9-unknown-add` (＋) added question to discovery kit | **Removed** from markup |
 | **Add all** | `.prep-v9-unknown-add-all` header button | **Removed** |
@@ -197,13 +197,13 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ### 10. Who is in the room
 
-| Change | Before | After (2.9) |
+| Change | Before | After (2.0.8.2) |
 |--------|--------|-------------|
 | Section title | "People on this call" (v8) | **"Who is in the room"** |
 | Seat count | — | `.prep-v9-seats-pill` sand `#a5883f` / `#f3ecda` |
 | Behaviour columns | **Ask / Watch / Match** | **Do / Don't** (`.prep-v9-beh-do` `#2e897b`, `.prep-v9-beh-dont` `#b8544a`) |
 | DISC grid | Rendered for all seats (empty 2×2 + "unknown" name) | **LinkedIn-only full row**; others → `.prep-v9-attendee-thin` |
-| DISC gate (2.9) | `if (!linkedIn && !hasDisc)` — Kaia/Zoom could show grid | **`if (!linkedIn)`** — only LinkedIn PDF / merged / matched email |
+| DISC gate (2.0.8.2) | `if (!linkedIn && !hasDisc)` — Kaia/Zoom could show grid | **`if (!linkedIn)`** — only LinkedIn PDF / merged / matched email |
 | Thin row copy | — | Role fallback: **"No LinkedIn attached — attach a PDF to profile them"** |
 | Full row | DISC SVG + summary + touchpoints + Do/Don't | Competitor touchpoints only when `isLinkedInEnrichedProspect()` |
 | Kaia/Zoom DISC data | Shown in UI when `discHint.source` was kaia/zoom | **Hidden** unless LinkedIn attached; data stays in JSON |
@@ -233,11 +233,11 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 | Layout | `.prep-grid-kit` — 1.3fr / 1fr columns |
 | Kit items | Numbered `.prep-kit-num` teal tint |
 | Pain list | Red dot `.prep-pain-dot` `#` (var `--dew-red`) |
-| 2.9 delta | Unknowns no longer append here via + buttons |
+| 2.0.8.2 delta | Unknowns no longer append here via + buttons |
 
 ### 13. Research extras
 
-| Change | Before (v8 Discovery tab) | After (2.9) |
+| Change | Before (v8 Discovery tab) | After (2.0.8.2) |
 |--------|--------------------------|-------------|
 | Sources UI | Standalone "Sources & confidence" accordion | Nested inside **Research extras** `<details>` |
 | Default state | — | Collapsed unless `sourcesOpen` true |
@@ -248,7 +248,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 ## Removed features (complete list)
 
-| Feature | Where it lived | Status on 2.9 |
+| Feature | Where it lived | Status on 2.0.8.2 |
 |---------|----------------|-----------------|
 | **Ask / Watch / Match** attendee columns | Old v8 prospect cards | Replaced by **Do / Don't** (merge base) |
 | **Tech stack & signals** Know-tab accordion | `renderSignalsGrid()` call in `renderKnowTab()` | **Removed** (commit `3a02f4b`); data still in `prep.signals[]` |
@@ -309,7 +309,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 - `.prep-source-row` — grid `max-content | 1fr | 120px | auto`; `align-items: center`
 - `.prep-source-label` — `white-space: nowrap` (prevents **LinkedIn PDF** label wrap vs title column)
 
-### Demo Prep tab (inherited, not changed in 2.9 commits)
+### Demo Prep tab (inherited, not changed in 2.0.8.2 commits)
 
 - Hero panel `.prep-v9-hero` background `#2b2926`
 - Ribbon segment colors: Frame `#c9bfa9`, Discovery `#6fb8ac`, Show `#4f9a8e`, Land it `#d6b678`
@@ -356,7 +356,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 | `wireTabInteractions()` | **Removed** handlers for `.prep-v9-unknown-add` and `.prep-v9-unknown-add-all` |
 | | **Removed** `persistCurrentPrep()`, `appendDiscoveryQuestion()`, `addDiscoveryQuestions()` |
 
-### `web/precall-render.js` (merge base, active on 2.9)
+### `web/precall-render.js` (merge base, active on 2.0.8.2)
 
 | Export | Role |
 |--------|------|
@@ -396,13 +396,13 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 - `know tab has support stack`
 - `know tab has unknowns gaps`
 - `know tab has Who is in the room`
-- **`know tab has no signals accordion`** (2.9)
+- **`know tab has no signals accordion`** (2.0.8.2)
 - `know tab 2-column grid`
 - `know tab section order stack unknowns attendees`
 - `know tab maturity before discovery kit`
 - `know tab section order jd kit extras`
 
-### 2.9-specific attendee / DISC
+### 2.0.8.2-specific attendee / DISC
 
 - **`know tab renders Do/Dont for linkedin prospect`**
 - **`know tab thin attendee without linkedin`**
@@ -444,7 +444,7 @@ After 2.9, `renderKnowTab()` renders sections in this order:
 
 - `isV8Prep`, `isV7Prep`, `confidenceMeta`, `discConfidenceLabel`, `discInferredLabel`, `SIGNAL_TOOLTIPS` (6 keys)
 
-**Sample fixture updates (2.9):** LinkedIn prospect uses `sourceLabel: "LinkedIn PDF"`, `discHint.source: "linkedin_pdf"`, plus `dos` / `donts` arrays for Do/Don't assertions.
+**Sample fixture updates (2.0.8.2):** LinkedIn prospect uses `sourceLabel: "LinkedIn PDF"`, `discHint.source: "linkedin_pdf"`, plus `dos` / `donts` arrays for Do/Don't assertions.
 
 **Removed assertions:** `know tab has signals accordion`, `know tab signals collapsed by default`, `know tab signals grid layout`, `know tab empty signal not found`.
 
@@ -480,7 +480,7 @@ npm run test:prep-normalize
 
 ### VPS deploy
 
-**One command (recommended):** `deploy/vps/upgrade-now.sh` fetches `origin/2.9`, hard-resets the repo, rebuilds the worker, and restarts web. As of this release the script targets branch **`2.9`** (not `2.0.8.1-merge`).
+**One command (recommended):** `deploy/vps/upgrade-now.sh` fetches `origin/2.0.8.2`, hard-resets the repo, rebuilds the worker, and restarts web. As of this release the script targets branch **`2.0.8.2`** (not `2.0.8.1-merge`).
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
@@ -490,10 +490,10 @@ Manual equivalent (origin = `https://github.com/antonyanbu25/lionpath_V2.git`):
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps
-bash git-fetch-origin.sh /opt/se-singha-paathai 2.9
+bash git-fetch-origin.sh /opt/se-singha-paathai 2.0.8.2
 cd /opt/se-singha-paathai
-git checkout -B 2.9 origin/2.9
-git reset --hard origin/2.9
+git checkout -B 2.0.8.2 origin/2.0.8.2
+git reset --hard origin/2.0.8.2
 bash deploy/vps/update.sh
 ```
 
@@ -509,8 +509,8 @@ Verify served CSS version:
 bash deploy/vps/verify-deploy.sh
 # or:
 curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
-# expect: precall.css?v=2.9
-# portal-build meta stays 2.0.8.1-merge on 2.9 branch
+# expect: precall.css?v=2.0.8.2
+# portal-build meta stays 2.0.8.1-merge on 2.0.8.2 branch
 ```
 
 ---
@@ -519,8 +519,8 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 
 | From | To | Notes |
 |------|-----|-------|
-| `2.0.7.4` (old portal) | `2.9` | Full precall v9 overhaul — all annotation items |
-| `2.0.8.1-merge` | `2.9` | Delta: signals accordion removed, DISC gate tightened, unknowns + buttons removed, cache bump |
+| `2.0.7.4` (old portal) | `2.0.8.2` | Full precall v9 overhaul — all annotation items |
+| `2.0.8.1-merge` | `2.0.8.2` | Delta: signals accordion removed, DISC gate tightened, unknowns + buttons removed, cache bump |
 
 ---
 
@@ -529,24 +529,24 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 - **Cached briefs in localStorage:** Re-opening an old brief may show stale HTML until re-rendered; re-run the brief for fresh attendee rows and unknowns layout.
 - **Kaia-only DISC:** Previously shown when `discHint.source` was `kaia` or `zoom`; now hidden unless LinkedIn PDF is attached for that seat.
 - **Signals JSON:** `prep.signals[]` unchanged; only the duplicate Know-tab accordion UI was removed.
-- **Unknowns → kit:** Adding gaps to discovery kit is **not supported** on 2.9; prior `persistCurrentPrep()` path removed with buttons.
+- **Unknowns → kit:** Adding gaps to discovery kit is **not supported** on 2.0.8.2; prior `persistCurrentPrep()` path removed with buttons.
 - **CSS dead rules:** `.prep-v9-unknown-add*` / `.prep-v9-unknown-added` styles remain in `precall.css` but are unused until re-wired.
 
 ---
 
-## Files changed on branch 2.9 (vs `2.0.8.1-merge`)
+## Files changed on branch 2.0.8.2 (vs `2.0.8.1-merge`)
 
 | File | One-line description |
 |------|---------------------|
-| `docs/RELEASE_2.9.md` | This definitive branch reference |
-| `web/index.html` | Cache-bust `precall.css?v=2.9` |
+| `docs/RELEASE_2.0.8.2.md` | This definitive branch reference |
+| `web/index.html` | Cache-bust `precall.css?v=2.0.8.2` |
 | `web/precall-brief-v9.js` | Remove signals accordion; LinkedIn-only DISC gate; strip unknowns add controls; remove AI banner (`0ba748a`) |
 | `web/precall.js` | Remove unknowns → discovery kit persistence and click handlers |
 | `web/scripts/test-precall-render.mjs` | 65 assertions — signals absent, DISC gating, Do/Don't, AI banner absent |
 | `web/precall-render.js` | Remove AI banner from legacy Discovery tab (`0ba748a`) |
 | `web/precall.css` | Remove `.prep-ai-banner` styles (`0ba748a`) |
 
-## Key inherited files (on `2.0.8.1-merge`, part of 2.9 experience)
+## Key inherited files (on `2.0.8.1-merge`, part of 2.0.8.2 experience)
 
 | File | One-line description |
 |------|---------------------|
@@ -563,7 +563,7 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 
 ## Annotation traceability (boss screenshots)
 
-| Image | Request | Status on 2.9 |
+| Image | Request | Status on 2.0.8.2 |
 |-------|---------|---------------|
 | 1 — Attendees | Do/Don't not Ask/Watch/Match | Done (merge base) |
 | 1 | Remove repeating Tech stack header | Done (`3a02f4b`) |
@@ -581,4 +581,4 @@ curl -sf "https://portal.benjaminsquare.com/" | grep precall.css
 
 ---
 
-*Last updated: 2026-08-03 — branch `2.9` @ `e096daa`.*
+*Last updated: 2026-08-03 — branch `2.0.8.2` @ `e096daa`.*

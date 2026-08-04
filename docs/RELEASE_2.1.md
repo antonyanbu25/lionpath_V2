@@ -1,7 +1,7 @@
 # Release 2.1 — Session restore, accounts/contacts cache
 
 **Branch:** `2.1`  
-**Base:** `2.9` + `feature/fix-prep-typo-domain` (already merged in history)  
+**Base:** `2.0.8.2` + `feature/fix-prep-typo-domain` (already merged in history)  
 **Portal build:** `2.1` (`web/index.html` meta + `app.js?v=2.1`, `precall.css?v=2.1`)
 
 ## Fixes
@@ -25,7 +25,7 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 | **Grid row 3** | Their support stack \| What we could not find (right column omitted when no gaps) |
 | **Maturity band colors** | Pastel fills from reference: large `#e8c4bd`, partial `#eddcbb`, parity/close `#cfe0d9` (Gap text column stays removed) |
 | **Fish benchmark bars** | Horizontal range rail (`#f4f0e8`), rival band (`#e8e0d0`), prospect dot (`#a58a5c`) per `prep.rivals.axes` |
-| **Kept from 2.9** | LinkedIn-only DISC, fixed four maturity axes, fixed six channel chips, no unknowns add buttons, no AI banner |
+| **Kept from 2.0.8.2** | LinkedIn-only DISC, fixed four maturity axes, fixed six channel chips, no unknowns add buttons, no AI banner |
 
 **Files:** `web/precall-brief-v9.js`, `web/precall.css`, `web/scripts/test-precall-render.mjs`
 
