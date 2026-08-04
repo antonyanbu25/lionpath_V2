@@ -5,7 +5,7 @@ export const SE_SOURCE: SourceRef = {
   label: "SE",
   title: "SE additional context",
   url: "se-context",
-  confidence: 88,
+  confidence: 90,
   displayName: "From your input",
 };
 
@@ -103,7 +103,7 @@ export function factsFromSeContext(additionalContext: string | undefined): {
     value: trimSignalValue(value),
     sourceLabel: "SE",
     sourceUrl: "se-context",
-    confidence: 88,
+    confidence: 90,
     category: "signal",
   }));
 

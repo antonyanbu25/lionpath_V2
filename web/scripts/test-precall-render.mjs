@@ -3,6 +3,7 @@ import {
   isV7Prep,
   renderResultHeader,
   confidenceMeta,
+  confidenceMetaForSource,
   discInferredLabel,
   discConfidenceLabel,
   SIGNAL_TOOLTIPS,
@@ -10,6 +11,7 @@ import {
   countPopulatedSignals,
   resolveDisplayFacts,
   isLinkedInEnrichedProspect,
+  renderIcpFitment,
 } from "../precall-render.js";
 import { renderKnowTab, renderDemoPrepTab } from "../precall-brief-v9.js";
 import { CUSTOMER_REFERENCE_BY_INDUSTRY } from "../customer-reference-links.js";
@@ -228,6 +230,16 @@ const discoveryWithEmptySignal = renderKnowTab(
   },
   false,
 );
+const discoveryWithSeSource = renderKnowTab(
+  {
+    ...sampleV8,
+    sources: [
+      { label: "SE", title: "SE additional context", url: "se-context", confidence: 70 },
+      ...sampleV8.sources,
+    ],
+  },
+  true,
+);
 const discoverySourcesOpen = renderKnowTab(sampleV8, true);
 const discoveryLinkedInSource = renderKnowTab(
   {
@@ -379,6 +391,17 @@ const checks = [
     discoveryLinkedInSource.includes('class="prep-source-label">LinkedIn PDF</span>') &&
       discoveryLinkedInSource.includes('class="prep-source-title">LinkedIn PDF export</span>'),
   ],
+  [
+    "know tab research extras SE high confidence",
+    discoveryWithSeSource.includes('class="prep-source-label">SE</span>') &&
+      discoveryWithSeSource.includes("prep-conf-text-high") &&
+      discoveryWithSeSource.includes("High ·"),
+  ],
+  [
+    "know tab SE signal INPUT badge",
+    discoveryWithSeSignal.includes("prep-v9-src-input") &&
+      discoveryWithSeSignal.includes("Zendesk"),
+  ],
   ["know tab no verbatim notes card", !renderKnowTab(sampleV8, false, { additionalContext: "AE says Zendesk incumbent" }).includes("prep-se-notes-card")],
   ["know tab no standalone sources accordion", !discovery.includes("prep-sources-card")],
   ["know tab about text", discovery.includes("prep-v9-about")],
@@ -447,6 +470,20 @@ const checks = [
   ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals, sampleV8.sources) === 4],
   ["know tab AI banner absent", !discovery.includes("prep-ai-banner")],
   ["know tab ICP fitment absent", !discovery.includes("ICP fitment") && !discovery.includes("prep-v9-icp-card")],
+  ["icp fitment hides unknown empty verdict", renderIcpFitment({ product: "Freshdesk", verdict: "Unknown" }, []) === ""],
+  ["icp fitment hides unknown verdict pill with criteria", (() => {
+    const html = renderIcpFitment(
+      {
+        product: "Freshdesk",
+        verdict: "Unknown",
+        criteria: [{ id: "agents", label: "Agent count", state: "unknown" }],
+      },
+      [],
+    );
+    return html.includes("Agent count") && !html.includes("Unknown alignment") && !html.includes(" alignment");
+  })()],
+  ["icp fitment shows known verdict pill", renderIcpFitment({ product: "Freshdesk", verdict: "Strong", criteria: [] }, []).includes("Strong alignment")],
+  ["no unknown alignment string anywhere", !discovery.includes("Unknown alignment") && !renderIcpFitment({ product: "Freshdesk", verdict: "Unknown" }, []).includes("Unknown alignment")],
   ["know tab maturity pastel band color", discovery.includes("#e8c4bd") || discovery.includes("#eddcbb")],
   ["know tab fish benchmark bar", discovery.includes("prep-v9-benchmark-bar")],
   ["know tab kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
@@ -460,6 +497,11 @@ const checks = [
   ],
   ["confidence high band", confidenceMeta(85).word === "High"],
   ["confidence low band", confidenceMeta(40).word === "Low"],
+  [
+    "confidenceMetaForSource SE",
+    confidenceMetaForSource({ label: "SE", url: "se-context", confidence: 70 }).word === "High" &&
+      confidenceMetaForSource({ label: "SE", url: "se-context", confidence: 70 }).tier === "high",
+  ],
   ["signal tooltips map complete", Object.keys(SIGNAL_TOOLTIPS).length === 6],
 ];
 

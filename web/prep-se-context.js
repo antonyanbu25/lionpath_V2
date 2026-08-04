@@ -34,6 +34,138 @@ function isUnknownSignalValue(value) {
   return !s || s === "unknown" || s === "-";
 }
 
+/** Keep in sync with worker/src/prep/context-field-router.ts */
+const SUPPORT_TEAM_RE =
+  /\bsupport\s+(?:agents?|users?|team|seats?)\s*[\d–—-]+|\b[\d–—-]+\s+support\s+(?:agents?|users?|team|seats?)\b/i;
+const EMPLOYEE_SIZE_RE = /\b(?:employees?|headcount|fte)\b/i;
+const END_USER_VOLUME_RE = /\b(?:customers?|users?)\s+(?:volume|base)\b/i;
+const SUPPORT_VALUE_RE =
+  /\b(?:support\s+(?:agents?|users?|team|seats?)\s*([\d–—-]+(?:\s*[-–—]\s*[\d–—-]+)?)|([\d–—-]+(?:\s*[-–—]\s*[\d–—-]+)?)\s+support\s+(?:agents?|users?|team|seats?))/i;
+const EMPLOYEE_VALUE_RE =
+  /\b([\d,.]+(?:\s*[-–—]\s*[\d,.]+)?\+?\s*(?:employees?|headcount|fte)|(?:employees?|headcount|fte)\s*[:=]?\s*([\d,.]+(?:\s*[-–—]\s*[\d,.]+)?\+?))/i;
+const END_USER_VALUE_RE = /\b(?:customers?|users?)\s+(?:volume|base)\s*[:=]?\s*([^\n;,.]{1,40})/i;
+
+function looksLikeSupportTeam(value) {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  return SUPPORT_TEAM_RE.test(v) || /\bsupport\s+(?:agents?|users?|team|seats?)\b/i.test(v);
+}
+
+function looksLikeEndUserVolume(value) {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  return END_USER_VOLUME_RE.test(v) || /\b(?:customer|user)\s+base\b/i.test(v);
+}
+
+function looksLikeCompanySize(value) {
+  const v = String(value || "").trim();
+  if (!v || looksLikeSupportTeam(v) || looksLikeEndUserVolume(v)) return false;
+  return EMPLOYEE_SIZE_RE.test(v) || /\b[\d,.]+(?:\s*[-–—]\s*[\d,.]+)?\s+employees?\b/i.test(v);
+}
+
+function extractSupportTeamValue(text) {
+  const m = String(text || "").match(SUPPORT_VALUE_RE);
+  if (!m) return null;
+  const raw = (m[1] || m[2] || "").trim();
+  return raw ? trimSignalValue(raw.replace(/\s+/g, " ")) : null;
+}
+
+function extractCompanySizeValue(text) {
+  const blob = String(text || "");
+  if (!EMPLOYEE_SIZE_RE.test(blob)) return null;
+  const m = blob.match(EMPLOYEE_VALUE_RE);
+  if (!m) return null;
+  const raw = (m[1] || m[2] || "").trim();
+  if (!raw || /\bsupport\b/i.test(raw)) return null;
+  return trimSignalValue(raw.replace(/\s+/g, " "));
+}
+
+function extractEndUserVolumeValue(text) {
+  const m = String(text || "").match(END_USER_VALUE_RE);
+  if (!m?.[1]) return null;
+  return trimSignalValue(m[1].trim());
+}
+
+/** Resolve Company size tile — never reuse support-team or end-user figures. */
+export function resolveCompanySizeValue(prep) {
+  const fact = prep?.facts?.find((f) => f.key === "Company size");
+  if (fact && !isUnknownSignalValue(fact.value) && !looksLikeSupportTeam(fact.value) && !looksLikeEndUserVolume(fact.value)) {
+    return String(fact.value).trim();
+  }
+  const users = prep?.businessContext?.users;
+  if (users && looksLikeCompanySize(users)) return String(users).trim();
+  return undefined;
+}
+
+function upsertFact(facts, key, value) {
+  const out = [...facts];
+  const idx = out.findIndex((f) => f.key === key);
+  const row = { key, value: trimSignalValue(value), sourceLabel: "SE" };
+  if (idx >= 0) out[idx] = { ...out[idx], ...row };
+  else out.push(row);
+  return out;
+}
+
+function clearMisplacedFact(facts, key, predicate) {
+  return facts.map((f) => (f.key === key && predicate(String(f.value)) ? { ...f, value: "unknown" } : f));
+}
+
+/** Route SE sizing notes to Support team vs Company size tiles (mirrors worker). */
+export function applySeContextToFacts(prep, additionalContext) {
+  if (!prep) return prep;
+  const text = String(additionalContext || "").trim();
+  if (!text) return prep;
+
+  let companySizeAgents = { ...(prep.companySizeAgents || { agents: "unknown", estimated: false }) };
+  let businessContext = { ...(prep.businessContext || {}) };
+  let facts = [...(prep.facts || [])];
+
+  const supportVal = extractSupportTeamValue(text);
+  const employeeVal = extractCompanySizeValue(text);
+  const endUserVal = extractEndUserVolumeValue(text);
+
+  if (supportVal) {
+    companySizeAgents = { agents: supportVal, estimated: false };
+    facts = upsertFact(facts, "Support team", supportVal);
+    if (looksLikeSupportTeam(businessContext.users)) {
+      businessContext = { ...businessContext, users: endUserVal || "unknown" };
+    }
+    facts = clearMisplacedFact(facts, "Company size", looksLikeSupportTeam);
+  }
+
+  if (employeeVal) {
+    facts = upsertFact(facts, "Company size", employeeVal);
+    if (looksLikeSupportTeam(businessContext.users)) {
+      businessContext = { ...businessContext, users: endUserVal || "unknown" };
+    } else if (isUnknownSignalValue(businessContext.users) || looksLikeCompanySize(businessContext.users)) {
+      businessContext = { ...businessContext, users: employeeVal };
+    }
+  }
+
+  if (endUserVal) {
+    businessContext = { ...businessContext, users: endUserVal };
+    facts = clearMisplacedFact(facts, "Company size", looksLikeEndUserVolume);
+  }
+
+  for (const f of facts) {
+    if (f.key === "Company size" && looksLikeSupportTeam(f.value)) {
+      const val = trimSignalValue(String(f.value));
+      companySizeAgents = { agents: val, estimated: false };
+      facts = upsertFact(facts, "Support team", val);
+      facts = upsertFact(facts, "Company size", "unknown");
+    }
+  }
+
+  if (looksLikeSupportTeam(businessContext.users) && !supportVal) {
+    const val = trimSignalValue(String(businessContext.users));
+    companySizeAgents = { agents: val, estimated: false };
+    facts = upsertFact(facts, "Support team", val);
+    businessContext = { ...businessContext, users: "unknown" };
+  }
+
+  return { ...prep, companySizeAgents, businessContext, facts };
+}
+
 export function parseSeContextSignals(additionalContext) {
   const text = String(additionalContext || "").trim();
   if (!text) return {};
@@ -93,7 +225,7 @@ export function applySeContextToPrep(prep, additionalContext) {
   const hints = parseSeContextSignals(additionalContext);
   if (!Object.keys(hints).length) return prep;
 
-  const seSource = { label: "SE", title: "SE additional context", url: "se-context", confidence: 88 };
+  const seSource = { label: "SE", title: "SE additional context", url: "se-context", confidence: 90 };
   const sources = [...(prep.sources || [])];
   if (!sources.some((s) => s.label === "SE")) sources.unshift(seSource);
 

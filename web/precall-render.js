@@ -8,6 +8,7 @@ import {
   sourceDisplayName,
   sourceKind,
 } from "./prep-source-display.js";
+import { resolveCompanySizeValue } from "./prep-se-context.js";
 import { esc } from "./shared.js";
 import { EMPTY_DISPLAY } from "./shared.js";
 
@@ -124,6 +125,17 @@ export function confidenceMeta(conf) {
   if (n >= 80) return { word: "High", color: "var(--dew-green)", tier: "high", pct: n };
   if (n >= 55) return { word: "Medium", color: "var(--dew-amber)", tier: "medium", pct: n };
   return { word: "Low", color: "var(--dew-red)", tier: "low", pct: n };
+}
+
+/** SE / additional-context rows are first-party input — always High in the UI. */
+export function confidenceMetaForSource(src) {
+  if (!src) return confidenceMeta(50);
+  const url = String(src.url || "").trim().toLowerCase();
+  if (isSeNotesSource(src.label) || url === "se-context") {
+    const pct = Math.max(Number(src.confidence) || 0, 90);
+    return { word: "High", color: "var(--dew-green)", tier: "high", pct };
+  }
+  return confidenceMeta(src.confidence);
 }
 
 export function companyMono(name) {
@@ -296,6 +308,8 @@ const TICK_ORDER = { met: 0, unmet: 1, unknown: 2 };
 export function renderIcpFitment(icpFit, sources) {
   if (!icpFit) return "";
   const rows = icpFit.criteria || [];
+  // Old briefs carried verdict without criteria — "Unknown alignment" with nothing below it.
+  if (!rows.length && isUnknown(icpFit.verdict)) return "";
 
   const ordered = [...rows].sort(
     (a, b) =>
@@ -327,11 +341,15 @@ export function renderIcpFitment(icpFit, sources) {
     ? ""
     : `<p class="prep-icp-legacy muted">Fitment factors were added after this brief was generated. Re-run the brief to see them.</p>`;
 
+  const verdictPill = isUnknown(icpFit.verdict)
+    ? ""
+    : `<span class="prep-icp-verdict prep-icp-pill ${icpVerdictClass(icpFit.verdict)}">${esc(icpFit.verdict)} alignment</span>`;
+
   return `<div class="prep-icp-block">
     <div class="prep-icp-head">
       <span class="dew-mono-label">ICP fitment</span>
       <span class="prep-icp-product">${esc(icpFit.product || "Freshdesk")}</span>
-      <span class="prep-icp-verdict prep-icp-pill ${icpVerdictClass(icpFit.verdict)}">${esc(icpFit.verdict || "Unknown")} alignment</span>
+      ${verdictPill}
       ${icpFit.zone ? `<span class="prep-icp-zone">${esc(icpFit.zone)}</span>` : ""}
     </div>
     ${
@@ -348,7 +366,7 @@ export function renderIcpFitment(icpFit, sources) {
 const FACT_BC_FALLBACK = {
   Industry: (prep) => prep.businessContext?.market,
   "Head office": (prep) => prep.businessContext?.headOffice,
-  "Company size": (prep) => prep.businessContext?.users,
+  "Company size": (prep) => resolveCompanySizeValue(prep),
   "Support team": (prep) => prep.companySizeAgents?.agents,
   "Business model": (prep) => prep.businessContext?.model,
   Ownership: (prep) => prep.businessContext?.fundingParent,
@@ -1081,7 +1099,6 @@ export function renderDiscoveryTab(prep, sourcesOpen, renderOpts = {}) {
         ${renderAboutBlock(prep.about)}
         ${renderFactRows(resolveDisplayFacts(prep), sources)}
         ${sourceKindLegend(sources)}
-        ${renderIcpFitment(prep.icpFit, sources)}
       </fw-card>
       ${renderProspectSection(prep.prospects, sources, peopleNotes, renderOpts.peopleProspectTab, renderOpts)}
     </div>

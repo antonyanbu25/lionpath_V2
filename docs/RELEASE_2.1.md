@@ -1,4 +1,4 @@
-# Release 2.1 — Dedup, RAG omni-search, Know tab polish
+# Release 2.1 â€” Dedup, RAG omni-search, Know tab polish
 
 **Branch:** `2.1`  
 **Base:** `2.0.8.2` + prior 2.1 prep fixes  
@@ -13,7 +13,7 @@
 | Repeat pre-call search shows "new account" | `prep-crm-resolve.js` reuses domain-store account on repeat email search (`ed48285`) |
 | `createNewDeal` ignored on prep | `getOrCreateLifecycle` archives old spine and calls `createDealWithExplicitTitle` |
 | Post-call ignores `accountId` / `createNewAccount` | `linkPostCallToLifecycle` passes flags through to upsert |
-| UI always says "new account/deal" | Badges: **Existing account** vs **New account · on generate/confirm** |
+| UI always says "new account/deal" | Badges: **Existing account** vs **New account Â· on generate/confirm** |
 
 **Files:** `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`
 
@@ -25,7 +25,7 @@
 |---------|--------|
 | Filter chips | All, Accounts, Deals, Contacts, Briefs, Calls, Tasks |
 | Recently searched / viewed | Per-user localStorage with Clear |
-| Hybrid ranking | Local token match → `POST /api/search/rag` Gemini embedding rerank |
+| Hybrid ranking | Local token match â†’ `POST /api/search/rag` Gemini embedding rerank |
 | Index scope | Accounts, contacts, deals, briefs, calls, open tasks |
 | Speed | Sync localStorage index before Firestore; instant token hits + async RAG rerank (`3aeab26`) |
 | Panel alignment | Dropdown anchored to topbar search input (`1258713`) |
@@ -40,7 +40,7 @@
 | Refresh redirects to login with valid session | Restore local/dummy session when Firebase has no user; boot waits for `showApp` before `showLogin` |
 | Contacts flash then disappear | Merge history preview contacts in `listContactsForSession`; load history before nav |
 | Accounts empty despite prep/post-call | Include prep briefs + post-call history rows; derive account name from prospect email; do not cache empty lists |
-| Prep research on typo email domains | From `feature/fix-prep-typo-domain` — company name prioritized over email domain in worker + form hints |
+| Prep research on typo email domains | From `feature/fix-prep-typo-domain` â€” company name prioritized over email domain in worker + form hints |
 
 ## Pre-call Know tab UI polish (reference alignment)
 
@@ -63,7 +63,7 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 | Feature | Detail |
 |---------|--------|
 | **LinkedIn PDF required** | `buildPayload()` blocks submit until every prospect email has an attached LinkedIn PDF (`emailsMissingLinkedInPdf` in `web/prep-linkedin-pdf.js`) |
-| **Recent news pipeline** | **Parallel:** Gemini grounded search + web crawl (Google News RSS + DuckDuckGo, merged up to 5). Redirect URL resolution before citation verify. **Newsroom fallback** when RSS/DDG return 0. **No** research-fact or SE-context backfill. Each item: headline + **Read article →** (RSS HTML stripped — no `&lt;a href=` detail lines). |
+| **Recent news pipeline** | **Parallel:** Gemini grounded search + web crawl (Google News RSS + DuckDuckGo, merged up to 5). Redirect URL resolution before citation verify. **Newsroom fallback** when RSS/DDG return 0. **No** research-fact or SE-context backfill. Each item: headline + **Read article â†’** (RSS HTML stripped â€” no `&lt;a href=` detail lines). |
 | **Fish sizing pipeline** | **Parallel:** grounded rival comparison + AE context extraction when notes present. Web benchmark bars first; non-overlapping AE metrics append with **INPUT** badge. Context-only card when web finds nothing. Incumbent/integration/requirement lines excluded. |
 
 **Worker files:** `worker/src/prep/company-news.ts`, `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `worker/src/schema.ts`
@@ -72,8 +72,23 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 
 **Tests:** `worker/scripts/test-company-news.ts` (32 checks), `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` (74 checks)
 
-**Ops:** Recent news and fish sizing run during `POST /api/prep/synthesize` — redeploy **worker + web** (`upgrade-now.sh`). Generate a **new** brief to pick up pipeline changes; history entries keep old `recentNews` unless regenerated.
+**Ops:** Recent news and fish sizing run during `POST /api/prep/synthesize` â€” redeploy **worker + web** (`upgrade-now.sh`). Generate a **new** brief to pick up pipeline changes; history entries keep old `recentNews` unless regenerated.
 
+
+## Brief list, Research Extras, and context routing
+
+| Feature | Detail |
+|---------|--------|
+| **All briefs list** | Dashboard Brief Generated KPI opens searchable all-briefs under Pre-call; back nav; `#precall/briefs`, `#precall/briefs/:id` |
+| **Research Extras** | SE/context Additional Context shows **High** confidence |
+| **Context field router** | Disambiguates support team vs employee headcount vs end-user volume |
+| **Brief UI** | Unknown alignment section removed |
+
+**Files:** `web/briefs-list-view.js`, `web/app.js`, `web/precall.js`, `web/precall-brief-v9.js`, `worker/src/prep/context-field-router.ts`, `web/prep-se-context.js`, `web/prep-source-canon.js`
+
+**Tests:** `web/scripts/test-briefs-list-view.mjs`, `web/scripts/test-prep-se-context.mjs`, `worker/scripts/test-context-field-router.ts`
+
+**Ops:** Web + worker changes — run `upgrade-now.sh` on VPS; hard-refresh portal after deploy.
 ## Deploy workflow (branch 2.1)
 
 Production VPS deploys from **Tony's repo** (`antonyanbu25/lionpath_V2`). On branch `2.1`, push only to remote **`antony`**, not `origin`. See `.cursor/rules/push-antony-2.1.mdc`.

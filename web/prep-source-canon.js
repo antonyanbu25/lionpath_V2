@@ -20,7 +20,7 @@ export const MAX_PREP_SOURCES = 12;
 const MIN_PREP_SOURCES = 3;
 
 const VIRTUAL_SOURCES = [
-  { label: "SE", title: "SE additional context", url: "se-context", confidence: 88, displayName: "From your input" },
+  { label: "SE", title: "SE additional context", url: "se-context", confidence: 90, displayName: "From your input" },
   { label: "Kaia", title: "Kaia meeting summary", url: "kaia-meeting", confidence: 75, displayName: "Kaia" },
   { label: "Zoom", title: "Zoom transcript", url: "zoom-transcript", confidence: 75, displayName: "Zoom" },
   { label: "LinkedIn + Kaia", title: "LinkedIn PDF + Kaia meeting", url: "linkedin-kaia", confidence: 80, displayName: "LinkedIn + Kaia" },

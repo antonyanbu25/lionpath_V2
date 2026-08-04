@@ -13,6 +13,7 @@ import {
   discInferredLabel,
   isSeNotesSource,
   confidenceMeta,
+  confidenceMetaForSource,
 } from "./precall-render.js";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
@@ -673,7 +674,7 @@ function renderPains(pains) {
 function renderResearchExtras(sources, open) {
   const rows = (sources || [])
     .map((s) => {
-      const meta = confidenceMeta(s.confidence);
+      const meta = confidenceMetaForSource(s);
       const pct = Number.isFinite(meta.pct) ? meta.pct : 50;
       return `<div class="prep-source-row">
         <span class="prep-source-label">${esc(s.label)}</span>

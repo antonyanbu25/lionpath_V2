@@ -1,5 +1,6 @@
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
+import { FACT_KEYS, SIGNAL_LABELS } from "../schema";
 import { SE_SOURCE } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
 
@@ -15,7 +16,18 @@ const SE_EXTRACT_SCHEMA = {
         additionalProperties: false,
         required: ["key", "value", "category"],
         properties: {
-          key: { type: "string" },
+          key: {
+            type: "string",
+            enum: [
+              ...FACT_KEYS,
+              ...SIGNAL_LABELS,
+              "Champion",
+              "Timeline",
+              "Budget",
+              "Pain",
+              "Meeting type",
+            ],
+          },
           value: { type: "string" },
           category: {
             type: "string",
@@ -63,6 +75,8 @@ export async function extractSeContextFacts(
 Emit facts the SE stated explicitly — do NOT invent.
 Use sourceLabel "SE" mentally; output key/value/category only.
 For canonical signals use exact keys: ${[...CANONICAL_SIGNALS].join(", ")}.
+For account sizing use exact keys: Industry, Head office, Company size, Support team, Business model, Ownership, Parent company, Languages.
+Company size = employee headcount ONLY. Support team = support agents/users/seats — never swap these.
 Other keys: Champion, Timeline, Budget, Pain, Meeting type, etc. (max 4 words).
 Values max 12 words. categories: account | signal | prospect | support.
 OUTPUT: JSON matching schema. No markdown.`,

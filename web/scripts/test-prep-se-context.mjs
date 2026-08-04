@@ -1,4 +1,4 @@
-import { applySeContextToPrep, parseSeContextSignals } from "../prep-se-context.js";
+import { applySeContextToFacts, applySeContextToPrep, parseSeContextSignals } from "../prep-se-context.js";
 
 const notes = "Uses Zendesk, evaluating AI chatbot, 50 agents";
 const hints = parseSeContextSignals(notes);
@@ -36,3 +36,29 @@ for (const [name, ok] of checks) {
 
 if (failed) process.exit(1);
 console.log(`\n${checks.length} prep-se-context checks passed.`);
+
+const supportNotes = "support users 40-50 on Zendesk";
+const supportPrep = applySeContextToFacts(
+  {
+    facts: [{ key: "Company size", value: "40-50 support users", sourceLabel: "SE" }],
+    companySizeAgents: { agents: "unknown", estimated: false },
+    businessContext: { users: "40-50 support users" },
+  },
+  supportNotes,
+);
+const supportChecks = [
+  ["routes support to agents", supportPrep.companySizeAgents?.agents === "40-50"],
+  ["Support team fact", supportPrep.facts.find((f) => f.key === "Support team")?.value === "40-50"],
+  ["clears wrong company size", supportPrep.facts.find((f) => f.key === "Company size")?.value === "unknown"],
+];
+let supportFailed = 0;
+for (const [name, ok] of supportChecks) {
+  if (!ok) {
+    console.error("FAIL:", name);
+    supportFailed++;
+  } else {
+    console.log("ok:", name);
+  }
+}
+if (supportFailed) process.exit(1);
+console.log(`\n${supportChecks.length} applySeContextToFacts checks passed.`);

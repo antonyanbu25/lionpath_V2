@@ -122,6 +122,9 @@ export async function extractFishSizingFromContext(
     result = await provider.generate({
       system: `Extract ONLY company/account sizing facts the SE stated about ${companyName}.
 Include: headcount, support agents/team size, funding, revenue, user/customer volume, fleet size, market cap — when explicitly about ${companyName}.
+CRITICAL: support agents ≠ employees. "40-50 support users" is Support agents, NOT Employees or headcount.
+Label support-team counts as "Support agents". Label employee headcount as "Employees" only when explicitly about total staff.
+End-customer scale ("user base", "customer volume") is NOT company size — label as "User volume" or "Customer base".
 Exclude: deal requirements (incumbent tool, integrations, widget, timeline, budget, pain, meeting logistics, hiring as a need, product evaluation).
 Set aboutCompany=false for anything that describes what they want or use, not how big ${companyName} is.
 Values max 12 words. Labels max 4 words. No invention.`,

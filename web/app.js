@@ -26,6 +26,7 @@ import { renderDealView } from "./deal-view.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1";
 import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
+import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.12";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
@@ -58,8 +59,10 @@ import {
   initPrecall,
   loadLocalBriefs,
   openPrepBrief,
+  openPrepBriefAsync,
   parseProspectEmails,
   resetPrecallForm,
+  showPrepBriefsListView,
   syncPrepEngagementMotion,
 } from "./precall.js?v=2.1.5";
 import {
@@ -164,6 +167,8 @@ let callPanelRenderGen = 0;
 let accountPanelRenderGen = 0;
 /** Bumps on each contacts panel render. stale async renders must not overwrite the DOM. */
 let contactsPanelRenderGen = 0;
+/** Bumps on each precall panel render. stale async renders must not overwrite the DOM. */
+let precallPanelRenderGen = 0;
 let dealListSearchQuery = "";
 let dealListSortKey = "traction";
 let pipelineQuarterFilter = "";
@@ -172,6 +177,10 @@ let pipelineSortKey = "agents";
 
 /** Selected call when viewing call record (#calls/:id) */
 let selectedCallId = null;
+/** Selected brief when viewing from all-briefs list (#precall/briefs/:id) */
+let selectedPrepBriefId = null;
+/** True when pre-call shows all-briefs list (#precall/briefs) */
+let precallBriefListMode = false;
 /** @type {string|undefined} */
 let callRecordTab = undefined;
 let callExpandThemeKey = undefined;
@@ -204,6 +213,14 @@ function callDetailHash() {
   if (callRecordOwnerEmail) params.set("owner", callRecordOwnerEmail);
   const qs = params.toString();
   return qs ? `calls/${selectedCallId}?${qs}` : `calls/${selectedCallId}`;
+}
+
+function precallHash() {
+  if (selectedPrepBriefId && precallBriefListMode) {
+    return `precall/briefs/${selectedPrepBriefId}`;
+  }
+  if (precallBriefListMode) return "precall/briefs";
+  return "precall";
 }
 
 function dealDetailHash() {
@@ -354,6 +371,19 @@ function normalizeCompanyDomainField(raw) {
 }
 
 function buildFetchRemotePreps() {
+  const fetchAll = buildFetchAllRemotePreps();
+  if (!fetchAll) return undefined;
+  return async () => {
+    const all = await fetchAll();
+    return (all || []).map((b) => ({
+      id: b.id,
+      company: b.company,
+      when: b.when,
+    }));
+  };
+}
+
+function buildFetchAllRemotePreps() {
   if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return undefined;
   return async () => {
     const user = fb.auth.currentUser;
@@ -362,7 +392,14 @@ function buildFetchRemotePreps() {
     return snap.docs.map((d) => {
       const data = d.data();
       const when = data.createdAt?.toDate?.()?.toLocaleDateString?.() || "";
-      return { id: d.id, company: data.company, when };
+      return normalizeRemoteBrief({
+        id: d.id,
+        company: data.company,
+        when,
+        prep: data.prep,
+        prospectEmail: data.prospectEmail,
+        additionalContext: data.additionalContext,
+      });
     });
   };
 }
@@ -385,7 +422,9 @@ function dashboardOpts() {
       switchView("calls");
     },
     onOpenBriefs: () => {
-      switchView("precall");
+      selectedPrepBriefId = null;
+      precallBriefListMode = true;
+      switchView("precall", { briefList: true, drillDown: true });
     },
     onOpenBrief: (id) => {
       openPrepBriefItem(id);
@@ -643,6 +682,30 @@ function switchView(name, opts = {}) {
     if (opts.listFilter) callsListFilter = opts.listFilter;
     $("main-view-title").textContent = selectedCallId ? "Call record" : VIEW_TITLES.calls;
     void renderCallPanel();
+  } else if (name === "precall") {
+    if (opts.briefId) {
+      selectedPrepBriefId = opts.briefId;
+      if (opts.briefList !== false) precallBriefListMode = true;
+    } else if (opts.briefList) {
+      precallBriefListMode = true;
+      selectedPrepBriefId = null;
+    } else if (!opts.keepBrief && !opts.drillDown) {
+      precallBriefListMode = false;
+      selectedPrepBriefId = null;
+      resetPrecallForm();
+    }
+    $("main-view-title").textContent = selectedPrepBriefId
+      ? "Pre-call brief"
+      : precallBriefListMode
+        ? "All briefs"
+        : VIEW_TITLES.precall;
+    if (opts.briefList || opts.briefId) {
+      void renderPrecallPanel();
+    } else if (opts.keepBrief) {
+      /* brief already open — leave DOM as-is */
+    } else if (!opts.drillDown) {
+      /* resetPrecallForm already ran */
+    }
   }
 
   const hash =
@@ -654,16 +717,22 @@ function switchView(name, opts = {}) {
             ? dealDetailHash()
             : name === "calls"
               ? callDetailHash()
-              : name === "pipeline"
-                ? pipelineHash()
-                : name;
+              : name === "precall"
+                ? precallHash()
+                : name === "pipeline"
+                  ? pipelineHash()
+                  : name;
   history.replaceState(null, "", `#${hash}`);
   closeSidebar();
   if (prevView === "precall" && name !== "precall") {
+    precallBriefListMode = false;
+    selectedPrepBriefId = null;
     resetPrecallForm();
   }
   if (name === "precall") {
-    if (!opts.keepBrief) resetPrecallForm();
+    if (!opts.keepBrief && !opts.briefList && !opts.briefId && !opts.drillDown) {
+      resetPrecallForm();
+    }
     syncPrepEngagementMotion();
   }
   if (name === "postcall" && !isPostCallGenerationBusy()) {
@@ -940,6 +1009,57 @@ async function renderContactsPanel() {
   });
 }
 
+async function renderPrecallPanel() {
+  const listHost = $("prep-briefs-list-view");
+  if (!currentSession?.email) return;
+  const gen = ++precallPanelRenderGen;
+
+  if (selectedPrepBriefId) {
+    const ok = await openPrepBriefAsync(selectedPrepBriefId, buildFetchAllRemotePreps(), {
+      fromList: precallBriefListMode,
+    });
+    if (gen !== precallPanelRenderGen) return;
+    if (!ok) {
+      selectedPrepBriefId = null;
+      if (precallBriefListMode) {
+        showPrepBriefsListView();
+        await renderBriefsListView(listHost, currentSession, {
+          fetchAllRemotePreps: buildFetchAllRemotePreps(),
+          onSelectBrief: (id) => openPrepBriefFromList(id),
+        });
+      } else {
+        resetPrecallForm();
+      }
+    }
+    return;
+  }
+
+  if (precallBriefListMode) {
+    showPrepBriefsListView();
+    if (!listHost) return;
+    await renderBriefsListView(listHost, currentSession, {
+      fetchAllRemotePreps: buildFetchAllRemotePreps(),
+      onSelectBrief: (id) => openPrepBriefFromList(id),
+    });
+  }
+}
+
+function openPrepBriefFromList(id) {
+  if (!id) return;
+  selectedPrepBriefId = id;
+  precallBriefListMode = true;
+  switchView("precall", { briefId: id, briefList: true, drillDown: true });
+  document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.id === id);
+  });
+}
+
+function backToBriefsList() {
+  selectedPrepBriefId = null;
+  precallBriefListMode = true;
+  switchView("precall", { briefList: true, drillDown: true });
+}
+
 async function renderCallPanel() {
   const panel = $("call-panel");
   if (!panel || !currentSession?.email) return;
@@ -1115,6 +1235,28 @@ function applyRouteFromHash() {
     return;
   }
 
+  const prepBriefMatch = /^precall\/briefs\/([^/?]+)$/.exec(hash);
+  if (prepBriefMatch) {
+    selectedPrepBriefId = prepBriefMatch[1];
+    precallBriefListMode = true;
+    if (currentView !== "precall") {
+      switchView("precall", { drillDown: true, briefId: prepBriefMatch[1], briefList: true });
+    } else {
+      void renderPrecallPanel();
+    }
+    return;
+  }
+  if (hash === "precall/briefs") {
+    selectedPrepBriefId = null;
+    precallBriefListMode = true;
+    if (currentView !== "precall") {
+      switchView("precall", { drillDown: true, briefList: true });
+    } else {
+      void renderPrecallPanel();
+    }
+    return;
+  }
+
   const topLevelViews = new Set([
     "dashboard",
     "coaching",
@@ -1178,6 +1320,8 @@ async function loadPersistedHistory() {
 }
 
 function openPrepBriefItem(id) {
+  selectedPrepBriefId = null;
+  precallBriefListMode = false;
   if (!openPrepBrief(id)) return;
   switchView("precall", { keepBrief: true });
   document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
@@ -1504,6 +1648,16 @@ async function showApp(session, opts = {}) {
               callsListFilter = hashParams.get("filter") || "";
               switchView("calls", { drillDown: !!callsListFilter });
             } else {
+              const prepBriefMatch = /^precall\/briefs\/([^/?]+)$/.exec(hash);
+              if (prepBriefMatch) {
+                selectedPrepBriefId = prepBriefMatch[1];
+                precallBriefListMode = true;
+                switchView("precall", { drillDown: true, briefId: prepBriefMatch[1], briefList: true });
+              } else if (hash === "precall/briefs") {
+                selectedPrepBriefId = null;
+                precallBriefListMode = true;
+                switchView("precall", { drillDown: true, briefList: true });
+              } else {
               const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
               if (accountDealMatch) {
                 selectedAccountId = accountDealMatch[1];
@@ -1543,6 +1697,7 @@ async function showApp(session, opts = {}) {
                     switchView(valid.includes(hash) ? hash : defaultView);
                   }
                 }
+              }
               }
             }
           }
@@ -1871,6 +2026,7 @@ async function boot() {
     authEnabled: isFirebaseAuthEnabled(),
     workerDownMsg: workerDownMessage(),
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
+    onBackToBriefsList: backToBriefsList,
     switchView,
     onGenerated: async (payload, prep, meta) => {
       let lifecycleId = null;
@@ -1925,6 +2081,8 @@ async function boot() {
   });
 
   $("topbar-new-brief")?.addEventListener("click", () => {
+    precallBriefListMode = false;
+    selectedPrepBriefId = null;
     resetPrecallForm();
     switchView("precall");
   });

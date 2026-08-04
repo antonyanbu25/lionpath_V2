@@ -1,6 +1,7 @@
 // Server-side word-cap enforcement for prep/post-call JSON (v5).
 
 import { attachPrepAssets } from "./prep-assets";
+import { resolveCompanySizeValue } from "./prep/context-field-router";
 import { UNATTRIBUTED_LABEL } from "./prep/source-display";
 import {
   FACT_KEYS,
@@ -220,10 +221,11 @@ function normalizeFacts(raw: Prep, sources: PrepSource[]): Prep["facts"] {
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
   const csa = raw.companySizeAgents || { agents: "unknown", estimated: false };
   const agentsVal = trimCell(csa.agents);
+  const companySizeVal = trimCell(resolveCompanySizeValue(raw) ?? "unknown");
   const fallback = [
     { key: "Industry", value: trimCell(bc.market) },
     { key: "Head office", value: trimCell(bc.headOffice) },
-    { key: "Company size", value: trimCell(bc.users) },
+    { key: "Company size", value: companySizeVal },
     { key: "Support team", value: agentsVal },
     { key: "Business model", value: trimCell(bc.model) },
     { key: "Ownership", value: trimCell(bc.fundingParent) },

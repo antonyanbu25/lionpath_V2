@@ -2849,3 +2849,135 @@
   font-size: 11px; font-weight: 700; color: #2e897b; background: #e3efec;
   border-radius: 20px; padding: 3px 9px; white-space: nowrap;
 }
+
+/* All briefs list (#precall/briefs) */
+
+.prep-briefs-list-host {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 26px 24px;
+}
+
+#view-precall .brief-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  --brief-list-cols: minmax(160px, 1.6fr) 96px minmax(100px, 1fr) 88px;
+}
+
+#view-precall .brief-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 12px;
+  padding-top: 8px;
+}
+
+#view-precall .brief-list-heading {
+  margin: 0 0 4px;
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+#view-precall .brief-list-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.brief-list-filters fw-input {
+  min-width: 220px;
+}
+
+.brief-list-count {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+}
+
+.brief-list-table-card {
+  overflow: hidden;
+}
+
+.brief-list-grid-header,
+.brief-list-row-grid {
+  display: grid;
+  grid-template-columns: var(--brief-list-cols);
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.brief-list-grid-header {
+  padding: 10px 14px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  border-bottom: 1px solid var(--dew-border);
+  background: var(--dew-surface-raised, var(--dew-surface));
+}
+
+.brief-list-row {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 1px solid var(--dew-border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.brief-list-row:hover {
+  background: var(--dew-surface-hover, rgba(0, 0, 0, 0.03));
+}
+
+.brief-list-col--title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brief-list-mono {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  background: var(--dew-surface-raised, #eef2f6);
+  color: var(--dew-text-secondary);
+}
+
+.brief-list-row-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prep-result-back {
+  padding: 12px 26px 0;
+  background: var(--dew-surface);
+}
+
+.prep-result-back .lifecycle-back {
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+.brief-list-empty {
+  padding-top: 24px;
+}
+
+.brief-list-no-matches {
+  padding: 16px 14px;
+  margin: 0;
+}

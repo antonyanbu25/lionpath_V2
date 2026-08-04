@@ -38,6 +38,16 @@ const eq = (a: unknown, b: unknown, m: string) => {
 
 {
   const out = filterFishContextMetrics([
+    { label: "Support agents", value: "40-50", aboutCompany: true },
+    { label: "Employees", value: "500 globally", aboutCompany: true },
+  ]);
+  eq(out.length, 2, "support agents and employees both kept when distinct");
+  eq(out[0].label, "Support agents", "support agents label for support users count");
+  ok(!out.some((m) => m.label === "Employees" && m.value === "40-50"), "support users not labeled Employees");
+}
+
+{
+  const out = filterFishContextMetrics([
     { label: "Employees", value: "500 globally", aboutCompany: true },
     { label: "Employees", value: "500 globally", aboutCompany: true },
   ]);

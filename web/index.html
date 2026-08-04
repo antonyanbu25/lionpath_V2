@@ -459,7 +459,11 @@
               <fw-skeleton variant="rect" height="120px" effect="sheen"></fw-skeleton>
             </fw-card>
             <div id="prep-legacy-fallback" hidden></div>
+            <div id="prep-briefs-list-view" class="prep-briefs-list-host" hidden aria-label="All briefs"></div>
             <div id="prep-result-view" hidden>
+              <div id="prep-result-back" class="prep-result-back" hidden>
+                <button type="button" class="lifecycle-back btn-wire" data-action="back-to-briefs">← All briefs</button>
+              </div>
               <div id="prep-result-header" class="prep-result-header"></div>
               <fw-tabs id="prep-tabs" active-tab-name="discovery">
                 <fw-tab slot="tab" panel="discovery">Know your Customer</fw-tab>

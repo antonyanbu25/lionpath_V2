@@ -37,7 +37,7 @@ import {
 } from "./prep-context-files.js";
 import { mergeContextAttachments } from "./prep-context-attachments.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks } from "./prep-contact-enrich.js";
-import { applySeContextToDiscovery, applySeContextToPrep } from "./prep-se-context.js";
+import { applySeContextToDiscovery, applySeContextToFacts, applySeContextToPrep } from "./prep-se-context.js";
 import { canonicalizePrepSources } from "./prep-source-canon.js";
 import { hydrateRecentNews } from "./recent-news.js";
 import { getPrepCrmSelection } from "./prep-crm-resolve.js";
@@ -107,11 +107,34 @@ export function getBriefById(id) {
   return loadLocalBriefs().find((b) => b.id === id) || null;
 }
 
-export function openPrepBrief(id) {
+/** Resolve brief from local cache, optionally Firestore. */
+export async function resolveBriefById(id, fetchAllRemotePreps) {
+  const local = getBriefById(id);
+  if (local?.prep) return local;
+  if (typeof fetchAllRemotePreps !== "function") return local;
+  try {
+    const remote = await fetchAllRemotePreps();
+    return (remote || []).find((b) => b.id === id) || local;
+  } catch {
+    return local;
+  }
+}
+
+export function openPrepBrief(id, opts = {}) {
   const record = getBriefById(id);
   if (!record?.prep) return false;
   state.activeBriefId = id;
-  displayPrepResult(record.prep, record.meta || { company: record.company });
+  state.fromBriefList = !!opts.fromList;
+  displayPrepResult(record.prep, record.meta || { company: record.company }, opts);
+  return true;
+}
+
+export async function openPrepBriefAsync(id, fetchAllRemotePreps, opts = {}) {
+  const record = await resolveBriefById(id, fetchAllRemotePreps);
+  if (!record?.prep) return false;
+  state.activeBriefId = id;
+  state.fromBriefList = !!opts.fromList;
+  displayPrepResult(record.prep, record.meta || { company: record.company }, opts);
   return true;
 }
 
@@ -138,12 +161,17 @@ let state = {
   currentPrep: null,
   currentMeta: null,
   activeBriefId: null,
+  fromBriefList: false,
   pendingResearch: null,
   contactEnrichmentsByEmail: null,
   peopleProspectTab: "prospect-0",
   linkedinParsing: false,
   contextParsing: false,
 };
+
+export function getPrepViewState() {
+  return { view: state.view, fromBriefList: state.fromBriefList, activeBriefId: state.activeBriefId };
+}
 
 /** True while any attachment is still being read — submitting now would drop it. */
 function isParsingAttachments() {
@@ -364,12 +392,15 @@ export function resetPrecallForm() {
   state.currentPrep = null;
   state.currentMeta = null;
   state.activeBriefId = null;
+  state.fromBriefList = false;
   state.pendingResearch = null;
   state.contactEnrichmentsByEmail = null;
   state.peopleProspectTab = "prospect-0";
   closePopover();
   show($("prep-form-view"), true);
+  show($("prep-briefs-list-view"), false);
   show($("prep-result-view"), false);
+  show($("prep-result-back"), false);
   show($("prep-status"), false);
   show($("prep-loading"), false);
   show($("prep-legacy-fallback"), false);
@@ -450,13 +481,43 @@ export function renderPrepRecentBriefs() {
 function showFormView() {
   state.view = "form";
   state.tab = "discovery";
+  state.fromBriefList = false;
   closePopover();
   show($("prep-form-view"), true);
+  show($("prep-briefs-list-view"), false);
   show($("prep-result-view"), false);
+  show($("prep-result-back"), false);
   show($("prep-status"), false);
 }
 
-function showResultView(prep, meta) {
+/** Show all-briefs list (#precall/briefs). */
+export function showPrepBriefsListView() {
+  if (state.loading) return;
+  state.view = "list";
+  state.fromBriefList = false;
+  state.activeBriefId = null;
+  state.currentPrep = null;
+  state.currentMeta = null;
+  closePopover();
+  show($("prep-form-view"), false);
+  show($("prep-briefs-list-view"), true);
+  show($("prep-result-view"), false);
+  show($("prep-result-back"), false);
+  show($("prep-status"), false);
+  show($("prep-loading"), false);
+  show($("prep-legacy-fallback"), false);
+}
+
+function wireBriefResultBack() {
+  const back = $("prep-result-back");
+  if (!back || back.dataset.wired === "1") return;
+  back.dataset.wired = "1";
+  const goBack = () => deps.onBackToBriefsList?.();
+  back.querySelector('[data-action="back-to-briefs"]')?.addEventListener("click", goBack);
+  back.querySelector('[data-action="back-to-briefs"]')?.addEventListener("fwClick", goBack);
+}
+
+function showResultView(prep, meta, opts = {}) {
   if (!isV8Prep(prep)) {
     const legacy = $("prep-legacy-fallback");
     if (legacy) {
@@ -464,7 +525,9 @@ function showResultView(prep, meta) {
       show(legacy, true);
     }
     show($("prep-form-view"), false);
+    show($("prep-briefs-list-view"), false);
     show($("prep-result-view"), false);
+    show($("prep-result-back"), false);
     return;
   }
 
@@ -472,13 +535,18 @@ function showResultView(prep, meta) {
   state.currentPrep = prep;
   state.currentMeta = meta;
   state.view = "result";
+  state.fromBriefList = !!(opts.fromList ?? state.fromBriefList);
   closePopover();
 
   const header = $("prep-result-header");
   if (header) header.innerHTML = renderResultHeader(prep, meta);
 
   show($("prep-form-view"), false);
+  show($("prep-briefs-list-view"), false);
   show($("prep-result-view"), true);
+  show($("prep-result-back"), state.fromBriefList);
+
+  wireBriefResultBack();
 
   const tabs = $("prep-tabs");
   if (tabs) tabs.activeTabName = state.tab;
@@ -486,7 +554,7 @@ function showResultView(prep, meta) {
   renderActiveTab();
 }
 
-export function displayPrepResult(prep, meta = {}) {
+export function displayPrepResult(prep, meta = {}, opts = {}) {
   const context = mergeContextAttachments(
     meta.additionalContext || meta.seAdditionalContext,
     meta.contextAttachments || meta.input?.contextAttachments,
@@ -506,8 +574,11 @@ export function displayPrepResult(prep, meta = {}) {
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
   merged = hydrateRecentNews(merged, meta);
-  const withContext = applySeContextToDiscovery(applySeContextToPrep(merged, context), context);
-  showResultView(canonicalizePrepSources(withContext).prep, meta);
+  const withContext = applySeContextToDiscovery(
+    applySeContextToFacts(applySeContextToPrep(merged, context), context),
+    context,
+  );
+  showResultView(canonicalizePrepSources(withContext).prep, meta, opts);
 }
 
 function openSourcePopover(label, ev) {
@@ -1310,6 +1381,7 @@ export function initPrecall(options) {
   });
 
   initPrepCrmResolve();
+  wireBriefResultBack();
   renderPrepRecentBriefs();
   if (typeof window !== "undefined") {
     window.__logPrecallDeploy = () => logPrecallDeployFingerprint("crm");

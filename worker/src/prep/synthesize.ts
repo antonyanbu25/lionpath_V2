@@ -9,7 +9,7 @@ import { canonicalizePrepSources } from "./canonicalize-sources";
 import { kbContextBlock } from "./extract-facts";
 import { allCriteriaPromptBlock } from "./icp-criteria";
 import { applySeContextToDiscovery } from "./se-discovery-hints";
-import { applySeContextToPrep } from "./se-context-facts";
+import { applySeContextToPrep, factsFromSeContext, SE_SOURCE } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
 
 const PREP_GEMINI_SCHEMA = toPrepGeminiResponseSchema();
@@ -111,6 +111,53 @@ function synthesizeUserPrompt(
     .join("\n");
 }
 
+function mergeSeSources(existing: SourceRef[], seSources: SourceRef[]): SourceRef[] {
+  const byLabel = new Map(existing.map((s) => [s.label, s]));
+  for (const s of seSources) {
+    if (!byLabel.has(s.label)) byLabel.set(s.label, s);
+  }
+  return [...byLabel.values()];
+}
+
+/** Overlay regex-parsed SE signal facts so synthesize attributes them to SE, not web. */
+export function applySeContextToFacts(
+  facts: ResearchFact[],
+  sources: SourceRef[],
+  additionalContext?: string,
+): { facts: ResearchFact[]; sources: SourceRef[] } {
+  const se = factsFromSeContext(additionalContext);
+  if (!se.facts.length) return { facts, sources };
+
+  const seByKey = new Map(se.facts.map((f) => [f.key, f]));
+  const out: ResearchFact[] = [];
+  const added = new Set<string>();
+
+  for (const f of facts) {
+    const overlay = seByKey.get(f.key);
+    if (overlay) {
+      added.add(f.key);
+      out.push({
+        ...f,
+        value: overlay.value,
+        sourceLabel: "SE",
+        sourceUrl: "se-context",
+        confidence: overlay.confidence ?? SE_SOURCE.confidence,
+        category: overlay.category ?? f.category,
+      });
+    } else {
+      out.push(f);
+    }
+  }
+  for (const f of se.facts) {
+    if (!added.has(f.key)) out.push(f);
+  }
+
+  return {
+    facts: out,
+    sources: mergeSeSources(sources, se.sources),
+  };
+}
+
 function isGeminiInvalidSchemaError(err: unknown): boolean {
   const msg = (err as Error)?.message || "";
   return msg.includes("Gemini API 400") && /INVALID_ARGUMENT|invalid argument/i.test(msg);
@@ -172,17 +219,22 @@ export async function synthesizePrep(
   sources: SourceRef[],
 ): Promise<Prep> {
   const provider = getSynthesizeProvider(env);
+  const { facts: seFacts, sources: seSources } = applySeContextToFacts(
+    facts,
+    sources,
+    input.additionalContext,
+  );
 
-  const result = await generateSynthesis(provider, input, facts, sources);
+  const result = await generateSynthesis(provider, input, seFacts, seSources);
 
   function finalizePrep(raw: Prep): Prep {
     // `raw.sources` is the model's own lossy echo of the source list; pass the real
     // research table so rows resolve against it instead of a positional guess.
-    const normalized = normalizePrepOutput(raw, { authoritative: sources });
+    const normalized = normalizePrepOutput(raw, { authoritative: seSources });
     const withSignals = applySeContextToPrep(normalized, input.additionalContext);
     const withDiscovery = applySeContextToDiscovery(withSignals, input.additionalContext);
     // Must be last: applySeContextToPrep unshifts the SE source after normalization.
-    return canonicalizePrepSources(withDiscovery, { authoritative: sources }).prep;
+    return canonicalizePrepSources(withDiscovery, { authoritative: seSources }).prep;
   }
 
   try {
