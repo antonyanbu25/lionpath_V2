@@ -74,21 +74,14 @@ const lineDocs = [
   },
 ];
 
-const mockStore = {
-  async listScorecardsByCall(id) {
-    return id === callId ? [scorecardDoc] : [];
-  },
-  async listScorecardLinesByCall(id) {
-    return id === callId ? lineDocs : [];
-  },
-};
-
 const mapped = postCallRecordsToAnalyses([postCallDoc]);
 assert(mapped.length === 1, "postCallRecordsToAnalyses maps one record");
 assert(mapped[0].ownerId === ownerId, "preserves ownerId for SE filtering");
 assert(!hasCoachingAnalysis(mapped[0]), "no qualityCoach and no lines yet — not coaching-eligible");
 
-const hydrated = await hydratePostCallAnalyses(mapped, mockStore);
+const scorecardsByCall = new Map([[callId, [scorecardDoc]]]);
+const linesByCall = new Map([[callId, lineDocs]]);
+const hydrated = hydratePostCallAnalyses(mapped, scorecardsByCall, linesByCall);
 assert(hydrated.length === 1, "hydrate returns one analysis");
 assert(hasCoachingAnalysis(hydrated[0]), "hydrated scorecard lines make record coaching-eligible");
 assert(hydrated[0].scorecard?.lines?.length === 4, "hydrates four theme lines");

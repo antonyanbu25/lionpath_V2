@@ -2027,6 +2027,7 @@ async function initFirebase() {
     getDoc: fsMod.getDoc, getDocs: fsMod.getDocs, setDoc: fsMod.setDoc,
     updateDoc: fsMod.updateDoc, deleteDoc: fsMod.deleteDoc, query: fsMod.query,
     where: fsMod.where, orderBy: fsMod.orderBy, limit: fsMod.limit,
+    documentId: fsMod.documentId,
     serverTimestamp: fsMod.serverTimestamp,
   };
 

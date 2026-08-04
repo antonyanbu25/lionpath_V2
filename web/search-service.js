@@ -513,8 +513,12 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
   if (ownerId && store.listLifecyclesByOwner) {
     try {
       const lifecycles = await store.listLifecyclesByOwner(ownerId);
+      const lcIds = lifecycles.map((lc) => lc.id);
+      const tasksByLc = store.listTasksForLifecycles
+        ? await store.listTasksForLifecycles(lcIds)
+        : new Map();
       for (const lc of lifecycles) {
-        const tasks = store.listTasksByLifecycle ? await store.listTasksByLifecycle(lc.id) : [];
+        const tasks = tasksByLc.get(lc.id) || [];
         for (const t of tasks) {
           if (t.status === "completed" || t.status === "dismissed") continue;
           pushItem({

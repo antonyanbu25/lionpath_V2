@@ -468,6 +468,20 @@ export function createLocalStore() {
       return findMany("tasks", (t) => t.lifecycleId === lifecycleId, (a, b) => b.createdAt - a.createdAt);
     },
 
+    async listTasksForLifecycles(lifecycleIds) {
+      const ids = new Set((lifecycleIds || []).filter(Boolean));
+      /** @type {Map<string, object[]>} */
+      const byLifecycle = new Map();
+      if (!ids.size) return byLifecycle;
+      const tasks = findMany("tasks", (t) => ids.has(t.lifecycleId), (a, b) => b.createdAt - a.createdAt);
+      for (const task of tasks) {
+        const key = task.lifecycleId;
+        if (!byLifecycle.has(key)) byLifecycle.set(key, []);
+        byLifecycle.get(key).push(task);
+      }
+      return byLifecycle;
+    },
+
     async addLifecycleEvent(event) {
       return upsertById("events", event);
     },
@@ -489,6 +503,38 @@ export function createLocalStore() {
       return findMany("scorecards", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
+    async listScorecardsForCalls(callIds) {
+      const ids = new Set((callIds || []).filter(Boolean));
+      /** @type {Map<string, object[]>} */
+      const byCall = new Map();
+      if (!ids.size) return byCall;
+      const cards = findMany("scorecards", (s) => ids.has(s.callId), (a, b) => b.createdAt - a.createdAt);
+      for (const card of cards) {
+        const key = card.callId;
+        if (!byCall.has(key)) byCall.set(key, []);
+        byCall.get(key).push(card);
+      }
+      return byCall;
+    },
+
+    async listScorecardLinesByCall(callId) {
+      return findMany("scorecardLines", (l) => l.callId === callId);
+    },
+
+    async listScorecardLinesForCalls(callIds) {
+      const ids = new Set((callIds || []).filter(Boolean));
+      /** @type {Map<string, object[]>} */
+      const byCall = new Map();
+      if (!ids.size) return byCall;
+      const lines = findMany("scorecardLines", (l) => ids.has(l.callId));
+      for (const line of lines) {
+        const key = line.callId;
+        if (!byCall.has(key)) byCall.set(key, []);
+        byCall.get(key).push(line);
+      }
+      return byCall;
+    },
+
     async upsertScorecardLine(docData) {
       return upsertById("scorecardLines", docData);
     },
@@ -503,8 +549,11 @@ export function createLocalStore() {
         "scorecardLines",
         (l) => l.teamId === teamId && l.themeKey === themeKey && l.applicable === true,
       );
+      const cardIds = new Set(lines.map((l) => l.scorecardId).filter(Boolean));
       const provisionalCards = new Set(
-        loadCollection("scorecards").filter((s) => s.provisional).map((s) => s.id),
+        loadCollection("scorecards")
+          .filter((s) => cardIds.has(s.id) && s.provisional)
+          .map((s) => s.id),
       );
       return lines.filter((l) => !provisionalCards.has(l.scorecardId));
     },

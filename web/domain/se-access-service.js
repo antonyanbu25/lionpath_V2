@@ -8,7 +8,7 @@ import { listAnalysesWithQuality, getPostCallAnalysis } from "../history.js";
 import { dedupeAnalysesByCallIdentity } from "../call-identity.js";
 import {
   postCallRecordsToAnalyses,
-  hydratePostCallAnalyses,
+  fetchAndHydratePostCallAnalyses,
 } from "./postcall-hydrate.js";
 import { listAccountsForSession } from "./account-service.js?v=2.1.14";
 import { canSessionAction, sessionToUser } from "./rbac.js";
@@ -85,7 +85,7 @@ export async function getPostCallForSession(session, callId, ownerEmail) {
     if (!postCall) return null;
     const ownerUid = await resolveUidForEmail(owner);
     if (postCall.ownerId && postCall.ownerId !== ownerUid) return null;
-    const [analysis] = await hydratePostCallAnalyses(
+    const [analysis] = await fetchAndHydratePostCallAnalyses(
       postCallRecordsToAnalyses([postCall]),
       store,
     );

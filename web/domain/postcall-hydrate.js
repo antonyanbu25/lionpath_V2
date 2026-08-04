@@ -69,29 +69,26 @@ export function postCallRecordsToAnalyses(records) {
   });
 }
 
-/** @param {object[]} analyses @param {object} store */
-export async function hydratePostCallAnalyses(analyses, store) {
-  if (!analyses?.length || !store?.listScorecardsByCall) return analyses || [];
+/**
+ * Pure assembly — zero I/O.
+ * @param {object[]} analyses
+ * @param {Map<string, object[]>|undefined|null} scorecardsByCall
+ * @param {Map<string, object[]>|undefined|null} linesByCall
+ */
+export function hydratePostCallAnalyses(analyses, scorecardsByCall, linesByCall) {
+  if (!analyses?.length) return analyses || [];
 
-  const hydrated = [];
-  for (const rec of analyses) {
-    if (recordHasScorecardLines(rec)) {
-      hydrated.push(rec);
-      continue;
-    }
+  const cardsMap = scorecardsByCall instanceof Map ? scorecardsByCall : new Map();
+  const linesMap = linesByCall instanceof Map ? linesByCall : new Map();
 
-    const cards = await store.listScorecardsByCall(rec.id);
-    const card = cards?.[0];
-    if (!card) {
-      hydrated.push(rec);
-      continue;
-    }
+  return analyses.map((rec) => {
+    if (recordHasScorecardLines(rec)) return rec;
 
-    let lines = [];
-    if (store.listScorecardLinesByCall) {
-      const storedLines = await store.listScorecardLinesByCall(rec.id);
-      lines = (storedLines || []).map(mapScorecardLine);
-    }
+    const card = cardsMap.get(rec.id)?.[0];
+    if (!card) return rec;
+
+    const storedLines = linesMap.get(rec.id) || [];
+    const lines = storedLines.map(mapScorecardLine);
 
     const scorecard = {
       callType: card.callType || rec.analysisMeta?.callType || "demo",
@@ -110,14 +107,36 @@ export async function hydratePostCallAnalyses(analyses, store) {
       provisional: scorecard.provisional,
     };
 
-    hydrated.push({
+    return {
       ...rec,
       scorecard,
       analysisMeta,
       result: { ...rec.result, scorecard, analysisMeta },
-    });
+    };
+  });
+}
+
+/**
+ * Batch-fetch scorecards/lines then hydrate.
+ * @param {object[]} analyses
+ * @param {object} store
+ */
+export async function fetchAndHydratePostCallAnalyses(analyses, store) {
+  if (!analyses?.length) return analyses || [];
+
+  const needIds = analyses.filter((rec) => !recordHasScorecardLines(rec)).map((rec) => rec.id);
+  if (!needIds.length) return analyses;
+
+  if (!store?.listScorecardsForCalls || !store?.listScorecardLinesForCalls) {
+    return analyses;
   }
-  return hydrated;
+
+  const [scorecardsByCall, linesByCall] = await Promise.all([
+    store.listScorecardsForCalls(needIds),
+    store.listScorecardLinesForCalls(needIds),
+  ]);
+
+  return hydratePostCallAnalyses(analyses, scorecardsByCall, linesByCall);
 }
 
 /** @param {object|null} session */
@@ -132,7 +151,7 @@ export async function loadTeamPostCallsFromStore(session) {
     }
     if (records?.length) {
       const analyses = postCallRecordsToAnalyses(records);
-      return hydratePostCallAnalyses(analyses, store);
+      return fetchAndHydratePostCallAnalyses(analyses, store);
     }
   } catch (err) {
     console.warn("Could not load team postCalls from domain store:", err);

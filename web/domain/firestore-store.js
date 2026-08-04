@@ -22,8 +22,57 @@ export function createFirestoreStore(fb) {
 
   const {
     db, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-    query, where, orderBy, limit,
+    query, where, orderBy, limit, documentId,
   } = fb;
+
+  const WHERE_IN_CHUNK = 30;
+
+  /** @param {string} col @param {string} field @param {string[]} values */
+  async function queryWhereInChunks(col, field, values) {
+    const ids = [...new Set((values || []).filter(Boolean))];
+    if (!ids.length) return [];
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += WHERE_IN_CHUNK) {
+      chunks.push(ids.slice(i, i + WHERE_IN_CHUNK));
+    }
+    const snaps = await Promise.all(
+      chunks.map((chunk) => {
+        const q = query(collection(db, col), where(field, "in", chunk));
+        return getDocs(q);
+      }),
+    );
+    return snaps.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  }
+
+  /** @param {string} col @param {string[]} ids */
+  async function getDocsByIdInChunks(col, ids) {
+    const unique = [...new Set((ids || []).filter(Boolean))];
+    if (!unique.length || !documentId) return [];
+    const chunks = [];
+    for (let i = 0; i < unique.length; i += WHERE_IN_CHUNK) {
+      chunks.push(unique.slice(i, i + WHERE_IN_CHUNK));
+    }
+    const snaps = await Promise.all(
+      chunks.map((chunk) => {
+        const q = query(collection(db, col), where(documentId(), "in", chunk));
+        return getDocs(q);
+      }),
+    );
+    return snaps.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  }
+
+  /** @param {object[]} rows @param {string} field */
+  function groupRowsByField(rows, field) {
+    /** @type {Map<string, object[]>} */
+    const out = new Map();
+    for (const row of rows || []) {
+      const key = String(row[field] || "");
+      if (!key) continue;
+      if (!out.has(key)) out.set(key, []);
+      out.get(key).push(row);
+    }
+    return out;
+  }
 
   const READ_CACHE_TTL_MS = 30_000;
   const READ_CACHE_COLS = new Set(["users", "teams", "orgs", "accounts"]);
@@ -657,6 +706,11 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    async listTasksForLifecycles(lifecycleIds) {
+      const rows = await queryWhereInChunks("tasks", "lifecycleId", lifecycleIds);
+      return groupRowsByField(rows, "lifecycleId");
+    },
+
     async addLifecycleEvent(event) {
       const eventRef = doc(
         collection(db, "lifecycles", event.lifecycleId, "events"),
@@ -694,6 +748,22 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    async listScorecardsForCalls(callIds) {
+      const rows = await queryWhereInChunks("scorecards", "callId", callIds);
+      return groupRowsByField(rows, "callId");
+    },
+
+    async listScorecardLinesByCall(callId) {
+      const q = query(collection(db, "scorecardLines"), where("callId", "==", callId));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listScorecardLinesForCalls(callIds) {
+      const rows = await queryWhereInChunks("scorecardLines", "callId", callIds);
+      return groupRowsByField(rows, "callId");
+    },
+
     async upsertScorecardLine(docData) {
       const ref = docData.id
         ? doc(db, "scorecardLines", docData.id)
@@ -725,11 +795,8 @@ export function createFirestoreStore(fb) {
       const lines = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       // Exclude shadow-mode calls — provisional lives on the parent scorecard
       const cardIds = [...new Set(lines.map((l) => l.scorecardId).filter(Boolean))];
-      const provisional = new Set();
-      for (const id of cardIds) {
-        const card = await getById("scorecards", id);
-        if (card?.provisional) provisional.add(id);
-      }
+      const cards = await getDocsByIdInChunks("scorecards", cardIds);
+      const provisional = new Set(cards.filter((c) => c.provisional).map((c) => c.id));
       return lines.filter((l) => !provisional.has(l.scorecardId));
     },
 
