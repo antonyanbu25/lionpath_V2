@@ -55,6 +55,7 @@ After deploy, hard-refresh the portal (Ctrl+Shift+R) to pick up the new favicon 
 | **Duplicate deals** when not intended | `getOrCreateLifecycle` handles `createNewDeal` by archiving the old spine and calling `createDealWithExplicitTitle`; repeat briefs reuse the active deal |
 | **Post-call account ignored** | `linkPostCallToLifecycle` respects `accountId` and `createNewAccount` flags from intake |
 | **Misleading UI labels** | Pre-call and post-call badges now show **Existing account** / **New account · on generate** (or **on confirm**) instead of always implying creation |
+| **Repeat pre-call search** | CRM resolve panel reuses existing account/deal on repeat email search instead of showing "new account" (`ed48285`) |
 
 Key modules: `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`.
 
@@ -70,6 +71,9 @@ Freshdesk-inspired global search (⌘K / topbar):
 | **Filter chips** | All · Accounts · Deals · Contacts · Briefs · Calls · Tasks |
 | **Recently searched / viewed** | Per-user localStorage with Clear actions |
 | **RAG rerank** | Token match locally → `POST /api/search/rag` embedding rerank (Gemini `text-embedding-004`) when worker key is configured |
+| **Speed / index** | Sync localStorage history/briefs/calls before Firestore; instant token hits + async RAG rerank (`3aeab26`) |
+| **Panel alignment** | Omni-search dropdown anchored to topbar input width/position (`1258713`) |
+| **Open from search** | Account/contact/deal result clicks clear stale deal context and open the correct object (`2.1.12`) |
 | **Dark theme** | Uses `--dew-*` tokens; filter chips and result rows adapt to `[data-theme="dark"]` |
 
 Key modules: `web/search-service.js`, `web/global-search.js`, `worker/src/search/rag-search.ts`.
@@ -134,7 +138,7 @@ The **Recent news** card (Know tab, row 1) no longer back-fills from research fa
 |------|-------|
 | Login refresh | `web/index.html`, `web/styles.css`, `web/theme.js`, `web/about.html` |
 | Account/deal dedup | `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`, `web/postcall-contact-resolve.js` |
-| Omni search | `web/search-service.js`, `web/global-search.js`, `web/index.html`, `web/styles.css`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts` |
+| Omni search | `web/search-service.js`, `web/global-search.js`, `web/app.js`, `web/index.html`, `web/styles.css`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts` |
 | Form validation | `web/prep-linkedin-pdf.js`, `web/precall.js`, `web/precall.css` |
 | Recent news | `worker/src/prep/company-news.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `web/precall-brief-v9.js`, `web/recent-news.js` |
 | Fish sizing | `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/schema.ts`, `web/precall-brief-v9.js` |
@@ -150,6 +154,9 @@ node web/scripts/test-contact-deal-mapping.mjs
 # Search service smoke tests
 node web/scripts/test-search-service.mjs
 
+# Account view smoke tests
+node web/scripts/test-account-view.mjs
+
 # Worker unit tests
 cd worker && npx tsx scripts/test-company-news.ts && npx tsx scripts/test-rivals-context.ts
 
@@ -157,7 +164,17 @@ cd worker && npx tsx scripts/test-company-news.ts && npx tsx scripts/test-rivals
 cd web && node scripts/test-precall-render.mjs
 
 # Manual: open pre-call form — repeat search for same company should show "Existing account";
-# ⌘K search should show filter chips, recently searched/viewed, and RAG-ranked results when worker is up.
+# ⌘K search should show filter chips, recently searched/viewed, and RAG-ranked results when worker is up;
+# clicking an account from search should open account overview (not "Could not load this account").
+```
+
+### Push workflow (branch 2.1)
+
+Production VPS deploys from **Tony's repo** (`https://github.com/antonyanbu25/lionpath_V2.git`, remote **`antony`**). On branch `2.1`, push only to `antony`, not `origin`:
+
+```bash
+git checkout 2.1
+git push antony 2.1
 ```
 
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.

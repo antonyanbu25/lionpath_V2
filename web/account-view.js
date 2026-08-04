@@ -2167,7 +2167,7 @@ export async function renderAccountView(container, session, opts = {}) {
       wireDetailEvents(container, activeSession, {
         ...opts,
         accountId: opts.accountId,
-        lifecycleId: detail.lifecycle.id,
+        lifecycleId: detail.lifecycle?.id || null,
         dealId: opportunityView ? detail.selectedDealId : null,
         engagementPrepType: detail.selectedDealType,
         selectedDeal: detail.selectedDeal,

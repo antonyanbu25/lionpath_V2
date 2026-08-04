@@ -13,7 +13,7 @@ import {
   recentFromIndex,
   invalidateSearchIndex,
   SEARCH_TYPES,
-} from "./search-service.js?v=2.1.10";
+} from "./search-service.js?v=2.1.12";
 import { esc } from "./shared.js";
 
 export { invalidateSearchIndex };
@@ -202,18 +202,30 @@ export function initGlobalSearch(deps) {
     topbarInput.value = "";
     paletteInput.value = "";
 
+    const accountId = item.accountId || (item.type === "account" ? item.id : null);
     if (item.type === "account") {
-      deps.switchView?.("accounts", { accountId: item.accountId || item.id });
+      deps.switchView?.("accounts", { accountId, dealId: null, drillDown: true });
     } else if (item.type === "contact") {
-      deps.switchView?.("accounts", { accountId: item.accountId, contactId: item.contactId || item.id });
+      if (!accountId) return;
+      deps.switchView?.("accounts", {
+        accountId,
+        contactId: item.contactId || item.id,
+        dealId: null,
+        drillDown: true,
+      });
     } else if (item.type === "deal") {
-      deps.switchView?.("deals", { dealId: item.dealId || item.id, accountId: item.accountId });
+      deps.switchView?.("deals", {
+        dealId: item.dealId || item.id,
+        accountId,
+        drillDown: true,
+      });
     } else if (item.type === "brief") {
       deps.openPrepBriefItem?.(item.id);
     } else if (item.type === "call") {
       deps.openHistoryItem?.(item.id);
     } else if (item.type === "task") {
-      deps.switchView?.("accounts", { accountId: item.accountId });
+      if (!accountId) return;
+      deps.switchView?.("accounts", { accountId, dealId: null, drillDown: true });
     }
   }
 

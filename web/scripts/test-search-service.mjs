@@ -162,6 +162,20 @@ assert(getCachedSearchIndex(session)?.length === built.length, "getCachedSearchI
 const stats = getSearchIndexStats(session);
 assert(stats.cached && stats.size >= 2, "getSearchIndexStats reports cached index");
 
+for (const item of built) {
+  if (item.type === "account") {
+    assert(item.accountId === item.id, "account hit accountId must match id for navigation");
+    assert(item.accountId, "account hit must carry accountId");
+  }
+  if (item.type === "contact" && item.accountId) {
+    assert(item.contactId === item.id, "contact hit contactId must match id");
+  }
+  if (item.type === "deal") {
+    assert(item.dealId === item.id, "deal hit dealId must match id");
+    assert(item.accountId, "deal hit must carry accountId for drill-down fallback");
+  }
+}
+
 localStorage.removeItem(storageKey(TEST_EMAIL));
 localStorage.removeItem("lionpath_briefs");
 lsStore.clear();

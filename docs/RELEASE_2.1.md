@@ -2,14 +2,15 @@
 
 **Branch:** `2.1`  
 **Base:** `2.0.8.2` + prior 2.1 prep fixes  
-**Portal build:** `2.1.4` (`web/index.html` meta + `app.js?v=2.1.8`)  
-**Worker build:** `2.1.4` (`worker/src/build-id.ts`)
+**Portal build:** `2.1.12` (`web/index.html` meta + `app.js?v=2.1.12`)  
+**Worker build:** `2.1.5` (`worker/src/build-id.ts`)
 
 ## Account / deal deduplication
 
 | Issue | Fix |
 |-------|-----|
 | Repeat search creates duplicate accounts | `upsertAccountFromPrep` honours `accountId`, domain lookup, slug; preserves name when CRM-selected |
+| Repeat pre-call search shows "new account" | `prep-crm-resolve.js` reuses domain-store account on repeat email search (`ed48285`) |
 | `createNewDeal` ignored on prep | `getOrCreateLifecycle` archives old spine and calls `createDealWithExplicitTitle` |
 | Post-call ignores `accountId` / `createNewAccount` | `linkPostCallToLifecycle` passes flags through to upsert |
 | UI always says "new account/deal" | Badges: **Existing account** vs **New account · on generate/confirm** |
@@ -26,8 +27,11 @@
 | Recently searched / viewed | Per-user localStorage with Clear |
 | Hybrid ranking | Local token match → `POST /api/search/rag` Gemini embedding rerank |
 | Index scope | Accounts, contacts, deals, briefs, calls, open tasks |
+| Speed | Sync localStorage index before Firestore; instant token hits + async RAG rerank (`3aeab26`) |
+| Panel alignment | Dropdown anchored to topbar search input (`1258713`) |
+| Open from search | Account/contact/deal navigation clears stale deal context and passes `accountId` for fallback (`2.1.12`) |
 
-**Files:** `web/search-service.js`, `web/global-search.js`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts`
+**Files:** `web/search-service.js`, `web/global-search.js`, `web/app.js`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts`
 
 ## Session restore, accounts/contacts cache
 
@@ -70,14 +74,24 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 
 **Ops:** Recent news and fish sizing run during `POST /api/prep/synthesize` — redeploy **worker + web** (`upgrade-now.sh`). Generate a **new** brief to pick up pipeline changes; history entries keep old `recentNews` unless regenerated.
 
+## Deploy workflow (branch 2.1)
+
+Production VPS deploys from **Tony's repo** (`antonyanbu25/lionpath_V2`). On branch `2.1`, push only to remote **`antony`**, not `origin`. See `.cursor/rules/push-antony-2.1.mdc`.
+
 ## VPS deploy
 
 ```bash
-cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
+cd /opt/se-singha-paathai
+git fetch antony
+git checkout 2.1
+git pull antony 2.1
+cd deploy/vps && bash upgrade-now.sh
 docker compose logs worker | grep company-news   # optional: gemini=X web=Y merged=Z
 ```
 
 Or see [docs/VPS_DEPLOY.md](./VPS_DEPLOY.md).
+
+Deploy script checks accept `2.1`, `2.1.N`, and suffixed tags like `2.1.10-search` (`cf575bb`, `f71801b`).
 
 ## Verify
 
@@ -85,4 +99,4 @@ Or see [docs/VPS_DEPLOY.md](./VPS_DEPLOY.md).
 bash /opt/se-singha-paathai/deploy/vps/verify-deploy.sh
 ```
 
-Expect `portal-build" content="2.1.4"` and current cache-bust query strings on the live portal HTML (`app.js?v=2.1.8` or later).
+Expect `portal-build" content="2.1.12"` and `workerBuild` including `2.1.5`. Portal should not show the "Speed fixes not deployed" banner when both portal and worker are on 2.1.x.

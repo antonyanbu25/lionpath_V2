@@ -26,7 +26,7 @@ import { renderDealView } from "./deal-view.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1";
 import { renderCallView } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
-import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.10";
+import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.12";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
 import {
   syncTasksOnLogin,
@@ -609,8 +609,17 @@ function switchView(name, opts = {}) {
   } else if (name === "accounts") {
     if (opts.accountId) {
       selectedAccountId = opts.accountId;
+      if (typeof opts.dealId === "string" && opts.dealId) {
+        selectedAccountDealId = opts.dealId;
+      } else if (opts.dealId === null || !opts.drillDown) {
+        selectedAccountDealId = null;
+      }
       if (opts.contactId) selectedAccountContactId = opts.contactId;
       else if (!opts.drillDown) selectedAccountContactId = null;
+      if (opts.dealId === null) {
+        selectedAccountEngagementPrepType = undefined;
+        accountDetailSearchQuery = "";
+      }
     } else if (!opts.drillDown) {
       selectedAccountId = null;
       selectedAccountDealId = null;
@@ -621,6 +630,7 @@ function switchView(name, opts = {}) {
     void renderAccountPanel();
   } else if (name === "deals") {
     if (opts.dealId) selectedDealNavId = opts.dealId;
+    if (opts.accountId) pendingDealFallbackAccountId = opts.accountId;
     void renderDealPanel();
   } else if (name === "contacts") {
     void renderContactsPanel();
@@ -1788,13 +1798,13 @@ async function warnIfWorkerDown() {
       banner.hidden = false;
       return true;
     }
+    const speedFixRelease = (build) =>
+      /(?:^|[^0-9])2\.1(?:\.|$|-)/.test(String(build || "")) ||
+      build.includes("domain-cache") ||
+      build.includes("precall-align") ||
+      build.includes("2.0.8.1");
     const needsDomainCache =
-      !workerBuild.includes("domain-cache") &&
-      !workerBuild.includes("2.0.8.1") &&
-      !!portalBuild &&
-      !portalBuild.includes("domain-cache") &&
-      !portalBuild.includes("precall-align") &&
-      !portalBuild.includes("2.0.8.1");
+      !!portalBuild && !(speedFixRelease(portalBuild) && speedFixRelease(workerBuild));
     if (needsDomainCache) {
       banner.setAttribute("type", "warning");
       banner.textContent =
