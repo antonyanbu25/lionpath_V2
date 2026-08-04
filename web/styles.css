@@ -1656,11 +1656,12 @@ fw-button.sidebar-history-item.active {
 }
 .global-search-modal {
   position: fixed;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 32px));
+  top: 0;
+  left: 0;
+  width: 300px;
+  max-width: calc(100vw - 16px);
   z-index: 101;
+  /* left / top / width are set by global-search.js from the topbar input rect */
 }
 .global-search-modal-inner {
   background: var(--dew-surface);

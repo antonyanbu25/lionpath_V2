@@ -106,6 +106,31 @@ export function initGlobalSearch(deps) {
   let debounceTimer = null;
   let activeFilter = "all";
 
+  const PANEL_GAP = 6;
+  const VIEWPORT_MARGIN = 8;
+
+  /** Anchor the omni-search panel to the topbar search input. */
+  function positionSearchPanel() {
+    if (modal.hidden || topbarInput.hidden) return;
+    const rect = topbarInput.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+
+    let width = rect.width;
+    let left = rect.left;
+
+    if (left + width > window.innerWidth - VIEWPORT_MARGIN) {
+      left = Math.max(VIEWPORT_MARGIN, window.innerWidth - VIEWPORT_MARGIN - width);
+    }
+    if (left < VIEWPORT_MARGIN) {
+      left = VIEWPORT_MARGIN;
+      width = Math.min(width, window.innerWidth - VIEWPORT_MARGIN * 2);
+    }
+
+    modal.style.top = `${Math.round(rect.bottom + PANEL_GAP)}px`;
+    modal.style.left = `${Math.round(left)}px`;
+    modal.style.width = `${Math.round(width)}px`;
+  }
+
   function hidePalette() {
     modal.hidden = true;
     if (backdrop) backdrop.hidden = true;
@@ -116,7 +141,14 @@ export function initGlobalSearch(deps) {
   function showPalette() {
     modal.hidden = false;
     if (backdrop) backdrop.hidden = false;
+    positionSearchPanel();
     paletteInput.focus?.();
+  }
+
+  window.addEventListener("resize", positionSearchPanel);
+  window.addEventListener("scroll", positionSearchPanel, true);
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(positionSearchPanel).observe(topbarInput);
   }
 
   function renderFilterChips() {
