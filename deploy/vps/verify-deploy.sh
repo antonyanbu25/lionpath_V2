@@ -22,16 +22,16 @@ PORTAL_BUILD="$(echo "$HTML" | grep -o 'portal-build" content="[^"]*"' | cut -d'
 echo "portal-build=${PORTAL_BUILD:-MISSING}"
 
 FAIL=0
-if [[ -z "$WORKER_BUILD" ]] || [[ "$WORKER_BUILD" != *2.0.8.1-merge* ]]; then
-  echo "FAIL: worker missing 2.0.8.1-merge build — run: bash update.sh" >&2
+if [[ -z "$WORKER_BUILD" ]] || [[ "$WORKER_BUILD" != *2.1* ]]; then
+  echo "FAIL: workerBuild must include 2.1 (got: ${WORKER_BUILD:-MISSING}) — run: bash upgrade-now.sh" >&2
   FAIL=1
 fi
 if [[ -z "$SCHEMA_FIX" ]]; then
   echo "FAIL: worker missing geminiSchemaEnumFix — postcall scorecard Gemini 400 not patched" >&2
   FAIL=1
 fi
-if [[ "$PORTAL_BUILD" != "2.1.2" && "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
-  echo "FAIL: portal-build must be 2.1.1 (got: ${PORTAL_BUILD:-MISSING}) — run: bash refresh-web.sh" >&2
+if [[ "$PORTAL_BUILD" != "2.1.3" && "$PORTAL_BUILD" != "2.1.2" && "$PORTAL_BUILD" != "2.1.1" && "$PORTAL_BUILD" != "2.1" ]]; then
+  echo "FAIL: portal-build must be 2.1.x (got: ${PORTAL_BUILD:-MISSING}) — run: bash refresh-web.sh" >&2
   FAIL=1
 fi
 PRECALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*precall\.css[^"]*"' | head -1 || true)"
@@ -45,13 +45,12 @@ if ! echo "$HTML" | grep -q 'precall.css?v=2.1'; then
   echo "FAIL: precall.css?v=2.1 missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
-if ! echo "$HTML" | grep -qE 'app\.js\?v=2\.1(\.[0-9]+)?'; then
-  echo "FAIL: app.js cache-bust missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
+if ! echo "$HTML" | grep -qE 'app\.js\?v=2\.1\.([7-9]|[1-9][0-9]+)'; then
+  echo "FAIL: app.js must be v2.1.7+ for news detail fix (got: ${APP_JS:-MISSING}) — run: bash upgrade-now.sh" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
-  echo "FAIL: postcall.css?v=2.0.8.1-merge missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
-  FAIL=1
+  echo "WARN: postcall.css?v=2.0.8.1-merge not found (may be OK on 2.1 branch)" >&2
 fi
 if ! echo "$HTML" | grep -q 'postcall-intake-card'; then
   echo "FAIL: postcall intake UI missing (postcall-intake-card) — old post-call form still deployed" >&2

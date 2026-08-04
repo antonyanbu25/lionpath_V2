@@ -540,21 +540,34 @@ function renderRecentNews(recentNews, sources) {
   return items
     .slice(0, 5)
     .map((n) => {
-      const showDetail =
-        n.detail &&
-        !isUnknown(n.detail) &&
-        !isHtmlSnippetGarbage(n.detail) &&
-        n.detail.toLowerCase() !== n.headline.toLowerCase();
       const src = (sources || []).find((s) => s.label === n.sourceLabel);
       const articleUrl = n.articleUrl || src?.url;
       const linkHtml = articleUrl
         ? `<a class="prep-v9-news-link" href="${esc(articleUrl)}" target="_blank" rel="noopener noreferrer">Read article →</a>`
         : "";
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
+        body: JSON.stringify({
+          sessionId: "57a252",
+          runId: "news-detail-v4",
+          hypothesisId: "H-no-detail",
+          location: "precall-brief-v9.js:renderRecentNews",
+          message: "news row render",
+          data: {
+            headline: n.headline?.slice(0, 40),
+            hadDetail: !!n.detail,
+            detailGarbage: isHtmlSnippetGarbage(n.detail),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       return `<div class="prep-v9-news-row">
         <span class="prep-v9-news-dot"></span>
         <div>
           <span class="prep-v9-news-title">${esc(n.headline)}</span>
-          ${showDetail ? `<span class="prep-v9-news-detail muted">${esc(n.detail)}</span>` : ""}
           <span class="prep-v9-news-meta muted">${srcBadge(n.sourceLabel, sources)} ${linkHtml}</span>
         </div>
       </div>`;

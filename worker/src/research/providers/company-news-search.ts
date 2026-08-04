@@ -55,16 +55,9 @@ function headlineFromHit(hit: DdgNewsHit): string {
   return trimWords(title, 8);
 }
 
-function detailFromHit(hit: DdgNewsHit): string {
-  const snippet = cleanDdgText(hit.snippet);
-  const title = cleanDdgText(hit.title);
-  if (!snippet) return "";
-  if (snippet.toLowerCase() === title.toLowerCase()) return "";
-  // Google News RSS embeds the headline + source in the description — skip redundant detail.
-  if (title.length > 16 && snippet.toLowerCase().includes(title.toLowerCase().slice(0, 24))) return "";
-  const detail = trimWords(snippet, 18);
-  if (!detail || detail.toLowerCase() === title.toLowerCase()) return "";
-  return detail;
+function detailFromHit(_hit: DdgNewsHit): string {
+  // RSS/DDG snippets embed HTML duplicates of the headline — headline + link only in UI.
+  return "";
 }
 
 function domainFromUrl(url: string): string {
