@@ -2,7 +2,6 @@
  * Shared QIP category radar — post-call result and call record.
  * 5-axis radar polygon: tips on axes, jewel-tone fill, glowing core.
  */
-import { CHART_PALETTE, QIP_RADAR_AXIS } from "./chart-shared.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, QIP_RADAR_LABELS } from "./rubric-profiles.js";
 import { esc } from "./shared.js";
 
@@ -23,18 +22,26 @@ const AXIS_ANGLES = CATEGORY_KEYS.map((_, i) => (i * 2 * Math.PI) / 5);
 
 const RING_RADII = [42, 84, 126, 168, 210];
 
+const GRADIENT_STOPS = [
+  ["#10a884", "#0ba0b2"],
+  ["#0ba0b2", "#e0982a"],
+  ["#e0982a", "#e06a4c"],
+  ["#e06a4c", "#7a5bd0"],
+  ["#7a5bd0", "#10a884"],
+];
+
 const AXIS_AT_MAX = AXIS_ANGLES.map((a) => vertex(CX, CY, R, a));
 
 const GRADIENT_DEFS = AXIS_AT_MAX.map(([x1, y1], i) => {
   const [x2, y2] = AXIS_AT_MAX[(i + 1) % 5];
-  const [c0, c1] = QIP_RADAR_AXIS.gradientStops[i];
+  const [c0, c1] = GRADIENT_STOPS[i];
   return { x1, y1, x2, y2, c0, c1 };
 });
 
-const AXIS_COLORS = QIP_RADAR_AXIS.colors;
-const AXIS_STROKES = QIP_RADAR_AXIS.strokes;
-const LABEL_SCORE_COLORS = QIP_RADAR_AXIS.labelScoreColors;
-const RING_STROKES = CHART_PALETTE.ringStrokes;
+const AXIS_COLORS = ["#10a884", "#0ba0b2", "#e0982a", "#e06a4c", "#7a5bd0"];
+const AXIS_STROKES = ["#12b892", "#0aacc0", "#eaa236", "#ec7458", "#8a6ce0"];
+const LABEL_SCORE_COLORS = ["#0e9c7a", "#0a94a5", "#c9871f", "#d85f42", "#6d54c9"];
+const RING_STROKES = ["#f2ece1", "#eee7db", "#eae2d4", "#e6ddcd", "#dcd1be"];
 
 const LABEL_ANCHORS = ["middle", "start", "start", "end", "end"];
 
@@ -197,8 +204,8 @@ export function renderQipRadar(categoryScores, opts = {}) {
     const line1 = lines[0] || "";
     const line2 = lines[1] || "";
     const displayScore = scores[i] % 1 === 0 ? String(Math.round(scores[i])) : String(Math.round(scores[i] * 10) / 10);
-    return `<text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line1Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="${CHART_PALETTE.textSecondary}">${esc(line1)}</text>
-            <text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line2Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="${CHART_PALETTE.textSecondary}">${esc(line2)}</text>
+    return `<text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line1Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line1)}</text>
+            <text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line2Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line2)}</text>
             <text class="lab" x="${fmtCoord(layout.x)}" y="${layout.scoreY}" text-anchor="${layout.anchor}" font-size="14.5" font-weight="800" fill="${LABEL_SCORE_COLORS[i]}">${esc(displayScore)}</text>`;
   }).join("");
 
@@ -218,20 +225,20 @@ export function renderQipRadar(categoryScores, opts = {}) {
       <svg class="star-svg qip-star-svg qip-radar-svg" viewBox="${VIEWBOX}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${ariaLabel}">
         <defs>
           ${gradients}
-          <radialGradient id="${uid}-core" cx="40%" cy="34%" r="72%"><stop offset="0" stop-color="#ffffff"/><stop offset="46%" stop-color="${CHART_PALETTE.primaryTint}"/><stop offset="100%" stop-color="${CHART_PALETTE.brandTint}"/></radialGradient>
+          <radialGradient id="${uid}-core" cx="40%" cy="34%" r="72%"><stop offset="0" stop-color="#ffffff"/><stop offset="46%" stop-color="#eafaf4"/><stop offset="100%" stop-color="#cdeae0"/></radialGradient>
           <radialGradient id="${uid}-sheen" cx="50%" cy="46%" r="58%"><stop offset="0" stop-color="#ffffff" stop-opacity=".42"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
-          <linearGradient id="${uid}-num" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${CHART_PALETTE.brand}"/><stop offset="1" stop-color="${CHART_PALETTE.green}"/></linearGradient>
+          <linearGradient id="${uid}-num" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e9c7a"/><stop offset="1" stop-color="#0a94a5"/></linearGradient>
           <filter id="${uid}-bBig" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="9"/></filter>
           <filter id="${uid}-bMed" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>
           <clipPath id="${uid}-dataClip"><polygon points="${dataPoly}"/></clipPath>
         </defs>
         ${rings}
-        <g stroke="${CHART_PALETTE.spokeStroke}" stroke-width="1">${spokes}</g>
-        <text class="lab" x="${CX - 8}" y="${scaleY(1)}" text-anchor="end" font-size="8.5" font-weight="700" fill="${CHART_PALETTE.scaleLabels[0]}">10</text>
-        <text class="lab" x="${CX - 8}" y="${scaleY(0.8)}" text-anchor="end" font-size="8.5" font-weight="700" fill="${CHART_PALETTE.scaleLabels[1]}">8</text>
-        <text class="lab" x="${CX - 8}" y="${scaleY(0.6)}" text-anchor="end" font-size="8.5" font-weight="700" fill="${CHART_PALETTE.scaleLabels[2]}">6</text>
+        <g stroke="#efe8db" stroke-width="1">${spokes}</g>
+        <text class="lab" x="${CX - 8}" y="${scaleY(1)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#c9bfab">10</text>
+        <text class="lab" x="${CX - 8}" y="${scaleY(0.8)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#cec5b2">8</text>
+        <text class="lab" x="${CX - 8}" y="${scaleY(0.6)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#d3cab7">6</text>
         <g id="${uid}-dataGroup" class="qip-star-data">
-          <polygon class="aura" points="${dataPoly}" fill="${CHART_PALETTE.primary}" filter="url(#${uid}-bBig)" opacity=".3"/>
+          <polygon class="aura" points="${dataPoly}" fill="#1aa88f" filter="url(#${uid}-bBig)" opacity=".3"/>
           <g clip-path="url(#${uid}-dataClip)" opacity=".82">${wedgePolys}</g>
           <polygon points="${dataPoly}" fill="url(#${uid}-sheen)" opacity=".35"/>
           <g fill="none" stroke-width="1.2" opacity=".55">${edgePaths}</g>
@@ -239,9 +246,9 @@ export function renderQipRadar(categoryScores, opts = {}) {
           <g>${gems}</g>
         </g>
         <g id="${uid}-coreGroup" class="qip-star-core">
-          <circle cx="${CX}" cy="${CY}" r="40" fill="${CHART_PALETTE.primary}" filter="url(#${uid}-bBig)" opacity=".45"/>
+          <circle cx="${CX}" cy="${CY}" r="40" fill="#8fe6d2" filter="url(#${uid}-bBig)" opacity=".45"/>
           <circle cx="${CX}" cy="${CY}" r="30" fill="url(#${uid}-core)"/>
-          <circle cx="${CX}" cy="${CY}" r="30" fill="none" stroke="${CHART_PALETTE.primary}" stroke-width="1.2" opacity=".8"/>
+          <circle cx="${CX}" cy="${CY}" r="30" fill="none" stroke="#8fd8c8" stroke-width="1.2" opacity=".8"/>
           ${coreText}
         </g>
         ${labelMarkup}
