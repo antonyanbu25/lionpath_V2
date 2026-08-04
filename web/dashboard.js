@@ -23,8 +23,8 @@ import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
-import { countPrepsGenerated, loadLocalBriefs } from "./precall.js";
-import { buildLaunchpadCallMetrics } from "./calls-list-view.js";
+import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js";
+import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
@@ -1226,6 +1226,46 @@ function briefsCountFetcher(opts = {}) {
   return opts.fetchAllRemotePreps ?? opts.fetchRemotePreps;
 }
 
+function analysesWithQualityFromRecords(records) {
+  return (records || []).filter(
+    (r) => r.analysis?.qualityCoach || r.scorecard?.lines?.length || r.result?.scorecard?.lines?.length,
+  );
+}
+
+/** Sync remote history at query time when auth is ready (mirrors briefs KPI lazy fetch). */
+async function resolveCallRecords(email, opts = {}) {
+  if (typeof opts.fetchRemoteHistory === "function") {
+    try {
+      const synced = await opts.fetchRemoteHistory();
+      if (Array.isArray(synced)) {
+        return dedupeAnalysesByCallIdentity(synced);
+      }
+    } catch (err) {
+      console.warn("[dashboard] remote history fetch failed:", err?.message || err);
+    }
+  }
+  return dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+}
+
+function recentCallForActivity(rec) {
+  const sc = scorecardFromRecord(rec);
+  let overallScore = null;
+  if (sc) {
+    const perCall = typeComposite([sc], sc.callType || "demo", { includeIneligible: true });
+    overallScore = sc.overall ?? perCall.score ?? null;
+  } else if (rec.analysis?.qualityCoach) {
+    overallScore = normalizeQualityCoach(rec.analysis.qualityCoach).overallScore ?? null;
+  }
+  const mom = rec.analysis?.momentum || {};
+  return {
+    id: rec.id,
+    company: companyFromRecord(rec),
+    timestamp: rec.timestamp,
+    overallScore,
+    momentum: mom.status || "review",
+  };
+}
+
 async function updateSideStats(container, email, opts = {}) {
   const m = aggregateTaskMetrics(listTasks(email));
   const open = container.querySelector('[data-stat="open"]');
@@ -1264,24 +1304,40 @@ function renderRecentBriefRow(brief) {
     </button>`;
 }
 
-function buildRecentActivity(recentCalls, usesLegacyCoach = false) {
-  const callItems = (recentCalls || []).map((c) => ({
-    kind: "call",
-    ts: c.timestamp || 0,
-    html: renderRecentActivityRow(c, usesLegacyCoach),
-  }));
-  const briefItems = loadLocalBriefs().slice(0, 12).map((b) => ({
+async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = {}) {
+  const callItems = [...(callRecords || [])]
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    .slice(0, 12)
+    .map((rec) => ({
+      kind: "call",
+      ts: rec.timestamp || 0,
+      html: renderRecentActivityRow(recentCallForActivity(rec), usesLegacyCoach),
+    }));
+
+  let briefs = loadAllLocalBriefs();
+  const fetchBriefs = briefsCountFetcher(opts);
+  if (typeof fetchBriefs === "function") {
+    try {
+      const { mergeAllBriefs } = await import("./briefs-list-view.js");
+      const remote = await fetchBriefs();
+      briefs = mergeAllBriefs(briefs, remote || []);
+    } catch {
+      // demo / offline — local briefs only
+    }
+  }
+
+  const briefItems = briefs.slice(0, 12).map((b) => ({
     kind: "brief",
     ts: briefTimestamp(b),
     html: renderRecentBriefRow(b),
   }));
+
   return [...callItems, ...briefItems]
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 6);
 }
 
-function renderRecentCallsSide(recentCalls, usesLegacyCoach = false, opts = {}) {
-  const items = buildRecentActivity(recentCalls, usesLegacyCoach);
+function renderRecentCallsSideWithItems(items, opts = {}) {
   if (!items.length) {
     return `
       <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
@@ -1323,15 +1379,38 @@ function mountDashboardTasks(container, email, opts = {}) {
   renderTaskBoard(boardMount, email, taskOpts);
 }
 
+function wireRecentActivitySection(container, opts = {}) {
+  container.querySelectorAll(".dash-brief-link").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.briefId;
+      if (id) opts.onOpenBrief?.(id);
+    });
+  });
+  container.querySelector('[data-action="view-all-activity"]')?.addEventListener("click", () => {
+    opts.onOpenCalls?.();
+  });
+}
+
+async function updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts = {}) {
+  const section = container.querySelector(".dash-side-recent");
+  if (!section) return;
+  const items = await buildRecentActivity(callRecords, usesLegacyCoach, opts);
+  section.outerHTML = renderRecentCallsSideWithItems(items, { onViewAll: true });
+  wireRecentActivitySection(container, opts);
+}
+
 async function updateLaunchKpis(container, email, opts = {}) {
+  const callRecords = await resolveCallRecords(email, opts);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const callMetrics = buildLaunchpadCallMetrics(email);
+  const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
   const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
+  const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
     grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
     wireLaunchKpiNav(container, email, opts);
   }
+  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
 }
 
 function wireLaunchKpiNav(container, email, opts = {}) {
@@ -1361,10 +1440,13 @@ function wireLaunchKpiNav(container, email, opts = {}) {
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
 export async function renderSeLaunchpad(container, email, opts = {}) {
-  const metrics = buildDashboardMetrics(email);
-  const launchCallMetrics = buildLaunchpadCallMetrics(email);
+  const callRecords = await resolveCallRecords(email, opts);
+  const qualityRecords = analysesWithQualityFromRecords(callRecords);
+  const metrics = aggregateQualityMetrics(qualityRecords);
+  const launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
+  const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, opts);
   const seName = opts.seName || displayNameForEmail(email) || "there";
   const { greeting } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
@@ -1380,7 +1462,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
           <div id="task-board-mount"></div>
         </div>
         <aside class="dash-split-side launch-side">
-          ${renderRecentCallsSide(metrics.recentCalls, metrics.usesLegacyCoach, { onViewAll: true })}
+          ${renderRecentCallsSideWithItems(activityItems, { onViewAll: true })}
         </aside>
       </div>
     </div>`;
@@ -1396,16 +1478,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   });
 
   wireCallLinks(container, opts.onOpenCall);
-
-  container.querySelectorAll(".dash-brief-link").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.briefId;
-      if (id) opts.onOpenBrief?.(id);
-    });
-  });
-  container.querySelector('[data-action="view-all-activity"]')?.addEventListener("click", () => {
-    opts.onOpenCalls?.();
-  });
+  wireRecentActivitySection(container, opts);
 
   container.querySelectorAll('[data-action="prep"]').forEach((btn) => {
     btn.addEventListener("fwClick", () => opts.onPrep?.());

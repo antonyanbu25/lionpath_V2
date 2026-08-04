@@ -547,13 +547,17 @@ export async function renderCallsListView(container, session, opts = {}) {
 }
 
 /** Dashboard KPI counts — mirrors All calls list (deduped, provisional excluded, all-time). */
-export function buildLaunchpadCallMetrics(email) {
-  const records = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
-  const allTime = aggregateCallListMetrics(filterCallRecords(records, { window: "all" }));
-  const week = aggregateCallListMetrics(filterCallRecords(records, { window: "7d" }));
+export function buildLaunchpadCallMetricsFromRecords(records) {
+  const deduped = dedupeAnalysesByCallIdentity(records || []);
+  const allTime = aggregateCallListMetrics(filterCallRecords(deduped, { window: "all" }));
+  const week = aggregateCallListMetrics(filterCallRecords(deduped, { window: "7d" }));
   return {
     totalCalls: allTime.callCount,
     callsThisWeek: week.callCount,
-    records,
+    records: deduped,
   };
+}
+
+export function buildLaunchpadCallMetrics(email) {
+  return buildLaunchpadCallMetricsFromRecords(listPostCallAnalyses(email));
 }

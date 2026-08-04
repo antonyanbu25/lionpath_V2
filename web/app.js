@@ -446,11 +446,24 @@ function buildFetchRemotePreps() {
   };
 }
 
+/** Lazy Worker KV history fetch — checks auth at call time so dashboard KPIs are not stuck at 0. */
+function buildFetchRemoteHistory() {
+  return async () => {
+    const email = currentSession?.email;
+    if (!email) return [];
+    if (isFirebaseAuthEnabled() && fb?.auth?.currentUser) {
+      setHistoryAuthGetter(() => fb.auth.currentUser.getIdToken());
+    }
+    return syncHistoryOnLogin(email);
+  };
+}
+
 function dashboardOpts() {
   return {
     seName: currentSession?.name,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
+    fetchRemoteHistory: buildFetchRemoteHistory(),
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
     onPrep: () => {
       switchView("precall");
@@ -2249,7 +2262,7 @@ async function boot() {
     }
     if (!getSession() && !showAppInFlight) showLogin();
     else if (getSession()?.email && currentView === "dashboard" && !isManagerRole(currentSession)) {
-      refreshDashboardFromStorage();
+      void loadPersistedHistory().then(() => refreshDashboardFromStorage());
     }
   } else {
     initDummyAuth();
