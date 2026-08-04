@@ -66,6 +66,7 @@ import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
+import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -957,6 +958,23 @@ export async function handleHistoryPost(
   return json({ email, entry: body.entry, count: entries.length }, 200, cors);
 }
 
+/** POST /api/search/rag — embedding rerank for portal omni-search. */
+export async function handleSearchRag(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const body = (await request.json()) as { query?: string; candidates?: RagCandidate[] };
+  const query = String(body.query || "").trim();
+  const candidates = Array.isArray(body.candidates) ? body.candidates : [];
+  if (!query) {
+    return json({ error: "query is required." }, 400, cors);
+  }
+  const ranked = await rerankWithEmbeddings(env, query, candidates);
+  return json({ query, ranked, rag: ranked.length > 0 }, 200, cors);
+}
+
 export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
@@ -985,4 +1003,5 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
+  "/api/search/rag": { POST: handleSearchRag },
 };

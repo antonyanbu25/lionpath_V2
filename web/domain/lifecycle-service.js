@@ -12,6 +12,7 @@ import {
   bumpDealAfterPostCall,
   bumpDealAfterTask,
   advanceDealStage,
+  createDealWithExplicitTitle,
 } from "./deal-service.js";
 
 /**
@@ -19,10 +20,53 @@ import {
  * @param {string} ownerId
  * @param {string} accountId
  * @param {string} teamId
- * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string }} [opts]
+ * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean, useSessionContext?: boolean }} [opts]
  */
 export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}) {
   const store = getStore();
+
+  if (opts.createNewDeal) {
+    const stale = await store.findActiveLifecycle(ownerId, accountId);
+    if (stale) {
+      await archiveLifecycle(stale.id, opts.actorId || ownerId, "new_deal");
+    }
+    const dealType = opts.prepType === "expansion" ? "expansion" : "new_business";
+    const deal = await createDealWithExplicitTitle(accountId, ownerId, teamId, opts.orgId || null, {
+      title: opts.title,
+      type: dealType,
+      primaryContactId: opts.primaryContactId,
+      accountName: opts.title,
+    });
+    const ts = now();
+    const lifecycle = await store.createLifecycle({
+      id: newId("lifecycle"),
+      dealId: deal.id,
+      ownerId,
+      teamId,
+      orgId: opts.orgId || null,
+      accountId,
+      primaryContactId: opts.primaryContactId ?? deal.primaryContactId ?? null,
+      stage: deal.stage,
+      status: "active",
+      title: opts.title || deal.title || "Account",
+      createdAt: ts,
+      updatedAt: ts,
+      lastActivityAt: ts,
+      prepCount: deal.prepCount || 0,
+      postCallCount: deal.postCallCount || 0,
+      openTaskCount: deal.openTaskCount || 0,
+      latestQualityScore: deal.latestQualityScore ?? null,
+    });
+    await store.addLifecycleEvent({
+      id: newId("event"),
+      lifecycleId: lifecycle.id,
+      type: "lifecycle_created",
+      actorId: opts.actorId || ownerId,
+      timestamp: ts,
+      payload: { accountId, teamId, orgId: opts.orgId || null, dealId: deal.id, reason: "create_new_deal" },
+    });
+    return lifecycle;
+  }
 
   if (opts.dealId && store.findActiveLifecycleByDeal) {
     const byDeal = await store.findActiveLifecycleByDeal(ownerId, accountId, opts.dealId);
@@ -34,7 +78,9 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
         await ensureDealForLifecycle(existing);
         return store.getLifecycle(existing.id);
       }
-      if (!opts.dealId || existing.dealId === opts.dealId) {
+      if (opts.dealId && existing.dealId !== opts.dealId) {
+        await archiveLifecycle(existing.id, opts.actorId || ownerId, "deal_switch");
+      } else if (!opts.dealId || existing.dealId === opts.dealId) {
         return existing;
       }
     }
@@ -52,7 +98,7 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
     prepType: opts.prepType,
     title: opts.title,
     primaryContactId: opts.primaryContactId,
-    useSessionContext: opts.useSessionContext,
+    useSessionContext: opts.useSessionContext !== false && !opts.dealId,
   });
 
   const ts = now();

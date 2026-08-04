@@ -653,8 +653,8 @@ export function renderAccountDealPreviewHtml(opts) {
 
   const displayName = titleCaseDisplayName(accountName) || "Account";
   const accountBadge = accountMatched
-    ? "Matched · existing account"
-    : "New account · will be created on confirm";
+    ? "Existing account"
+    : "New account · on confirm";
 
   const showNewDealLink = accountMatched || deals.length > 0;
   const dealHead = `<div class="nb-deal-head">
@@ -1137,7 +1137,7 @@ function attachAccountLookup(cfg) {
       pcSelectedDealId = null;
       pcCreateNewDeal = true;
       if (noteEl) {
-        noteEl.textContent = "New account (will be created on confirm)";
+        noteEl.textContent = "New account · on confirm";
         noteEl.hidden = false;
       }
     } else {
@@ -2925,8 +2925,8 @@ function renderConfirmAccountDealShowcase(account, selectedDeal, resolve) {
   const displayName = titleCaseDisplayName(account?.accountName || suggestedName || "Account");
   const intakeAccount = getIntakeAccountSelection();
   const accountBadge = account?.accountId
-    ? "Matched · existing account"
-    : "New account · will be created on confirm";
+    ? "Existing account"
+    : "New account · on confirm";
   const intakeDeal = getIntakeDealSelection();
   const dealTitle = selectedDeal
     ? titleCaseDisplayName(selectedDeal.title)

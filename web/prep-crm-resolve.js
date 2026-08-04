@@ -8,6 +8,7 @@ import { setAccountEngagementContext } from "./domain/account-context.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domain.js";
 import { formatDealTitlePreview } from "./domain/deal-service.js";
+import { STAGE_LABELS } from "./domain/types.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc, $ } from "./shared.js";
 
@@ -94,7 +95,7 @@ export function buildDraftAccount(domain, name) {
 export function ensureDraftAccount(domain, name) {
   prepResolvedAccount = buildDraftAccount(domain, name);
   if (!prepAccountNameUserEdited) prepDraftAccountName = prepResolvedAccount.name;
-  if (!lastDeals.length && !prepSelectedDealId) prepCreateNewDeal = true;
+  // Wait for CRM lookup to confirm whether deals already exist before flagging new deal.
 }
 
 function hideAccountDealGrid() {
@@ -157,7 +158,14 @@ async function applyAccount(account, deals = []) {
     prepDraftAccountName = account?.name || prepDraftAccountName;
   }
   lastDeals = deals.filter((d) => !account || d.accountId === account.id);
-  if (lastDeals.length === 1 && !prepCreateNewDeal) {
+  if (account?.id && lastDeals.length) {
+    prepCreateNewDeal = false;
+    if (lastDeals.length === 1) {
+      prepSelectedDealId = lastDeals[0].id;
+    } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
+      prepSelectedDealId = lastDeals[0]?.id || null;
+    }
+  } else if (lastDeals.length === 1 && !prepCreateNewDeal) {
     prepSelectedDealId = lastDeals[0].id;
   } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
     prepSelectedDealId = lastDeals[0]?.id || null;
@@ -208,7 +216,7 @@ function renderDealRow() {
       <span class="nb-account-card-mono">${esc(mono)}</span>
       <div class="nb-account-card-body">
         <span class="nb-account-card-name">${esc(displayName)}</span>
-        <span class="nb-account-card-badge">${prepResolvedAccount.id ? "Matched · existing account" : "New account"}</span>
+        <span class="nb-account-card-badge">${prepResolvedAccount.id ? "Existing account" : "New account · on generate"}</span>
       </div>
     </div>`;
   }
@@ -231,7 +239,9 @@ function renderDealRow() {
   if (dealDisplay) {
     const isNewDeal = prepCreateNewDeal || !selectedDeal;
     const title = isNewDeal ? formatDealTitlePreview(displayName, "new_business") : selectedDeal.title || "Deal";
-    const stage = isNewDeal ? "Discovery · auto-created" : selectedDeal.stage || selectedDeal.status || "Active";
+    const stage = isNewDeal
+      ? "New deal · on generate"
+      : STAGE_LABELS[selectedDeal.stage] || selectedDeal.stage || selectedDeal.status || "Active";
     dealDisplay.innerHTML = `<div class="nb-deal-card">
       <span class="nb-deal-card-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
       <div class="nb-deal-card-body">
@@ -299,7 +309,7 @@ async function renderCrmPanel() {
         .join("");
       const status = group.matched
         ? accountChips
-        : `<span class="pc-crm-new">New account will be created</span>`;
+        : `<span class="pc-crm-new muted">No match yet — account created on generate</span>`;
       return `<div class="pc-crm-domain-group">
         <div class="pc-crm-row pc-crm-row--domain">
           <span class="pc-crm-domain-label">${esc(domainLabel)}</span>

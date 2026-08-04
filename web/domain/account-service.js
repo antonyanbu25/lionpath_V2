@@ -57,7 +57,7 @@ export const RESEARCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Upsert Account + Contacts from prep form / generated prep.
- * @param {{ companyName: string, companyDomain?: string, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[], lifecycleId?: string, actorId?: string, prepBriefId?: string }} input
+ * @param {{ companyName: string, companyDomain?: string, accountId?: string|null, createNewAccount?: boolean, prospectEmails?: string[], prospectEmail?: string, domain?: string, prep?: object, researchBundle?: object, contactDrafts?: object[], lifecycleId?: string, actorId?: string, prepBriefId?: string }} input
  * @returns {Promise<{ accountId: string, contactIds: string[], primaryContactId: string|null, account: object }>}
  */
 export async function upsertAccountFromPrep(input) {
@@ -72,7 +72,34 @@ export async function upsertAccountFromPrep(input) {
   const fromFreeMailProspect = !companyDomain && !!emailDomain && isFreeMailDomain(emailDomain);
   const slug = normalizeAccountSlug(companyName, resolvedDomain);
 
-  let account = await store.findAccountBySlug(slug);
+  /** @type {object|null} */
+  let account = null;
+  const explicitAccountId = String(input.accountId || "").trim();
+  const forceNewAccount = input.createNewAccount === true;
+
+  if (explicitAccountId && !forceNewAccount) {
+    account = await store.getAccount(explicitAccountId);
+  }
+
+  if (!account && !forceNewAccount) {
+    account = await store.findAccountBySlug(slug);
+  }
+
+  if (!account && !forceNewAccount && resolvedDomain && store.findAccountsByDomain) {
+    try {
+      const byDomain = await store.findAccountsByDomain(resolvedDomain);
+      if (byDomain?.length === 1) {
+        account = byDomain[0];
+      } else if (byDomain?.length > 1 && input.actorId) {
+        const onTeam = byDomain.find((a) =>
+          (a.seTeam || []).some((m) => m.seUserId === input.actorId),
+        );
+        if (onTeam) account = onTeam;
+      }
+    } catch {
+      /* best-effort domain lookup */
+    }
+  }
   let metadataPatch = input.researchBundle
     ? mergeAccountResearch(account?.metadata, input.researchBundle, input.prep)
     : account?.metadata ? { ...account.metadata } : undefined;
@@ -92,7 +119,8 @@ export async function upsertAccountFromPrep(input) {
     });
   } else {
     const patch = { updatedAt: ts };
-    if (companyName && account.name !== companyName) patch.name = companyName;
+    const preserveName = explicitAccountId && account.id === explicitAccountId;
+    if (companyName && account.name !== companyName && !preserveName) patch.name = companyName;
     if (resolvedDomain && account.domain !== resolvedDomain) patch.domain = resolvedDomain;
     if (metadataPatch) patch.metadata = metadataPatch;
     if (Object.keys(patch).length > 1) {

@@ -1,17 +1,20 @@
 /**
- * Client-side search index for accounts, discovery briefs, and call reviews.
+ * Client-side search index + RAG rerank for accounts, deals, briefs, calls, contacts, tasks.
  */
 
-import { listAccountsForSession } from "./domain/account-service.js?v=2.1";
+import { listAccountsForSession, listDealsForSession } from "./domain/account-service.js?v=2.1";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId } from "./domain/session.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { loadLocalBriefs } from "./precall.js";
 import { listPostCallAnalyses } from "./history.js";
+import { WORKER_BASE_URL } from "./firebase-config.js";
 
 /** @type {{ key: string|null, index: object[]|null }} */
 const cache = { key: null, index: null };
+
+export const SEARCH_TYPES = ["account", "contact", "deal", "brief", "call", "task"];
 
 function norm(s) {
   return String(s ?? "").trim().toLowerCase();
@@ -28,6 +31,10 @@ function collectTokens(parts) {
     if (v) set.add(v);
   }
   return [...set];
+}
+
+function itemSearchText(item) {
+  return [item.label, item.subtitle, ...(item.tokens || [])].filter(Boolean).join(" ");
 }
 
 /** Build searchable token list for an account row. */
@@ -136,14 +143,72 @@ export function searchIndex(index, query, opts = {}) {
   return scored.slice(0, limit).map((x) => x.item);
 }
 
+/**
+ * Hybrid search: token match first, then optional RAG embedding rerank via worker.
+ * @param {object[]} index
+ * @param {string} query
+ * @param {{ types?: string[], limit?: number, useRag?: boolean }} [opts]
+ */
+export async function hybridSearch(index, query, opts = {}) {
+  const { types, limit = 12, useRag = true } = opts;
+  const trimmed = String(query || "").trim();
+  if (!trimmed) {
+    return searchIndex(index, "", { types, limit });
+  }
+
+  const tokenHits = searchIndex(index, trimmed, { types, limit: Math.max(limit * 3, 30) });
+  if (!useRag || tokenHits.length < 2) return tokenHits.slice(0, limit);
+
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/api/search/rag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: trimmed,
+        candidates: tokenHits.map((item) => ({
+          id: `${item.type}:${item.id}`,
+          type: item.type,
+          text: itemSearchText(item),
+        })),
+      }),
+    });
+    if (!res.ok) return tokenHits.slice(0, limit);
+    const data = await res.json();
+    if (!data?.rag || !Array.isArray(data.ranked)) return tokenHits.slice(0, limit);
+
+    const rankMap = new Map(data.ranked.map((r, i) => [r.id, r.score ?? 1 - i * 0.01]));
+    const merged = tokenHits
+      .map((item, i) => ({
+        item,
+        ragScore: rankMap.get(`${item.type}:${item.id}`) ?? 0,
+        tokenRank: i,
+      }))
+      .sort((a, b) => {
+        if (b.ragScore !== a.ragScore) return b.ragScore - a.ragScore;
+        return a.tokenRank - b.tokenRank;
+      })
+      .map((x) => x.item);
+    return merged.slice(0, limit);
+  } catch {
+    return tokenHits.slice(0, limit);
+  }
+}
+
 /** Recent items when query is empty (top 5 each type cap). */
 export function recentFromIndex(index, limit = 5) {
-  const byType = { account: [], contact: [], brief: [], call: [] };
+  const byType = { account: [], contact: [], deal: [], brief: [], call: [], task: [] };
   const sorted = index.slice().sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
   for (const item of sorted) {
     if (byType[item.type]?.length < limit) byType[item.type].push(item);
   }
-  return [...byType.account, ...byType.contact, ...byType.brief, ...byType.call].slice(0, limit * 4);
+  return [
+    ...byType.account,
+    ...byType.contact,
+    ...byType.deal,
+    ...byType.brief,
+    ...byType.call,
+    ...byType.task,
+  ].slice(0, limit * 6);
 }
 
 export function invalidateSearchIndex() {
@@ -195,7 +260,6 @@ export async function buildSearchIndex(session) {
           lastActivityAt: row.lifecycle.lastActivityAt || 0,
         });
 
-        // Contact-primary: index each contact as its own result (email is the key).
         for (const c of contacts) {
           const contactLabel = c.name || c.email || "Contact";
           const contactSub = [c.title, c.email && c.email !== contactLabel ? c.email : "", row.account.name]
@@ -215,6 +279,48 @@ export async function buildSearchIndex(session) {
         }
       }),
     );
+
+    const dealRows = await listDealsForSession(session);
+    for (const row of dealRows) {
+      const { deal, account, primarySeName } = row;
+      if (!deal?.id) continue;
+      const stageLabel = STAGE_LABELS[deal.stage] || deal.stage || "";
+      const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "";
+      index.push({
+        type: "deal",
+        id: deal.id,
+        accountId: account?.id || deal.accountId,
+        dealId: deal.id,
+        label: deal.title || account?.name || "Deal",
+        subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
+        tokens: dealRowTokens(row),
+        lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
+      });
+    }
+
+    if (store.listLifecyclesByOwner) {
+      try {
+        const lifecycles = await store.listLifecyclesByOwner(userId);
+        for (const lc of lifecycles) {
+          const tasks = store.listTasksByLifecycle ? await store.listTasksByLifecycle(lc.id) : [];
+          for (const t of tasks) {
+            if (t.status === "completed" || t.status === "dismissed") continue;
+            index.push({
+              type: "task",
+              id: t.id,
+              accountId: t.accountId || lc.accountId,
+              lifecycleId: lc.id,
+              label: t.title || "Task",
+              subtitle: [t.status, lc.title].filter(Boolean).join(" · "),
+              tokens: collectTokens([t.title, t.description, t.status, "task"]),
+              lastActivityAt: t.updatedAt || t.createdAt || 0,
+            });
+          }
+        }
+      } catch {
+        /* tasks optional */
+      }
+    }
   }
 
   for (const b of loadLocalBriefs()) {
@@ -242,7 +348,7 @@ export async function buildSearchIndex(session) {
       index.push({
         type: "call",
         id: r.id,
-        accountId: null,
+        accountId: r.accountId || null,
         label,
         subtitle,
         tokens: collectTokens([label, headline, "call", "review"]),

@@ -13,7 +13,7 @@
  */
 
 import { getStore } from "./domain/store.js";
-import { domainFromEmail } from "./domain/types.js";
+import { domainFromEmail, normalizeAccountSlug } from "./domain/types.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 
 /**
@@ -136,4 +136,57 @@ export async function resolveContactsForEmails(emails) {
     accounts: [...accountsById.values()],
     deals: [...dealsById.values()],
   };
+}
+
+/**
+ * Resolve a company name (+ optional domain) to existing accounts/deals.
+ * Used when the SE types a company they have researched before without a contact email match.
+ * @param {string} companyName
+ * @param {string} [companyDomain]
+ * @returns {Promise<{ accounts: object[], deals: object[] }>}
+ */
+export async function resolveAccountsForCompany(companyName, companyDomain) {
+  const store = getStore();
+  const empty = { accounts: [], deals: [] };
+  if (!store) return empty;
+
+  const name = String(companyName || "").trim();
+  const domain = String(companyDomain || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+  if (!name && !domain) return empty;
+
+  /** @type {Map<string, object>} */
+  const accountsById = new Map();
+
+  if (store.findAccountBySlug) {
+    const slug = normalizeAccountSlug(name, domain || null);
+    const bySlug = await store.findAccountBySlug(slug);
+    if (bySlug?.id) accountsById.set(bySlug.id, bySlug);
+  }
+
+  if (domain && !isFreeMailDomain(domain) && store.findAccountsByDomain) {
+    try {
+      for (const a of await store.findAccountsByDomain(domain)) {
+        if (a?.id) accountsById.set(a.id, a);
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  const deals = [];
+  for (const account of accountsById.values()) {
+    try {
+      const list = store.listDealsByAccount ? await store.listDealsByAccount(account.id) : [];
+      for (const d of list) deals.push(d);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  return { accounts: [...accountsById.values()], deals };
 }

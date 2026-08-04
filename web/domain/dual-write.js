@@ -241,8 +241,19 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   // re-uses the contacts by email and completes the deal. Failing the other way round (deal
   // without contacts) is what this reordering exists to stop, and it cannot self-heal.
   const participantEmails = postCallParticipantEmails(payload);
-  const knownAccount = await findAccountByCompanyName(company, payload?.companyDomain);
+  const store = getStore();
+  let knownAccount = null;
+  if (payload?.createNewAccount) {
+    knownAccount = null;
+  } else if (payload?.accountId) {
+    knownAccount = await store.getAccount(payload.accountId);
+  }
+  if (!knownAccount && !payload?.createNewAccount) {
+    knownAccount = await findAccountByCompanyName(company, payload?.companyDomain);
+  }
   const upserted = await upsertAccountFromPrep({
+    accountId: payload?.createNewAccount ? null : payload?.accountId || knownAccount?.id || null,
+    createNewAccount: payload?.createNewAccount === true,
     // `record.title` ("Acme - Discovery") is a display string: good enough to find an account,
     // not good enough to rename one, so an account we already know keeps its own name.
     companyName: knownAccount?.name || company,

@@ -1,10 +1,35 @@
-# Release 2.1 — Session restore, accounts/contacts cache
+# Release 2.1 — Dedup, RAG omni-search, Know tab polish
 
 **Branch:** `2.1`  
-**Base:** `2.0.8.2` + `feature/fix-prep-typo-domain` (already merged in history)  
-**Portal build:** `2.1` (`web/index.html` meta + `app.js?v=2.1.6`, `precall.css?v=2.1.2`, `precall-brief-v9.js?v=2.1.3`)
+**Base:** `2.0.8.2` + prior 2.1 prep fixes  
+**Portal build:** `2.1.4` (`web/index.html` meta + `app.js?v=2.1.8`)  
+**Worker build:** `2.1.4` (`worker/src/build-id.ts`)
 
-## Fixes
+## Account / deal deduplication
+
+| Issue | Fix |
+|-------|-----|
+| Repeat search creates duplicate accounts | `upsertAccountFromPrep` honours `accountId`, domain lookup, slug; preserves name when CRM-selected |
+| `createNewDeal` ignored on prep | `getOrCreateLifecycle` archives old spine and calls `createDealWithExplicitTitle` |
+| Post-call ignores `accountId` / `createNewAccount` | `linkPostCallToLifecycle` passes flags through to upsert |
+| UI always says "new account/deal" | Badges: **Existing account** vs **New account · on generate/confirm** |
+
+**Files:** `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`
+
+**Test:** `node web/scripts/test-contact-deal-mapping.mjs` (13 checks)
+
+## RAG omni-search
+
+| Feature | Detail |
+|---------|--------|
+| Filter chips | All, Accounts, Deals, Contacts, Briefs, Calls, Tasks |
+| Recently searched / viewed | Per-user localStorage with Clear |
+| Hybrid ranking | Local token match → `POST /api/search/rag` Gemini embedding rerank |
+| Index scope | Accounts, contacts, deals, briefs, calls, open tasks |
+
+**Files:** `web/search-service.js`, `web/global-search.js`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts`
+
+## Session restore, accounts/contacts cache
 
 | Issue | Fix |
 |-------|-----|
@@ -60,4 +85,4 @@ Or see [docs/VPS_DEPLOY.md](./VPS_DEPLOY.md).
 bash /opt/se-singha-paathai/deploy/vps/verify-deploy.sh
 ```
 
-Expect `portal-build" content="2.1"` and current cache-bust query strings on the live portal HTML (`app.js?v=2.1.6` or later).
+Expect `portal-build" content="2.1.4"` and current cache-bust query strings on the live portal HTML (`app.js?v=2.1.8` or later).

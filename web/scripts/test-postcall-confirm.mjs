@@ -163,7 +163,7 @@ const htmlPeninsula = renderConfirmationGate(
   { primary: "discovery", confidence: 0.88 },
 );
 assert(htmlPeninsula.includes("Peninsula"), "confirm keeps intake Peninsula account");
-assert(htmlPeninsula.includes("New account · will be created on confirm"), "confirm shows new account badge");
+assert(htmlPeninsula.includes("New account · on confirm"), "confirm shows new account badge");
 assert(htmlPeninsula.includes("Peninsula - New Business - 2026-08-01"), "confirm keeps intake new deal");
 assert(!htmlPeninsula.includes("Euphotic"), "confirm must not show stale Euphotic account");
 assert(!htmlPeninsula.includes("postcall-deal-picker-inline"), "hide deal picker when intake chose new deal");

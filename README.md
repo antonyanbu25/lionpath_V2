@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — session restore, accounts/contacts cache, Know tab UI, **LinkedIn PDF required**, **Recent news (Gemini + RSS + DDG + newsroom)**, **parallel fish sizing (web + AE context)** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** — Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -30,6 +30,35 @@ Both flows share the same polished one-pager layout, personal dashboard, and sid
 ---
 
 ## Pre-call improvements (branch `2.1`)
+
+### Account / deal deduplication & linking (2.1)
+
+| Issue | Fix |
+|-------|-----|
+| **Duplicate accounts** on repeat search | `upsertAccountFromPrep` now honours explicit `accountId`, domain lookup, and slug resolution — CRM-selected accounts are reused instead of re-derived from typed shorthand |
+| **Duplicate deals** when not intended | `getOrCreateLifecycle` handles `createNewDeal` by archiving the old spine and calling `createDealWithExplicitTitle`; repeat briefs reuse the active deal |
+| **Post-call account ignored** | `linkPostCallToLifecycle` respects `accountId` and `createNewAccount` flags from intake |
+| **Misleading UI labels** | Pre-call and post-call badges now show **Existing account** / **New account · on generate** (or **on confirm**) instead of always implying creation |
+
+Key modules: `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`.
+
+Regression: `node web/scripts/test-contact-deal-mapping.mjs`
+
+### RAG-powered omni search (2.1)
+
+Freshdesk-inspired global search (⌘K / topbar):
+
+| Feature | Detail |
+|---------|--------|
+| **Scope** | Accounts, deals, contacts, discovery briefs, call reviews, open tasks |
+| **Filter chips** | All · Accounts · Deals · Contacts · Briefs · Calls · Tasks |
+| **Recently searched / viewed** | Per-user localStorage with Clear actions |
+| **RAG rerank** | Token match locally → `POST /api/search/rag` embedding rerank (Gemini `text-embedding-004`) when worker key is configured |
+| **Dark theme** | Uses `--dew-*` tokens; filter chips and result rows adapt to `[data-theme="dark"]` |
+
+Key modules: `web/search-service.js`, `web/global-search.js`, `worker/src/search/rag-search.ts`.
+
+---
 
 Three Know-tab fixes ship on the pre-call form and worker pipeline. API routes are unchanged: the UI still calls `POST /api/prep/research` then `POST /api/prep/synthesize` (or the all-in-one `POST /api/generate-prep`).
 
@@ -87,23 +116,31 @@ The **Recent news** card (Know tab, row 1) no longer back-fills from research fa
 
 | Area | Paths |
 |------|-------|
+| Account/deal dedup | `web/domain/account-service.js`, `web/domain/lifecycle-service.js`, `web/domain/dual-write.js`, `web/prep-crm-resolve.js`, `web/postcall.js`, `web/postcall-contact-resolve.js` |
+| Omni search | `web/search-service.js`, `web/global-search.js`, `web/index.html`, `web/styles.css`, `worker/src/search/rag-search.ts`, `worker/src/routes.ts` |
 | Form validation | `web/prep-linkedin-pdf.js`, `web/precall.js`, `web/precall.css` |
 | Recent news | `worker/src/prep/company-news.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `web/precall-brief-v9.js`, `web/recent-news.js` |
 | Fish sizing | `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/schema.ts`, `web/precall-brief-v9.js` |
-| Tests | `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` |
-| Release notes | `docs/RELEASE_2.1.md` |
+| Tests | `web/scripts/test-contact-deal-mapping.mjs`, `web/scripts/test-search-service.mjs`, `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` |
+| Release notes | `docs/RELEASE_2.1.md`, `worker/src/build-id.ts` |
 
 ### Verify locally
 
 ```bash
+# Account/deal dedup regression
+node web/scripts/test-contact-deal-mapping.mjs
+
+# Search service smoke tests
+node web/scripts/test-search-service.mjs
+
 # Worker unit tests
 cd worker && npx tsx scripts/test-company-news.ts && npx tsx scripts/test-rivals-context.ts
 
 # UI render tests
 cd web && node scripts/test-precall-render.mjs
 
-# Manual: open pre-call form — Generate brief without LinkedIn PDF should error;
-# with PDF + public company (e.g. Freshworks, Stripe) Recent news should show headlines + Read article links (no HTML junk under titles).
+# Manual: open pre-call form — repeat search for same company should show "Existing account";
+# ⌘K search should show filter chips, recently searched/viewed, and RAG-ranked results when worker is up.
 ```
 
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.

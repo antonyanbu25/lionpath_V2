@@ -82,7 +82,7 @@ function testNewDealOptionWhenMatched() {
     createNewDeal: false,
   });
   assert(html.includes('data-action="pick-new-deal"'), "new deal visible with existing deal");
-  assert(html.includes("Matched · existing account"), "matched account badge");
+  assert(html.includes("Existing account"), "matched account badge");
 
   const newDealHtml = renderAccountDealPreviewHtml({
     accountName: "Northwind",
@@ -108,7 +108,7 @@ function testNoAccountPreview() {
     deals: [],
     createNewDeal: true,
   });
-  assert(html.includes("New account · will be created on confirm"), "new account badge");
+  assert(html.includes("New account · on confirm"), "new account badge");
   assert(html.includes("Create on confirm"), "deal create on confirm");
   assert(html.includes("Brandnew"), "title-cased company in preview");
   assert(html.includes("nb-account-column"), "account column in preview");
@@ -166,10 +166,10 @@ function testStaleEuphoticNotReusedForLifeEmail() {
     createNewDeal: true,
     newDealTitle: "Life - New Business - 2026-08-01",
   });
-  assert(html.includes("New account · will be created on confirm"), "life.com shows new account flow");
+  assert(html.includes("New account · on confirm"), "life.com shows new account flow");
   assert(html.includes("Life"), "company derived from domain");
   assert(!html.includes("Euphotic"), "must not show euphotic");
-  assert(!html.includes("Matched · existing account"), "must not show matched badge");
+  assert(!html.includes("Existing account"), "must not show matched badge");
 }
 
 function testExistingDealSelectedByDefault() {
