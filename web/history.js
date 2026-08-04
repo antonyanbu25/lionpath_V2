@@ -205,38 +205,60 @@ async function pushRemoteEntries(email, entries) {
 /**
  * On sign-in: fetch server history, merge with local, persist both sides.
  * @param {string} email
+ * @param {{ force?: boolean }} [opts]
  * @returns {Promise<object[]>}
  */
-export async function syncHistoryOnLogin(email) {
+const HISTORY_SYNC_TTL_MS = 30_000;
+/** @type {Map<string, { at: number, promise: Promise<object[]> }>} */
+const historySyncInflight = new Map();
+
+export async function syncHistoryOnLogin(email, opts = {}) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return [];
 
-  const local = readAll(normalized);
-  let remote = [];
-  try {
-    remote = await fetchHistoryFromWorker(normalized);
-  } catch (err) {
-    console.warn("[history] could not load remote history:", err.message || err);
-    return local;
-  }
-
-  const merged = mergeHistoryLists(remote, local);
-  writeAll(normalized, merged);
-
-  const remoteIds = new Set(remote.map((r) => r.id));
-  const hasLocalOnly = merged.some((r) => !remoteIds.has(r.id));
-  if (hasLocalOnly || merged.length !== remote.length) {
-    try {
-      await pushRemoteEntries(normalized, merged);
-      console.info(`[history] synced ${merged.length} record(s) to server for ${normalized}`);
-    } catch (err) {
-      console.warn("[history] remote merge sync failed:", err.message || err);
+  if (!opts.force) {
+    const inflight = historySyncInflight.get(normalized);
+    if (inflight && Date.now() - inflight.at < HISTORY_SYNC_TTL_MS) {
+      return inflight.promise;
     }
-  } else {
-    console.info(`[history] loaded ${merged.length} record(s) from server for ${normalized}`);
   }
 
-  return merged;
+  const promise = (async () => {
+    const local = readAll(normalized);
+    let remote = [];
+    try {
+      remote = await fetchHistoryFromWorker(normalized);
+    } catch (err) {
+      console.warn("[history] could not load remote history:", err.message || err);
+      return local;
+    }
+
+    const merged = mergeHistoryLists(remote, local);
+    writeAll(normalized, merged);
+
+    const remoteIds = new Set(remote.map((r) => r.id));
+    const hasLocalOnly = merged.some((r) => !remoteIds.has(r.id));
+    if (hasLocalOnly || merged.length !== remote.length) {
+      try {
+        await pushRemoteEntries(normalized, merged);
+        console.info(`[history] synced ${merged.length} record(s) to server for ${normalized}`);
+      } catch (err) {
+        console.warn("[history] remote merge sync failed:", err.message || err);
+      }
+    } else {
+      console.info(`[history] loaded ${merged.length} record(s) from server for ${normalized}`);
+    }
+
+    return merged;
+  })();
+
+  historySyncInflight.set(normalized, { at: Date.now(), promise });
+  try {
+    return await promise;
+  } finally {
+    const cur = historySyncInflight.get(normalized);
+    if (cur?.promise === promise) historySyncInflight.delete(normalized);
+  }
 }
 
 /**

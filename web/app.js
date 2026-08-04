@@ -10,6 +10,7 @@ import {
   logout,
   onSessionChange,
   persistFirebaseSession,
+  sessionFromFirebaseUser,
   isManagerRole,
   syncSessionWithDomainStore,
   setSession,
@@ -43,13 +44,14 @@ import {
 } from "./domain/product-signal-service.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { assertThemeScoreSuppressionReady } from "./theme-score-suppression.js";
-import { renderDashboard, renderManagerDashboard, buildTeamThemeAverages } from "./dashboard.js";
+import { renderDashboard, renderManagerDashboard, buildTeamThemeAverages, renderDashboardLoadingShell, renderManagerDashboardLoadingShell } from "./dashboard.js";
 import { renderCoaching } from "./coaching.js";
 import { renderSeDetailView } from "./se-detail-view.js";
 import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
 import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1";
+import { stableUserIdForEmail } from "./domain/id.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
@@ -493,12 +495,15 @@ function buildFetchRemoteHistory() {
   };
 }
 
-function dashboardOpts() {
+let historyHydratedForEmail = null;
+
+function dashboardOpts(extra = {}) {
   return {
     seName: currentSession?.name,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
+    skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
     onPrep: () => {
       switchView("precall");
@@ -1260,8 +1265,12 @@ function restoreAuthenticatedShell() {
   if (!getSession()?.email) return false;
   show($("login-view"), false);
   show($("app-shell"), true);
-  show($("app-loading"), false);
   return true;
+}
+
+async function paintAuthenticatedShell() {
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  show($("app-loading"), false);
 }
 
 function applyRouteFromHash() {
@@ -1398,6 +1407,7 @@ async function loadPersistedHistory() {
       syncTasksOnLogin(currentSession.email),
     ]);
     await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
+    historyHydratedForEmail = currentSession.email;
     refreshSidebarHistory();
     const count = list.length;
     console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
@@ -1598,6 +1608,7 @@ async function savePrep(input, prep, meta) {
 function showLogin() {
   if (getSession()?.email && !signingOut) return;
   showAppInFlight = false;
+  historyHydratedForEmail = null;
   show($("app-loading"), false);
   show($("login-view"), true);
   show($("app-shell"), false);
@@ -1616,6 +1627,168 @@ function showLogin() {
 
 let showAppInFlight = false;
 
+function applySessionAuthGetters() {
+  const tokenFn = isFirebaseAuthEnabled() && fb?.auth?.currentUser
+    ? () => fb.auth.currentUser.getIdToken()
+    : null;
+  setHistoryAuthGetter(tokenFn);
+  setTasksAuthGetter(tokenFn);
+  setSummariesAuthGetter(tokenFn);
+  setTimelineAuthGetter(tokenFn);
+  setProductSignalAuthGetter(tokenFn);
+  onSessionReady(currentSession, tokenFn);
+  return tokenFn;
+}
+
+async function applyInitialRouteFromHash(enriched) {
+  const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
+  const { path: hashPath, params: hashParams } = parseLocationHash();
+  const hash = hashPath;
+  const hashAliases = {
+    lifecycles: { view: "accounts" },
+    coaching: { view: "coaching" },
+    "dashboard/coaching": { view: "coaching" },
+    team: { view: "manager" },
+    analysis: { view: "postcall" },
+    workspace: { view: "postcall" },
+  };
+  const alias = hashAliases[hash];
+  if (alias) {
+    switchView(alias.view);
+    return;
+  }
+
+  const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
+  if (lifecycleMatch) {
+    const store = getStore();
+    const lc = await store.getLifecycle(lifecycleMatch[1]);
+    if (lc?.accountId) {
+      selectedAccountId = lc.accountId;
+      selectedAccountDealId = lc.dealId || null;
+      switchView("accounts", { accountId: lc.accountId });
+    } else {
+      switchView("accounts");
+    }
+    return;
+  }
+
+  const seMatch = /^se\/(.+)$/.exec(hash);
+  if (seMatch) {
+    selectedSeEmail = normalizeSeEmail(decodeURIComponent(seMatch[1]));
+    seExpandThemeKey = hashParams.get("theme") || undefined;
+    switchView("se", { drillDown: true, targetEmail: selectedSeEmail, theme: seExpandThemeKey });
+    return;
+  }
+
+  const dealNavMatch = /^deals\/([^/?]+)$/.exec(hash);
+  if (dealNavMatch) {
+    selectedDealNavId = dealNavMatch[1];
+    dealListTractionFilter = "";
+    switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
+    return;
+  }
+  if (hash === "deals") {
+    selectedDealNavId = null;
+    dealListTractionFilter = hashParams.get("filter") || "";
+    switchView("deals", { drillDown: !!dealListTractionFilter });
+    return;
+  }
+  if (hash === "pipeline") {
+    pipelineQuarterFilter = hashParams.get("quarter") || "";
+    pipelineSubRegionFilter = hashParams.get("sub") || "";
+    const sort = hashParams.get("sort");
+    pipelineSortKey = sort === "arr" || sort === "mrr" ? sort : "agents";
+    switchView("pipeline");
+    return;
+  }
+  if (hash === "signal") {
+    switchView("signal");
+    return;
+  }
+
+  const callMatch = /^calls\/([^/?]+)$/.exec(hash);
+  if (callMatch) {
+    selectedCallId = callMatch[1];
+    callRecordTab = hashParams.get("tab") || undefined;
+    callExpandThemeKey = hashParams.get("theme") || undefined;
+    callRecordOwnerEmail = hashParams.get("owner")
+      ? normalizeSeEmail(hashParams.get("owner"))
+      : undefined;
+    switchView("calls", { drillDown: true });
+    return;
+  }
+  if (hash === "calls") {
+    selectedCallId = null;
+    callsListFilter = hashParams.get("filter") || "";
+    switchView("calls", { drillDown: !!callsListFilter });
+    return;
+  }
+
+  const prepBriefMatch = /^precall\/briefs\/([^/?]+)$/.exec(hash);
+  if (prepBriefMatch) {
+    selectedPrepBriefId = prepBriefMatch[1];
+    precallBriefListMode = true;
+    switchView("precall", { drillDown: true, briefId: prepBriefMatch[1], briefList: true });
+    return;
+  }
+  if (hash === "precall/briefs") {
+    selectedPrepBriefId = null;
+    precallBriefListMode = true;
+    switchView("precall", { drillDown: true, briefList: true });
+    return;
+  }
+
+  const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
+  if (accountDealMatch) {
+    selectedAccountId = accountDealMatch[1];
+    selectedAccountDealId = accountDealMatch[2];
+    selectedAccountContactId = null;
+    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+    return;
+  }
+
+  const accountContactMatch = /^accounts\/([^/]+)\/contacts\/([^/]+)$/.exec(hash);
+  if (accountContactMatch) {
+    selectedAccountId = accountContactMatch[1];
+    selectedAccountContactId = accountContactMatch[2];
+    selectedAccountDealId = null;
+    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+    return;
+  }
+
+  const accountMatch = /^accounts\/([^/]+)$/.exec(hash);
+  if (accountMatch) {
+    selectedAccountId = accountMatch[1];
+    selectedAccountDealId = null;
+    selectedAccountContactId = null;
+    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+    return;
+  }
+
+  const valid = [
+    "dashboard",
+    "coaching",
+    "precall",
+    "postcall",
+    "accounts",
+    "deals",
+    "contacts",
+    "calls",
+    "manager",
+    "pipeline",
+    "signal",
+    "se",
+    "profile",
+  ];
+  switchView(valid.includes(hash) ? hash : defaultView);
+}
+
+async function hydrateSessionAfterShow(session, sessionStillValid) {
+  // Search index warm is deferred — see showApp. Sidebar refresh only.
+  refreshSidebarRecentWork();
+  refreshDashboardFromStorage();
+}
+
 async function showApp(session, opts = {}) {
   if (showAppInFlight) return;
   showAppInFlight = true;
@@ -1628,19 +1801,14 @@ async function showApp(session, opts = {}) {
   show($("login-view"), false);
   show($("app-shell"), true);
   try {
-    let enriched = session;
-    try {
-      await seedDevDomainIfNeeded();
-      enriched = (await syncSessionWithDomainStore(session)) || session;
-    } catch (err) {
-      console.warn("Domain store session sync failed:", err);
+    if (!sessionStillValid()) {
+      show($("app-loading"), false);
+      return;
     }
 
-    if (!sessionStillValid()) return;
-
-    currentSession = enriched?.email
-      ? { ...enriched, email: String(enriched.email).trim().toLowerCase() }
-      : enriched;
+    currentSession = session?.email
+      ? { ...session, email: String(session.email).trim().toLowerCase() }
+      : session;
     refreshUserMenuFromSession();
     updateTopbarDate();
 
@@ -1649,15 +1817,7 @@ async function showApp(session, opts = {}) {
       triggerSignInPulse();
     }
 
-    const tokenFn = isFirebaseAuthEnabled() && fb?.auth?.currentUser
-      ? () => fb.auth.currentUser.getIdToken()
-      : null;
-    setHistoryAuthGetter(tokenFn);
-    setTasksAuthGetter(tokenFn);
-    setSummariesAuthGetter(tokenFn);
-    setTimelineAuthGetter(tokenFn);
-    setProductSignalAuthGetter(tokenFn);
-    onSessionReady(currentSession, tokenFn);
+    applySessionAuthGetters();
 
     if (opts.freshLogin) {
       void setFieldValue($("login-email"), "");
@@ -1667,144 +1827,77 @@ async function showApp(session, opts = {}) {
     }
 
     updateNavForRole();
+    refreshSidebarRecentWork();
 
-    await loadPersistedHistory();
-    invalidateSessionListCache(currentSession);
-    invalidateSearchIndex();
-    warmSearchIndex(() => currentSession);
+    // #region agent log
+    const bootT0 = Date.now();
+    // #endregion
 
-    if (!sessionStillValid()) return;
-
-    const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
-    const { path: hashPath, params: hashParams } = parseLocationHash();
-    const hash = hashPath;
-    const hashAliases = {
-      lifecycles: { view: "accounts" },
-      coaching: { view: "coaching" },
-      "dashboard/coaching": { view: "coaching" },
-      team: { view: "manager" },
-      analysis: { view: "postcall" },
-      workspace: { view: "postcall" },
-    };
-    const alias = hashAliases[hash];
-    if (alias) {
-      switchView(alias.view);
-    } else {
-      const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
-      if (lifecycleMatch) {
-        const store = getStore();
-        const lc = await store.getLifecycle(lifecycleMatch[1]);
-        if (lc?.accountId) {
-          selectedAccountId = lc.accountId;
-          selectedAccountDealId = lc.dealId || null;
-          switchView("accounts", { accountId: lc.accountId });
-        } else {
-          switchView("accounts");
-        }
-      } else {
-        const seMatch = /^se\/(.+)$/.exec(hash);
-        if (seMatch) {
-          selectedSeEmail = normalizeSeEmail(decodeURIComponent(seMatch[1]));
-          seExpandThemeKey = hashParams.get("theme") || undefined;
-          switchView("se", { drillDown: true, targetEmail: selectedSeEmail, theme: seExpandThemeKey });
-        } else {
-          const dealNavMatch = /^deals\/([^/?]+)$/.exec(hash);
-          if (dealNavMatch) {
-            selectedDealNavId = dealNavMatch[1];
-            dealListTractionFilter = "";
-            switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
-          } else if (hash === "deals") {
-            selectedDealNavId = null;
-            dealListTractionFilter = hashParams.get("filter") || "";
-            switchView("deals", { drillDown: !!dealListTractionFilter });
-          } else if (hash === "pipeline") {
-            pipelineQuarterFilter = hashParams.get("quarter") || "";
-            pipelineSubRegionFilter = hashParams.get("sub") || "";
-            const sort = hashParams.get("sort");
-            pipelineSortKey = sort === "arr" || sort === "mrr" ? sort : "agents";
-            switchView("pipeline");
-          } else if (hash === "signal") {
-            switchView("signal");
-          } else {
-            const callMatch = /^calls\/([^/?]+)$/.exec(hash);
-            if (callMatch) {
-              selectedCallId = callMatch[1];
-              callRecordTab = hashParams.get("tab") || undefined;
-              callExpandThemeKey = hashParams.get("theme") || undefined;
-              callRecordOwnerEmail = hashParams.get("owner")
-                ? normalizeSeEmail(hashParams.get("owner"))
-                : undefined;
-              switchView("calls", { drillDown: true });
-            } else if (hash === "calls") {
-              selectedCallId = null;
-              callsListFilter = hashParams.get("filter") || "";
-              switchView("calls", { drillDown: !!callsListFilter });
-            } else {
-              const prepBriefMatch = /^precall\/briefs\/([^/?]+)$/.exec(hash);
-              if (prepBriefMatch) {
-                selectedPrepBriefId = prepBriefMatch[1];
-                precallBriefListMode = true;
-                switchView("precall", { drillDown: true, briefId: prepBriefMatch[1], briefList: true });
-              } else if (hash === "precall/briefs") {
-                selectedPrepBriefId = null;
-                precallBriefListMode = true;
-                switchView("precall", { drillDown: true, briefList: true });
-              } else {
-              const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
-              if (accountDealMatch) {
-                selectedAccountId = accountDealMatch[1];
-                selectedAccountDealId = accountDealMatch[2];
-                selectedAccountContactId = null;
-                switchView("accounts", { accountId: selectedAccountId, drillDown: true });
-              } else {
-                const accountContactMatch = /^accounts\/([^/]+)\/contacts\/([^/]+)$/.exec(hash);
-                if (accountContactMatch) {
-                  selectedAccountId = accountContactMatch[1];
-                  selectedAccountContactId = accountContactMatch[2];
-                  selectedAccountDealId = null;
-                  switchView("accounts", { accountId: selectedAccountId, drillDown: true });
-                } else {
-                  const accountMatch = /^accounts\/([^/]+)$/.exec(hash);
-                  if (accountMatch) {
-                    selectedAccountId = accountMatch[1];
-                    selectedAccountDealId = null;
-                    selectedAccountContactId = null;
-                    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
-                  } else {
-                    const valid = [
-                      "dashboard",
-                      "coaching",
-                      "precall",
-                      "postcall",
-                      "accounts",
-                      "deals",
-                      "contacts",
-                      "calls",
-                      "manager",
-                      "pipeline",
-                      "signal",
-                      "se",
-                      "profile",
-                    ];
-                    switchView(valid.includes(hash) ? hash : defaultView);
-                  }
-                }
-              }
-              }
-            }
-          }
-        }
+    try {
+      await seedDevDomainIfNeeded();
+      const enriched = (await syncSessionWithDomainStore(session)) || session;
+      if (!sessionStillValid()) {
+        show($("app-loading"), false);
+        return;
       }
+      if (enriched?.email) {
+        currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
+        refreshUserMenuFromSession();
+        updateNavForRole();
+      }
+    } catch (err) {
+      console.warn("[app] session sync before route failed:", err?.message || err);
     }
+
+    applySessionAuthGetters();
+    await loadPersistedHistory();
+    if (!sessionStillValid()) {
+      show($("app-loading"), false);
+      return;
+    }
+
+    // #region agent log
+    const historyMs = Date.now() - bootT0;
+    // #endregion
+
+    await applyInitialRouteFromHash(currentSession);
+    await paintAuthenticatedShell();
+
+    // #region agent log
+    const perfPayload = {
+      sessionId: "e10083",
+      runId: "nav-perf",
+      hypothesisId: "H4-loginBoot",
+      location: "app.js:showApp",
+      message: "login boot timing",
+      data: { historyMs, totalMs: Date.now() - bootT0, view: currentView },
+      timestamp: Date.now(),
+    };
+    console.info("[perf]", perfPayload);
+    try {
+      sessionStorage.setItem("lionpath:perf:last", JSON.stringify(perfPayload));
+    } catch {
+      /* ignore */
+    }
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
+      body: JSON.stringify(perfPayload),
+    }).catch(() => {});
+    // #endregion
+
+    setTimeout(() => warmSearchIndex(() => currentSession), 2000);
+
+    void hydrateSessionAfterShow(session, sessionStillValid);
   } finally {
     if (!getSession()?.email) {
       show($("login-view"), true);
       show($("app-shell"), false);
+      show($("app-loading"), false);
     } else if (!signingOut) {
       show($("login-view"), false);
       show($("app-shell"), true);
     }
-    show($("app-loading"), false);
     showAppInFlight = false;
   }
 }
@@ -1911,11 +2004,25 @@ async function completeFirebaseLogin(user, opts = {}) {
   firebaseLoginPromise = (async () => {
     try {
       const hadSession = !!getSession();
-      const session = await persistFirebaseSession(user, { persist: false });
-      if (!session) return null;
-      const enriched = await syncSessionWithDomainStore(session);
-      setSession(enriched || session, { freshLogin: opts.freshLogin ?? !hadSession });
-      return enriched || session;
+      const base = sessionFromFirebaseUser(user);
+      if (!base) return null;
+      const fallbackId = stableUserIdForEmail(base.email);
+      const quickSession = {
+        ...base,
+        userId: fallbackId,
+        uid: fallbackId,
+      };
+      setSession(quickSession, { freshLogin: opts.freshLogin ?? !hadSession });
+
+      try {
+        const session = await persistFirebaseSession(user, { persist: false });
+        const enriched = await syncSessionWithDomainStore(session || quickSession);
+        setSession(enriched || session || quickSession, { notify: false });
+        return enriched || session || quickSession;
+      } catch (err) {
+        console.warn("Firebase session enrich failed:", err?.message || err);
+        return quickSession;
+      }
     } finally {
       firebaseLoginPromise = null;
     }
@@ -2001,15 +2108,16 @@ async function initFirebase() {
 
   onSessionChange(handleSession);
 
-  // Restore dummy/local session immediately so refresh does not sit on the login shell.
+  // Restore cached session immediately so refresh/SSO return does not sit on login shell.
   const cachedEarly = getSession();
-  if (cachedEarly?.email && !cachedEarly.authUid) {
+  if (cachedEarly?.email) {
     handleSession(cachedEarly, { restored: true });
   }
 
   firebaseBootstrapPromise = authReady.then(async () => {
     const user = fb.auth.currentUser;
     const existing = getSession();
+    if (existing?.email && currentSession?.email === existing.email) return;
     if (user) {
       if (existing) {
         handleSession(existing, { restored: true });
@@ -2198,8 +2306,8 @@ async function boot() {
     if (!session?.email) return;
     show($("login-view"), false);
     show($("app-shell"), true);
-    show($("app-loading"), false);
     if (!currentSession?.email) handleSession(session, { restored: true });
+    else void paintAuthenticatedShell();
   });
   window.addEventListener("lionpath:open-call-record", (ev) => {
     const id = ev.detail?.id;

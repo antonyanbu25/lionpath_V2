@@ -400,6 +400,9 @@ export function initGlobalSearch(deps) {
     }
 
     try {
+      if (cached?.length) {
+        return;
+      }
       const index = await buildSearchIndex(session);
       if (gen !== searchGeneration) return;
 

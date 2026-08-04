@@ -25,7 +25,7 @@ import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
-import { wireCallLinks } from "./crayons-ui.js";
+import { renderLoadingPanel, wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import {
@@ -1232,7 +1232,7 @@ function analysesWithQualityFromRecords(records) {
 
 /** Sync remote history at query time when auth is ready (mirrors briefs KPI lazy fetch). */
 async function resolveCallRecords(email, opts = {}) {
-  if (typeof opts.fetchRemoteHistory === "function") {
+  if (opts.skipRemoteHistory !== true && typeof opts.fetchRemoteHistory === "function") {
     try {
       const synced = await opts.fetchRemoteHistory();
       if (Array.isArray(synced)) {
@@ -1243,6 +1243,46 @@ async function resolveCallRecords(email, opts = {}) {
     }
   }
   return dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+}
+
+/** Instant shell while launchpad metrics resolve. */
+export function renderDashboardLoadingShell(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <div class="dash-one-pager one-pager launchpad launchpad--loading" role="status" aria-live="polite" aria-busy="true">
+      <div class="launch-hero">
+        <div class="launch-skeleton launch-skeleton--title" aria-hidden="true"></div>
+      </div>
+      <div class="launch-kpi-grid launch-kpi-grid--skeleton" aria-hidden="true">
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+      </div>
+      <div class="dash-split launch-split">
+        <div class="dash-split-main launch-skeleton launch-skeleton--board" aria-hidden="true"></div>
+        <aside class="dash-split-side launch-side launch-skeleton launch-skeleton--side" aria-hidden="true"></aside>
+      </div>
+      ${renderLoadingPanel("Loading dashboard…")}
+    </div>`;
+}
+
+/** Instant shell while manager team metrics resolve. */
+export function renderManagerDashboardLoadingShell(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <div class="dash-one-pager one-pager manager-view manager-view--loading" role="status" aria-live="polite" aria-busy="true">
+      <div class="head dash-head manager-head">
+        <div class="launch-skeleton launch-skeleton--title" aria-hidden="true"></div>
+        <div class="launch-skeleton launch-skeleton--subtitle" aria-hidden="true"></div>
+      </div>
+      <div class="launch-kpi-grid launch-kpi-grid--skeleton" aria-hidden="true">
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+      </div>
+      <div class="launch-skeleton launch-skeleton--heatmap" aria-hidden="true"></div>
+      ${renderLoadingPanel("Loading team dashboard…")}
+    </div>`;
 }
 
 function recentCallForActivity(rec) {
@@ -1438,6 +1478,10 @@ function wireLaunchKpiNav(container, email, opts = {}) {
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
 export async function renderSeLaunchpad(container, email, opts = {}) {
+  const hasReady = container.querySelector(".launchpad:not(.launchpad--loading)");
+  if (!hasReady) {
+    renderDashboardLoadingShell(container);
+  }
   const callRecords = await resolveCallRecords(email, opts);
   const qualityRecords = analysesWithQualityFromRecords(callRecords);
   const metrics = aggregateQualityMetrics(qualityRecords);
@@ -2162,6 +2206,10 @@ function managerDashboardSubtitle(view) {
  * @param {{ onOpenCall?: (id: string, opts?: object) => void }} [opts]
  */
 export async function renderManagerDashboard(container, session, opts = {}) {
+  const hasReady = container.querySelector(".manager-view:not(.manager-view--loading)");
+  if (!hasReady) {
+    renderManagerDashboardLoadingShell(container);
+  }
   const view = await buildManagerTeamView(session);
   const { teamMetrics, seRows, isOrgView, teamSummary, dealsNeedingAttention, coachingQueue } =
     view;

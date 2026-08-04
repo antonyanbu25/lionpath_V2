@@ -49,6 +49,8 @@ import {
   getCachedAccountListRows,
   setCachedAccountListRows,
   invalidateSessionListCache,
+  getAccountListInFlight,
+  trackAccountListInFlight,
 } from "./session-list-cache.js";
 
 export { invalidateSessionListCache };
@@ -658,7 +660,13 @@ export async function listAccountsForSession(session, opts = {}) {
     if (cached) {
       return cached;
     }
+    const inFlight = getAccountListInFlight(session);
+    if (inFlight) return inFlight;
   }
+  const fetchRows = (async () => {
+  // #region agent log
+  const listT0 = Date.now();
+  // #endregion
   try {
     const store = getStore();
     const { effectiveSessionUserId } = await import("./session.js");
@@ -731,11 +739,29 @@ export async function listAccountsForSession(session, opts = {}) {
     const historyRows = listAccountRowsFromHistory(session);
     const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
     if (merged.length) setCachedAccountListRows(session, merged);
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
+      body: JSON.stringify({
+        sessionId: "e10083",
+        runId: "nav-perf",
+        hypothesisId: "H2-listAccounts",
+        location: "account-service.js:listAccountsForSession",
+        message: "account list fetch timing",
+        data: { ms: Date.now() - listT0, rowCount: merged.length, skipCache: !!opts.skipCache },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     return merged;
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
     return listAccountRowsFromHistory(session);
   }
+  })();
+  if (!opts.skipCache) trackAccountListInFlight(session, fetchRows);
+  return fetchRows;
 }
 
 /**
@@ -816,11 +842,48 @@ export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
 }
 
 /**
+ * Batch-enrich account list rows (one Firestore round-trip for ARR/signals).
+ * @param {ReturnType<import("./store.js").getStore>} store
+ * @param {object[]} rows
+ */
+export async function enrichAccountListRows(store, rows) {
+  const dealIds = [
+    ...new Set(rows.flatMap((r) => (r.deals || []).map((d) => d?.id).filter(Boolean))),
+  ];
+  /** @type {Map<string, object[]>} */
+  let arrByDeal = new Map();
+  /** @type {Map<string, object[]>} */
+  let signalsByDeal = new Map();
+  if (dealIds.length) {
+    [arrByDeal, signalsByDeal] = await Promise.all([
+      store.listArrLinesForDeals
+        ? safeStoreOp(
+            "listArrLinesForDeals",
+            () => store.listArrLinesForDeals(dealIds),
+            new Map(),
+          )
+        : Promise.resolve(new Map()),
+      store.listDealSignalsForDeals
+        ? safeStoreOp(
+            "listDealSignalsForDeals",
+            () => store.listDealSignalsForDeals(dealIds, 1),
+            new Map(),
+          )
+        : Promise.resolve(new Map()),
+    ]);
+  }
+  return Promise.all(
+    rows.map((row) => enrichAccountListRow(store, row, { arrByDeal, signalsByDeal })),
+  );
+}
+
+/**
  * List row metrics — spec §11.5 columns.
  * @param {ReturnType<import("./store.js").getStore>} store
  * @param {object} row
+ * @param {{ arrByDeal?: Map<string, object[]>, signalsByDeal?: Map<string, object[]> }} [preloaded]
  */
-export async function enrichAccountListRow(store, row) {
+export async function enrichAccountListRow(store, row, preloaded = {}) {
   if (!row?.account?.id) return row;
 
   try {
@@ -848,6 +911,11 @@ export async function enrichAccountListRow(store, row) {
 
     const dealMetrics = await Promise.all(
       dealList.map(async (deal) => {
+        if (preloaded.arrByDeal || preloaded.signalsByDeal) {
+          const lines = preloaded.arrByDeal?.get(deal.id) || [];
+          const signals = preloaded.signalsByDeal?.get(deal.id) || [];
+          return { lines, signal: signals[0] || null };
+        }
         const [lines, signals] = await Promise.all([
           store.listArrLinesByDeal
             ? safeStoreOp("listArrLinesByDeal", () => store.listArrLinesByDeal(deal.id), [])

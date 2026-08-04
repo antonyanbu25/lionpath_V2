@@ -792,7 +792,8 @@
     </script>
     <script type="module">
       import "./firebase-config.js?v=2.0.8";
-      import("./app.js?v=2.1.14").catch(function (err) {`r`n        console.error("App boot failed:", err);
+      import("./app.js?v=2.1.14").catch(function (err) {
+        console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {
           el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";

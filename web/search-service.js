@@ -436,7 +436,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
 
   let rows = [];
   try {
-    rows = await listAccountsForSession(normalized, { skipCache: true });
+    rows = await listAccountsForSession(normalized);
   } catch (err) {
     console.warn("[search] listAccountsForSession failed:", err?.message || err);
   }
@@ -536,6 +536,9 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
 }
 
 async function buildSearchIndexInternal(normalized, cacheKey) {
+  // #region agent log
+  const perfStart = Date.now();
+  // #endregion
   const ownerId = effectiveSessionUserId(normalized);
   const email = normalized?.email ? String(normalized.email).trim().toLowerCase() : "";
   const index = [];
@@ -543,10 +546,30 @@ async function buildSearchIndexInternal(normalized, cacheKey) {
   const seenContactIds = new Set();
 
   indexLocalSources(index, normalized, seenItemKeys, seenContactIds);
+  // #region agent log
+  const localMs = Date.now() - perfStart;
+  const domainStart = Date.now();
+  // #endregion
 
   if (email || ownerId) {
     await indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds);
   }
+  // #region agent log
+  const domainMs = Date.now() - domainStart;
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e10083" },
+    body: JSON.stringify({
+      sessionId: "e10083",
+      runId: "perf-check",
+      hypothesisId: "H1-skipCache",
+      location: "search-service.js:buildSearchIndexInternal",
+      message: "search index build timing",
+      data: { localMs, domainMs, totalMs: Date.now() - perfStart, indexSize: index.length, ownerId: !!ownerId },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   if (index.length) {
     cache.key = cacheKey;
