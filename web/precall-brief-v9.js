@@ -527,11 +527,6 @@ function renderFishBenchmarkCard(axes, rivals, supplementalCtx = []) {
   </div>`;
 }
 
-function isHtmlSnippetGarbage(s) {
-  const t = String(s || "");
-  return /&lt;|<a\s|href\s*=|<font|&nbsp;|target="_blank"/i.test(t);
-}
-
 function renderRecentNews(recentNews, sources) {
   const items = (recentNews || []).filter((n) => !isUnknown(n.headline));
   if (!items.length) {
@@ -545,25 +540,6 @@ function renderRecentNews(recentNews, sources) {
       const linkHtml = articleUrl
         ? `<a class="prep-v9-news-link" href="${esc(articleUrl)}" target="_blank" rel="noopener noreferrer">Read article →</a>`
         : "";
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
-        body: JSON.stringify({
-          sessionId: "57a252",
-          runId: "news-detail-v4",
-          hypothesisId: "H-no-detail",
-          location: "precall-brief-v9.js:renderRecentNews",
-          message: "news row render",
-          data: {
-            headline: n.headline?.slice(0, 40),
-            hadDetail: !!n.detail,
-            detailGarbage: isHtmlSnippetGarbage(n.detail),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       return `<div class="prep-v9-news-row">
         <span class="prep-v9-news-dot"></span>
         <div>

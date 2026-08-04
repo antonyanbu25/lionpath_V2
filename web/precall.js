@@ -17,7 +17,7 @@ import {
   renderLegacyFallback,
   companyMono,
 } from "./precall-render.js?v=2.0.8.1-merge";
-import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.1.4";
+import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.1.5";
 import { wirePrepV9ScrollAnimations } from "./prep-v9-animate.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js?v=2.1";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
@@ -506,28 +506,6 @@ export function displayPrepResult(prep, meta = {}) {
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
   merged = hydrateRecentNews(merged, meta);
-  const newsDebug = {
-    serverRecentNews: prep?.recentNews?.length ?? 0,
-    hydratedRecentNews: merged?.recentNews?.length ?? 0,
-    headlines: (merged?.recentNews || []).slice(0, 3).map((n) => n.headline),
-    pipeline: meta?.researchMeta?.recentNewsDebug || null,
-  };
-  logPrepDebug("recent-news-display", newsDebug);
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
-    body: JSON.stringify({
-      sessionId: "57a252",
-      runId: "post-fix-v3",
-      hypothesisId: "H-news-ui",
-      location: "precall.js:displayPrepResult",
-      message: "recent news display",
-      data: newsDebug,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   const withContext = applySeContextToDiscovery(applySeContextToPrep(merged, context), context);
   showResultView(canonicalizePrepSources(withContext).prep, meta);
 }
@@ -1033,28 +1011,7 @@ function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit, softC
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
   const pdfs = payload.linkedinProfileExports || [];
-  // #region agent log
-  const prepRunId = `prep-${Date.now()}`;
   const prepT0 = Date.now();
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-    body: JSON.stringify({
-      sessionId: "1a2090",
-      runId: prepRunId,
-      hypothesisId: "H-cache",
-      location: "precall.js:runPrepEndToEnd:start",
-      message: "prep pipeline start",
-      data: {
-        cacheHint: !!payload.cachedResearch,
-        pdfCount: pdfs.length,
-        emailCount: emails.length,
-        domain: payload.companyDomain,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const willFetchKaia = !!payload.kaiaMeetingUrl?.trim() && !payload.kaiaSummary?.trim();
   const willEnrich = !!deps.enrichUrl && shouldRunProspectEnrich(payload, pdfs.length);
@@ -1114,27 +1071,6 @@ async function runPrepEndToEnd(payload, meta, emails) {
         factCount: cachedFactCount,
         ms: Date.now() - tResearch,
       });
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-        body: JSON.stringify({
-          sessionId: "1a2090",
-          runId: prepRunId,
-          hypothesisId: "H-research",
-          location: "precall.js:runPrepEndToEnd:research-skipped",
-          message: "research step skipped (client cache)",
-          data: {
-            ms: Date.now() - tResearch,
-            cacheHit: true,
-            clientCache: true,
-            cacheMode: meta.cacheMode,
-            steps: data.researchMeta.steps,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       return data;
     }
 
@@ -1146,25 +1082,6 @@ async function runPrepEndToEnd(payload, meta, emails) {
       cacheHit: data.researchMeta?.cacheHit ?? cacheHit,
       steps: data.researchMeta?.steps || null,
     });
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-      body: JSON.stringify({
-        sessionId: "1a2090",
-        runId: prepRunId,
-        hypothesisId: "H-research",
-        location: "precall.js:runPrepEndToEnd:research-done",
-        message: "research step complete",
-        data: {
-          ms: Date.now() - tResearch,
-          cacheHit: data.researchMeta?.cacheHit ?? cacheHit,
-          steps: data.researchMeta?.steps || null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return data;
   };
 
@@ -1287,28 +1204,6 @@ async function runPrepEndToEnd(payload, meta, emails) {
       cacheHit: researchCacheHit,
       steps: research.researchMeta?.steps || null,
     });
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1a2090" },
-      body: JSON.stringify({
-        sessionId: "1a2090",
-        runId: prepRunId,
-        hypothesisId: "H-synth",
-        location: "precall.js:runPrepEndToEnd:complete",
-        message: "prep pipeline complete",
-        data: {
-          researchMs: totalMs,
-          synthMs,
-          totalMs,
-          cacheHit: researchCacheHit,
-          clientCache,
-          steps: research.researchMeta?.steps || null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     displayPrepResult(data.prep, enrichedMeta);
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
     saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
@@ -1449,21 +1344,6 @@ function logPrecallDeployFingerprint(trigger) {
     accountGridHidden: accountGrid?.hidden ?? null,
     prospectEmailValue: ($("prospectEmail")?.value || "").length,
   };
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "1c1657" },
-    body: JSON.stringify({
-      sessionId: "1c1657",
-      runId: "precall-deploy",
-      hypothesisId: "H1-H5",
-      location: "precall.js:logPrecallDeployFingerprint",
-      message: "precall deploy fingerprint",
-      data: payload,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   console.info("[precall-deploy]", payload);
 }
 
