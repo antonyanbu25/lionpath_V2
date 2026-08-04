@@ -880,7 +880,8 @@ async function renderAccountPanel() {
       selectedAccountEngagementPrepType = undefined;
       selectedAccountContactId = null;
       accountLifecycleOwnerId = null;
-      switchView("accounts", { accountId: id });
+      accountDetailSearchQuery = "";
+      switchView("accounts", { accountId: id, dealId: null, drillDown: true });
     },
     onBack: () => {
       selectedAccountId = null;

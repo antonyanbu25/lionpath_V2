@@ -753,6 +753,7 @@ function renderAccountDealsTable(dealRows, tableOpts = {}) {
   }
 
   const body = dealRows
+    .filter((row) => row?.deal?.id)
     .map(({ deal, arrLow, arrHigh, arrPoint, productLabel, traction, primarySeName }) => {
       const title = deal.title || DEAL_TYPE_LABELS[deal.type] || "Deal";
       const arrCell = formatDealListMoneyBand(arrLow, arrHigh, arrPoint);
@@ -1428,14 +1429,14 @@ function renderPursuitBar(detail, lensOptions, lifecycleOwnerId) {
 
   const lensSelect =
     lensOptions.length > 1
-      ? `<fw-select class="lifecycle-lens-select lifecycle-lens-select--compact" label="Lens" value="${esc(lifecycleOwnerId || lifecycle.ownerId)}" data-action="lifecycle-lens">
+      ? `<fw-select class="lifecycle-lens-select lifecycle-lens-select--compact" label="Lens" value="${esc(lifecycleOwnerId || lifecycle?.ownerId)}" data-action="lifecycle-lens">
           ${lensOptions.map((o) => `<fw-select-option value="${esc(o.value)}">${esc(o.label)}</fw-select-option>`).join("")}
         </fw-select>`
       : "";
 
   const pipelineHtml =
     selected || activeForType ?
-      renderLifecyclePipeline(lifecycle.stage, [], lifecycleOwnerId || lifecycle.ownerId, true)
+      renderLifecyclePipeline(lifecycle?.stage, [], lifecycleOwnerId || lifecycle?.ownerId, true)
     : `<p class="muted account-deal-type-empty-hint account-deal-type-empty-hint--pipeline">No active deal for this type. stage updates apply after a deal exists.</p>`;
 
   return `
@@ -1558,7 +1559,7 @@ function renderAccountOverview(detail, viewOpts = {}) {
           ${renderAccountArrModule(rollup.arrRollup, { wireframeSidebar: true })}
           ${renderContactsPanel(
             contacts,
-            lifecycle.primaryContactId,
+            lifecycle?.primaryContactId,
             contactEventsByContactId || {},
             account?.id,
             focusContactId,
@@ -1600,10 +1601,10 @@ function renderOpportunityRecord(detail, detailSearchQuery = "", viewOpts = {}) 
 
   const lensOptions = (seTeamDisplay || []).map((m) => ({
     value: m.seUserId,
-    label: m.user.displayName,
+    label: m.user?.displayName || m.seUserId || "SE",
   }));
   const seNameById = Object.fromEntries(
-    (seTeamDisplay || []).map((m) => [m.seUserId, m.user.displayName])
+    (seTeamDisplay || []).map((m) => [m.seUserId, m.user?.displayName || m.seUserId || "SE"])
   );
   const surface = viewOpts.surface === "deals" ? "deals" : "accounts";
 
@@ -1611,7 +1612,7 @@ function renderOpportunityRecord(detail, detailSearchQuery = "", viewOpts = {}) 
     <div class="lifecycle-detail account-detail account-record account-record--opportunity">
       <div class="account-record-top">
         ${renderCommandChrome(detail, opportunityChromeOpts(surface))}
-        ${renderPursuitBar(detail, lensOptions, lifecycleOwnerId || lifecycle.ownerId)}
+        ${renderPursuitBar(detail, lensOptions, lifecycleOwnerId || lifecycle?.ownerId)}
       </div>
 
       <div class="account-command-deck">
@@ -1619,7 +1620,7 @@ function renderOpportunityRecord(detail, detailSearchQuery = "", viewOpts = {}) 
           <div class="account-command-panel-scroll">
             ${renderContactsPanel(
               contacts,
-              lifecycle.primaryContactId,
+              lifecycle?.primaryContactId,
               contactEventsByContactId || {},
               account?.id,
               focusContactId,
@@ -2207,7 +2208,7 @@ export async function renderAccountView(container, session, opts = {}) {
     wireAccountListItemClicks(container, opts);
     wireListFilter(container, rows, opts);
   } catch (err) {
-    console.error("[account-view] failed to render accounts:", err);
+    console.error("[account-view] failed to render accounts:", opts.accountId, err);
     if (opts.shouldApply && !opts.shouldApply()) return;
     if (opts.accountId) {
       applyAccountViewHtml(

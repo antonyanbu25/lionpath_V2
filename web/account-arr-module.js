@@ -131,14 +131,14 @@ export function renderAccountArrModule(rollup, opts = {}) {
 
   const matrixRows = ATTACH_MATRIX_ADDON_KEYS.map((addonKey) => {
     const hasAny = deals.some((d) => {
-      const cell = attachMatrix.cells[addonKey]?.[d.id];
+      const cell = attachMatrix?.cells?.[addonKey]?.[d.id];
       return cell && cell.state !== "absent";
     });
     if (!hasAny && addonKey !== "freddy_ai_copilot" && addonKey !== SESSIONS_ADDON) return "";
 
     const cells = deals
       .map((deal) => {
-        const cell = attachMatrix.cells[addonKey]?.[deal.id] || { state: "absent" };
+        const cell = attachMatrix?.cells?.[addonKey]?.[deal.id] || { state: "absent" };
         return `<td class="account-attach-matrix-col">${renderMatrixCell(cell, allowanceConsumerDealId, deal.id, addonKey)}</td>`;
       })
       .join("");

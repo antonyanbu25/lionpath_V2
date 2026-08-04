@@ -1074,15 +1074,28 @@ export async function resolveSelectedDealForAccountView(accountId, actorId, deal
  * @param {{ lifecycleOwnerId?: string, dealId?: string|null, engagementPrepType?: import("./types.js").DealType }} [options]
  */
 export async function getAccountEngagementDetail(session, accountId, options = {}) {
-  const user = await sessionUser(session);
-  if (!user || !accountId) return null;
+  if (!accountId) return null;
+
+  let user = null;
+  try {
+    user = await sessionUser(session);
+  } catch (err) {
+    console.warn("[account-service] sessionUser failed:", accountId, err?.message || err);
+    return null;
+  }
+  if (!user) return null;
 
   const store = getStore();
   let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
   if (!account) {
     const histRow = findHistoryAccountRow(session, accountId);
     if (histRow) {
-      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+      try {
+        return await buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+      } catch (err) {
+        console.warn("[account-service] history detail failed:", accountId, err?.message || err);
+        return null;
+      }
     }
     return null;
   }
@@ -1091,10 +1104,15 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   try {
     return await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
   } catch (err) {
-    console.warn("[account-service] engagement detail failed, trying history:", err?.message || err);
+    console.warn("[account-service] engagement detail failed, trying history:", accountId, err?.message || err);
     const histRow = findHistoryAccountRow(session, accountId);
     if (histRow) {
-      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+      try {
+        return await buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+      } catch (histErr) {
+        console.warn("[account-service] history detail failed:", accountId, histErr?.message || histErr);
+        return null;
+      }
     }
     return null;
   }

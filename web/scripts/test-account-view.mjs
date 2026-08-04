@@ -4,6 +4,8 @@
 import { getAccountEngagementDetail } from "../domain/account-service.js";
 import { initDomainStore, getStore } from "../domain/store.js";
 import { renderAccountView, summarizeContactEvents, ACTIVITY_INITIAL_VISIBLE } from "../account-view.js";
+import { savePostCallAnalysis } from "../history.js";
+import { renderAccountArrModule } from "../account-arr-module.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -432,5 +434,102 @@ assert(
 );
 await loadingPromise;
 assert(loadingContainer.innerHTML.includes("Acme Corp"), "accounts list replaces shell with rows");
+
+await store.createAccount({
+  id: "account_other",
+  name: "Other Co",
+  domain: "other.com",
+  slug: "other-co-other-com",
+  seTeam: [{ seUserId: session.uid, role: "primary", addedAt: Date.now() }],
+  primarySeUserId: session.uid,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+});
+
+await store.createLifecycle({
+  id: "lc_other",
+  accountId: "account_other",
+  ownerId: session.uid,
+  teamId: session.teamId,
+  title: "Other Co",
+  stage: "discovery",
+  status: "active",
+  prepCount: 0,
+  postCallCount: 0,
+  openTaskCount: 0,
+  lastActivityAt: Date.now(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+});
+
+await store.createDeal({
+  id: "deal_other_nb",
+  accountId: "account_other",
+  type: "new_business",
+  stage: "discovery",
+  status: "active",
+  ownerId: session.uid,
+  teamId: session.teamId,
+  orgId: null,
+  title: "Other deal",
+  prepCount: 0,
+  postCallCount: 0,
+  openTaskCount: 0,
+  latestQualityScore: null,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  lastActivityAt: Date.now(),
+});
+
+const staleDealContainer = mockContainer();
+await renderAccountView(staleDealContainer, session, { accountId, dealId: "deal_other_nb" });
+assert(
+  !staleDealContainer.innerHTML.includes("Could not load this account right now"),
+  "foreign dealId on account detail does not show generic load error",
+);
+
+const listNavContainer = mockContainer();
+await renderAccountView(listNavContainer, session, { accountId, dealId: null });
+assert(listNavContainer.innerHTML.includes("account-record--overview"), "list-style navigation opens overview");
+assert(
+  !listNavContainer.innerHTML.includes("Could not load this account right now"),
+  "list-style navigation avoids generic load error",
+);
+
+await savePostCallAnalysis(
+  session.email,
+  { companyName: "Globex Inc", accountId: "hist_globex-inc" },
+  {
+    analysis: { company: "Globex Inc", callHeader: { company: "Globex Inc" } },
+    confirmed: { accountId: "hist_globex-inc", company: "Globex Inc" },
+  },
+);
+
+const historyContainer = mockContainer();
+await renderAccountView(historyContainer, session, { accountId: "hist_globex-inc", dealId: null });
+assert(
+  !historyContainer.innerHTML.includes("Could not load this account right now"),
+  "history-only account detail avoids generic load error",
+);
+assert(
+  historyContainer.innerHTML.includes("Globex") ||
+    historyContainer.innerHTML.includes("Account not found"),
+  "history-only account renders company or not-found",
+);
+
+const arrWithoutMatrix = renderAccountArrModule({
+  estimateBand: null,
+  linesByDealId: new Map(),
+  discussedUnquantified: [],
+  crossSellGaps: [],
+  totalArr: 0,
+  totalMrr: 0,
+  baseArr: 0,
+  baseMrr: 0,
+  addonArr: 0,
+  addonMrr: 0,
+});
+assert(arrWithoutMatrix.includes("account-arr-module"), "arr module renders without attachMatrix");
+assert(!arrWithoutMatrix.includes("undefined"), "arr module omits undefined markers when attachMatrix missing");
 
 console.log("test-account-view: ok");
