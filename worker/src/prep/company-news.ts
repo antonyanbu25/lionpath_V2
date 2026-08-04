@@ -311,6 +311,9 @@ export async function generateCompanyNews(
   ]);
 
   const merged = mergeCompanyNews(gemini, ddg);
+  console.info(
+    `[prep/company-news] ${input.companyName}: gemini=${gemini?.items.length ?? 0} ddg=${ddg?.items.length ?? 0} merged=${merged?.items.length ?? 0}`,
+  );
   if (merged) {
     if (gemini?.items.length && ddg?.items.length) {
       console.info(
