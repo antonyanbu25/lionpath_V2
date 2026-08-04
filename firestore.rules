@@ -191,6 +191,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /callSummaries/{docId} {
+      allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId();
+      allow update: if canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
     match /tasks/{docId} {
       allow read: if canReadTeamResource(resource.data.ownerId, resource.data.teamId, resource.data.orgId);
       allow create: if canWriteOwnResource(request.resource.data.ownerId)

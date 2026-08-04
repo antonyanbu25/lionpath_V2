@@ -36,17 +36,31 @@ if [[ -z "$PORTAL_BUILD" ]] || [[ ! "$PORTAL_BUILD" =~ ^2\.1(\.[0-9]+)?(-[a-z0-9
 fi
 PRECALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*precall\.css[^"]*"' | head -1 || true)"
 POSTCALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*postcall\.css[^"]*"' | head -1 || true)"
-APP_JS="$(echo "$HTML" | grep -o 'app\.js?v=[^"]*' | head -1 || true)"
+APP_JS="$(echo "$HTML" | grep -o 'app\.js?v=[^"`]*' | head -1 || true)"
+MODULE_BOOT="$(echo "$HTML" | grep -q 'app\.js?v=\${MODULE_BUILD}' && echo dynamic || echo static)"
 echo "precall-link=${PRECALL_HREF:-MISSING}"
 echo "postcall-link=${POSTCALL_HREF:-MISSING}"
-echo "app-js=${APP_JS:-MISSING}"
+echo "app-js=${APP_JS:-MISSING} (${MODULE_BOOT} cache bust)"
 
 if [[ -z "$PRECALL_HREF" ]] || [[ ! "$PRECALL_HREF" =~ precall\.css\?v=2\.1(\.[0-9]+)? ]]; then
   echo "FAIL: precall.css?v=2.1 missing — portal HTML is stale (git checkout 2.1 or refresh-web.sh)" >&2
   FAIL=1
 fi
-if ! echo "$HTML" | grep -qE 'app\.js\?v=2\.1\.([7-9]|[1-9][0-9]+)'; then
-  echo "FAIL: app.js must be v2.1.7+ for news detail fix (got: ${APP_JS:-MISSING}) — run: bash upgrade-now.sh" >&2
+
+APP_BUILD=""
+if echo "$HTML" | grep -qE 'app\.js\?v=2\.1\.([7-9]|[1-9][0-9]+)'; then
+  APP_BUILD="$(echo "$HTML" | grep -oE 'app\.js\?v=2\.1\.[0-9]+' | head -1 | sed 's/.*=//')"
+elif echo "$HTML" | grep -q 'app\.js?v=\${MODULE_BUILD}'; then
+  WEB_BASE="${WEB%/}"
+  FB_CONFIG="$(curl -sf "${WEB_BASE}/firebase-config.js" || true)"
+  APP_BUILD="$(echo "$FB_CONFIG" | grep -oE 'AUTH_BUILD_ID = "[^"]+"' | head -1 | cut -d'"' -f2 || true)"
+  if [[ -z "$APP_BUILD" ]]; then
+    APP_BUILD="$(echo "$FB_CONFIG" | grep -oE 'MODULE_BUILD = "[^"]+"' | head -1 | cut -d'"' -f2 || true)"
+  fi
+  echo "module-build=${APP_BUILD:-MISSING} (from firebase-config.js)"
+fi
+if [[ -z "$APP_BUILD" ]] || [[ ! "$APP_BUILD" =~ ^2\.1\.([7-9]|[1-9][0-9]+) ]]; then
+  echo "FAIL: app.js must be v2.1.7+ for news detail fix (got: ${APP_BUILD:-${APP_JS:-MISSING}}) — run: bash upgrade-now.sh" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
