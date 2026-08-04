@@ -1,0 +1,28 @@
+﻿---
+description: Branch 2.1 must push to antony remote (VPS deploy source)
+alwaysApply: true
+---
+
+# Push branch 2.1 to `antony` only
+
+Production VPS deploys from **Tony's repo**: `https://github.com/antonyanbu25/lionpath_V2.git` (remote name **`antony`**).
+
+## Rules
+
+- On branch **`2.1`**, push **only** to **`antony`**, not **`origin`** (`skut264/lionpath`).
+- Local **`2.1`** tracks **`antony/2.1`** (upstream). Do not re-point it to `origin/2.1`.
+- Do **not** change global git config; branch-level upstream is sufficient.
+
+## Commands
+
+```bash
+git checkout 2.1
+git push antony 2.1
+```
+
+After pushing, VPS should fetch from `antonyanbu25/lionpath_V2` (see README Deploy / `docs/VPS_DEPLOY.md`).
+
+## Do not
+
+- `git push origin 2.1` for release/deploy purposes on this branch
+- Assume pushes to `origin` update the VPS

@@ -596,9 +596,9 @@ See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx we
 
 ```bash
 cd /opt/se-singha-paathai
-git fetch origin
+git fetch antony   # VPS: antonyanbu25/lionpath_V2
 git checkout 2.1
-git pull origin 2.1
+git pull antony 2.1
 cd deploy/vps
 docker compose build --no-cache worker web
 docker compose up -d
