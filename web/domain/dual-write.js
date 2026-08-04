@@ -36,6 +36,11 @@ import { buildCallSummary } from "./call-summary.js";
 import { preparePostCallPayloadForFirestore, preparePostCallDetailForFirestore } from "./call-payload-storage.js";
 import { emptyPostCallDetail, capPostCallDetail, setDetailArray } from "./post-call-detail.js";
 import { buildDealSignalDetail } from "./deal-traction-service.js";
+import {
+  embedAndPersistAccount,
+  embedAndPersistCallSummary,
+  embedAndPersistDeal,
+} from "./embed-service.js";
 
 /**
  * Emails of the people on a post-call, customer-confirmed addresses first.
@@ -188,6 +193,14 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
   await linkContactsToDeal(lifecycle.dealId || null, accountId, contactIds, primaryContactId);
 
   invalidateSessionListCache(session);
+  void embedAndPersistAccount(accountId).catch((err) => {
+    console.warn("[dual-write] prep account embedding failed:", err?.message || err);
+  });
+  if (lifecycle.dealId) {
+    void embedAndPersistDeal(lifecycle.dealId, account).catch((err) => {
+      console.warn("[dual-write] prep deal embedding failed:", err?.message || err);
+    });
+  }
   return {
     lifecycle,
     prepBrief,
@@ -401,6 +414,22 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     ownerId,
     callSummary,
   );
+
+  void embedAndPersistCallSummary(callSummary, {
+    objectionSummaries: summarise?.objections || [],
+  }).catch((err) => {
+    console.warn("[dual-write] call summary embedding failed:", err?.message || err);
+  });
+
+  void embedAndPersistAccount(account.id).catch((err) => {
+    console.warn("[dual-write] post-call account embedding failed:", err?.message || err);
+  });
+  const embedDealId = lifecycle.dealId || dealId || dealRecord?.id || null;
+  if (embedDealId) {
+    void embedAndPersistDeal(embedDealId, account).catch((err) => {
+      console.warn("[dual-write] post-call deal embedding failed:", err?.message || err);
+    });
+  }
 
   if (qip) {
     try {

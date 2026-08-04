@@ -66,7 +66,8 @@ import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
-import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
+import { rerankWithEmbeddings, type RagEmbeddingCandidate } from "./search/rag-search";
+import { embedText } from "./embeddings";
 import { domainReadRoutes } from "./routes/domain-reads";
 import type { Env } from "./env";
 
@@ -966,7 +967,10 @@ export async function handleSearchRag(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const body = (await request.json()) as { query?: string; candidates?: RagCandidate[] };
+  const body = (await request.json()) as {
+    query?: string;
+    candidates?: RagEmbeddingCandidate[];
+  };
   const query = String(body.query || "").trim();
   const candidates = Array.isArray(body.candidates) ? body.candidates : [];
   if (!query) {
@@ -974,6 +978,25 @@ export async function handleSearchRag(
   }
   const ranked = await rerankWithEmbeddings(env, query, candidates);
   return json({ query, ranked, rag: ranked.length > 0 }, 200, cors);
+}
+
+/** POST /api/embed — embed searchable document text (write-time RAG vectors). */
+export async function handleEmbed(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const body = (await request.json()) as { text?: string };
+  const text = String(body.text || "").trim();
+  if (!text) {
+    return json({ error: "text is required." }, 400, cors);
+  }
+  const result = await embedText(env, text);
+  if (!result) {
+    return json({ error: "Embedding unavailable (check GEMINI_API_KEY)." }, 503, cors);
+  }
+  return json(result, 200, cors);
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
@@ -1006,4 +1029,5 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/search/rag": { POST: handleSearchRag },
+  "/api/embed": { POST: handleEmbed },
 };

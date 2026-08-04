@@ -194,10 +194,9 @@ export async function rerankWithRag(tokenHits, query, limit = 12) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: trimmed,
-        candidates: tokenHits.map((item) => ({
+        candidates: tokenHits.slice(0, 40).map((item) => ({
           id: `${item.type}:${item.id}`,
-          type: item.type,
-          text: itemSearchText(item),
+          embedding: item.embedding || null,
         })),
       }),
     });
@@ -337,6 +336,7 @@ function indexLocalSources(index, normalized, seenItemKeys, seenContactIds) {
       label,
       subtitle,
       tokens: accountRowTokens(row, row.contacts || []),
+      embedding: row.account?.embedding || null,
       lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
     });
   }
@@ -376,6 +376,7 @@ function indexLocalSources(index, normalized, seenItemKeys, seenContactIds) {
       label: deal.title || account?.name || "Deal",
       subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
       tokens: dealRowTokens(row),
+      embedding: deal?.embedding || null,
       lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
     });
   }
@@ -424,8 +425,9 @@ function indexLocalSources(index, normalized, seenItemKeys, seenContactIds) {
  * @param {Set<string>} seenItemKeys
  * @param {Set<string>} seenContactIds
  */
-async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds) {
+async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds, opts = {}) {
   const store = getStore();
+  const forSearch = !!opts.forSearch;
 
   function pushItem(item) {
     const key = `${item.type}:${item.id}`;
@@ -436,7 +438,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
 
   let rows = [];
   try {
-    rows = await listAccountsForSession(normalized);
+    rows = await listAccountsForSession(normalized, { forSearch: true, skipCache: true });
   } catch (err) {
     console.warn("[search] listAccountsForSession failed:", err?.message || err);
   }
@@ -460,6 +462,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
           label,
           subtitle,
           tokens: accountRowTokens(row, contacts),
+          embedding: row.account?.embedding || null,
           lastActivityAt: lifecycle.lastActivityAt || row.lastActivityAt || 0,
         });
 
@@ -489,7 +492,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
   );
 
   try {
-    const dealRows = await listDealsForSession(normalized);
+    const dealRows = await listDealsForSession(normalized, { forSearch });
     for (const row of dealRows) {
       const { deal, account, primarySeName } = row;
       if (!deal?.id) continue;
@@ -503,6 +506,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
         label: deal.title || account?.name || "Deal",
         subtitle: [account?.name, typeLabel, stageLabel, primarySeName].filter(Boolean).join(" · "),
         tokens: dealRowTokens(row),
+        embedding: deal?.embedding || null,
         lastActivityAt: deal.lastActivityAt || deal.updatedAt || 0,
       });
     }
@@ -549,7 +553,7 @@ async function buildSearchIndexInternal(normalized, cacheKey) {
   indexLocalSources(index, normalized, seenItemKeys, seenContactIds);
 
   if (email || ownerId) {
-    await indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds);
+    await indexDomainSources(index, normalized, ownerId, seenItemKeys, seenContactIds, { forSearch: true });
   }
 
   if (index.length) {

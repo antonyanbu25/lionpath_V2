@@ -4,6 +4,7 @@
 
 import { cachedGetDoc, cachedQuery } from "../cache";
 import { getDoc, getDb, queryBy, type FirestoreDoc, type FirestoreEnv } from "../firestore-admin";
+import { ACCOUNT_LIST_FIELDS } from "../field-masks";
 
 const COL = "accounts";
 
@@ -14,7 +15,7 @@ export async function getAccount(id: string, env?: FirestoreEnv): Promise<Firest
 export async function listAccounts(env?: FirestoreEnv): Promise<FirestoreDoc[]> {
   return cachedQuery(COL, { listAll: true }, async () => {
     const db = await getDb(env);
-    const snap = await db.collection(COL).get();
+    const snap = await db.collection(COL).select(...ACCOUNT_LIST_FIELDS).get();
     return snap.docs
       .map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) } as FirestoreDoc))
       .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));

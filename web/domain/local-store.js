@@ -10,6 +10,7 @@ import {
   tcDeltasFromPostCalls,
 } from "./post-call-detail.js";
 import { invalidateSessionListCache } from "./session-list-cache.js";
+import { stripEmbeddingFields } from "./field-masks.js";
 
 const PREFIX = "se-singha-domain:";
 const _cache = new Map();
@@ -199,8 +200,9 @@ export function createLocalStore() {
       return findById("accounts", id);
     },
 
-    async listAccounts() {
-      return findMany("accounts", () => true, (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    async listAccounts(opts = {}) {
+      const rows = findMany("accounts", () => true, (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
     async listActiveLifecyclesForAccount(accountId) {
@@ -371,20 +373,22 @@ export function createLocalStore() {
       return findById("deals", id);
     },
 
-    async listDealsByAccount(accountId, ownerId) {
-      return findMany(
+    async listDealsByAccount(accountId, ownerId, opts = {}) {
+      const rows = findMany(
         "deals",
         (d) => d.accountId === accountId && (!ownerId || d.ownerId === ownerId),
-        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
+        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listDealsByOwner(ownerId, limitCount = 300) {
-      return findMany(
+    async listDealsByOwner(ownerId, limitCount = 300, opts = {}) {
+      const rows = findMany(
         "deals",
         (d) => d.ownerId === ownerId,
-        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)
+        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
       ).slice(0, limitCount);
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
     async createLifecycle(lifecycle) {
@@ -477,39 +481,44 @@ export function createLocalStore() {
       );
     },
 
-    async listCallSummariesByOwner(ownerId, limitCount = 200) {
-      return findMany("callSummaries", (p) => p.ownerId === ownerId, (a, b) => b.createdAt - a.createdAt).slice(
+    async listCallSummariesByOwner(ownerId, limitCount = 200, opts = {}) {
+      const rows = findMany("callSummaries", (p) => p.ownerId === ownerId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listCallSummariesByTeam(teamId, limitCount = 200) {
-      return findMany("callSummaries", (p) => p.teamId === teamId, (a, b) => b.createdAt - a.createdAt).slice(
+    async listCallSummariesByTeam(teamId, limitCount = 200, opts = {}) {
+      const rows = findMany("callSummaries", (p) => p.teamId === teamId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listCallSummariesByOrg(orgId, limitCount = 200) {
-      return findMany("callSummaries", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(
+    async listCallSummariesByOrg(orgId, limitCount = 200, opts = {}) {
+      const rows = findMany("callSummaries", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listCallSummariesByDeal(dealId, limitCount = 50) {
-      return findMany("callSummaries", (p) => p.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
+    async listCallSummariesByDeal(dealId, limitCount = 50, opts = {}) {
+      const rows = findMany("callSummaries", (p) => p.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listCallSummariesByAccount(accountId, limitCount = 80) {
-      return findMany("callSummaries", (p) => p.accountId === accountId, (a, b) => b.createdAt - a.createdAt).slice(
+    async listCallSummariesByAccount(accountId, limitCount = 80, opts = {}) {
+      const rows = findMany("callSummaries", (p) => p.accountId === accountId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
+      return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
     async createTask(doc) {

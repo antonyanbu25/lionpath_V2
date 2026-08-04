@@ -52,6 +52,7 @@ import {
   getAccountListInFlight,
   trackAccountListInFlight,
 } from "./session-list-cache.js";
+import { stripEmbeddingFields } from "./field-masks.js";
 
 export { invalidateSessionListCache };
 
@@ -653,6 +654,16 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
   };
 }
 
+/** Strip embedding vectors from cached account list rows (~6KB each). */
+function stripEmbeddingsFromAccountRow(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    account: stripEmbeddingFields(row.account),
+    deals: (row.deals || []).map(stripEmbeddingFields),
+  };
+}
+
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session, opts = {}) {
   if (!opts.skipCache) {
@@ -688,6 +699,9 @@ export async function listAccountsForSession(session, opts = {}) {
         try {
           let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
           if (!account) return null;
+          if (!opts.forSearch) {
+            account = stripEmbeddingFields(account);
+          }
           account = await safeStoreOp(
             "backfillAccountSeTeam",
             () => backfillAccountSeTeam(accountId),
@@ -704,7 +718,7 @@ export async function listAccountsForSession(session, opts = {}) {
           const deals = store.listDealsByAccount
             ? await safeStoreOp(
                 "listDealsByAccount",
-                () => store.listDealsByAccount(accountId),
+                () => store.listDealsByAccount(accountId, null, { forSearch: !!opts.forSearch }),
                 [],
               )
             : [];
@@ -735,8 +749,10 @@ export async function listAccountsForSession(session, opts = {}) {
     const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
     const historyRows = listAccountRowsFromHistory(session);
     const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
-    if (merged.length) setCachedAccountListRows(session, merged);
-    return merged;
+    if (merged.length) {
+      setCachedAccountListRows(session, merged.map(stripEmbeddingsFromAccountRow));
+    }
+    return opts.forSearch ? merged : merged.map(stripEmbeddingsFromAccountRow);
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
     return listAccountRowsFromHistory(session);
@@ -962,12 +978,12 @@ export async function listAccountsForUser(session) {
  * @param {object} session
  * @returns {Promise<Array<{ deal: import("./types.js").Deal, account: import("./types.js").Account, seTeamDisplay: object[], primarySeName: string|null, lastActivityAt: number }>>}
  */
-export async function listDealsForSession(session) {
+export async function listDealsForSession(session, opts = {}) {
   /** @type {Map<string, object>} */
   const byDealId = new Map();
 
   try {
-    const accountRows = await listAccountsForSession(session);
+    const accountRows = await listAccountsForSession(session, { forSearch: !!opts.forSearch });
 
     for (const row of accountRows) {
       const { account, seTeamDisplay, deals } = row;

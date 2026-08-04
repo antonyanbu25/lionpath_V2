@@ -6,6 +6,14 @@ import { newId, now, dealContactId, normalizeDealContactRole } from "./types.js"
 import { collectionCRUD } from "./collection-crud.js";
 import { invalidateSessionListCache } from "./session-list-cache.js";
 import {
+  CALL_SUMMARY_LIST_FIELDS,
+  CALL_SUMMARY_SEARCH_FIELDS,
+  ACCOUNT_LIST_FIELDS,
+  ACCOUNT_SEARCH_FIELDS,
+  DEAL_LIST_FIELDS,
+  DEAL_SEARCH_FIELDS,
+} from "./field-masks.js";
+import {
   detailArray,
   dealSignalsFromPostCalls,
   tcDeltasFromPostCalls,
@@ -21,16 +29,42 @@ function touchSessionLists() {
   invalidateSessionListCache();
 }
 
+/** Drop ~6KB embedding vectors from list reads (client SDK has no query select). */
+function omitEmbeddingFields(row) {
+  if (!row || typeof row !== "object") return row;
+  const { embedding, embeddingModel, ...rest } = row;
+  return rest;
+}
+
 /** @param {object} fb Firebase helpers from app.js initFirebase */
 export function createFirestoreStore(fb) {
   if (!fb?.db) throw new Error("Firestore not initialized");
 
   const {
     db, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-    query, where, orderBy, limit, documentId, writeBatch,
+    query, where, orderBy, limit, documentId, writeBatch, select,
   } = fb;
 
   const WHERE_IN_CHUNK = 30;
+
+  function mapSnapDocs(snap) {
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  /** @param {readonly string[]} fields @param {boolean} [forSearch] */
+  function callSummaryFields(forSearch = false) {
+    return forSearch ? CALL_SUMMARY_SEARCH_FIELDS : CALL_SUMMARY_LIST_FIELDS;
+  }
+
+  /** @param {readonly string[]} fields @param {boolean} [forSearch] */
+  function dealFields(forSearch = false) {
+    return forSearch ? DEAL_SEARCH_FIELDS : DEAL_LIST_FIELDS;
+  }
+
+  /** @param {boolean} [forSearch] */
+  function accountFields(forSearch = false) {
+    return forSearch ? ACCOUNT_SEARCH_FIELDS : ACCOUNT_LIST_FIELDS;
+  }
 
   /** @param {string} col @param {string} field @param {string[]} values */
   async function queryWhereInChunks(col, field, values) {
@@ -276,11 +310,14 @@ export function createFirestoreStore(fb) {
       return accountsCrud.get(id);
     },
 
-    async listAccounts() {
-      const snap = await getDocs(collection(db, "accounts"));
-      return snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    async listAccounts(opts = {}) {
+      const fields = accountFields(!!opts.forSearch);
+      const q = select
+        ? query(collection(db, "accounts"), select(...fields))
+        : query(collection(db, "accounts"));
+      const snap = await getDocs(q);
+      const rows = mapSnapDocs(snap).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
     async listActiveLifecyclesForAccount(accountId) {
@@ -522,24 +559,46 @@ export function createFirestoreStore(fb) {
       return getById("deals", id);
     },
 
-    async listDealsByAccount(accountId, ownerId) {
-      const constraints = [where("accountId", "==", accountId)];
-      if (ownerId) constraints.push(where("ownerId", "==", ownerId));
-      constraints.push(orderBy("lastActivityAt", "desc"));
-      const q = query(collection(db, "deals"), ...constraints);
+    async listDealsByAccount(accountId, ownerId, opts = {}) {
+      const fields = dealFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "deals"),
+            where("accountId", "==", accountId),
+            ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+            orderBy("lastActivityAt", "desc"),
+            select(...fields),
+          )
+        : query(
+            collection(db, "deals"),
+            where("accountId", "==", accountId),
+            ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+            orderBy("lastActivityAt", "desc"),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listDealsByOwner(ownerId, limitCount = 300) {
-      const q = query(
-        collection(db, "deals"),
-        where("ownerId", "==", ownerId),
-        orderBy("lastActivityAt", "desc"),
-        limit(limitCount)
-      );
+    async listDealsByOwner(ownerId, limitCount = 300, opts = {}) {
+      const fields = dealFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "deals"),
+            where("ownerId", "==", ownerId),
+            orderBy("lastActivityAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "deals"),
+            where("ownerId", "==", ownerId),
+            orderBy("lastActivityAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
     async createLifecycle(lifecycle) {
@@ -736,59 +795,109 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
-    async listCallSummariesByOwner(ownerId, limitCount = 200) {
-      const q = query(
-        collection(db, "callSummaries"),
-        where("ownerId", "==", ownerId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+    async listCallSummariesByOwner(ownerId, limitCount = 200, opts = {}) {
+      const fields = callSummaryFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "callSummaries"),
+            where("ownerId", "==", ownerId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "callSummaries"),
+            where("ownerId", "==", ownerId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listCallSummariesByTeam(teamId, limitCount = 200) {
-      const q = query(
-        collection(db, "callSummaries"),
-        where("teamId", "==", teamId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+    async listCallSummariesByTeam(teamId, limitCount = 200, opts = {}) {
+      const fields = callSummaryFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "callSummaries"),
+            where("teamId", "==", teamId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "callSummaries"),
+            where("teamId", "==", teamId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listCallSummariesByOrg(orgId, limitCount = 200) {
-      const q = query(
-        collection(db, "callSummaries"),
-        where("orgId", "==", orgId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+    async listCallSummariesByOrg(orgId, limitCount = 200, opts = {}) {
+      const fields = callSummaryFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "callSummaries"),
+            where("orgId", "==", orgId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "callSummaries"),
+            where("orgId", "==", orgId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listCallSummariesByDeal(dealId, limitCount = 50) {
-      const q = query(
-        collection(db, "callSummaries"),
-        where("dealId", "==", dealId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+    async listCallSummariesByDeal(dealId, limitCount = 50, opts = {}) {
+      const fields = callSummaryFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "callSummaries"),
+            where("dealId", "==", dealId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "callSummaries"),
+            where("dealId", "==", dealId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listCallSummariesByAccount(accountId, limitCount = 80) {
-      const q = query(
-        collection(db, "callSummaries"),
-        where("accountId", "==", accountId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
+    async listCallSummariesByAccount(accountId, limitCount = 80, opts = {}) {
+      const fields = callSummaryFields(!!opts.forSearch);
+      const q = select
+        ? query(
+            collection(db, "callSummaries"),
+            where("accountId", "==", accountId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+            select(...fields),
+          )
+        : query(
+            collection(db, "callSummaries"),
+            where("accountId", "==", accountId),
+            orderBy("createdAt", "desc"),
+            limit(limitCount),
+          );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = mapSnapDocs(snap);
+      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
     async createTask(docData) {

@@ -125,6 +125,7 @@ export function buildCallSummary(ctx) {
       ...(productList || []),
     ]),
     embedding: ctx.embedding ?? null,
+    embeddingModel: ctx.embeddingModel ?? null,
   };
 }
 

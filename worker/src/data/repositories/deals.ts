@@ -4,6 +4,7 @@
 
 import { cachedQuery } from "../cache";
 import { getDoc, queryBy, type FirestoreDoc, type FirestoreEnv } from "../firestore-admin";
+import { DEAL_LIST_FIELDS } from "../field-masks";
 
 const COL = "deals";
 
@@ -40,7 +41,14 @@ export async function listDealsByAccount(
   const filters = [{ field: "accountId", op: "==" as const, value: accountId }];
   if (ownerId) filters.push({ field: "ownerId", op: "==", value: ownerId });
   return cachedQuery(COL, { listByAccount: accountId, ownerId: ownerId || null }, () =>
-    queryBy(COL, filters, { field: "lastActivityAt", direction: "desc" }, undefined, env),
+    queryBy(
+      COL,
+      filters,
+      { field: "lastActivityAt", direction: "desc" },
+      undefined,
+      env,
+      [...DEAL_LIST_FIELDS],
+    ),
   );
 }
 
@@ -56,6 +64,7 @@ export async function listDealsByOwner(
       { field: "lastActivityAt", direction: "desc" },
       limitCount,
       env,
+      [...DEAL_LIST_FIELDS],
     ),
   );
 }
@@ -72,6 +81,7 @@ export async function listDealsByTeam(
       { field: "lastActivityAt", direction: "desc" },
       limitCount,
       env,
+      [...DEAL_LIST_FIELDS],
     ),
   );
 }
@@ -88,6 +98,7 @@ export async function listDealsByOrg(
       { field: "lastActivityAt", direction: "desc" },
       limitCount,
       env,
+      [...DEAL_LIST_FIELDS],
     ),
   );
 }

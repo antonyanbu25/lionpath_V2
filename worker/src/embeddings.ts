@@ -5,9 +5,23 @@
 
 import type { ProviderEnv } from "./providers/types";
 
+export const EMBEDDING_MODEL = "text-embedding-004";
+
 interface EmbedResponse {
   embedding?: { values?: number[] };
   error?: { message?: string };
+}
+
+export interface EmbeddingResult {
+  embedding: number[];
+  embeddingModel: string;
+}
+
+/** Embed searchable text; returns null when unconfigured or on failure. */
+export async function embedText(env: ProviderEnv, text: string): Promise<EmbeddingResult | null> {
+  const embedding = await embedVerbatim(env, text);
+  if (!embedding.length) return null;
+  return { embedding, embeddingModel: EMBEDDING_MODEL };
 }
 
 /** Embed one verbatim; returns empty array when unconfigured or on failure. */
@@ -16,7 +30,7 @@ export async function embedVerbatim(env: ProviderEnv, text: string): Promise<num
   const apiKey = env.GEMINI_API_KEY?.trim();
   if (!trimmed || !apiKey) return [];
 
-  const model = "text-embedding-004";
+  const model = EMBEDDING_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${encodeURIComponent(apiKey)}`;
 
   try {
@@ -24,7 +38,7 @@ export async function embedVerbatim(env: ProviderEnv, text: string): Promise<num
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: `models/${model}`,
+        model: `models/${EMBEDDING_MODEL}`,
         content: { parts: [{ text: trimmed.slice(0, 2048) }] },
       }),
     });

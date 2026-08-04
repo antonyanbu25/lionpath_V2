@@ -7,14 +7,53 @@ import { queryBy, type FirestoreDoc, type FirestoreEnv } from "../firestore-admi
 
 const COL = "callSummaries";
 
+/** List projection fields — excludes embedding (~6KB) from list reads. */
+export const CALL_SUMMARY_LIST_FIELDS = [
+  "ownerId",
+  "ownerName",
+  "teamId",
+  "orgId",
+  "accountId",
+  "accountName",
+  "dealId",
+  "dealTitle",
+  "dealStage",
+  "dealType",
+  "callType",
+  "title",
+  "aiShortForm",
+  "createdAt",
+  "updatedAt",
+  "qualityScore",
+  "qipOverall",
+  "qipCategoryScores",
+  "analysisConfidence",
+  "provisional",
+  "rubricVersion",
+  "productsDiscussed",
+  "topGapKeys",
+  "followUpCount",
+  "objectionCount",
+  "hasVideoFacts",
+  "searchTokens",
+  "embeddingModel",
+] as const;
+
 async function listByField(
   field: string,
   value: string,
   limitCount: number,
   env?: FirestoreEnv,
 ): Promise<FirestoreDoc[]> {
-  return cachedQuery(COL, { listBy: field, value, limitCount }, () =>
-    queryBy(COL, [{ field, op: "==", value }], { field: "createdAt", direction: "desc" }, limitCount, env),
+  return cachedQuery(COL, { listBy: field, value, limitCount, list: true }, () =>
+    queryBy(
+      COL,
+      [{ field, op: "==", value }],
+      { field: "createdAt", direction: "desc" },
+      limitCount,
+      env,
+      [...CALL_SUMMARY_LIST_FIELDS],
+    ),
   );
 }
 
@@ -67,4 +106,22 @@ export async function listCallSummariesForScope(
   if (scope.teamId) return listCallSummariesByTeam(scope.teamId, limitCount, env);
   if (scope.orgId) return listCallSummariesByOrg(scope.orgId, limitCount, env);
   return [];
+}
+
+/** Search path — id + embedding only (Admin SDK select). */
+export async function listCallSummaryEmbeddingsForOwner(
+  ownerId: string,
+  limitCount = 500,
+  env?: FirestoreEnv,
+): Promise<FirestoreDoc[]> {
+  return cachedQuery(COL, { embedBy: "ownerId", value: ownerId, limitCount }, () =>
+    queryBy(
+      COL,
+      [{ field: "ownerId", op: "==", value: ownerId }],
+      { field: "createdAt", direction: "desc" },
+      limitCount,
+      env,
+      ["embedding", "embeddingModel"],
+    ),
+  );
 }

@@ -138,6 +138,7 @@ export async function queryBy(
   order?: QueryOrder,
   limitCount?: number,
   env?: FirestoreEnv,
+  select?: string[],
 ): Promise<FirestoreDoc[]> {
   const db = await getDb(env);
   let q: import("firebase-admin/firestore").Query = db.collection(col);
@@ -149,6 +150,9 @@ export async function queryBy(
   }
   if (typeof limitCount === "number") {
     q = q.limit(limitCount);
+  }
+  if (select?.length) {
+    q = q.select(...select);
   }
   return getDocs(q);
 }
