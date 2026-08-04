@@ -1,5 +1,168 @@
 /* Pre-call wireframe. uses Dew tokens from dew-theme.css */
 
+body.prep-gen-lock {
+  overflow: hidden;
+}
+
+/* Full-page brief generation overlay */
+.prep-gen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.42s ease;
+}
+
+.prep-gen-overlay-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.prep-gen-overlay-exit-active {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.prep-gen-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--dew-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.prep-gen-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  padding: 36px 32px 30px;
+  text-align: center;
+  border: 1px solid var(--dew-border);
+  border-radius: calc(var(--dew-radius-lg) + 4px);
+  background: var(--dew-surface);
+  box-shadow: var(--dew-shadow-popover);
+  animation: prep-gen-panel-rise 0.55s ease;
+}
+
+.prep-gen-brand {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+}
+
+.prep-gen-logo {
+  position: relative;
+  z-index: 1;
+  border-radius: 16px;
+  box-shadow: var(--dew-shadow-island);
+}
+
+.prep-gen-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--dew-primary) 35%, transparent);
+  animation: prep-gen-ring-spin 2.4s linear infinite;
+}
+
+.prep-gen-ring::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 2px solid transparent;
+  border-top-color: var(--dew-brand);
+  animation: prep-gen-ring-spin 1.1s linear infinite;
+}
+
+.prep-gen-eyebrow {
+  margin: 0 0 6px;
+}
+
+.prep-gen-title {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--dew-text);
+}
+
+.prep-gen-stage {
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: var(--dew-text-secondary);
+  min-height: 1.4em;
+}
+
+.prep-gen-progress-track {
+  height: 6px;
+  margin: 0 0 14px;
+  border-radius: 999px;
+  background: var(--dew-hairline);
+  overflow: hidden;
+}
+
+.prep-gen-progress-bar {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--dew-primary), var(--dew-brand));
+  transition: width 0.35s ease;
+}
+
+.prep-gen-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prep-result-enter {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.prep-result-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.48s ease, transform 0.48s ease;
+}
+
+@keyframes prep-gen-panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes prep-gen-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prep-gen-overlay,
+  .prep-gen-overlay-panel,
+  .prep-gen-ring,
+  .prep-gen-ring::after,
+  .prep-gen-progress-bar,
+  .prep-result-enter-active {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 #view-precall {
   display: flex;
   flex-direction: column;

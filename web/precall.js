@@ -43,6 +43,13 @@ import { hydrateRecentNews } from "./recent-news.js";
 import { getPrepCrmSelection } from "./prep-crm-resolve.js";
 import { esc, $, show } from "./shared.js";
 import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
+import {
+  showPrepGenOverlay,
+  updatePrepGenOverlay,
+  hidePrepGenOverlay,
+  prepStepsToPct,
+  revealPrepResultView,
+} from "./prep-generation-overlay.js";
 import { initPrepCrmResolve, resetPrepCrmUi } from "./prep-crm-resolve.js";
 import { getAccountEngagementContext } from "./domain/account-context.js";
 
@@ -541,8 +548,12 @@ function showResultView(prep, meta, opts = {}) {
 
   show($("prep-form-view"), false);
   show($("prep-briefs-list-view"), false);
-  show($("prep-result-view"), true);
-  show($("prep-result-back"), state.fromBriefList);
+  const resultView = $("prep-result-view");
+  if (resultView) {
+    resultView.classList.remove("prep-result-enter", "prep-result-enter-active");
+  }
+  show(resultView, !opts.deferReveal);
+  show($("prep-result-back"), state.fromBriefList && !opts.deferReveal);
 
   wireBriefResultBack();
 
@@ -889,14 +900,13 @@ function setLoading(on, message) {
   document.querySelectorAll(".nb-linkedin-upload-btn").forEach((el) => {
     el.disabled = on || state.linkedinParsing;
   });
-  // The skeleton card stays hidden. The pipeline card below it already reports real progress —
-  // named steps, ticks and a bar — so a shimmering wireframe of a brief that is not being
-  // laid out yet added motion without information, and read as though content had loaded.
-  // #prep-loading in index.html is now unreferenced except to force it hidden.
   show($("prep-loading"), false);
   if (on) {
+    showPrepGenOverlay({ message: message || "Building your brief…", pct: 8 });
     showInlineStatus(status, { type: "info", message, loading: true });
     show($("prep-result-view"), false);
+  } else {
+    void hidePrepGenOverlay();
   }
 }
 
@@ -906,6 +916,7 @@ function clearLoading() {
   setButtonLoading(btn, false);
   setFormFieldsDisabled($("prep-form"), false);
   show($("prep-loading"), false);
+  void hidePrepGenOverlay();
 }
 
 function isUnknownValue(v) {
@@ -977,7 +988,6 @@ async function hydrateKaiaSummary(payload, statusEl) {
   const endpoint = deps.kaiaShareUrl || deps.fetchKaiaUrl;
   if (!endpoint) return false;
 
-  setLoading(true, "Fetching Kaia meeting summary…");
   try {
     const data = deps.kaiaShareUrl
       ? await postJson(deps.kaiaShareUrl, { url })
@@ -1025,7 +1035,14 @@ export function createPrepProgress(stageIds, hostId = "prep-progress") {
   }));
   let detail;
 
-  const render = () => showPipelineProgress(hostId, steps, { title: "Brief pipeline", meta: detail });
+  const render = () => {
+    showPipelineProgress(hostId, steps, { title: "Brief pipeline", meta: detail });
+    const active = steps.find((s) => s.status === "active");
+    updatePrepGenOverlay({
+      message: detail || active?.label || "Building your brief…",
+      pct: prepStepsToPct(steps),
+    });
+  };
 
   return {
     steps,
@@ -1092,9 +1109,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
   ]);
 
   if (willFetchKaia) progress.set("kaia", "active");
-  await hydrateKaiaSummary(payload, status);
-  if (willFetchKaia) progress.set("kaia", payload.kaiaSummary?.trim() ? "done" : "skipped");
-  let kaiaFetched = !!payload.kaiaSummary?.trim();
+  setLoading(true, willFetchKaia ? "Fetching Kaia meeting summary…" : "Preparing brief pipeline…");
 
   let confirmedProspectProfiles = [];
   let contactEnrichmentsByEmail = null;
@@ -1102,19 +1117,18 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const cacheHit = !!payload.cachedResearch;
   const cachedFactCount = payload.cachedResearch?.facts?.length ?? 0;
   const skipResearchApi = cachedFactCount >= 8;
-  setLoading(
-    true,
-    skipResearchApi
-      ? "Using saved account research…"
-      : cacheHit
-        ? "Loading cached research…"
-        : "Researching account and prospects…",
-  );
 
   const researchPayload = { ...payload };
   delete researchPayload.confirmedProspectProfiles;
 
   const runResearchStep = async () => {
+    updatePrepGenOverlay({
+      message: skipResearchApi
+        ? "Using saved account research…"
+        : cacheHit
+          ? "Loading cached research…"
+          : "Researching account and prospects…",
+    });
     progress.set("research", "active");
     const tResearch = Date.now();
 
@@ -1190,9 +1204,17 @@ async function runPrepEndToEnd(payload, meta, emails) {
     }
   };
 
+  // Kaia must finish before research (payload), but enrich can overlap Kaia fetches.
+  const kaiaPromise = willFetchKaia ? hydrateKaiaSummary(payload, status) : Promise.resolve(false);
+  const enrichPromise = runEnrichStep();
+
+  await kaiaPromise;
+  if (willFetchKaia) progress.set("kaia", payload.kaiaSummary?.trim() ? "done" : "skipped");
+  let kaiaFetched = !!payload.kaiaSummary?.trim();
+
   let research;
   try {
-    const [researchResult, enrichProfiles] = await Promise.all([runResearchStep(), runEnrichStep()]);
+    const [researchResult, enrichProfiles] = await Promise.all([runResearchStep(), enrichPromise]);
     research = researchResult;
     confirmedProspectProfiles = enrichProfiles;
     state.contactEnrichmentsByEmail = contactEnrichmentsByEmail;
@@ -1239,6 +1261,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
   setLoading(true, "Generating brief from research…");
   progress.set("synthesize", "active");
+  updatePrepGenOverlay({ message: "Writing the brief…", pct: prepStepsToPct(progress.steps) });
   const tSynth = Date.now();
 
   try {
@@ -1262,6 +1285,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
     };
 
     progress.set("synthesize", "done");
+    updatePrepGenOverlay({ message: "Brief ready", pct: 100 });
     const totalMs = Date.now() - prepT0;
     const synthMs = Date.now() - tSynth;
     logPrepDebug("pipeline-complete", {
@@ -1273,7 +1297,14 @@ async function runPrepEndToEnd(payload, meta, emails) {
       cacheHit: researchCacheHit,
       steps: research.researchMeta?.steps || null,
     });
-    displayPrepResult(data.prep, enrichedMeta);
+    displayPrepResult(data.prep, enrichedMeta, { deferReveal: true });
+    await hidePrepGenOverlay(() => {
+      show($("prep-result-view"), true);
+      show($("prep-result-back"), state.fromBriefList);
+      revealPrepResultView();
+      wirePrepV9ScrollAnimations($("prep-tab-discovery"));
+      wirePrepV9ScrollAnimations($("prep-tab-demo"));
+    });
     const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
     saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
     state.pendingResearch = null;

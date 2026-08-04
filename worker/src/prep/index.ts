@@ -260,40 +260,35 @@ async function gatherResearch(
   facts = withSe.facts;
   sources = withSe.sources;
 
-  const tGap = Date.now();
-  const gapFilled = await fillResearchGaps(
-    env,
-    {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      emails,
-      additionalContext: mergedContext,
-    },
-    snippets,
-    facts,
-    sources,
+  // Gap follow-up and news supplement both read the post-extract snapshot only — gap adds
+  // signal/prospect snippets, news reads playbook news snippets. Safe to run in parallel.
+  const gapNewsInput = {
+    companyName: input.companyName,
+    companyDomain: input.companyDomain,
+    emails,
+    additionalContext: mergedContext,
+  };
+  const tGapNews = Date.now();
+  const [gapFilled, newsSupplemented] = await Promise.all([
+    fillResearchGaps(env, gapNewsInput, snippets, facts, sources),
+    supplementNewsFacts(env, snippets, facts, sources, gapNewsInput),
+  ]);
+  const gapNewsMs = Date.now() - tGapNews;
+  stepTimings.gap = gapNewsMs;
+  stepTimings.news = gapNewsMs;
+
+  const newsOnly = newsSupplemented.facts.filter(
+    (f) =>
+      f.category === "news" &&
+      !gapFilled.facts.some((g) => g.category === f.category && g.key === f.key && g.value === f.value),
   );
-  stepTimings.gap = Date.now() - tGap;
-  const afterGap = applySeContextFacts(gapFilled.facts, gapFilled.sources, mergedContext);
-  const tNews = Date.now();
-  const supplemented = await supplementNewsFacts(
-    env,
-    gapFilled.snippets,
-    afterGap.facts,
-    afterGap.sources,
-    {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      emails,
-      additionalContext: mergedContext,
-    },
-  );
-  stepTimings.news = Date.now() - tNews;
+  const mergedFacts = mergeFacts(gapFilled.facts, newsOnly);
+  const mergedSources = mergeSources(gapFilled.sources, newsSupplemented.sources);
 
   return {
     snippets: gapFilled.snippets,
-    facts: supplemented.facts,
-    sources: supplemented.sources,
+    facts: mergedFacts,
+    sources: mergedSources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,
