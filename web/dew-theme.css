@@ -70,7 +70,8 @@
   --input-bg: var(--dew-surface);
   --topbar-bg: var(--dew-surface);
   --footer-bg: var(--dew-bg);
-  --splash-bg: linear-gradient(145deg, #2e897b 0%, #256f63 42%, #2b2926 100%);
+  --splash-bg: var(--dew-bg);
+  --splash-glow: color-mix(in srgb, var(--dew-brand) 12%, transparent);
   --sidebar-w: 250px;
 
   --fw-primary-color: var(--dew-primary);
@@ -162,7 +163,8 @@
   --input-bg: #1a1815;
   --topbar-bg: var(--dew-surface);
   --footer-bg: var(--dew-bg);
-  --splash-bg: linear-gradient(145deg, #1a3834 0%, #256f63 40%, #141210 100%);
+  --splash-bg: var(--dew-bg);
+  --splash-glow: color-mix(in srgb, var(--dew-brand) 16%, transparent);
 
   --fw-primary-color: var(--dew-primary);
   --fw-primary-color-hover: var(--dew-primary-hover);

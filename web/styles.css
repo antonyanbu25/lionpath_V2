@@ -110,7 +110,7 @@ body.splash-lock { overflow: hidden; }
   }
 }
 
-/* Lion splash */
+/* SE Labs splash — warm cream + teal, subtle intro */
 .lion-splash {
   position: fixed;
   inset: 0;
@@ -120,46 +120,91 @@ body.splash-lock { overflow: hidden; }
   justify-content: center;
   background: var(--splash-bg);
   opacity: 1;
-  transition: opacity 0.7s ease;
+  transition: opacity 0.85s ease;
+  overflow: hidden;
+}
+.lion-splash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 75% 65% at 50% 42%,
+    var(--splash-glow) 0%,
+    transparent 68%
+  );
+  pointer-events: none;
+  animation: splash-glow-breathe 4s ease-in-out infinite;
 }
 .lion-splash-fade { opacity: 0; pointer-events: none; }
 .lion-splash-inner {
+  position: relative;
   text-align: center;
   padding: 32px;
-  animation: splash-rise 0.8s ease-out;
+  animation: splash-rise 1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .lion-loader {
-  width: 96px;
-  height: 96px;
-  margin: 0 auto 24px;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--dew-surface) 12%, transparent);
-  box-shadow: var(--dew-shadow-popover);
+  gap: 10px;
+  border-radius: 18px;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  box-shadow: var(--dew-shadow-card);
+  animation: splash-logo-breathe 2.8s ease-in-out infinite;
 }
-.lion-loader-mark {
-  width: 34px;
-  height: 34px;
-  font-size: 12px;
+.lion-loader-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
 }
 .lion-loader fw-spinner {
-  --fw-spinner-color: #ffffff;
+  --fw-spinner-color: var(--dew-brand);
+  opacity: 0.8;
 }
 .lion-title {
-  margin: 0 0 8px;
-  font-size: 28px;
-  font-weight: 700;
-  color: #f0f6fa;
-  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--dew-text);
+  letter-spacing: -0.03em;
 }
-.lion-tagline { color: color-mix(in srgb, #ffffff 78%, transparent); margin: 0; }
-@keyframes splash-rise {
-  from { opacity: 0; transform: translateY(16px); }
+.lion-tagline {
+  color: var(--dew-text-secondary);
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  animation: splash-tagline-fade 1.2s ease 0.35s both;
+}
+@keyframes splash-glow-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.02); }
+}
+@keyframes splash-logo-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.015); }
+}
+@keyframes splash-tagline-fade {
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes splash-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lion-splash::before,
+  .lion-loader,
+  .lion-splash-inner,
+  .lion-tagline {
+    animation: none;
+  }
+  .lion-splash-inner { opacity: 1; transform: none; }
 }
 
 /* Shared Dew loading and feedback surfaces */
@@ -4055,6 +4100,51 @@ a { color: var(--accent); }
 
 /* SE launchpad */
 .launchpad { max-width: 100%; overflow-x: hidden; }
+.launchpad--loading .dew-loading-panel,
+.manager-view--loading .dew-loading-panel {
+  margin-top: 18px;
+  min-height: 72px;
+}
+.launch-skeleton {
+  border-radius: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--dew-hairline) 0%,
+    color-mix(in srgb, var(--dew-border) 70%, var(--dew-hairline)) 50%,
+    var(--dew-hairline) 100%
+  );
+  background-size: 200% 100%;
+  animation: launch-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+.launch-skeleton--title {
+  height: 34px;
+  width: min(320px, 72%);
+  margin-bottom: 6px;
+}
+.launch-skeleton--subtitle {
+  height: 18px;
+  width: min(420px, 88%);
+}
+.launch-skeleton--kpi { min-height: 104px; }
+.launch-kpi-grid--skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.launch-skeleton--board { min-height: 320px; }
+.launch-skeleton--side { min-height: 320px; }
+.launch-skeleton--heatmap {
+  min-height: 240px;
+  margin-bottom: 20px;
+}
+@keyframes launch-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-skeleton { animation: none; }
+}
 .launch-hero,
 .launch-kpi-grid,
 .launch-split.dash-split {
