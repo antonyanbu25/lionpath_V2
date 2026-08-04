@@ -649,6 +649,7 @@ function switchView(name, opts = {}) {
   history.replaceState(null, "", `#${hash}`);
   closeSidebar();
   if (name === "precall") {
+    if (!opts.keepBrief) resetPrecallForm();
     syncPrepEngagementMotion();
   }
   if (name === "postcall" && !isPostCallGenerationBusy()) {
@@ -1079,6 +1080,24 @@ function applyRouteFromHash() {
     } else {
       void renderCallPanel();
     }
+    return;
+  }
+
+  const topLevelViews = new Set([
+    "dashboard",
+    "coaching",
+    "precall",
+    "postcall",
+    "accounts",
+    "deals",
+    "contacts",
+    "manager",
+    "pipeline",
+    "signal",
+    "profile",
+  ]);
+  if (topLevelViews.has(hash) && currentView !== hash) {
+    switchView(hash);
   }
 }
 
@@ -1128,7 +1147,7 @@ async function loadPersistedHistory() {
 
 function openPrepBriefItem(id) {
   if (!openPrepBrief(id)) return;
-  switchView("precall");
+  switchView("precall", { keepBrief: true });
   document.querySelectorAll(".sidebar-prep-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.id === id);
   });
@@ -1309,6 +1328,7 @@ async function savePrep(input, prep, meta) {
 // ---------- Auth UI ----------
 
 function showLogin() {
+  if (getSession()?.email && !signingOut) return;
   showAppInFlight = false;
   show($("app-loading"), false);
   show($("login-view"), true);
@@ -1499,6 +1519,9 @@ async function showApp(session, opts = {}) {
     if (!getSession()?.email) {
       show($("login-view"), true);
       show($("app-shell"), false);
+    } else if (!signingOut) {
+      show($("login-view"), false);
+      show($("app-shell"), true);
     }
     show($("app-loading"), false);
     showAppInFlight = false;
@@ -1691,9 +1714,7 @@ async function initFirebase() {
     // user === null. Before the first resolution this only means "not restored yet".
     if (!authResolved) return;
     const cached = getSession();
-    if (cached?.email && !cached.authUid) {
-      return;
-    }
+    if (cached?.email) return;
     logout();
   });
 
@@ -1884,6 +1905,15 @@ async function boot() {
   });
 
   window.addEventListener("hashchange", () => applyRouteFromHash());
+  window.addEventListener("pageshow", (ev) => {
+    if (!ev.persisted) return;
+    const session = getSession();
+    if (!session?.email) return;
+    show($("login-view"), false);
+    show($("app-shell"), true);
+    show($("app-loading"), false);
+    if (!currentSession?.email) handleSession(session, { restored: true });
+  });
   window.addEventListener("lionpath:open-call-record", (ev) => {
     const id = ev.detail?.id;
     if (id) openCallRecord(id);
