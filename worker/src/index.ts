@@ -23,6 +23,7 @@ import {
   handleTaskPatch,
   routes,
 } from "./routes";
+import { dispatchDomainReadById } from "./routes/domain-reads";
 
 export type { Env } from "./env";
 
@@ -68,6 +69,9 @@ export default {
           return handleTaskDelete(request, env, url, cors, taskIdMatch[1]);
         }
       }
+
+      const domainRead = await dispatchDomainReadById(request, env, url, cors, path);
+      if (domainRead) return domainRead;
 
       return json({ error: "Not found." }, 404, cors);
     } catch (err) {

@@ -6,6 +6,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
+import { firestoreAdminBootStatus } from "./data/firestore-admin";
 import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
 import type { HistoryEnv } from "./history";
 import type { Env as PrepEnv } from "./prep";
@@ -15,6 +16,7 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
+  FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   VIDEO_PASS_ENABLED?: string;
   VIDEO_DATA_DIR?: string;
 }
@@ -39,6 +41,7 @@ function buildEnv(): NodeEnv {
       "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com",
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
+    FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     ZOOM_ACCOUNT_ID: process.env.ZOOM_ACCOUNT_ID,
@@ -180,4 +183,5 @@ createServer(async (req, res) => {
       `Video Pass 2: ${passEnabled ? "enabled" : "disabled (VIDEO_PASS_ENABLED=0)"} → ${process.env.VIDEO_DATA_DIR || "/data/video"} · ffmpeg=${ffmpegOk ? "ok" : "MISSING — camera vision will fall back to transcript"}`,
     );
   });
+  void firestoreAdminBootStatus(env).then((line) => console.log(line));
 });

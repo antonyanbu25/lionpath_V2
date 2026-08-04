@@ -1,3 +1,12 @@
+// SERVER READS BYPASS THESE RULES
+// Worker GET /api/calls|accounts|deals uses firebase-admin (Node only).
+// Scoping enforced in worker/src/data/scope.ts + worker/src/routes/domain-reads.ts:
+//   SE      → own resources (ownerId == userId)
+//   Manager → own + same teamId
+//   Director/org leader → own + team + same orgId (isOrgLeader)
+//   Admin   → all
+// Browser client SDK access remains governed by rules below.
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

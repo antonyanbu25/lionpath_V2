@@ -67,6 +67,7 @@ import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
+import { domainReadRoutes } from "./routes/domain-reads";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -976,6 +977,7 @@ export async function handleSearchRag(
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
+  ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
   "/api/zoom/auth": { GET: handleZoomAuth },

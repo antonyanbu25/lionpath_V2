@@ -1,0 +1,177 @@
+/**
+ * Authenticated Firestore read API — Node runtime only.
+ */
+
+import { requireUser } from "../auth";
+import type { Env } from "../env";
+import { json } from "../http";
+import { isNodeRuntime } from "../video/capability";
+import { assertFirestoreAvailable, firestoreAdminReady, type FirestoreEnv } from "../data/firestore-admin";
+import {
+  canReadResource,
+  assertCanReadResource,
+  parseLimitParam,
+  parseScopeParam,
+  resolveListScope,
+  resolveRequestContext,
+} from "../data/scope";
+import {
+  getPostCallDetail,
+  listPostCallsForScope,
+} from "../data/repositories/calls";
+import {
+  getAccount,
+  getAccountSummaryByAccount,
+  listAccounts,
+  projectAccountListRow,
+} from "../data/repositories/accounts";
+import { getDealDetail, listDealsForScope } from "../data/repositories/deals";
+
+type RouteHandler = (
+  request: Request,
+  env: Env,
+  url: URL,
+  cors: Record<string, string>,
+) => Promise<Response>;
+
+function fsEnv(env: Env): FirestoreEnv {
+  return env;
+}
+
+function ensureNodeFirestore(env: Env): void {
+  if (!isNodeRuntime() || !firestoreAdminReady(env)) {
+    throw Object.assign(new Error("Firestore read API requires Node runtime (VPS or Cloud Run)."), {
+      status: 503,
+    });
+  }
+  assertFirestoreAvailable(env);
+}
+
+async function authContext(request: Request, env: Env) {
+  ensureNodeFirestore(env);
+  const verified = await requireUser(request, env);
+  if (!verified) {
+    throw Object.assign(new Error("Sign-in required."), { status: 401 });
+  }
+  const ctx = await resolveRequestContext(verified, env);
+  return ctx;
+}
+
+function resourceFromRow(row: Record<string, unknown>) {
+  return {
+    ownerId: typeof row.ownerId === "string" ? row.ownerId : undefined,
+    teamId: typeof row.teamId === "string" ? row.teamId : undefined,
+    orgId: typeof row.orgId === "string" ? row.orgId : undefined,
+  };
+}
+
+export async function handleCallsListGet(
+  request: Request,
+  env: Env,
+  url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const scope = parseScopeParam(url.searchParams.get("scope"));
+  const limit = parseLimitParam(url.searchParams.get("limit"), 200);
+  const listScope = resolveListScope(ctx, scope);
+  const rows = await listPostCallsForScope(listScope, limit, fsEnv(env));
+  const filtered = rows.filter((row) => canReadResource(ctx, resourceFromRow(row)));
+  return json({ scope, limit, calls: filtered }, 200, cors);
+}
+
+export async function handleCallGetById(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+  id: string,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const detail = await getPostCallDetail(id, fsEnv(env));
+  if (!detail) return json({ error: "Call not found." }, 404, cors);
+  assertCanReadResource(ctx, resourceFromRow(detail.postCall));
+  return json(detail, 200, cors);
+}
+
+export async function handleAccountsListGet(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  await authContext(request, env);
+  const rows = await listAccounts(fsEnv(env));
+  return json({ accounts: rows.map(projectAccountListRow) }, 200, cors);
+}
+
+export async function handleAccountGetById(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+  id: string,
+): Promise<Response> {
+  await authContext(request, env);
+  const account = await getAccount(id, fsEnv(env));
+  if (!account) return json({ error: "Account not found." }, 404, cors);
+  const summary = await getAccountSummaryByAccount(id, fsEnv(env));
+  return json({ account, summary }, 200, cors);
+}
+
+export async function handleDealsListGet(
+  request: Request,
+  env: Env,
+  url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const scope = parseScopeParam(url.searchParams.get("scope"));
+  const limit = parseLimitParam(url.searchParams.get("limit"), 300);
+  const listScope = resolveListScope(ctx, scope);
+  const rows = await listDealsForScope(listScope, limit, fsEnv(env));
+  const filtered = rows.filter((row) => canReadResource(ctx, resourceFromRow(row)));
+  return json({ scope, limit, deals: filtered }, 200, cors);
+}
+
+export async function handleDealGetById(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+  id: string,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const detail = await getDealDetail(id, fsEnv(env));
+  if (!detail) return json({ error: "Deal not found." }, 404, cors);
+  assertCanReadResource(ctx, resourceFromRow(detail.deal));
+  return json(detail, 200, cors);
+}
+
+export const domainReadRoutes: Record<string, Record<string, RouteHandler>> = {
+  "/api/calls": { GET: handleCallsListGet },
+  "/api/accounts": { GET: handleAccountsListGet },
+  "/api/deals": { GET: handleDealsListGet },
+};
+
+export async function dispatchDomainReadById(
+  request: Request,
+  env: Env,
+  url: URL,
+  cors: Record<string, string>,
+  path: string,
+): Promise<Response | null> {
+  const callMatch = path.match(/^\/api\/calls\/([^/]+)$/);
+  if (callMatch && request.method === "GET") {
+    return handleCallGetById(request, env, url, cors, decodeURIComponent(callMatch[1]));
+  }
+  const accountMatch = path.match(/^\/api\/accounts\/([^/]+)$/);
+  if (accountMatch && request.method === "GET") {
+    return handleAccountGetById(request, env, url, cors, decodeURIComponent(accountMatch[1]));
+  }
+  const dealMatch = path.match(/^\/api\/deals\/([^/]+)$/);
+  if (dealMatch && request.method === "GET") {
+    return handleDealGetById(request, env, url, cors, decodeURIComponent(dealMatch[1]));
+  }
+  return null;
+}
