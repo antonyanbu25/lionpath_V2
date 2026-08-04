@@ -173,10 +173,21 @@ async function enrichFfmpegWithTranscriptTalk(
       aeIdentity: input.aeIdentity,
       customerIdentities: input.customerIdentities,
     });
-    if (!merged?.length) return result;
+    let finalCurve = merged;
+    if (finalCurve?.length && !curveHasCameraData(finalCurve) && result.videoFacts.cameraOnPct != null) {
+      const seeded = seedCurveFromTopLevelCamera(result.videoFacts.cameraOnPct, input);
+      if (seeded?.length) {
+        finalCurve = mergeAttendeeCurveTalk(seeded, talkDraft.attendeeCurveJson, {
+          seIdentity: input.seIdentity,
+          aeIdentity: input.aeIdentity,
+          customerIdentities: input.customerIdentities,
+        });
+      }
+    }
+    if (!finalCurve?.length) return result;
     return {
       ...result,
-      videoFacts: { ...result.videoFacts, attendeeCurveJson: merged },
+      videoFacts: { ...result.videoFacts, attendeeCurveJson: finalCurve },
       pass2Debug: { ...(result.pass2Debug || { route: "ffmpeg" }), mergedTalk: true },
     };
   } catch (err) {
@@ -199,9 +210,20 @@ async function runTranscriptPass(
     visualAnalysisConsent: input.visualAnalysisConsent,
   });
   if (draft.status === "ready") {
+    const consent = !!input.visualAnalysisConsent;
+    let videoFacts = draft;
+    if (consent && draft.streamKind === "transcript_infer") {
+      const hint = "ffmpeg/vision unavailable — camera not scored from video frames";
+      videoFacts = {
+        ...draft,
+        errorMessage: draft.errorMessage?.trim()
+          ? `${draft.errorMessage} (${hint})`
+          : hint,
+      };
+    }
     return {
       ok: true,
-      videoFacts: draft,
+      videoFacts,
       pass2Debug: { route: "transcript", visionCurveRows: draft.attendeeCurveJson?.length ?? 0 },
     };
   }

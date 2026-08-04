@@ -203,6 +203,83 @@ assert(camContainer.innerHTML.includes("talk 75%"), "shows talk pct from videoFa
 assert(camContainer.innerHTML.includes("cam On"), "shows camera on when videoFacts has camera data");
 assert(camContainer.innerHTML.includes("cam Off"), "shows camera off for AE when vision says off");
 
+const seCamFallbackSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/se-cam-fallback",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Priyal",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "CamFallback · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true, pass2Debug: { route: "ffmpeg" } },
+    videoFacts: {
+      status: "ready",
+      streamKind: "video",
+      cameraOnPct: 82,
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Priyal", role: "Account Executive", talkPct: 5, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 25, cameraOn: null },
+      ],
+    },
+  },
+);
+const seCamFallbackContainer = { innerHTML: "" };
+Object.defineProperty(seCamFallbackContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(seCamFallbackContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(seCamFallbackContainer, firebaseSession, { callId: seCamFallbackSaved.id });
+assert(seCamFallbackContainer.innerHTML.includes("cam On"), "SE falls back to top-level cameraOnPct when curve lacks camera");
+assert(seCamFallbackContainer.innerHTML.includes("82%"), "SE shows cameraOnPct from top-level videoFacts");
+
+const transcriptOnlySaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/transcript-only",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Priyal",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "TranscriptOnly · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true, pass2Debug: { route: "transcript" } },
+    videoFacts: {
+      status: "ready",
+      streamKind: "transcript_infer",
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Priyal", role: "Account Executive", talkPct: 5, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 25, cameraOn: null },
+      ],
+    },
+  },
+);
+const transcriptOnlyContainer = { innerHTML: "" };
+Object.defineProperty(transcriptOnlyContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(transcriptOnlyContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(transcriptOnlyContainer, firebaseSession, { callId: transcriptOnlySaved.id });
+assert(
+  transcriptOnlyContainer.innerHTML.includes("Pass 2 used transcript only"),
+  "shows pass2 hint when talk present but camera unknown on transcript path",
+);
+
 const emmaSaved = await savePostCallAnalysis(
   email,
   {

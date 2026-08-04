@@ -1023,12 +1023,28 @@ function buildStakeholderRows(identities, attendees, videoFacts, contacts = []) 
 
   const merged = mergeCallIdentities(candidates, contacts, transcriptSpeakers);
 
+  const topLevelCameraOnPct =
+    videoFacts?.cameraOnPct != null && Number.isFinite(Number(videoFacts.cameraOnPct))
+      ? Math.max(0, Math.min(100, Math.round(Number(videoFacts.cameraOnPct))))
+      : null;
+  const seIdentity = identities?.seIdentity?.trim() || "";
+
   const rows = merged.map((att) => {
     const displayName = String(att.name || att.label || att.email || "").trim();
     const stat = findParticipantStat(stats, displayName);
     let talkPct = stat?.talkPct ?? null;
     let cameraOnPct = stat?.cameraOnPct ?? null;
     let cameraOn = stat?.cameraOn ?? null;
+    if (
+      cameraOn == null &&
+      cameraOnPct == null &&
+      topLevelCameraOnPct != null &&
+      seIdentity &&
+      identityMatchesName(seIdentity, displayName)
+    ) {
+      cameraOnPct = topLevelCameraOnPct;
+      cameraOn = topLevelCameraOnPct >= 50;
+    }
     if (cameraOn == null && cameraOnPct != null) {
       cameraOn = cameraOnPct >= 50;
     }
@@ -1359,8 +1375,22 @@ function renderCallNotesSection(notes) {
     </section>`;
 }
 
-function formatPass2DebugNote(_analysisMeta, _videoFacts) {
-  return "";
+function formatPass2DebugNote(analysisMeta, videoFacts, stakeholderRows) {
+  const rows = stakeholderRows || [];
+  if (!rows.length) return "";
+  const hasTalk = rows.some((r) => r.talkPct != null);
+  const allCamUnknown = rows.every((r) => r.cameraOn !== true && r.cameraOn !== false);
+  if (!hasTalk || !allCamUnknown) return "";
+
+  const route = analysisMeta?.pass2Debug?.route || null;
+  const streamKind = videoFacts?.streamKind || null;
+  if (route === "transcript" || streamKind === "transcript_infer") {
+    return "Camera state unavailable — Pass 2 used transcript only. Re-run with a Zoom recording on the VPS for cam On/Off.";
+  }
+  if (videoFacts?.errorMessage) {
+    return "Camera state could not be determined from the recording.";
+  }
+  return "Camera state could not be determined from the recording.";
 }
 
 function renderStakeholderName(row) {
@@ -1414,11 +1444,14 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
     );
   }
 
+  const pass2Note = formatPass2DebugNote(analysisMeta, videoFacts, rows);
+
   return `
     <section class="call-section call-stakeholder-section card-wire card-wire--tight call-postcall-room">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Who was in the room</div>
         ${body}
+        ${pass2Note ? `<p class="muted call-stakeholder-pass2-note">${esc(pass2Note)}</p>` : ""}
       </div>
     </section>`;
 }
