@@ -31,16 +31,16 @@ Both flows share the same polished one-pager layout, personal dashboard, and sid
 
 ## Pre-call improvements (branch `2.1`)
 
-### Login page refresh (2.1.5)
+### Login page (2.1.11)
 
-Split-layout sign-in ported from **`2.0.8.1-merge`** and polished for **`2.1`**:
+Centered sign-in restored from **`2.0.8.1-merge`** — full-screen ambient video background with a white card in the middle:
 
 | Item | Detail |
 |------|--------|
-| **Layout** | Form panel left, ambient video showcase right (mobile stacks video strip above form) |
-| **Branding** | Freshworks logomark in brand bar + **browser favicon** (`assets/freshworks-logomark.webp`) |
-| **Dark mode** | Top-right crescent moon toggle with slow glow pulse (dims/brightens on a 4s loop); sun icon when dark mode is active |
-| **Animations** | Staggered panel/card field fade-in, gentle logo float, video drift, button hover lift — all respect `prefers-reduced-motion` |
+| **Layout** | Full-viewport video background; centered card with Freshworks logomark, heading, and **Sign in with Google** |
+| **Branding** | Freshworks logomark in card + **browser favicon** (`assets/freshworks-logomark.webp`) |
+| **Dark mode** | Top-right crescent moon toggle with slow glow pulse (4s loop); sun icon when dark mode is active |
+| **Animations** | Gentle card entrance, staggered field fade-in, subtle video drift, button hover lift — all respect `prefers-reduced-motion` |
 | **SSO** | Google sign-in pill on production; demo email/password on localhost |
 
 Key paths: `web/index.html`, `web/styles.css`, `web/theme.js`.

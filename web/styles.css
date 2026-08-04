@@ -211,62 +211,56 @@ body.splash-lock { overflow: hidden; }
   box-shadow: var(--dew-shadow-island);
 }
 
-/* Login — split layout (form left, video right; iofrm login19-inspired) */
+/* Login — full-screen video background, centered card */
 .login-page {
   position: relative;
   min-height: 100vh;
-  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
   background: var(--dew-bg);
   overflow: hidden;
+  isolation: isolate;
 }
 
-.login-split {
-  display: flex;
-  flex-direction: row;
-  min-height: 100vh;
-  height: 100%;
-}
-
-.login-form-panel {
-  flex: 1 1 54%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 48px clamp(24px, 5vw, 64px);
-  position: relative;
-  z-index: 2;
-  animation: login-panel-enter 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.login-brand-bar {
+.login-bg {
   position: absolute;
-  top: clamp(28px, 4vh, 48px);
-  left: clamp(24px, 4vw, 48px);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  animation: login-brand-enter 0.6s ease 0.08s both;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
 }
 
-.login-brand-bar .login-brand-logo {
-  animation: login-brand-enter 0.6s ease 0.08s both, login-logo-float 5s ease-in-out 0.8s infinite;
+.login-bg-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.03);
+  animation: login-video-drift 24s ease-in-out infinite alternate;
 }
 
-@keyframes login-logo-float {
-  0%, 100% {
-    transform: translateY(0);
+@keyframes login-video-drift {
+  from {
+    transform: scale(1.03);
   }
-  50% {
-    transform: translateY(-3px);
+  to {
+    transform: scale(1.08);
   }
 }
 
-.login-brand-text {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--dew-text);
+.login-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(253, 252, 250, 0.78) 0%, rgba(253, 252, 250, 0.62) 50%, rgba(227, 239, 236, 0.52) 100%),
+    radial-gradient(circle at 50% 40%, rgba(111, 184, 172, 0.18), transparent 55%);
+  pointer-events: none;
+}
+
+[data-theme="dark"] .login-bg-overlay {
+  background:
+    linear-gradient(135deg, rgba(26, 36, 34, 0.82) 0%, rgba(26, 36, 34, 0.68) 50%, rgba(46, 137, 123, 0.28) 100%),
+    radial-gradient(circle at 50% 40%, rgba(111, 184, 172, 0.14), transparent 55%);
 }
 
 .login-page-inner {
@@ -274,29 +268,7 @@ body.splash-lock { overflow: hidden; }
   z-index: 1;
   width: 100%;
   max-width: 400px;
-  animation: login-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
-}
-
-@keyframes login-panel-enter {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes login-brand-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  animation: login-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes login-rise {
@@ -310,79 +282,46 @@ body.splash-lock { overflow: hidden; }
   }
 }
 
-.login-showcase,
-.login-bg {
-  flex: 0 0 min(540px, 46vw);
-  position: relative;
-  overflow: hidden;
-  background: #1a2422;
-  animation: login-showcase-enter 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes login-showcase-enter {
-  from {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.login-bg-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scale(1.05);
-  animation: login-video-drift 20s ease-in-out infinite alternate;
-}
-
-@keyframes login-video-drift {
-  from {
-    transform: scale(1.05);
-  }
-  to {
-    transform: scale(1.12);
-  }
-}
-
-.login-bg-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(155deg, rgba(46, 137, 123, 0.32) 0%, rgba(43, 41, 38, 0.58) 100%),
-    radial-gradient(circle at 28% 72%, rgba(111, 184, 172, 0.22), transparent 58%);
-  pointer-events: none;
-}
-
 .login-card {
   width: 100%;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(43, 41, 38, 0.06);
+  padding: 12px 8px 16px;
 }
 
 .login-card-head {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
+  align-items: center;
+  text-align: center;
   gap: 0;
 }
 
 .login-brand-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   object-fit: contain;
+  margin-bottom: 24px;
+  animation: login-logo-enter 0.65s ease 0.1s both;
+}
+
+@keyframes login-logo-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .login-card-head h1 {
   margin: 0;
-  font-size: clamp(24px, 2.4vw, 28px);
+  font-size: clamp(24px, 2.4vw, 26px);
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--dew-text);
@@ -393,7 +332,7 @@ body.splash-lock { overflow: hidden; }
   font-size: 14px;
   line-height: 1.55;
   color: var(--dew-text-secondary);
-  max-width: 360px;
+  max-width: 340px;
 }
 
 .login-card-head .muted[hidden] {
@@ -402,7 +341,7 @@ body.splash-lock { overflow: hidden; }
 
 .login-google-btn-wrap {
   position: relative;
-  margin-top: 28px;
+  margin-top: 32px;
   animation: login-field-enter 0.55s ease 0.22s both;
 }
 
@@ -550,72 +489,28 @@ body.splash-lock { overflow: hidden; }
   animation: login-field-enter 0.4s ease both;
 }
 
-@media (max-width: 960px) {
-  .login-split {
-    flex-direction: column;
-  }
-
-  .login-showcase,
-  .login-bg {
-    flex: 0 0 clamp(180px, 32vh, 260px);
-    order: -1;
-    animation: login-showcase-enter-mobile 0.7s ease both;
-  }
-
-  @keyframes login-showcase-enter-mobile {
-    from {
-      opacity: 0;
-      transform: translateY(-16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .login-form-panel {
-    flex: 1 1 auto;
-    justify-content: flex-start;
-    padding-top: 28px;
-    padding-bottom: 32px;
-  }
-
-  .login-brand-bar {
-    position: relative;
-    top: auto;
-    left: auto;
-    align-self: flex-start;
-    width: 100%;
-    max-width: 400px;
-    margin-bottom: 20px;
-  }
-
-  .login-page-inner {
-    animation-delay: 0.05s;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .login-bg-video {
     animation: none;
-    transform: none;
+    transform: scale(1.03);
   }
 
   .login-bg-overlay {
     background: linear-gradient(160deg, #1f2b28 0%, var(--dew-brand) 100%);
   }
 
+  [data-theme="light"] .login-bg-overlay {
+    background:
+      linear-gradient(135deg, rgba(253, 252, 250, 0.78) 0%, rgba(227, 239, 236, 0.52) 100%);
+  }
+
   .login-theme-toggle,
   .login-theme-toggle .theme-moon-icon,
-  .login-brand-bar .login-brand-logo {
+  .login-brand-logo {
     animation: none;
   }
 
-  .login-form-panel,
   .login-page-inner,
-  .login-showcase,
-  .login-bg,
-  .login-brand-bar,
   .login-google-btn-wrap,
   .login-form fw-input,
   .login-form fw-button,
