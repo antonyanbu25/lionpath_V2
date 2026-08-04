@@ -8,20 +8,10 @@ import { newId, now } from "./types.js";
 /**
  * @param {object} draft — VideoFactsDraft from worker
  * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @returns {{ facts: object, segments: object[] }|null}
  */
-export async function persistVideoFactsDraft(draft, ctx) {
+export function buildVideoFactsDetail(draft, ctx) {
   if (!draft || !ctx?.callId || !ctx?.ownerId) return null;
-
-  const store = getStore();
-  const existing = store.listVideoFactsByCall ? await store.listVideoFactsByCall(ctx.callId) : [];
-  for (const prev of existing || []) {
-    if (store.deleteTimelineSegmentsByVideoFactsId) {
-      await store.deleteTimelineSegmentsByVideoFactsId(prev.id);
-    }
-    if (store.deleteVideoFacts) {
-      await store.deleteVideoFacts(prev.id);
-    }
-  }
 
   const ts = now();
   const factsId = newId("videoFacts");
@@ -49,11 +39,9 @@ export async function persistVideoFactsDraft(draft, ctx) {
     updatedAt: ts,
   };
 
-  await store.upsertVideoFacts(facts);
-
   const segments = [];
   for (const seg of draft.segments || []) {
-    const row = {
+    segments.push({
       id: newId("timelineSegment"),
       callId: ctx.callId,
       videoFactsId: factsId,
@@ -65,10 +53,35 @@ export async function persistVideoFactsDraft(draft, ctx) {
       ownerId: ctx.ownerId,
       teamId: ctx.teamId || "",
       orgId: ctx.orgId || "",
-    };
-    await store.upsertTimelineSegment(row);
-    segments.push(row);
+    });
   }
 
   return { facts, segments };
+}
+
+/**
+ * @param {object} draft — VideoFactsDraft from worker
+ * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ */
+export async function persistVideoFactsDraft(draft, ctx) {
+  const built = buildVideoFactsDetail(draft, ctx);
+  if (!built) return null;
+
+  const store = getStore();
+  const existing = store.listVideoFactsByCall ? await store.listVideoFactsByCall(ctx.callId) : [];
+  for (const prev of existing || []) {
+    if (store.deleteTimelineSegmentsByVideoFactsId) {
+      await store.deleteTimelineSegmentsByVideoFactsId(prev.id);
+    }
+    if (store.deleteVideoFacts) {
+      await store.deleteVideoFacts(prev.id);
+    }
+  }
+
+  await store.upsertVideoFacts(built.facts);
+  for (const row of built.segments) {
+    await store.upsertTimelineSegment(row);
+  }
+
+  return built;
 }

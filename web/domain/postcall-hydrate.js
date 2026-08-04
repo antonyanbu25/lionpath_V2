@@ -1,16 +1,20 @@
 /**
- * Firestore postCall → analysis record hydration (shared by dashboard and se-access).
+ * Firestore postCall / callSummaries → analysis records (shared by dashboard and se-access).
  */
 import { getStore } from "./store.js";
 import { coerceScorecardLines } from "../shared/qip-scorecard-normalize.js";
 import { canonicalCallType } from "../call-type-labels.js";
+import { callSummariesToAnalyses } from "./call-summary.js";
 
 /** @param {object|null|undefined} rec */
 export function hasCoachingAnalysis(rec) {
   return !!(
     rec?.analysis?.qualityCoach ||
     rec?.scorecard?.lines?.length ||
-    rec?.result?.scorecard?.lines?.length
+    rec?.result?.scorecard?.lines?.length ||
+    rec?.scorecard?.overall != null ||
+    rec?.scorecard?.categoryScores ||
+    rec?.qipOverall != null
   );
 }
 
@@ -44,11 +48,19 @@ export function postCallRecordsToAnalyses(records) {
     const hasScorecardLines = coercedLines.length > 0;
     const hasScorecardSummary =
       !!r.scorecard?.categoryScores ||
-      typeof r.scorecard?.overall === "number";
+      typeof r.scorecard?.overall === "number" ||
+      typeof r.qipOverall === "number" ||
+      !!r.qipCategoryScores;
     const scorecard = hasScorecardLines
       ? { ...r.scorecard, callType: analysisMeta.callType, lines: coercedLines.map(mapScorecardLine) }
       : hasScorecardSummary
-        ? { ...r.scorecard, callType: analysisMeta.callType, lines: coercedLines }
+        ? {
+            ...(r.scorecard || {}),
+            callType: analysisMeta.callType,
+            overall: r.scorecard?.overall ?? r.qipOverall ?? r.qualityScore ?? null,
+            categoryScores: r.scorecard?.categoryScores || r.qipCategoryScores || {},
+            lines: coercedLines,
+          }
         : null;
     return {
       id: r.id,
@@ -83,6 +95,7 @@ export function hydratePostCallAnalyses(analyses, scorecardsByCall, linesByCall)
 
   return analyses.map((rec) => {
     if (recordHasScorecardLines(rec)) return rec;
+    if (rec.scorecard?.overall != null || rec.scorecard?.categoryScores) return rec;
 
     const card = cardsMap.get(rec.id)?.[0];
     if (!card) return rec;
@@ -124,7 +137,7 @@ export function hydratePostCallAnalyses(analyses, scorecardsByCall, linesByCall)
 export async function fetchAndHydratePostCallAnalyses(analyses, store) {
   if (!analyses?.length) return analyses || [];
 
-  const needIds = analyses.filter((rec) => !recordHasScorecardLines(rec)).map((rec) => rec.id);
+  const needIds = analyses.filter((rec) => !recordHasScorecardLines(rec) && !rec.scorecard?.overall).map((rec) => rec.id);
   if (!needIds.length) return analyses;
 
   if (!store?.listScorecardsForCalls || !store?.listScorecardLinesForCalls) {
@@ -140,21 +153,25 @@ export async function fetchAndHydratePostCallAnalyses(analyses, store) {
 }
 
 /** @param {object|null} session */
-export async function loadTeamPostCallsFromStore(session) {
+export async function loadTeamCallSummariesFromStore(session) {
   try {
     const store = getStore();
-    let records = [];
-    if (session?.isOrgDirector && session?.orgId && store.listPostCallsByOrg) {
-      records = await store.listPostCallsByOrg(session.orgId);
-    } else if (session?.teamId && store.listPostCallsByTeam) {
-      records = await store.listPostCallsByTeam(session.teamId);
+    let summaries = [];
+    if (session?.isOrgDirector && session?.orgId && store.listCallSummariesByOrg) {
+      summaries = await store.listCallSummariesByOrg(session.orgId);
+    } else if (session?.teamId && store.listCallSummariesByTeam) {
+      summaries = await store.listCallSummariesByTeam(session.teamId);
     }
-    if (records?.length) {
-      const analyses = postCallRecordsToAnalyses(records);
-      return fetchAndHydratePostCallAnalyses(analyses, store);
+    if (summaries?.length) {
+      return callSummariesToAnalyses(summaries);
     }
   } catch (err) {
-    console.warn("Could not load team postCalls from domain store:", err);
+    console.warn("Could not load team callSummaries from domain store:", err);
   }
   return [];
+}
+
+/** @deprecated Use loadTeamCallSummariesFromStore — list paths must not fetch full postCalls. */
+export async function loadTeamPostCallsFromStore(session) {
+  return loadTeamCallSummariesFromStore(session);
 }

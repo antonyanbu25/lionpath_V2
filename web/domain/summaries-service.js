@@ -38,6 +38,26 @@ async function authHeaders() {
 }
 
 /**
+ * @param {import("./types.js").CallSummaryDoc|import("./types.js").PostCallDoc} call
+ * @param {string|null} dealLabel
+ */
+function buildCallDigestFromSummary(call, dealLabel = null) {
+  const date = call.createdAt ? new Date(call.createdAt).toISOString().slice(0, 10) : null;
+  return {
+    callId: call.id,
+    dealId: call.dealId || null,
+    dealLabel,
+    callType: call.callType || null,
+    date,
+    callNotes: call.aiShortForm || null,
+    momentum: null,
+    traction: null,
+    openFollowUps: call.followUpCount ?? null,
+    objections: call.objectionCount ?? null,
+  };
+}
+
+/**
  * @param {import("./types.js").PostCallDoc} call
  * @param {string|null} dealLabel
  */
@@ -58,6 +78,16 @@ function buildCallDigest(call, dealLabel = null) {
     openFollowUps: null,
     objections: null,
   };
+}
+
+async function enrichCallDigestFromSummary(store, call, dealLabel = null) {
+  const digest = buildCallDigestFromSummary(call, dealLabel);
+  if (call.dealId && store.listDealSignalsByDeal) {
+    const signals = await store.listDealSignalsByDeal(call.dealId, 5);
+    const forCall = (signals || []).find((s) => s.callId === call.id);
+    if (forCall?.traction) digest.traction = forCall.traction;
+  }
+  return digest;
 }
 
 /**
@@ -125,11 +155,11 @@ export async function buildSummariesContext(dealId, accountId) {
 
   /** @type {import("../../worker/src/postcall/summaries.ts").SummaryCallDigest[]} */
   const accountCalls = [];
-  if (store.listPostCallsByAccount) {
-    const calls = await store.listPostCallsByAccount(accountId, 80);
+  if (store.listCallSummariesByAccount) {
+    const calls = await store.listCallSummariesByAccount(accountId, 80);
     for (const call of calls || []) {
       const label = call.dealId ? dealLabelById.get(call.dealId) || null : null;
-      accountCalls.push(await enrichCallDigest(store, call, label));
+      accountCalls.push(await enrichCallDigestFromSummary(store, call, label));
     }
     accountCalls.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   }
@@ -137,12 +167,12 @@ export async function buildSummariesContext(dealId, accountId) {
   /** @type {import("../../worker/src/postcall/summaries.ts").DealSummaryContext|null} */
   let dealContext = null;
   if (deal) {
-    const dealCallsRaw = store.listPostCallsByDeal
-      ? await store.listPostCallsByDeal(deal.id, 50)
+    const dealCallsRaw = store.listCallSummariesByDeal
+      ? await store.listCallSummariesByDeal(deal.id, 50)
       : [];
     const dealCalls = [];
     for (const call of dealCallsRaw || []) {
-      dealCalls.push(await enrichCallDigest(store, call, deal.title || DEAL_TYPE_LABELS[deal.type]));
+      dealCalls.push(await enrichCallDigestFromSummary(store, call, deal.title || DEAL_TYPE_LABELS[deal.type]));
     }
     dealCalls.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
 

@@ -1405,27 +1405,33 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
     }),
   );
 
-  const postCalls = store.listPostCallsByAccount ? await store.listPostCallsByAccount(account.id, 100) : [];
-  const accountCalls = await Promise.all(
-    postCalls.map(async (postCall) => {
-      const deal = deals.find((d) => d.id === postCall.dealId);
-      const med = deal ? resolveDealMeddpicc(deal, account) : null;
-      const scorecards = store.listScorecardsByCall ? await store.listScorecardsByCall(postCall.id) : [];
-      const scorecard = scorecards[0] || null;
-      const ownerName =
-        seTeamDisplay.find((m) => m.seUserId === postCall.ownerId)?.user?.displayName ||
-        seTeamDisplay[0]?.user?.displayName ||
-        "-";
-      return {
-        postCall,
-        deal,
-        dealLabel: deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "-"),
-        meddpiccScore: med?.completionScore ?? null,
-        scorecard,
-        ownerName,
-      };
-    }),
-  );
+  const callSummaries = store.listCallSummariesByAccount
+    ? await store.listCallSummariesByAccount(account.id, 100)
+    : [];
+  const accountCalls = (callSummaries || []).map((summary) => {
+    const deal = deals.find((d) => d.id === summary.dealId);
+    const med = deal ? resolveDealMeddpicc(deal, account) : null;
+    const ownerName =
+      summary.ownerName ||
+      seTeamDisplay.find((m) => m.seUserId === summary.ownerId)?.user?.displayName ||
+      seTeamDisplay[0]?.user?.displayName ||
+      "-";
+    const scorecard =
+      summary.qipOverall != null || summary.qipCategoryScores
+        ? {
+            overall: summary.qipOverall ?? summary.qualityScore ?? null,
+            categoryScores: summary.qipCategoryScores || {},
+          }
+        : null;
+    return {
+      postCall: summary,
+      deal,
+      dealLabel: summary.dealTitle || deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "-"),
+      meddpiccScore: med?.completionScore ?? null,
+      scorecard,
+      ownerName,
+    };
+  });
 
   accountCalls.sort((a, b) => (b.postCall.createdAt || 0) - (a.postCall.createdAt || 0));
 

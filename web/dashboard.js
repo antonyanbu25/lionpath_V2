@@ -32,7 +32,7 @@ import {
   hasCoachingAnalysis,
   postCallRecordsToAnalyses,
   hydratePostCallAnalyses,
-  loadTeamPostCallsFromStore,
+  loadTeamCallSummariesFromStore,
 } from "./domain/postcall-hydrate.js";
 import { loadScoreOverridesForSession } from "./domain/score-override-service.js";
 import { applyScoreOverridesToScorecard } from "./shared/qip-scorecard-normalize.js";
@@ -96,7 +96,22 @@ const TREND_TYPE_COLORS = TREND_LINE_COLORS;
 function scorecardFromRecord(rec, overrides = []) {
   const scorecard = rec.scorecard || rec.result?.scorecard;
   const meta = rec.analysisMeta || rec.result?.analysisMeta || {};
-  if (!scorecard?.lines?.length) return null;
+  if (!scorecard?.lines?.length) {
+    if (scorecard?.overall != null || scorecard?.categoryScores) {
+      const base = {
+        callType: scorecard.callType || meta.callType || "demo",
+        rubricVersion: scorecard.rubricVersion || meta.rubricVersion || "2.1",
+        overall: scorecard.overall ?? null,
+        categoryScores: scorecard.categoryScores || {},
+        lines: [],
+        provisional: scorecard.provisional ?? meta.provisional,
+        confidence: scorecard.confidence ?? meta.analysisConfidence,
+        callId: rec.id,
+      };
+      return applyScoreOverridesToScorecard(base, overrides);
+    }
+    return null;
+  }
   const base = {
     callType: scorecard.callType || meta.callType || "demo",
     rubricVersion: scorecard.rubricVersion || meta.rubricVersion || "2.1",
@@ -1572,7 +1587,7 @@ async function buildTeamMetrics(session) {
     ? await listTeamSeEmailsAsync(session)
     : listTeamSeEmails();
 
-  const storePostCalls = await loadTeamPostCallsFromStore(session);
+  const storePostCalls = await loadTeamCallSummariesFromStore(session);
   const store = getStore();
   const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
   const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
@@ -1737,7 +1752,7 @@ async function buildManagerTeamView(session) {
   const scoreOverrides = await loadScoreOverridesForSession(session);
   const isOrgView = session?.isOrgDirector === true;
   const seEmails = session ? await listTeamSeEmailsAsync(session) : listTeamSeEmails();
-  const storePostCalls = await loadTeamPostCallsFromStore(session);
+  const storePostCalls = await loadTeamCallSummariesFromStore(session);
   const store = getStore();
   const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 

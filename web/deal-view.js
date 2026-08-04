@@ -1233,8 +1233,8 @@ async function enrichDealRecordExtras(store, deal) {
       34,
     ),
     safeStoreOp(
-      "listPostCallsByDeal",
-      () => (store.listPostCallsByDeal ? store.listPostCallsByDeal(deal.id, 50) : []),
+      "listCallSummariesByDeal",
+      () => (store.listCallSummariesByDeal ? store.listCallSummariesByDeal(deal.id, 50) : []),
       [],
     ),
     safeStoreOp(

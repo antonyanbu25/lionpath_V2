@@ -176,7 +176,7 @@ export async function attachPrep(lifecycleId, prepBrief, actorId) {
  * Attach or upsert a post-call analysis (dedupe by callIdentityKey).
  * Auto-advances research → discovery on first post-call.
  */
-export async function attachPostCall(lifecycleId, postCall, actorId) {
+export async function attachPostCall(lifecycleId, postCall, actorId, callSummary = null) {
   const store = getStore();
   const ts = now();
   const lifecycle = await store.getLifecycle(lifecycleId);
@@ -189,23 +189,32 @@ export async function attachPostCall(lifecycleId, postCall, actorId) {
   let isNew = false;
 
   if (existing) {
-    saved = await store.upsertPostCall({
+    const merged = {
       ...existing,
       ...postCall,
       lifecycleId,
       dealId: postCall.dealId || existing.dealId || lifecycle?.dealId || null,
       updatedAt: ts,
-    });
+    };
+    saved = store.upsertPostCallWithSummary
+      ? await store.upsertPostCallWithSummary(merged, callSummary ? { ...callSummary, id: merged.id, updatedAt: ts } : null)
+      : await store.upsertPostCall(merged);
   } else {
     isNew = true;
-    saved = await store.upsertPostCall({
+    const created = {
       ...postCall,
       id: postCall.id || newId("postCall"),
       lifecycleId,
       dealId: postCall.dealId || lifecycle?.dealId || null,
       createdAt: postCall.createdAt || ts,
       updatedAt: ts,
-    });
+    };
+    saved = store.upsertPostCallWithSummary
+      ? await store.upsertPostCallWithSummary(
+          created,
+          callSummary ? { ...callSummary, id: created.id, createdAt: created.createdAt, updatedAt: ts } : null,
+        )
+      : await store.upsertPostCall(created);
   }
 
   const dealId = saved.dealId || lifecycle?.dealId || null;

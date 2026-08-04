@@ -41,20 +41,15 @@ export function mergeTechnicalCommit(previous, draft) {
 /**
  * @param {object[]} deltaDrafts
  * @param {{ callId: string, dealId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @returns {object[]}
  */
-export async function persistTcDeltas(deltaDrafts, ctx) {
+export function buildTcDeltasDetail(deltaDrafts, ctx) {
   if (!ctx?.callId || !ctx?.dealId || !ctx?.ownerId) return [];
-  const store = getStore();
-  const existing = store.listTcDeltasByCall ? await store.listTcDeltasByCall(ctx.callId) : [];
-  for (const prev of existing || []) {
-    if (store.deleteTcDelta) await store.deleteTcDelta(prev.id);
-  }
-
   const ts = now();
   const rows = [];
   for (const draft of deltaDrafts || []) {
     if (!draft?.field || draft.current == null) continue;
-    const row = {
+    rows.push({
       id: newId("tcDelta"),
       callId: ctx.callId,
       dealId: ctx.dealId,
@@ -69,22 +64,36 @@ export async function persistTcDeltas(deltaDrafts, ctx) {
       accountId: ctx.accountId || "",
       createdAt: ts,
       updatedAt: ts,
-    };
+    });
+  }
+  return rows;
+}
+
+export async function persistTcDeltas(deltaDrafts, ctx) {
+  const rows = buildTcDeltasDetail(deltaDrafts, ctx);
+  if (!rows.length) return [];
+
+  const store = getStore();
+  const existing = store.listTcDeltasByCall ? await store.listTcDeltasByCall(ctx.callId) : [];
+  for (const prev of existing || []) {
+    if (store.deleteTcDelta) await store.deleteTcDelta(prev.id);
+  }
+  for (const row of rows) {
     await store.upsertTcDelta(row);
-    rows.push(row);
   }
   return rows;
 }
 
 /**
- * Full Pass 5 write path: deal-scoped snapshot merge + per-call delta collection.
+ * Full Pass 5 write path: deal-scoped snapshot merge + per-call deltas (embed or collection).
  * @param {string} dealId
  * @param {string} accountId
  * @param {object} technicalCommit
  * @param {object[]} tcDeltas
  * @param {{ callId: string, ownerId: string, teamId: string, orgId: string }} ctx
+ * @param {{ embedOnly?: boolean }} [opts]
  */
-export async function applyTechnicalCommitToDeal(dealId, accountId, technicalCommit, tcDeltas, ctx) {
+export async function applyTechnicalCommitToDeal(dealId, accountId, technicalCommit, tcDeltas, ctx, opts = {}) {
   if (!technicalCommit || !ctx?.callId) return { technicalCommit: null, deltas: [] };
 
   if (!dealId) {
@@ -109,7 +118,9 @@ export async function applyTechnicalCommitToDeal(dealId, accountId, technicalCom
     updatedAt: ts,
   });
 
-  const deltas = await persistTcDeltas(tcDeltas, { ...ctx, dealId, accountId: accountId || "" });
+  const deltas = opts.embedOnly
+    ? buildTcDeltasDetail(tcDeltas, { ...ctx, dealId, accountId: accountId || "" })
+    : await persistTcDeltas(tcDeltas, { ...ctx, dealId, accountId: accountId || "" });
 
   return { technicalCommit: row, deltas };
 }

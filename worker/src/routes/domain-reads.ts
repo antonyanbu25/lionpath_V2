@@ -15,10 +15,11 @@ import {
   resolveListScope,
   resolveRequestContext,
 } from "../data/scope";
+import { getPostCall, getPostCallDetail } from "../data/repositories/calls";
 import {
-  getPostCallDetail,
-  listPostCallsForScope,
-} from "../data/repositories/calls";
+  listCallSummariesForScope,
+} from "../data/repositories/call-summaries";
+import { uploadCallPayload, downloadCallPayload } from "../data/call-payload-storage";
 import {
   getAccount,
   getAccountSummaryByAccount,
@@ -75,7 +76,7 @@ export async function handleCallsListGet(
   const scope = parseScopeParam(url.searchParams.get("scope"));
   const limit = parseLimitParam(url.searchParams.get("limit"), 200);
   const listScope = resolveListScope(ctx, scope);
-  const rows = await listPostCallsForScope(listScope, limit, fsEnv(env));
+  const rows = await listCallSummariesForScope(listScope, limit, fsEnv(env));
   const filtered = rows.filter((row) => canReadResource(ctx, resourceFromRow(row)));
   return json({ scope, limit, calls: filtered }, 200, cors);
 }
@@ -92,6 +93,42 @@ export async function handleCallGetById(
   if (!detail) return json({ error: "Call not found." }, 404, cors);
   assertCanReadResource(ctx, resourceFromRow(detail.postCall));
   return json(detail, 200, cors);
+}
+
+export async function handleCallPayloadOffloadPost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+  id: string,
+): Promise<Response> {
+  await authContext(request, env);
+
+  let body: { analysis?: unknown; transcriptMeta?: unknown; detail?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ error: "Invalid JSON body." }, 400, cors);
+  }
+
+  const uploaded = await uploadCallPayload(id, body, fsEnv(env));
+  return json(uploaded, 200, cors);
+}
+
+export async function handleCallPayloadGet(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+  id: string,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const postCall = await getPostCall(id, fsEnv(env));
+  if (!postCall) return json({ error: "Call not found." }, 404, cors);
+  assertCanReadResource(ctx, resourceFromRow(postCall));
+
+  const payload = await downloadCallPayload(postCall, fsEnv(env));
+  return json(payload, 200, cors);
 }
 
 export async function handleAccountsListGet(
@@ -164,6 +201,14 @@ export async function dispatchDomainReadById(
   const callMatch = path.match(/^\/api\/calls\/([^/]+)$/);
   if (callMatch && request.method === "GET") {
     return handleCallGetById(request, env, url, cors, decodeURIComponent(callMatch[1]));
+  }
+  const payloadMatch = path.match(/^\/api\/calls\/([^/]+)\/payload$/);
+  if (payloadMatch && request.method === "GET") {
+    return handleCallPayloadGet(request, env, url, cors, decodeURIComponent(payloadMatch[1]));
+  }
+  const offloadMatch = path.match(/^\/api\/calls\/([^/]+)\/offload-payload$/);
+  if (offloadMatch && request.method === "POST") {
+    return handleCallPayloadOffloadPost(request, env, url, cors, decodeURIComponent(offloadMatch[1]));
   }
   const accountMatch = path.match(/^\/api\/accounts\/([^/]+)$/);
   if (accountMatch && request.method === "GET") {

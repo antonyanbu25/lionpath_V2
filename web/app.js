@@ -37,6 +37,7 @@ import {
   clearTasksAuthGetter,
 } from "./tasks.js";
 import { setSummariesAuthGetter, clearSummariesAuthGetter } from "./domain/summaries-service.js";
+import { setCallPayloadAuthGetter, clearCallPayloadAuthGetter } from "./domain/call-payload-storage.js";
 import { setTimelineAuthGetter } from "./domain/timeline-service.js";
 import {
   setProductSignalAuthGetter,
@@ -1619,6 +1620,7 @@ function showLogin() {
   clearHistoryAuthGetter();
   clearTasksAuthGetter();
   clearSummariesAuthGetter();
+  clearCallPayloadAuthGetter();
   setTimelineAuthGetter(null);
   clearProductSignalAuthGetter();
   clearSidebarHistory();
@@ -1634,6 +1636,7 @@ function applySessionAuthGetters() {
   setHistoryAuthGetter(tokenFn);
   setTasksAuthGetter(tokenFn);
   setSummariesAuthGetter(tokenFn);
+  setCallPayloadAuthGetter(tokenFn);
   setTimelineAuthGetter(tokenFn);
   setProductSignalAuthGetter(tokenFn);
   onSessionReady(currentSession, tokenFn);
@@ -2029,6 +2032,7 @@ async function initFirebase() {
     where: fsMod.where, orderBy: fsMod.orderBy, limit: fsMod.limit,
     documentId: fsMod.documentId,
     serverTimestamp: fsMod.serverTimestamp,
+    writeBatch: fsMod.writeBatch,
   };
 
   initDomainStore(fb);

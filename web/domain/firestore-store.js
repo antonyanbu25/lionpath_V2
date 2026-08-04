@@ -5,6 +5,11 @@
 import { newId, now, dealContactId, normalizeDealContactRole } from "./types.js";
 import { collectionCRUD } from "./collection-crud.js";
 import { invalidateSessionListCache } from "./session-list-cache.js";
+import {
+  detailArray,
+  dealSignalsFromPostCalls,
+  tcDeltasFromPostCalls,
+} from "./post-call-detail.js";
 
 /**
  * Drop the listAccountsForSession row cache after writing anything it aggregates —
@@ -22,7 +27,7 @@ export function createFirestoreStore(fb) {
 
   const {
     db, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-    query, where, orderBy, limit, documentId,
+    query, where, orderBy, limit, documentId, writeBatch,
   } = fb;
 
   const WHERE_IN_CHUNK = 30;
@@ -610,12 +615,59 @@ export function createFirestoreStore(fb) {
       const ref = docData.id ? doc(db, "postCalls", docData.id) : doc(collection(db, "postCalls"));
       const data = { ...docData, id: ref.id };
       await setDoc(ref, data, { merge: true });
+      touchSessionLists();
       return data;
+    },
+
+    async upsertCallSummary(docData) {
+      const ref = docData.id ? doc(db, "callSummaries", docData.id) : doc(collection(db, "callSummaries"));
+      const data = { ...docData, id: ref.id };
+      await setDoc(ref, data, { merge: true });
+      touchSessionLists();
+      return data;
+    },
+
+    async upsertPostCallWithSummary(postCall, callSummary) {
+      if (!writeBatch) {
+        const saved = await this.upsertPostCall(postCall);
+        if (callSummary) await this.upsertCallSummary(callSummary);
+        return saved;
+      }
+      const postRef = postCall.id ? doc(db, "postCalls", postCall.id) : doc(collection(db, "postCalls"));
+      const postData = { ...postCall, id: postRef.id };
+      const batch = writeBatch(db);
+      batch.set(postRef, postData, { merge: true });
+      if (callSummary) {
+        const sumRef = doc(db, "callSummaries", callSummary.id || postData.id);
+        batch.set(sumRef, { ...callSummary, id: sumRef.id }, { merge: true });
+      }
+      await batch.commit();
+      touchSessionLists();
+      return postData;
     },
 
     async getPostCall(id) {
       const snap = await getDoc(doc(db, "postCalls", id));
-      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+      if (!snap.exists()) return null;
+      const row = { id: snap.id, ...snap.data() };
+      const { hydratePostCallPayloadFromGcs } = await import("./call-payload-storage.js");
+      return hydratePostCallPayloadFromGcs(row);
+    },
+
+    /** Post-call with embedded detail hydrated (alias for detail views). */
+    async getCall(id) {
+      return this.getPostCall(id);
+    },
+
+    async _postCallForDetailLookup(callId) {
+      const snap = await getDoc(doc(db, "postCalls", callId));
+      if (!snap.exists()) return null;
+      const row = { id: snap.id, ...snap.data() };
+      if (row.detailGcsUri) {
+        const { hydratePostCallPayloadFromGcs } = await import("./call-payload-storage.js");
+        return hydratePostCallPayloadFromGcs(row);
+      }
+      return row;
     },
 
     async listPostCallsByLifecycle(lifecycleId, limitCount = 200) {
@@ -679,6 +731,61 @@ export function createFirestoreStore(fb) {
         where("accountId", "==", accountId),
         orderBy("createdAt", "desc"),
         limit(limitCount)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listCallSummariesByOwner(ownerId, limitCount = 200) {
+      const q = query(
+        collection(db, "callSummaries"),
+        where("ownerId", "==", ownerId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listCallSummariesByTeam(teamId, limitCount = 200) {
+      const q = query(
+        collection(db, "callSummaries"),
+        where("teamId", "==", teamId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listCallSummariesByOrg(orgId, limitCount = 200) {
+      const q = query(
+        collection(db, "callSummaries"),
+        where("orgId", "==", orgId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listCallSummariesByDeal(dealId, limitCount = 50) {
+      const q = query(
+        collection(db, "callSummaries"),
+        where("dealId", "==", dealId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listCallSummariesByAccount(accountId, limitCount = 80) {
+      const q = query(
+        collection(db, "callSummaries"),
+        where("accountId", "==", accountId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
       );
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -813,6 +920,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listVideoFactsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "videoFacts");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "videoFacts"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -835,6 +945,11 @@ export function createFirestoreStore(fb) {
     },
 
     async listTimelineSegmentsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "timelineSegments");
+      if (embedded.length) {
+        return embedded.sort((a, b) => (a.startS || 0) - (b.startS || 0));
+      }
       const q = query(collection(db, "timelineSegments"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs
@@ -852,6 +967,11 @@ export function createFirestoreStore(fb) {
     },
 
     async listTimelineMarkersByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "timelineMarkers");
+      if (embedded.length) {
+        return embedded.sort((a, b) => (a.atS || 0) - (b.atS || 0));
+      }
       const q = query(collection(db, "timelineMarkers"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs
@@ -888,6 +1008,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listFollowUpsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "followUps");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "followUps"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -906,6 +1029,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listObjectionsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "objections");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "objections"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -924,6 +1050,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listMomDraftsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "momDrafts");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "momDrafts"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -944,6 +1073,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listMeddpiccDeltasByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "meddpiccDeltas");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "meddpiccDeltas"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -962,12 +1094,18 @@ export function createFirestoreStore(fb) {
     },
 
     async listDealSignalsByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "dealSignals");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "dealSignals"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
     async listDealSignalsByDeal(dealId, limitCount = 50) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = dealSignalsFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
       const q = query(
         collection(db, "dealSignals"),
         where("dealId", "==", dealId),
@@ -983,6 +1121,19 @@ export function createFirestoreStore(fb) {
       /** @type {Map<string, object[]>} */
       const byDeal = new Map();
       if (!ids.length) return byDeal;
+
+      const postCalls = await queryWhereInChunks("postCalls", "dealId", ids);
+      for (const pc of postCalls) {
+        const dealId = pc.dealId;
+        if (!dealId) continue;
+        for (const sig of detailArray(pc, "dealSignals")) {
+          if (!byDeal.has(dealId)) byDeal.set(dealId, []);
+          const arr = byDeal.get(dealId);
+          if (arr.length < perDealLimit) arr.push(sig);
+        }
+      }
+      if ([...byDeal.values()].some((rows) => rows.length)) return byDeal;
+
       const chunkSize = 30;
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
@@ -1109,12 +1260,18 @@ export function createFirestoreStore(fb) {
     },
 
     async listTcDeltasByCall(callId) {
+      const postCall = await this._postCallForDetailLookup(callId);
+      const embedded = detailArray(postCall, "tcDeltas");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "tcDeltas"), where("callId", "==", callId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
     async listTcDeltasByDeal(dealId, limitCount = 200) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = tcDeltasFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
       const q = query(
         collection(db, "tcDeltas"),
         where("dealId", "==", dealId),
@@ -1169,6 +1326,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listProductGapsByPostCall(postCallId) {
+      const postCall = await this._postCallForDetailLookup(postCallId);
+      const embedded = detailArray(postCall, "productGaps");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "productGaps"), where("postCallId", "==", postCallId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -1193,6 +1353,9 @@ export function createFirestoreStore(fb) {
     },
 
     async listWhatWorksByPostCall(postCallId) {
+      const postCall = await this._postCallForDetailLookup(postCallId);
+      const embedded = detailArray(postCall, "whatWorks");
+      if (embedded.length) return embedded;
       const q = query(collection(db, "whatWorks"), where("postCallId", "==", postCallId));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));

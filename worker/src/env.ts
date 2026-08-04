@@ -9,4 +9,5 @@ export interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   APOLLO_API_KEY?: string;
   VIDEO_PASS_ENABLED?: string;
+  CALL_PAYLOAD_BUCKET?: string;
 }

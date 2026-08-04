@@ -4,8 +4,38 @@
 
 import { cachedGetDoc, cachedQuery } from "../cache";
 import { getDoc, queryBy, type FirestoreDoc, type FirestoreEnv } from "../firestore-admin";
+import { hydratePostCallDoc } from "../call-payload-storage";
+import { listScorecardsByCall } from "./scorecards";
+import { listArrLinesByCall } from "./signals";
 
 const COL = "postCalls";
+
+const DETAIL_ARRAY_KEYS = [
+  "videoFacts",
+  "timelineSegments",
+  "timelineMarkers",
+  "tcDeltas",
+  "meddpiccDeltas",
+  "objections",
+  "followUps",
+  "momDrafts",
+  "dealSignals",
+] as const;
+
+function detailArray(postCall: FirestoreDoc | null, key: string): FirestoreDoc[] {
+  const detail = postCall?.detail as Record<string, unknown> | undefined;
+  const rows = detail?.[key];
+  return Array.isArray(rows) ? (rows as FirestoreDoc[]) : [];
+}
+
+function hasEmbeddedDetail(postCall: FirestoreDoc): boolean {
+  const detail = postCall?.detail as Record<string, unknown> | undefined;
+  if (!detail) return false;
+  return DETAIL_ARRAY_KEYS.some((key) => {
+    const rows = detail[key];
+    return Array.isArray(rows) && rows.length > 0;
+  });
+}
 
 export async function getPostCall(id: string, env?: FirestoreEnv): Promise<FirestoreDoc | null> {
   return cachedGetDoc(COL, id, () => getDoc(COL, id, env));
@@ -111,52 +141,65 @@ async function listCallChildren(col: string, callId: string, env?: FirestoreEnv)
   );
 }
 
-export async function getPostCallDetail(id: string, env?: FirestoreEnv): Promise<PostCallDetail | null> {
-  const postCall = await getPostCall(id, env);
-  if (!postCall) return null;
+function embeddedOrLegacy(
+  embedded: FirestoreDoc[],
+  legacy: FirestoreDoc[],
+): FirestoreDoc[] {
+  return embedded.length ? embedded : legacy;
+}
 
-  const [
-    scorecards,
-    videoFacts,
-    timelineSegments,
-    timelineMarkers,
-    followUps,
-    objections,
-    momDrafts,
-    meddpiccDeltas,
-    tcDeltas,
-    arrLines,
-    dealSignals,
-  ] = await Promise.all([
-    listCallChildren("scorecards", id, env),
-    listCallChildren("videoFacts", id, env),
-    listCallChildren("timelineSegments", id, env),
-    listCallChildren("timelineMarkers", id, env),
-    listCallChildren("followUps", id, env),
-    listCallChildren("objections", id, env),
-    listCallChildren("momDrafts", id, env),
-    listCallChildren("meddpiccDeltas", id, env),
-    listCallChildren("tcDeltas", id, env),
-    listCallChildren("arrLines", id, env),
-    listCallChildren("dealSignals", id, env),
+export async function getPostCallDetail(id: string, env?: FirestoreEnv): Promise<PostCallDetail | null> {
+  const raw = await getPostCall(id, env);
+  if (!raw) return null;
+  const postCall = await hydratePostCallDoc(raw, env);
+
+  const [scorecards, arrLines] = await Promise.all([
+    listScorecardsByCall(id, env),
+    listArrLinesByCall(id, env),
   ]);
+
+  const embedded = hasEmbeddedDetail(postCall);
+  const [
+    legacyVideoFacts,
+    legacyTimelineSegments,
+    legacyTimelineMarkers,
+    legacyFollowUps,
+    legacyObjections,
+    legacyMomDrafts,
+    legacyMeddpiccDeltas,
+    legacyTcDeltas,
+    legacyDealSignals,
+  ] = embedded
+    ? [[], [], [], [], [], [], [], [], []]
+    : await Promise.all([
+        listCallChildren("videoFacts", id, env),
+        listCallChildren("timelineSegments", id, env),
+        listCallChildren("timelineMarkers", id, env),
+        listCallChildren("followUps", id, env),
+        listCallChildren("objections", id, env),
+        listCallChildren("momDrafts", id, env),
+        listCallChildren("meddpiccDeltas", id, env),
+        listCallChildren("tcDeltas", id, env),
+        listCallChildren("dealSignals", id, env),
+      ]);
 
   return {
     postCall,
     scorecards,
-    videoFacts,
-    timelineSegments,
-    timelineMarkers,
-    followUps,
-    objections,
-    momDrafts,
-    meddpiccDeltas,
-    tcDeltas,
+    videoFacts: embeddedOrLegacy(detailArray(postCall, "videoFacts"), legacyVideoFacts),
+    timelineSegments: embeddedOrLegacy(detailArray(postCall, "timelineSegments"), legacyTimelineSegments),
+    timelineMarkers: embeddedOrLegacy(detailArray(postCall, "timelineMarkers"), legacyTimelineMarkers),
+    followUps: embeddedOrLegacy(detailArray(postCall, "followUps"), legacyFollowUps),
+    objections: embeddedOrLegacy(detailArray(postCall, "objections"), legacyObjections),
+    momDrafts: embeddedOrLegacy(detailArray(postCall, "momDrafts"), legacyMomDrafts),
+    meddpiccDeltas: embeddedOrLegacy(detailArray(postCall, "meddpiccDeltas"), legacyMeddpiccDeltas),
+    tcDeltas: embeddedOrLegacy(detailArray(postCall, "tcDeltas"), legacyTcDeltas),
     arrLines,
-    dealSignals,
+    dealSignals: embeddedOrLegacy(detailArray(postCall, "dealSignals"), legacyDealSignals),
   };
 }
 
+/** @deprecated Prefer listCallSummariesForScope for list surfaces. */
 export async function listPostCallsForScope(
   scope: { ownerId?: string; teamId?: string; orgId?: string },
   limitCount: number,

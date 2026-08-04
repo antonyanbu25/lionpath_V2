@@ -8,19 +8,18 @@ import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./co
 import { applyQualificationToDeal } from "./meddpicc-qualify-service.js";
 import { applyTechnicalCommitToDeal } from "./technical-commit-service.js";
 import {
-  rollupDealTractionAfterPostCall,
   regenerateSummariesAfterPostCall,
   persistArrAfterPostCall,
   linkContactsToDealRecord,
   createDealWithExplicitTitle,
 } from "./deal-service.js";
 import { persistScorecardDraft } from "./scorecard-service.js";
-import { persistVideoFactsDraft } from "./video-facts-service.js";
-import { persistCallTimelineDraft } from "./timeline-service.js";
+import { buildVideoFactsDetail } from "./video-facts-service.js";
+import { buildCallTimelineDetail } from "./timeline-service.js";
 import {
-  persistFollowUpsDraft,
-  persistObjectionsDraft,
-  persistMomDraft,
+  buildFollowUpsDetail,
+  buildObjectionsDetail,
+  buildMomDraftDetail,
 } from "./commitments-service.js";
 import { getStore } from "./store.js";
 import { newId, now } from "./types.js";
@@ -29,9 +28,14 @@ import { callTitleFor, productDiscussedFromContext, aiShortFormFromAnalysis } fr
 import { getAccountEngagementContext } from "./account-context.js";
 import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
-  persistPass6ProductGaps,
+  buildPass6Detail,
   maybeRunGapClusteringAfterPass6,
+  notifyGapClusteringPending,
 } from "./product-signal-service.js";
+import { buildCallSummary } from "./call-summary.js";
+import { preparePostCallPayloadForFirestore, preparePostCallDetailForFirestore } from "./call-payload-storage.js";
+import { emptyPostCallDetail, capPostCallDetail, setDetailArray } from "./post-call-detail.js";
+import { buildDealSignalDetail } from "./deal-traction-service.js";
 
 /**
  * Emails of the people on a post-call, customer-confirmed addresses first.
@@ -277,8 +281,10 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     (ctxMatchesAccount && !payload?.createNewDeal ? engagementCtx.dealId : null) ||
     null;
 
+  /** @type {object|null} */
+  let dealRecord = null;
   if (payload?.createNewDeal) {
-    const newDeal = await createDealWithExplicitTitle(
+    dealRecord = await createDealWithExplicitTitle(
       account.id,
       ownerId,
       session.teamId,
@@ -289,7 +295,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
         accountName: account.name || company,
       },
     );
-    dealId = newDeal.id;
+    dealId = dealRecord.id;
   }
 
   const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
@@ -325,10 +331,52 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     record?.title ||
     null;
 
+  const postCallId = record?.id || newId("postCall");
+  const tsNow = now();
+  const ownerName =
+    session.displayName ||
+    session.name ||
+    (session.email ? String(session.email).split("@")[0] : null) ||
+    null;
+
+  const preparedPayload = await preparePostCallPayloadForFirestore(postCallId, {
+    analysis,
+    transcriptMeta: data?.transcriptMeta || record?.transcriptMeta,
+  });
+
+  const callSummary = buildCallSummary({
+    id: postCallId,
+    ownerId,
+    ownerName,
+    teamId: session.teamId,
+    orgId: session.orgId || lifecycle.orgId || null,
+    accountId: account.id,
+    accountName: account.name || company,
+    dealId: lifecycle.dealId || dealId || null,
+    dealTitle: dealRecord?.title || payload?.newDealTitle || null,
+    dealStage: lifecycle.stage || null,
+    dealType: dealRecord?.type || payload?.newDealType || null,
+    callType,
+    title: callTitle,
+    analysis,
+    qip,
+    qualityScore,
+    analysisConfidence: data?.analysisMeta?.analysisConfidence ?? qip?.confidence ?? null,
+    provisional: data?.analysisMeta?.provisional ?? qip?.provisional ?? false,
+    rubricVersion: data?.analysisMeta?.rubricVersion || qip?.rubricVersion || null,
+    analysisMeta: data?.analysisMeta,
+    summarise,
+    pass6: data?.pass6,
+    arrCompute: data?.arrCompute,
+    hasVideoFacts: !!data?.videoFacts,
+    createdAt: record?.createdAt || tsNow,
+    updatedAt: tsNow,
+  });
+
   const postCall = await attachPostCall(
     lifecycle.id,
     {
-      id: record?.id || newId("postCall"),
+      id: postCallId,
       lifecycleId: lifecycle.id,
       dealId: lifecycle.dealId || null,
       ownerId,
@@ -338,15 +386,20 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       zoomLink: payload?.recordingUrl || record?.zoomLink,
       title: callTitle,
       callIdentityKey: identityKey,
-      analysis,
-      transcriptMeta: data?.transcriptMeta || record?.transcriptMeta,
+      analysis: preparedPayload.analysis,
+      transcriptMeta: preparedPayload.transcriptMeta,
+      analysisGcsUri: preparedPayload.analysisGcsUri,
+      analysisByteSize: preparedPayload.analysisByteSize,
+      transcriptMetaGcsUri: preparedPayload.transcriptMetaGcsUri,
+      transcriptMetaByteSize: preparedPayload.transcriptMetaByteSize,
       qualityScore: typeof qualityScore === "number" ? qualityScore : null,
       callType,
       analysisConfidence: data?.analysisMeta?.analysisConfidence ?? qip?.confidence ?? null,
       provisional: data?.analysisMeta?.provisional ?? qip?.provisional ?? false,
       rubricVersion: data?.analysisMeta?.rubricVersion || qip?.rubricVersion || null,
     },
-    ownerId
+    ownerId,
+    callSummary,
   );
 
   if (qip) {
@@ -363,35 +416,6 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     }
   }
 
-  const videoFacts = data?.videoFacts;
-  if (videoFacts) {
-    try {
-      await persistVideoFactsDraft(videoFacts, {
-        callId: postCall.id,
-        ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
-        accountId: account.id,
-      });
-    } catch (err) {
-      console.warn("[dual-write] videoFacts persist failed:", err?.message || err);
-    }
-  }
-
-  const timeline = data?.timeline;
-  if (timeline) {
-    try {
-      await persistCallTimelineDraft(timeline, {
-        callId: postCall.id,
-        ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
-      });
-    } catch (err) {
-      console.warn("[dual-write] timeline persist failed:", err?.message || err);
-    }
-  }
-
   const persistCtx = {
     callId: postCall.id,
     dealId: lifecycle.dealId || dealId || null,
@@ -401,50 +425,67 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     accountId: account.id,
   };
 
+  /** @type {import("./types.js").PostCallDetailMap} */
+  const detail = emptyPostCallDetail();
+  let technicalCommitRow = data?.technicalCommit || null;
+
+  const videoBuilt = data?.videoFacts ? buildVideoFactsDetail(data.videoFacts, persistCtx) : null;
+  if (videoBuilt) {
+    setDetailArray(detail, "videoFacts", [videoBuilt.facts]);
+    setDetailArray(detail, "timelineSegments", [
+      ...detail.timelineSegments,
+      ...videoBuilt.segments,
+    ]);
+  }
+
+  const timelineBuilt = data?.timeline ? buildCallTimelineDetail(data.timeline, persistCtx) : null;
+  if (timelineBuilt) {
+    // Replace prior transcript-derived rows; keep video segments from Pass 2.
+    const videoSegments = detail.timelineSegments.filter((s) => s.source === "video");
+    setDetailArray(detail, "timelineSegments", [...videoSegments, ...timelineBuilt.segments]);
+    setDetailArray(detail, "timelineMarkers", timelineBuilt.markers);
+  }
+
   if (summarise?.followUps) {
-    try {
-      await persistFollowUpsDraft(summarise.followUps, persistCtx);
-    } catch (err) {
-      console.warn("[dual-write] followUps persist failed:", err?.message || err);
-    }
+    setDetailArray(detail, "followUps", buildFollowUpsDetail(summarise.followUps, persistCtx));
   }
-
   if (summarise?.objections) {
-    try {
-      await persistObjectionsDraft(summarise.objections, persistCtx);
-    } catch (err) {
-      console.warn("[dual-write] objections persist failed:", err?.message || err);
-    }
+    setDetailArray(detail, "objections", buildObjectionsDetail(summarise.objections, persistCtx));
   }
-
   if (summarise?.momDraft) {
-    try {
-      await persistMomDraft(summarise.momDraft, persistCtx);
-    } catch (err) {
-      console.warn("[dual-write] momDraft persist failed:", err?.message || err);
-    }
+    const momRow = buildMomDraftDetail(summarise.momDraft, persistCtx);
+    if (momRow) setDetailArray(detail, "momDrafts", [momRow]);
   }
 
   const qualification = data?.qualification || null;
   if (qualification && lifecycle.dealId) {
     try {
-      await applyQualificationToDeal(lifecycle.dealId, account.id, qualification, persistCtx);
+      const { deltas } = await applyQualificationToDeal(
+        lifecycle.dealId,
+        account.id,
+        qualification,
+        persistCtx,
+        { embedOnly: true },
+      );
+      setDetailArray(detail, "meddpiccDeltas", deltas);
     } catch (err) {
       console.warn("[dual-write] qualification persist failed:", err?.message || err);
     }
   }
 
-  // Before the traction rollup — it reads the deal's current commit snapshot.
   const technicalCommit = data?.technicalCommit || null;
   if (technicalCommit && lifecycle.dealId) {
     try {
-      await applyTechnicalCommitToDeal(
+      const tcResult = await applyTechnicalCommitToDeal(
         lifecycle.dealId,
         account.id,
         technicalCommit,
         data?.tcDeltas || [],
         persistCtx,
+        { embedOnly: true },
       );
+      technicalCommitRow = tcResult.technicalCommit || technicalCommitRow;
+      setDetailArray(detail, "tcDeltas", tcResult.deltas || []);
     } catch (err) {
       console.warn("[dual-write] technical commit persist failed:", err?.message || err);
     }
@@ -452,14 +493,20 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
 
   if (lifecycle.dealId) {
     try {
-      await rollupDealTractionAfterPostCall(lifecycle.dealId, {
+      const signalRow = await buildDealSignalDetail(lifecycle.dealId, {
         ...persistCtx,
         analysis,
         qualification,
         summarise,
-        technicalCommit,
+        technicalCommit: technicalCommitRow,
         callCreatedAt: postCall.createdAt || postCall.updatedAt || now(),
+      }, {
+        followUps: detail.followUps,
+        objections: detail.objections,
+        videoFacts: detail.videoFacts[0] || null,
+        technicalCommit: technicalCommitRow,
       });
+      if (signalRow) setDetailArray(detail, "dealSignals", [signalRow]);
     } catch (err) {
       console.warn("[dual-write] traction rollup failed:", err?.message || err);
     }
@@ -478,10 +525,21 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   if (pass6 && (pass6.productGaps?.length || pass6.whatWorks?.length)) {
     try {
       const store = getStore();
-      await persistPass6ProductGaps(store, pass6, {
+      const pass6Built = buildPass6Detail(pass6, {
         ...persistCtx,
         postCallId: postCall.id,
       });
+      setDetailArray(detail, "productGaps", pass6Built.productGaps);
+      setDetailArray(detail, "whatWorks", pass6Built.whatWorks);
+      for (const doc of pass6Built.flatProductGaps) {
+        await store.upsertProductGap(doc);
+      }
+      for (const doc of pass6Built.flatWhatWorks) {
+        await store.upsertWhatWorks(doc);
+      }
+      if (pass6Built.flatProductGaps.length && persistCtx.orgId) {
+        await notifyGapClusteringPending(store, persistCtx.orgId, pass6Built.flatProductGaps.length);
+      }
       const orgId = session.orgId || lifecycle.orgId || persistCtx.orgId || null;
       if (orgId) {
         void maybeRunGapClusteringAfterPass6(store, orgId);
@@ -489,6 +547,20 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     } catch (err) {
       console.warn("[dual-write] pass6 product signal persist failed:", err?.message || err);
     }
+  }
+
+  try {
+    const cappedDetail = capPostCallDetail(detail);
+    const preparedDetail = await preparePostCallDetailForFirestore(postCall.id, cappedDetail);
+    await getStore().upsertPostCall({
+      ...postCall,
+      detail: preparedDetail.detail,
+      detailGcsUri: preparedDetail.detailGcsUri,
+      detailByteSize: preparedDetail.detailByteSize,
+      updatedAt: now(),
+    });
+  } catch (err) {
+    console.warn("[dual-write] postCall detail persist failed:", err?.message || err);
   }
 
   if (account.id) {

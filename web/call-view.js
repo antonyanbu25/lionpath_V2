@@ -1935,14 +1935,6 @@ async function safeEnrich(label, fn, fallback) {
   }
 }
 
-/** @param {Record<string, Promise<any>>} tasks */
-async function promiseAllValues(tasks) {
-  const entries = await Promise.all(
-    Object.entries(tasks).map(async ([key, task]) => [key, await task]),
-  );
-  return Object.fromEntries(entries);
-}
-
 /** Immediate shell while Firestore enrichments load. */
 function renderCallLoadingShell(record) {
   const title = resolveCallTitleFromRecord(record);
@@ -1967,56 +1959,45 @@ async function loadCallBundle(session, record) {
   const draftTimeline = resultBlob.timeline;
   const summarise = resultBlob.summarise || {};
 
-  const parallel = await promiseAllValues({
-    domainCall:
-      !dealId && store.getPostCall
-        ? safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
-        : Promise.resolve(null),
-    productGaps:
-      !pass6?.productGaps?.length && store.listProductGapsByPostCall
-        ? safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
-        : Promise.resolve([]),
-    whatWorks:
-      !pass6?.whatWorks?.length && store.listWhatWorksByPostCall
-        ? safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
-        : Promise.resolve([]),
-    storedFacts:
-      store.listVideoFactsByCall
-        ? safeEnrich("listVideoFactsByCall", () => store.listVideoFactsByCall(record.id), [])
-        : Promise.resolve([]),
-    timelineSegments:
-      !draftVf?.segments?.length && !draftTimeline?.segments?.length && store.listTimelineSegmentsByCall
-        ? safeEnrich("listTimelineSegmentsByCall", () => store.listTimelineSegmentsByCall(record.id), [])
-        : Promise.resolve([]),
-    timelineMarkers:
-      !draftTimeline?.markers?.length && store.listTimelineMarkersByCall
-        ? safeEnrich("listTimelineMarkersByCall", () => store.listTimelineMarkersByCall(record.id), [])
-        : Promise.resolve([]),
-    tcDeltas:
-      !resultBlob.tcDeltas?.length && store.listTcDeltasByCall
-        ? safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
-        : Promise.resolve([]),
-    meddpiccDeltas: store.listMeddpiccDeltasByCall
-      ? safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
-      : Promise.resolve([]),
-    objections:
-      !summarise.objections?.length && store.listObjectionsByCall
-        ? safeEnrich("listObjectionsByCall", () => store.listObjectionsByCall(record.id), [])
-        : Promise.resolve([]),
-    followUps:
-      !summarise.followUps?.length && store.listFollowUpsByCall
-        ? safeEnrich("listFollowUpsByCall", () => store.listFollowUpsByCall(record.id), [])
-        : Promise.resolve([]),
-    momDrafts:
-      !summarise.momDraft && !resultBlob.momDraft && store.listMomDraftsByCall
-        ? safeEnrich("listMomDraftsByCall", () => store.listMomDraftsByCall(record.id), [])
-        : Promise.resolve([]),
-    dealSignals: store.listDealSignalsByCall
-      ? safeEnrich("listDealSignalsByCall", () => store.listDealSignalsByCall(record.id), [])
-      : Promise.resolve([]),
-  });
+  const domainCall = store.getCall
+    ? await safeEnrich("getCall", () => store.getCall(record.id), null)
+    : store.getPostCall
+      ? await safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
+      : null;
 
-  if (!dealId && parallel.domainCall?.dealId) dealId = parallel.domainCall.dealId;
+  const detail = domainCall?.detail || {};
+  const parallel = {
+    domainCall,
+    productGaps: detail.productGaps?.length
+      ? detail.productGaps
+      : !pass6?.productGaps?.length && store.listProductGapsByPostCall
+        ? await safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
+        : [],
+    whatWorks: detail.whatWorks?.length
+      ? detail.whatWorks
+      : !pass6?.whatWorks?.length && store.listWhatWorksByPostCall
+        ? await safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
+        : [],
+    storedFacts: detail.videoFacts?.length ? detail.videoFacts : [],
+    timelineSegments: detail.timelineSegments?.length ? detail.timelineSegments : [],
+    timelineMarkers: detail.timelineMarkers?.length ? detail.timelineMarkers : [],
+    tcDeltas: detail.tcDeltas?.length
+      ? detail.tcDeltas
+      : !resultBlob.tcDeltas?.length && store.listTcDeltasByCall
+        ? await safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
+        : [],
+    meddpiccDeltas: detail.meddpiccDeltas?.length
+      ? detail.meddpiccDeltas
+      : store.listMeddpiccDeltasByCall
+        ? await safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
+        : [],
+    objections: detail.objections?.length ? detail.objections : [],
+    followUps: detail.followUps?.length ? detail.followUps : [],
+    momDrafts: detail.momDrafts?.length ? detail.momDrafts : [],
+    dealSignals: detail.dealSignals?.length ? detail.dealSignals : [],
+  };
+
+  if (!dealId && domainCall?.dealId) dealId = domainCall.dealId;
 
   // Tier 3 — the record never got a dealId stamped (dual-write skipped, or confirm
   // had no deals on the account). Recover it from the account's deal list.

@@ -67,33 +67,35 @@ export async function computeStageMedianDays(store, accountId, stage) {
 }
 
 /**
+ * Build deal signal row from in-memory detail inputs (no store reads).
  * @param {string} dealId
  * @param {object} ctx
+ * @param {{ followUps?: object[], objections?: object[], videoFacts?: object|null, technicalCommit?: object|null }} inputs
  */
-export async function computeAndPersistDealSignal(dealId, ctx) {
+export async function buildDealSignalDetail(dealId, ctx, inputs = {}) {
   if (!dealId || !ctx?.callId) return null;
 
   const store = getStore();
   const deal = await store.getDeal(dealId);
   if (!deal) return null;
 
-  const followUps = store.listFollowUpsByCall ? await store.listFollowUpsByCall(ctx.callId) : [];
-  const objections = store.listObjectionsByCall ? await store.listObjectionsByCall(ctx.callId) : [];
-  const videoFacts = store.listVideoFactsByCall ? (await store.listVideoFactsByCall(ctx.callId))[0] : null;
+  const followUps = inputs.followUps || [];
+  const objections = inputs.objections || [];
+  const videoFacts = inputs.videoFacts || null;
 
-  const priorCalls = store.listPostCallsByDeal ? await store.listPostCallsByDeal(dealId, 12) : [];
+  const priorCalls = store.listCallSummariesByDeal ? await store.listCallSummariesByDeal(dealId, 12) : [];
   const priorMomentum = (priorCalls || [])
     .filter((p) => p.id !== ctx.callId)
     .map((p) => ({
       callId: p.id,
       createdAt: p.createdAt || p.updatedAt,
-      momentum: p.analysis?.momentum,
+      momentum: null,
     }));
 
   const daysInStage = await computeDaysInStage(store, deal);
   const stageMedianDays = await computeStageMedianDays(store, deal.accountId, deal.stage);
 
-  let technicalCommit = ctx.technicalCommit || null;
+  let technicalCommit = inputs.technicalCommit || ctx.technicalCommit || null;
   if (!technicalCommit && store.getTechnicalCommitByDeal) {
     technicalCommit = await store.getTechnicalCommitByDeal(dealId);
   }
@@ -113,12 +115,7 @@ export async function computeAndPersistDealSignal(dealId, ctx) {
   });
 
   const ts = now();
-  const existing = store.listDealSignalsByCall ? await store.listDealSignalsByCall(ctx.callId) : [];
-  for (const prev of existing || []) {
-    if (store.deleteDealSignal) await store.deleteDealSignal(prev.id);
-  }
-
-  const row = {
+  return {
     id: newId("dealSignal"),
     callId: ctx.callId,
     dealId,
@@ -136,8 +133,27 @@ export async function computeAndPersistDealSignal(dealId, ctx) {
     createdAt: ts,
     updatedAt: ts,
   };
+}
 
-  if (!store.upsertDealSignal) return rollup;
+/**
+ * @param {string} dealId
+ * @param {object} ctx
+ */
+export async function computeAndPersistDealSignal(dealId, ctx) {
+  const store = getStore();
+  const followUps = store.listFollowUpsByCall ? await store.listFollowUpsByCall(ctx.callId) : [];
+  const objections = store.listObjectionsByCall ? await store.listObjectionsByCall(ctx.callId) : [];
+  const videoFacts = store.listVideoFactsByCall ? (await store.listVideoFactsByCall(ctx.callId))[0] : null;
+
+  const row = await buildDealSignalDetail(dealId, ctx, { followUps, objections, videoFacts });
+  if (!row) return null;
+
+  const existing = store.listDealSignalsByCall ? await store.listDealSignalsByCall(ctx.callId) : [];
+  for (const prev of existing || []) {
+    if (store.deleteDealSignal) await store.deleteDealSignal(prev.id);
+  }
+
+  if (!store.upsertDealSignal) return row;
   await store.upsertDealSignal(row);
-  return { ...rollup, row };
+  return { ...row, traction: row.traction };
 }

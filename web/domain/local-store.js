@@ -4,6 +4,11 @@
  */
 
 import { newId, now, dealContactId, normalizeDealContactRole } from "./types.js";
+import {
+  detailArray,
+  dealSignalsFromPostCalls,
+  tcDeltasFromPostCalls,
+} from "./post-call-detail.js";
 import { invalidateSessionListCache } from "./session-list-cache.js";
 
 const PREFIX = "se-singha-domain:";
@@ -427,8 +432,26 @@ export function createLocalStore() {
       return upsertById("postCalls", doc);
     },
 
+    async upsertCallSummary(doc) {
+      return upsertById("callSummaries", doc);
+    },
+
+    async upsertPostCallWithSummary(postCall, callSummary) {
+      const saved = await upsertById("postCalls", postCall);
+      if (callSummary) await upsertById("callSummaries", callSummary);
+      return saved;
+    },
+
     async getPostCall(id) {
       return findById("postCalls", id);
+    },
+
+    async getCall(id) {
+      return this.getPostCall(id);
+    },
+
+    _postCallForDetailLookup(callId) {
+      return findById("postCalls", callId);
     },
 
     async listPostCallsByLifecycle(lifecycleId, limitCount = 200) {
@@ -449,6 +472,41 @@ export function createLocalStore() {
 
     async listPostCallsByAccount(accountId, limitCount = 80) {
       return findMany("postCalls", (p) => p.accountId === accountId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listCallSummariesByOwner(ownerId, limitCount = 200) {
+      return findMany("callSummaries", (p) => p.ownerId === ownerId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listCallSummariesByTeam(teamId, limitCount = 200) {
+      return findMany("callSummaries", (p) => p.teamId === teamId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listCallSummariesByOrg(orgId, limitCount = 200) {
+      return findMany("callSummaries", (p) => p.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listCallSummariesByDeal(dealId, limitCount = 50) {
+      return findMany("callSummaries", (p) => p.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listCallSummariesByAccount(accountId, limitCount = 80) {
+      return findMany("callSummaries", (p) => p.accountId === accountId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );
@@ -568,6 +626,8 @@ export function createLocalStore() {
     },
 
     async listVideoFactsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "videoFacts");
+      if (embedded.length) return embedded;
       return findMany("videoFacts", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -581,6 +641,10 @@ export function createLocalStore() {
     },
 
     async listTimelineSegmentsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "timelineSegments");
+      if (embedded.length) {
+        return embedded.sort((a, b) => (a.startS || 0) - (b.startS || 0));
+      }
       return findMany(
         "timelineSegments",
         (s) => s.callId === callId,
@@ -593,6 +657,10 @@ export function createLocalStore() {
     },
 
     async listTimelineMarkersByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "timelineMarkers");
+      if (embedded.length) {
+        return embedded.sort((a, b) => (a.atS || 0) - (b.atS || 0));
+      }
       return findMany(
         "timelineMarkers",
         (m) => m.callId === callId,
@@ -624,6 +692,8 @@ export function createLocalStore() {
     },
 
     async listFollowUpsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "followUps");
+      if (embedded.length) return embedded;
       return findMany("followUps", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -637,6 +707,8 @@ export function createLocalStore() {
     },
 
     async listObjectionsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "objections");
+      if (embedded.length) return embedded;
       return findMany("objections", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -650,6 +722,8 @@ export function createLocalStore() {
     },
 
     async listMomDraftsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "momDrafts");
+      if (embedded.length) return embedded;
       return findMany("momDrafts", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -663,6 +737,8 @@ export function createLocalStore() {
     },
 
     async listMeddpiccDeltasByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "meddpiccDeltas");
+      if (embedded.length) return embedded;
       return findMany("meddpiccDeltas", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -676,10 +752,15 @@ export function createLocalStore() {
     },
 
     async listDealSignalsByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "dealSignals");
+      if (embedded.length) return embedded;
       return findMany("dealSignals", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
     async listDealSignalsByDeal(dealId, limitCount = 50) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = dealSignalsFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
       return findMany("dealSignals", (s) => s.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(0, limitCount);
     },
 
@@ -688,6 +769,15 @@ export function createLocalStore() {
       /** @type {Map<string, object[]>} */
       const byDeal = new Map();
       if (!idSet.size) return byDeal;
+      const postCalls = findMany("postCalls", (p) => idSet.has(p.dealId));
+      for (const pc of postCalls) {
+        for (const sig of detailArray(pc, "dealSignals")) {
+          if (!byDeal.has(pc.dealId)) byDeal.set(pc.dealId, []);
+          const arr = byDeal.get(pc.dealId);
+          if (arr.length < perDealLimit) arr.push(sig);
+        }
+      }
+      if ([...byDeal.values()].some((rows) => rows.length)) return byDeal;
       const all = findMany(
         "dealSignals",
         (s) => idSet.has(s.dealId),
@@ -763,10 +853,15 @@ export function createLocalStore() {
     },
 
     async listTcDeltasByCall(callId) {
+      const embedded = detailArray(this._postCallForDetailLookup(callId), "tcDeltas");
+      if (embedded.length) return embedded;
       return findMany("tcDeltas", (s) => s.callId === callId, (a, b) => b.createdAt - a.createdAt);
     },
 
     async listTcDeltasByDeal(dealId, limitCount = 200) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = tcDeltasFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
       return findMany("tcDeltas", (s) => s.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
@@ -794,6 +889,8 @@ export function createLocalStore() {
     },
 
     async listProductGapsByPostCall(postCallId) {
+      const embedded = detailArray(this._postCallForDetailLookup(postCallId), "productGaps");
+      if (embedded.length) return embedded;
       return findMany("productGaps", (g) => g.postCallId === postCallId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -809,6 +906,8 @@ export function createLocalStore() {
     },
 
     async listWhatWorksByPostCall(postCallId) {
+      const embedded = detailArray(this._postCallForDetailLookup(postCallId), "whatWorks");
+      if (embedded.length) return embedded;
       return findMany("whatWorks", (w) => w.postCallId === postCallId, (a, b) => b.createdAt - a.createdAt);
     },
 
@@ -864,6 +963,7 @@ export function createLocalStore() {
         "lifecycles",
         "prepBriefs",
         "postCalls",
+        "callSummaries",
         "tasks",
         "events",
         "contactEvents",

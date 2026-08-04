@@ -186,12 +186,23 @@ export async function notifyGapClusteringPending(store, orgId, addedCount = 1) {
  * @param {object} draft
  * @param {object} rbac
  */
-export async function persistPass6ProductGaps(store, drafts, context) {
+/**
+ * Build embedded detail rows + flat collection docs for Pass 6.
+ * @param {object} drafts
+ * @param {object} context
+ * @returns {{ productGaps: object[], whatWorks: object[], flatProductGaps: object[], flatWhatWorks: object[] }}
+ */
+export function buildPass6Detail(drafts, context) {
   const ts = now();
-  const saved = [];
+  const productGaps = [];
+  const whatWorks = [];
+  const flatProductGaps = [];
+  const flatWhatWorks = [];
+
   for (const row of drafts.productGaps || []) {
+    const id = newId("productGap");
     const doc = {
-      id: newId("productGap"),
+      id,
       postCallId: context.postCallId,
       dealId: context.dealId,
       accountId: context.accountId,
@@ -203,10 +214,12 @@ export async function persistPass6ProductGaps(store, drafts, context) {
       updatedAt: ts,
       ...row,
     };
-    saved.push(await store.upsertProductGap(doc));
+    productGaps.push(doc);
+    flatProductGaps.push(doc);
   }
+
   for (const row of drafts.whatWorks || []) {
-    await store.upsertWhatWorks({
+    const doc = {
       id: newId("whatWorks"),
       postCallId: context.postCallId,
       accountId: context.accountId,
@@ -216,12 +229,27 @@ export async function persistPass6ProductGaps(store, drafts, context) {
       createdAt: ts,
       updatedAt: ts,
       ...row,
-    });
+    };
+    whatWorks.push(doc);
+    flatWhatWorks.push(doc);
+  }
+
+  return { productGaps, whatWorks, flatProductGaps, flatWhatWorks };
+}
+
+export async function persistPass6ProductGaps(store, drafts, context) {
+  const built = buildPass6Detail(drafts, context);
+  const saved = [];
+  for (const doc of built.flatProductGaps) {
+    saved.push(await store.upsertProductGap(doc));
+  }
+  for (const doc of built.flatWhatWorks) {
+    await store.upsertWhatWorks(doc);
   }
   if (saved.length && context.orgId) {
     await notifyGapClusteringPending(store, context.orgId, saved.length);
   }
-  return saved;
+  return { saved, ...built };
 }
 
 /**

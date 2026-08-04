@@ -9,20 +9,15 @@ import { newId, now } from "./types.js";
 /**
  * @param {object[]} drafts — FollowUpDraft[]
  * @param {{ callId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @returns {object[]}
  */
-export async function persistFollowUpsDraft(drafts, ctx) {
+export function buildFollowUpsDetail(drafts, ctx) {
   if (!ctx?.callId || !ctx?.ownerId) return [];
-  const store = getStore();
-  const existing = store.listFollowUpsByCall ? await store.listFollowUpsByCall(ctx.callId) : [];
-  for (const prev of existing || []) {
-    if (store.deleteFollowUp) await store.deleteFollowUp(prev.id);
-  }
-
   const ts = now();
   const rows = [];
   for (const draft of drafts || []) {
     if (!draft?.description) continue;
-    const row = {
+    rows.push({
       id: newId("followUp"),
       callId: ctx.callId,
       dealId: ctx.dealId || null,
@@ -37,9 +32,22 @@ export async function persistFollowUpsDraft(drafts, ctx) {
       accountId: ctx.accountId || "",
       createdAt: ts,
       updatedAt: ts,
-    };
+    });
+  }
+  return rows;
+}
+
+export async function persistFollowUpsDraft(drafts, ctx) {
+  const rows = buildFollowUpsDetail(drafts, ctx);
+  if (!rows.length) return [];
+
+  const store = getStore();
+  const existing = store.listFollowUpsByCall ? await store.listFollowUpsByCall(ctx.callId) : [];
+  for (const prev of existing || []) {
+    if (store.deleteFollowUp) await store.deleteFollowUp(prev.id);
+  }
+  for (const row of rows) {
     await store.upsertFollowUp(row);
-    rows.push(row);
   }
   return rows;
 }
@@ -47,20 +55,15 @@ export async function persistFollowUpsDraft(drafts, ctx) {
 /**
  * @param {object[]} drafts — ObjectionDraft[]
  * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @returns {object[]}
  */
-export async function persistObjectionsDraft(drafts, ctx) {
+export function buildObjectionsDetail(drafts, ctx) {
   if (!ctx?.callId || !ctx?.ownerId) return [];
-  const store = getStore();
-  const existing = store.listObjectionsByCall ? await store.listObjectionsByCall(ctx.callId) : [];
-  for (const prev of existing || []) {
-    if (store.deleteObjection) await store.deleteObjection(prev.id);
-  }
-
   const ts = now();
   const rows = [];
   for (const draft of drafts || []) {
     if (!draft?.objectionText) continue;
-    const row = {
+    rows.push({
       id: newId("objection"),
       callId: ctx.callId,
       objectionText: draft.objectionText,
@@ -73,30 +76,38 @@ export async function persistObjectionsDraft(drafts, ctx) {
       accountId: ctx.accountId || "",
       createdAt: ts,
       updatedAt: ts,
-    };
+    });
+  }
+  return rows;
+}
+
+export async function persistObjectionsDraft(drafts, ctx) {
+  const rows = buildObjectionsDetail(drafts, ctx);
+  if (!rows.length) return [];
+
+  const store = getStore();
+  const existing = store.listObjectionsByCall ? await store.listObjectionsByCall(ctx.callId) : [];
+  for (const prev of existing || []) {
+    if (store.deleteObjection) await store.deleteObjection(prev.id);
+  }
+  for (const row of rows) {
     await store.upsertObjection(row);
-    rows.push(row);
   }
   return rows;
 }
 
 /**
- * Upsert one MoM draft per call. Never sets sentAt/sentBy.
- * If a draft was already sent, keep sentAt/sentBy/editedBody and refresh draftBody only.
  * @param {object} draft — MomDraftDraft
+ * @param {object|null} [prev]
  * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @returns {object|null}
  */
-export async function persistMomDraft(draft, ctx) {
+export function buildMomDraftDetail(draft, ctx, prev = null) {
   if (!draft?.draftBody || !ctx?.callId || !ctx?.ownerId) return null;
-
-  const store = getStore();
-  const existing = store.listMomDraftsByCall ? await store.listMomDraftsByCall(ctx.callId) : [];
-  const prev = (existing || [])[0] || null;
   const ts = now();
 
-  // Already sent — preserve send audit; refresh model draft for reference only.
   if (prev?.sentAt) {
-    const row = {
+    return {
       ...prev,
       draftBody: draft.draftBody,
       outcome: draft.outcome ?? prev.outcome ?? null,
@@ -104,15 +115,9 @@ export async function persistMomDraft(draft, ctx) {
       actionItems: draft.actionItems ?? prev.actionItems ?? null,
       updatedAt: ts,
     };
-    await store.upsertMomDraft(row);
-    return row;
   }
 
-  for (const old of existing || []) {
-    if (store.deleteMomDraft && old.id !== prev?.id) await store.deleteMomDraft(old.id);
-  }
-
-  const row = {
+  return {
     id: prev?.id || newId("momDraft"),
     callId: ctx.callId,
     draftBody: draft.draftBody,
@@ -129,6 +134,23 @@ export async function persistMomDraft(draft, ctx) {
     createdAt: prev?.createdAt || ts,
     updatedAt: ts,
   };
+}
+
+export async function persistMomDraft(draft, ctx) {
+  const store = getStore();
+  const existing = store.listMomDraftsByCall ? await store.listMomDraftsByCall(ctx.callId) : [];
+  const prev = (existing || [])[0] || null;
+  const row = buildMomDraftDetail(draft, ctx, prev);
+  if (!row) return null;
+
+  if (prev?.sentAt) {
+    await store.upsertMomDraft(row);
+    return row;
+  }
+
+  for (const old of existing || []) {
+    if (store.deleteMomDraft && old.id !== prev?.id) await store.deleteMomDraft(old.id);
+  }
   await store.upsertMomDraft(row);
   return row;
 }
@@ -152,6 +174,19 @@ export async function markMomSent(callId, sentBy, editedBody) {
     sentBy,
     updatedAt: now(),
   };
-  await store.upsertMomDraft(row);
+
+  if (store.getPostCall && store.upsertPostCall) {
+    const postCall = await store.getPostCall(callId);
+    if (postCall?.detail) {
+      await store.upsertPostCall({
+        ...postCall,
+        detail: { ...postCall.detail, momDrafts: [row] },
+        updatedAt: now(),
+      });
+      return row;
+    }
+  }
+
+  if (store.upsertMomDraft) await store.upsertMomDraft(row);
   return row;
 }

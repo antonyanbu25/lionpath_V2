@@ -56,6 +56,10 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       return detail?.postCall || null;
     },
 
+    async getCall(id) {
+      return this.getPostCall(id);
+    },
+
     async listPostCallsByOwner(_ownerId, limit = 200) {
       const data = await apiFetch(`/api/calls?scope=own&limit=${encodeURIComponent(String(limit))}`);
       return data.calls || [];
@@ -69,6 +73,42 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     async listPostCallsByOrg(_orgId, limit = 200) {
       const data = await apiFetch(`/api/calls?scope=org&limit=${encodeURIComponent(String(limit))}`);
       return data.calls || [];
+    },
+
+    async listCallSummariesByOwner(ownerId, limit = 200) {
+      if (firestoreDelegate.listCallSummariesByOwner) {
+        return firestoreDelegate.listCallSummariesByOwner(ownerId, limit);
+      }
+      const data = await apiFetch(`/api/calls?scope=own&limit=${encodeURIComponent(String(limit))}`);
+      return data.calls || [];
+    },
+
+    async listCallSummariesByTeam(teamId, limit = 200) {
+      if (firestoreDelegate.listCallSummariesByTeam) {
+        return firestoreDelegate.listCallSummariesByTeam(teamId, limit);
+      }
+      const data = await apiFetch(`/api/calls?scope=team&limit=${encodeURIComponent(String(limit))}`);
+      return data.calls || [];
+    },
+
+    async listCallSummariesByOrg(orgId, limit = 200) {
+      if (firestoreDelegate.listCallSummariesByOrg) {
+        return firestoreDelegate.listCallSummariesByOrg(orgId, limit);
+      }
+      const data = await apiFetch(`/api/calls?scope=org&limit=${encodeURIComponent(String(limit))}`);
+      return data.calls || [];
+    },
+
+    async listCallSummariesByDeal(dealId, limit = 50) {
+      return firestoreDelegate.listCallSummariesByDeal
+        ? firestoreDelegate.listCallSummariesByDeal(dealId, limit)
+        : [];
+    },
+
+    async listCallSummariesByAccount(accountId, limit = 80) {
+      return firestoreDelegate.listCallSummariesByAccount
+        ? firestoreDelegate.listCallSummariesByAccount(accountId, limit)
+        : [];
     },
 
     async getAccount(id) {

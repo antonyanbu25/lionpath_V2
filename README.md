@@ -646,7 +646,8 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [docs/RELATIONSHIPS.md](./docs/RELATIONSHIPS.md) | Developers â€” how entities link |
 | [docs/RBAC.md](./docs/RBAC.md) | Developers â€” roles and visibility |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers â€” local setup, tunnel sharing, onboarding |
-| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin â€” VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| [docs/CALL_SUMMARIES.md](./docs/CALL_SUMMARIES.md) | IT / admin — `callSummaries` indexes, backfill, GCS offload |
 | [deploy/vps/SECURITY.md](./deploy/vps/SECURITY.md) | IT / admin â€” secrets, SSH, file permissions |
 
 ---
