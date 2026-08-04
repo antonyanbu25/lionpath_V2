@@ -20,10 +20,10 @@ import { extractSeContextFacts } from "./se-context-extract";
 import { fillResearchGaps } from "./gap-research";
 import { factsFromSeContext } from "./se-context-facts";
 import { canonicalizePrepSources } from "./canonicalize-sources";
-import { buildRecentNews } from "./recent-news";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
 import { generateRivalComparison } from "./rivals";
+import { extractFishSizingFromContext } from "./rivals-context";
 import { generateCompanyNews } from "./company-news";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
 import { padSources } from "./source-table";
@@ -403,13 +403,10 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
-  // Build from full research facts + authoritative sources before canonicalize remaps labels.
-  // Grounded search wins; the fact-derived build is the fallback for when it returns nothing.
+  // Web search only — Gemini grounded + DDG fallback. No research-fact backfill.
   if (companyNews) {
     prep.recentNews = companyNews.items;
     prep.newsSources = companyNews.sources;
-  } else {
-    prep.recentNews = buildRecentNews(research.facts, paddedSources);
   }
   // The two calls above mint "Kaia"/"Zoom"/"LinkedIn PDF" labels after synthesis, so
   // they are invisible to the pass inside synthesizePrep. Idempotent, so this only
@@ -420,6 +417,11 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
+  if (!rivals?.axes?.length) {
+    const mergedContext = research.mergedContext || input.additionalContext;
+    const fishContext = await extractFishSizingFromContext(env, mergedContext, input.companyName);
+    if (fishContext) prep.fishContext = fishContext;
+  }
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -585,12 +587,10 @@ export async function runPrepSynthesize(
   let { prep, lowConfidence } = validatePrep(prepRaw);
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   const researchFacts = rawInput.researchBundle?.facts || facts;
-  // Grounded search wins; the fact-derived build is the fallback for when it returns nothing.
+  // Web search only — Gemini grounded + DDG fallback. No research-fact backfill.
   if (companyNews) {
     prep.recentNews = companyNews.items;
     prep.newsSources = companyNews.sources;
-  } else {
-    prep.recentNews = buildRecentNews(researchFacts, sources);
   }
   // Registers the post-synthesis enrichment labels (Kaia / Zoom / LinkedIn PDF).
   prep = canonicalizePrepSources(prep, { authoritative: sources }).prep;
@@ -599,6 +599,10 @@ export async function runPrepSynthesize(
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
+  if (!rivals?.axes?.length) {
+    const fishContext = await extractFishSizingFromContext(env, mergedContext, input.companyName);
+    if (fishContext) prep.fishContext = fishContext;
+  }
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

@@ -405,15 +405,40 @@ function benchmarkBarPos(value, min, max) {
 function benchmarkRows(prep) {
   const rivals = prep.rivals;
   const axes = rivals?.axes || [];
-  if (!axes.length) {
+  if (axes.length) {
+    return renderFishBenchmarkCard(axes, rivals);
+  }
+
+  const ctxMetrics = prep.fishContext?.metrics || [];
+  if (ctxMetrics.length) {
+    const rows = ctxMetrics
+      .map(
+        (m) => `<div class="prep-v9-benchmark prep-v9-benchmark-context">
+        <div class="prep-v9-benchmark-head">
+          <span class="prep-v9-benchmark-label">${esc(m.label)}</span>
+          <span class="prep-v9-benchmark-val">${esc(m.value)}</span>
+        </div>
+        <span class="prep-v9-src prep-v9-src-input">INPUT</span>
+      </div>`,
+      )
+      .join("");
     return `<div class="prep-v9-card">
+      <h2 class="prep-v9-card-title">How big is this fish?</h2>
+      <p class="muted prep-v9-fish-context-note">From your additional context — not verified on the web.</p>
+      ${rows}
+    </div>`;
+  }
+
+  return `<div class="prep-v9-card">
       <h2 class="prep-v9-card-title">How big is this fish?</h2>
       <div class="prep-v9-empty-box">
         <p class="prep-v9-empty-title">We could not size this account.</p>
         <p class="muted">No headcount, funding or volume figures are public. Ask for team size — it anchors everything else.</p>
       </div>
     </div>`;
-  }
+}
+
+function renderFishBenchmarkCard(axes, rivals) {
   const rows = axes
     .map((axis) => {
       const own = axis.prospect;
@@ -469,12 +494,17 @@ function renderRecentNews(recentNews, sources) {
     .slice(0, 4)
     .map((n) => {
       const showDetail = n.detail && n.detail.toLowerCase() !== n.headline.toLowerCase();
+      const src = (sources || []).find((s) => s.label === n.sourceLabel);
+      const articleUrl = n.articleUrl || src?.url;
+      const linkHtml = articleUrl
+        ? `<a class="prep-v9-news-link" href="${esc(articleUrl)}" target="_blank" rel="noopener noreferrer">Read article →</a>`
+        : "";
       return `<div class="prep-v9-news-row">
         <span class="prep-v9-news-dot"></span>
         <div>
           <span class="prep-v9-news-title">${esc(n.headline)}</span>
           ${showDetail ? `<span class="prep-v9-news-detail muted">${esc(n.detail)}</span>` : ""}
-          <span class="prep-v9-news-meta muted">${srcBadge(n.sourceLabel, sources)}</span>
+          <span class="prep-v9-news-meta muted">${srcBadge(n.sourceLabel, sources)} ${linkHtml}</span>
         </div>
       </div>`;
     })

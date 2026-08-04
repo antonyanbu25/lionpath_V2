@@ -27,7 +27,7 @@
 
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
-import { dedupeCitations, normalizeCitations } from "./citations";
+import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import type { Citation } from "../providers/types";
 import type { Env } from "./types";
 
@@ -490,7 +490,9 @@ export async function generateRivalComparison(
   }
 
   try {
-    return shapeRivalComparison(extractJson<RawRivals>(result.text), result.citations);
+    const normalized = dedupeCitations(normalizeCitations(result.citations));
+    const resolved = await resolveRedirectUrls(normalized);
+    return shapeRivalComparison(extractJson<RawRivals>(result.text), resolved);
   } catch (err) {
     console.warn("prep/rivals unparsable:", (err as Error).message);
     return null;

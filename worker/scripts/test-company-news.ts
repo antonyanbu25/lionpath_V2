@@ -12,6 +12,11 @@ import assert from "node:assert/strict";
 
 import { buildNewsSources, shapeCompanyNews, MAX_NEWS_ITEMS } from "../src/prep/company-news.ts";
 import { buildRecentNews } from "../src/prep/recent-news.ts";
+import {
+  companyNewsFromHits,
+  extractNewsHitsFromHtml,
+  isNewsLikeUrl,
+} from "../src/research/providers/company-news-search.ts";
 import type { Citation } from "../src/providers/types.ts";
 import type { ResearchFact, SourceRef } from "../src/prep/types.ts";
 
@@ -144,6 +149,26 @@ eq(shapeCompanyNews(null, CITES), null, "an unparsable answer yields no panel");
     0,
     "SE context alone produces no news, however confident",
   );
+}
+
+// ---------------------------------------------------------------------------
+// DDG HTML parser — real article URLs, no careers/login pages.
+// ---------------------------------------------------------------------------
+{
+  ok(isNewsLikeUrl("https://techcrunch.com/foo"), "techcrunch is news-like");
+  ok(!isNewsLikeUrl("https://www.linkedin.com/company/acme"), "linkedin excluded");
+
+  const fixture = `
+    <a class="result__a" href="https://techcrunch.com/acme-funding">Acme raises $40M Series B</a>
+    <a class="result__snippet">Led by an existing investor with expansion plans</a>
+    <a class="result__a" href="https://www.linkedin.com/jobs/view/123">Acme careers</a>
+  `;
+  const hits = extractNewsHitsFromHtml(fixture, 5);
+  eq(hits.length, 1, "linkedin careers row skipped");
+  eq(hits[0].url, "https://techcrunch.com/acme-funding", "article url kept");
+  const shaped = companyNewsFromHits(hits);
+  ok(shaped, "DDG hits shape into company news");
+  eq(shaped!.items[0].articleUrl, "https://techcrunch.com/acme-funding", "articleUrl on item");
 }
 
 console.warn = origWarn;

@@ -28,6 +28,7 @@ import {
   renderPrepAttendeeRows,
   clearLinkedInAttachments,
   linkedinFingerprintForHash,
+  emailsMissingLinkedInPdf,
 } from "./prep-linkedin-pdf.js";
 import {
   initContextFileUpload,
@@ -687,6 +688,35 @@ async function buildPayload() {
     throw new Error(message);
   }
   setFieldError(domainField);
+
+  const missingLinkedIn = emailsMissingLinkedInPdf(emails);
+  if (missingLinkedIn.length) {
+    const errEl = $("prep-linkedin-error");
+    const message =
+      missingLinkedIn.length === 1
+        ? `Attach a LinkedIn PDF for ${missingLinkedIn[0]}.`
+        : `Attach a LinkedIn PDF for each prospect: ${missingLinkedIn.join(", ")}.`;
+    if (errEl) {
+      errEl.textContent = message;
+      errEl.hidden = false;
+    }
+    document.querySelectorAll(".nb-linkedin-row").forEach((row) => {
+      const email = row.getAttribute("data-email")?.toLowerCase();
+      row.classList.toggle(
+        "nb-linkedin-row-missing",
+        !!email && missingLinkedIn.some((e) => e.toLowerCase() === email),
+      );
+    });
+    const firstMissing = document.querySelector(".nb-linkedin-row-missing");
+    firstMissing?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    throw new Error(message);
+  }
+  const linkedInErrEl = $("prep-linkedin-error");
+  if (linkedInErrEl) linkedInErrEl.hidden = true;
+  document.querySelectorAll(".nb-linkedin-row-missing").forEach((row) => {
+    row.classList.remove("nb-linkedin-row-missing");
+  });
+
   if (normalizeCompanyDomain(await readFieldValueAsync($("companyDomain"))) !== companyDomain) {
     const field = $("companyDomain");
     if (field) {

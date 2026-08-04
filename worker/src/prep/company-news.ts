@@ -15,8 +15,9 @@
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
 import type { RecentNewsItem } from "../schema";
-import { dedupeCitations, normalizeCitations } from "./citations";
+import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import type { Citation } from "../providers/types";
+import type { LlmResult } from "../providers/types";
 import type { Env } from "./types";
 
 export const MAX_NEWS_ITEMS = 4;
@@ -210,7 +211,7 @@ export async function generateCompanyNews(
   if (!input?.companyName) return null;
   const provider = getProvider(env);
 
-  let result;
+  let result: LlmResult | null = null;
   try {
     result = await provider.generate({
       system: SYSTEM_PROMPT,
@@ -224,13 +225,32 @@ export async function generateCompanyNews(
     });
   } catch (err) {
     console.warn("prep/company-news skipped:", (err as Error).message);
-    return null;
+    result = null;
   }
 
-  try {
-    return shapeCompanyNews(extractJson<{ items?: RawNewsItem[] }>(result.text), result.citations);
-  } catch (err) {
-    console.warn("prep/company-news unparsable:", (err as Error).message);
-    return null;
+  if (result) {
+    try {
+      const normalized = dedupeCitations(normalizeCitations(result.citations));
+      const resolved = await resolveRedirectUrls(normalized);
+      const shaped = shapeCompanyNews(
+        extractJson<{ items?: RawNewsItem[] }>(result.text),
+        resolved,
+      );
+      if (shaped) return shaped;
+    } catch (err) {
+      console.warn("prep/company-news unparsable:", (err as Error).message);
+    }
   }
+
+  const { searchCompanyNewsWeb } = await import("../research/providers/company-news-search");
+  try {
+    const ddg = await searchCompanyNewsWeb(input);
+    if (ddg) {
+      console.info(`[prep/company-news] DDG fallback returned ${ddg.items.length} item(s)`);
+      return ddg;
+    }
+  } catch (err) {
+    console.warn("prep/company-news DDG fallback skipped:", (err as Error).message);
+  }
+  return null;
 }

@@ -168,6 +168,11 @@ function findAttachmentForEmail(email, bag = "prep") {
   return null;
 }
 
+/** Emails that still need a LinkedIn PDF before brief generation. */
+export function emailsMissingLinkedInPdf(emails, bag = "prep") {
+  return (emails || []).filter((email) => !findAttachmentForEmail(email, bag));
+}
+
 const NB_ICON_USER = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
 
 const NB_ICON_CHECK_CIRCLE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>';

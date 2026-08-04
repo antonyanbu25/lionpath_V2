@@ -75,12 +75,7 @@ export function buildRecentNews(facts, sources, maxItems = 4) {
   return out;
 }
 
-/** Fill recentNews on older briefs that lack it but still have a research bundle. */
+/** Fill recentNews on older briefs — server is authoritative; do not backfill from bundle. */
 export function hydrateRecentNews(prep, meta = {}) {
-  if (prep?.recentNews?.length) return prep;
-  const bundle = meta.researchBundle;
-  if (!bundle?.facts?.length) return prep;
-  const news = buildRecentNews(bundle.facts, bundle.sources || prep?.sources || []);
-  if (!news.length) return prep;
-  return { ...prep, recentNews: news };
+  return prep;
 }

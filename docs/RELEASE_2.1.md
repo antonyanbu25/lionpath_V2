@@ -29,6 +29,20 @@ Aligned the generated brief **Know your Customer** tab to the approved `newporta
 
 **Files:** `web/precall-brief-v9.js`, `web/precall.css`, `web/scripts/test-precall-render.mjs`
 
+## Pre-call: LinkedIn validation, Recent news crawl, fish context fallback
+
+| Feature | Detail |
+|---------|--------|
+| **LinkedIn PDF required** | `buildPayload()` blocks submit until every prospect email has an attached LinkedIn PDF (`emailsMissingLinkedInPdf` in `web/prep-linkedin-pdf.js`) |
+| **Recent news pipeline** | (1) Gemini grounded search with redirect URL resolution → (2) DuckDuckGo HTML fallback (`company-news-search.ts`) → (3) empty state. No research-fact or SE-context backfill. Each item has **Read article →** link. |
+| **Fish sizing pipeline** | (1) Grounded rival comparison with redirect resolution → (2) `rivals-context.ts` extracts company sizing from AE notes when web finds nothing → (3) empty state. Context rows show **INPUT** badge; incumbent/integration/requirement lines excluded. |
+
+**Worker files:** `worker/src/prep/company-news.ts`, `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `worker/src/schema.ts`
+
+**Web files:** `web/precall.js`, `web/prep-linkedin-pdf.js`, `web/precall-brief-v9.js`, `web/recent-news.js`, `web/precall.css`
+
+**Tests:** `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs`
+
 ## VPS deploy
 
 ```bash

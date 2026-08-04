@@ -116,8 +116,12 @@ const sampleV8 = {
     { label: "S3", title: "Job posting", url: "unknown", confidence: 45 },
   ],
   recentNews: [
-    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "S2" },
-    { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "S2" },
+    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "N1", articleUrl: "https://techcrunch.com/acme-series-b" },
+    { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "N2" },
+  ],
+  newsSources: [
+    { label: "N1", domain: "techcrunch.com", url: "https://techcrunch.com/acme-series-b", title: "TechCrunch" },
+    { label: "N2", domain: "reuters.com", url: "https://reuters.com/acme-plant", title: "Reuters" },
   ],
   rivals: {
     rivals: [
@@ -155,6 +159,20 @@ const sampleV8 = {
 const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
 
 const discovery = renderKnowTab(sampleV8, false);
+const discoveryFishContext = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Support agents", value: "120 agents" },
+        { label: "Funding raised", value: "$80M Series C" },
+      ],
+    },
+  },
+  false,
+);
 const discoveryWithSeSignal = renderKnowTab(
   {
     ...sampleV8,
@@ -334,6 +352,8 @@ const checks = [
   ["know tab no standalone sources accordion", !discovery.includes("prep-sources-card")],
   ["know tab about text", discovery.includes("prep-v9-about")],
   ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
+  ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
+  ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-src-input")],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({

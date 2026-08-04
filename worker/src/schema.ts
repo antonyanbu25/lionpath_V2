@@ -2,6 +2,7 @@
 
 import type { DemoGuidance } from "./prep/demo-guidance";
 import type { RivalComparison } from "./prep/rivals";
+import type { FishContextSizing } from "./prep/rivals-context";
 import type { NewsSource } from "./prep/company-news";
 
 /**
@@ -571,6 +572,8 @@ export interface RecentNewsItem {
   headline: string;
   detail: string;
   sourceLabel: string;
+  /** Direct article URL when available (e.g. DDG fallback). */
+  articleUrl?: string;
 }
 
 export interface Prep {
@@ -628,6 +631,8 @@ export interface Prep {
    * grounded call (prep/rivals.ts), which drops anything it cannot trace to a citation.
    */
   rivals?: RivalComparison;
+  /** Company sizing from SE context when grounded rivals search found nothing. */
+  fishContext?: FishContextSizing;
 }
 
 export const SIGNAL_LABELS = [

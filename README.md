@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — session restore, accounts/contacts cache, **Know tab layout aligned to reference UI** (no ICP tile, maturity + fish side-by-side) ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — session restore, accounts/contacts cache, Know tab UI, **LinkedIn PDF required**, **Recent news web crawl**, **fish sizing from AE context** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** — Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** — Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -26,6 +26,77 @@ Lionpath (SE Singha Paathai) is an internal SE coaching portal with two core wor
 | **Post-call analysis** | After a recorded customer call — you have a Zoom cloud recording link | Call summary, prioritized next steps (including follow-up email + CRM notes), and a Quality Coach scorecard |
 
 Both flows share the same polished one-pager layout, personal dashboard, and sidebar history — so SEs stay in one place from prep through debrief.
+
+---
+
+## Pre-call improvements (branch `2.1`)
+
+Three Know-tab fixes ship on the pre-call form and worker pipeline. API routes are unchanged: the UI still calls `POST /api/prep/research` then `POST /api/prep/synthesize` (or the all-in-one `POST /api/generate-prep`).
+
+### 1. LinkedIn PDF — required before Generate brief
+
+| Item | Detail |
+|------|--------|
+| **Rule** | One LinkedIn “Save to PDF” per prospect email in the form |
+| **Validation** | Client-side in `buildPayload()` (`web/precall.js`) via `emailsMissingLinkedInPdf()` (`web/prep-linkedin-pdf.js`) |
+| **On failure** | Submit blocked; `#prep-linkedin-error` shows missing emails; rows highlighted with `.nb-linkedin-row-missing` |
+| **Why** | Prospect DISC / Do-Don’t profiles and `/api/contact/enrich` need PDF text; briefs without PDFs were too thin on “Who is in the room” |
+
+LinkedIn PDFs are extracted in-browser (pdf.js, max 5 files × 2 MB, 20k chars text) and sent to the worker as `linkedinProfileExports: [{ fileName, text }]`.
+
+### 2. Recent news — real web articles only
+
+The **Recent news** card (Know tab, row 1) no longer back-fills from research facts or SE typed context.
+
+| Stage | Module | Behaviour |
+|-------|--------|-----------|
+| **1 — Grounded search** | `worker/src/prep/company-news.ts` | Gemini `google_search` grounding; items verified against citation publisher domains |
+| **1b — Redirect resolve** | `worker/src/prep/citations.ts` | Grounding redirect URLs resolved to publisher URLs **before** domain verification (fixes “always empty” panel) |
+| **2 — DDG fallback** | `worker/src/research/providers/company-news-search.ts` | DuckDuckGo HTML crawl when Gemini returns nothing; up to **5** results, news-like URLs only (excludes LinkedIn, careers, login) |
+| **3 — Empty state** | `web/precall-brief-v9.js` | “No public company news found yet…” when both stages fail |
+
+| UI | Detail |
+|----|--------|
+| **Article link** | Each item shows **Read article →** (`prep-v9-news-link`) opening the publisher URL in a new tab |
+| **Sources** | `prep.newsSources` (N1..Nn labels) separate from main prep `sources` |
+| **No backfill** | `buildRecentNews()` fallback removed from `worker/src/prep/index.ts`; `hydrateRecentNews()` in `web/recent-news.js` no longer rehydrates from cached research bundles |
+
+### 3. How big is this fish? — web first, then AE context
+
+| Stage | Module | Behaviour |
+|-------|--------|-----------|
+| **1 — Grounded rivals** | `worker/src/prep/rivals.ts` | Web search for 2–4 market rivals; benchmark bars from sourced headcount / funding / industry axis; redirect URLs resolved before verification |
+| **2 — Context fallback** | `worker/src/prep/rivals-context.ts` | When rivals search returns no axes, LLM extracts **company sizing only** from merged AE context (typed notes + attachments + Kaia) |
+| **Context filter** | `filterFishContextMetrics()` | Keeps headcount, agents, funding, revenue, volume; **drops** deal requirements (incumbent, integrations, timeline, budget, pain, etc.) even if mis-tagged |
+| **3 — Empty state** | `web/precall-brief-v9.js` | “We could not size this account…” when neither stage finds data |
+
+| UI | Detail |
+|----|--------|
+| **Web sizing** | Horizontal benchmark bars from `prep.rivals.axes` (unchanged) |
+| **Context sizing** | Metric rows with **INPUT** badge and note “From your additional context — not verified on the web” (`prep.fishContext`) |
+
+### Files touched (this release)
+
+| Area | Paths |
+|------|-------|
+| Form validation | `web/prep-linkedin-pdf.js`, `web/precall.js`, `web/precall.css` |
+| Recent news | `worker/src/prep/company-news.ts`, `worker/src/research/providers/company-news-search.ts`, `worker/src/prep/index.ts`, `web/precall-brief-v9.js`, `web/recent-news.js` |
+| Fish sizing | `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/schema.ts`, `web/precall-brief-v9.js` |
+| Tests | `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` |
+| Release notes | `docs/RELEASE_2.1.md` |
+
+### Verify locally
+
+```bash
+# Worker unit tests
+cd worker && npx tsx scripts/test-company-news.ts && npx tsx scripts/test-rivals-context.ts
+
+# UI render tests
+cd web && node scripts/test-precall-render.mjs
+
+# Manual: open pre-call form — Generate brief without LinkedIn PDF should error;
+# with PDF + public company (e.g. Stripe, Notion) Recent news should show items + Read article links.
+```
 
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** — see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` — resolve → classify → generate → qualify → ARR → gaps → summarise — with `POST /api/analyze-call` kept as a legacy facade.
 
@@ -343,6 +414,9 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (d
 
 | Area | What changed |
 |------|--------------|
+| **`2.1` — Pre-call validation** | LinkedIn PDF required per prospect email before Generate brief |
+| **`2.1` — Recent news** | Gemini grounded search + redirect resolve + DDG fallback; article links; no SE-context / research-fact backfill |
+| **`2.1` — Fish sizing** | Grounded rivals + AE-context fallback (`prep.fishContext` with INPUT badge); requirement lines filtered out |
 | **`2.0.6` — Discovery UX** | Call-ready Discovery tab (Option A): account/people hero, collapsed 2×3 signals grid, kit/pains up, Research extras; SE context → signals on first generate; **Your notes** trust badge |
 | **`2.0.6` — CRM IA** | Accounts overview vs opportunity routes; **Deals** sidebar + `#deals/{id}`; Type in summary row; MEDDPICC on deal ([ADR 004](./docs/adr/004-account-record-crm-ia.md), [ADR 005](./docs/adr/005-meddpicc-on-deal.md)) |
 | **`2.0.5` — Kaia** | `POST /api/kaia/share-content`, research hash v2, per-prospect excerpts — [CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) |
