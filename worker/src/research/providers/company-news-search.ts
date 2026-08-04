@@ -23,9 +23,21 @@ function trimWords(v: string, max: number): string {
   return parts.length <= max ? parts.join(" ") : `${parts.slice(0, max).join(" ")}…`;
 }
 
-/** Strip HTML entities, URLs and timestamps DDG embeds in titles/snippets. */
-export function cleanDdgText(raw: string): string {
+/** Decode common HTML entities before tag stripping. */
+function decodeHtmlEntities(raw: string): string {
   return String(raw || "")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&nbsp;/gi, " ");
+}
+
+/** Strip HTML entities, tags, URLs and timestamps from crawled text. */
+export function cleanDdgText(raw: string): string {
+  return decodeHtmlEntities(raw)
+    .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&amp;|&quot;|&#\d+;/gi, " ")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/\d{4}-\d{2}-\d{2}T[\d:.Z]+/gi, "")
@@ -46,8 +58,13 @@ function headlineFromHit(hit: DdgNewsHit): string {
 function detailFromHit(hit: DdgNewsHit): string {
   const snippet = cleanDdgText(hit.snippet);
   const title = cleanDdgText(hit.title);
-  const detail = snippet && snippet.toLowerCase() !== title.toLowerCase() ? snippet : title;
-  return trimWords(detail, 18);
+  if (!snippet) return "";
+  if (snippet.toLowerCase() === title.toLowerCase()) return "";
+  // Google News RSS embeds the headline + source in the description — skip redundant detail.
+  if (title.length > 16 && snippet.toLowerCase().includes(title.toLowerCase().slice(0, 24))) return "";
+  const detail = trimWords(snippet, 18);
+  if (!detail || detail.toLowerCase() === title.toLowerCase()) return "";
+  return detail;
 }
 
 function domainFromUrl(url: string): string {
@@ -254,8 +271,8 @@ async function fetchGoogleNewsRss(companyName: string): Promise<DdgNewsHit[]> {
       const link = block.match(/<link>([\s\S]*?)<\/link>/i)?.[1]?.trim() || "";
       const desc =
         block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1] || "";
-      const cleanTitle = cleanDdgText(title.replace(/<[^>]+>/g, " "));
-      const cleanDesc = cleanDdgText(desc.replace(/<[^>]+>/g, " "));
+      const cleanTitle = cleanDdgText(title);
+      const cleanDesc = cleanDdgText(desc);
       if (!cleanTitle || !link || !isNewsLikeUrl(link)) continue;
       out.push({ title: cleanTitle, snippet: cleanDesc || cleanTitle, url: link });
     }

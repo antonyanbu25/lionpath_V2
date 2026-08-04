@@ -186,6 +186,24 @@ const discoveryFishContext = renderKnowTab(
   },
   false,
 );
+const discoveryNewsHtmlGarbage = renderKnowTab(
+  {
+    ...sampleV8,
+    recentNews: [
+      {
+        headline: "Freshworks to Deepen its IT Service",
+        detail:
+          '&lt;a href="" target="_blank"&gt;Freshworks to Deepen its IT Service&lt;/a&gt; nbsp; &lt;font color="#6f6f6f"&gt;GlobeNewswire&lt;/font&gt;',
+        sourceLabel: "N1",
+        articleUrl: "https://news.google.com/rss/articles/example",
+      },
+    ],
+    newsSources: [
+      { label: "N1", domain: "news.google.com", url: "https://news.google.com/rss/articles/example", title: "Google News" },
+    ],
+  },
+  false,
+);
 const discoveryWithSeSignal = renderKnowTab(
   {
     ...sampleV8,
@@ -366,6 +384,12 @@ const checks = [
   ["know tab about text", discovery.includes("prep-v9-about")],
   ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
   ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
+  [
+    "know tab recent news hides html garbage detail",
+    discoveryNewsHtmlGarbage.includes("Freshworks to Deepen") &&
+      !discoveryNewsHtmlGarbage.includes("prep-v9-news-detail") &&
+      !discoveryNewsHtmlGarbage.includes("&lt;a href"),
+  ],
   ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
   ["know tab fish web plus context supplement", discoveryFishCombined.includes("2M users") && discoveryFishCombined.includes("prep-v9-benchmark-bar")],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],

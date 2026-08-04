@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { buildNewsSources, shapeCompanyNews, mergeCompanyNews, MAX_NEWS_ITEMS } from "../src/prep/company-news.ts";
 import { buildRecentNews } from "../src/prep/recent-news.ts";
 import {
+  cleanDdgText,
   companyNewsFromHits,
   extractNewsHitsFromHtml,
   isNewsLikeUrl,
@@ -188,6 +189,23 @@ eq(shapeCompanyNews(null, CITES), null, "an unparsable answer yields no panel");
   const shaped = companyNewsFromHits(hits);
   ok(shaped, "DDG hits shape into company news");
   eq(shaped!.items[0].articleUrl, "https://techcrunch.com/acme-funding", "articleUrl on item");
+}
+
+// Google News RSS descriptions embed HTML entities — must not leak into detail line.
+{
+  const rssDesc =
+    '&lt;a href="" target="_blank"&gt;Freshworks to Deepen its IT Service&lt;/a&gt;&nbsp;&nbsp;&lt;font color="#6f6f6f"&gt;GlobeNewswire&lt;/font&gt;';
+  const plain = cleanDdgText(rssDesc);
+  ok(!/&lt;|<a\s|href=/i.test(plain), "entity-encoded HTML is stripped to plain text");
+  const shaped = companyNewsFromHits([
+    {
+      title: "Freshworks to Deepen its IT Service",
+      snippet: rssDesc,
+      url: "https://news.google.com/rss/articles/example",
+    },
+  ]);
+  ok(shaped?.items[0].headline, "headline kept");
+  eq(shaped!.items[0].detail, "", "RSS duplicate snippet yields empty detail");
 }
 
 console.warn = origWarn;

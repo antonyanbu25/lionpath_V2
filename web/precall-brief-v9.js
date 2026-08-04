@@ -527,15 +527,24 @@ function renderFishBenchmarkCard(axes, rivals, supplementalCtx = []) {
   </div>`;
 }
 
+function isHtmlSnippetGarbage(s) {
+  const t = String(s || "");
+  return /&lt;|<a\s|href\s*=|<font|&nbsp;|target="_blank"/i.test(t);
+}
+
 function renderRecentNews(recentNews, sources) {
-  const items = (recentNews || []).filter((n) => !isUnknown(n.detail) && !isUnknown(n.headline));
+  const items = (recentNews || []).filter((n) => !isUnknown(n.headline));
   if (!items.length) {
     return `<div class="prep-v9-empty-box"><p class="muted">No public company news found yet. Ask what changed recently — a funding round, launch, or leadership move is a strong opener.</p></div>`;
   }
   return items
     .slice(0, 5)
     .map((n) => {
-      const showDetail = n.detail && n.detail.toLowerCase() !== n.headline.toLowerCase();
+      const showDetail =
+        n.detail &&
+        !isUnknown(n.detail) &&
+        !isHtmlSnippetGarbage(n.detail) &&
+        n.detail.toLowerCase() !== n.headline.toLowerCase();
       const src = (sources || []).find((s) => s.label === n.sourceLabel);
       const articleUrl = n.articleUrl || src?.url;
       const linkHtml = articleUrl
