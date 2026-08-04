@@ -42,6 +42,15 @@ import {
   initContextFileUpload,
 } from "./prep-context-files.js";
 import { mergeContextAttachments } from "./prep-context-attachments.js";
+import {
+  showPrepGenOverlay,
+  updatePrepGenOverlay,
+  hidePrepGenOverlay,
+  prepStepsToPct,
+  isGenOverlayActive,
+  POSTCALL_GEN_THEME,
+} from "./prep-generation-overlay.js";
+import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
 import { esc, $, show, EMPTY_DISPLAY, namesEqual, titleCaseDisplayName } from "./shared.js";
 import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 export { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
@@ -78,7 +87,6 @@ import {
 } from "./user-facing-copy.js";
 import { canonicalCallType } from "./call-type-labels.js";
 import { buildCoachOutput, coachTextForSubParameter, insightfulCoachTip, loadScoreOverrides } from "./coach/index.js";
-
 
 const RESOLVE_URL = `${WORKER_BASE_URL}/api/postcall/resolve`;
 const CLASSIFY_URL = `${WORKER_BASE_URL}/api/postcall/classify`;
@@ -2485,6 +2493,7 @@ function navigateToCallRecord(recordId) {
   show($("postcall-form-view"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
+  void hidePostCallGenOverlay();
   if (typeof onCallRecordReady === "function") {
     onCallRecordReady(recordId);
   }
@@ -2589,36 +2598,35 @@ async function postJson(url, body) {
   return data;
 }
 
-function renderProgressStep(label, status, index) {
-  const icon =
-    status === "done" ? "✓" : status === "active" ? "…" : status === "error" ? "!" : String(index + 1);
-  const cls =
-    status === "done"
-      ? "postcall-step-done"
-      : status === "active"
-        ? "postcall-step-active"
-        : status === "error"
-          ? "postcall-step-error"
-          : "postcall-step-pending";
-  return `<li class="postcall-step ${cls}"><span class="postcall-step-icon" aria-hidden="true">${icon}</span><span class="postcall-step-label">${esc(label)}</span></li>`;
-}
-
-function showPipelineProgress(steps) {
-  const host = $("postcall-progress");
-  if (!host) return;
+function showPostCallPipeline(steps, detail) {
   if ($("postcall-confirm-view") && !$("postcall-confirm-view").hidden) {
-    show(host, false);
+    hidePipelineProgress("postcall-progress");
     return;
   }
-  const doneCount = steps.filter((s) => s.status === "done").length;
-  const pct = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
-  host.innerHTML = `
-    <div class="postcall-pipeline-card postcall-pipeline-card--subtle" aria-label="Analysis progress">
-      <div class="postcall-pipeline-bar" role="progressbar" aria-valuenow="${esc(String(pct))}" aria-valuemin="0" aria-valuemax="100">
-        <span style="width:${pct}%"></span>
-      </div>
-    </div>`;
-  show(host, true);
+  showPipelineProgress("postcall-progress", steps, {
+    title: "Call analysis",
+    meta: detail,
+  });
+  if (isGenOverlayActive()) {
+    const active = steps.find((s) => s.status === "active");
+    updatePrepGenOverlay({
+      message: detail || active?.label || `${POSTCALL_GEN_THEME.title}…`,
+      pct: Math.max(prepStepsToPct(steps), 8),
+    });
+  }
+}
+
+function showPostCallGenOverlay(message, pct = 8) {
+  show($("postcall-loading"), false);
+  showPrepGenOverlay({
+    theme: POSTCALL_GEN_THEME,
+    message: message || `${POSTCALL_GEN_THEME.title}…`,
+    pct,
+  });
+}
+
+function hidePostCallGenOverlay(onHidden) {
+  return hidePrepGenOverlay(onHidden);
 }
 
 function formatMatchReasons(reasons) {
@@ -3103,7 +3111,8 @@ function showConfirmationGate(resolve, classify) {
   import("./domain/store.js").catch(() => {});
   import("./domain/arr-service.js").catch(() => {});
 
-  show($("postcall-progress"), false);
+  hidePipelineProgress("postcall-progress");
+  void hidePostCallGenOverlay();
 
   const card = $("postcall-confirm-view");
   if (!card) return;
@@ -3360,7 +3369,7 @@ async function confirmAndGenerate(e) {
   generating = true;
   setButtonLoading(btn, true);
   show($("postcall-confirm-view"), false);
-  show($("postcall-loading"), true);
+  showPostCallGenOverlay("Starting analysis…");
 
   const companyName =
     accountName ||
@@ -3469,7 +3478,7 @@ async function confirmAndGenerate(e) {
     pass2Transcript.length > 0;
 
   if (canRunPass2) {
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
       { label: "Generate analysis + qualification + commitments", status: "active" },
@@ -3480,6 +3489,11 @@ async function confirmAndGenerate(e) {
         ? "Inferring slides and screen-share cues from transcript…"
         : "Sampling Zoom video for camera / share facts… (ffmpeg on VPS when available)",
       loading: true,
+    });
+    updatePrepGenOverlay({
+      message: pass2Transcript
+        ? "Inferring slides and screen-share cues from transcript…"
+        : "Sampling Zoom video for camera and screen-share…",
     });
     try {
       const provisionalCallId = `call_pending_${Date.now()}`;
@@ -3506,7 +3520,7 @@ async function confirmAndGenerate(e) {
       videoFacts = null;
     }
   } else {
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
       { label: "Generate analysis + qualification + commitments", status: "active" },
@@ -3517,6 +3531,9 @@ async function confirmAndGenerate(e) {
     type: "info",
     message: "Generating analysis, qualification, and commitments… usually 15–40 seconds.",
     loading: true,
+  });
+  updatePrepGenOverlay({
+    message: "Generating analysis, qualification, and commitments…",
   });
 
   try {
@@ -3573,8 +3590,10 @@ async function confirmAndGenerate(e) {
 
     const meta = { title: "" };
     meta.title = getCallTitle(data.analysis, meta);
-    show($("postcall-progress"), false);
+    hidePipelineProgress("postcall-progress");
     show($("postcall-loading"), false);
+    updatePrepGenOverlay({ message: "Analysis ready", pct: 100 });
+    await hidePostCallGenOverlay();
     showInlineStatus(status, { open: false });
 
     let record = null;
@@ -3784,13 +3803,14 @@ async function confirmAndGenerate(e) {
       }
     })();
   } catch (err) {
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
       { label: "Generate analysis", status: "error" },
     ]);
     show($("postcall-confirm-view"), true);
     show($("postcall-loading"), false);
+    void hidePostCallGenOverlay();
     showInlineStatus(status, { type: "error", message: err.message || "Generation failed." });
   } finally {
     setButtonLoading(btn, false);
@@ -4011,8 +4031,10 @@ export function resetPostCallView() {
   scheduleProspectEmailAutofillGuard();
   show($("postcall-confirm-view"), false);
   show($("postcall-progress"), false);
+  hidePipelineProgress("postcall-progress");
   show($("postcall-result"), false);
   show($("postcall-loading"), false);
+  void hidePostCallGenOverlay();
   show($("postcall-form-view"), true);
   showInlineStatus($("postcall-status"), { open: false });
   setFormFieldsDisabled($("postcall-form"), false);
@@ -4020,8 +4042,7 @@ export function resetPostCallView() {
 }
 
 export function isPostCallGenerationBusy() {
-  const loadingEl = $("postcall-loading");
-  return !!loadingEl && !loadingEl.hidden;
+  return generating || isGenOverlayActive();
 }
 
 async function collectIntakePayload() {
@@ -4156,7 +4177,8 @@ async function startPipeline(e) {
   show($("postcall-result"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
-  showPipelineProgress([
+  showPostCallGenOverlay("Fetching transcript and matching account…");
+  showPostCallPipeline([
     { label: "Resolve recording and match deal", status: "active" },
     { label: "Classify call type", status: "pending" },
     { label: "Generate analysis", status: "pending" },
@@ -4198,7 +4220,7 @@ async function startPipeline(e) {
       payload.companyName = pipelineState.resolve.account.accountName;
     }
 
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "active" },
       { label: "Generate analysis", status: "pending" },
@@ -4215,7 +4237,7 @@ async function startPipeline(e) {
     });
     pipelineState.classify = classify;
 
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "done" },
       { label: "Classify call type", status: "done" },
       { label: "Generate analysis", status: "pending" },
@@ -4236,14 +4258,17 @@ async function startPipeline(e) {
     });
     ensureIntakePayloadSynced(payload);
     pipelineState.payload = payload;
+    hidePipelineProgress("postcall-progress");
+    await hidePostCallGenOverlay();
     showConfirmationGate(pipelineState.resolve, classify);
   } catch (err) {
     const msg = err.message || "Something went wrong.";
-    showPipelineProgress([
+    showPostCallPipeline([
       { label: "Resolve recording and match deal", status: "error" },
       { label: "Classify call type", status: "pending" },
       { label: "Generate analysis", status: "pending" },
     ]);
+    void hidePostCallGenOverlay();
     if (msg === "Failed to fetch" || /^networkerror/i.test(msg) || /load failed/i.test(msg)) {
       showInlineStatus(status, {
         type: "error",
@@ -4290,7 +4315,8 @@ export function onSessionCleared() {
   show($("postcall-form-view"), true);
   show($("postcall-result"), false);
   show($("postcall-confirm-view"), false);
-  show($("postcall-progress"), false);
+  hidePipelineProgress("postcall-progress");
+  void hidePostCallGenOverlay();
 }
 
 /** Test-only: set intake deal state for confirm gate smoke tests. */

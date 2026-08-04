@@ -1,5 +1,5 @@
 /**
- * Full-page pre-call brief generation overlay — Dew theme, Freshworks mark, stage updates.
+ * Full-page brief / call analysis generation overlay — Dew theme, Freshworks mark, stage updates.
  */
 
 import { $, show } from "./shared.js";
@@ -7,12 +7,35 @@ import { $, show } from "./shared.js";
 const FADE_MS = 420;
 const REVEAL_MS = 480;
 
+export const PREP_GEN_THEME = {
+  eyebrow: "SE Labs · Pre-call",
+  title: "Building your brief",
+  hint: "Research, enrichment, and synthesis run in the background — usually under a minute.",
+};
+
+export const POSTCALL_GEN_THEME = {
+  eyebrow: "SE Labs · Post-call",
+  title: "Analysing your call",
+  hint: "Transcript analysis, qualification, and scoring run in the background — usually 40–90 seconds.",
+};
+
 function overlayEl() {
   return $("prep-gen-overlay");
 }
 
 function prefersReducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+}
+
+/** @param {Partial<typeof PREP_GEN_THEME>} theme */
+function applyGenOverlayTheme(theme = PREP_GEN_THEME) {
+  const t = { ...PREP_GEN_THEME, ...theme };
+  const eyebrow = $("prep-gen-eyebrow");
+  const title = $("prep-gen-title");
+  const hint = $("prep-gen-hint");
+  if (eyebrow) eyebrow.textContent = t.eyebrow;
+  if (title) title.textContent = t.title;
+  if (hint) hint.textContent = t.hint;
 }
 
 /** @param {number} pct 0–100 */
@@ -27,11 +50,12 @@ function setBarPct(pct) {
 
 /**
  * Show the generation overlay.
- * @param {{ message?: string, pct?: number }} [opts]
+ * @param {{ message?: string, pct?: number, theme?: Partial<typeof PREP_GEN_THEME> }} [opts]
  */
 export function showPrepGenOverlay(opts = {}) {
   const el = overlayEl();
   if (!el) return;
+  applyGenOverlayTheme(opts.theme);
   const stage = $("prep-gen-stage");
   if (stage && opts.message) stage.textContent = opts.message;
   setBarPct(opts.pct ?? 8);
@@ -46,6 +70,12 @@ export function updatePrepGenOverlay(opts = {}) {
   const stage = $("prep-gen-stage");
   if (stage && opts.message) stage.textContent = opts.message;
   if (opts.pct != null) setBarPct(opts.pct);
+}
+
+/** Whether the full-page generation overlay is visible. */
+export function isGenOverlayActive() {
+  const el = overlayEl();
+  return !!el && !el.hidden && el.classList.contains("prep-gen-overlay-active");
 }
 
 /**

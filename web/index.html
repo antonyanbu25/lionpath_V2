@@ -438,22 +438,6 @@
                 <div id="prep-recent-briefs" class="nb-recent-briefs" aria-label="Recent briefs"></div>
               </div>
             </div>
-            <div id="prep-gen-overlay" class="prep-gen-overlay" hidden aria-live="polite" aria-busy="true" role="status">
-              <div class="prep-gen-overlay-backdrop"></div>
-              <div class="prep-gen-overlay-panel">
-                <div class="prep-gen-brand" aria-hidden="true">
-                  <span class="prep-gen-ring"></span>
-                  <img class="prep-gen-logo" src="assets/freshworks-logomark.webp" alt="" width="52" height="52" />
-                </div>
-                <p class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>
-                <h2 class="prep-gen-title">Building your brief</h2>
-                <p id="prep-gen-stage" class="prep-gen-stage">Starting…</p>
-                <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                  <span id="prep-gen-bar" class="prep-gen-progress-bar"></span>
-                </div>
-                <p class="prep-gen-hint muted">Research, enrichment, and synthesis run in the background — usually under a minute.</p>
-              </div>
-            </div>
             <div id="prep-status" class="dew-status-host" hidden></div>
             <div id="prep-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
@@ -622,6 +606,23 @@
             <fw-card id="postcall-result" class="result one-pager postcall-result-card" hidden></fw-card>
           </section>
         </main>
+      </div>
+    </div>
+
+    <div id="prep-gen-overlay" class="prep-gen-overlay" hidden aria-live="polite" aria-busy="true" role="status">
+      <div class="prep-gen-overlay-backdrop"></div>
+      <div class="prep-gen-overlay-panel">
+        <div class="prep-gen-brand" aria-hidden="true">
+          <span class="prep-gen-ring"></span>
+          <img class="prep-gen-logo" src="assets/freshworks-logomark.webp" alt="" width="52" height="52" />
+        </div>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>
+        <h2 id="prep-gen-title" class="prep-gen-title">Building your brief</h2>
+        <p id="prep-gen-stage" class="prep-gen-stage">Starting…</p>
+        <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="prep-gen-bar" class="prep-gen-progress-bar"></span>
+        </div>
+        <p id="prep-gen-hint" class="prep-gen-hint muted">Research, enrichment, and synthesis run in the background — usually under a minute.</p>
       </div>
     </div>
 
