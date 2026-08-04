@@ -406,39 +406,11 @@ function benchmarkRows(prep) {
   const rivals = prep.rivals;
   const axes = rivals?.axes || [];
   if (axes.length) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
-      body: JSON.stringify({
-        sessionId: "57a252",
-        hypothesisId: "B",
-        location: "precall-brief-v9.js:benchmarkRows",
-        message: "fish rivals branch",
-        data: { axisCount: axes.length },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return renderFishBenchmarkCard(axes, rivals);
   }
 
   const ctxMetrics = prep.fishContext?.metrics || [];
   if (ctxMetrics.length) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "57a252" },
-      body: JSON.stringify({
-        sessionId: "57a252",
-        hypothesisId: "A",
-        location: "precall-brief-v9.js:benchmarkRows",
-        message: "fish context branch",
-        data: { metricCount: ctxMetrics.length, labels: ctxMetrics.map((m) => m.label) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     return renderFishContextCard(ctxMetrics);
   }
 
