@@ -50,7 +50,7 @@ export interface ContactEnrichDisc {
   secondary?: string;
   confidence: "low" | "medium";
   evidence: string[];
-  /** 2 dos + 2 don'ts for running the call with this person, from the DISC read. */
+  /** 3 dos + 3 don'ts for running the call with this person, from the DISC read. */
   dos?: string[];
   donts?: string[];
   inferred: true;
@@ -99,14 +99,14 @@ const ENRICH_SCHEMA = {
     disc: {
       type: "object",
       additionalProperties: false,
-      required: ["primary", "confidence", "evidence", "inferred", "source"],
+      required: ["primary", "confidence", "evidence", "inferred", "source", "dos", "donts"],
       properties: {
         primary: { type: "string", enum: ["D", "I", "S", "C", "unknown"] },
         secondary: { type: "string", enum: ["D", "I", "S", "C", "unknown"] },
         confidence: { type: "string", enum: ["low", "medium"] },
         evidence: { type: "array", maxItems: 4, items: { type: "string" } },
-        dos: { type: "array", maxItems: 2, items: { type: "string" } },
-        donts: { type: "array", maxItems: 2, items: { type: "string" } },
+        dos: { type: "array", minItems: 3, maxItems: 3, items: { type: "string" } },
+        donts: { type: "array", minItems: 3, maxItems: 3, items: { type: "string" } },
         inferred: { type: "boolean" },
         source: { type: "string", enum: ["linkedin_pdf", "zoom", "kaia", "merged"] },
       },
@@ -309,14 +309,14 @@ export async function enrichContact(env: Env, req: ContactEnrichRequest): Promis
   const kaiaSpeakerScoped = !!req.sources.kaiaSummary?.includes("Speaker-specific segments:");
 
   const provider = getProvider(env);
-  const result = await provider.generate({
+  const enrichPrompt = {
     system: `You extract a prospect profile and infer DISC from provided text ONLY. Do not invent employers, dates, or traits not supported by the text.
 
 Profile: fill name, role, totalExperience (e.g. "28+ years" from Experience section), priorEmployers (company names from Experience, max 6), summary (2-4 sentences), skills, languages, education lines, linkedinUrl if present. competitorTouchpoints ONLY if support tools (Zendesk, Intercom, etc.) are mentioned; else [].
 
 DISC: This is an INFERRED behavioral guess, NOT a formal assessment. primary must be D, I, S, or C (or unknown if insufficient). Include 1-4 short evidence quotes from the source text. confidence: low unless multiple consistent cues; medium only with strong textual evidence. ${linkedInOnly ? "LinkedIn-only sources: confidence MUST be low or medium, never high." : "If Zoom/Kaia dialogue present, medium is allowed for DISC."}
 ${kaiaSpeakerScoped ? "Kaia excerpt is speaker-scoped: use ONLY quotes from speaker-specific segments for DISC evidence when present." : ""}
-dos / donts: exactly 2 each — how to run THIS conversation given the DISC read. Imperative, max 12 words, specific to this person's evidence. A do is a behaviour that lands with them; a don't is one that loses them. Not restatements of the DISC letter, and not generic sales advice.
+dos / donts: REQUIRED — exactly 3 items in each array. How to run THIS conversation given the DISC read. Imperative, max 12 words, specific to this person's evidence. A do is a behaviour that lands with them; a dont is one that loses them. Not restatements of the DISC letter, and not generic sales advice. The donts array must contain 3 distinct anti-patterns — never leave donts empty.
 source field: ${discSource}
 inferred: true
 
@@ -327,15 +327,24 @@ Output JSON only.`,
     maxTokens: 3500,
     temperature: 0,
     research: false,
-    effort: "low",
+    effort: "low" as const,
     jsonSchema: ENRICH_SCHEMA as unknown as Record<string, unknown>,
-  });
+  };
 
-  const parsed = extractJson<{
+  let result = await provider.generate(enrichPrompt);
+  let parsed = extractJson<{
     profile: ContactEnrichProfile;
     disc: ContactEnrichDisc;
     influence: { level: string; decisionRole: string };
   }>(result.text);
+
+  if ((parsed.disc?.donts?.length ?? 0) < 3) {
+    result = await provider.generate({
+      ...enrichPrompt,
+      user: `${enrichPrompt.user}\n\nRETRY: Your previous response omitted disc.donts or had fewer than 3. Return valid JSON with disc.dos AND disc.donts each containing exactly 3 strings.`,
+    });
+    parsed = extractJson<typeof parsed>(result.text);
+  }
 
   const disc = parsed.disc || ({} as ContactEnrichDisc);
   disc.inferred = true;

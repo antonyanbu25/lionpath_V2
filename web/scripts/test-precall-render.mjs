@@ -91,8 +91,16 @@ const sampleV8 = {
         evidence: ["Led regional turnaround"],
         inferred: true,
         source: "linkedin_pdf",
-        dos: ["Lead with outcomes, not process"],
-        donts: ["Overwhelm with feature lists"],
+        dos: [
+          "Lead with outcomes, not process",
+          "Open with their CX metrics",
+          "Confirm decision timeline early",
+        ],
+        donts: [
+          "Overwhelm with feature lists",
+          "Skip the business case",
+          "Rush past their BPO concerns",
+        ],
       },
     },
     {
@@ -169,6 +177,21 @@ const discoveryFishCombined = renderKnowTab(
       metrics: [
         { label: "Customer base", value: "2M users" },
         { label: "Support agents", value: "120 agents" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryFishBuckets = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Employees", value: "50" },
+        { label: "Funding raised", value: "2 Million" },
+        { label: "Support agents", value: "3" },
       ],
     },
   },
@@ -375,6 +398,8 @@ const checks = [
       discovery.indexOf("Where they sit versus their industry") < discovery.indexOf("Discovery kit"),
   ],
   ["know tab renders Do/Dont for linkedin prospect", discovery.includes("prep-v9-beh-do") && discovery.includes("prep-v9-beh-dont")],
+  ["know tab renders three dos and three donts", (discovery.match(/prep-v9-beh-do/g) || []).length >= 3 && (discovery.match(/prep-v9-beh-dont/g) || []).length >= 3],
+  ["know tab Has used label uses touch-label class", discovery.includes("prep-v9-touch-label") && discovery.includes("Has used")],
   ["know tab thin attendee without linkedin", discovery.includes("prep-v9-attendee-thin")],
   ["know tab kaia-only prospect has no disc grid", !discoveryKaia.includes("prep-v9-disc") && discoveryKaia.includes("prep-v9-attendee-thin")],
   [
@@ -414,7 +439,21 @@ const checks = [
       !discoveryNewsHtmlGarbage.includes("&lt;a href"),
   ],
   ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
-  ["know tab fish web plus context supplement", discoveryFishCombined.includes("2M users") && discoveryFishCombined.includes("prep-v9-benchmark-bar")],
+  [
+    "know tab fish bucket labels for recognized metrics",
+    discoveryFishBuckets.includes("prep-v9-benchmark-buckets") &&
+      discoveryFishBuckets.includes("0–50") &&
+      discoveryFishBuckets.includes("1–10") &&
+      discoveryFishBuckets.includes("1–25") &&
+      discoveryFishBuckets.includes("prep-v9-benchmark-bucket-active") &&
+      discoveryFishBuckets.includes("millions USD"),
+  ],
+  [
+    "know tab fish bucket dot positions",
+    discoveryFishBuckets.includes('style="left:16.67%"') &&
+      discoveryFishBuckets.includes('style="left:50.00%"'),
+  ],
+  ["know tab fish unrecognized metric keeps placeholder bar", discoveryFishCombined.includes("2M users") && !discoveryFishCombined.match(/2M users[\s\S]{0,400}prep-v9-benchmark-buckets/)],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({

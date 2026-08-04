@@ -11,7 +11,7 @@ import {
   linkedInPdfSnippets,
   normalizeLinkedInExports,
 } from "./linkedin-pdf";
-import { mergeEnrichmentsIntoPrep } from "./merge-enrichment";
+import { mergeEnrichmentsIntoPrep, stripProspectDiscHints } from "./merge-enrichment";
 import { applyPdfNameFallbacks } from "./pdf-name-fallback";
 import { runResearch } from "../research-orchestrator";
 import { resolveMergedAdditionalContext } from "./merged-context";
@@ -404,7 +404,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   timings.synthesize = Date.now() - t1;
 
   const t2 = Date.now();
-  let { prep, lowConfidence } = validatePrep(prepRaw);
+  let { prep, lowConfidence } = validatePrep(stripProspectDiscHints(prepRaw));
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   prep = applyPdfNameFallbacks(prep, emails, input.linkedinProfileExports);
   // Web search only — Gemini grounded + DDG fallback. No research-fact backfill.
@@ -588,7 +588,7 @@ export async function runPrepSynthesize(
       : Promise.resolve(null),
   ]);
 
-  let { prep, lowConfidence } = validatePrep(prepRaw);
+  let { prep, lowConfidence } = validatePrep(stripProspectDiscHints(prepRaw));
   prep = applyConfirmedProfiles(prep, emails, input.confirmedProspectProfiles);
   const researchFacts = rawInput.researchBundle?.facts || facts;
   // Web search only — Gemini grounded + DDG fallback. No research-fact backfill.

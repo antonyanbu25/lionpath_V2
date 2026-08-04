@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.13" />
+    <meta name="portal-build" content="2.1.14" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <script type="module" src="./favicon-bounce.js"></script>
@@ -792,8 +792,7 @@
     </script>
     <script type="module">
       import "./firebase-config.js?v=2.0.8";
-      import("./app.js?v=2.1.13-fast-boot").catch(function (err) {
-        console.error("App boot failed:", err);
+      import("./app.js?v=2.1.14").catch(function (err) {`r`n        console.error("App boot failed:", err);
         var el = document.getElementById("login-error");
         if (el) {
           el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";

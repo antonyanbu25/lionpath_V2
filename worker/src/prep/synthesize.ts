@@ -84,7 +84,7 @@ function synthesizeUserPrompt(
 ): string {
   const confirmedBlock =
     input.confirmedProspectProfiles?.length ?
-      `\nConfirmed prospect profiles (copy name, role, experience, summary, skills, discHint into matching prospects[] by email order — do NOT overwrite with unknown):\n${JSON.stringify(input.confirmedProspectProfiles, null, 2)}\n`
+      `\nConfirmed prospect profiles (server merges profile + disc after synthesis — do NOT emit discHint in prospects[]; copy name, role, experience, summary, skills only):\n${JSON.stringify(input.confirmedProspectProfiles, null, 2)}\n`
     : "";
 
   return [

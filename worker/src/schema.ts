@@ -146,8 +146,8 @@ const prospectRow = {
         secondary: { type: "string" },
         confidence: { type: "string", enum: ["low", "medium", "high"] },
         evidence: { type: "array", items: { type: "string" }, maxItems: 4 },
-        dos: { type: "array", items: { type: "string" }, maxItems: 2 },
-        donts: { type: "array", items: { type: "string" }, maxItems: 2 },
+        dos: { type: "array", items: { type: "string" }, maxItems: 3 },
+        donts: { type: "array", items: { type: "string" }, maxItems: 3 },
         inferred: { type: "boolean" },
         source: { type: "string" },
       },
@@ -483,7 +483,7 @@ export interface ProspectDiscHint {
   confidence?: "low" | "medium" | "high";
   evidence?: string[];
   /**
-   * How to run the conversation with this person: 2 dos, 2 don'ts, from the DISC read.
+   * How to run the conversation with this person: 3 dos, 3 don'ts, from the DISC read.
    *
    * These replace the old Ask/Watch/Match display, which relabelled `evidence[0..2]` with verbs
    * by array index — evidence is a set of quotes, so calling quote #1 "Ask" and quote #3 "Match"

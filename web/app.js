@@ -64,7 +64,7 @@ import {
   resetPrecallForm,
   showPrepBriefsListView,
   syncPrepEngagementMotion,
-} from "./precall.js?v=2.1.5";
+} from "./precall.js?v=2.1.14";
 import {
   initPostcall,
   onSessionReady,
@@ -86,6 +86,8 @@ import {
   companyNameFromDomain,
   PERSONAL_EMAIL_DOMAINS,
   normalizeCompanyDomain as normalizePrepDomain,
+  isProgrammaticDomainUpdate,
+  prepDomainUiState,
 } from "./prep-domain.js";
 import { esc, $, show } from "./shared.js";
 
@@ -249,8 +251,53 @@ let accountListSearchQuery = "";
 let accountDetailSearchQuery = "";
 let accountLifecycleOwnerId = null;
 
-/** Tracks manual edits vs auto-filled company domain on pre-call form. */
-const prepDomainState = { userEdited: false, lastAutoValue: null };
+/** @deprecated use prepDomainUiState — kept as alias for local handlers */
+const prepDomainState = prepDomainUiState;
+
+let prepDomainSyncTimer = null;
+
+function syncAutoCompanyDomain() {
+  const domainField = $("companyDomain");
+  if (!domainField) return;
+  const domainRaw = readFieldValue(domainField);
+  if (!String(domainRaw || "").trim()) {
+    prepDomainState.userEdited = false;
+    prepDomainState.lastAutoValue = null;
+  } else {
+    const normalized = normalizeCompanyDomainField(domainRaw);
+    const lastAuto = prepDomainState.lastAutoValue
+      ? normalizeCompanyDomainField(prepDomainState.lastAutoValue)
+      : null;
+    if (lastAuto && normalized === lastAuto) {
+      prepDomainState.userEdited = false;
+    }
+  }
+  const emailsRaw = readFieldValue($("prospectEmail"));
+  const result = applyAutoCompanyDomain(domainField, emailsRaw, prepDomainState);
+  if (result.lastAutoValue != null) prepDomainState.lastAutoValue = result.lastAutoValue;
+}
+
+function scheduleSyncAutoCompanyDomain() {
+  if (prepDomainSyncTimer) clearTimeout(prepDomainSyncTimer);
+  prepDomainSyncTimer = setTimeout(() => {
+    prepDomainSyncTimer = null;
+    syncAutoCompanyDomain();
+    updateDomainHint();
+  }, 300);
+}
+
+function onProspectEmailInput() {
+  scheduleSyncAutoCompanyDomain();
+}
+
+function onProspectEmailBlur() {
+  if (prepDomainSyncTimer) {
+    clearTimeout(prepDomainSyncTimer);
+    prepDomainSyncTimer = null;
+  }
+  syncAutoCompanyDomain();
+  updateDomainHint();
+}
 
 function emailDomain(emailRaw) {
   const emails = parseProspectEmails(emailRaw);
@@ -298,20 +345,8 @@ function validateProspectDomain(emailRaw, companyName) {
   return hints.length ? hints.join(" ") : null;
 }
 
-function syncAutoCompanyDomain() {
-  const domainField = $("companyDomain");
-  if (!domainField) return;
-  const domainRaw = readFieldValue(domainField);
-  if (!String(domainRaw || "").trim()) {
-    prepDomainState.userEdited = false;
-    prepDomainState.lastAutoValue = null;
-  }
-  const emailsRaw = readFieldValue($("prospectEmail"));
-  const result = applyAutoCompanyDomain(domainField, emailsRaw, prepDomainState);
-  if (result.lastAutoValue != null) prepDomainState.lastAutoValue = result.lastAutoValue;
-}
-
 function onCompanyDomainInput() {
+  if (isProgrammaticDomainUpdate()) return;
   const v = readFieldValue($("companyDomain"));
   const normalized = normalizeCompanyDomainField(v);
   const lastAuto = prepDomainState.lastAutoValue
@@ -2128,14 +2163,10 @@ async function boot() {
 
   document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea, #postcall-form fw-input, #postcall-form fw-textarea").forEach((el) => fillShadowField(el));
 
-  $("prospectEmail")?.addEventListener("fwInput", () => {
-    syncAutoCompanyDomain();
-    updateDomainHint();
-  });
-  $("prospectEmail")?.addEventListener("input", () => {
-    syncAutoCompanyDomain();
-    updateDomainHint();
-  });
+  $("prospectEmail")?.addEventListener("fwInput", onProspectEmailInput);
+  $("prospectEmail")?.addEventListener("input", onProspectEmailInput);
+  $("prospectEmail")?.addEventListener("fwBlur", onProspectEmailBlur);
+  $("prospectEmail")?.addEventListener("blur", onProspectEmailBlur);
 
   $("topbar-new-brief")?.addEventListener("click", () => {
     precallBriefListMode = false;

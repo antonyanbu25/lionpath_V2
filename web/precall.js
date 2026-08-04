@@ -2,6 +2,7 @@
 
 import {
   bindActionOnce,
+  readFieldValue,
   readFieldValueAsync,
   setButtonLoading,
   setFieldError,
@@ -17,11 +18,11 @@ import {
   renderLegacyFallback,
   companyMono,
 } from "./precall-render.js?v=2.0.8.1-merge";
-import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.1.5";
+import { renderKnowTab, renderDemoPrepTab } from "./precall-brief-v9.js?v=2.1.14";
 import { wirePrepV9ScrollAnimations } from "./prep-v9-animate.js";
 import { computePrepInputHash, loadCachedResearch } from "./domain/account-service.js?v=2.1";
 import { wireDisputeTriggers, registerDisputeContextResolver } from "./prep-disputes.js";
-import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain } from "./prep-domain.js";
+import { resolveCompanyDomainForSubmit, companyNameFromPrimaryEmail, companyNameFromDomain, resetPrepDomainState } from "./prep-domain.js";
 import {
   linkedinProfileExportsForPayload,
   initPrepAttendeeLinkedIn,
@@ -36,7 +37,8 @@ import {
   contextAttachmentsForPayload,
 } from "./prep-context-files.js";
 import { mergeContextAttachments } from "./prep-context-attachments.js";
-import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks } from "./prep-contact-enrich.js";
+import { isPrepFormReady, isPrepContextReady, prepContextRequiredMessage } from "./prep-form-validation.js";
+import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks, sanitizeIncompleteDiscHints } from "./prep-contact-enrich.js";
 import { applySeContextToDiscovery, applySeContextToFacts, applySeContextToPrep } from "./prep-se-context.js";
 import { canonicalizePrepSources } from "./prep-source-canon.js";
 import { hydrateRecentNews } from "./recent-news.js";
@@ -61,6 +63,9 @@ const MAX_BRIEFS = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i;
 
+/** Updated by initPrecall — re-evaluates Generate button disabled state. */
+let syncGenerateGateRef = () => {};
+
 function wireAdditionalContextMirror() {
   const field = $("additionalContext");
   if (!field || field.dataset.contextMirrorWired === "1") return;
@@ -81,6 +86,30 @@ async function readAdditionalContextForSubmit() {
   const shadowVal = String(field.shadowRoot?.querySelector("textarea")?.value || "").trim();
   const merged = fromField || shadowVal || live;
   return merged || undefined;
+}
+
+function readAdditionalContextLive() {
+  const field = $("additionalContext");
+  if (!field) return "";
+  const live = String(field.dataset.liveContext || "").trim();
+  const fromField = String(readFieldValue(field) || "").trim();
+  const shadowVal = String(field.shadowRoot?.querySelector("textarea")?.value || "").trim();
+  return fromField || shadowVal || live;
+}
+
+function clearPrepContextError() {
+  const errEl = $("prep-context-error");
+  if (errEl) errEl.hidden = true;
+  setFieldError($("additionalContext"));
+}
+
+function showPrepContextError(message) {
+  const errEl = $("prep-context-error");
+  if (errEl) {
+    errEl.textContent = message;
+    errEl.hidden = false;
+  }
+  setFieldError($("additionalContext"), message);
 }
 
 /** Parse comma/semicolon-separated prospect emails; dedupe; max 5. */
@@ -421,12 +450,15 @@ export function resetPrecallForm() {
   clearLinkedInAttachments();
   renderPrepAttendeeRows([], {});
   clearContextAttachments();
+  clearPrepContextError();
   const contextListEl = $("prep-context-file-list");
   if (contextListEl) contextListEl.innerHTML = "";
   const preview = $("prep-account-deal-preview");
   if (preview) preview.hidden = true;
   renderPrepRecentBriefs();
   resetPrepCrmUi();
+  resetPrepDomainState();
+  syncGenerateGateRef();
   syncPrepEngagementMotion();
 }
 
@@ -574,6 +606,8 @@ export function displayPrepResult(prep, meta = {}, opts = {}) {
   const emails =
     meta.prospectEmails ||
     meta.researchMeta?.prospectEmails ||
+    meta.input?.prospectEmails ||
+    (enrichByEmail ? Object.keys(enrichByEmail) : []) ||
     prep?.prospects?.map((p) => p.email).filter(Boolean) ||
     [];
   if (enrichByEmail && prep?.prospects?.length && emails.length) {
@@ -582,6 +616,7 @@ export function displayPrepResult(prep, meta = {}, opts = {}) {
     merged = mergeEnrichmentsIntoPrep(prep, emails, storedProfiles);
   }
   merged = applyPdfNameFallbacks(merged, emails, meta.linkedinProfileExports || meta.input?.linkedinProfileExports || []);
+  merged = sanitizeIncompleteDiscHints(merged);
   merged = hydrateRecentNews(merged, meta);
   const withContext = applySeContextToDiscovery(
     applySeContextToFacts(applySeContextToPrep(merged, context), context),
@@ -777,6 +812,17 @@ async function buildPayload() {
     row.classList.remove("nb-linkedin-row-missing");
   });
 
+  const additionalContext = await readAdditionalContextForSubmit();
+  const contextAttachments = contextAttachmentsForPayload();
+  const mergedContext = mergeContextAttachments(additionalContext, contextAttachments);
+  if (!isPrepContextReady(additionalContext, contextAttachments)) {
+    const message = prepContextRequiredMessage();
+    showPrepContextError(message);
+    $("additionalContext")?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    throw new Error(message);
+  }
+  clearPrepContextError();
+
   if (normalizeCompanyDomain(await readFieldValueAsync($("companyDomain"))) !== companyDomain) {
     const field = $("companyDomain");
     if (field) {
@@ -796,12 +842,10 @@ async function buildPayload() {
     );
   }
 
-  const additionalContext = await readAdditionalContextForSubmit();
   const kaiaMeetingUrl = (await readFieldValueAsync($("kaiaMeetingUrl")))?.trim() || undefined;
-  const contextAttachments = contextAttachmentsForPayload();
 
   const inputHash = computePrepInputHash(companyName, companyDomain, emails, linkedinFingerprintForHash(), {
-    additionalContext: mergeContextAttachments(additionalContext, contextAttachments),
+    additionalContext: mergedContext,
     kaiaMeetingUrl,
   });
   let cachedResearch = null;
@@ -910,6 +954,7 @@ function setLoading(on, message) {
   } else {
     void hidePrepGenOverlay();
   }
+  syncGenerateGateRef();
 }
 
 function clearLoading() {
@@ -919,6 +964,7 @@ function clearLoading() {
   setFormFieldsDisabled($("prep-form"), false);
   show($("prep-loading"), false);
   void hidePrepGenOverlay();
+  syncGenerateGateRef();
 }
 
 function isUnknownValue(v) {
@@ -1385,10 +1431,16 @@ export function initPrecall(options) {
     void generatePrep(e);
   });
 
-  const syncParsingGate = () => {
+  const syncGenerateGate = () => {
     const busy = isParsingAttachments() || state.loading;
+    const rawEmails = readFieldValue($("prospectEmail"));
+    const emails = parseProspectEmails(rawEmails);
+    const missingLinkedIn = emailsMissingLinkedInPdf(emails);
+    const contextAttachments = contextAttachmentsForPayload();
+    const additionalContext = readAdditionalContextLive();
+    const formReady = isPrepFormReady(emails, missingLinkedIn, additionalContext, contextAttachments);
     const btn = $("generate");
-    if (btn) btn.disabled = busy;
+    if (btn) btn.disabled = busy || !formReady;
     document.querySelectorAll(".nb-linkedin-upload-btn").forEach((el) => {
       el.disabled = busy;
     });
@@ -1399,17 +1451,33 @@ export function initPrecall(options) {
   initPrepAttendeeLinkedIn({
     setParsing: (on) => {
       state.linkedinParsing = on;
-      syncParsingGate();
+      syncGenerateGate();
     },
-    onListChange: syncParsingGate,
+    onListChange: syncGenerateGate,
   });
 
   initContextFileUpload({
     setParsing: (on) => {
       state.contextParsing = on;
-      syncParsingGate();
+      syncGenerateGate();
+    },
+    onListChange: () => {
+      clearPrepContextError();
+      syncGenerateGate();
     },
   });
+
+  const onContextInput = () => {
+    clearPrepContextError();
+    syncGenerateGate();
+  };
+  $("additionalContext")?.addEventListener("fwInput", onContextInput);
+  $("additionalContext")?.addEventListener("input", onContextInput);
+  $("prospectEmail")?.addEventListener("fwInput", syncGenerateGate);
+  $("prospectEmail")?.addEventListener("input", syncGenerateGate);
+
+  syncGenerateGateRef = syncGenerateGate;
+  syncGenerateGate();
 
   initPrepCrmResolve();
   wireBriefResultBack();
