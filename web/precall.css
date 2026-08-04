@@ -2752,6 +2752,38 @@
 }
 
 /* --- "How big is this fish?" — rivals comparison (prep.rivals) ------------------ */
+.prep-v9-benchmark-list { display: flex; flex-direction: column; gap: 15px; }
+.prep-v9-benchmark-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 7px; font-size: 12.5px; color: #6f6759;
+}
+.prep-v9-benchmark-head strong { font-size: 13.5px; font-weight: 700; color: #2b2926; }
+.prep-v9-benchmark-bar {
+  position: relative; height: 18px; display: flex; align-items: center;
+}
+.prep-v9-benchmark-bar-rail {
+  position: absolute; left: 0; right: 0; height: 6px; border-radius: 20px; background: #f4f0e8;
+}
+.prep-v9-benchmark-bar-range {
+  position: absolute; left: 0; width: 100%; height: 6px; border-radius: 20px; background: #e8e0d0;
+}
+.prep-v9-benchmark-bar-dot {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: #a58a5c; border: 2.5px solid #fff; box-shadow: 0 0 0 1px #d8cbb4;
+  transform: translateX(-50%);
+}
+.prep-v9-benchmark-bar-foot {
+  display: flex; justify-content: space-between; align-items: center; margin-top: 5px;
+}
+.prep-v9-benchmark-bar-min,
+.prep-v9-benchmark-bar-max {
+  font-family: var(--dew-mono, ui-monospace, monospace); font-size: 10.5px; color: #7c7466;
+}
+.prep-v9-benchmark-bar-verdict { font-size: 11px; font-weight: 600; color: #a5883f; }
+.prep-v9-benchmark-note {
+  margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #f4f0e8;
+  font-size: 12px; line-height: 1.55;
+}
 .prep-v9-benchmark-range {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   font-size: 11.5px; margin-top: 3px;

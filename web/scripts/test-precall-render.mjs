@@ -119,6 +119,32 @@ const sampleV8 = {
     { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "S2" },
     { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "S2" },
   ],
+  rivals: {
+    rivals: [
+      { name: "Alpha Co", why: "same segment", sourceLabel: "R1", values: {} },
+      { name: "Beta Co", why: "same segment", sourceLabel: "R2", values: {} },
+    ],
+    axes: [
+      {
+        id: "supportAgents",
+        label: "Support agents",
+        min: { numeric: 300, display: "300", rivalName: "Alpha Co" },
+        max: { numeric: 900, display: "900", rivalName: "Beta Co" },
+        prospect: { display: "500", numeric: 500, sourceLabel: "S1" },
+        verdict: "within",
+        sourcedCount: 2,
+      },
+      {
+        id: "fundingRaised",
+        label: "Funding raised",
+        min: { numeric: 120, display: "$120M", rivalName: "Alpha Co" },
+        max: { numeric: 450, display: "$450M", rivalName: "Beta Co" },
+        sourcedCount: 2,
+      },
+    ],
+    sources: [{ label: "R1", domain: "reuters.com", url: "https://reuters.com", title: "Reuters" }],
+    dropped: [],
+  },
   assets: [
     { label: "Demo script", ext: "SHEET", url: "https://example.com/sheet" },
     { label: "Customer reference", ext: "PPT", url: "https://example.com/old-customer-ref" },
@@ -269,8 +295,17 @@ const checks = [
     discovery.indexOf("Their support stack") >= 0 &&
       discovery.indexOf("What we could not find") >= 0 &&
       discovery.indexOf("Who is in the room") >= 0 &&
-      discovery.indexOf("Their support stack") < discovery.indexOf("What we could not find") &&
+      discovery.indexOf("Their support stack") < discovery.indexOf("Who is in the room") &&
       discovery.indexOf("What we could not find") < discovery.indexOf("Who is in the room"),
+  ],
+  [
+    "know tab three paired grid rows",
+    (discovery.match(/prep-v9-grid-2/g) || []).length === 3,
+  ],
+  [
+    "know tab fish before support stack",
+    discovery.indexOf("How big is this fish?") >= 0 &&
+      discovery.indexOf("Their support stack") > discovery.indexOf("How big is this fish?"),
   ],
   [
     "know tab maturity before discovery kit",
@@ -353,7 +388,9 @@ const checks = [
   ["isSeNotesSource SE", isSeNotesSource("SE")],
   ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals, sampleV8.sources) === 4],
   ["know tab AI banner absent", !discovery.includes("prep-ai-banner")],
-  ["know tab ICP fitment", discovery.includes("ICP fitment")],
+  ["know tab ICP fitment absent", !discovery.includes("ICP fitment") && !discovery.includes("prep-v9-icp-card")],
+  ["know tab maturity pastel band color", discovery.includes("#e8c4bd") || discovery.includes("#eddcbb")],
+  ["know tab fish benchmark bar", discovery.includes("prep-v9-benchmark-bar")],
   ["know tab kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
   ["know tab DISC svg", discovery.includes("prep-v9-disc")],
   ["discConfidenceLabel low", discConfidenceLabel("low") === "Confident - Low"],

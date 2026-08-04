@@ -13,7 +13,6 @@ import {
   discInferredLabel,
   isSeNotesSource,
   confidenceMeta,
-  renderIcpFitment,
 } from "./precall-render.js";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
@@ -33,13 +32,15 @@ const MATURITY_LEVELS = ["Manual", "Basic", "Automated", "AI-assisted"];
 // row fell through to `partial` and drew an amber gap on the scale while its pill read "Aligned" —
 // the chart contradicted its own label. small/none/ahead are unreachable from the schema and kept
 // only so a stored brief written against an older enum still renders.
+// Pastel band fills from newportalui.html — gap severity reads from position, not saturated bar color.
 const GAP_STYLE = {
-  large: { them: 1.5, norm: 4, label: "Big gap", color: "#b8544a", bg: "#f6ece7", text: "#b8544a" },
-  partial: { them: 2.5, norm: 3.5, label: "Gap", color: "#a9782a", bg: "#f3ecda", text: "#8a7333" },
-  parity: { them: 3.5, norm: 3.5, label: "At par", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
-  small: { them: 3, norm: 3.5, label: "Close", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
-  none: { them: 3.5, norm: 3.5, label: "At par", color: "#6f6759", bg: "#f4f0e8", text: "#6f6759" },
-  ahead: { them: 4, norm: 3, label: "Ahead", color: "#2e897b", bg: "#e3efec", text: "#2e897b" },
+  large: { them: 1.5, norm: 4, label: "Big gap", color: "#e8c4bd", bg: "#f6ece7", text: "#b8544a" },
+  partial: { them: 2.5, norm: 3.5, label: "Gap", color: "#eddcbb", bg: "#f3ecda", text: "#a9782a" },
+  parity: { them: 3.5, norm: 3.5, label: "At par", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
+  small: { them: 3, norm: 3.5, label: "Close", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
+  none: { them: 3.5, norm: 3.5, label: "At par", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
+  ahead: { them: 4, norm: 3, label: "Ahead", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
+  unknown: { them: 1, norm: 3.5, label: "Unknown", color: "transparent", bg: "#f4f0e8", text: "#7c7466" },
 };
 
 const DISC_XY = { D: [34, 26], I: [86, 26], S: [86, 100], C: [34, 100] };
@@ -341,11 +342,11 @@ function maturityRows(fitSnapshot) {
   if (!rows.length) return "";
   const body = rows
     .map((ft, rowIdx) => {
-      const g = GAP_STYLE[ft.gap] || GAP_STYLE.partial;
+      const g = GAP_STYLE[ft.gap] || GAP_STYLE.unknown;
       const them = g.them;
       const norm = g.norm;
       const bandLeft = posPct(Math.min(them, norm));
-      const bandWidth = `${Math.abs(norm - them) * 25}%`;
+      const bandWidth = g.color === "transparent" ? "0%" : `${Math.abs(norm - them) * 25}%`;
       // No sublabel. It rendered `thisCompany`, which is model free text capped at 8 words and
       // never vocabulary-checked, so it drifted to whatever the context happened to say —
       // "Digital banking" under Channel coverage, "Banking operations" under Agent Assist. The
@@ -383,6 +384,13 @@ function maturityRows(fitSnapshot) {
   </div>`;
 }
 
+/** Map a numeric value to a percentage along min→max for the fish benchmark bar. */
+function benchmarkBarPos(value, min, max) {
+  const span = max - min;
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || span <= 0) return null;
+  return `${Math.max(0, Math.min(100, ((value - min) / span) * 100)).toFixed(2)}%`;
+}
+
 /**
  * "How big is this fish?" — the prospect against sourced market rivals.
  *
@@ -410,26 +418,45 @@ function benchmarkRows(prep) {
     .map((axis) => {
       const own = axis.prospect;
       const verdict = own && axis.verdict ? VERDICT_LABEL[axis.verdict] : null;
+      const minN = axis.min?.numeric;
+      const maxN = axis.max?.numeric;
+      const prospectN = own?.numeric;
+      const barPos = benchmarkBarPos(prospectN, minN, maxN);
+      const barHtml =
+        Number.isFinite(minN) && Number.isFinite(maxN) && minN !== maxN
+          ? `<div class="prep-v9-benchmark-bar" aria-hidden="true">
+              <span class="prep-v9-benchmark-bar-rail"></span>
+              <span class="prep-v9-benchmark-bar-range"></span>
+              ${barPos ? `<span class="prep-v9-benchmark-bar-dot" style="left:${barPos}"></span>` : ""}
+            </div>
+            <div class="prep-v9-benchmark-bar-foot">
+              <span class="prep-v9-benchmark-bar-min">${esc(axis.min.display)}</span>
+              ${verdict ? `<span class="prep-v9-benchmark-bar-verdict">${esc(verdict)}</span>` : "<span></span>"}
+              <span class="prep-v9-benchmark-bar-max">${esc(axis.max.display)}</span>
+            </div>`
+          : `<div class="prep-v9-benchmark-range muted">
+              Rivals ${esc(axis.min.display)} – ${esc(axis.max.display)}
+              <span class="prep-v9-benchmark-n">${axis.sourcedCount} sourced</span>
+              ${verdict ? `<span class="prep-v9-benchmark-verdict prep-v9-benchmark-${esc(axis.verdict)}">${esc(verdict)}</span>` : ""}
+              ${own ? srcBadge(own.sourceLabel, rivals.sources) : ""}
+            </div>`;
       return `<div class="prep-v9-benchmark">
         <div class="prep-v9-benchmark-head">
           <span>${esc(axis.label)}${axis.unit ? ` <span class="muted">(${esc(axis.unit)})</span>` : ""}</span>
           <strong>${own ? esc(own.display) : `<span class="muted">${EMPTY_DISPLAY}</span>`}</strong>
         </div>
-        <div class="prep-v9-benchmark-range muted">
-          Rivals ${esc(axis.min.display)} – ${esc(axis.max.display)}
-          <span class="prep-v9-benchmark-n">${axis.sourcedCount} sourced</span>
-          ${verdict ? `<span class="prep-v9-benchmark-verdict prep-v9-benchmark-${esc(axis.verdict)}">${esc(verdict)}</span>` : ""}
-          ${own ? srcBadge(own.sourceLabel, rivals.sources) : ""}
-        </div>
+        ${barHtml}
         ${axis.rationale ? `<p class="prep-v9-benchmark-why muted">${esc(axis.rationale)}</p>` : ""}
       </div>`;
     })
     .join("");
   const names = (rivals.rivals || []).map((r) => esc(r.name)).join(" · ");
+  const sizingNote = axes.find((a) => a.rationale)?.rationale;
   return `<div class="prep-v9-card">
     <h2 class="prep-v9-card-title">How big is this fish?</h2>
     ${names ? `<p class="muted prep-v9-card-sub">Against ${names}</p>` : ""}
     <div class="prep-v9-benchmark-list">${rows}</div>
+    ${sizingNote ? `<p class="prep-v9-benchmark-note muted">${esc(sizingNote)}</p>` : ""}
   </div>`;
 }
 
@@ -592,21 +619,6 @@ function renderResearchExtras(sources, open) {
   </details>`;
 }
 
-/**
- * The ICP tile. Delegates to the criteria tick list in precall-render.js.
- *
- * The v9 block used to render `icpFit.highlights` and `gaps` in a <details>. `highlights` was
- * removed from the schema when the criteria replaced it (the tick list shows the met criteria
- * directly), so that panel had become permanently empty — and the tick list itself was dead code,
- * reachable only from the uncalled renderDiscoveryTab.
- */
-function renderIcpBlock(icpFit, sources) {
-  if (!icpFit) return "";
-  return `<div class="prep-v9-card prep-v9-icp-card">
-    ${renderIcpFitment(icpFit, sources)}
-  </div>`;
-}
-
 function renderSignalsGrid(signals, sources) {
   const found = countPopulatedSignals(signals, sources);
   return `<details class="prep-signals-details prep-v9-signals">
@@ -742,6 +754,18 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
     ? `<p class="muted prep-kaia-result-note">Includes Kaia meeting summary from your link.</p>`
     : "";
 
+  const maturityHtml = maturityRows(prep.fitSnapshot);
+  const fishHtml = benchmarkRows(prep);
+  const maturityFishRow = maturityHtml
+    ? `<div class="prep-v9-grid-2">${maturityHtml}${fishHtml}</div>`
+    : fishHtml;
+
+  const stackHtml = renderSupportStack(prep);
+  const unknownsHtml = renderUnknownsGaps(prep);
+  const stackUnknownsRow = unknownsHtml
+    ? `<div class="prep-v9-grid-2">${stackHtml}${unknownsHtml}</div>`
+    : stackHtml;
+
   return `<div class="prep-tab-body prep-rise prep-v9">
     ${renderHowToRead()}
     <div class="prep-v9-grid-2">
@@ -757,13 +781,8 @@ export function renderKnowTab(prep, sourcesOpen, renderOpts = {}) {
         ${renderRecentNews(prep.recentNews, prep.newsSources || sources)}
       </div>
     </div>
-    <div class="prep-v9-grid-2">
-      ${renderIcpBlock(prep.icpFit, sources)}
-      ${benchmarkRows(prep)}
-    </div>
-    ${maturityRows(prep.fitSnapshot)}
-    ${renderSupportStack(prep)}
-    ${renderUnknownsGaps(prep)}
+    ${maturityFishRow}
+    ${stackUnknownsRow}
     ${renderAttendees(prep.prospects, sources, renderOpts)}
     ${linkedinNote}${kaiaNote}
     ${renderSupportJD(prep.supportJD, sources)}
