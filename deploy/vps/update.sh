@@ -31,8 +31,8 @@ if ! grep -q 'precall.css?v=2.1' "$REPO_ROOT/web/index.html" 2>/dev/null; then
   exit 1
 fi
 
-if ! grep -qE 'portal-build" content="2\.1(\.[0-9]+)?"' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html portal-build is not 2.1.x after reset — still on old branch." >&2
+if ! grep -qE 'portal-build" content="2\.1(\.[0-9]+)?(-[a-z0-9-]+)?"' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html portal-build is not a 2.1.x release after reset (expected 2.1, 2.1.N, or 2.1.N-suffix)." >&2
   grep 'portal-build' "$REPO_ROOT/web/index.html" 2>/dev/null | head -1 >&2 || true
   exit 1
 fi
