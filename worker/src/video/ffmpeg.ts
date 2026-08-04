@@ -14,8 +14,42 @@ import {
   computeStrategicSampleWindows,
   STRATEGIC_WINDOW_SAMPLE_INTERVAL_S,
 } from "./sampling";
+import { ZOOM_HTTP_USER_AGENT } from "../zoomShare";
 
 const execFileAsync = promisify(execFile);
+
+export interface FfmpegHttpHeaderInput {
+  referer: string;
+  authHeader?: string;
+  cookieHeader?: string;
+  userAgent?: string;
+}
+
+/** Build ffmpeg `-headers` value — CRLF-separated HTTP headers for Zoom CDN. */
+export function buildFfmpegHttpHeaders(input: FfmpegHttpHeaderInput): string {
+  const ua = input.userAgent?.trim() || ZOOM_HTTP_USER_AGENT;
+  let headers = `Referer: ${input.referer}\r\nUser-Agent: ${ua}\r\n`;
+  if (input.authHeader?.trim()) {
+    headers += `Authorization: ${input.authHeader.trim()}\r\n`;
+  }
+  if (input.cookieHeader?.trim()) {
+    headers += `Cookie: ${input.cookieHeader.trim()}\r\n`;
+  }
+  return headers;
+}
+
+/** Include stderr tail from execFile failures — Node omits it from err.message. */
+export function formatExecFileError(err: unknown, label = "ffmpeg"): string {
+  if (!(err instanceof Error)) return `${label} failed: ${String(err)}`;
+  const e = err as Error & { stderr?: string | Buffer };
+  const stderr = e.stderr ? String(e.stderr).trim() : "";
+  const tail = stderr ? stderr.slice(-600) : "";
+  const base = e.message || `${label} failed`;
+  if (tail && !base.includes(tail.slice(-80))) {
+    return `${label} failed: ${base} | stderr: ${tail}`;
+  }
+  return `${label} failed: ${base}`;
+}
 
 export interface SampleJobInput {
   callId: string;
@@ -23,6 +57,8 @@ export interface SampleJobInput {
   referer: string;
   /** Bearer header for Zoom API download URLs; absent for signed share-link streams. */
   authHeader?: string;
+  /** Session cookies from Zoom passcode unlock — required on Freshworks Zoom CDN. */
+  cookieHeader?: string;
   durationSec?: number;
   sampleIntervalS?: number;
 }
@@ -72,10 +108,11 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
 
   const outPattern = path.join(framesDir, "frame_%05d.jpg");
   const fps = `1/${interval}`;
-  const headerStr =
-    `Referer: ${input.referer}\r\n` +
-    `User-Agent: Mozilla/5.0 (compatible; LionpathPass2/1.0)\r\n` +
-    (input.authHeader ? `Authorization: ${input.authHeader}\r\n` : "");
+  const headerStr = buildFfmpegHttpHeaders({
+    referer: input.referer,
+    authHeader: input.authHeader,
+    cookieHeader: input.cookieHeader,
+  });
 
   // Cap wall samples — 45min @ 10s = 270; hard cap 360
   // Cap linear fallback — full 45min scans timeout on Zoom HTTP inputs.
@@ -112,8 +149,7 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
       maxBuffer: 2 * 1024 * 1024,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`ffmpeg sample failed: ${msg.slice(0, 400)}`);
+    throw new Error(formatExecFileError(err, "ffmpeg sample"));
   }
 
   const names = (await readdir(framesDir))
@@ -161,10 +197,11 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
     `Pass 2 strategic sample for ${input.callId}\n`,
   );
 
-  const headerStr =
-    `Referer: ${input.referer}\r\n` +
-    `User-Agent: Mozilla/5.0 (compatible; LionpathPass2/1.0)\r\n` +
-    (input.authHeader ? `Authorization: ${input.authHeader}\r\n` : "");
+  const headerStr = buildFfmpegHttpHeaders({
+    referer: input.referer,
+    authHeader: input.authHeader,
+    cookieHeader: input.cookieHeader,
+  });
 
   const bin = await ffmpegBinary();
   const samples: SampleFrame[] = [];
@@ -189,10 +226,10 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
       "5",
       "-headers",
       headerStr,
-      "-i",
-      input.mediaUrl,
       "-ss",
       String(win.startS),
+      "-i",
+      input.mediaUrl,
       "-t",
       String(clipDur),
       "-vf",
@@ -207,8 +244,9 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
         maxBuffer: 2 * 1024 * 1024,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[video/ffmpeg] window ${win.label} failed: ${msg.slice(0, 200)}`);
+      console.warn(
+        `[video/ffmpeg] window ${win.label} failed: ${formatExecFileError(err, "ffmpeg").slice(0, 400)}`,
+      );
       return [];
     }
     const names = (await readdir(framesDir))

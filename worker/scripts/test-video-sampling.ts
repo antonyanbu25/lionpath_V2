@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 import { pickVisionKeyframes } from "../src/video/facts.ts";
+import { buildFfmpegHttpHeaders, formatExecFileError } from "../src/video/ffmpeg.ts";
 import {
   aggregateParticipantCamera,
   buildAttendeeCurveFromAggregated,
@@ -14,6 +15,32 @@ import {
   parseVisionCameraResponse,
   seCameraOnPctFromParticipants,
 } from "../src/video/sampling.ts";
+
+function testBuildFfmpegHttpHeaders() {
+  const headers = buildFfmpegHttpHeaders({
+    referer: "https://freshworks.zoom.us/rec/play/abc?pwd=x",
+    cookieHeader: "_zm_page_auth=abc123; cred=xyz",
+  });
+  assert.ok(headers.includes("Referer: https://freshworks.zoom.us/rec/play/abc?pwd=x\r\n"));
+  assert.ok(headers.includes("User-Agent: Mozilla/5.0"));
+  assert.ok(headers.includes("Cookie: _zm_page_auth=abc123; cred=xyz\r\n"));
+  assert.ok(!headers.includes("Authorization:"));
+
+  const withAuth = buildFfmpegHttpHeaders({
+    referer: "https://zoom.us/",
+    authHeader: "Bearer tok",
+  });
+  assert.ok(withAuth.includes("Authorization: Bearer tok\r\n"));
+}
+
+function testFormatExecFileErrorIncludesStderr() {
+  const err = Object.assign(new Error("Command failed: ffmpeg -headers Referer: x"), {
+    stderr: "HTTP error 403 Forbidden\nhttps://cdn.zoom.us/foo: Server returned 403",
+  });
+  const msg = formatExecFileError(err, "ffmpeg sample");
+  assert.ok(msg.includes("403 Forbidden"), msg);
+  assert.ok(msg.includes("stderr:"), msg);
+}
 
 function testWindows() {
   const windows = computeStrategicSampleWindows(3600);
@@ -181,6 +208,8 @@ function testParseVisionTopLevelParticipantsObject() {
   assert.equal(curve[1].cameraOn, false);
 }
 
+testBuildFfmpegHttpHeaders();
+testFormatExecFileErrorIncludesStderr();
 testWindows();
 testAggregateCameraMajority();
 testAggregateCameraOffWins();

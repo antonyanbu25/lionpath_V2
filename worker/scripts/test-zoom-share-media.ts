@@ -14,6 +14,15 @@ import {
 
 const REFERER = "https://freshworks.zoom.us/";
 
+function testPickMediaStreamsCookie() {
+  const data = {
+    viewMp4Url: "https://cdn.example/view.mp4?sig=1",
+  };
+  const media = pickMediaStreams(data, REFERER, "_zm_page_auth=abc");
+  assert.ok(media);
+  assert.equal(media!.cookieHeader, "_zm_page_auth=abc");
+}
+
 function testPicksCompositePreferred() {
   const data: PlayInfoResult = {
     viewMp4Url: "https://cdn.example/view.mp4?sig=1",
@@ -109,6 +118,7 @@ function testEmbeddedPasscodeFromPwdQuery() {
   assert.equal(pasted.passcode, "yNYIS408EJygs7rE5vVsJwXIz4-VW7MH");
 }
 
+testPickMediaStreamsCookie();
 testPicksCompositePreferred();
 testRelativeUrlsResolved();
 testShareOnly();

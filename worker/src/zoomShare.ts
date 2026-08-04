@@ -8,8 +8,10 @@
 const SHARE_URL_RE =
   /^https?:\/\/(?:(?<subdomain>[a-z][a-z0-9-]*)\.)?(?<host>zoom\.us|zoomgov\.com)\/rec(?:ording)?\/(?<type>share|play)\/(?<id>[\w.-]+)/i;
 
-const USER_AGENT =
+export const ZOOM_HTTP_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+const USER_AGENT = ZOOM_HTTP_USER_AGENT;
 
 /** Prefer composite (camera+share) for Pass 2; fall back to camera, then share-only. */
 export type ZoomMediaStreamKind = "view_with_share" | "view" | "share";
@@ -30,6 +32,8 @@ export interface ZoomShareMedia {
   referer: string;
   /** Authorization header for API-sourced download URLs (Server-to-Server OAuth). */
   authHeader?: string;
+  /** Session cookies from passcode unlock — required for Freshworks Zoom CDN via ffmpeg. */
+  cookieHeader?: string;
   streams: ZoomMediaStream[];
   /** Best stream for Pass 2 when present. */
   preferredKind?: ZoomMediaStreamKind;
@@ -428,7 +432,11 @@ function absoluteZoomUrl(path: string, baseUrl: string): string {
  * Extract signed mp4 stream URLs from play/info (same payload as transcriptUrl).
  * Pure — safe to unit-test without hitting Zoom.
  */
-export function pickMediaStreams(data: PlayInfoResult, referer: string): ZoomShareMedia | undefined {
+export function pickMediaStreams(
+  data: PlayInfoResult,
+  referer: string,
+  cookieHeader?: string,
+): ZoomShareMedia | undefined {
   const streams: ZoomMediaStream[] = [];
   if (data.viewMp4WithshareUrl?.trim()) {
     streams.push({
@@ -473,6 +481,7 @@ export function pickMediaStreams(data: PlayInfoResult, referer: string): ZoomSha
     fileSizeMb: fileSizeMb != null && Number.isFinite(fileSizeMb) ? fileSizeMb : undefined,
     totalClips,
     referer,
+    cookieHeader: cookieHeader?.trim() || undefined,
     streams,
     preferredKind,
   };
@@ -573,7 +582,9 @@ export async function fetchTranscriptFromShareLink(
   }
 
   // Media URLs share the passcode session; soft-fail — transcript remains usable alone.
-  const media = pickMediaStreams(playData, session.baseUrl);
+  // Use the play page as Referer and forward unlock cookies — Freshworks Zoom CDN rejects
+  // ffmpeg requests that only send baseUrl Referer without _zm_page_auth cookies.
+  const media = pickMediaStreams(playData, playUrl, session.cookie || undefined);
 
   return {
     transcript,

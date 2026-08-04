@@ -55,6 +55,7 @@ export interface Pass2Debug {
   consent?: boolean;
   hasStream?: boolean;
   hasRecordingUrl?: boolean;
+  hasCookie?: boolean;
   streamKind?: string | null;
   sampleCount?: number;
   keyframeCount?: number;
@@ -256,6 +257,7 @@ async function runFfmpegPass(
       mediaUrl: stream.url,
       referer: media.referer,
       authHeader: media.authHeader,
+      cookieHeader: media.cookieHeader,
       durationSec: durationSec ?? undefined,
       sampleIntervalS: DEFAULT_SAMPLE_INTERVAL_S,
     });
@@ -427,6 +429,7 @@ export async function runVideoPass(
     consent,
     hasStream: !!stream,
     hasRecordingUrl,
+    hasCookie: !!media?.cookieHeader?.trim(),
     streamKind: stream?.kind ?? null,
     freshMedia,
   };
@@ -471,7 +474,7 @@ export async function runVideoPass(
         }
         const ffErr = ffmpegResult.videoFacts.errorMessage?.trim();
         const fallbackReason = ffErr
-          ? `ffmpeg failed: ${ffErr.slice(0, 200)}`
+          ? `ffmpeg failed: ${ffErr.slice(0, 500)}`
           : "ffmpeg produced no usable frames";
         return {
           ...fallback,
