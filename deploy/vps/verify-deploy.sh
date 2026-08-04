@@ -39,8 +39,8 @@ POSTCALL_HREF="$(echo "$HTML" | grep -o 'href="[^"]*postcall\.css[^"]*"' | head 
 echo "precall-link=${PRECALL_HREF:-MISSING}"
 echo "postcall-link=${POSTCALL_HREF:-MISSING}"
 
-if ! echo "$HTML" | grep -q 'precall.css?v=2.9'; then
-  echo "FAIL: precall.css?v=2.9 missing — portal HTML is stale (git checkout 2.9 or refresh-web.sh)" >&2
+if ! echo "$HTML" | grep -q 'precall.css?v=2.0.8.2'; then
+  echo "FAIL: precall.css?v=2.0.8.2 missing — portal HTML is stale (git checkout 2.0.8.2 or refresh-web.sh)" >&2
   FAIL=1
 fi
 if ! echo "$HTML" | grep -q 'postcall.css?v=2.0.8.1-merge'; then
@@ -60,6 +60,6 @@ if echo "$HTML" | grep -q 'id="pc-company-name"'; then
   FAIL=1
 fi
 if [[ "$FAIL" -eq 0 ]]; then
-  echo "OK: 2.9 release is live on portal and worker."
+  echo "OK: 2.0.8.2 release is live on portal and worker."
 fi
 exit "$FAIL"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Upgrade VPS to 2.9 (pre-call Know tab UI + postcall intake from 2.0.8.1-merge base).
+# Upgrade VPS to 2.0.8.2 (pre-call Know tab UI + postcall intake from 2.0.8.1-merge base).
 # Run on the VPS as root or deploy user:
 #   cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-/opt/se-singha-paathai}"
-BRANCH="2.9"
+BRANCH="2.0.8.2"
 DEPLOY_DIR="$REPO_ROOT/deploy/vps"
 
 echo "=============================================="
