@@ -527,14 +527,17 @@ export function createFirestoreStore(fb) {
       return rows.find((l) => l.status === "active") || rows[0] || null;
     },
 
-    async findActiveDeal(accountId, type) {
-      const q = query(
-        collection(db, "deals"),
+    async findActiveDeal(accountId, type, opts = {}) {
+      const ownerId = opts.ownerId || null;
+      const teamId = opts.teamId || null;
+      const filters = [
         where("accountId", "==", accountId),
         where("type", "==", type),
         where("status", "==", "active"),
-        limit(1)
-      );
+        ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+        ...(teamId ? [where("teamId", "==", teamId)] : []),
+      ];
+      const q = query(collection(db, "deals"), ...filters, limit(1));
       const snap = await getDocs(q);
       if (snap.empty) return null;
       const d = snap.docs[0];

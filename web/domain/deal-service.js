@@ -276,10 +276,9 @@ async function syncLifecycleFromDeal(deal, extraPatch = {}) {
  */
 export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  const existing = await store.findActiveDeal(accountId, "new_business");
-  if (existing) return existing;
-
   const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
+  const existing = await store.findActiveDeal(accountId, "new_business", { ownerId: dealOwnerId, teamId });
+  if (existing) return existing;
   const ts = now();
   return store.createDeal({
     id: newId("deal"),
@@ -311,10 +310,9 @@ export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, org
  */
 export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  const existing = await store.findActiveDeal(accountId, "expansion");
-  if (existing) return existing;
-
   const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
+  const existing = await store.findActiveDeal(accountId, "expansion", { ownerId: dealOwnerId, teamId });
+  if (existing) return existing;
   const ts = now();
   return store.createDeal({
     id: newId("deal"),
@@ -548,13 +546,15 @@ export async function ensureDealForLifecycle(lifecycle) {
   }
 
   const store = getStore();
-  const existingNb = await store.findActiveDeal(lifecycle.accountId, "new_business");
+  const dealOwnerId = await resolveDealOwnerId(lifecycle.accountId, lifecycle.ownerId);
+  const existingNb = await store.findActiveDeal(lifecycle.accountId, "new_business", {
+    ownerId: dealOwnerId,
+    teamId: lifecycle.teamId,
+  });
   if (existingNb) {
     await store.updateLifecycle(lifecycle.id, { dealId: existingNb.id });
     return existingNb;
   }
-
-  const dealOwnerId = await resolveDealOwnerId(lifecycle.accountId, lifecycle.ownerId);
   const ts = now();
   const deal = await store.createDeal({
     id: newId("deal"),
@@ -656,7 +656,10 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     user.role === "admin";
   if (!canHandoff) return { success: false, error: "Not allowed to hand off account" };
 
-  const nbDeal = await store.findActiveDeal(accountId, "new_business");
+  const nbDeal = await store.findActiveDeal(accountId, "new_business", {
+    ownerId: actorId,
+    teamId: user.teamId || session.teamId,
+  });
   if (nbDeal) {
     await archiveDeal(nbDeal.id, actorId, { stage: "closed_won" });
   }

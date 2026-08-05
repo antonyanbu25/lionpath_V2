@@ -352,10 +352,17 @@ export function createLocalStore() {
       return matches.find((l) => l.status === "active") || matches[0] || null;
     },
 
-    async findActiveDeal(accountId, type) {
+    async findActiveDeal(accountId, type, opts = {}) {
+      const ownerId = opts.ownerId || null;
+      const teamId = opts.teamId || null;
       return findOne(
         "deals",
-        (d) => d.accountId === accountId && d.type === type && d.status === "active"
+        (d) =>
+          d.accountId === accountId &&
+          d.type === type &&
+          d.status === "active" &&
+          (!ownerId || d.ownerId === ownerId) &&
+          (!teamId || d.teamId === teamId),
       );
     },
 

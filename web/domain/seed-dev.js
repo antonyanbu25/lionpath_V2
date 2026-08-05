@@ -580,11 +580,11 @@ export async function enrichSessionFromStore(session) {
     return session;
   }
 
-  const org = user.orgId ? await getOrg(user.orgId) : null;
+  const org = user.orgId ? await safeStoreGet("getOrg", () => getOrg(user.orgId)) : null;
 
   let managerName = null;
   if (user.managerId) {
-    const mgr = await store.getUser(user.managerId);
+    const mgr = await safeStoreGet("getUser manager", () => store.getUser(user.managerId));
     if (mgr) {
       managerName = mgr.displayName || mgr.email?.split("@")[0] || null;
     }

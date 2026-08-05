@@ -404,16 +404,53 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     dealId = dealRecord.id;
   }
 
-  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, teamId, {
-    title: account.name || company,
-    // Resolved above; the deal created here is the only chance to set it.
-    primaryContactId,
-    actorId: ownerId,
-    orgId,
-    dealId,
-    prepType: prepType || undefined,
-    useSessionContext: true,
-  });
+  const lifecycle = await (async () => {
+    try {
+      return await getOrCreateLifecycle(ownerId, account.id, teamId, {
+        title: account.name || company,
+        // Resolved above; the deal created here is the only chance to set it.
+        primaryContactId,
+        actorId: ownerId,
+        orgId,
+        dealId,
+        prepType: prepType || undefined,
+        useSessionContext: true,
+      });
+    } catch (err) {
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+        body: JSON.stringify({
+          sessionId: "8a85ad",
+          hypothesisId: "H-DEAL-QUERY",
+          location: "dual-write.js:linkPostCallToLifecycle:getOrCreateLifecycle",
+          message: "getOrCreateLifecycle failed",
+          data: {
+            error: err?.message || String(err),
+            accountId: account.id,
+            ownerId,
+            teamId,
+            orgId,
+            dealId,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      console.warn(
+        "[DBG-8a85ad]",
+        JSON.stringify({
+          hypothesisId: "H-DEAL-QUERY",
+          error: err?.message || String(err),
+          accountId: account.id,
+          ownerId,
+          teamId,
+        }),
+      );
+      // #endregion
+      throw err;
+    }
+  })();
 
   const identityKey = callIdentityKey(record || { zoomLink: payload?.recordingUrl, analysis, id: record?.id });
   const qip = data?.scorecard;
