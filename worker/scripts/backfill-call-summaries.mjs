@@ -8,10 +8,14 @@
  *   node worker/scripts/backfill-call-summaries.mjs --batch-size 500
  *
  * Resumable via Firestore cursor doc `_migrations/callSummariesBackfill`.
- * Requires: GOOGLE_APPLICATION_CREDENTIALS or gcloud application-default login
+ *
+ * Env (auto-loaded from worker/.dev.vars and repo .env via loadEnv):
+ *   FIREBASE_PROJECT_ID — required
+ *   GOOGLE_APPLICATION_CREDENTIALS — service account JSON path (or gcloud ADC)
  */
 
 import { buildCallSummaryFromPostCall } from "../../web/domain/call-summary.js";
+import { loadEnv, requireFirebaseProjectId } from "./lib/load-env.mjs";
 
 const CURSOR_PATH = "_migrations/callSummariesBackfill";
 const DEFAULT_BATCH = 500;
@@ -40,7 +44,7 @@ async function loadAdmin(projectId) {
   }
   const admin = mod.default ?? mod;
   if (!admin.apps?.length) {
-    admin.initializeApp(projectId ? { projectId } : undefined);
+    admin.initializeApp({ projectId });
   }
   return admin;
 }
@@ -88,9 +92,10 @@ function enrichForSummary(accounts, deals, users, scorecardsByCall, followUpCoun
 }
 
 async function main() {
+  loadEnv();
   const args = parseArgs(process.argv);
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "";
-  const admin = await loadAdmin(projectId || undefined);
+  const projectId = requireFirebaseProjectId("worker/scripts/backfill-call-summaries.mjs");
+  const admin = await loadAdmin(projectId);
   const db = admin.firestore();
 
   const cursor = await loadCursor(db);

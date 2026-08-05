@@ -10,7 +10,9 @@
  *   node worker/scripts/backfill-embeddings.mjs --collection callSummaries --batch-size 100
  *   node worker/scripts/backfill-embeddings.mjs --delay-ms 150
  *
- * Env: GEMINI_API_KEY, FIREBASE_PROJECT_ID (or GOOGLE_APPLICATION_CREDENTIALS / ADC)
+ * Env (auto-loaded from worker/.dev.vars and repo .env via loadEnv):
+ *   FIREBASE_PROJECT_ID — required (also GOOGLE_APPLICATION_CREDENTIALS or gcloud ADC)
+ *   GEMINI_API_KEY — required for real run (not --dry-run)
  */
 
 import {
@@ -18,27 +20,47 @@ import {
   buildCallSearchableText,
   buildDealSearchableText,
 } from "../../web/domain/rag-embed-text.js";
+import { loadEnv, requireFirebaseProjectId } from "./lib/load-env.mjs";
 
 const EMBEDDING_MODEL = "text-embedding-004";
 const CURSOR_PATH = "_migrations/embeddingsBackfill";
 const DEFAULT_BATCH = 100;
 const DEFAULT_DELAY_MS = 120;
 
+function geminiKeyHelp() {
+  return `GEMINI_API_KEY is required for a real backfill (not --dry-run).
+
+Set it in one of:
+  • worker/.dev.vars   (copy from worker/.dev.vars.example — same as npm run dev:node)
+  • .env at repo root
+  • shell:  $env:GEMINI_API_KEY="your-key"   (PowerShell)
+            export GEMINI_API_KEY=your-key   (bash)
+
+Get a key: https://aistudio.google.com/apikey`;
+}
+
 function parseArgs(argv) {
   const args = {
     dryRun: false,
+    verbose: false,
     batchSize: DEFAULT_BATCH,
     delayMs: DEFAULT_DELAY_MS,
     collection: "all",
   };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === "--dry-run") args.dryRun = true;
+    else if (argv[i] === "--verbose" || argv[i] === "-v") args.verbose = true;
     else if (argv[i] === "--batch-size") args.batchSize = Math.max(1, Number(argv[++i]) || DEFAULT_BATCH);
     else if (argv[i] === "--delay-ms") args.delayMs = Math.max(0, Number(argv[++i]) || DEFAULT_DELAY_MS);
     else if (argv[i] === "--collection") args.collection = String(argv[++i] || "all");
     else if (argv[i] === "--help" || argv[i] === "-h") {
       console.log(`Usage:
-  node worker/scripts/backfill-embeddings.mjs [--dry-run] [--batch-size 100] [--delay-ms 120] [--collection all|callSummaries|accounts|deals]`);
+  node worker/scripts/backfill-embeddings.mjs [--dry-run] [--verbose] [--batch-size 100] [--delay-ms 120] [--collection all|callSummaries|accounts|deals]
+
+Env (worker/.dev.vars, repo .env, or shell):
+  FIREBASE_PROJECT_ID — required
+  GOOGLE_APPLICATION_CREDENTIALS — service account JSON path (or gcloud ADC)
+  GEMINI_API_KEY — required for real run (not --dry-run)`);
       process.exit(0);
     }
   }
@@ -66,7 +88,7 @@ async function loadAdmin(projectId) {
   }
   const admin = mod.default ?? mod;
   if (!admin.apps?.length) {
-    admin.initializeApp(projectId ? { projectId } : undefined);
+    admin.initializeApp({ projectId });
   }
   return admin;
 }
@@ -125,11 +147,27 @@ function dealText(accounts, row) {
   return buildDealSearchableText(row, account);
 }
 
+/** Resume only within the same collection; ignore cursor when a prior run finished. */
+function resumeLastId(cursorState, col) {
+  if (cursorState.completed) return "";
+  if (cursorState.lastCollection !== col) return "";
+  return cursorState.lastId || "";
+}
+
 /** @param {import("firebase-admin/firestore").Firestore} db @param {string} col @param {object} args @param {string} apiKey @param {Map<string, object>} accounts @param {Map<string, object[]>} contactsByAccount @param {object} cursorState */
 async function backfillCollection(db, col, args, apiKey, accounts, contactsByAccount, cursorState) {
-  let processed = cursorState.processed || 0;
-  let written = cursorState.written || 0;
-  let lastId = cursorState.lastCollection === col ? cursorState.lastId || "" : "";
+  let processed = 0;
+  let written = 0;
+  let lastId = resumeLastId(cursorState, col);
+  let skippedHasEmbed = 0;
+  let skippedNoText = 0;
+
+  if (args.verbose) {
+    const total = (await db.collection(col).count().get()).data().count;
+    console.log(
+      `[verbose] ${col}: ${total} doc(s) in project; resume after id=${lastId || "(start)"}`,
+    );
+  }
 
   while (true) {
     let q = db.collection(col).orderBy(admin.firestore.FieldPath.documentId()).limit(args.batchSize);
@@ -144,6 +182,7 @@ async function backfillCollection(db, col, args, apiKey, accounts, contactsByAcc
       processed += 1;
       const row = { id: doc.id, ...doc.data() };
       if (!needsEmbed(row)) {
+        skippedHasEmbed += 1;
         lastId = doc.id;
         continue;
       }
@@ -154,6 +193,7 @@ async function backfillCollection(db, col, args, apiKey, accounts, contactsByAcc
       else if (col === "deals") text = dealText(accounts, row);
 
       if (!text) {
+        skippedNoText += 1;
         lastId = doc.id;
         continue;
       }
@@ -199,21 +239,28 @@ async function backfillCollection(db, col, args, apiKey, accounts, contactsByAcc
     if (snap.size < args.batchSize) break;
   }
 
+  if (args.verbose) {
+    console.log(
+      `[verbose] ${col}: scanned=${processed} would_embed=${written} already_ok=${skippedHasEmbed} no_text=${skippedNoText}`,
+    );
+  }
+
   return { processed, written, lastId };
 }
 
 let admin;
 
 async function main() {
+  loadEnv();
   const args = parseArgs(process.argv);
+  const projectId = requireFirebaseProjectId("worker/scripts/backfill-embeddings.mjs");
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    console.error("GEMINI_API_KEY is required.");
+  if (!args.dryRun && !apiKey) {
+    console.error(geminiKeyHelp());
     process.exit(1);
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "";
-  admin = await loadAdmin(projectId || undefined);
+  admin = await loadAdmin(projectId);
   const db = admin.firestore();
 
   const cursor = await loadCursor(db);
@@ -238,9 +285,26 @@ async function main() {
     contactsByAccount.set(accountId, list);
   }
 
-  let processed = cursor.processed || 0;
-  let written = cursor.written || 0;
-  let lastId = cursor.lastId || "";
+  if (args.verbose) {
+    console.log(`[verbose] project=${projectId}`);
+    console.log(
+      `[verbose] cursor _migrations/embeddingsBackfill:`,
+      cursor.lastCollection
+        ? {
+            lastCollection: cursor.lastCollection,
+            lastId: cursor.lastId || "",
+            completed: !!cursor.completed,
+          }
+        : "(missing — full scan)",
+    );
+    console.log(
+      `[verbose] preload: accounts=${accounts.size} contacts=${contactsSnap.size}`,
+    );
+  }
+
+  let processed = 0;
+  let written = 0;
+  let lastId = "";
 
   for (const col of collections) {
     const result = await backfillCollection(
@@ -250,10 +314,10 @@ async function main() {
       apiKey,
       accounts,
       contactsByAccount,
-      { processed, written, lastCollection: col, lastId },
+      cursor,
     );
-    processed = result.processed;
-    written = result.written;
+    processed += result.processed;
+    written += result.written;
     lastId = result.lastId;
   }
 
