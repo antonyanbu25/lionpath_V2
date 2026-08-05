@@ -29,6 +29,7 @@ export function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
+    host === "janus.benjaminsquare.com" ||
     host === "lionpath.benjaminsquare.com" ||
     host.endsWith(".run.app")
   );
@@ -108,6 +109,9 @@ function workerBaseUrl() {
     // GCP Cloud Run custom domain (parallel to VPS)
     if (host === "yonus.benjaminsquare.com") {
       return "https://yonus-api.benjaminsquare.com";
+    }
+    if (host === "janus.benjaminsquare.com") {
+      return "https://janus-api.benjaminsquare.com";
     }
     if (host.endsWith(".run.app")) {
       const apiHost = host.replace(/^prep-portal-web-/, "prep-portal-api-");

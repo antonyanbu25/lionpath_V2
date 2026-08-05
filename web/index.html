@@ -797,7 +797,7 @@
     <script>
       (function applyProductionLoginShellInline() {
         var h = location.hostname;
-        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && h !== "lionpath.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
+        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && h !== "janus.benjaminsquare.com" && h !== "lionpath.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
         function apply() {
           var form = document.getElementById("login-form");
           var hint = document.getElementById("login-hint");
@@ -824,7 +824,7 @@
     </script>
     <script type="module">
       const PROD_HOST =
-        /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com|lionpath\.benjaminsquare\.com)$/.test(location.hostname) ||
+        /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com|janus\.benjaminsquare\.com|lionpath\.benjaminsquare\.com)$/.test(location.hostname) ||
         /\.run\.app$/.test(location.hostname);
       const useBundle = PROD_HOST || new URLSearchParams(location.search).has("bundle");
 
