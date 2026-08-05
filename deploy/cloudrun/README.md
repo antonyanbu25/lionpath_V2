@@ -22,6 +22,26 @@
 
 ---
 
+## Deploy without project Owner
+
+If Tony (project Owner) cannot grant Cloud Build `run.admin`, use this split: **Cloud Build builds and pushes images**; **you deploy with your own `gcloud` login** (Editor often includes Cloud Run Admin).
+
+From **repo root**, after `web/firebase-config.local.js` exists (see §1 below):
+
+```bash
+gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
+```
+
+`first-deploy.ps1` rolls out `prep-portal-api` and `prep-portal-web` from the images Cloud Build pushed. Re-run it after later builds to pick up new `:latest` tags.
+
+**If the build fails on push:** the Cloud Build service account needs **Artifact Registry Writer** on project `se-singha-paathi`. If you have **Editor**, try [IAM → Grant access](https://console.cloud.google.com/iam-admin/iam?project=se-singha-paathi) → principal `{PROJECT_NUMBER}@cloudbuild.gserviceaccount.com` → role **Artifact Registry Writer**. Owner-only bindings still require Tony.
+
+---
+
 ## Fast path (boss checklist — ~15 min)
 
 Run these in order from a machine with `gcloud` and repo cloned.
@@ -210,10 +230,9 @@ cp web/firebase-config.local.example.js web/firebase-config.local.js
 # edit with Firebase Console web app values
 bash deploy/cloudrun/setup-firebase-secret.sh
 
-# 4. First deploy (full API env + volumes)
+# 4. Build images, then deploy with your credentials
 gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
-# If cloudbuild deploy steps fail before first service exists, run:
-bash deploy/cloudrun/first-deploy.sh
+bash deploy/cloudrun/first-deploy.sh   # or first-deploy.ps1 on Windows
 
 # 5. Cloud Build trigger on branch 2.1
 bash deploy/cloudrun/setup-trigger.sh
@@ -231,7 +250,7 @@ git commit -am "your change"
 git push origin 2.1
 ```
 
-Cloud Build builds both images, injects `firebase-config-local` from Secret Manager, and deploys `prep-portal-api` + `prep-portal-web`.
+Cloud Build builds both images and injects `firebase-config-local` from Secret Manager. Deploy with `first-deploy.ps1` / `first-deploy.sh` (or re-run after each build).
 
 Watch builds: [Cloud Build history](https://console.cloud.google.com/cloud-build/builds?project=se-singha-paathi)
 
@@ -245,9 +264,10 @@ Manual fallback:
 
 ```bash
 gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
 ```
 
-(`cloudbuild.yaml` builds, pushes, and deploys both services.)
+(`cloudbuild.yaml` builds and pushes only; `first-deploy.ps1` rolls out both services.)
 
 ---
 
@@ -258,7 +278,8 @@ gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-sin
 | `Dockerfile.api` | Node worker (`worker/`) — same stack as VPS `Dockerfile.worker`, listens on Cloud Run `PORT` |
 | `Dockerfile.web` | nginx 1.27 serving `web/` on port 8080 |
 | `nginx-cloudrun.conf` | nginx config (from `deploy/vps/nginx.conf`, port 8788 → 8080) |
-| `cloudbuild.yaml` | Build, push, and deploy both images (Firebase secret + Cloud Run rollout) |
+| `cloudbuild.yaml` | Build and push both images (Firebase secret injection; no Cloud Run deploy) |
+| `first-deploy.ps1` | Deploy API + web from pushed images (Windows; uses your gcloud login) |
 | `setup-gcp.sh` | One-time APIs, Artifact Registry, GCS, IAM |
 | `setup-firebase-secret.sh` | Upload `web/firebase-config.local.js` to Secret Manager |
 | `setup-trigger.sh` | Create/update Cloud Build trigger on branch `2.1` |

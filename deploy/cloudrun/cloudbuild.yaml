@@ -1,11 +1,12 @@
-# Build prep-portal-api + prep-portal-web images for Cloud Run, then deploy.
+# Build + push prep-portal-api + prep-portal-web images for Cloud Run (no deploy).
 # Manual:  gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
+# Deploy:   powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
 # Git trigger: push to branch 2.1 on Antony-sagayaraj/SE-Labs
 #   Set trigger substitution _TAG=$SHORT_SHA (manual submit defaults _TAG to latest).
 #
 # Prerequisites:
-#   - Secret Manager secret "firebase-config-local" (web SSO)
-#   - Cloud Build SA: secretmanager.secretAccessor, run.admin, iam.serviceAccountUser
+#   - Secret Manager secret "firebase-config-local" (web SSO, git-trigger builds only)
+#   - Cloud Build SA: Artifact Registry Writer (push); secretAccessor if trigger fetches SSO secret
 # Dockerfile.web runs npm run build inside the image; no local web/dist/ required.
 
 substitutions:
@@ -74,34 +75,6 @@ steps:
       - push
       - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
       - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
-
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    id: deploy-api
-    waitFor:
-      - push-api
-    entrypoint: gcloud
-    args:
-      - run
-      - deploy
-      - prep-portal-api
-      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
-      - --region=${_REGION}
-      - --project=${_PROJECT}
-      - --platform=managed
-
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    id: deploy-web
-    waitFor:
-      - push-web
-    entrypoint: gcloud
-    args:
-      - run
-      - deploy
-      - prep-portal-web
-      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
-      - --region=${_REGION}
-      - --project=${_PROJECT}
-      - --platform=managed
 
 images:
   - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
