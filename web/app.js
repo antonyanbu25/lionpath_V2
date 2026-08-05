@@ -500,6 +500,7 @@ let historyHydratedForEmail = null;
 
 function dashboardOpts(extra = {}) {
   return {
+    session: currentSession,
     seName: currentSession?.name,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
@@ -1832,31 +1833,33 @@ async function showApp(session, opts = {}) {
     updateNavForRole();
     refreshSidebarRecentWork();
 
-    try {
-      await seedDevDomainIfNeeded();
-      const enriched = (await syncSessionWithDomainStore(session)) || session;
-      if (!sessionStillValid()) {
-        show($("app-loading"), false);
-        return;
-      }
-      if (enriched?.email) {
-        currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
-        refreshUserMenuFromSession();
-        updateNavForRole();
-      }
-    } catch (err) {
-      console.warn("[app] session sync before route failed:", err?.message || err);
-    }
-
     applySessionAuthGetters();
-    await loadPersistedHistory();
-    if (!sessionStillValid()) {
-      show($("app-loading"), false);
-      return;
-    }
-
     await applyInitialRouteFromHash(currentSession);
     await paintAuthenticatedShell();
+
+    void (async () => {
+      if (!sessionStillValid()) return;
+      try {
+        await seedDevDomainIfNeeded();
+        const enriched = (await syncSessionWithDomainStore(session)) || session;
+        if (!sessionStillValid()) return;
+        if (enriched?.email) {
+          currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
+          refreshUserMenuFromSession();
+          updateNavForRole();
+        }
+        applySessionAuthGetters();
+        await loadPersistedHistory();
+        if (!sessionStillValid()) return;
+        refreshSidebarRecentWork();
+        if (currentView === "dashboard" || currentView === "manager" || currentView === "coaching") {
+          refreshDashboardFromStorage();
+        }
+      } catch (err) {
+        console.warn("[app] deferred session/history hydrate failed:", err?.message || err);
+        refreshSidebarRecentWork();
+      }
+    })();
 
     setTimeout(() => warmSearchIndex(() => currentSession), 2000);
 

@@ -29,6 +29,7 @@ export function emptyPostCallDetail() {
     videoFacts: [],
     timelineSegments: [],
     timelineMarkers: [],
+    technicalCommit: null,
     tcDeltas: [],
     meddpiccDeltas: [],
     objections: [],
@@ -48,7 +49,11 @@ export function mergePostCallDetail(partial) {
   const base = emptyPostCallDetail();
   if (!partial) return base;
   for (const key of Object.keys(base)) {
-    if (Array.isArray(partial[key])) base[key] = partial[key];
+    if (key === "technicalCommit") {
+      if (partial.technicalCommit && typeof partial.technicalCommit === "object") {
+        base.technicalCommit = partial.technicalCommit;
+      }
+    } else if (Array.isArray(partial[key])) base[key] = partial[key];
   }
   return capPostCallDetail(base);
 }
@@ -60,6 +65,9 @@ export function mergePostCallDetail(partial) {
 export function capPostCallDetail(detail) {
   /** @type {PostCallDetailMap} */
   const out = emptyPostCallDetail();
+  if (detail?.technicalCommit && typeof detail.technicalCommit === "object") {
+    out.technicalCommit = detail.technicalCommit;
+  }
   for (const [key, cap] of Object.entries(DETAIL_ARRAY_CAPS)) {
     const rows = detail[key];
     out[key] = Array.isArray(rows) ? rows.slice(0, cap) : [];

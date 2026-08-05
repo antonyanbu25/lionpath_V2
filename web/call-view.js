@@ -30,11 +30,7 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc, titleCaseDisplayName } from "./shared.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
-import {
-  showPrepGenOverlay,
-  hidePrepGenOverlay,
-  CALL_LOAD_THEME,
-} from "./prep-generation-overlay.js";
+import { hidePrepGenOverlay } from "./prep-generation-overlay.js";
 import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
 import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType } from "./call-type-labels.js";
 import { mergeCallIdentities } from "./identity-merge.js";
@@ -1566,7 +1562,7 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
   if (!tc && !deltas.length) {
     return renderPhase2TabEmpty(
       "No technical commit yet",
-      "Technical commit has not been captured for this call yet. Link a deal and re-run analysis.",
+      "Technical commit has not been captured for this call yet. Re-run post-call analysis to extract it from the transcript.",
     );
   }
 
@@ -1969,35 +1965,48 @@ async function loadCallBundle(session, record) {
       : null;
 
   const detail = domainCall?.detail || {};
+  const needsProductGaps =
+    !pass6?.productGaps?.length && !detail.productGaps?.length && store.listProductGapsByPostCall;
+  const needsWhatWorks =
+    !pass6?.whatWorks?.length && !detail.whatWorks?.length && store.listWhatWorksByPostCall;
+  const needsTcDeltas =
+    !resultBlob.tcDeltas?.length && !detail.tcDeltas?.length && store.listTcDeltasByCall;
+  const needsMeddpiccDeltas = !detail.meddpiccDeltas?.length && store.listMeddpiccDeltasByCall;
+
+  const [
+    fetchedProductGaps,
+    fetchedWhatWorks,
+    fetchedTcDeltas,
+    fetchedMeddpiccDeltas,
+  ] = await Promise.all([
+    needsProductGaps
+      ? safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
+      : Promise.resolve([]),
+    needsWhatWorks
+      ? safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
+      : Promise.resolve([]),
+    needsTcDeltas
+      ? safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
+      : Promise.resolve([]),
+    needsMeddpiccDeltas
+      ? safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
+      : Promise.resolve([]),
+  ]);
+
   const parallel = {
     domainCall,
-    productGaps: detail.productGaps?.length
-      ? detail.productGaps
-      : !pass6?.productGaps?.length && store.listProductGapsByPostCall
-        ? await safeEnrich("listProductGapsByPostCall", () => store.listProductGapsByPostCall(record.id), [])
-        : [],
-    whatWorks: detail.whatWorks?.length
-      ? detail.whatWorks
-      : !pass6?.whatWorks?.length && store.listWhatWorksByPostCall
-        ? await safeEnrich("listWhatWorksByPostCall", () => store.listWhatWorksByPostCall(record.id), [])
-        : [],
+    productGaps: detail.productGaps?.length ? detail.productGaps : fetchedProductGaps,
+    whatWorks: detail.whatWorks?.length ? detail.whatWorks : fetchedWhatWorks,
     storedFacts: detail.videoFacts?.length ? detail.videoFacts : [],
     timelineSegments: detail.timelineSegments?.length ? detail.timelineSegments : [],
     timelineMarkers: detail.timelineMarkers?.length ? detail.timelineMarkers : [],
-    tcDeltas: detail.tcDeltas?.length
-      ? detail.tcDeltas
-      : !resultBlob.tcDeltas?.length && store.listTcDeltasByCall
-        ? await safeEnrich("listTcDeltasByCall", () => store.listTcDeltasByCall(record.id), [])
-        : [],
-    meddpiccDeltas: detail.meddpiccDeltas?.length
-      ? detail.meddpiccDeltas
-      : store.listMeddpiccDeltasByCall
-        ? await safeEnrich("listMeddpiccDeltasByCall", () => store.listMeddpiccDeltasByCall(record.id), [])
-        : [],
+    tcDeltas: detail.tcDeltas?.length ? detail.tcDeltas : fetchedTcDeltas,
+    meddpiccDeltas: detail.meddpiccDeltas?.length ? detail.meddpiccDeltas : fetchedMeddpiccDeltas,
     objections: detail.objections?.length ? detail.objections : [],
     followUps: detail.followUps?.length ? detail.followUps : [],
     momDrafts: detail.momDrafts?.length ? detail.momDrafts : [],
     dealSignals: detail.dealSignals?.length ? detail.dealSignals : [],
+    embeddedTechnicalCommit: detail.technicalCommit || null,
   };
 
   if (!dealId && domainCall?.dealId) dealId = domainCall.dealId;
@@ -2026,7 +2035,8 @@ async function loadCallBundle(session, record) {
 
   let deal = null;
   let account = null;
-  let technicalCommit = resultBlob.technicalCommit || null;
+  let technicalCommit =
+    resultBlob.technicalCommit || parallel.embeddedTechnicalCommit || null;
 
   if (dealId) {
     const [loadedDeal, tcFromStore] = await Promise.all([
@@ -2527,17 +2537,8 @@ export async function renderCallView(container, session, opts = {}) {
     }
 
     container.innerHTML = renderCallLoadingShell(resolvedRecord);
-    showPrepGenOverlay({
-      theme: CALL_LOAD_THEME,
-      message: "Loading call record…",
-      pct: 12,
-    });
-    let bundle;
-    try {
-      bundle = await loadCallBundle(activeSession, resolvedRecord);
-    } finally {
-      await hidePrepGenOverlay();
-    }
+    const bundle = await loadCallBundle(activeSession, resolvedRecord);
+    await hidePrepGenOverlay();
     const coachAudience =
       normalizeSeEmail(ownerEmail) !== selfEmail &&
       isManagerRole(sessionToUser(activeSession)?.role)

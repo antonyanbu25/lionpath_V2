@@ -3528,30 +3528,29 @@ async function confirmAndGenerate(e) {
       : null);
   const canRunPass2 =
     (pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0;
+  const pass2UsesFfmpeg = pass2RecordingUrl.length > 0;
 
-  if (canRunPass2) {
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "done" },
-      { label: "Classify call type", status: "done" },
-      { label: "Generate analysis + qualification + commitments", status: "active" },
-    ]);
-    const pass2UsesFfmpeg = pass2RecordingUrl.length > 0;
-    showInlineStatus(status, {
-      type: "info",
-      message: pass2UsesFfmpeg
-        ? "Sampling Zoom video for camera / share facts… (ffmpeg + vision on VPS)"
-        : "Inferring slides and screen-share cues from transcript…",
-      loading: true,
-    });
-    updatePrepGenOverlay({
-      message: pass2UsesFfmpeg
-        ? "Sampling Zoom video for camera and screen-share…"
-        : "Inferring slides and screen-share cues from transcript…",
-    });
-    try {
-      const provisionalCallId = `call_pending_${Date.now()}`;
-      const videoRes = await postJson(VIDEO_PASS_URL, {
-        callId: provisionalCallId,
+  showPostCallPipeline([
+    { label: "Resolve recording and match deal", status: "done" },
+    { label: "Classify call type", status: "done" },
+    { label: "Generate analysis + qualification + commitments", status: "active" },
+  ]);
+  showInlineStatus(status, {
+    type: "info",
+    message: canRunPass2 && pass2UsesFfmpeg
+      ? "Generating analysis and sampling video in parallel… usually 15–40 seconds."
+      : "Generating analysis, qualification, and commitments… usually 15–40 seconds.",
+    loading: true,
+  });
+  updatePrepGenOverlay({
+    message: canRunPass2 && pass2UsesFfmpeg
+      ? "Generating analysis and sampling video in parallel…"
+      : "Generating analysis, qualification, and commitments…",
+  });
+
+  const videoP = canRunPass2
+    ? postJson(VIDEO_PASS_URL, {
+        callId: `call_pending_${Date.now()}`,
         recordingUrl: pass2RecordingUrl || undefined,
         recordingPassword: pipelineState.payload.recordingPassword,
         // Do not pass resolve.media — Zoom signed URLs expire during the confirm gate.
@@ -3562,32 +3561,13 @@ async function confirmAndGenerate(e) {
         seIdentity,
         aeIdentity,
         customerIdentities,
-      });
-      videoFacts = videoRes?.videoFacts || null;
-      pipelineState.videoFacts = videoFacts;
-      pipelineState.pass2Debug = videoRes?.pass2Debug || null;
-    } catch (videoErr) {
-      const msg = videoErr?.message || String(videoErr);
-      console.warn("[postcall] video-pass soft-fail:", msg);
-      pipelineState.pass2Debug = { route: "unavailable", error: msg.slice(0, 200) };
-      videoFacts = null;
-    }
-  } else {
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "done" },
-      { label: "Classify call type", status: "done" },
-      { label: "Generate analysis + qualification + commitments", status: "active" },
-    ]);
-  }
-
-  showInlineStatus(status, {
-    type: "info",
-    message: "Generating analysis, qualification, and commitments… usually 15–40 seconds.",
-    loading: true,
-  });
-  updatePrepGenOverlay({
-    message: "Generating analysis, qualification, and commitments…",
-  });
+      }).catch((videoErr) => {
+        const msg = videoErr?.message || String(videoErr);
+        console.warn("[postcall] video-pass soft-fail:", msg);
+        pipelineState.pass2Debug = { route: "unavailable", error: msg.slice(0, 200) };
+        return null;
+      })
+    : Promise.resolve(null);
 
   try {
     const body = {
@@ -3614,15 +3594,22 @@ async function confirmAndGenerate(e) {
       classifySnapshot: pipelineState.classify,
       callTypeOverride,
       dealMatchOverride,
-      videoFacts: videoFacts || undefined,
+      videoFacts: pipelineState.videoFacts || undefined,
     };
 
-    const [data, qualify, commit, summarise] = await Promise.all([
+    const [data, qualify, commit, summarise, videoRes] = await Promise.all([
       postJson(GENERATE_URL, body),
       qualifyP,
       commitP,
       summariseP,
+      videoP,
     ]);
+    videoFacts = videoRes?.videoFacts || pipelineState.videoFacts || null;
+    if (videoRes?.videoFacts) {
+      pipelineState.videoFacts = videoRes.videoFacts;
+      data.videoFacts = videoRes.videoFacts;
+    }
+    pipelineState.pass2Debug = videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
     if (qualify?.qualification) {
       data.qualification = qualify.qualification;
       data.framework = qualify.framework;
@@ -3734,15 +3721,17 @@ async function confirmAndGenerate(e) {
         let technicalCommit = data.technicalCommit || null;
         let tcDeltas = data.tcDeltas || [];
 
-        if (effectiveDealId && !technicalCommit) {
-          const prevCommit = await import("./domain/store.js")
-            .then(({ getStore }) => {
-              const store = getStore();
-              return store.getTechnicalCommitByDeal
-                ? store.getTechnicalCommitByDeal(effectiveDealId)
-                : null;
-            })
-            .catch(() => null);
+        if (!technicalCommit) {
+          const prevCommit = effectiveDealId
+            ? await import("./domain/store.js")
+                .then(({ getStore }) => {
+                  const store = getStore();
+                  return store.getTechnicalCommitByDeal
+                    ? store.getTechnicalCommitByDeal(effectiveDealId)
+                    : null;
+                })
+                .catch(() => null)
+            : null;
           const commitRes = await postJson(COMMIT_URL, {
             transcript: pipelineState.resolve.transcript,
             dealId: effectiveDealId,

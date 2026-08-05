@@ -81,7 +81,7 @@ const LEGACY_COPY_REPLACEMENTS = [
   ],
   [
     /Pass 5 did not return a commit snapshot for this call[^.]*\.?/gi,
-    "Technical commit has not been captured for this call yet. Link a deal and re-run analysis.",
+    "Technical commit has not been captured for this call yet. Re-run post-call analysis to extract it from the transcript.",
   ],
   [
     /Pass 4 MEDDPICC deltas, Pass 7 objections, and Pass 8 traction reasons appear here[^.]*\.?/gi,

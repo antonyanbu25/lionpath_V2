@@ -44,7 +44,7 @@ export function mergeTechnicalCommit(previous, draft) {
  * @returns {object[]}
  */
 export function buildTcDeltasDetail(deltaDrafts, ctx) {
-  if (!ctx?.callId || !ctx?.dealId || !ctx?.ownerId) return [];
+  if (!ctx?.callId || !ctx?.ownerId) return [];
   const ts = now();
   const rows = [];
   for (const draft of deltaDrafts || []) {
@@ -52,7 +52,7 @@ export function buildTcDeltasDetail(deltaDrafts, ctx) {
     rows.push({
       id: newId("tcDelta"),
       callId: ctx.callId,
-      dealId: ctx.dealId,
+      dealId: ctx.dealId || null,
       field: draft.field,
       previous: draft.previous ?? null,
       current: draft.current,

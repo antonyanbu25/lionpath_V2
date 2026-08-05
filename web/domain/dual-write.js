@@ -6,7 +6,7 @@ import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails,
 import { getOrCreateLifecycle, attachPrep, attachPostCall, attachTask } from "./lifecycle-service.js";
 import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./contact-service.js";
 import { applyQualificationToDeal } from "./meddpicc-qualify-service.js";
-import { applyTechnicalCommitToDeal } from "./technical-commit-service.js";
+import { applyTechnicalCommitToDeal, buildTcDeltasDetail } from "./technical-commit-service.js";
 import {
   regenerateSummariesAfterPostCall,
   persistArrAfterPostCall,
@@ -729,18 +729,30 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   }
 
   const technicalCommit = data?.technicalCommit || null;
-  if (technicalCommit && lifecycle.dealId) {
+  if (technicalCommit) {
     try {
-      const tcResult = await applyTechnicalCommitToDeal(
-        lifecycle.dealId,
-        account.id,
-        technicalCommit,
-        data?.tcDeltas || [],
-        persistCtx,
-        { embedOnly: true },
-      );
-      technicalCommitRow = tcResult.technicalCommit || technicalCommitRow;
-      setDetailArray(detail, "tcDeltas", tcResult.deltas || []);
+      if (lifecycle.dealId) {
+        const tcResult = await applyTechnicalCommitToDeal(
+          lifecycle.dealId,
+          account.id,
+          technicalCommit,
+          data?.tcDeltas || [],
+          persistCtx,
+          { embedOnly: true },
+        );
+        technicalCommitRow = tcResult.technicalCommit || technicalCommitRow;
+        setDetailArray(detail, "tcDeltas", tcResult.deltas || []);
+        detail.technicalCommit = technicalCommitRow || technicalCommit;
+      } else {
+        const deltas = buildTcDeltasDetail(data?.tcDeltas || [], {
+          ...persistCtx,
+          dealId: null,
+          accountId: account.id,
+        });
+        setDetailArray(detail, "tcDeltas", deltas);
+        detail.technicalCommit = technicalCommit;
+        technicalCommitRow = technicalCommit;
+      }
     } catch (err) {
       console.warn("[dual-write] technical commit persist failed:", err?.message || err);
     }

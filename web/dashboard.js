@@ -1504,9 +1504,16 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   }
 
   const store = getStore();
-  let callRecords = await resolveCallRecords(email, opts);
+  const fastOpts = opts.skipRemoteHistory === true ? opts : { ...opts, skipRemoteHistory: true };
+  let callRecords = await resolveCallRecords(email, fastOpts);
   let metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
   let launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+
+  const [taskMetrics, prepsCount, activityItems] = await Promise.all([
+    Promise.resolve(aggregateTaskMetrics(listTasks(email))),
+    countPrepsGenerated(briefsCountFetcher(opts)),
+    buildRecentActivity(callRecords, metrics.usesLegacyCoach, fastOpts),
+  ]);
 
   if (opts.session && store.getReadModel) {
     const { effectiveSessionUserId } = await import("./domain/session.js");
@@ -1524,9 +1531,6 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     }
   }
 
-  const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
-  const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, opts);
   const seName = opts.seName || displayNameForEmail(email) || "there";
   const { greeting } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
@@ -1566,6 +1570,37 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   container.querySelectorAll('[data-action="analyze"]').forEach((btn) => {
     btn.addEventListener("fwClick", () => opts.onAnalyze?.());
   });
+
+  if (opts.skipRemoteHistory !== true && typeof opts.fetchRemoteHistory === "function") {
+    void (async () => {
+      try {
+        const remoteRecords = await resolveCallRecords(email, opts);
+        if (!container.isConnected) return;
+        callRecords = remoteRecords;
+        metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
+        launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+        const refreshedActivity = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, opts);
+        if (!container.isConnected) return;
+        const grid = container.querySelector(".launch-kpi-grid");
+        if (grid) {
+          grid.outerHTML = renderLaunchKpis(
+            aggregateTaskMetrics(listTasks(email)),
+            launchCallMetrics,
+            await countPrepsGenerated(briefsCountFetcher(opts)),
+          );
+          wireLaunchKpiNav(container, email, opts);
+        }
+        const section = container.querySelector(".dash-side-recent");
+        if (section) {
+          section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
+          wireRecentActivitySection(container, opts);
+        }
+        wireCallLinks(container, opts.onOpenCall);
+      } catch (err) {
+        console.warn("[dashboard] remote refresh failed:", err?.message || err);
+      }
+    })();
+  }
 }
 
 async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {

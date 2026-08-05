@@ -1,6 +1,7 @@
 /**
  * Firestore postCall / callSummaries → analysis records (shared by dashboard and se-access).
  */
+import { detailFromPostCall } from "./post-call-detail.js";
 import { getStore } from "./store.js";
 import { coerceScorecardLines } from "../shared/qip-scorecard-normalize.js";
 import { canonicalCallType } from "../call-type-labels.js";
@@ -38,6 +39,7 @@ function recordHasScorecardLines(rec) {
 
 export function postCallRecordsToAnalyses(records) {
   return (records || []).map((r) => {
+    const embedded = detailFromPostCall(r);
     const analysisMeta = {
       callType: canonicalCallType(r.callType || r.analysisMeta?.callType || "demo"),
       rubricVersion: r.rubricVersion || r.analysisMeta?.rubricVersion || "2.1",
@@ -76,6 +78,15 @@ export function postCallRecordsToAnalyses(records) {
         transcriptMeta: r.transcriptMeta,
         scorecard,
         analysisMeta,
+        technicalCommit: embedded.technicalCommit || null,
+        tcDeltas: embedded.tcDeltas?.length ? embedded.tcDeltas : [],
+        summarise: r.summarise || null,
+        pass6: r.pass6 || null,
+        timeline: r.timeline || null,
+        videoFacts: embedded.videoFacts?.[0] || r.videoFacts || null,
+        objections: embedded.objections?.length ? embedded.objections : [],
+        followUps: embedded.followUps?.length ? embedded.followUps : [],
+        momDraft: embedded.momDrafts?.[0] || null,
       },
     };
   });
