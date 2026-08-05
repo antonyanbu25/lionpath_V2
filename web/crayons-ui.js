@@ -1,5 +1,9 @@
 /** Shared Freshworks Crayons helpers for the SE portal. */
 
+import { createOrbitSpinner, renderLoadingPanel as renderOrbitLoadingPanel } from "./orbit-spinner.js";
+
+export { renderOrbitLoadingPanel as renderLoadingPanel };
+
 /**
  * fw-input/fw-textarea's internal .field-control is display:block sized to
  * its own intrinsic content — it doesn't stretch to fill a host that's been
@@ -124,10 +128,7 @@ export function showInlineStatus(host, options = {}) {
   notice.closable = false;
 
   if (loading) {
-    const spinner = document.createElement("fw-spinner");
-    spinner.size = "small";
-    spinner.setAttribute("aria-hidden", "true");
-    notice.append(spinner);
+    notice.append(createOrbitSpinner("small"));
   }
   notice.append(document.createTextNode(message));
   host.append(notice);
@@ -166,16 +167,6 @@ export function setFieldError(field, message = "") {
   if (!field) return;
   field.state = message ? "error" : "normal";
   field.errorText = message;
-}
-
-/** @param {string} message */
-export function renderLoadingPanel(message = "Loading…") {
-  const safe = String(message).replace(/[&<>"']/g, (char) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-  return `<div class="dew-loading-panel" role="status" aria-live="polite">
-    <fw-spinner size="medium"></fw-spinner>
-    <span class="muted">${safe}</span>
-  </div>`;
 }
 
 /**

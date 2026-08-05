@@ -23,6 +23,7 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
+    <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.14" />
     <link rel="stylesheet" href="./styles.css?v=2.1.14" />
     <link rel="stylesheet" href="./precall.css?v=2.1.14" />
     <link rel="stylesheet" href="./postcall.css?v=2.1.14" />
@@ -48,8 +49,12 @@
     <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
       <div class="lion-splash-inner">
         <div class="lion-loader" aria-hidden="true">
+          <div class="dew-orbit-spinner dew-orbit-spinner--medium dew-orbit-spinner--hollow-core lion-loader-orbit" aria-hidden="true">
+            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
+            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
+            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
+          </div>
           <img class="lion-loader-logo" src="assets/freshworks-logomark.webp" alt="" width="40" height="40" />
-          <fw-spinner size="small"></fw-spinner>
         </div>
         <h1 class="lion-title">SE Labs</h1>
         <p class="lion-tagline">Solution Engineering</p>
@@ -58,7 +63,12 @@
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
       <fw-card class="app-loading-card">
-        <fw-spinner size="medium"></fw-spinner>
+        <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
+          <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
+          <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
+          <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
+          <span class="dew-orbit-core"></span>
+        </div>
         <span>Loading your workspace…</span>
       </fw-card>
     </div>
@@ -441,6 +451,15 @@
             <div id="prep-status" class="dew-status-host" hidden></div>
             <div id="prep-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
+              <div class="dew-skeleton-loading-head">
+                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
+                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
+                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
+                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
+                  <span class="dew-orbit-core"></span>
+                </div>
+                <span class="muted">Generating discovery brief…</span>
+              </div>
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="rect" height="120px" effect="sheen"></fw-skeleton>
@@ -599,6 +618,15 @@
             <fw-card id="postcall-confirm-view" class="postcall-confirm-card postcall-stage-panel" hidden></fw-card>
             <div id="postcall-status" class="dew-status-host postcall-stage-panel" hidden></div>
             <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
+              <div class="dew-skeleton-loading-head">
+                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
+                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
+                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
+                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
+                  <span class="dew-orbit-core"></span>
+                </div>
+                <span class="muted">Generating analysis…</span>
+              </div>
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="rect" height="150px" effect="sheen"></fw-skeleton>
@@ -613,7 +641,11 @@
       <div class="prep-gen-overlay-backdrop"></div>
       <div class="prep-gen-overlay-panel">
         <div class="prep-gen-brand" aria-hidden="true">
-          <span class="prep-gen-ring"></span>
+          <div class="dew-orbit-spinner dew-orbit-spinner--large dew-orbit-spinner--hollow-core prep-gen-orbit" aria-hidden="true">
+            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
+            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
+            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
+          </div>
           <img class="prep-gen-logo" src="assets/freshworks-logomark.webp" alt="" width="52" height="52" />
         </div>
         <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>

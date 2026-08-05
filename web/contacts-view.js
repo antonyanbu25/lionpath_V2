@@ -8,6 +8,7 @@ import {
 } from "./domain/account-service.js?v=2.1.14";
 import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactTileList, wireContactTiles } from "./contact-tile.js";
+import { renderLoadingPanel } from "./crayons-ui.js";
 
 function paintContacts(container, contacts, accountNameById, opts, preview = false) {
   const count = contacts.length;
@@ -46,7 +47,7 @@ export async function renderContactsView(container, session, opts = {}) {
   if (preview.contacts.length) {
     paintContacts(container, preview.contacts, preview.accountNameById, opts, true);
   } else {
-    container.innerHTML = `<div class="contacts-view-loading muted">Loading contacts…</div>`;
+    container.innerHTML = renderLoadingPanel("Loading contacts…");
   }
 
   let contacts = [];

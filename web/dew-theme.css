@@ -234,11 +234,7 @@ fw-select {
   --fw-input-border-radius: var(--dew-btn-radius);
 }
 
-/* Crayons loading and feedback */
-fw-spinner {
-  --fw-spinner-color: var(--dew-primary);
-}
-
+/* Crayons loading and feedback — orbit spinner in orbit-spinner.css; fw-button loading uses Crayons default */
 fw-skeleton {
   --fw-skeleton-background: var(--dew-hairline);
   --fw-skeleton-sheen-color: var(--dew-border);

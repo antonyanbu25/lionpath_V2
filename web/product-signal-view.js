@@ -13,6 +13,7 @@ import {
 } from "./domain/product-signal-service.js";
 import { formatCompactUsd } from "./deal-view.js";
 import { esc } from "./shared.js";
+import { renderLoadingPanel } from "./crayons-ui.js";
 
 const GAP_STATUS_LABELS = {
   draft: "Triage",
@@ -193,7 +194,7 @@ export async function renderProductSignalView(session, container, opts = {}) {
     return;
   }
 
-  container.innerHTML = `<p class="muted">Loading product signal…</p>`;
+  container.innerHTML = renderLoadingPanel("Loading product signal…");
 
   try {
     const data = await loadProductSignalDashboard(store, session.orgId);

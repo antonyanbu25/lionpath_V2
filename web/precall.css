@@ -63,22 +63,10 @@ body.prep-gen-lock {
   box-shadow: var(--dew-shadow-island);
 }
 
-.prep-gen-ring {
+.prep-gen-orbit {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--dew-primary) 35%, transparent);
-  animation: prep-gen-ring-spin 2.4s linear infinite;
-}
-
-.prep-gen-ring::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  border: 2px solid transparent;
-  border-top-color: var(--dew-brand);
-  animation: prep-gen-ring-spin 1.1s linear infinite;
+  margin: auto;
 }
 
 .prep-gen-eyebrow {
@@ -145,17 +133,9 @@ body.prep-gen-lock {
   }
 }
 
-@keyframes prep-gen-ring-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .prep-gen-overlay,
   .prep-gen-overlay-panel,
-  .prep-gen-ring,
-  .prep-gen-ring::after,
   .prep-gen-progress-bar,
   .prep-result-enter-active {
     animation: none !important;

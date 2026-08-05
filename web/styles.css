@@ -161,15 +161,13 @@ body.splash-lock { overflow: hidden; }
   border-radius: 10px;
   object-fit: contain;
   grid-area: 1 / 1;
+  position: relative;
+  z-index: 1;
 }
-.lion-loader fw-spinner {
-  --fw-spinner-color: var(--dew-brand);
-  opacity: 0.75;
+.lion-loader-orbit {
   position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
+  inset: 0;
+  margin: auto;
 }
 .lion-title {
   margin: 0 0 6px;
@@ -236,9 +234,15 @@ body.splash-lock { overflow: hidden; }
 .dew-status-host fw-inline-message {
   width: 100%;
 }
-.dew-status-host fw-spinner {
-  margin-right: 8px;
+.dew-status-host .dew-orbit-spinner {
+  display: inline-block;
   vertical-align: middle;
+  margin-right: 8px;
+}
+fw-inline-message .dew-orbit-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
 }
 .dew-loading-panel {
   display: flex;
@@ -258,6 +262,12 @@ body.splash-lock { overflow: hidden; }
   padding: 24px;
   border: 1px solid var(--dew-border);
   box-shadow: var(--dew-shadow-island);
+}
+.dew-skeleton-loading-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 4px;
 }
 
 /* Login — full-screen video background, centered card */
