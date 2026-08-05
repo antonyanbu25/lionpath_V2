@@ -18,6 +18,13 @@ git checkout -B "$BRANCH" "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 echo "=== Checked out: $(git log -1 --oneline) ==="
 
+# Re-exec after reset so this script's own grep checks use the updated version (not the pre-reset copy bash already loaded).
+if [[ "${REFRESH_WEB_AFTER_RESET:-}" != "1" ]]; then
+  export REFRESH_WEB_AFTER_RESET=1
+  exec bash "$DEPLOY_DIR/refresh-web.sh" "$@"
+fi
+unset REFRESH_WEB_AFTER_RESET
+
 if ! grep -q 'precall.css?v=2.1' "$INDEX"; then
   echo "ERROR: $INDEX missing precall.css?v=2.1 after git reset." >&2
   grep -E 'portal-build|precall.css|postcall.css' "$INDEX" | head -5 >&2 || true
