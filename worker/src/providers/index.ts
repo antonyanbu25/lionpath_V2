@@ -7,8 +7,10 @@
 //   - gemini    → map to the google_search grounding tool
 //   - ollama    → no built-in web search; wire a separate search step or call with research:false
 
+import type { CostControlEnv } from "../cost-control-config";
 import type { FirestoreEnv } from "../data/firestore-admin";
 import { recordLlmUsage } from "../data/llm-usage";
+import { reserveDailyTokenBudget, totalTokens } from "../data/token-budget";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
@@ -21,20 +23,32 @@ import {
   resolveSynthesizeModel,
 } from "./pass-models";
 
-function wrapWithUsageRecording(provider: LlmProvider, fsEnv?: FirestoreEnv): LlmProvider {
+type ProviderFsEnv = FirestoreEnv & CostControlEnv;
+
+function wrapWithUsageRecording(provider: LlmProvider, fsEnv?: ProviderFsEnv): LlmProvider {
   return {
     async generate(req: LlmRequest): Promise<LlmResult> {
-      const result = await provider.generate(req);
-      if (result.usage && req.userId) {
-        recordLlmUsage(fsEnv, {
-          userId: req.userId,
-          callId: req.callId,
-          passName: req.passName,
-          cacheHit: req.cacheHit,
-          ...result.usage,
-        });
+      const settleBudget = await reserveDailyTokenBudget(fsEnv, req.userId);
+      try {
+        const result = await provider.generate(req);
+        if (req.userId) {
+          const used = result.usage ? totalTokens(result.usage.promptTokens, result.usage.outputTokens) : 0;
+          await settleBudget(used);
+          if (result.usage) {
+            recordLlmUsage(fsEnv, {
+              userId: req.userId,
+              callId: req.callId,
+              passName: req.passName,
+              cacheHit: req.cacheHit,
+              ...result.usage,
+            });
+          }
+        }
+        return result;
+      } catch (err) {
+        await settleBudget(0);
+        throw err;
       }
-      return result;
     },
   };
 }

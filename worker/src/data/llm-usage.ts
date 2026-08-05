@@ -4,6 +4,8 @@
 
 import type { LlmRequest, LlmUsage } from "../providers/types";
 import { firestoreAdminReady, getDb, type FirestoreEnv } from "./firestore-admin";
+import { checkPass7UsageAnomaly } from "./usage-anomaly";
+import type { CostControlEnv } from "../cost-control-config";
 
 export interface LlmUsageRecord extends LlmUsage {
   passName: string;
@@ -28,9 +30,11 @@ export function withUsageTracking(req: LlmRequest, ctx?: UsageTracking): LlmRequ
   };
 }
 
+type UsageEnv = FirestoreEnv & CostControlEnv;
+
 /** Persist one usage row — never throws; never blocks the caller. */
 export function recordLlmUsage(
-  env: FirestoreEnv | undefined,
+  env: UsageEnv | undefined,
   record: Omit<LlmUsageRecord, "createdAt">,
 ): void {
   if (!record.userId?.trim()) return;
@@ -52,6 +56,7 @@ export function recordLlmUsage(
         cacheHit: record.cacheHit === true,
         createdAt: Date.now(),
       });
+      checkPass7UsageAnomaly(env, record);
     } catch (err) {
       console.warn("[llm-usage] write failed:", err instanceof Error ? err.message : err);
     }

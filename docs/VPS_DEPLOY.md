@@ -4,6 +4,8 @@ Host **SE Singha Paathai** on your own server instead of running the worker on a
 
 **Stack:** Docker Compose Â· Caddy (HTTPS) Â· nginx (static web) Â· Node worker (port 8787)
 
+**Git remotes:** Production VPS clones **`antonyanbu25/lionpath_V2`** as remote **`origin`**. Developer laptops push to Tony's repo via remote **`antony`** (see README § Push workflow). Upstream **`skut264/lionpath`** is for PRs; its `2.1` branch may lag Tony's repo — do not point the VPS at `skut264/lionpath` for deploy.
+
 | Public URL | Service |
 |------------|---------|
 | https://portal.benjaminsquare.com | Web UI |
@@ -67,11 +69,13 @@ ssh root@YOUR_VPS_IP
 On the VPS:
 
 ```bash
-git clone git@github.com:skut264/lionpath.git /opt/se-singha-paathai
+git clone git@github.com:antonyanbu25/lionpath_V2.git /opt/se-singha-paathai
 cd /opt/se-singha-paathai/deploy/vps
 chmod +x setup.sh start.sh
 ./setup.sh
 ```
+
+(`setup.sh` defaults to the same Tony repo URL; remote name on the VPS is **`origin`**, not `antony`.)
 
 The repo is **private** â€” you need a GitHub **deploy key** (read-only) on the VPS before `git clone` / `update.sh` will work. See [Git authentication (private repo)](#git-authentication-private-repo) below.
 
@@ -134,6 +138,8 @@ Add to `deploy/vps/.env`:
 INTERNAL_CRON_SECRET=your-random-secret
 GEMINI_API_KEY=your-gemini-api-key   # required for batch even if you use Vertex elsewhere
 ```
+
+**Cost control (layers 3–4).** After deploy, enable the worker daily token budget and Pass 7 anomaly alerts — see **[docs/COST_CONTROL.md](./COST_CONTROL.md)**. Defaults in `deploy/vps/.env.example` (`DAILY_TOKEN_BUDGET_*`, `SUMMARISE_ANOMALY_*`); disable locally with `DAILY_TOKEN_BUDGET_ENABLED=0`.
 
 **Fix `.env` line endings (CRLF → LF).** If sourcing `.env` prints `$'\r': command not found`, the file was edited on Windows:
 
@@ -223,7 +229,16 @@ cd /opt/se-singha-paathai/deploy/vps
 bash update.sh
 ```
 
-`update.sh` fetches `2.0.7.2` via SSH (bypassing HTTPS rewrites), resets the repo, runs **`build-web-bundle.sh`** (`cd web && npm ci && npm run build` → `web/dist/`, gitignored), rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`. Production hostnames load `./dist/boot.js`; without this step the portal boots unbundled modules and misses the esbuild graph.
+`update.sh` fetches **`origin/2.1`** from `antonyanbu25/lionpath_V2` via SSH (bypassing HTTPS rewrites), resets the repo, runs **`build-web-bundle.sh`** (`cd web && npm ci && npm run build` → `web/dist/`, gitignored), rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`. Production hostnames load `./dist/boot.js`; without this step the portal boots unbundled modules and misses the esbuild graph.
+
+Manual pull (if you are not using `update.sh`):
+
+```bash
+cd /opt/se-singha-paathai
+git fetch origin
+git checkout 2.1
+git pull origin 2.1
+```
 
 After pulling domain changes, restart Caddy so it picks up the new `Caddyfile`:
 
@@ -243,16 +258,16 @@ Optional single account: `npm run backfill:read-models -- --account=acct_xxx`.
 
 ## Git authentication (private repo)
 
-Repository: **git@github.com:skut264/lionpath.git** (private)
+Production VPS repository: **git@github.com:antonyanbu25/lionpath_V2.git** (private; git remote **`origin`** on the server).
 
 ### Symptom â€” SSH remote but HTTPS password prompt
 
 ```text
-origin  git@github.com:skut264/lionpath.git (fetch)
-Username for 'https://github.com': skut264
-Password for 'https://skut264@github.com':
+origin  git@github.com:antonyanbu25/lionpath_V2.git (fetch)
+Username for 'https://github.com': ...
+Password for 'https://...@github.com':
 remote: Invalid username or token. Password authentication is not supported for Git operations.
-fatal: Authentication failed for 'https://github.com/skut264/lionpath.git/'
+fatal: Authentication failed for 'https://github.com/antonyanbu25/lionpath_V2.git/'
 ```
 
 **Root cause:** Git is rewriting `git@github.com:` â†’ `https://github.com/` (global `url.*.insteadOf`), so `git fetch origin` uses HTTPS even though `origin` is SSH. GitHub no longer accepts account passwords â€” you need SSH keys or a Personal Access Token.
@@ -287,7 +302,7 @@ cat /root/.ssh/lionpath_deploy.pub
 ```
 
 1. Copy the public key output.
-2. GitHub â†’ **skut264/lionpath** â†’ **Settings** â†’ **Deploy keys** â†’ **Add deploy key** (title: `vps-portal`, **read-only**).
+2. GitHub â†’ **antonyanbu25/lionpath_V2** â†’ **Settings** â†’ **Deploy keys** â†’ **Add deploy key** (title: `vps-portal`, **read-only**).
 3. Configure SSH:
 
 ```bash
@@ -306,28 +321,28 @@ chmod 600 /root/.ssh/config
 
 ```bash
 ssh -T git@github.com
-# Expected: Hi skut264/lionpath! You've successfully authenticated...
-git ls-remote git@github.com:skut264/lionpath.git refs/heads/2.0.7.2
+# Expected: Hi antonyanbu25/lionpath_V2! You've successfully authenticated...
+git ls-remote git@github.com:antonyanbu25/lionpath_V2.git refs/heads/2.1
 ```
 
 5. Deploy:
 
 ```bash
-git remote set-url origin git@github.com:skut264/lionpath.git
+git remote set-url origin git@github.com:antonyanbu25/lionpath_V2.git
 cd /opt/se-singha-paathai/deploy/vps
 bash update.sh
 ```
 
-`update.sh` uses `git-fetch-origin.sh`, which fetches **directly** via `git@github.com:skut264/lionpath.git` so `insteadOf` rewrites on `origin` no longer matter.
+`update.sh` uses `git-fetch-origin.sh`, which fetches **directly** via `git@github.com:antonyanbu25/lionpath_V2.git` so `insteadOf` rewrites on `origin` no longer matter.
 
 ### Alternative â€” HTTPS + Personal Access Token
 
 Only if you prefer HTTPS:
 
 ```bash
-git remote set-url origin https://github.com/skut264/lionpath.git
-git fetch origin 2.0.7.2
-# Username: skut264
+git remote set-url origin https://github.com/antonyanbu25/lionpath_V2.git
+git fetch origin 2.1
+# Username: GitHub account with repo access
 # Password: <GitHub PAT with repo scope â€” NOT your account password>
 ```
 

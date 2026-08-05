@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Invoke Gemini Batch / read-model cron endpoints on the local worker.
-# Cron on the VPS must hit http://127.0.0.1:8787 — not a public hostname
-# (e.g. lionpathapi may still point at shared hosting / cPanel).
+# Invoke Gemini Batch / read-model cron endpoints on the worker.
+# Default WORKER_URL=http://127.0.0.1:8787 (localhost; see docker-compose ports).
+# Override works too, e.g. WORKER_URL=https://portalapi.benjaminsquare.com when the
+# worker is reachable on the public API hostname (no localhost port required).
 #
 # Usage: cron-batch.sh {poll|fallback|embedding|read-models}
 set -euo pipefail

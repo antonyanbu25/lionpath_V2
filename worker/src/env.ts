@@ -1,8 +1,9 @@
+import type { CostControlEnv } from "./cost-control-config";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
 import type { HistoryEnv } from "./history";
 
-export interface Env extends PrepEnv, ZoomEnv, HistoryEnv {
+export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;

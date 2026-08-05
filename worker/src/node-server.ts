@@ -13,7 +13,9 @@ import type { HistoryEnv } from "./history";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
 
-interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv {
+import type { CostControlEnv } from "./cost-control-config";
+
+interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -53,6 +55,13 @@ function buildEnv(): NodeEnv {
     ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI,
     VIDEO_PASS_ENABLED: process.env.VIDEO_PASS_ENABLED || "1",
     VIDEO_DATA_DIR: process.env.VIDEO_DATA_DIR || "/data/video",
+    DAILY_TOKEN_BUDGET_ENABLED: process.env.DAILY_TOKEN_BUDGET_ENABLED || "1",
+    DAILY_TOKEN_BUDGET_PER_USER: process.env.DAILY_TOKEN_BUDGET_PER_USER || "",
+    DAILY_TOKEN_BUDGET_RESERVE: process.env.DAILY_TOKEN_BUDGET_RESERVE || "",
+    SUMMARISE_ANOMALY_ENABLED: process.env.SUMMARISE_ANOMALY_ENABLED || "1",
+    SUMMARISE_ANOMALY_MULTIPLIER: process.env.SUMMARISE_ANOMALY_MULTIPLIER || "",
+    SUMMARISE_ANOMALY_BASELINE_DAYS: process.env.SUMMARISE_ANOMALY_BASELINE_DAYS || "",
+    COST_ALERT_WEBHOOK_URL: process.env.COST_ALERT_WEBHOOK_URL || "",
   };
 
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();

@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)**, **four-layer cost control**, **LLM usage admin** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** â€” Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** â€” Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -85,6 +85,8 @@ Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/index.html`, 
 After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/boot JS changes.
 
 **Deploy note:** production hostnames load `web/dist/boot.js`. After auth/dashboard changes run `cd web && npm run build` (or VPS `build-web-bundle.sh`) before `refresh-web.sh` / `update.sh` — otherwise the portal serves stale bundled JS.
+
+**Verify live:** `curl -s https://portal.benjaminsquare.com/ | grep portal-build` must show **2.1.19** (not 2.1.14). Bundled `dist/boot.js` must include SSO fixes — VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
 
 ### Account / deal deduplication & linking (2.1)
 
@@ -197,6 +199,33 @@ Every worker LLM call records token counts, latency, and grounding usage to Fire
 **Firestore index:** queries filter `createdAt` range and order by `createdAt` desc. If the admin endpoint returns an index error, create a composite index on `llmUsage` for range + `orderBy createdAt` (use the link in the Firebase console error).
 
 **Deploy:** worker rebuild required (`bash upgrade-now.sh` or `bash update.sh` on the VPS). No web bundle change unless you only hit the JSON admin route.
+
+### Cost control — four layers (2.1)
+
+Production spend protection stacks **billing alerts**, **Gemini API quotas**, a **worker per-user daily token budget**, and **Pass 7 (summarise) anomaly detection**. Full runbooks: **[docs/COST_CONTROL.md](./docs/COST_CONTROL.md)**. VPS env defaults: `deploy/vps/.env.example`; deploy doc: **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** (cost control pointer).
+
+| Layer | Mechanism | Caps spend? | Where |
+|-------|-----------|-------------|-------|
+| **1. Cloud Billing budget** | GCP budget alerts at **50 / 80 / 100 / 150%** of monthly budget | No — alerts only | `deploy/gcp/setup-billing-budget.sh`, Console |
+| **2. Gemini API quotas** | **12,000** requests/day, **120**/min on production API key | Yes — hard API ceiling | Console (see COST_CONTROL.md) |
+| **3. Worker token budget** | Per-user daily token budget in Firestore; **HTTP 429** when exceeded | Yes — circuit breaker before LLM | `worker/src/data/token-budget.ts`, `worker/src/cost-control-config.ts`, `worker/src/providers/index.ts` |
+| **4. Pass 7 anomaly alert** | Summarise tokens/call > rolling **p95 × 2** (14-day baseline) | No — detects prompt regressions | `worker/src/data/usage-anomaly.ts`, optional `COST_ALERT_WEBHOOK_URL` |
+
+| Env (layer 3–4) | Default | Notes |
+|-----------------|---------|-------|
+| `DAILY_TOKEN_BUDGET_ENABLED` | `1` | Requires Firestore admin credentials |
+| `DAILY_TOKEN_BUDGET_PER_USER` | 8M tokens/day | Override per org |
+| `DAILY_TOKEN_BUDGET_RESERVE` | 120k | Reserved headroom per request |
+| `SUMMARISE_ANOMALY_ENABLED` | `1` | Runs after each `llmUsage` write for `passName: summarise` |
+| `SUMMARISE_ANOMALY_MULTIPLIER` | `2` | vs rolling p95 |
+| `SUMMARISE_ANOMALY_BASELINE_DAYS` | `14` | Baseline window |
+| `COST_ALERT_WEBHOOK_URL` | (optional) | Slack/webhook for anomaly alerts |
+
+**Tests:** `cd worker && npx tsx scripts/test-cost-control.ts` (also in `npm test`).
+
+**Deploy:** worker rebuild + `.env` on VPS; layer 1 is GCP-only (no worker deploy).
+
+
 ### Files touched (this release)
 
 | Area | Paths |
@@ -209,6 +238,8 @@ Every worker LLM call records token counts, latency, and grounding usage to Fire
 | Fish sizing | `worker/src/prep/rivals.ts`, `worker/src/prep/rivals-context.ts`, `worker/src/schema.ts`, `web/precall-brief-v9.js` |
 | Brief list & context | web/briefs-list-view.js, web/app.js, web/precall.js, web/precall-brief-v9.js, worker/src/prep/context-field-router.ts, web/prep-se-context.js |
 | Tests | `web/scripts/test-contact-deal-mapping.mjs`, `web/scripts/test-search-service.mjs`, `worker/scripts/test-company-news.ts`, `worker/scripts/test-rivals-context.ts`, `web/scripts/test-precall-render.mjs` |
+| Cost control | `docs/COST_CONTROL.md`, `deploy/gcp/setup-billing-budget.sh`, `deploy/vps/.env.example`, `worker/src/cost-control-config.ts`, `worker/src/data/token-budget.ts`, `worker/src/data/usage-anomaly.ts`, `worker/scripts/test-cost-control.ts` |
+| VPS deploy doc | `docs/VPS_DEPLOY.md`, `deploy/vps/cron-batch.sh` |
 | Release notes | `docs/RELEASE_2.1.md`, `worker/src/build-id.ts` |
 
 ### Verify locally
@@ -686,6 +717,7 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 | [docs/RBAC.md](./docs/RBAC.md) | Developers â€” roles and visibility |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Developers â€” local setup, tunnel sharing, onboarding |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | IT / admin — VPS deploy (`lionpath` + `lionpathapi` URLs) |
+| [docs/COST_CONTROL.md](./docs/COST_CONTROL.md) | IT / admin — billing budgets, Gemini quotas, daily token ceiling, Pass 7 anomaly alerts |
 | [docs/CALL_SUMMARIES.md](./docs/CALL_SUMMARIES.md) | IT / admin — `callSummaries` indexes, backfill, GCS offload |
 | [deploy/vps/SECURITY.md](./deploy/vps/SECURITY.md) | IT / admin â€” secrets, SSH, file permissions |
 
