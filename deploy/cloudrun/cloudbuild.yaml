@@ -1,6 +1,7 @@
 # Build prep-portal-api + prep-portal-web images for Cloud Run, then deploy.
 # Manual:  gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
 # Git trigger: push to branch 2.1 on Antony-sagayaraj/SE-Labs
+#   Set trigger substitution _TAG=$SHORT_SHA (manual submit defaults _TAG to latest).
 #
 # Prerequisites:
 #   - Secret Manager secret "firebase-config-local" (web SSO)
@@ -11,6 +12,7 @@ substitutions:
   _REGION: us-central1
   _PROJECT: se-singha-paathi
   _REPO: prep-portal
+  _TAG: latest
 
 availableSecrets:
   secretManager:
@@ -35,7 +37,7 @@ steps:
     args:
       - build
       - -f=deploy/cloudrun/Dockerfile.api
-      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
       - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
       - worker
 
@@ -46,7 +48,7 @@ steps:
     args:
       - build
       - -f=deploy/cloudrun/Dockerfile.web
-      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
       - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
       - .
 
@@ -59,7 +61,7 @@ steps:
       - run
       - deploy
       - prep-portal-api
-      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
       - --region=${_REGION}
       - --project=${_PROJECT}
       - --platform=managed
@@ -73,15 +75,15 @@ steps:
       - run
       - deploy
       - prep-portal-web
-      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
       - --region=${_REGION}
       - --project=${_PROJECT}
       - --platform=managed
 
 images:
-  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
   - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
-  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
   - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
 
 options:
