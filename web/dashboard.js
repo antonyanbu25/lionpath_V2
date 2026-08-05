@@ -1075,7 +1075,18 @@ function callsThisWeekCount(callMetrics) {
   return callMetrics.callsThisWeek ?? 0;
 }
 
-function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
+function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
+  const remotePending = kpiOpts.remotePending || {};
+  const kpiValue = (value, stat) => {
+    const pending =
+      !value &&
+      ((stat === "calls" && remotePending.calls) || (stat === "preps" && remotePending.preps));
+    if (pending) {
+      return `<span class="launch-kpi-value launch-kpi-value--pending" data-stat="${stat}" aria-busy="true"><span class="launch-kpi-shimmer" aria-hidden="true"></span></span>`;
+    }
+    return `<span class="launch-kpi-value" data-stat="${stat}">${value}</span>`;
+  };
+
   const overdueDelta =
     taskMetrics.overdueOpen > 0
       ? `${taskMetrics.overdueOpen} overdue`
@@ -1099,7 +1110,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-clay" aria-hidden="true">☑</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="launch-kpi-value" data-stat="open">${taskMetrics.openTotal}</span>
+          ${kpiValue(taskMetrics.openTotal, "open")}
           ${overdueDelta ? `<span class="launch-kpi-delta ${overdueCls}">${esc(overdueDelta)}</span>` : ""}
         </div>
       </button>
@@ -1109,8 +1120,8 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-teal" aria-hidden="true">☎</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="launch-kpi-value" data-stat="calls">${callMetrics.totalCalls}</span>
-          ${callsDelta ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
+          ${kpiValue(callMetrics.totalCalls, "calls")}
+          ${callsDelta && !(remotePending.calls && !callMetrics.totalCalls) ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
         </div>
       </button>
       <button type="button" class="launch-kpi-card" data-kpi-nav="briefs" aria-label="Briefs generated — view pre-call brief">
@@ -1119,8 +1130,8 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount) {
           <span class="launch-kpi-icon tile-sand" aria-hidden="true">✎</span>
         </div>
         <div class="launch-kpi-foot">
-          <span class="launch-kpi-value" data-stat="preps">${prepsCount}</span>
-          ${prepsDelta ? `<span class="launch-kpi-delta ${prepsDeltaCls}">${esc(prepsDelta)}</span>` : ""}
+          ${kpiValue(prepsCount, "preps")}
+          ${prepsDelta && !(remotePending.preps && !prepsCount) ? `<span class="launch-kpi-delta ${prepsDeltaCls}">${esc(prepsDelta)}</span>` : ""}
         </div>
       </button>
     </div>`;
@@ -1257,6 +1268,96 @@ function withDashboardTimeout(promise, ms, label) {
 
 function localOnlyDashboardOpts(opts = {}) {
   return { ...opts, fetchAllRemotePreps: undefined, fetchRemotePreps: undefined, skipRemoteHistory: true };
+}
+
+function launchpadRemotePending(callRecords, prepsCount, opts = {}) {
+  const hasRemoteHistory = typeof opts.fetchRemoteHistory === "function";
+  const hasRemotePreps = typeof briefsCountFetcher(opts) === "function";
+  return {
+    calls: hasRemoteHistory && !(callRecords?.length),
+    preps: hasRemotePreps && !prepsCount,
+  };
+}
+
+async function refreshLaunchpadRemote(container, email, opts = {}) {
+  if (!container?.isConnected) return;
+  if (typeof opts.fetchRemoteHistory !== "function" && typeof briefsCountFetcher(opts) !== "function") {
+    return;
+  }
+  const tRemote = Date.now();
+  agentLog({
+    location: "dashboard.js:refreshLaunchpadRemote:start",
+    message: "Remote KPI refresh started",
+    data: { hasHistory: typeof opts.fetchRemoteHistory === "function" },
+    hypothesisId: "B",
+  });
+  try {
+    const remoteRecords = await resolveCallRecords(email, { ...opts, skipRemoteHistory: false });
+    agentLog({
+      location: "dashboard.js:refreshLaunchpadRemote:records",
+      message: "Remote call records loaded",
+      data: { ms: Date.now() - tRemote, count: remoteRecords.length },
+      hypothesisId: "B",
+    });
+    if (!container.isConnected) return;
+    const remoteMetrics = aggregateQualityMetrics(analysesWithQualityFromRecords(remoteRecords));
+    let remoteLaunchMetrics = buildLaunchpadCallMetricsFromRecords(remoteRecords);
+
+    const store = getStore();
+    if (opts.session && store.getReadModel) {
+      const { effectiveSessionUserId } = await import("./domain/session.js");
+      const uid = effectiveSessionUserId(opts.session);
+      if (uid) {
+        try {
+          const launchpadDoc = await withDashboardTimeout(
+            getSeLaunchpadReadModel(store, uid),
+            8000,
+            "getSeLaunchpadReadModel",
+          );
+          if (launchpadDoc?.qualityMetrics) {
+            remoteLaunchMetrics = {
+              totalCalls: launchpadDoc.callMetrics?.totalCalls ?? remoteLaunchMetrics.totalCalls,
+              callsThisWeek: launchpadDoc.callMetrics?.callsThisWeek ?? remoteLaunchMetrics.callsThisWeek,
+              records: remoteRecords,
+            };
+          }
+        } catch (err) {
+          console.warn("[dashboard] launchpad read model refresh failed:", err?.message || err);
+        }
+      }
+    }
+
+    const refreshedActivity = await buildRecentActivity(remoteRecords, remoteMetrics.usesLegacyCoach, opts);
+    if (!container.isConnected) return;
+    const remotePreps = await countPrepsGenerated(briefsCountFetcher(opts));
+    const grid = container.querySelector(".launch-kpi-grid");
+    if (grid) {
+      grid.outerHTML = renderLaunchKpis(
+        aggregateTaskMetrics(listTasks(email)),
+        remoteLaunchMetrics,
+        remotePreps,
+      );
+      wireLaunchKpiNav(container, email, opts);
+    }
+    const section = container.querySelector(".dash-side-recent");
+    if (section) {
+      section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
+      wireRecentActivitySection(container, opts);
+    }
+    wireCallLinks(container, opts.onOpenCall);
+    agentLog({
+      location: "dashboard.js:refreshLaunchpadRemote:done",
+      message: "Remote KPI refresh painted",
+      data: {
+        ms: Date.now() - tRemote,
+        calls: remoteLaunchMetrics.totalCalls,
+        preps: remotePreps,
+      },
+      hypothesisId: "B",
+    });
+  } catch (err) {
+    console.warn("[dashboard] remote refresh failed:", err?.message || err);
+  }
 }
 
 function analysesWithQualityFromRecords(records) {
@@ -1575,39 +1676,14 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   }, 12000);
 
   try {
-    let callRecords = await resolveCallRecords(email, fastOpts);
+    let callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
     let metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
     let launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
 
-    const [taskMetrics, prepsCount, activityItems] = await Promise.all([
-      Promise.resolve(aggregateTaskMetrics(listTasks(email))),
-      countPrepsGenerated(undefined),
-      buildRecentActivity(callRecords, metrics.usesLegacyCoach, fastOpts),
-    ]);
-
-    if (opts.session && store.getReadModel) {
-      const { effectiveSessionUserId } = await import("./domain/session.js");
-      const uid = effectiveSessionUserId(opts.session);
-      if (uid) {
-        try {
-          const launchpadDoc = await withDashboardTimeout(
-            getSeLaunchpadReadModel(store, uid),
-            8000,
-            "getSeLaunchpadReadModel",
-          );
-          if (launchpadDoc?.qualityMetrics) {
-            metrics = launchpadDoc.qualityMetrics;
-            launchCallMetrics = {
-              totalCalls: launchpadDoc.callMetrics?.totalCalls ?? launchCallMetrics.totalCalls,
-              callsThisWeek: launchpadDoc.callMetrics?.callsThisWeek ?? launchCallMetrics.callsThisWeek,
-              records: callRecords,
-            };
-          }
-        } catch (err) {
-          console.warn("[dashboard] launchpad read model failed:", err?.message || err);
-        }
-      }
-    }
+    const taskMetrics = aggregateTaskMetrics(listTasks(email));
+    const prepsCount = loadAllLocalBriefs().length;
+    const remotePending = launchpadRemotePending(callRecords, prepsCount, opts);
+    const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, fastOpts);
 
     const seName = opts.seName || displayNameForEmail(email) || "there";
     const { greeting } = getSessionGreeting();
@@ -1618,7 +1694,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
       <div class="launch-hero">
         <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
       </div>
-      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount)}
+      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount, { remotePending })}
       <div class="dash-split launch-split">
         <div class="dash-split-main">
           <div id="task-board-mount"></div>
@@ -1662,35 +1738,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     globalThis.clearTimeout(watchdog);
   }
 
-  if (opts.skipRemoteHistory !== true && typeof opts.fetchRemoteHistory === "function") {
-    void (async () => {
-      try {
-        const remoteRecords = await resolveCallRecords(email, opts);
-        if (!container.isConnected) return;
-        const remoteMetrics = aggregateQualityMetrics(analysesWithQualityFromRecords(remoteRecords));
-        const remoteLaunchMetrics = buildLaunchpadCallMetricsFromRecords(remoteRecords);
-        const refreshedActivity = await buildRecentActivity(remoteRecords, remoteMetrics.usesLegacyCoach, opts);
-        if (!container.isConnected) return;
-        const grid = container.querySelector(".launch-kpi-grid");
-        if (grid) {
-          grid.outerHTML = renderLaunchKpis(
-            aggregateTaskMetrics(listTasks(email)),
-            remoteLaunchMetrics,
-            await countPrepsGenerated(briefsCountFetcher(opts)),
-          );
-          wireLaunchKpiNav(container, email, opts);
-        }
-        const section = container.querySelector(".dash-side-recent");
-        if (section) {
-          section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
-          wireRecentActivitySection(container, opts);
-        }
-        wireCallLinks(container, opts.onOpenCall);
-      } catch (err) {
-        console.warn("[dashboard] remote refresh failed:", err?.message || err);
-      }
-    })();
-  }
+  void refreshLaunchpadRemote(container, email, opts);
 }
 
 async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {

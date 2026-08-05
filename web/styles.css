@@ -4235,6 +4235,26 @@ a { color: var(--accent); }
   color: var(--dew-text);
   font-variant-numeric: tabular-nums;
 }
+.launch-kpi-value--pending {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2rem;
+}
+.launch-kpi-shimmer {
+  display: block;
+  width: 2.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--dew-border) 55%, transparent) 0%,
+    color-mix(in srgb, var(--dew-teal) 18%, var(--dew-border)) 50%,
+    color-mix(in srgb, var(--dew-border) 55%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: launch-skeleton-shimmer 1.2s ease-in-out infinite;
+}
 .launch-kpi-delta {
   font-size: 12.5px;
   font-weight: 600;

@@ -1875,6 +1875,9 @@ async function showApp(session, opts = {}) {
     refreshSidebarRecentWork();
 
     applySessionAuthGetters();
+    void loadPersistedHistory().catch((err) => {
+      console.warn("[app] early history hydrate failed:", err?.message || err);
+    });
     try {
       await applyInitialRouteFromHash(currentSession);
     } catch (err) {
