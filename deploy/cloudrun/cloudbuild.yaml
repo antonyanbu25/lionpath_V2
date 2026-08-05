@@ -14,21 +14,26 @@ substitutions:
   _REPO: prep-portal
   _TAG: latest
 
-availableSecrets:
-  secretManager:
-    - versionName: projects/${_PROJECT}/secrets/firebase-config-local/versions/latest
-      env: FIREBASE_CONFIG_LOCAL
-
 steps:
-  # Inject gitignored Firebase SSO config before web Docker build
+  # Inject gitignored Firebase SSO config before web Docker build.
+  # Manual submit: upload web/firebase-config.local.js (see .gcloudignore) — no Secret Manager call.
+  # Git trigger: file absent from repo — fetch via gcloud (Cloud Build SA needs secretAccessor).
   - name: gcr.io/cloud-builders/gcloud
     id: firebase-config
     entrypoint: bash
-    secretEnv:
-      - FIREBASE_CONFIG_LOCAL
     args:
       - -c
-      - printf '%s' "$$FIREBASE_CONFIG_LOCAL" > web/firebase-config.local.js
+      - |
+        set -euo pipefail
+        if [ -f web/firebase-config.local.js ]; then
+          echo "web/firebase-config.local.js already present in build workspace; skipping Secret Manager fetch."
+          exit 0
+        fi
+        echo "web/firebase-config.local.js missing; fetching from Secret Manager..."
+        gcloud secrets versions access latest \
+          --secret=firebase-config-local \
+          --project="${_PROJECT}" \
+          > web/firebase-config.local.js
 
   - name: gcr.io/cloud-builders/docker
     id: build-api
