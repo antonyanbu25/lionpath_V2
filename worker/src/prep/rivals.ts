@@ -26,7 +26,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import type { Citation } from "../providers/types";
 import type { Env } from "./types";
@@ -472,7 +472,7 @@ export async function generateRivalComparison(
   },
 ): Promise<RivalComparison | null> {
   if (!input?.companyName) return null;
-  const provider = getProvider(env);
+  const provider = getProviderForPass("rivals", env);
 
   let result;
   try {

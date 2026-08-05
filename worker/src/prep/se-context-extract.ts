@@ -1,5 +1,5 @@
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import { FACT_KEYS, SIGNAL_LABELS } from "../schema";
 import { SE_SOURCE } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
@@ -68,7 +68,7 @@ export async function extractSeContextFacts(
   const text = String(additionalContext || "").trim();
   if (text.length < 40) return { facts: [], sources: [] };
 
-  const provider = getProvider(env);
+  const provider = getProviderForPass("se-context-extract", env);
   let result;
   try {
     result = await provider.generate({

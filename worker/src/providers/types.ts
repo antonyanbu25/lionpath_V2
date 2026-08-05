@@ -31,6 +31,8 @@ export interface LlmUsage {
   cachedTokens: number;
   groundingQueries: number;
   latencyMs: number;
+  /** True when this call was skipped because a 30-day research bundle cache hit. */
+  cacheHit?: boolean;
 }
 
 export interface LlmRequest {
@@ -54,6 +56,8 @@ export interface LlmRequest {
   /** Firestore usage attribution — set by route handlers when available. */
   userId?: string;
   callId?: string;
+  /** 30-day research bundle cache — research passes skipped LLM when true. */
+  cacheHit?: boolean;
   /** Gemini cachedContents resource name — transcript prefix cached per call. */
   cachedContent?: string;
   /** Gemini cachedContents for static system/rubric — used instead of inline systemInstruction. */

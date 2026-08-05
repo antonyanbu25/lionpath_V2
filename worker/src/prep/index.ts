@@ -26,6 +26,7 @@ import { generateRivalComparison } from "./rivals";
 import { extractFishSizingFromContext } from "./rivals-context";
 import { generateCompanyNews } from "./company-news";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
+import { recordResearchCacheHit } from "./research-cache-usage";
 import { padSources } from "./source-table";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
@@ -155,6 +156,7 @@ async function gatherResearch(
 
   const { cacheHit, bundle, softCacheHit } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
+    recordResearchCacheHit(env, { userId: input.userId, callId: input.callId ?? input.lifecycleId });
     const tCache = Date.now();
     const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
@@ -408,12 +410,16 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       callId: input.callId ?? input.lifecycleId,
     }),
     // Gemini + DDG in parallel inside generateCompanyNews.
-    generateCompanyNews(env, {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
-    }),
+    generateCompanyNews(
+      env,
+      {
+        companyName: input.companyName,
+        companyDomain: input.companyDomain,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
+      },
+      { cachedSnippets: research.snippets },
+    ),
     hasAeContext
       ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
           userId: input.userId,
@@ -605,12 +611,16 @@ export async function runPrepSynthesize(
     }),
     // Its own grounded search. The research pass surfaces news only incidentally, and the three
     // paths that used to fill this panel let SE context through as "news" instead.
-    generateCompanyNews(env, {
-      companyName: input.companyName,
-      companyDomain: input.companyDomain,
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
-    }),
+    generateCompanyNews(
+      env,
+      {
+        companyName: input.companyName,
+        companyDomain: input.companyDomain,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
+      },
+      { cachedSnippets: rawInput.researchBundle?.snippets },
+    ),
     hasAeContext
       ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
           userId: input.userId,

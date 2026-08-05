@@ -13,12 +13,18 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import type { RecentNewsItem } from "../schema";
 import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
+import {
+  canReuseNewsGrounding,
+  citationsFromSnippets,
+  formatSnippetsBlock,
+  newsGroundedSnippets,
+} from "./grounded-context";
 import type { Citation } from "../providers/types";
 import type { LlmResult } from "../providers/types";
-import type { Env } from "./types";
+import type { Env, ResearchSnippet } from "./types";
 
 export const MAX_NEWS_ITEMS = 5;
 /** Recency bar. Anything older is not "recent news" to an SE on a call today. */
@@ -200,6 +206,17 @@ export function shapeCompanyNews(
   return { items, sources: sources.filter((s) => cited.has(s.label)), dropped };
 }
 
+const CACHED_SYSTEM_PROMPT = `You find recent news about a company for a Solution Engineer about to speak to them.
+
+You are given web research snippets retrieved earlier in this prep run. Use ONLY those snippets.
+
+RULES
+- Anything genuinely newsworthy about the company counts: funding, launches, leadership moves, acquisitions, expansion, results, regulatory or outage events.
+- Last ${NEWS_WINDOW_MONTHS} months only.
+- Give the publisher domain you read each item from — it must appear in the snippet citations.
+- Never infer, combine or extrapolate an event.
+- Returning nothing is correct when the snippets contain nothing recent.`;
+
 /**
  * Grounded company news. Returns null whenever nothing is traceable — an absent panel is honest,
  * and is much better than the SE's own notes handed back as news.
@@ -207,9 +224,51 @@ export function shapeCompanyNews(
 async function fetchGeminiCompanyNews(
   env: Env,
   input: { companyName: string; companyDomain?: string; userId?: string; callId?: string },
+  cachedSnippets?: ResearchSnippet[],
 ): Promise<CompanyNews | null> {
   if (!input?.companyName) return null;
-  const provider = getProvider(env);
+
+  const newsSnippets = cachedSnippets ? newsGroundedSnippets(cachedSnippets) : [];
+  const reuseGrounding = newsSnippets.length > 0 && canReuseNewsGrounding(cachedSnippets);
+
+  if (reuseGrounding) {
+    const provider = getProviderForPass("company-news", env);
+    const citations = await resolveRedirectUrls(citationsFromSnippets(newsSnippets));
+    let result: LlmResult | null = null;
+    try {
+      result = await provider.generate({
+        system: CACHED_SYSTEM_PROMPT,
+        user: [
+          buildUserPrompt(input),
+          formatSnippetsBlock(
+            newsSnippets,
+            "RESEARCH SNIPPETS (from playbook — do not web search):",
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        maxTokens: 1200,
+        temperature: 0.2,
+        research: false,
+        jsonSchema: NEWS_SCHEMA as unknown as Record<string, unknown>,
+        step: "prep/company-news-cached",
+        passName: "company-news",
+        userId: input.userId,
+        callId: input.callId,
+      });
+    } catch (err) {
+      console.warn("prep/company-news cached skipped:", (err as Error).message);
+    }
+    if (result) {
+      try {
+        return shapeCompanyNews(extractJson<{ items?: RawNewsItem[] }>(result.text), citations);
+      } catch (err) {
+        console.warn("prep/company-news cached unparsable:", (err as Error).message);
+      }
+    }
+  }
+
+  const provider = getProviderForPass("company-news", env);
 
   let result: LlmResult | null = null;
   try {
@@ -300,24 +359,28 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
 export async function generateCompanyNews(
   env: Env,
   input: { companyName: string; companyDomain?: string; userId?: string; callId?: string },
-): Promise<(CompanyNews & { pipeline?: { gemini: number; web: number } }) | null> {
+  options?: { cachedSnippets?: ResearchSnippet[] },
+): Promise<(CompanyNews & { pipeline?: { gemini: number; web: number; reusedGrounding?: boolean } }) | null> {
   if (!input?.companyName) return null;
 
   const { searchCompanyNewsWeb } = await import("../research/providers/company-news-search");
+  const reusedGrounding = canReuseNewsGrounding(options?.cachedSnippets);
 
   const [gemini, ddg] = await Promise.all([
-    fetchGeminiCompanyNews(env, input),
-    searchCompanyNewsWeb(input).catch((err) => {
-      console.warn("prep/company-news DDG skipped:", (err as Error).message);
-      return null;
-    }),
+    fetchGeminiCompanyNews(env, input, options?.cachedSnippets),
+    reusedGrounding
+      ? Promise.resolve(null)
+      : searchCompanyNewsWeb(input).catch((err) => {
+          console.warn("prep/company-news DDG skipped:", (err as Error).message);
+          return null;
+        }),
   ]);
 
   const merged = mergeCompanyNews(gemini, ddg);
   const geminiCount = gemini?.items.length ?? 0;
   const webCount = ddg?.items.length ?? 0;
   console.info(
-    `[prep/company-news] ${input.companyName}: gemini=${geminiCount} web=${webCount} merged=${merged?.items.length ?? 0}`,
+    `[prep/company-news] ${input.companyName}: gemini=${geminiCount} web=${webCount} merged=${merged?.items.length ?? 0}${reusedGrounding ? " reused-playbook-grounding" : ""}`,
   );
   if (merged) {
     if (geminiCount && webCount) {
@@ -327,7 +390,7 @@ export async function generateCompanyNews(
     } else if (webCount && !geminiCount) {
       console.info(`[prep/company-news] web/RSS returned ${webCount} item(s)`);
     }
-    return { ...merged, pipeline: { gemini: geminiCount, web: webCount } };
+    return { ...merged, pipeline: { gemini: geminiCount, web: webCount, reusedGrounding } };
   }
   return null;
 }

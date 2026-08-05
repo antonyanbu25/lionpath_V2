@@ -116,6 +116,8 @@ async function main() {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     LLM_PROVIDER: process.env.LLM_PROVIDER || "gemini",
     MODEL: process.env.MODEL,
+    RESEARCH_MODEL: process.env.RESEARCH_MODEL,
+    SYNTHESIZE_MODEL: process.env.SYNTHESIZE_MODEL,
     EFFORT: process.env.EFFORT || "low",
   };
 

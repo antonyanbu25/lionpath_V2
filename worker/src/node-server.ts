@@ -7,6 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
 import { firestoreAdminBootStatus } from "./data/firestore-admin";
+import { logResolvedModels } from "./providers";
 import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
 import type { HistoryEnv } from "./history";
 import type { Env as PrepEnv } from "./prep";
@@ -171,6 +172,7 @@ createServer(async (req, res) => {
   }
 }).listen(PORT, HOST, () => {
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
+  logResolvedModels(env);
   console.log(`SE Paathai worker listening on http://${HOST}:${PORT}`);
   console.log(
     historyDir

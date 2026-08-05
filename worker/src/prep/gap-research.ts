@@ -1,4 +1,4 @@
-import { getResearchProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import { SIGNAL_LABELS } from "../schema";
 import { extractFacts } from "./extract-facts";
 import { runResilientResearchQueries } from "./research";
@@ -63,7 +63,7 @@ async function runGapQueries(
   usage?: { userId?: string; callId?: string },
 ): Promise<ResearchSnippet[]> {
   if (!queries.length) return [];
-  const provider = getResearchProvider(env);
+  const provider = getProviderForPass("gap-research", env);
   return runResilientResearchQueries(
     provider,
     queries,

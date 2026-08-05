@@ -3,7 +3,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import type { Env, PrepInput, ResearchFact, ResearchSnippet, SourceRef } from "./types";
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
@@ -184,7 +184,7 @@ export async function extractLinkedInPdfFacts(
     ].join("\n");
   });
 
-  const provider = getProvider(env);
+  const provider = getProviderForPass("linkedin-pdf", env);
   const result = await provider.generate({
     system: `Extract prospect facts from LinkedIn PDF export text ONLY. Do not invent.
 Output facts with category "prospect". Keys like: Name, Role, Location, Summary, Experience, Skills, Languages, LinkedIn URL.

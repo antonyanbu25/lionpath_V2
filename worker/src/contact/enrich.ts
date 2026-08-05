@@ -3,7 +3,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import type { Env } from "../prep/types";
 import { fetchKaiaSummary } from "../kaia/fetchShareContent";
 import { isKaiaEngageShareUrl } from "../kaia/shareLink";
@@ -310,7 +310,7 @@ export async function enrichContact(env: Env, req: ContactEnrichRequest): Promis
   const linkedInOnly = discSource === "linkedin_pdf";
   const kaiaSpeakerScoped = !!req.sources.kaiaSummary?.includes("Speaker-specific segments:");
 
-  const provider = getProvider(env);
+  const provider = getProviderForPass("contact/enrich", env);
   const enrichPrompt = {
     system: `You extract a prospect profile and infer DISC from provided text ONLY. Do not invent employers, dates, or traits not supported by the text.
 

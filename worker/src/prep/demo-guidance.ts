@@ -16,7 +16,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import type { Prep } from "../schema";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type { Env } from "./types";
@@ -320,7 +320,7 @@ export async function generateDemoGuidance(
     incumbentName: input.incumbent?.incumbent_name,
     companyName: input.companyName,
   });
-  const provider = getProvider(env);
+  const provider = getProviderForPass("demo-guidance", env);
 
   let result;
   try {

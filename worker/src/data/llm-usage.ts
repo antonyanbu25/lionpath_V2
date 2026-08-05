@@ -49,6 +49,7 @@ export function recordLlmUsage(
         cachedTokens: record.cachedTokens,
         groundingQueries: record.groundingQueries,
         latencyMs: record.latencyMs,
+        cacheHit: record.cacheHit === true,
         createdAt: Date.now(),
       });
     } catch (err) {

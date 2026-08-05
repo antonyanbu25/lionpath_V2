@@ -4,7 +4,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import type { Env } from "./types";
 
 export interface FishContextMetric {
@@ -117,7 +117,7 @@ export async function extractFishSizingFromContext(
   const text = String(additionalContext || "").trim();
   if (text.length < 20 || !companyName) return null;
 
-  const provider = getProvider(env);
+  const provider = getProviderForPass("rivals-context", env);
   let result;
   try {
     result = await provider.generate({

@@ -3,6 +3,7 @@ import { toPrepGeminiResponseSchema } from "../gemini-schema";
 import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } from "../icp-kb";
 import { extractJson } from "../json";
 import { getSynthesizeProvider } from "../providers";
+import { resolvePassModel } from "../providers/pass-models";
 import { getStaticCache } from "../providers/gemini-cache";
 import { effectiveGeminiModel } from "../providers/gemini";
 import { PREP_SCHEMA, type Prep } from "../schema";
@@ -185,7 +186,7 @@ async function generateSynthesis(
 ) {
   const effort = input.effort || "medium";
   const systemText = synthesizeSystemPrompt();
-  const model = effectiveGeminiModel(env, env.SYNTHESIZE_MODEL);
+  const model = effectiveGeminiModel(env, resolvePassModel("synthesize", env));
   const staticCache = await getStaticCache(env, {
     cacheKey: "prep-synthesize-system",
     content: systemText,

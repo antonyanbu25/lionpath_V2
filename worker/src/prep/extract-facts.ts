@@ -1,6 +1,6 @@
 import { FRESHWORKS_KB } from "../kb";
 import { extractJson } from "../json";
-import { getProvider } from "../providers";
+import { getProviderForPass } from "../providers";
 import { factsFromSeContext } from "./se-context-facts";
 import {
   buildSourceTable,
@@ -119,7 +119,7 @@ export async function extractFacts(
 
   const table = buildSourceTable(snippets, { offset, seContext: hasContext });
 
-  const provider = getProvider(env);
+  const provider = getProviderForPass("extract-facts", env);
   let result;
   try {
     result = await provider.generate({
