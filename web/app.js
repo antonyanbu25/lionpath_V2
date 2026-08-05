@@ -1653,8 +1653,8 @@ let showAppInFlight = false;
 let ssoInFlight = false;
 
 function setAppLoadingMessage(message) {
-  const span = $("app-loading")?.querySelector("span");
-  if (span) span.textContent = message;
+  const el = $("app-loading-message") || $("app-loading")?.querySelector(".app-loading-message");
+  if (el) el.textContent = message;
 }
 
 function showAuthWaiting(message = "Waiting for Google sign-in…") {

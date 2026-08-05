@@ -214,6 +214,11 @@ body.splash-lock { overflow: hidden; }
   border: 1px solid var(--dew-border);
   box-shadow: var(--dew-shadow-popover);
 }
+.app-loading-message {
+  white-space: nowrap;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
 .dew-status-host {
   margin: 0 26px 16px;
 }
