@@ -6,7 +6,8 @@ import type { TimelineSegmentType, VideoFactsDraft } from "../domain-model/video
 import { keyframeRetentionExpiresAt } from "./retention";
 
 export const DEFAULT_SAMPLE_INTERVAL_S = 10;
-export const MAX_KEYFRAMES = 20;
+/** Strategic windows (5) × ~2 frames each — enough for per-window vision without extra cost. */
+export const MAX_KEYFRAMES = 10;
 
 export interface SampleFrame {
   atS: number;
@@ -72,22 +73,36 @@ export function pickVisionKeyframes(samples: SampleFrame[], max = MAX_KEYFRAMES)
   }
   if (!byWindow.size) return pickKeyframes(samples, max);
 
+  const windows = [...byWindow.entries()].sort((a, b) => a[1][0].atS - b[1][0].atS);
   const chosen: SampleFrame[] = [];
-  const windowCount = byWindow.size;
-  const perWindow = Math.max(2, Math.floor(max / windowCount));
+  const pickedIdx = new Map<string, Set<number>>();
 
-  for (const frames of byWindow.values()) {
-    if (!frames.length) continue;
-    const stride = Math.max(1, Math.floor(frames.length / perWindow));
-    const local = new Set<number>();
-    for (let i = 0; i < frames.length && local.size < perWindow; i += stride) {
-      local.add(i);
+  // Phase 1 — one frame per window (midpoint) so camera aggregation never loses a window.
+  for (const [label, frames] of windows) {
+    if (chosen.length >= max) break;
+    const idx = Math.floor((frames.length - 1) / 2);
+    chosen.push(frames[idx]);
+    pickedIdx.set(label, new Set([idx]));
+  }
+
+  // Phase 2 — spend remaining budget evenly across windows (first, last, stride).
+  const windowCount = windows.length;
+  const perWindowExtra = Math.max(1, Math.floor((max - chosen.length) / windowCount));
+  for (const [label, frames] of windows) {
+    if (chosen.length >= max) break;
+    const local = pickedIdx.get(label) || new Set<number>();
+    const extras = new Set<number>([0, frames.length - 1]);
+    const stride = Math.max(1, Math.floor(frames.length / (perWindowExtra + 1)));
+    for (let i = 0; i < frames.length && extras.size < perWindowExtra + 2; i += stride) {
+      extras.add(i);
     }
-    local.add(Math.floor((frames.length - 1) / 2));
-    local.add(frames.length - 1);
-    for (const idx of [...local].sort((a, b) => a - b)) {
-      if (chosen.length < max) chosen.push(frames[idx]);
+    for (const idx of [...extras].sort((a, b) => a - b)) {
+      if (chosen.length >= max) break;
+      if (local.has(idx)) continue;
+      local.add(idx);
+      chosen.push(frames[idx]);
     }
+    pickedIdx.set(label, local);
   }
 
   return chosen.sort((a, b) => a.atS - b.atS).slice(0, max);

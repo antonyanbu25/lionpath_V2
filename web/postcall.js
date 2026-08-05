@@ -3546,7 +3546,8 @@ async function confirmAndGenerate(e) {
       ? Math.round(Number(pipelineState.resolve.durationMinutes) * 60)
       : null);
   const canRunPass2 =
-    (pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0;
+    !!pipelineState.payload.enableVideoPass &&
+    ((pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0);
   const pass2UsesFfmpeg = pass2RecordingUrl.length > 0;
 
   showPostCallPipeline([
@@ -3577,6 +3578,7 @@ async function confirmAndGenerate(e) {
         durationSec: pass2DurationSec,
         callType,
         visualAnalysisConsent: true,
+        enableVideoPass: true,
         seIdentity,
         aeIdentity,
         customerIdentities,
@@ -4126,9 +4128,9 @@ async function collectIntakePayload() {
   const additionalContext =
     mergeContextAttachments(additionalContextRaw, contextAttachments) || undefined;
   const linkedinProfileExports = linkedinProfileExportsForPayload("postcall");
-  // SEs are obliged to visual analysis by policy — no per-call checkbox.
-  // Kept in the payload because the worker (Pass 2 + scorecard camera_on) reads it.
-  const visualAnalysisConsent = true;
+  const enableVideoPass = !!$("pc-enable-video-pass")?.checked;
+  // Face/camera vision when Pass 2 runs — policy allows SE camera scoring.
+  const visualAnalysisConsent = enableVideoPass;
 
   setFieldError(recordingField);
   setFieldError(emailsField);
@@ -4186,6 +4188,7 @@ async function collectIntakePayload() {
       linkedinProfileExports,
       linkedinProfileExportsStored: linkedinProfileExportsForStorage("postcall"),
       visualAnalysisConsent,
+      enableVideoPass,
       accountId: pcResolvedAccount?.id || undefined,
       createNewAccount: shouldCreateAccount || undefined,
       dealId: pcCreateNewDeal ? undefined : pcSelectedDealId || undefined,

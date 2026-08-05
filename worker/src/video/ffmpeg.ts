@@ -134,6 +134,7 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
     "-t",
     String(capSec),
     "-vf",
+    // 640px wide keeps frames under Gemini's 768px tiling threshold (1 tile/frame).
     `fps=${fps},scale=640:-2`,
     "-q:v",
     "5",
@@ -233,6 +234,7 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
       "-t",
       String(clipDur),
       "-vf",
+      // 640px wide — under Gemini 768px tile limit; see frame-image.ts for upload guard.
       `fps=1/${interval},scale=640:-2`,
       "-q:v",
       "5",

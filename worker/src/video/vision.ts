@@ -6,8 +6,8 @@
  * Face/camera judgement requires visualAnalysisConsent === true.
  */
 
-import { readFile } from "node:fs/promises";
 import { extractJson } from "../json";
+import { prepareVisionFrameBytes } from "./frame-image";
 import { recordLlmUsage } from "../data/llm-usage";
 import type { FirestoreEnv } from "../data/firestore-admin";
 import { effectiveGeminiModel } from "../providers/gemini";
@@ -20,7 +20,10 @@ import {
   type VisionIdentities,
 } from "./sampling";
 
-const MAX_VISION_FRAMES = 24;
+import { MAX_KEYFRAMES } from "./facts";
+
+/** Match keyframe picker — vision receives pre-capped frames from pass2. */
+const MAX_VISION_FRAMES = MAX_KEYFRAMES;
 
 export type { VisionIdentities };
 
@@ -62,7 +65,7 @@ async function buildImageParts(
   const parts: Array<Record<string, unknown>> = [];
   for (const frame of keyframes.slice(0, MAX_VISION_FRAMES)) {
     try {
-      const bytes = await readFile(frame.path);
+      const bytes = await prepareVisionFrameBytes(frame.path);
       const windowTag = frame.windowLabel ? ` [window=${frame.windowLabel}]` : "";
       parts.push({ text: `Frame at ${Math.round(frame.atS)}s${windowTag}:` });
       parts.push({

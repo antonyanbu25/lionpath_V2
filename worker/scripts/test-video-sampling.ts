@@ -153,18 +153,39 @@ function testBuildAttendeeCurveCanonicalNames() {
 
 function testPickVisionKeyframesPerWindow() {
   const samples = [
-    { atS: 0, path: "/a.jpg", windowLabel: "opening_10pct" },
-    { atS: 3, path: "/b.jpg", windowLabel: "opening_10pct" },
-    { atS: 6, path: "/c.jpg", windowLabel: "opening_10pct" },
-    { atS: 900, path: "/d.jpg", windowLabel: "pct_30" },
-    { atS: 903, path: "/e.jpg", windowLabel: "pct_30" },
-    { atS: 1800, path: "/f.jpg", windowLabel: "pct_60" },
-    { atS: 2700, path: "/g.jpg", windowLabel: "pct_90" },
-    { atS: 3540, path: "/h.jpg", windowLabel: "closing_1min" },
+    { atS: 0, path: "/a0.jpg", windowLabel: "opening_10pct" },
+    { atS: 3, path: "/a1.jpg", windowLabel: "opening_10pct" },
+    { atS: 6, path: "/a2.jpg", windowLabel: "opening_10pct" },
+    { atS: 9, path: "/a3.jpg", windowLabel: "opening_10pct" },
+    { atS: 900, path: "/b0.jpg", windowLabel: "pct_30" },
+    { atS: 903, path: "/b1.jpg", windowLabel: "pct_30" },
+    { atS: 906, path: "/b2.jpg", windowLabel: "pct_30" },
+    { atS: 909, path: "/b3.jpg", windowLabel: "pct_30" },
+    { atS: 1800, path: "/c0.jpg", windowLabel: "pct_60" },
+    { atS: 1803, path: "/c1.jpg", windowLabel: "pct_60" },
+    { atS: 1806, path: "/c2.jpg", windowLabel: "pct_60" },
+    { atS: 1809, path: "/c3.jpg", windowLabel: "pct_60" },
+    { atS: 2700, path: "/d0.jpg", windowLabel: "pct_90" },
+    { atS: 2703, path: "/d1.jpg", windowLabel: "pct_90" },
+    { atS: 2706, path: "/d2.jpg", windowLabel: "pct_90" },
+    { atS: 2709, path: "/d3.jpg", windowLabel: "pct_90" },
+    { atS: 3540, path: "/e0.jpg", windowLabel: "closing_1min" },
+    { atS: 3543, path: "/e1.jpg", windowLabel: "closing_1min" },
+    { atS: 3546, path: "/e2.jpg", windowLabel: "closing_1min" },
+    { atS: 3549, path: "/e3.jpg", windowLabel: "closing_1min" },
   ];
-  const picked = pickVisionKeyframes(samples, 20);
-  const labels = new Set(picked.map((s) => s.windowLabel));
-  assert.equal(labels.size, 5, "every strategic window represented");
+  const picked10 = pickVisionKeyframes(samples, 10);
+  const picked20 = pickVisionKeyframes(samples, 20);
+  const labels10 = new Set(picked10.map((s) => s.windowLabel));
+  const labels20 = new Set(picked20.map((s) => s.windowLabel));
+  assert.equal(labels10.size, 5, "10-frame budget covers all strategic windows");
+  assert.equal(labels20.size, 5, "20-frame budget covers all strategic windows");
+  assert.ok(picked10.length <= 10, "10-frame cap honored");
+  assert.ok(picked10.length >= labels10.size, "at least one frame per window at 10");
+  assert.ok(picked20.length > picked10.length, "20 frames picks more than 10");
+  assert.ok(picked20.length <= 20, "20-frame cap honored");
+  // Marginal value: same window coverage, extra frames are within-window density only.
+  assert.equal(labels10.size, labels20.size, "10 vs 20 — identical window coverage");
 }
 
 function testMergeAttendeeCurveTalk() {

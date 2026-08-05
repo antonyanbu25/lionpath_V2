@@ -6,9 +6,59 @@
 import { recordLlmUsage } from "../data/llm-usage";
 import type { FirestoreEnv } from "../data/firestore-admin";
 import type { TimelineSegmentType } from "../domain-model/video-facts";
-import type { ProviderEnv } from "../providers/types";import { buildVideoFactsDraft } from "./facts";
+import type { ProviderEnv } from "../providers/types";
+import { parseTranscriptCues } from "../transcript";
+import { buildVideoFactsDraft } from "./facts";
+import { computeStrategicSampleWindows } from "./sampling";
 
-const MAX_TRANSCRIPT_CHARS = 120_000;
+/** Hard cap after strategic windowing (~12k tokens). */
+const MAX_TRANSCRIPT_CHARS = 48_000;
+
+/** @internal exported for unit tests */
+export function selectTranscriptForVideoInfer(
+  raw: string,
+  durationSec?: number | null,
+  maxChars = MAX_TRANSCRIPT_CHARS,
+): string {
+  const input = raw?.trim() || "";
+  if (!input || input.length <= maxChars) return input;
+
+  const cues = parseTranscriptCues(input);
+  if (cues.length) {
+    const dur =
+      durationSec && durationSec > 0
+        ? durationSec
+        : Math.max(...cues.map((c) => c.endS ?? c.startS), 60);
+    const windows = computeStrategicSampleWindows(dur);
+    const selected: string[] = [];
+    const seen = new Set<number>();
+    for (const win of windows) {
+      for (const cue of cues) {
+        if (cue.startS < win.startS || cue.startS >= win.endS) continue;
+        const key = Math.round(cue.startS * 10);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const prefix = cue.speaker ? `${cue.speaker}: ` : "";
+        selected.push(`${prefix}${cue.text}`);
+      }
+    }
+    let joined = selected.join("\n");
+    if (joined.length > maxChars) joined = joined.slice(0, maxChars);
+    if (joined.length >= 500) {
+      return `[Strategic transcript windows — ~${Math.round(dur / 60)} min call]\n\n${joined}`;
+    }
+  }
+
+  const headLen = Math.floor(maxChars * 0.35);
+  const tailLen = Math.floor(maxChars * 0.35);
+  const midBudget = maxChars - headLen - tailLen - 120;
+  const head = input.slice(0, headLen);
+  const tail = input.slice(-tailLen);
+  const midStart = Math.floor(input.length * 0.3);
+  const mid = input.slice(midStart, midStart + Math.max(0, midBudget));
+  const sampled = `[Transcript sampled — full text ${input.length} chars]\n\n${head}\n\n[... mid-call sample ...]\n\n${mid}\n\n[... closing ...]\n\n${tail}`;
+  return sampled.slice(0, maxChars);
+}
 
 const VIDEO_SEGMENT_TYPES = new Set<TimelineSegmentType>([
   "slides",
@@ -176,7 +226,12 @@ export async function inferVideoFactsFromTranscript(
   env: ProviderEnv & FirestoreEnv,
   input: TranscriptInferInput,
 ): Promise<ReturnType<typeof buildVideoFactsDraft>> {
-  const transcript = input.transcript?.trim().slice(0, MAX_TRANSCRIPT_CHARS) || "";
+  const transcript =
+    selectTranscriptForVideoInfer(
+      input.transcript || "",
+      input.durationSec ?? null,
+      MAX_TRANSCRIPT_CHARS,
+    ) || "";
   if (!transcript) {
     return buildVideoFactsDraft({
       status: "unavailable",

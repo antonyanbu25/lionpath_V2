@@ -215,6 +215,8 @@ function testProspectEmailFieldNotPrefilledInHtml() {
   assert(!match[0].includes("se@freshworks.com"), "demo SE email not in prospect field markup");
   assert(html.includes('id="postcall-form" autocomplete="off"'), "postcall form disables autocomplete");
   assert(html.includes("postcall-autofill-decoys"), "decoy autofill trap fields present");
+  assert(html.includes('id="pc-enable-video-pass"'), "video pass opt-in toggle present");
+  assert(!html.includes('id="pc-enable-video-pass" checked'), "video pass toggle defaults off");
 }
 
 function testSessionEmailRejectedFromProspects() {

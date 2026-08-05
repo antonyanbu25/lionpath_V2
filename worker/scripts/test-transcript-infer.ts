@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { parseInferResponse } from "../src/video/transcript-infer.ts";
+import { parseInferResponse, selectTranscriptForVideoInfer } from "../src/video/transcript-infer.ts";
 
 const parsed = parseInferResponse(
   {
@@ -45,5 +45,35 @@ const noConsent = parseInferResponse(
 assert.equal(noConsent.cameraOnPct, null);
 assert.equal(noConsent.shareOnPct, 50);
 assert.equal(noConsent.participants[0].cameraOn, true);
+
+function testSelectTranscriptWindow() {
+  const short = "Hello world transcript.";
+  assert.equal(selectTranscriptForVideoInfer(short, 600), short);
+
+  const vtt = [
+    "WEBVTT",
+    "",
+    "00:00:00.000 --> 00:00:05.000",
+    "SE: Opening slides here.",
+    "",
+    "00:15:00.000 --> 00:15:05.000",
+    "SE: Mid demo product UI.",
+    "",
+    "00:44:00.000 --> 00:44:05.000",
+    "SE: Closing recap.",
+  ].join("\n");
+  const windowed = selectTranscriptForVideoInfer(vtt, 2700, 5000);
+  assert.ok(windowed.includes("Opening slides"), "opening window kept");
+  assert.ok(windowed.includes("Mid demo"), "mid window kept");
+  assert.ok(windowed.includes("Closing recap"), "closing window kept");
+  assert.ok(windowed.length <= 5000, "char cap honored");
+
+  const longPlain = "word ".repeat(20_000);
+  const plainWindowed = selectTranscriptForVideoInfer(longPlain, null, 1000);
+  assert.ok(plainWindowed.length <= 1000);
+  assert.ok(plainWindowed.includes("Transcript sampled"));
+}
+
+testSelectTranscriptWindow();
 
 console.log("test-transcript-infer: ok");

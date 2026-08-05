@@ -36,6 +36,8 @@ export interface VideoPassInput {
   visualAnalysisConsent?: boolean;
   /** Skip Gemini vision (tests / offline). */
   skipVision?: boolean;
+  /** Per-call opt-in — when false, skip Pass 2 entirely. */
+  enableVideoPass?: boolean;
   seIdentity?: string | null;
   aeIdentity?: string | null;
   customerIdentities?: string[] | null;
@@ -368,6 +370,16 @@ export async function runVideoPass(
       unavailable: true,
       reason: "callId is required",
       videoFacts: unavailableDraft("callId is required"),
+    };
+  }
+
+  if (input.enableVideoPass === false) {
+    return {
+      ok: false,
+      unavailable: true,
+      reason: "Video pass not requested for this call",
+      videoFacts: unavailableDraft("Video pass not requested"),
+      pass2Debug: { route: "unavailable" },
     };
   }
 
