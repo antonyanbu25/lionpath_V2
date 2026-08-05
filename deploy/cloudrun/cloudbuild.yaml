@@ -64,8 +64,8 @@ steps:
       - build-api
     args:
       - push
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api
 
   - name: gcr.io/cloud-builders/docker
     id: push-web
@@ -73,8 +73,8 @@ steps:
       - build-web
     args:
       - push
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web
 
 images:
   - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
