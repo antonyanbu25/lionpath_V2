@@ -1071,12 +1071,69 @@ function firstNameFromDisplay(seName) {
   return name.split(/\s+/)[0];
 }
 
+const KPI_SNAPSHOT_PREFIX = "se-sp-kpi-snapshot:";
+
+function readKpiSnapshot(email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return null;
+  try {
+    const raw =
+      sessionStorage.getItem(`${KPI_SNAPSHOT_PREFIX}${key}`) ??
+      localStorage.getItem(`${KPI_SNAPSHOT_PREFIX}${key}`);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    return snap && typeof snap === "object" ? snap : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeKpiSnapshot(email, data) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key || !data) return;
+  try {
+    const json = JSON.stringify({ ...data, savedAt: Date.now() });
+    sessionStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
+    localStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
+  } catch {
+    // ignore quota / private-mode errors
+  }
+}
+
+function metricsFromKpiSnapshot(snap) {
+  if (!snap) return null;
+  return {
+    taskMetrics: {
+      openTotal: snap.openTotal ?? 0,
+      overdueOpen: snap.overdueOpen ?? 0,
+      completedThisWeek: snap.completedThisWeek ?? 0,
+    },
+    launchCallMetrics: {
+      totalCalls: snap.totalCalls ?? 0,
+      callsThisWeek: snap.callsThisWeek ?? 0,
+    },
+    prepsCount: snap.prepsCount ?? 0,
+  };
+}
+
+function kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount) {
+  return {
+    openTotal: taskMetrics?.openTotal ?? 0,
+    overdueOpen: taskMetrics?.overdueOpen ?? 0,
+    completedThisWeek: taskMetrics?.completedThisWeek ?? 0,
+    totalCalls: launchCallMetrics?.totalCalls ?? 0,
+    callsThisWeek: launchCallMetrics?.callsThisWeek ?? 0,
+    prepsCount: prepsCount ?? 0,
+  };
+}
+
 function callsThisWeekCount(callMetrics) {
   return callMetrics.callsThisWeek ?? 0;
 }
 
 function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
   const remotePending = kpiOpts.remotePending || {};
+  const syncing = kpiOpts.syncing || {};
   const kpiValue = (value, stat) => {
     const pending =
       !value &&
@@ -1084,7 +1141,11 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
     if (pending) {
       return `<span class="launch-kpi-value launch-kpi-value--pending" data-stat="${stat}" aria-busy="true"><span class="launch-kpi-shimmer" aria-hidden="true"></span></span>`;
     }
-    return `<span class="launch-kpi-value" data-stat="${stat}">${value}</span>`;
+    const syncMark = syncing[stat]
+      ? `<span class="launch-kpi-syncing" aria-hidden="true" title="Syncing latest counts">↻</span>`
+      : "";
+    const cls = syncing[stat] ? " launch-kpi-value--syncing" : "";
+    return `<span class="launch-kpi-value${cls}" data-stat="${stat}">${value}${syncMark}</span>`;
   };
 
   const overdueDelta =
@@ -1270,12 +1331,28 @@ function localOnlyDashboardOpts(opts = {}) {
   return { ...opts, fetchAllRemotePreps: undefined, fetchRemotePreps: undefined, skipRemoteHistory: true };
 }
 
-function launchpadRemotePending(callRecords, prepsCount, opts = {}) {
+function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = null) {
   const hasRemoteHistory = typeof opts.fetchRemoteHistory === "function";
   const hasRemotePreps = typeof briefsCountFetcher(opts) === "function";
+  const cachedCalls = cached?.totalCalls;
+  const cachedPreps = cached?.prepsCount;
   return {
-    calls: hasRemoteHistory && !(callRecords?.length),
-    preps: hasRemotePreps && !prepsCount,
+    calls: hasRemoteHistory && !(callRecords?.length) && cachedCalls == null,
+    preps: hasRemotePreps && !prepsCount && cachedPreps == null,
+  };
+}
+
+function launchpadSyncingFlags(callRecords, prepsCount, cached, opts = {}) {
+  const hasRemoteHistory = typeof opts.fetchRemoteHistory === "function";
+  const hasRemotePreps = typeof briefsCountFetcher(opts) === "function";
+  const cachedMetrics = metricsFromKpiSnapshot(cached);
+  return {
+    calls:
+      hasRemoteHistory &&
+      !callRecords?.length &&
+      (cachedMetrics?.launchCallMetrics?.totalCalls ?? 0) > 0,
+    preps:
+      hasRemotePreps && !prepsCount && (cachedMetrics?.prepsCount ?? 0) > 0,
   };
 }
 
@@ -1292,7 +1369,33 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     hypothesisId: "B",
   });
   try {
-    const remoteRecords = await resolveCallRecords(email, { ...opts, skipRemoteHistory: false });
+    const store = getStore();
+    const prepsFetcher = briefsCountFetcher(opts);
+    const launchpadPromise =
+      opts.session && store.getReadModel
+        ? (async () => {
+            const { effectiveSessionUserId } = await import("./domain/session.js");
+            const uid = effectiveSessionUserId(opts.session);
+            if (!uid) return null;
+            try {
+              return await withDashboardTimeout(
+                getSeLaunchpadReadModel(store, uid),
+                8000,
+                "getSeLaunchpadReadModel",
+              );
+            } catch (err) {
+              console.warn("[dashboard] launchpad read model refresh failed:", err?.message || err);
+              return null;
+            }
+          })()
+        : Promise.resolve(null);
+
+    const [remoteRecords, remotePreps, launchpadDoc] = await Promise.all([
+      resolveCallRecords(email, { ...opts, skipRemoteHistory: false }),
+      typeof prepsFetcher === "function" ? countPrepsGenerated(prepsFetcher) : Promise.resolve(0),
+      launchpadPromise,
+    ]);
+
     agentLog({
       location: "dashboard.js:refreshLaunchpadRemote:records",
       message: "Remote call records loaded",
@@ -1303,40 +1406,20 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     const remoteMetrics = aggregateQualityMetrics(analysesWithQualityFromRecords(remoteRecords));
     let remoteLaunchMetrics = buildLaunchpadCallMetricsFromRecords(remoteRecords);
 
-    const store = getStore();
-    if (opts.session && store.getReadModel) {
-      const { effectiveSessionUserId } = await import("./domain/session.js");
-      const uid = effectiveSessionUserId(opts.session);
-      if (uid) {
-        try {
-          const launchpadDoc = await withDashboardTimeout(
-            getSeLaunchpadReadModel(store, uid),
-            8000,
-            "getSeLaunchpadReadModel",
-          );
-          if (launchpadDoc?.qualityMetrics) {
-            remoteLaunchMetrics = {
-              totalCalls: launchpadDoc.callMetrics?.totalCalls ?? remoteLaunchMetrics.totalCalls,
-              callsThisWeek: launchpadDoc.callMetrics?.callsThisWeek ?? remoteLaunchMetrics.callsThisWeek,
-              records: remoteRecords,
-            };
-          }
-        } catch (err) {
-          console.warn("[dashboard] launchpad read model refresh failed:", err?.message || err);
-        }
-      }
+    if (launchpadDoc?.qualityMetrics) {
+      remoteLaunchMetrics = {
+        totalCalls: launchpadDoc.callMetrics?.totalCalls ?? remoteLaunchMetrics.totalCalls,
+        callsThisWeek: launchpadDoc.callMetrics?.callsThisWeek ?? remoteLaunchMetrics.callsThisWeek,
+        records: remoteRecords,
+      };
     }
 
     const refreshedActivity = await buildRecentActivity(remoteRecords, remoteMetrics.usesLegacyCoach, opts);
     if (!container.isConnected) return;
-    const remotePreps = await countPrepsGenerated(briefsCountFetcher(opts));
+    const taskMetrics = aggregateTaskMetrics(listTasks(email));
     const grid = container.querySelector(".launch-kpi-grid");
     if (grid) {
-      grid.outerHTML = renderLaunchKpis(
-        aggregateTaskMetrics(listTasks(email)),
-        remoteLaunchMetrics,
-        remotePreps,
-      );
+      grid.outerHTML = renderLaunchKpis(taskMetrics, remoteLaunchMetrics, remotePreps);
       wireLaunchKpiNav(container, email, opts);
     }
     const section = container.querySelector(".dash-side-recent");
@@ -1345,6 +1428,7 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
       wireRecentActivitySection(container, opts);
     }
     wireCallLinks(container, opts.onOpenCall);
+    writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, remotePreps));
     agentLog({
       location: "dashboard.js:refreshLaunchpadRemote:done",
       message: "Remote KPI refresh painted",
@@ -1584,6 +1668,7 @@ async function updateLaunchKpis(container, email, opts = {}) {
     grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
     wireLaunchKpiNav(container, email, opts);
   }
+  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
   await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
 }
 
@@ -1648,18 +1733,24 @@ function renderLaunchpadFallback(container, email, opts, err) {
 
 export async function renderSeLaunchpad(container, email, opts = {}) {
   const t0 = Date.now();
+  const cached = readKpiSnapshot(email);
+  const cachedMetrics = metricsFromKpiSnapshot(cached);
+  const hasLocalData =
+    dedupeAnalysesByCallIdentity(listPostCallAnalyses(email)).length > 0 ||
+    loadAllLocalBriefs().length > 0;
   const hasReady = container.querySelector(".launchpad:not(.launchpad--loading)");
   if (!hasReady) {
-    renderDashboardLoadingShell(container);
+    if (!cachedMetrics && !hasLocalData) {
+      renderDashboardLoadingShell(container);
+    }
   }
 
-  const store = getStore();
   const fastOpts = localOnlyDashboardOpts(opts);
 
   agentLog({
     location: "dashboard.js:renderSeLaunchpad:start",
     message: "Dashboard render started",
-    data: { email: !!email, hasReady: !!hasReady },
+    data: { email: !!email, hasReady: !!hasReady, hasCachedKpi: !!cachedMetrics },
     hypothesisId: "A",
   });
 
@@ -1680,9 +1771,20 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     let metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
     let launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
 
-    const taskMetrics = aggregateTaskMetrics(listTasks(email));
-    const prepsCount = loadAllLocalBriefs().length;
-    const remotePending = launchpadRemotePending(callRecords, prepsCount, opts);
+    let taskMetrics = aggregateTaskMetrics(listTasks(email));
+    let prepsCount = loadAllLocalBriefs().length;
+
+    if (cachedMetrics) {
+      if (!callRecords.length && cachedMetrics.launchCallMetrics.totalCalls > 0) {
+        launchCallMetrics = { ...cachedMetrics.launchCallMetrics, records: callRecords };
+      }
+      if (!prepsCount && cachedMetrics.prepsCount > 0) {
+        prepsCount = cachedMetrics.prepsCount;
+      }
+    }
+
+    const remotePending = launchpadRemotePending(callRecords, prepsCount, opts, cached);
+    const syncing = launchpadSyncingFlags(callRecords, prepsCount, cached, opts);
     const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, fastOpts);
 
     const seName = opts.seName || displayNameForEmail(email) || "there";
@@ -1694,7 +1796,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
       <div class="launch-hero">
         <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
       </div>
-      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount, { remotePending })}
+      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount, { remotePending, syncing })}
       <div class="dash-split launch-split">
         <div class="dash-split-main">
           <div id="task-board-mount"></div>
@@ -1725,10 +1827,14 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
       btn.addEventListener("fwClick", () => opts.onAnalyze?.());
     });
 
+    if (!remotePending.calls && !remotePending.preps) {
+      writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount));
+    }
+
     agentLog({
       location: "dashboard.js:renderSeLaunchpad:done",
       message: "Dashboard render completed",
-      data: { ms: Date.now() - t0, callRecords: callRecords.length },
+      data: { ms: Date.now() - t0, callRecords: callRecords.length, fromCache: !!cachedMetrics },
       hypothesisId: "A",
     });
   } catch (err) {

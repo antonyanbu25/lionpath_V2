@@ -2270,12 +2270,13 @@ async function initFirebase() {
     }
     if (existing?.email) {
       agentLog({
-        location: "app.js:firebaseBootstrap-stale-clear",
-        message: "Clearing stale local session (no Firebase user)",
+        location: "app.js:firebaseBootstrap-restore",
+        message: "Restoring persisted session while Firebase auth pending",
         data: { email: existing.email },
         hypothesisId: "D",
       });
-      logout();
+      handleSession(existing, { restored: true });
+      return;
     }
     if (!showAppInFlight && !ssoInFlight) showLogin();
   });
@@ -2346,6 +2347,13 @@ async function boot() {
     window.__flushAgentLogs = flushAgentLogs;
   }
   restoreAuthenticatedShell();
+  const bootSession = getSession();
+  if (bootSession?.email) {
+    currentSession = { ...bootSession, email: String(bootSession.email).trim().toLowerCase() };
+    void loadPersistedHistory().catch((err) => {
+      console.warn("[app] boot history prefetch failed:", err?.message || err);
+    });
+  }
   assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
   if (authMode() === "firebase") {
