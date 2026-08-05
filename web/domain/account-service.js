@@ -1022,7 +1022,15 @@ export async function listDealsForSession(session, opts = {}) {
       if (!account?.id) continue;
       const dealList = deals?.length
         ? deals
-        : await safeStoreOp("listDealsForAccount", () => listDealsForAccount(account.id), []);
+        : await safeStoreOp(
+            "listDealsForAccount",
+            () =>
+              listDealsForAccount(account.id, {
+                ownerId: sessionUserId(session) || undefined,
+                teamId: session?.teamId || undefined,
+              }),
+            [],
+          );
       const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
       const primarySeName = primary?.user?.displayName || null;
 

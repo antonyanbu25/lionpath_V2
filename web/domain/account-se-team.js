@@ -5,6 +5,7 @@
 import { getStore } from "./store.js";
 import { MAX_SE_TEAM_SIZE, now } from "./types.js";
 import { listActiveLifecyclesForAccount } from "./lifecycle-service.js";
+import { isFirebasePermissionError } from "./safe-store.js";
 
 /** @param {import("./types.js").Account|null|undefined} account */
 export function seTeamUserIds(account) {
@@ -12,14 +13,23 @@ export function seTeamUserIds(account) {
 }
 
 /** Backfill seTeam from active lifecycles when missing (dev/local migration). */
-export async function backfillAccountSeTeam(accountId) {
+export async function backfillAccountSeTeam(accountId, opts = {}) {
   const store = getStore();
   let account = await store.getAccount(accountId);
   if (!account || (account.seTeam && account.seTeam.length > 0)) {
     return account;
   }
 
-  const lifecycles = await listActiveLifecyclesForAccount(accountId);
+  let lifecycles = [];
+  try {
+    lifecycles = await listActiveLifecyclesForAccount(
+      accountId,
+      opts.actorId ? { ownerId: opts.actorId } : {},
+    );
+  } catch (err) {
+    if (isFirebasePermissionError(err)) return account;
+    throw err;
+  }
   if (!lifecycles.length) return account;
 
   const sorted = [...lifecycles].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -50,7 +60,7 @@ export async function backfillAccountSeTeam(accountId) {
  */
 export async function ensureSeTeamForPrepActor(accountId, actorId) {
   const store = getStore();
-  let account = await backfillAccountSeTeam(accountId);
+  let account = await backfillAccountSeTeam(accountId, { actorId });
   if (!account) return null;
 
   const ts = now();

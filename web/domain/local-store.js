@@ -205,10 +205,14 @@ export function createLocalStore() {
       return opts.forSearch ? rows : rows.map(stripEmbeddingFields);
     },
 
-    async listActiveLifecyclesForAccount(accountId) {
+    async listActiveLifecyclesForAccount(accountId, opts = {}) {
+      const ownerId = opts.ownerId || null;
       return findMany(
         "lifecycles",
-        (l) => l.accountId === accountId && l.status === "active",
+        (l) =>
+          l.accountId === accountId &&
+          l.status === "active" &&
+          (!ownerId || l.ownerId === ownerId),
         (a, b) => b.lastActivityAt - a.lastActivityAt
       );
     },

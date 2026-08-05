@@ -193,7 +193,10 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
  */
 export async function enrichResolveDealsForAccount(resolve, accountId, opts = {}) {
   if (!resolve || !accountId) return resolve;
-  const dealOpts = opts.teamId ? { teamId: opts.teamId } : {};
+  const dealOpts = {
+    ...(opts.teamId ? { teamId: opts.teamId } : {}),
+    ...(opts.ownerId ? { ownerId: opts.ownerId } : {}),
+  };
   const globalDeals = await safeStoreOp(
     "listDealsForAccount",
     () => listDealsForAccount(accountId, dealOpts),

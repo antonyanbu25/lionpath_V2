@@ -320,13 +320,14 @@ export function createFirestoreStore(fb) {
       return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
     },
 
-    async listActiveLifecyclesForAccount(accountId) {
-      const q = query(
-        collection(db, "lifecycles"),
+    async listActiveLifecyclesForAccount(accountId, opts = {}) {
+      const ownerId = opts.ownerId || null;
+      const filters = [
         where("accountId", "==", accountId),
         where("status", "==", "active"),
-        orderBy("lastActivityAt", "desc")
-      );
+        ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+      ];
+      const q = query(collection(db, "lifecycles"), ...filters, orderBy("lastActivityAt", "desc"));
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },

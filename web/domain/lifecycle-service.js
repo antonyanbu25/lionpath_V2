@@ -331,11 +331,11 @@ export async function attachTask(lifecycleId, task, actorId) {
   return saved;
 }
 
-/** List active lifecycles for one account (all SE spines). */
-export async function listActiveLifecyclesForAccount(accountId) {
+/** List active lifecycles for one account (optionally scoped to one SE spine). */
+export async function listActiveLifecyclesForAccount(accountId, opts = {}) {
   const store = getStore();
   if (!accountId || !store.listActiveLifecyclesForAccount) return [];
-  return store.listActiveLifecyclesForAccount(accountId);
+  return store.listActiveLifecyclesForAccount(accountId, opts);
 }
 
 /** Archive a lifecycle (e.g. when SE leaves deal team). */

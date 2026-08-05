@@ -377,6 +377,12 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const account = upserted.account || { id: upserted.accountId, name: company };
 
   await ensureSeTeamForPrepActor(account.id, ownerId);
+  // #region agent log
+  console.warn(
+    "[DBG-8a85ad]",
+    JSON.stringify({ hypothesisId: "H-LIFECYCLE-QUERY", ok: true, accountId: account.id, ownerId }),
+  );
+  // #endregion
 
   const engagementCtx = getAccountEngagementContext();
   const ctxMatchesAccount = engagementCtx.accountId === account.id;

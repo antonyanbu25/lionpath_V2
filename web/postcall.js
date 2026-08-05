@@ -315,7 +315,12 @@ let getAuthToken = null;
 
 function postCallResolveOpts() {
   const teamId = currentSession?.teamId;
-  return teamId ? { teamId } : {};
+  const ownerId = currentSession?.userId || currentSession?.uid || null;
+  /** @type {{ teamId?: string, ownerId?: string }} */
+  const opts = {};
+  if (teamId) opts.teamId = teamId;
+  if (ownerId && !String(ownerId).startsWith("usr_dummy_")) opts.ownerId = ownerId;
+  return opts;
 }
 
 /** Sync stale usr_dummy_* Firebase sessions before owner-scoped Firestore reads. */

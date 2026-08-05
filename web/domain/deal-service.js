@@ -276,7 +276,8 @@ async function syncLifecycleFromDeal(deal, extraPatch = {}) {
  */
 export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
+  // Firestore rules: client can only create/read deals where ownerId == current user.
+  const dealOwnerId = opts.dealOwnerId || ownerId;
   const existing = await store.findActiveDeal(accountId, "new_business", { ownerId: dealOwnerId, teamId });
   if (existing) return existing;
   const ts = now();
@@ -310,7 +311,7 @@ export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, org
  */
 export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
+  const dealOwnerId = opts.dealOwnerId || ownerId;
   const existing = await store.findActiveDeal(accountId, "expansion", { ownerId: dealOwnerId, teamId });
   if (existing) return existing;
   const ts = now();
@@ -347,7 +348,7 @@ export function inferDealTypeFromTitle(title) {
  * @param {import("./types.js").DealType} [opts.type]
  */
 export async function createDealWithExplicitTitle(accountId, ownerId, teamId, orgId, opts = {}) {
-  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
+  const dealOwnerId = opts.dealOwnerId || ownerId;
   const ts = now();
   const dealType = opts.type || inferDealTypeFromTitle(opts.title) || "new_business";
   const explicit = String(opts.title || "").trim();
@@ -382,7 +383,7 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
 export async function listDealsForAccount(accountId, opts = {}) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  const deals = await store.listDealsByAccount(accountId, null, opts);
+  const deals = await store.listDealsByAccount(accountId, opts.ownerId || null, opts);
   return Promise.all(deals.map((d) => ensureDealTitle(d)));
 }
 
@@ -611,11 +612,9 @@ export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId
   }
 
   const prepType = motion.prepType;
-  const dealOwnerId = await resolveDealOwnerId(accountId, ownerId);
   const common = {
     title: opts.title,
     primaryContactId: opts.primaryContactId,
-    dealOwnerId,
   };
 
   if (prepType === "expansion") {
