@@ -47,6 +47,8 @@ export async function runPostCallGenerate(
     effort: input.effort,
     lifecycleId: input.lifecycleId,
     dealId: input.dealId,
+    userId: input.userId,
+    callId: input.callId,
   };
 
   const callType = (input.callType || "discovery") as CallType;
@@ -66,6 +68,8 @@ export async function runPostCallGenerate(
           companyName: input.companyName,
           meetingTitle: input.meetingTitle,
           videoFacts,
+          userId: input.userId,
+          callId: input.callId,
         })
       : Promise.resolve(null),
   ]);
@@ -108,6 +112,8 @@ export async function runPostCallLegacyAnalyze(
   const classifyResult = await runPostCallClassify(env, {
     transcript: resolveResult.transcript,
     meetingTitle: resolveResult.meetingTitle,
+    userId: input.userId,
+    callId: input.callId,
   });
 
   const topDeal = resolveResult.deals[0];
@@ -176,6 +182,8 @@ export async function runPostCallConfirmedPipeline(
     (await runPostCallClassify(env, {
       transcript,
       meetingTitle: input.meetingTitle || resolveResult?.meetingTitle,
+      userId: input.userId,
+      callId: input.callId,
     }));
 
   const selectedDeal = resolveResult?.deals.find((d) => d.dealId === input.dealId);

@@ -2,15 +2,21 @@
 // tools, sets output_config.effort, and drives the pause_turn server-tool loop. Returns the
 // concatenated final text (a JSON object per the prep prompt).
 
-import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
+import type { LlmProvider, LlmRequest, LlmResult, LlmUsage, ProviderEnv } from "./types";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MAX_CONTINUATIONS = 8; // server-tool (pause_turn) loop cap
 
 interface ContentBlock { type: string; text?: string; [k: string]: unknown }
+interface AnthropicUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+}
 interface AnthropicResponse {
   stop_reason?: string;
   content?: ContentBlock[];
+  usage?: AnthropicUsage;
 }
 
 export function anthropicProvider(env: ProviderEnv): LlmProvider {
@@ -21,6 +27,7 @@ export function anthropicProvider(env: ProviderEnv): LlmProvider {
     async generate(req: LlmRequest): Promise<LlmResult> {
       if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set.");
 
+      const started = Date.now();
       const messages: { role: string; content: unknown }[] = [
         { role: "user", content: req.user },
       ];
@@ -39,6 +46,9 @@ export function anthropicProvider(env: ProviderEnv): LlmProvider {
       }
 
       let last: AnthropicResponse | null = null;
+      let totalInput = 0;
+      let totalOutput = 0;
+      let totalCached = 0;
       for (let i = 0; i < MAX_CONTINUATIONS; i++) {
         const res = await fetch(ANTHROPIC_URL, {
           method: "POST",
@@ -54,6 +64,11 @@ export function anthropicProvider(env: ProviderEnv): LlmProvider {
           throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 500)}`);
         }
         last = (await res.json()) as AnthropicResponse;
+        if (last.usage) {
+          totalInput += last.usage.input_tokens ?? 0;
+          totalOutput += last.usage.output_tokens ?? 0;
+          totalCached += last.usage.cache_read_input_tokens ?? 0;
+        }
 
         if (last.stop_reason === "refusal") throw new Error("The model declined this request.");
         if (last.stop_reason === "pause_turn" && Array.isArray(last.content)) {
@@ -76,7 +91,15 @@ export function anthropicProvider(env: ProviderEnv): LlmProvider {
             `If "max_tokens", increase maxTokens; if "pause_turn", research didn't finish in ${MAX_CONTINUATIONS} rounds.`,
         );
       }
-      return { text };
+      const usage: LlmUsage = {
+        model,
+        promptTokens: totalInput,
+        outputTokens: totalOutput,
+        cachedTokens: totalCached,
+        groundingQueries: req.research ? 1 : 0,
+        latencyMs: Date.now() - started,
+      };
+      return { text, usage };
     },
   };
 }

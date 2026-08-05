@@ -21,10 +21,22 @@ export interface ProviderEnv {
   ZOOMINFO_API_KEY?: string;
 }
 
+/** Token and latency stats returned by provider adapters. */
+export interface LlmUsage {
+  model: string;
+  promptTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  groundingQueries: number;
+  latencyMs: number;
+}
+
 export interface LlmRequest {
   system: string;
   user: string;
   maxTokens: number;
+  /** Pipeline pass label for usage aggregation (e.g. "research", "scorecard"). */
+  passName: string;
   effort?: string;
   research?: boolean;
   /** JSON Schema for structured output (Gemini responseSchema). */
@@ -37,6 +49,9 @@ export interface LlmRequest {
   temperature?: number;
   /** Prep pipeline step label — included in Gemini error messages for debugging. */
   step?: string;
+  /** Firestore usage attribution — set by route handlers when available. */
+  userId?: string;
+  callId?: string;
 }
 
 /** A raw grounding citation as returned by a provider's web-search tool (e.g. Gemini groundingMetadata). */
@@ -60,6 +75,8 @@ export interface LlmResult {
    * rather than discarded at the provider boundary.
    */
   searchEntryPointHtml?: string;
+  /** Present when the provider returned token usage metadata. */
+  usage?: LlmUsage;
 }
 
 export interface LlmProvider {

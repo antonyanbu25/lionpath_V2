@@ -198,9 +198,10 @@ async function generateSummaryJson(
     user: opts.user,
     effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
     research: false,
-    jsonSchema: SUMMARY_OUTPUT_SCHEMA as unknown as Record<string, unknown>,
-    step: opts.step,
-  });
+      jsonSchema: SUMMARY_OUTPUT_SCHEMA as unknown as Record<string, unknown>,
+      step: opts.step,
+      passName: "summaries",
+    });
   return normalizeSummaryDraft(extractJson(result.text), opts.maxWords);
 }
 

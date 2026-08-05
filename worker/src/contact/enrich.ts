@@ -30,6 +30,8 @@ export interface ContactEnrichRequest {
   companyName?: string;
   companyDomain?: string;
   sources: ContactEnrichSources;
+  userId?: string;
+  callId?: string;
 }
 
 export interface ContactEnrichProfile {
@@ -329,6 +331,9 @@ Output JSON only.`,
     research: false,
     effort: "low" as const,
     jsonSchema: ENRICH_SCHEMA as unknown as Record<string, unknown>,
+    passName: "contact/enrich",
+    userId: req.userId,
+    callId: req.callId,
   };
 
   let result = await provider.generate(enrichPrompt);

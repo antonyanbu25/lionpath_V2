@@ -102,6 +102,7 @@ export interface PostCallArrInputsInput {
   productHint?: string | null;
   regionHint?: string | null;
   additionalContext?: string;
+  userId?: string;
 }
 
 export interface PostCallArrInputsResult extends ArrInputsDraft {}
@@ -479,6 +480,9 @@ export async function runPostCallArrInputs(
     research: false,
     thinkingBudget: 0,
     jsonSchema: ARR_INPUTS_SCHEMA as unknown as Record<string, unknown>,
+    passName: "arr-inputs",
+    userId: input.userId,
+    callId: input.callId ?? undefined,
   });
 
   const inputs = normalizeArrInputsOutput(extractJson<Partial<ArrInputsDraft>>(result.text));

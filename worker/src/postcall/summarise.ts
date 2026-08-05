@@ -36,6 +36,7 @@ export interface PostCallSummariseInput {
   callType?: string;
   /** Optional brief / context for unanswered discovery fields. */
   additionalContext?: string;
+  userId?: string;
 }
 
 export interface PostCallSummariseResult {
@@ -409,6 +410,7 @@ async function generateJson(
     maxTokens: number;
     step: string;
   },
+  usage?: { userId?: string; callId?: string | null },
 ): Promise<unknown> {
   const provider = getPostCallProvider(env);
   const result = await provider.generate({
@@ -419,6 +421,9 @@ async function generateJson(
     research: false,
     jsonSchema: opts.jsonSchema,
     step: opts.step,
+    passName: "summarise",
+    userId: usage?.userId,
+    callId: usage?.callId ?? undefined,
   });
   return extractJson(result.text);
 }
@@ -436,6 +441,7 @@ export async function runPostCallSummarise(
 
   const preamble = sharedUserPreamble(input).join("\n");
 
+  const usage = { userId: input.userId, callId: input.callId };
   const [commitmentsRaw, notesRaw, momRaw] = await Promise.all([
     generateJson(env, {
       system: commitmentsSystemPrompt(),
@@ -443,21 +449,21 @@ export async function runPostCallSummarise(
       jsonSchema: COMMITMENTS_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 4000,
       step: "postcall-summarise-commitments",
-    }),
+    }, usage),
     generateJson(env, {
       system: callNotesSystemPrompt(),
       user: ["Write internal call notes for this call.", "", preamble].join("\n"),
       jsonSchema: CALL_NOTES_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 2500,
       step: "postcall-summarise-call-notes",
-    }),
+    }, usage),
     generateJson(env, {
       system: momSystemPrompt(),
       user: ["Draft customer-facing minutes of meeting for this call.", "", preamble].join("\n"),
       jsonSchema: MOM_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 2500,
       step: "postcall-summarise-mom",
-    }),
+    }, usage),
   ]);
 
   const commitments = (commitmentsRaw || {}) as { followUps?: unknown; objections?: unknown };

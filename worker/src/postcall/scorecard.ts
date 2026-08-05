@@ -72,6 +72,8 @@ export interface PostCallScorecardInput {
   companyName?: string;
   meetingTitle?: string;
   videoFacts?: VideoFactsDraft | null;
+  userId?: string;
+  callId?: string;
 }
 
 export interface PostCallScorecardResult {
@@ -587,6 +589,9 @@ export async function runPostCallScorecard(
     thinkingBudget: 0,
     jsonSchema: scorecardJsonSchema(themeKeys),
     step: "postcall-scorecard",
+    passName: "scorecard",
+    userId: input.userId,
+    callId: input.callId,
   });
 
   const parsed = extractJson<{

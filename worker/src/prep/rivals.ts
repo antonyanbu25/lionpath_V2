@@ -467,6 +467,8 @@ export async function generateRivalComparison(
     companyDomain?: string;
     industry?: string;
     businessModel?: string;
+    userId?: string;
+    callId?: string;
   },
 ): Promise<RivalComparison | null> {
   if (!input?.companyName) return null;
@@ -483,6 +485,9 @@ export async function generateRivalComparison(
       research: true,
       jsonSchema: RIVALS_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/rivals",
+      passName: "rivals",
+      userId: input.userId,
+      callId: input.callId,
     });
   } catch (err) {
     console.warn("prep/rivals skipped:", (err as Error).message);

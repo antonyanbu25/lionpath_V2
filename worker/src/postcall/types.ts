@@ -137,6 +137,8 @@ export interface CallTypeMixEntry {
 export interface PostCallClassifyInput {
   transcript: string;
   meetingTitle?: string;
+  userId?: string;
+  callId?: string;
 }
 
 export interface PostCallClassifyResult {
@@ -174,6 +176,9 @@ export interface PostCallGenerateInput {
   confirmed?: boolean;
   /** Legacy one-shot — skip human gate, auto-pick top match. */
   legacyAutoConfirm?: boolean;
+  /** Usage attribution — set by route handlers. */
+  userId?: string;
+  callId?: string;
 }
 
 export interface PostCallGenerateResult extends PostCallResult {

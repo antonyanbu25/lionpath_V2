@@ -174,6 +174,8 @@ async function generateSynthesis(
     ae?: string;
     effort?: string;
     confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
+    userId?: string;
+    callId?: string;
   },
   facts: ResearchFact[],
   sources: SourceRef[],
@@ -187,6 +189,9 @@ async function generateSynthesis(
     research: false as const,
     effort,
     step: "prep/synthesize",
+    passName: "synthesize",
+    userId: input.userId,
+    callId: input.callId,
   };
 
   try {
@@ -214,6 +219,8 @@ export async function synthesizePrep(
     ae?: string;
     effort?: string;
     confirmedProspectProfiles?: import("./merge-enrichment").ConfirmedProspectProfile[];
+    userId?: string;
+    callId?: string;
   },
   facts: ResearchFact[],
   sources: SourceRef[],
@@ -249,6 +256,9 @@ export async function synthesizePrep(
       effort: "low",
       jsonSchema: PREP_GEMINI_SCHEMA,
       step: "prep/synthesize-repair",
+      passName: "synthesize",
+      userId: input.userId,
+      callId: input.callId,
     });
     return finalizePrep(extractJson<Prep>(repaired.text));
   }

@@ -302,6 +302,8 @@ export async function generateDemoGuidance(
     /** Drives use-case grounding — without it nothing clears the specificity bar. */
     industry?: string;
     signals?: string[];
+    userId?: string;
+    callId?: string;
   },
   profiles: ConfirmedProspectProfile[],
 ): Promise<DemoGuidance | null> {
@@ -333,6 +335,9 @@ export async function generateDemoGuidance(
       effort: "low",
       jsonSchema: GUIDANCE_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/demo-guidance",
+      passName: "demo-guidance",
+      userId: input.userId,
+      callId: input.callId,
     });
   } catch (err) {
     console.warn("prep/demo-guidance skipped:", (err as Error).message);

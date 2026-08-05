@@ -38,6 +38,7 @@ export interface PostCallCommitInput {
   previous?: Partial<TechnicalCommitDraft> | null;
   briefContext?: string | null;
   additionalContext?: string;
+  userId?: string;
 }
 
 export interface PostCallCommitResult {
@@ -326,6 +327,9 @@ export async function runPostCallCommit(
     research: false,
     thinkingBudget: 0,
     jsonSchema: COMMIT_SCHEMA as unknown as Record<string, unknown>,
+    passName: "commit",
+    userId: input.userId,
+    callId: input.callId ?? undefined,
   });
 
   const technicalCommit = normalizeCommitOutput(extractJson<Partial<RawCommit>>(result.text));

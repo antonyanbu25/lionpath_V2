@@ -1,4 +1,5 @@
-import { requireUser, resolveHistoryEmail } from "./auth";
+import { requireUser, resolveHistoryEmail, type VerifiedUser } from "./auth";
+import { resolveRequestContext } from "./data/scope";
 import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import {
   appendFeedback,
@@ -71,6 +72,7 @@ import { embedText } from "./embeddings";
 import { domainReadRoutes } from "./routes/domain-reads";
 import { handleReadModelsSchedulePost } from "./routes/read-models";
 import { handleDirectorAnalyticsGet } from "./routes/analytics";
+import { handleAdminLlmUsageGet } from "./routes/admin-llm-usage";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -79,6 +81,15 @@ export type RouteHandler = (
   url: URL,
   cors: Record<string, string>,
 ) => Promise<Response>;
+
+async function resolveUsageUserId(verified: VerifiedUser, env: Env): Promise<string | undefined> {
+  try {
+    const ctx = await resolveRequestContext(verified, env);
+    return ctx.userId;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function handleZoomStatus(
   _request: Request,
@@ -178,7 +189,8 @@ export async function handleGeneratePrep(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PrepInput>;
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
@@ -201,6 +213,8 @@ export async function handleGeneratePrep(
       prospectEmail: emails[0] || String(input.prospectEmail).trim(),
       prospectEmails: emails.length ? emails : undefined,
       prepType: input.prepType || "new_business",
+      userId,
+      callId: input.callId ?? input.lifecycleId,
     });
     return json(
       {
@@ -227,13 +241,14 @@ export async function handleContactEnrich(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const body = (await request.json()) as ContactEnrichRequest;
   console.warn(
     `[prep/enrich] ${body.email} linkedinPdf=${body.sources?.linkedinPdf?.fileName || "none"}`,
   );
   try {
-    const result = await enrichContact(env, body);
+    const result = await enrichContact(env, { ...body, userId, callId: body.callId });
     console.warn(`[prep/enrich] ok ${result.email} name=${result.profile?.name || "unknown"}`);
     return json(result, 200, cors);
   } catch (err) {
@@ -251,7 +266,8 @@ export async function handlePrepResearch(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PrepInput>;
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
@@ -267,6 +283,8 @@ export async function handlePrepResearch(
     prospectEmail: emails[0],
     prospectEmails: emails,
     prepType: input.prepType || "new_business",
+    userId,
+    callId: input.callId ?? input.lifecycleId,
   });
   return json(result, 200, cors);
 }
@@ -277,7 +295,8 @@ export async function handlePrepSynthesize(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PrepInput> & {
     confirmedFacts?: unknown[];
     researchBundle?: unknown;
@@ -301,6 +320,8 @@ export async function handlePrepSynthesize(
     confirmedFacts: input.confirmedFacts as import("./prep/types").ResearchFact[],
     researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
     confirmedProspectProfiles: (input as PrepInput).confirmedProspectProfiles,
+    userId,
+    callId: input.callId ?? input.lifecycleId,
   });
   return json(
     {
@@ -342,7 +363,8 @@ export async function handleVideoPass(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   let body: Record<string, unknown> = {};
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -371,6 +393,7 @@ export async function handleVideoPass(
     customerIdentities: Array.isArray(body.customerIdentities)
       ? body.customerIdentities.filter((x): x is string => typeof x === "string")
       : null,
+    userId,
   });
 
   return json(
@@ -492,13 +515,18 @@ export async function handlePostCallClassify(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallClassifyInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallClassify(env, input as PostCallClassifyInput);
+    const result = await runPostCallClassify(env, {
+      ...(input as PostCallClassifyInput),
+      userId,
+      callId: input.callId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -513,7 +541,8 @@ export async function handlePostCallGenerate(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<
     PostCallGenerateInput &
       PostCallResolveInput & {
@@ -537,7 +566,11 @@ export async function handlePostCallGenerate(
   try {
     const result = await runPostCallConfirmedPipeline(
       env,
-      input as PostCallGenerateInput & PostCallResolveInput & { videoFacts?: import("./domain-model/video-facts").VideoFactsDraft },
+      {
+        ...(input as PostCallGenerateInput & PostCallResolveInput & { videoFacts?: import("./domain-model/video-facts").VideoFactsDraft }),
+        userId,
+        callId: input.callId ?? input.lifecycleId,
+      },
     );
     return json(result, 200, cors);
   } catch (err) {
@@ -554,13 +587,18 @@ export async function handlePostCallSummarise(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallSummariseInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallSummarise(env, input as PostCallSummariseInput);
+    const result = await runPostCallSummarise(env, {
+      ...(input as PostCallSummariseInput),
+      userId,
+      callId: input.callId ?? undefined,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -576,13 +614,17 @@ export async function handlePostCallQualify(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallQualifyInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallQualify(env, input as PostCallQualifyInput);
+    const result = await runPostCallQualify(env, {
+      ...(input as PostCallQualifyInput),
+      userId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -598,13 +640,17 @@ export async function handlePostCallCommit(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallCommitInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallCommit(env, input as PostCallCommitInput);
+    const result = await runPostCallCommit(env, {
+      ...(input as PostCallCommitInput),
+      userId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -639,13 +685,17 @@ export async function handlePostCallArrInputs(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallArrInputsInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallArrInputs(env, input as PostCallArrInputsInput);
+    const result = await runPostCallArrInputs(env, {
+      ...(input as PostCallArrInputsInput),
+      userId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -661,13 +711,17 @@ export async function handlePostCallGaps(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<PostCallGapsInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallGaps(env, input as PostCallGapsInput);
+    const result = await runPostCallGaps(env, {
+      ...(input as PostCallGapsInput),
+      userId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -764,7 +818,8 @@ export async function handleAnalyzeCall(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const input = (await request.json()) as Partial<
     PostCallGenerateInput & PostCallResolveInput & { confirmed?: boolean }
   >;
@@ -783,10 +838,18 @@ export async function handleAnalyzeCall(
   }
   try {
     if (input.confirmed && input.callType) {
-      const result = await runPostCallConfirmedPipeline(env, input as PostCallGenerateInput & PostCallResolveInput);
+      const result = await runPostCallConfirmedPipeline(env, {
+        ...(input as PostCallGenerateInput & PostCallResolveInput),
+        userId,
+        callId: input.callId ?? input.lifecycleId,
+      });
       return json(result, 200, cors);
     }
-    const result = await runPostCallLegacyAnalyze(env, input as PostCallGenerateInput & PostCallResolveInput);
+    const result = await runPostCallLegacyAnalyze(env, {
+      ...(input as PostCallGenerateInput & PostCallResolveInput),
+      userId,
+      callId: input.callId ?? input.lifecycleId,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -969,6 +1032,8 @@ export async function handleSearchRag(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const body = (await request.json()) as {
     query?: string;
     candidates?: RagEmbeddingCandidate[];
@@ -978,7 +1043,7 @@ export async function handleSearchRag(
   if (!query) {
     return json({ error: "query is required." }, 400, cors);
   }
-  const ranked = await rerankWithEmbeddings(env, query, candidates);
+  const ranked = await rerankWithEmbeddings(env, query, candidates, { userId });
   return json({ query, ranked, rag: ranked.length > 0 }, 200, cors);
 }
 
@@ -989,12 +1054,14 @@ export async function handleEmbed(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
+  const verified = await requireUser(request, env);
+  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const body = (await request.json()) as { text?: string };
   const text = String(body.text || "").trim();
   if (!text) {
     return json({ error: "text is required." }, 400, cors);
   }
-  const result = await embedText(env, text);
+  const result = await embedText(env, text, { passName: "embeddings", userId });
   if (!result) {
     return json({ error: "Embedding unavailable (check GEMINI_API_KEY)." }, 503, cors);
   }
@@ -1034,4 +1101,5 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/embed": { POST: handleEmbed },
   "/api/read-models/schedule": { POST: handleReadModelsSchedulePost },
   "/api/analytics/director-summary": { GET: handleDirectorAnalyticsGet },
+  "/api/admin/llm-usage": { GET: handleAdminLlmUsageGet },
 };

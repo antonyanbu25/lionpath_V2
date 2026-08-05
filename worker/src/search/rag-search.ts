@@ -37,14 +37,17 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom ? dot / denom : 0;
 }
 
-async function embedQueryCached(env: Env, query: string): Promise<number[]> {
+async function embedQueryCached(env: Env, query: string, userId?: string): Promise<number[]> {
   const key = normalizeQuery(query);
   if (!key) return [];
 
   const hit = queryEmbedCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.embedding;
 
-  const embedding = await embedVerbatim(env, key);
+  const embedding = await embedVerbatim(env, key, {
+    passName: "search/rag-search",
+    userId,
+  });
   if (embedding.length) {
     queryEmbedCache.set(key, { embedding, expiresAt: Date.now() + QUERY_CACHE_TTL_MS });
   }
@@ -56,6 +59,7 @@ export async function rerankWithEmbeddings(
   env: Env,
   query: string,
   candidates: RagCandidate[],
+  opts?: { userId?: string },
 ): Promise<{ id: string; score: number }[]> {
   const trimmed = String(query || "").trim();
   if (!trimmed || !candidates.length) return [];
@@ -64,7 +68,7 @@ export async function rerankWithEmbeddings(
   const pool = (withEmb.length ? withEmb : candidates).slice(0, 40);
   if (!pool.length) return [];
 
-  const qEmb = await embedQueryCached(env, trimmed);
+  const qEmb = await embedQueryCached(env, trimmed, opts?.userId);
   if (!qEmb.length) {
     return pool.map((c, i) => ({ id: c.id, score: 1 - i * 0.001 }));
   }

@@ -1,4 +1,6 @@
 import { getResearchProvider } from "../providers";
+import type { UsageTracking } from "../data/llm-usage";
+import { withUsageTracking } from "../data/llm-usage";
 import type { LlmProvider } from "../providers/types";
 import type { Env, ResearchSnippet } from "./types";
 import { buildPlaybookQueries } from "./playbook";
@@ -40,21 +42,29 @@ export async function runResilientResearchQueries(
   input: { companyName: string; companyDomain: string },
   label: (query: string, index: number) => string,
   errorsOut?: string[],
+  passName = "research",
+  usage?: UsageTracking,
 ): Promise<ResearchSnippet[]> {
   const fetchedAt = Date.now();
 
   const results = await runWithConcurrency(queries, PLAYBOOK_QUERY_CONCURRENCY, async (query, index) => {
     const step = label(query, index);
     try {
-      const result = await provider.generate({
-        system: SEARCH_SYSTEM,
-        user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
-        maxTokens: 1200,
-        temperature: 0,
-        research: true,
-        effort: "low",
-        step,
-      });
+      const result = await provider.generate(
+        withUsageTracking(
+          {
+            system: SEARCH_SYSTEM,
+            user: `Research query: ${query}\nCompany: ${input.companyName} (${input.companyDomain})`,
+            maxTokens: 1200,
+            temperature: 0,
+            research: true,
+            effort: "low",
+            step,
+            passName,
+          },
+          usage,
+        ),
+      );
       const citations = dedupeCitations(normalizeCitations(result.citations));
       return {
         query,
@@ -99,18 +109,21 @@ async function resolveSnippetCitations(snippets: ResearchSnippet[]): Promise<Res
 
 export async function runPlaybookResearch(
   env: Env,
-  input: { companyName: string; companyDomain: string; emails: string[] },
+  input: { companyName: string; companyDomain: string; emails: string[]; userId?: string; callId?: string },
   options?: { skipLinkedInForEmails?: Set<string> },
 ): Promise<ResearchSnippet[]> {
   const provider = getResearchProvider(env);
   const queries = buildPlaybookQueries(input, options);
   const errors: string[] = [];
+  const usage: UsageTracking = { userId: input.userId, callId: input.callId };
   const snippets = await runResilientResearchQueries(
     provider,
     queries,
     { companyName: input.companyName, companyDomain: input.companyDomain },
     (_query, index) => `prep/research query ${index + 1}/${queries.length}`,
     errors,
+    "research",
+    usage,
   );
 
   if (!snippets.length) {

@@ -103,6 +103,9 @@ export async function runPostCallClassify(
     research: false,
     thinkingBudget: 0,
     jsonSchema: CLASSIFY_SCHEMA as unknown as Record<string, unknown>,
+    passName: "classify",
+    userId: input.userId,
+    callId: input.callId,
   });
 
   return normalizeClassify(extractJson(result.text));

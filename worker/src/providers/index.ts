@@ -7,9 +7,28 @@
 //   - gemini    → map to the google_search grounding tool
 //   - ollama    → no built-in web search; wire a separate search step or call with research:false
 
-import type { LlmProvider, ProviderEnv } from "./types";
+import type { FirestoreEnv } from "../data/firestore-admin";
+import { recordLlmUsage } from "../data/llm-usage";
+import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
+
+function wrapWithUsageRecording(provider: LlmProvider, fsEnv?: FirestoreEnv): LlmProvider {
+  return {
+    async generate(req: LlmRequest): Promise<LlmResult> {
+      const result = await provider.generate(req);
+      if (result.usage && req.userId) {
+        recordLlmUsage(fsEnv, {
+          userId: req.userId,
+          callId: req.callId,
+          passName: req.passName,
+          ...result.usage,
+        });
+      }
+      return result;
+    },
+  };
+}
 
 const RESEARCH_MODEL_FALLBACKS = [
   "gemini-3.6-flash",
@@ -35,35 +54,35 @@ export function resolveSynthesizeModel(env: ProviderEnv): string {
   return RESEARCH_MODEL_FALLBACKS[0];
 }
 
-export function getProvider(env: ProviderEnv): LlmProvider {
+export function getProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {
   const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
-  return resolveProvider(provider, env);
+  return wrapWithUsageRecording(resolveProvider(provider, env), env);
 }
 
 /** Pre-call brief synthesis — may use a heavier Gemini model than extract/repair. */
-export function getSynthesizeProvider(env: ProviderEnv): LlmProvider {
+export function getSynthesizeProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {
   const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
   if (provider === "gemini") {
-    return geminiProvider(env, resolveSynthesizeModel(env));
+    return wrapWithUsageRecording(geminiProvider(env, resolveSynthesizeModel(env)), env);
   }
-  return resolveProvider(provider, env);
+  return wrapWithUsageRecording(resolveProvider(provider, env), env);
 }
 
 /** Pre-call web research — may use a heavier Gemini model than synthesize/post-call. */
-export function getResearchProvider(env: ProviderEnv): LlmProvider {
+export function getResearchProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {
   const provider = (env.LLM_PROVIDER || "gemini").toLowerCase();
   if (provider === "gemini") {
-    return geminiProvider(env, resolveResearchModel(env));
+    return wrapWithUsageRecording(geminiProvider(env, resolveResearchModel(env)), env);
   }
-  return resolveProvider(provider, env);
+  return wrapWithUsageRecording(resolveProvider(provider, env), env);
 }
 
 /** Post-call uses its own provider/model so it can differ from pre-call (e.g. faster model, no web search). */
-export function getPostCallProvider(env: ProviderEnv): LlmProvider {
+export function getPostCallProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {
   const provider = (env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini").toLowerCase();
   const model = env.POSTCALL_MODEL;
-  if (provider === "gemini") return geminiProvider(env, model);
-  return resolveProvider(provider, env);
+  if (provider === "gemini") return wrapWithUsageRecording(geminiProvider(env, model), env);
+  return wrapWithUsageRecording(resolveProvider(provider, env), env);
 }
 
 function resolveProvider(provider: string, env: ProviderEnv): LlmProvider {

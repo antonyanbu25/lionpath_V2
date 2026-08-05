@@ -113,6 +113,9 @@ export interface PrepInput {
   /** Client context for artifact linking — not used in prep generation. */
   lifecycleId?: string;
   dealId?: string | null;
+  /** Usage attribution — set by route handlers. */
+  userId?: string;
+  callId?: string;
 }
 
 /** Prep input after normalizePrepInput — companyName is always resolved. */

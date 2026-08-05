@@ -39,6 +39,7 @@ export interface VideoPassInput {
   seIdentity?: string | null;
   aeIdentity?: string | null;
   customerIdentities?: string[] | null;
+  userId?: string;
 }
 
 export interface VideoPassResult {
@@ -161,6 +162,8 @@ async function enrichFfmpegWithTranscriptTalk(
       durationSec: input.durationSec ?? input.media?.durationSec ?? null,
       callType: input.callType,
       visualAnalysisConsent: input.visualAnalysisConsent,
+      userId: input.userId,
+      callId: input.callId,
     });
     if (talkDraft.status !== "ready" || !talkDraft.attendeeCurveJson) {
       if (cameraRows?.length && !result.videoFacts.attendeeCurveJson?.length) {
@@ -212,6 +215,8 @@ async function runTranscriptPass(
     durationSec: input.durationSec ?? input.media?.durationSec ?? null,
     callType: input.callType,
     visualAnalysisConsent: input.visualAnalysisConsent,
+    userId: input.userId,
+    callId: input.callId,
   });
   if (draft.status === "ready") {
     const consent = !!input.visualAnalysisConsent;
@@ -294,6 +299,8 @@ async function runFfmpegPass(
           customerIdentities: input.customerIdentities,
         },
         durationSec: durationSec ?? media.durationSec,
+        userId: input.userId,
+        callId: input.callId,
       });
       cameraOnPct = vision.cameraOnPct;
       cdeCustomized = vision.cdeCustomized;

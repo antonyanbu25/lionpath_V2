@@ -1,7 +1,7 @@
 // Google Gemini adapter — Google AI Studio (GEMINI_API_KEY) or Vertex AI on GCP (ADC).
 
 import { toGeminiResponseSchema } from "../gemini-schema";
-import type { Citation, LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
+import type { Citation, LlmProvider, LlmRequest, LlmResult, LlmUsage, ProviderEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 /** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
@@ -31,6 +31,13 @@ interface GeminiGroundingMetadata {
   searchEntryPoint?: { renderedContent?: string };
 }
 
+interface GeminiUsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  cachedContentTokenCount?: number;
+  totalTokenCount?: number;
+}
+
 interface GeminiResponse {
   candidates?: {
     content?: { parts?: GeminiPart[] };
@@ -38,6 +45,7 @@ interface GeminiResponse {
     groundingMetadata?: GeminiGroundingMetadata;
   }[];
   promptFeedback?: { blockReason?: string };
+  usageMetadata?: GeminiUsageMetadata;
   error?: { message?: string };
 }
 
@@ -211,7 +219,23 @@ function buildRequestBody(req: LlmRequest, model: string, env?: ProviderEnv): Re
   return body;
 }
 
-function parseGeminiResponse(data: GeminiResponse): LlmResult {
+function buildUsage(
+  model: string,
+  usageMetadata: GeminiUsageMetadata | undefined,
+  groundingMetadata: GeminiGroundingMetadata | undefined,
+  latencyMs: number,
+): LlmUsage {
+  return {
+    model,
+    promptTokens: usageMetadata?.promptTokenCount ?? 0,
+    outputTokens: usageMetadata?.candidatesTokenCount ?? 0,
+    cachedTokens: usageMetadata?.cachedContentTokenCount ?? 0,
+    groundingQueries: groundingMetadata?.webSearchQueries?.length ?? 0,
+    latencyMs,
+  };
+}
+
+function parseGeminiResponse(data: GeminiResponse, model: string, latencyMs: number): LlmResult {
   if (data.error?.message) throw new Error(data.error.message);
 
   const cand = data.candidates?.[0];
@@ -239,6 +263,7 @@ function parseGeminiResponse(data: GeminiResponse): LlmResult {
   if (meta?.webSearchQueries?.length) out.searchQueries = meta.webSearchQueries;
   const entryPoint = meta?.searchEntryPoint?.renderedContent;
   if (entryPoint) out.searchEntryPointHtml = entryPoint;
+  out.usage = buildUsage(model, data.usageMetadata, meta, latencyMs);
   return out;
 }
 
@@ -327,6 +352,7 @@ async function generateViaAiStudio(
   requestedModel: string,
   env: ProviderEnv,
 ): Promise<LlmResult> {
+  const started = Date.now();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetchGemini(
@@ -345,7 +371,7 @@ async function generateViaAiStudio(
     );
   }
 
-  return parseGeminiResponse((await res.json()) as GeminiResponse);
+  return parseGeminiResponse((await res.json()) as GeminiResponse, model, Date.now() - started);
 }
 
 async function generateViaVertex(
@@ -355,6 +381,7 @@ async function generateViaVertex(
   req: LlmRequest,
   env: ProviderEnv,
 ): Promise<LlmResult> {
+  const started = Date.now();
   const token = await getVertexAccessToken();
   const url =
     `https://${location}-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(project)}` +
@@ -377,7 +404,7 @@ async function generateViaVertex(
     throw new Error(`Vertex AI Gemini ${res.status}: ${errBody.slice(0, 500)}`);
   }
 
-  return parseGeminiResponse((await res.json()) as GeminiResponse);
+  return parseGeminiResponse((await res.json()) as GeminiResponse, model, Date.now() - started);
 }
 
 export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmProvider {

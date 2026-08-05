@@ -171,6 +171,7 @@ export async function extractLinkedInPdfFacts(
   env: Env,
   exports: LinkedInProfileExport[],
   assignments: Map<string, string | null>,
+  usage?: { userId?: string; callId?: string },
 ): Promise<{ facts: ResearchFact[]; sources: SourceRef[] }> {
   if (!exports.length) return { facts: [], sources: [] };
 
@@ -195,6 +196,9 @@ confidence 85-95. JSON only.`,
     research: false,
     effort: "low",
     jsonSchema: PDF_FACTS_SCHEMA as unknown as Record<string, unknown>,
+    passName: "linkedin-pdf",
+    userId: usage?.userId,
+    callId: usage?.callId,
   });
 
   const parsed = extractJson<{ facts: ResearchFact[]; sources: SourceRef[] }>(result.text);

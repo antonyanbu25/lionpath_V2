@@ -49,6 +49,7 @@ export interface PostCallGapsInput {
   /** Frozen ARR at analysis time — arrTouched is derived from this, never from the model. */
   arrSnapshot?: ArrSnapshotInput | null;
   additionalContext?: string;
+  userId?: string;
 }
 
 export interface PostCallGapsResult {
@@ -387,6 +388,9 @@ export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promi
     research: false,
     thinkingBudget: 0,
     jsonSchema: GAPS_SCHEMA as unknown as Record<string, unknown>,
+    passName: "gaps",
+    userId: input.userId,
+    callId: input.callId ?? undefined,
   });
 
   const parsedJson = extractJson<{ productGaps?: unknown; whatWorks?: unknown }>(result.text);

@@ -23,6 +23,7 @@ async function probeModel(model: string, apiKey: string): Promise<{ ok: boolean;
       research: true,
       effort: "low",
       step: `probe/${model}`,
+      passName: "research",
     });
     const text = result.text.trim();
     if (!text) return { ok: false, detail: "empty response" };

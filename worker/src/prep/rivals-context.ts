@@ -112,6 +112,7 @@ export async function extractFishSizingFromContext(
   env: Env,
   additionalContext: string | undefined,
   companyName: string,
+  usage?: { userId?: string; callId?: string },
 ): Promise<FishContextSizing | null> {
   const text = String(additionalContext || "").trim();
   if (text.length < 20 || !companyName) return null;
@@ -135,6 +136,9 @@ Values max 12 words. Labels max 4 words. No invention.`,
       effort: "low",
       jsonSchema: SIZING_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/rivals-context",
+      passName: "rivals-context",
+      userId: usage?.userId,
+      callId: usage?.callId,
     });
   } catch (err) {
     console.warn("prep/rivals-context skipped:", (err as Error).message);
@@ -145,7 +149,7 @@ Values max 12 words. Labels max 4 words. No invention.`,
     const parsed = extractJson<{ metrics?: { label?: string; value?: string; aboutCompany?: boolean }[] }>(
       result.text,
     );
-    const metrics = filterFishContextMetrics(parsed.metrics);
+    const metrics = filterFishContextMetrics(parsed.metrics ?? []);
     if (!metrics.length) return null;
     return { metrics, source: "context" };
   } catch (err) {

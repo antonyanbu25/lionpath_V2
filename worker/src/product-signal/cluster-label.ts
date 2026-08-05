@@ -40,6 +40,7 @@ export async function suggestClusterLabel(
         properties: { label: { type: "string" } },
       },
       maxTokens: 256,
+      passName: "cluster-label",
     });
     const parsed = extractJson<{ label?: string }>(result.text);
     const label = String(parsed.label || "").replace(/\s+/g, " ").trim();

@@ -104,6 +104,8 @@ export async function extractFacts(
     additionalContext?: string;
     /** Label offset so a second extraction round does not re-issue S1… */
     sourceOffset?: number;
+    userId?: string;
+    callId?: string;
   },
 ): Promise<ExtractFactsResult> {
   const seOnly = factsFromSeContext(input.additionalContext);
@@ -129,6 +131,9 @@ export async function extractFacts(
       effort: "low",
       jsonSchema: FACTS_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/extract-facts",
+      passName: "extract-facts",
+      userId: input.userId,
+      callId: input.callId,
     });
   } catch (err) {
     throw new Error(`prep/extract-facts: ${(err as Error).message}`);

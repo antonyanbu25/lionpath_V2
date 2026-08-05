@@ -63,6 +63,7 @@ function trimWords(value: string, max = 12): string {
 export async function extractSeContextFacts(
   env: Env,
   additionalContext: string | undefined,
+  usage?: { userId?: string; callId?: string },
 ): Promise<{ facts: ResearchFact[]; sources: SourceRef[] }> {
   const text = String(additionalContext || "").trim();
   if (text.length < 40) return { facts: [], sources: [] };
@@ -87,6 +88,9 @@ OUTPUT: JSON matching schema. No markdown.`,
       effort: "low",
       jsonSchema: SE_EXTRACT_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/se-context-extract",
+      passName: "se-context-extract",
+      userId: usage?.userId,
+      callId: usage?.callId,
     });
   } catch (err) {
     console.warn("prep/se-context-extract skipped:", (err as Error).message);

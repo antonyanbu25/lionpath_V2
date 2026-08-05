@@ -8,6 +8,8 @@
 
 import { readFile } from "node:fs/promises";
 import { extractJson } from "../json";
+import { recordLlmUsage } from "../data/llm-usage";
+import type { FirestoreEnv } from "../data/firestore-admin";
 import { effectiveGeminiModel } from "../providers/gemini";
 import type { ProviderEnv } from "../providers/types";
 import type { SampleFrame } from "./facts";
@@ -77,15 +79,17 @@ async function buildImageParts(
 }
 
 async function callGeminiJson(
-  env: ProviderEnv,
+  env: ProviderEnv & FirestoreEnv,
   textPrompt: string,
   imageParts: Array<Record<string, unknown>>,
+  opts?: { userId?: string; callId?: string },
 ): Promise<Record<string, unknown> | null> {
   const key = apiKey(env);
   if (!key || !imageParts.length) return null;
 
   const model = modelId(env);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const started = Date.now();
 
   const res = await fetch(url, {
     method: "POST",
@@ -105,8 +109,29 @@ async function callGeminiJson(
   }
 
   const body = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+      groundingMetadata?: { webSearchQueries?: string[] };
+    }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      cachedContentTokenCount?: number;
+    };
   };
+  if (opts?.userId) {
+    recordLlmUsage(env, {
+      userId: opts.userId,
+      callId: opts.callId,
+      passName: "video/vision",
+      model,
+      promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+      cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+      groundingQueries: body.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0,
+      latencyMs: Date.now() - started,
+    });
+  }
   const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
   if (!text.trim()) return null;
   try {
@@ -125,12 +150,14 @@ async function callGeminiJson(
  * Full Pass 2 vision with strategic-window participant camera aggregation.
  */
 export async function analyzeKeyframes(
-  env: ProviderEnv,
+  env: ProviderEnv & FirestoreEnv,
   keyframes: SampleFrame[],
   opts?: {
     visualAnalysisConsent?: boolean;
     identities?: VisionIdentities;
     durationSec?: number | null;
+    userId?: string;
+    callId?: string;
   },
 ): Promise<VisionAnalysis> {
   const empty: VisionAnalysis = {
@@ -207,7 +234,10 @@ export async function analyzeKeyframes(
         }),
       ].join(" ");
 
-  const parsed = await callGeminiJson(env, prompt, imageParts);
+  const parsed = await callGeminiJson(env, prompt, imageParts, {
+    userId: opts?.userId,
+    callId: opts?.callId,
+  });
   if (!parsed) return empty;
 
   const shareRaw = parsed.shareOnPct;

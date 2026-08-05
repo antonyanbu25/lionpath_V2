@@ -23,6 +23,8 @@ export interface PostCallInput {
   /** Client context for artifact linking — not used in analysis. */
   lifecycleId?: string;
   dealId?: string | null;
+  userId?: string;
+  callId?: string;
 }
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -161,6 +163,9 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     research: false,
     thinkingBudget: 0,
     jsonSchema: POSTCALL_SCHEMA as unknown as Record<string, unknown>,
+    passName: "analyze",
+    userId: input.userId,
+    callId: input.callId,
   });
 
   const analysis = parseAnalysis(

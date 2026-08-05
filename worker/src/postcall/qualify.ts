@@ -25,6 +25,7 @@ export interface PostCallQualifyInput {
   /** Pre-call brief text — answer key for champion / economic buyer (spec §3.3). */
   briefContext?: string | null;
   additionalContext?: string;
+  userId?: string;
 }
 
 export interface PostCallQualifyResult {
@@ -189,6 +190,9 @@ export async function runPostCallQualify(env: Env, input: PostCallQualifyInput):
     research: false,
     thinkingBudget: 0,
     jsonSchema: QUALIFICATION_SCHEMA as unknown as Record<string, unknown>,
+    passName: "qualify",
+    userId: input.userId,
+    callId: input.callId ?? undefined,
   });
 
   const qualification = normalizeQualificationOutput(

@@ -3,9 +3,10 @@
  * Used when ffmpeg is unavailable (local Windows, Cloudflare Workers) or sampling fails.
  */
 
+import { recordLlmUsage } from "../data/llm-usage";
+import type { FirestoreEnv } from "../data/firestore-admin";
 import type { TimelineSegmentType } from "../domain-model/video-facts";
-import type { ProviderEnv } from "../providers/types";
-import { buildVideoFactsDraft } from "./facts";
+import type { ProviderEnv } from "../providers/types";import { buildVideoFactsDraft } from "./facts";
 
 const MAX_TRANSCRIPT_CHARS = 120_000;
 
@@ -31,6 +32,8 @@ export interface TranscriptInferInput {
   callType?: string | null;
   /** Spec §12.8 — omit camera_on_pct when false. */
   visualAnalysisConsent?: boolean;
+  userId?: string;
+  callId?: string;
 }
 
 function geminiKey(env: ProviderEnv): string | undefined {
@@ -170,7 +173,7 @@ export function parseInferResponse(
 }
 
 export async function inferVideoFactsFromTranscript(
-  env: ProviderEnv,
+  env: ProviderEnv & FirestoreEnv,
   input: TranscriptInferInput,
 ): Promise<ReturnType<typeof buildVideoFactsDraft>> {
   const transcript = input.transcript?.trim().slice(0, MAX_TRANSCRIPT_CHARS) || "";
@@ -237,8 +240,8 @@ export async function inferVideoFactsFromTranscript(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
 
   try {
-    const res = await fetch(url, {
-      method: "POST",
+    const started = Date.now();
+    const res = await fetch(url, {      method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -262,9 +265,26 @@ export async function inferVideoFactsFromTranscript(
 
     const body = (await res.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        cachedContentTokenCount?: number;
+      };
     };
-    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
-    let parsed: Record<string, unknown> | null = null;
+    if (input.userId) {
+      recordLlmUsage(env, {
+        userId: input.userId,
+        callId: input.callId,
+        passName: "video/transcript-infer",
+        model,
+        promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+        groundingQueries: 0,
+        latencyMs: Date.now() - started,
+      });
+    }
+    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";    let parsed: Record<string, unknown> | null = null;
     try {
       parsed = JSON.parse(text) as Record<string, unknown>;
     } catch {

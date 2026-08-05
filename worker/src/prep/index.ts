@@ -191,6 +191,8 @@ async function gatherResearch(
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     emails,
+    userId: input.userId,
+    callId: input.callId ?? input.lifecycleId,
   };
 
   const stepTimings: Record<string, number> = {};
@@ -248,8 +250,13 @@ async function gatherResearch(
       companyDomain: input.companyDomain,
       emails,
       additionalContext: mergedContext,
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
     }),
-    extractSeContextFacts(env, mergedContext),
+    extractSeContextFacts(env, mergedContext, {
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
+    }),
   ]);
   stepTimings.extract = Date.now() - tExtract;
   let facts = mergeFacts(apolloFacts, orchestratorFacts, extracted.facts, seExtracted.facts);
@@ -267,6 +274,8 @@ async function gatherResearch(
     companyDomain: input.companyDomain,
     emails,
     additionalContext: mergedContext,
+    userId: input.userId,
+    callId: input.callId ?? input.lifecycleId,
   };
   const tGapNews = Date.now();
   const [gapFilled, newsSupplemented] = await Promise.all([
@@ -368,6 +377,8 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
         ae: input.ae,
         effort,
         confirmedProspectProfiles: input.confirmedProspectProfiles,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
       },
       facts,
       paddedSources,
@@ -382,6 +393,8 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
         industry: factsToIndustry(facts),
         signals: factsToSignals(facts),
         assetLabels: DEMO_ASSET_LABELS,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
       },
       input.confirmedProspectProfiles || [],
     ),
@@ -391,14 +404,21 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
     }),
     // Gemini + DDG in parallel inside generateCompanyNews.
     generateCompanyNews(env, {
       companyName: input.companyName,
       companyDomain: input.companyDomain,
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
     }),
     hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
+      ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
+          userId: input.userId,
+          callId: input.callId ?? input.lifecycleId,
+        })
       : Promise.resolve(null),
   ]);
   timings.synthesize = Date.now() - t1;
@@ -553,6 +573,8 @@ export async function runPrepSynthesize(
         ae: input.ae,
         effort,
         confirmedProspectProfiles: input.confirmedProspectProfiles,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
       },
       facts,
       sources,
@@ -567,6 +589,8 @@ export async function runPrepSynthesize(
         industry: factsToIndustry(facts),
         signals: factsToSignals(facts),
         assetLabels: DEMO_ASSET_LABELS,
+        userId: input.userId,
+        callId: input.callId ?? input.lifecycleId,
       },
       input.confirmedProspectProfiles || [],
     ),
@@ -576,15 +600,22 @@ export async function runPrepSynthesize(
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
     }),
     // Its own grounded search. The research pass surfaces news only incidentally, and the three
     // paths that used to fill this panel let SE context through as "news" instead.
     generateCompanyNews(env, {
       companyName: input.companyName,
       companyDomain: input.companyDomain,
+      userId: input.userId,
+      callId: input.callId ?? input.lifecycleId,
     }),
     hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
+      ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
+          userId: input.userId,
+          callId: input.callId ?? input.lifecycleId,
+        })
       : Promise.resolve(null),
   ]);
 

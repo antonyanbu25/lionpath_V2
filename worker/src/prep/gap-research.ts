@@ -60,6 +60,7 @@ async function runGapQueries(
   queries: string[],
   companyName: string,
   companyDomain: string,
+  usage?: { userId?: string; callId?: string },
 ): Promise<ResearchSnippet[]> {
   if (!queries.length) return [];
   const provider = getResearchProvider(env);
@@ -68,6 +69,9 @@ async function runGapQueries(
     queries,
     { companyName, companyDomain },
     (query) => `prep/gap-research: ${query.slice(0, 60)}`,
+    undefined,
+    "gap-research",
+    { userId: usage?.userId, callId: usage?.callId },
   );
 }
 
@@ -79,6 +83,8 @@ export async function fillResearchGaps(
     companyDomain: string;
     emails: string[];
     additionalContext?: string;
+    userId?: string;
+    callId?: string;
   },
   snippets: ResearchSnippet[],
   facts: ResearchFact[],
@@ -97,6 +103,7 @@ export async function fillResearchGaps(
     gapQueries,
     input.companyName,
     input.companyDomain,
+    { userId: input.userId, callId: input.callId },
   );
   if (!gapSnippets.length) return { snippets, facts, sources };
 
@@ -105,6 +112,8 @@ export async function fillResearchGaps(
     companyDomain: input.companyDomain,
     emails: input.emails,
     additionalContext: input.additionalContext,
+    userId: input.userId,
+    callId: input.callId,
     // Continue the numbering from round 1, otherwise this round re-issues S1…
     // and its labels collide with already-merged sources.
     sourceOffset: maxSourceOffset(sources),

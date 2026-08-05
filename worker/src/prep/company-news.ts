@@ -206,7 +206,7 @@ export function shapeCompanyNews(
  */
 async function fetchGeminiCompanyNews(
   env: Env,
-  input: { companyName: string; companyDomain?: string },
+  input: { companyName: string; companyDomain?: string; userId?: string; callId?: string },
 ): Promise<CompanyNews | null> {
   if (!input?.companyName) return null;
   const provider = getProvider(env);
@@ -221,6 +221,9 @@ async function fetchGeminiCompanyNews(
       research: true,
       jsonSchema: NEWS_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/company-news",
+      passName: "company-news",
+      userId: input.userId,
+      callId: input.callId,
     });
   } catch (err) {
     console.warn("prep/company-news skipped:", (err as Error).message);
@@ -296,7 +299,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
 
 export async function generateCompanyNews(
   env: Env,
-  input: { companyName: string; companyDomain?: string },
+  input: { companyName: string; companyDomain?: string; userId?: string; callId?: string },
 ): Promise<(CompanyNews & { pipeline?: { gemini: number; web: number } }) | null> {
   if (!input?.companyName) return null;
 

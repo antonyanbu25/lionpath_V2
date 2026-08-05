@@ -158,6 +158,7 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     research: false,
     thinkingBudget: 0,
     jsonSchema: POSTCALL_SCHEMA as unknown as Record<string, unknown>,
+    passName: "analyze",
   });
 
   const analysis = parseAnalysis(
