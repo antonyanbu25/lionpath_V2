@@ -15,7 +15,7 @@ import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VE
 import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
 import { invalidateDealListCache } from "./deal-view.js";
-import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
+import { sessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import {
@@ -312,6 +312,36 @@ let pipelineState = null;
 
 let currentSession = null;
 let getAuthToken = null;
+
+function postCallResolveOpts() {
+  const teamId = currentSession?.teamId;
+  return teamId ? { teamId } : {};
+}
+
+/** Sync stale usr_dummy_* Firebase sessions before owner-scoped Firestore reads. */
+async function ensurePostCallSession() {
+  if (!currentSession) return null;
+  const raw = sessionUserId(currentSession);
+  const needsResolve =
+    isFirebaseAuthEnabled() &&
+    currentSession.authUid &&
+    raw?.startsWith("usr_dummy_");
+  if (needsResolve) {
+    const { syncSessionWithDomainStore } = await import("./auth.js");
+    const synced = (await syncSessionWithDomainStore(currentSession)) || currentSession;
+    currentSession = synced?.email
+      ? { ...synced, email: String(synced.email).trim().toLowerCase() }
+      : synced;
+  }
+  return currentSession;
+}
+
+/** Resolved domain owner id (authIndex over placeholder usr_dummy_*). */
+async function postCallOwnerId() {
+  await ensurePostCallSession();
+  const { resolveEffectiveOwnerId } = await import("./domain/seed-dev.js");
+  return resolveEffectiveOwnerId(currentSession);
+}
 
 const isUnknown = (v) => {
   const s = String(v ?? "").trim();
@@ -952,10 +982,10 @@ async function prefillCompanyFromEmails() {
     pcDraftAccountName = "";
   }
 
-  const ownerId = effectiveSessionUserId(currentSession);
+  const ownerId = await postCallOwnerId();
   if (!ownerId) return;
   try {
-    const ctx = await buildPostCallResolveContext(ownerId);
+    const ctx = await buildPostCallResolveContext(ownerId, postCallResolveOpts());
     const primary = emails[0];
     let match = await tryMatchEmail(ctx, primary);
     if (!match) {
@@ -1065,7 +1095,8 @@ function attachAccountLookup(cfg) {
       }
     } else {
       const accountId = btn.dataset.accountId;
-      buildPostCallResolveContext(effectiveSessionUserId(currentSession))
+      postCallOwnerId()
+        .then((ownerId) => buildPostCallResolveContext(ownerId, postCallResolveOpts()))
         .then((ctx) => {
           const account = (ctx.accounts || []).find((a) => a.id === accountId);
           if (account) {
@@ -1094,7 +1125,8 @@ function attachAccountLookup(cfg) {
       closeMenu();
       return;
     }
-    buildPostCallResolveContext(effectiveSessionUserId(currentSession))
+    postCallOwnerId()
+      .then((ownerId) => buildPostCallResolveContext(ownerId, postCallResolveOpts()))
       .then((ctx) => renderRows(ctx.accounts || [], typed))
       .catch((err) => {
         console.warn("[postcall] account lookup failed:", err?.message || err);
@@ -3343,7 +3375,7 @@ async function confirmAndGenerate(e) {
     ? null
     : intakeAccount.accountId || pipelineState.payload.accountId || null;
   if (accountIdForContacts) {
-    const actorId = effectiveSessionUserId(currentSession) || "system";
+    const actorId = (await postCallOwnerId()) || "system";
     for (const att of attendees) {
       if (att.role !== "Customer" || !att.email) continue;
       try {
@@ -4174,9 +4206,9 @@ async function startPipeline(e) {
   });
 
   try {
-    const ownerId = effectiveSessionUserId(currentSession) || undefined;
+    const ownerId = (await postCallOwnerId()) || undefined;
     const domainContext = ownerId
-      ? await buildPostCallResolveContext(ownerId)
+      ? await buildPostCallResolveContext(ownerId, postCallResolveOpts())
       : { briefs: [], accounts: [], deals: [] };
     const resolve = await postJson(RESOLVE_URL, {
       transcript: payload.transcript,
@@ -4198,7 +4230,7 @@ async function startPipeline(e) {
       getIntakeAccountSelection().accountId ||
       pcResolvedAccount?.id ||
       null;
-    pipelineState.resolve = await enrichResolveDealsForAccount(resolve, accountIdForDeals);
+    pipelineState.resolve = await enrichResolveDealsForAccount(resolve, accountIdForDeals, postCallResolveOpts());
     // Prefer form company when resolve did not match; keep for generate.
     if (!payload.companyName && pipelineState.resolve.account?.accountName) {
       payload.companyName = pipelineState.resolve.account.accountName;

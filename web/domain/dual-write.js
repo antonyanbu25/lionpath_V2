@@ -222,7 +222,11 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
  * @param {object} record history record from savePostCallHistory
  */
 export async function linkPostCallToLifecycle(session, payload, data, record) {
-  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
+  const { resolveEffectiveOwnerId } = await import("./seed-dev.js");
+  const ownerId =
+    (await resolveEffectiveOwnerId(session)) ||
+    effectiveSessionUserId(session) ||
+    sessionUserId(session);
   if (!ownerId || !session?.teamId) return null;
 
   const summarise = data?.summarise || null;

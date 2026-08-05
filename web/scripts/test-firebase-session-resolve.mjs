@@ -45,7 +45,7 @@ const mockStore = {
   },
 };
 
-const { lookupUserForSession } = await import(webUrl("domain/seed-dev.js"));
+const { lookupUserForSession, resolveEffectiveOwnerId } = await import(webUrl("domain/seed-dev.js"));
 
 const resolved = await lookupUserForSession(
   { userId: DUMMY_ID, uid: DUMMY_ID, authUid: AUTH_UID, email: EMAIL },
@@ -53,5 +53,11 @@ const resolved = await lookupUserForSession(
 );
 assert.equal(resolved?.id, REAL_USER_ID, "authIndex resolves real user despite dummy session id");
 assert.equal(resolved?.teamId, "team_nikil");
+
+const ownerId = await resolveEffectiveOwnerId(
+  { userId: DUMMY_ID, uid: DUMMY_ID, authUid: AUTH_UID, email: EMAIL },
+  mockStore,
+);
+assert.equal(ownerId, REAL_USER_ID, "resolveEffectiveOwnerId prefers authIndex over usr_dummy_*");
 
 console.log("Firebase session resolve tests passed.");

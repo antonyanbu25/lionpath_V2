@@ -493,6 +493,34 @@ export async function lookupUserForSession(session, store) {
   return user;
 }
 
+/**
+ * Domain owner id for Firestore reads/writes — authIndex wins over usr_dummy_* placeholders.
+ * @param {object | null | undefined} session
+ * @param {object} [store] optional store override (tests)
+ * @returns {Promise<string | null>}
+ */
+export async function resolveEffectiveOwnerId(session, storeOverride) {
+  if (!session) return null;
+  const raw = session.userId || session.uid;
+  const isDummy = raw?.startsWith("usr_dummy_");
+  const isAuthUidAsProfile = session.authUid && raw === session.authUid;
+  if (raw && !isDummy && !isAuthUidAsProfile) return raw;
+
+  if (session.authUid || session.email) {
+    let store = storeOverride;
+    if (!store) {
+      if (!firebaseConfig.projectId) {
+        await seedDevDomainIfNeeded();
+      }
+      store = getStore();
+    }
+    const user = await lookupUserForSession(session, store);
+    if (user?.id) return user.id;
+  }
+
+  return raw || (session.email ? stableUserIdForEmail(session.email) : null);
+}
+
 /** Load user profile from store and merge into session. */
 export async function enrichSessionFromStore(session) {
   const lookupId = session?.userId || session?.uid;

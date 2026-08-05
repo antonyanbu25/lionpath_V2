@@ -374,9 +374,13 @@ export function createLocalStore() {
     },
 
     async listDealsByAccount(accountId, ownerId, opts = {}) {
+      const teamId = opts.teamId || null;
       const rows = findMany(
         "deals",
-        (d) => d.accountId === accountId && (!ownerId || d.ownerId === ownerId),
+        (d) =>
+          d.accountId === accountId
+          && (!ownerId || d.ownerId === ownerId)
+          && (!teamId || d.teamId === teamId),
         (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
       );
       return opts.forSearch ? rows : rows.map(stripEmbeddingFields);

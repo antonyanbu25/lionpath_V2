@@ -561,18 +561,22 @@ export function createFirestoreStore(fb) {
 
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       const fields = dealFields(!!opts.forSearch);
+      const teamId = opts.teamId || null;
+      const filters = [
+        where("accountId", "==", accountId),
+        ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+        ...(teamId ? [where("teamId", "==", teamId)] : []),
+      ];
       const q = select
         ? query(
             collection(db, "deals"),
-            where("accountId", "==", accountId),
-            ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+            ...filters,
             orderBy("lastActivityAt", "desc"),
             select(...fields),
           )
         : query(
             collection(db, "deals"),
-            where("accountId", "==", accountId),
-            ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+            ...filters,
             orderBy("lastActivityAt", "desc"),
           );
       const snap = await getDocs(q);

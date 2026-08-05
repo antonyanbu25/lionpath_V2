@@ -6,6 +6,7 @@ import { getStore } from "./domain/store.js";
 import { loadLocalBriefs } from "./precall.js?v=2.1.14";
 import { domainFromEmail } from "./domain/types.js";
 import { listDealsForAccount } from "./domain/deal-service.js";
+import { safeStoreOp } from "./domain/safe-store.js";
 
 const CONTEXT_TTL_MS = 60_000;
 const contextCache = new Map(); // ownerId -> { at: number, value: object }
@@ -79,9 +80,10 @@ function isFirestorePermissionError(err) {
  * @param {string} ownerId
  * @returns {Promise<{ ownerId: string, briefs: object[], accounts: object[], deals: object[] }>}
  */
-export async function buildPostCallResolveContext(ownerId) {
+export async function buildPostCallResolveContext(ownerId, opts = {}) {
   const empty = { ownerId, briefs: [], accounts: [], deals: [] };
   if (!ownerId) return empty;
+  const dealOpts = opts.teamId ? { teamId: opts.teamId } : {};
 
   const cached = contextCache.get(ownerId);
   if (cached && Date.now() - cached.at < CONTEXT_TTL_MS) {
@@ -150,7 +152,11 @@ export async function buildPostCallResolveContext(ownerId) {
     const deals = [];
     const seenDealIds = new Set();
     for (const accountId of accountIds) {
-      const accountDeals = await listDealsForAccount(accountId);
+      const accountDeals = await safeStoreOp(
+        "listDealsForAccount",
+        () => listDealsForAccount(accountId, dealOpts),
+        [],
+      );
       for (const deal of accountDeals) {
         if (seenDealIds.has(deal.id)) continue;
         seenDealIds.add(deal.id);
@@ -185,9 +191,14 @@ export async function buildPostCallResolveContext(ownerId) {
  * @param {object|null|undefined} resolve
  * @param {string|null|undefined} accountId
  */
-export async function enrichResolveDealsForAccount(resolve, accountId) {
+export async function enrichResolveDealsForAccount(resolve, accountId, opts = {}) {
   if (!resolve || !accountId) return resolve;
-  const globalDeals = await listDealsForAccount(accountId);
+  const dealOpts = opts.teamId ? { teamId: opts.teamId } : {};
+  const globalDeals = await safeStoreOp(
+    "listDealsForAccount",
+    () => listDealsForAccount(accountId, dealOpts),
+    [],
+  );
   if (!globalDeals.length) return resolve;
 
   const byId = new Map();

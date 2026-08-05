@@ -381,10 +381,10 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
  * Deals are account-scoped, not owner-scoped, so post-call / prep can link to the same opp.
  * @param {string} accountId
  */
-export async function listDealsForAccount(accountId) {
+export async function listDealsForAccount(accountId, opts = {}) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  const deals = await store.listDealsByAccount(accountId);
+  const deals = await store.listDealsByAccount(accountId, null, opts);
   return Promise.all(deals.map((d) => ensureDealTitle(d)));
 }
 
