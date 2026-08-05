@@ -327,9 +327,16 @@ export function createFirestoreStore(fb) {
         where("status", "==", "active"),
         ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
       ];
-      const q = query(collection(db, "lifecycles"), ...filters, orderBy("lastActivityAt", "desc"));
+      // Scoped owner queries skip orderBy — avoids composite-index gaps; sort client-side.
+      const q = ownerId
+        ? query(collection(db, "lifecycles"), ...filters)
+        : query(collection(db, "lifecycles"), ...filters, orderBy("lastActivityAt", "desc"));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (ownerId) {
+        rows.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+      }
+      return rows;
     },
 
     async listLifecyclesByOrg(orgId) {

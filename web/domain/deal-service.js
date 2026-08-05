@@ -6,6 +6,16 @@ import { getStore } from "./store.js";
 import { newId, now, stageAfterFirstPostCall, can } from "./types.js";
 import { sessionUserId } from "./session.js";
 import { resolveEngagementMotion, resolveDealOwnerId } from "./deal-motion.js";
+import { safeStoreOp } from "./safe-store.js";
+
+/** Deal readable + writable by the acting SE (Firestore client rules). */
+async function dealForActor(dealId, accountId, ownerId) {
+  if (!dealId || !ownerId) return null;
+  const store = getStore();
+  const deal = await safeStoreOp("getDeal", () => store.getDeal(dealId), null);
+  if (!deal || deal.accountId !== accountId || deal.ownerId !== ownerId) return null;
+  return deal;
+}
 
 /** @type {Record<import("./types.js").DealType, string>} */
 export const DEAL_TYPE_LABELS = {
@@ -470,10 +480,11 @@ export async function bumpDealAfterPrep(dealId, patch = {}) {
   return updated;
 }
 
-export async function bumpDealAfterPostCall(dealId, { isNew, stage }) {
+export async function bumpDealAfterPostCall(dealId, { isNew, stage, actorId }) {
   const store = getStore();
-  const deal = await store.getDeal(dealId);
+  const deal = await safeStoreOp("getDeal", () => store.getDeal(dealId), null);
   if (!deal) return null;
+  if (actorId && deal.ownerId !== actorId) return deal;
   const ts = now();
   /** @type {Partial<import("./types.js").Deal>} */
   const dealPatch = {
@@ -594,10 +605,9 @@ export async function ensureDealForLifecycle(lifecycle) {
  * @param {{ prepType?: string, dealId?: string|null, title?: string, primaryContactId?: string|null }} opts
  */
 export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId, opts = {}) {
-  const store = getStore();
   if (opts.dealId) {
-    const deal = await store.getDeal(opts.dealId);
-    if (deal && deal.accountId === accountId) return deal;
+    const deal = await dealForActor(opts.dealId, accountId, ownerId);
+    if (deal) return deal;
   }
 
   const motion = await resolveEngagementMotion(accountId, ownerId, {
@@ -607,8 +617,8 @@ export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId
   });
 
   if (motion.dealId) {
-    const deal = await store.getDeal(motion.dealId);
-    if (deal && deal.accountId === accountId) return deal;
+    const deal = await dealForActor(motion.dealId, accountId, ownerId);
+    if (deal) return deal;
   }
 
   const prepType = motion.prepType;

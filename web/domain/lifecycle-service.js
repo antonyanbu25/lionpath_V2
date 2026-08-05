@@ -227,9 +227,14 @@ export async function attachPostCall(lifecycleId, postCall, actorId, callSummary
           isNew: true,
           qualityScore: postCall.qualityScore,
           stage: newStage,
+          actorId: actorId || postCall.ownerId,
         });
       } else {
-        await bumpDealAfterPostCall(dealId, { isNew: false, qualityScore: postCall.qualityScore });
+        await bumpDealAfterPostCall(dealId, {
+          isNew: false,
+          qualityScore: postCall.qualityScore,
+          actorId: actorId || postCall.ownerId,
+        });
       }
       const refreshed = await store.getLifecycle(lifecycleId);
       if (refreshed) newStage = refreshed.stage;

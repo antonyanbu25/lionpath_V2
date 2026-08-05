@@ -376,13 +376,36 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const { contactIds, primaryContactId, contactIdByEmail } = upserted;
   const account = upserted.account || { id: upserted.accountId, name: company };
 
-  await ensureSeTeamForPrepActor(account.id, ownerId);
   // #region agent log
   console.warn(
     "[DBG-8a85ad]",
-    JSON.stringify({ hypothesisId: "H-LIFECYCLE-QUERY", ok: true, accountId: account.id, ownerId }),
+    JSON.stringify({ hypothesisId: "H-STEP", step: "upsertAccount", accountId: account.id, ownerId }),
   );
   // #endregion
+
+  try {
+    await ensureSeTeamForPrepActor(account.id, ownerId);
+    // #region agent log
+    console.warn(
+      "[DBG-8a85ad]",
+      JSON.stringify({ hypothesisId: "H-LIFECYCLE-QUERY", ok: true, accountId: account.id, ownerId }),
+    );
+    // #endregion
+  } catch (err) {
+    // #region agent log
+    console.warn(
+      "[DBG-8a85ad]",
+      JSON.stringify({
+        hypothesisId: "H-LIFECYCLE-QUERY",
+        ok: false,
+        error: err?.message || String(err),
+        accountId: account.id,
+        ownerId,
+      }),
+    );
+    // #endregion
+    throw err;
+  }
 
   const engagementCtx = getAccountEngagementContext();
   const ctxMatchesAccount = engagementCtx.accountId === account.id;
@@ -457,6 +480,18 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       throw err;
     }
   })();
+  // #region agent log
+  console.warn(
+    "[DBG-8a85ad]",
+    JSON.stringify({
+      hypothesisId: "H-STEP",
+      step: "getOrCreateLifecycle",
+      lifecycleId: lifecycle?.id,
+      dealId: lifecycle?.dealId,
+      ownerId,
+    }),
+  );
+  // #endregion
 
   const identityKey = callIdentityKey(record || { zoomLink: payload?.recordingUrl, analysis, id: record?.id });
   const qip = data?.scorecard;
