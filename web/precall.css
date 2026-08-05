@@ -56,13 +56,6 @@ body.prep-gen-lock {
   justify-content: center;
 }
 
-.prep-gen-logo {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  box-shadow: var(--dew-shadow-island);
-}
-
 .prep-gen-eyebrow {
   margin: 0 0 6px;
 }

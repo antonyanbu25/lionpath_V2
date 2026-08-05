@@ -1,5 +1,5 @@
 /**
- * Full-page brief / call analysis generation overlay — Dew theme, Freshworks mark, stage updates.
+ * Full-page brief / call analysis generation overlay — Dew theme, orbit spinner, stage updates.
  */
 
 import { $, show } from "./shared.js";
@@ -19,7 +19,14 @@ export const POSTCALL_GEN_THEME = {
   hint: "Transcript analysis, qualification, and scoring run in the background — usually 40–90 seconds.",
 };
 
+export const CALL_LOAD_THEME = {
+  eyebrow: "SE Labs · Call record",
+  title: "Loading your call",
+  hint: "Fetching analysis, scorecard, and timeline from your workspace — usually a few seconds.",
+};
+
 function overlayEl() {
+  if (typeof document === "undefined") return null;
   return $("prep-gen-overlay");
 }
 
@@ -29,6 +36,7 @@ function prefersReducedMotion() {
 
 /** @param {Partial<typeof PREP_GEN_THEME>} theme */
 function applyGenOverlayTheme(theme = PREP_GEN_THEME) {
+  if (typeof document === "undefined") return;
   const t = { ...PREP_GEN_THEME, ...theme };
   const eyebrow = $("prep-gen-eyebrow");
   const title = $("prep-gen-title");
@@ -40,6 +48,7 @@ function applyGenOverlayTheme(theme = PREP_GEN_THEME) {
 
 /** @param {number} pct 0–100 */
 function setBarPct(pct) {
+  if (typeof document === "undefined") return;
   const bar = $("prep-gen-bar");
   if (!bar) return;
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
@@ -61,7 +70,7 @@ export function showPrepGenOverlay(opts = {}) {
   setBarPct(opts.pct ?? 8);
   el.classList.remove("prep-gen-overlay-exit", "prep-gen-overlay-exit-active");
   show(el, true);
-  document.body.classList.add("prep-gen-lock");
+  document.body?.classList.add("prep-gen-lock");
   requestAnimationFrame(() => el.classList.add("prep-gen-overlay-active"));
 }
 
@@ -93,7 +102,7 @@ export function hidePrepGenOverlay(onHidden) {
   if (prefersReducedMotion()) {
     show(el, false);
     el.classList.remove("prep-gen-overlay-active", "prep-gen-overlay-exit", "prep-gen-overlay-exit-active");
-    document.body.classList.remove("prep-gen-lock");
+    document.body?.classList.remove("prep-gen-lock");
     onHidden?.();
     return Promise.resolve();
   }
@@ -108,7 +117,7 @@ export function hidePrepGenOverlay(onHidden) {
         "prep-gen-overlay-exit",
         "prep-gen-overlay-exit-active",
       );
-      document.body.classList.remove("prep-gen-lock");
+      document.body?.classList.remove("prep-gen-lock");
       onHidden?.();
       resolve();
     }, FADE_MS);

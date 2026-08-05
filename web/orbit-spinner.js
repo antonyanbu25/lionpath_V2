@@ -13,29 +13,26 @@ const SIZE_CLASS = {
 
 /**
  * @param {OrbitSpinnerSize} [size]
- * @param {{ hollowCore?: boolean, className?: string, label?: string }} [opts]
+ * @param {{ className?: string, label?: string }} [opts]
  */
 export function renderOrbitSpinner(size = "medium", opts = {}) {
   const sizeClass = SIZE_CLASS[size] || SIZE_CLASS.medium;
   const extra = opts.className ? ` ${opts.className}` : "";
-  const hollow = opts.hollowCore ? " dew-orbit-spinner--hollow-core" : "";
   const label = opts.label
     ? ` aria-label="${String(opts.label).replace(/"/g, "&quot;")}"`
     : ' aria-hidden="true"';
 
-  const core = opts.hollowCore ? "" : '<span class="dew-orbit-core"></span>';
-
-  return `<div class="dew-orbit-spinner ${sizeClass}${hollow}${extra}" role="status"${label}>
+  return `<div class="dew-orbit-spinner ${sizeClass}${extra}" role="status"${label}>
   <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
   <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
   <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-  ${core}
+  <span class="dew-orbit-core"></span>
 </div>`;
 }
 
 /**
  * @param {OrbitSpinnerSize} [size]
- * @param {{ hollowCore?: boolean, className?: string, label?: string }} [opts]
+ * @param {{ className?: string, label?: string }} [opts]
  * @returns {HTMLElement}
  */
 export function createOrbitSpinner(size = "medium", opts = {}) {

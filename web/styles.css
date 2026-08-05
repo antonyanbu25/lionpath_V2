@@ -155,11 +155,6 @@ body.splash-lock { overflow: hidden; }
   box-shadow: var(--dew-shadow-card);
   animation: splash-logo-breathe 2.8s ease-in-out infinite;
 }
-.lion-loader-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-}
 .lion-title {
   margin: 0 0 6px;
   font-size: 26px;

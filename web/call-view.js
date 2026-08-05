@@ -30,7 +30,11 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc, titleCaseDisplayName } from "./shared.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
-import { renderLoadingPanel } from "./crayons-ui.js";
+import {
+  showPrepGenOverlay,
+  hidePrepGenOverlay,
+  CALL_LOAD_THEME,
+} from "./prep-generation-overlay.js";
 import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
 import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType } from "./call-type-labels.js";
 import { mergeCallIdentities } from "./identity-merge.js";
@@ -1935,7 +1939,7 @@ async function safeEnrich(label, fn, fallback) {
   }
 }
 
-/** Immediate shell while Firestore enrichments load. */
+/** Immediate shell while Firestore enrichments load (overlay handles visible loading UI). */
 function renderCallLoadingShell(record) {
   const title = resolveCallTitleFromRecord(record);
   return `
@@ -1944,7 +1948,6 @@ function renderCallLoadingShell(record) {
         <header class="call-record-hero">
           <h1 class="call-record-title">${esc(title)}</h1>
         </header>
-        ${renderLoadingPanel("Loading call record…")}
       </div>
     </div>`;
 }
@@ -2524,7 +2527,17 @@ export async function renderCallView(container, session, opts = {}) {
     }
 
     container.innerHTML = renderCallLoadingShell(resolvedRecord);
-    const bundle = await loadCallBundle(activeSession, resolvedRecord);
+    showPrepGenOverlay({
+      theme: CALL_LOAD_THEME,
+      message: "Loading call record…",
+      pct: 12,
+    });
+    let bundle;
+    try {
+      bundle = await loadCallBundle(activeSession, resolvedRecord);
+    } finally {
+      await hidePrepGenOverlay();
+    }
     const coachAudience =
       normalizeSeEmail(ownerEmail) !== selfEmail &&
       isManagerRole(sessionToUser(activeSession)?.role)

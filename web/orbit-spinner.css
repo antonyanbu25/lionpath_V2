@@ -110,22 +110,6 @@
   z-index: 1;
 }
 
-.dew-orbit-spinner--hollow-core .dew-orbit-core {
-  display: none;
-}
-
-/* Logo replaces the core dot — same center point as the rings */
-.dew-orbit-spinner--hollow-core .dew-orbit-logo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1;
-  display: block;
-  object-fit: contain;
-  pointer-events: none;
-}
-
 @keyframes dew-orbit-spin {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
