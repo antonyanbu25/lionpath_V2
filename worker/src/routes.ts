@@ -71,11 +71,18 @@ import {
 import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
+import { firestoreAdminReady } from "./data/firestore-admin";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { rerankWithEmbeddings, type RagEmbeddingCandidate } from "./search/rag-search";
 import { embedText } from "./embeddings";
 import { domainReadRoutes } from "./routes/domain-reads";
 import { handleReadModelsSchedulePost } from "./routes/read-models";
+import {
+  handleBatchEnqueuePost,
+  handleBatchFallbackPost,
+  handleBatchPollPost,
+  handleReadModelsNightlyRebuildPost,
+} from "./routes/internal-batch";
 import { handleDirectorAnalyticsGet } from "./routes/analytics";
 import { handleAdminLlmUsageGet } from "./routes/admin-llm-usage";
 import type { Env } from "./env";
@@ -828,6 +835,7 @@ export async function handleProductSignalCluster(
       lastFullRunAt: input.lastFullRunAt,
       lastIncrementalAt: input.lastIncrementalAt,
       suggestLabels: input.suggestLabels,
+      labelMode: input.labelMode ?? "batch",
     });
     return json(result, 200, cors);
   } catch (err) {
@@ -857,6 +865,100 @@ export async function handlePostCallSummaries(
     if (status) return json({ error: (err as Error).message }, status, cors);
     throw err;
   }
+}
+
+/** Pass 9 — async batch enqueue (fire-and-forget from dual-write). */
+export async function handleBatchSummariesEnqueuePost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const verified = await requireUser(request, env);
+  if (!verified) return json({ error: "Sign-in required." }, 401, cors);
+
+  let body: {
+    dealId?: string | null;
+    accountId?: string;
+    ownerId?: string;
+    teamId?: string;
+    orgId?: string;
+  } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ error: "Invalid JSON body." }, 400, cors);
+  }
+
+  if (!body.accountId || !body.ownerId) {
+    return json({ error: "accountId and ownerId are required." }, 400, cors);
+  }
+
+  if (!isNodeRuntime() || !firestoreAdminReady(env)) {
+    return json({ error: "Batch enqueue requires Node runtime with Firestore admin." }, 503, cors);
+  }
+
+  const { enqueueSummariesBatch } = await import("./data/gemini-batch-orchestrator");
+  const { findOpenJobByKey } = await import("./data/gemini-batch-jobs");
+
+  const ctx = {
+    dealId: body.dealId || null,
+    accountId: body.accountId,
+    ownerId: body.ownerId,
+    teamId: body.teamId,
+    orgId: body.orgId,
+    userId: (await resolveUsageUserId(verified, env)) || body.ownerId,
+  };
+  const idempotencyKey = `summaries:${ctx.accountId}:${ctx.dealId || "none"}`;
+  const existing = await findOpenJobByKey("summaries", idempotencyKey, env);
+  if (existing) return json({ jobId: existing.id, duplicate: true }, 202, cors);
+
+  const job = await enqueueSummariesBatch(env, ctx);
+  return json({ jobId: job?.id || null, enqueued: !!job }, 202, cors);
+}
+
+/** Gap cluster label batch enqueue after clustering math completes. */
+export async function handleBatchClusterLabelsEnqueuePost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  await requireUser(request, env);
+
+  let body: {
+    orgId?: string;
+    pendingLabels?: Array<{ clusterId: string; verbatims: string[] }>;
+    userId?: string;
+  } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ error: "Invalid JSON body." }, 400, cors);
+  }
+
+  if (!body.orgId?.trim() || !body.pendingLabels?.length) {
+    return json({ error: "orgId and pendingLabels are required." }, 400, cors);
+  }
+
+  if (!isNodeRuntime() || !firestoreAdminReady(env)) {
+    return json({ error: "Batch enqueue requires Node runtime with Firestore admin." }, 503, cors);
+  }
+
+  const { enqueueClusterLabelBatch } = await import("./data/gemini-batch-orchestrator");
+  const { findOpenJobByKey } = await import("./data/gemini-batch-jobs");
+
+  const idempotencyKey = `cluster-label:${body.orgId}:${body.pendingLabels.map((l) => l.clusterId).sort().join(",")}`;
+  const existing = await findOpenJobByKey("cluster-label", idempotencyKey, env);
+  if (existing) return json({ jobId: existing.id, duplicate: true }, 202, cors);
+
+  const job = await enqueueClusterLabelBatch(
+    env,
+    body.orgId.trim(),
+    body.pendingLabels,
+    body.userId,
+  );
+  return json({ jobId: job?.id || null, enqueued: !!job }, 202, cors);
 }
 
 export async function handleAnalyzeCall(
@@ -1142,6 +1244,12 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/postcall/timeline": { POST: handlePostCallTimeline },
   "/api/product-signal/cluster": { POST: handleProductSignalCluster },
   "/api/postcall/summaries": { POST: handlePostCallSummaries },
+  "/api/batch/summaries/enqueue": { POST: handleBatchSummariesEnqueuePost },
+  "/api/batch/cluster-labels/enqueue": { POST: handleBatchClusterLabelsEnqueuePost },
+  "/api/internal/batch/enqueue": { POST: handleBatchEnqueuePost },
+  "/api/internal/batch/poll": { POST: handleBatchPollPost },
+  "/api/internal/batch/fallback": { POST: handleBatchFallbackPost },
+  "/api/internal/read-models/nightly-rebuild": { POST: handleReadModelsNightlyRebuildPost },
   "/api/video-pass": { POST: handleVideoPass },
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },

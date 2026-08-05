@@ -533,6 +533,12 @@ export async function regenerateSummariesAfterPostCall(dealId, accountId, ctx) {
   return regenerateDealAndAccountSummaries(dealId, accountId, ctx);
 }
 
+/** Fire-and-forget Pass 9 via Gemini Batch. */
+export async function enqueueSummariesAfterPostCall(dealId, accountId, ctx) {
+  const { enqueueSummariesAfterPostCall: enqueue } = await import("./summaries-service.js");
+  return enqueue(dealId, accountId, ctx);
+}
+
 export async function bumpDealAfterTask(dealId) {
   const store = getStore();
   const deal = await store.getDeal(dealId);

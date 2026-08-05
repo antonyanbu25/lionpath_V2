@@ -123,6 +123,48 @@ docker compose logs -f worker
 
 ---
 
+## 5b. Background jobs (Gemini Batch)
+
+Branch **`2.1`** routes background LLM work through the Gemini Batch API (~50% cheaper, up to 24h turnaround). Interactive prep and post-call passes are **not** affected.
+
+Add to `deploy/vps/.env`:
+
+```bash
+# Generate once: openssl rand -hex 32
+INTERNAL_CRON_SECRET=your-random-secret
+GEMINI_API_KEY=your-gemini-api-key   # required for batch even if you use Vertex elsewhere
+```
+
+Install crons on the VPS (adjust hostname if you use `lionpathapi` instead of `portalapi`):
+
+```bash
+# Poll open batch jobs — every 10 minutes
+*/10 * * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/poll
+
+# Inline fallback for stuck jobs — hourly
+0 * * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/fallback
+
+# Embedding backfill — daily 2am UTC
+0 2 * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" "https://lionpathapi.benjaminsquare.com/api/internal/batch/enqueue?workload=embedding-backfill"
+
+# Read-model full rebuild — daily 3am UTC (no LLM)
+0 3 * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/read-models/nightly-rebuild
+```
+
+Load `INTERNAL_CRON_SECRET` into cron's environment (e.g. wrap in a small shell script sourced from `.env`, or export in root's crontab preamble).
+
+**Smoke test after deploy:**
+
+```bash
+curl -sf -X POST -H "X-Cron-Secret: YOUR_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/poll
+```
+
+User-facing enqueue (authenticated, no cron secret): `POST /api/batch/summaries/enqueue`, `POST /api/batch/cluster-labels/enqueue`.
+
+Cloud Run equivalent: **[deploy/cloudrun/README.md](../deploy/cloudrun/README.md)** (Cloud Scheduler + Secret Manager).
+
+---
+
 ## 6. Verify
 
 ```bash

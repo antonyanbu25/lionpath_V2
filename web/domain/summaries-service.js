@@ -275,6 +275,46 @@ async function persistSummaryDraft(ctx, draft, kind) {
 }
 
 /**
+ * Enqueue Pass 9 summary regeneration via Gemini Batch (fire-and-forget).
+ * @param {string|null} dealId
+ * @param {string} accountId
+ * @param {object} ctx
+ */
+export async function enqueueSummariesAfterPostCall(dealId, accountId, ctx) {
+  if (!accountId || !ctx?.ownerId) return null;
+
+  const { WORKER_BASE_URL } = await import("../firebase-config.js");
+  const url = `${WORKER_BASE_URL}/api/batch/summaries/enqueue`;
+  const headers = { "Content-Type": "application/json" };
+  if (typeof getAuthToken === "function") {
+    try {
+      const token = await getAuthToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {
+      /* local dev */
+    }
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    body: JSON.stringify({
+      dealId: dealId || null,
+      accountId,
+      ownerId: ctx.ownerId,
+      teamId: ctx.teamId,
+      orgId: ctx.orgId || "",
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(errText || `summaries batch enqueue HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
  * Pass 9 after post-call — rewrite deal + account summaries from all call evidence.
  * @param {string|null} dealId
  * @param {string} accountId

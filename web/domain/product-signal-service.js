@@ -32,6 +32,25 @@ async function authHeaders() {
   return headers;
 }
 
+/**
+ * @param {string} apiBase
+ * @param {string} orgId
+ * @param {Array<{ clusterId: string, verbatims: string[] }>} pendingLabels
+ */
+async function enqueueClusterLabelsAfterClustering(apiBase, orgId, pendingLabels) {
+  const res = await fetch(`${apiBase.replace(/\/$/, "")}/api/batch/cluster-labels/enqueue`, {
+    method: "POST",
+    headers: await authHeaders(),
+    credentials: "include",
+    body: JSON.stringify({ orgId, pendingLabels }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Cluster label batch enqueue failed (${res.status})`);
+  }
+  return res.json();
+}
+
 /** @param {object|null|undefined} session */
 export function isProductSignalCurator(session) {
   const role = session?.role;
@@ -145,6 +164,12 @@ export async function runGapClusteringJob(store, apiBase, orgId, options = {}) {
     updatedAt: ts,
   };
   await store.upsertClusteringState?.(nextState);
+
+  if (result.pendingLabels?.length) {
+    void enqueueClusterLabelsAfterClustering(apiBase, orgId, result.pendingLabels).catch((err) => {
+      console.warn("[product-signal] cluster label batch enqueue failed:", err?.message || err);
+    });
+  }
 
   return {
     skipped: false,

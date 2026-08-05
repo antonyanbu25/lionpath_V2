@@ -9,6 +9,7 @@ import { applyQualificationToDeal } from "./meddpicc-qualify-service.js";
 import { applyTechnicalCommitToDeal, buildTcDeltasDetail } from "./technical-commit-service.js";
 import {
   regenerateSummariesAfterPostCall,
+  enqueueSummariesAfterPostCall,
   persistArrAfterPostCall,
   linkContactsToDealRecord,
   createDealWithExplicitTitle,
@@ -831,11 +832,16 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   }
 
   if (account.id) {
-    try {
-      await regenerateSummariesAfterPostCall(lifecycle.dealId || dealId || null, account.id, persistCtx);
-    } catch (err) {
-      console.warn("[dual-write] summaries regenerate failed:", err?.message || err);
-    }
+    void enqueueSummariesAfterPostCall(lifecycle.dealId || dealId || null, account.id, persistCtx).catch(
+      async (err) => {
+        console.warn("[dual-write] summaries batch enqueue failed, inline fallback:", err?.message || err);
+        try {
+          await regenerateSummariesAfterPostCall(lifecycle.dealId || dealId || null, account.id, persistCtx);
+        } catch (fallbackErr) {
+          console.warn("[dual-write] summaries inline fallback failed:", fallbackErr?.message || fallbackErr);
+        }
+      },
+    );
   }
 
   // Non-fatal from here on, but reported: everything below enriches records that already exist.

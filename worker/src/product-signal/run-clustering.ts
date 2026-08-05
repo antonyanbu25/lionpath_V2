@@ -18,7 +18,7 @@ import {
   medoidVerbatims,
   nearestCentroidAssignment,
 } from "./cluster-math";
-import { suggestClusterLabel } from "./cluster-label";
+import { suggestClusterLabel, heuristicClusterLabel } from "./cluster-label";
 import { computeClusterRollups, shouldArchiveCluster } from "./rollups";
 import type { ProviderEnv } from "../providers/types";
 
@@ -53,6 +53,13 @@ export interface ExistingClusterInput {
 
 export type ClusteringMode = "incremental" | "full" | "auto";
 
+export type ClusterLabelMode = "inline" | "batch";
+
+export interface PendingClusterLabel {
+  clusterId: string;
+  verbatims: string[];
+}
+
 export interface RunClusteringInput {
   orgId: string;
   gaps: GapClusterInput[];
@@ -62,6 +69,8 @@ export interface RunClusteringInput {
   lastFullRunAt?: number | null;
   lastIncrementalAt?: number | null;
   suggestLabels?: boolean;
+  /** batch = heuristic labels now, LLM via Gemini Batch; inline = sync LLM (fallback). */
+  labelMode?: ClusterLabelMode;
   now?: number;
 }
 
@@ -75,6 +84,7 @@ export interface ClusteringRunResult {
   clusters: GapCluster[];
   archivedClusterIds: string[];
   gapAssignments: GapAssignment[];
+  pendingLabels?: PendingClusterLabel[];
   clusteringState: {
     pendingGapCount: number;
     lastIncrementalAt: number | null;
@@ -146,15 +156,35 @@ function refreshClusterFromMembers(
   );
 }
 
+async function resolveClusterLabel(
+  env: ProviderEnv,
+  clusterId: string,
+  verbatims: string[],
+  suggestLabels: boolean,
+  labelMode: ClusterLabelMode,
+  pendingLabels: PendingClusterLabel[],
+): Promise<string> {
+  const samples = verbatims.filter((v) => v.trim()).slice(0, 5);
+  if (!samples.length) return "Untitled theme";
+  if (!suggestLabels) return heuristicClusterLabel(samples);
+  if (labelMode === "batch") {
+    pendingLabels.push({ clusterId, verbatims: samples });
+    return heuristicClusterLabel(samples);
+  }
+  return suggestClusterLabel(env, samples, true);
+}
+
 async function runIncrementalClustering(
   env: ProviderEnv,
   orgId: string,
   gaps: GapClusterInput[],
   clusters: ExistingClusterInput[],
   suggestLabels: boolean,
+  labelMode: ClusterLabelMode,
   now: number,
   lastFullRunAt: number | null,
 ): Promise<ClusteringRunResult> {
+  const pendingLabels: PendingClusterLabel[] = [];
   const eligible = gaps.filter(isClusterEligibleGap);
   const active = activeClusters(clusters).filter((c) => c.orgId === orgId);
   const centroids = active
@@ -209,8 +239,15 @@ async function runIncrementalClustering(
       const centroid = meanCentroid(members.map((m) => m.embedding));
       const rollups = computeClusterRollups(members);
       const verbatims = medoidVerbatims(members, centroid);
-      const label = await suggestClusterLabel(env, verbatims, suggestLabels);
       const id = newId("gapCluster");
+      const label = await resolveClusterLabel(
+        env,
+        id,
+        verbatims,
+        suggestLabels,
+        labelMode,
+        pendingLabels,
+      );
       updatedById.set(
         id,
         buildClusterDoc(
@@ -245,6 +282,7 @@ async function runIncrementalClustering(
       .filter((c) => c.status === "archived")
       .map((c) => c.id),
     gapAssignments: assignments,
+    pendingLabels: pendingLabels.length ? pendingLabels : undefined,
     clusteringState: {
       pendingGapCount: eligible.filter((g) => !assignmentMap.get(g.id)).length,
       lastIncrementalAt: now,
@@ -260,8 +298,10 @@ async function runFullClustering(
   gaps: GapClusterInput[],
   clusters: ExistingClusterInput[],
   suggestLabels: boolean,
+  labelMode: ClusterLabelMode,
   now: number,
 ): Promise<ClusteringRunResult> {
+  const pendingLabels: PendingClusterLabel[] = [];
   const eligible = gaps.filter(isClusterEligibleGap);
   const active = activeClusters(clusters).filter((c) => c.orgId === orgId);
   const archivedIds: string[] = [];
@@ -342,11 +382,25 @@ async function runFullClustering(
         status = "draft";
       } else {
         const verbatims = medoidVerbatims(members, meanCentroid(members.map((m) => m.embedding)));
-        label = await suggestClusterLabel(env, verbatims, suggestLabels);
+        label = await resolveClusterLabel(
+          env,
+          clusterId,
+          verbatims,
+          suggestLabels,
+          labelMode,
+          pendingLabels,
+        );
       }
     } else {
       const verbatims = medoidVerbatims(members, meanCentroid(members.map((m) => m.embedding)));
-      label = await suggestClusterLabel(env, verbatims, suggestLabels);
+      label = await resolveClusterLabel(
+        env,
+        clusterId,
+        verbatims,
+        suggestLabels,
+        labelMode,
+        pendingLabels,
+      );
     }
 
     const centroid = meanCentroid(members.map((m) => m.embedding));
@@ -413,6 +467,7 @@ async function runFullClustering(
     clusters: [...mergedOutput.values()].filter((c) => c.status !== "archived" || archivedIds.includes(c.id)),
     archivedClusterIds: archivedIds,
     gapAssignments: [...assignmentMap.entries()].map(([gapId, clusterId]) => ({ gapId, clusterId })),
+    pendingLabels: pendingLabels.length ? pendingLabels : undefined,
     clusteringState: {
       pendingGapCount: eligible.filter((g) => !assignmentMap.get(g.id)).length,
       lastIncrementalAt: null,
@@ -438,6 +493,8 @@ export async function runGapClustering(
     now,
   );
 
+  const labelMode = input.labelMode ?? "batch";
+
   if (resolvedMode === "full") {
     return runFullClustering(
       env,
@@ -445,6 +502,7 @@ export async function runGapClustering(
       input.gaps,
       input.clusters,
       input.suggestLabels !== false,
+      labelMode,
       now,
     );
   }
@@ -455,6 +513,7 @@ export async function runGapClustering(
     input.gaps,
     input.clusters,
     input.suggestLabels !== false,
+    labelMode,
     now,
     input.lastFullRunAt ?? null,
   );

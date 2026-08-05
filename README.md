@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** â€” Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** â€” Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -62,6 +62,22 @@ First-visit intro on `index.html` — once per browser (`lionpath_splash_seen` c
 Key paths: `web/styles.css`, `web/dew-theme.css`, `web/splash.js`, `web/favicon-bounce.js`, `web/index.html`, `web/about.html`.
 
 Web-only deploy: `bash refresh-web.sh` on VPS.
+
+### Login & SSO UX (2.1.17)
+
+Fixes first-impression login loop, unreliable SSO clicks, and infinite dashboard loading:
+
+| Issue | Fix |
+|-------|-----|
+| **Login → splash → login loop** | Pre-login SE Labs splash **skipped on production SSO hosts** (`portal.*`, `yonus.*`, `lionpath.*`, Cloud Run). Sign-in card shows immediately. |
+| **SSO button needs 2–3 clicks** | Google button wired **before** Firebase SDK finishes loading via `bindActionOnce` + `customElements.whenDefined("fw-button")`. First click shows a waiting overlay while SDK/popup opens. |
+| **No feedback during SSO popup** | Full-screen Dew loader with staged messages: *Preparing Google sign-in…* → *Opening Google sign-in…* → *Completing sign-in…* → dashboard. |
+| **Premature logout during SSO** | `ssoInFlight` guard blocks `onAuthStateChanged(null)` and boot `showLogin()` while the popup is open. |
+| **Loading dashboard… forever** | Dashboard paints from **local data first** (no blocking Firestore brief/history fetch). Remote KPIs refresh in background. Firestore queries time out at 8–12s. Uncaught errors fall back to a minimal launchpad instead of leaving the skeleton. |
+
+Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/firebase-config.js` (`AUTH_BUILD_ID` **2.1.17**).
+
+After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/boot JS changes.
 
 ### Account / deal deduplication & linking (2.1)
 
@@ -704,7 +720,18 @@ nano .env     # GEMINI_API_KEY, ALLOWED_ORIGINS=https://lionpath.benjaminsquare.
 ./start.sh
 ```
 
-### Option B â€” Cloudflare Worker + Pages
+**Background jobs (Gemini Batch, branch `2.1`):** Non-interactive workloads (gap cluster labels, Pass 9 summary rollups, embedding backfill) use the [Gemini Batch API](https://ai.google.dev/gemini-api/docs/batch-api) at ~50% cost. Interactive prep/post-call paths are unchanged.
+
+| Workload | Trigger | Notes |
+|----------|---------|--------|
+| Gap cluster labels | After Pass 6 clustering | Heuristic labels first; batch updates labels async |
+| Deal/account summaries (Pass 9) | After post-call dual-write | Fire-and-forget; inline fallback if enqueue fails |
+| Embedding backfill | Nightly cron | `callSummaries`, `accounts`, `deals` |
+| Read-model rebuild | Nightly cron | No LLM — Firestore aggregation only |
+
+**Required on worker:** `GEMINI_API_KEY` (Batch uses AI Studio REST even when interactive calls use Vertex) and `INTERNAL_CRON_SECRET`. Wire crons per **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)** § Background jobs, or **[deploy/cloudrun/README.md](./deploy/cloudrun/README.md)** for Cloud Scheduler.
+
+### Option B — Cloudflare Worker + Pages
 
 ```bash
 cd worker && npx wrangler deploy

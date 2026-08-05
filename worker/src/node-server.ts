@@ -18,6 +18,7 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv {
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
+  INTERNAL_CRON_SECRET?: string;
   VIDEO_PASS_ENABLED?: string;
   VIDEO_DATA_DIR?: string;
 }
@@ -43,6 +44,7 @@ function buildEnv(): NodeEnv {
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
     FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
+    INTERNAL_CRON_SECRET: process.env.INTERNAL_CRON_SECRET || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     ZOOM_ACCOUNT_ID: process.env.ZOOM_ACCOUNT_ID,

@@ -112,7 +112,8 @@ Optional env vars (add to `--set-env-vars` or Secret Manager):
 
 | Variable | Purpose |
 |----------|---------|
-| `GEMINI_API_KEY` | Google AI Studio fallback (not needed on Cloud Run if using Vertex) |
+| `GEMINI_API_KEY` | Google AI Studio fallback (not needed on Cloud Run if using Vertex). **Required for Gemini Batch API** (cluster labels, summary rollups, embedding backfill) — batch uses AI Studio REST even when interactive calls use Vertex. |
+| `INTERNAL_CRON_SECRET` | Shared secret for `X-Cron-Secret` on `/api/internal/batch/*` and nightly read-model rebuild |
 | `ANTHROPIC_API_KEY` | Anthropic fallback |
 | `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` / `ZOOM_REDIRECT_URI` | Zoom OAuth (phase 2) |
 | `ZOOMINFO_API_KEY` | ZoomInfo research |
@@ -223,3 +224,21 @@ gcloud run deploy prep-portal-web \
 | Gemini works locally but not on Cloud Run | Local uses `GEMINI_API_KEY`; Cloud Run needs `GOOGLE_CLOUD_PROJECT` + Vertex IAM |
 
 See also: [`docs/FIREBASE_SETUP.md`](../../docs/FIREBASE_SETUP.md), [`docs/VPS_DEPLOY.md`](../../docs/VPS_DEPLOY.md).
+
+---
+
+## Cloud Scheduler (Gemini Batch + nightly rebuild)
+
+Enable `cloudscheduler.googleapis.com`. Store `INTERNAL_CRON_SECRET` in Secret Manager and add to the API service env.
+
+| Job | Schedule | Target |
+|-----|----------|--------|
+| `batch-poll` | `*/10 * * * *` | `POST https://portalapi.benjaminsquare.com/api/internal/batch/poll` |
+| `batch-fallback` | `0 * * * *` | `POST .../api/internal/batch/fallback` |
+| `embedding-backfill` | `0 2 * * *` | `POST .../api/internal/batch/enqueue?workload=embedding-backfill` |
+| `read-models-nightly` | `0 3 * * *` | `POST .../api/internal/read-models/nightly-rebuild` |
+
+Each job sends header `X-Cron-Secret: <INTERNAL_CRON_SECRET>`.
+
+User-facing post-call flows enqueue batch work via authenticated routes (`/api/batch/summaries/enqueue`, `/api/batch/cluster-labels/enqueue`). Poll/fallback cron applies results and runs inline fallback for stuck jobs.
+

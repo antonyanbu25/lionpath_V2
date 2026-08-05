@@ -133,7 +133,7 @@ function formatCallDigest(c: SummaryCallDigest): string {
   return lines.join("\n");
 }
 
-function formatDealContext(deal: DealSummaryContext): string {
+export function formatDealContext(deal: DealSummaryContext): string {
   const lines = [
     `Deal: ${deal.dealTitle} (${deal.dealType}, stage ${deal.stage})`,
     `Account: ${deal.accountName}`,
@@ -147,7 +147,7 @@ function formatDealContext(deal: DealSummaryContext): string {
   return lines.filter((l) => l !== null).join("\n");
 }
 
-function formatAccountContext(account: AccountSummaryContext): string {
+export function formatAccountContext(account: AccountSummaryContext): string {
   const dealLines = account.deals.map(
     (d) => `- ${d.title || d.type} (${d.type}, ${d.stage}, ${d.status}) [${d.dealId}]`,
   );
