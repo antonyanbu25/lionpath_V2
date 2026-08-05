@@ -17,7 +17,8 @@ if gcloud builds triggers describe "${TRIGGER_NAME}" --project="${PROJECT}" >/de
     --repo-owner="${REPO_OWNER}" \
     --repo-name="${REPO_NAME}" \
     --branch-pattern="${BRANCH_PATTERN}" \
-    --build-config="deploy/cloudrun/cloudbuild.yaml"
+    --build-config="deploy/cloudrun/cloudbuild.yaml" \
+    --substitutions="_TAG=\$SHORT_SHA"
 else
   echo "==> Creating trigger ${TRIGGER_NAME}"
   gcloud builds triggers create github \
@@ -25,7 +26,8 @@ else
     --repo-owner="${REPO_OWNER}" \
     --repo-name="${REPO_NAME}" \
     --branch-pattern="${BRANCH_PATTERN}" \
-    --build-config="deploy/cloudrun/cloudbuild.yaml"
+    --build-config="deploy/cloudrun/cloudbuild.yaml" \
+    --substitutions="_TAG=\$SHORT_SHA"
 fi
 
 echo "==> Done. Push to branch 2.1 on ${REPO_OWNER}/${REPO_NAME} to deploy."

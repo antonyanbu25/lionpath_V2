@@ -19,7 +19,8 @@ if ($LASTEXITCODE -eq 0) {
     --repo-owner=$RepoOwner `
     --repo-name=$RepoName `
     --branch-pattern=$BranchPattern `
-    --build-config="deploy/cloudrun/cloudbuild.yaml"
+    --build-config="deploy/cloudrun/cloudbuild.yaml" `
+    --substitutions="_TAG=`$SHORT_SHA"
 } else {
   Write-Host "==> Creating trigger $TriggerName"
   gcloud builds triggers create github `
@@ -27,7 +28,8 @@ if ($LASTEXITCODE -eq 0) {
     --repo-owner=$RepoOwner `
     --repo-name=$RepoName `
     --branch-pattern=$BranchPattern `
-    --build-config="deploy/cloudrun/cloudbuild.yaml"
+    --build-config="deploy/cloudrun/cloudbuild.yaml" `
+    --substitutions="_TAG=`$SHORT_SHA"
 }
 
 Write-Host "==> Done. Push to branch 2.1 to deploy."

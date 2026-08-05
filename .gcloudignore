@@ -1,0 +1,20 @@
+# gcloud uses this file instead of .gitignore when present.
+# Allow web/firebase-config.local.js for manual `gcloud builds submit` (gitignored, not secret).
+node_modules/
+.dev.vars
+.wrangler/
+dist/
+*.log
+.DS_Store
+ab-out/
+token.json
+credentials.json
+.tunnel-token
+scripts/mac/.tunnel-token
+deploy/vps/.env
+.firebaserc
+singapaathai-source-*.zip
+lionpath-*.zip
+.tools/
+worker/consistency-runs/
+worker/override-reports/
