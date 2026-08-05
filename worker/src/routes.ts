@@ -403,7 +403,7 @@ export async function handleVideoPass(
     callType: typeof body.callType === "string" ? body.callType : null,
     visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
-    enableVideoPass: body.enableVideoPass === true,
+    enableVideoPass: body.enableVideoPass !== false,
     seIdentity: typeof body.seIdentity === "string" ? body.seIdentity : null,
     aeIdentity: typeof body.aeIdentity === "string" ? body.aeIdentity : null,
     customerIdentities: Array.isArray(body.customerIdentities)

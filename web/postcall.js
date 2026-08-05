@@ -2544,6 +2544,8 @@ function navigateToCallRecord(recordId) {
   show($("postcall-form-view"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
+  activePostcallProgress?.hide();
+  activePostcallProgress = null;
   void hidePostCallGenOverlay();
   if (typeof onCallRecordReady === "function") {
     onCallRecordReady(recordId);
@@ -2678,6 +2680,52 @@ const POSTCALL_STAGE = {
   gaps: "Extracting product gaps…",
 };
 
+/** @type {ReturnType<typeof createPostcallProgress> | null} */
+let activePostcallProgress = null;
+
+/** @param {string[]} stageIds @param {string} [hostId] */
+function createPostcallProgress(stageIds, hostId = "postcall-progress") {
+  const steps = stageIds.map((id) => ({
+    id,
+    label: POSTCALL_STAGE[id] || id,
+    status: "pending",
+  }));
+  let detail;
+
+  const render = () => {
+    showPipelineProgress(hostId, steps, { title: "Call analysis", meta: detail });
+    const active = steps.find((s) => s.status === "active");
+    updatePrepGenOverlay({
+      message: detail || active?.label || POSTCALL_STAGE.scoring,
+      pct: prepStepsToPct(steps),
+    });
+  };
+
+  return {
+    steps,
+    set(id, status) {
+      const step = steps.find((s) => s.id === id);
+      if (step) step.status = status;
+      render();
+    },
+    advance(id, nextId) {
+      if (id) this.set(id, "done");
+      if (nextId) this.set(nextId, "active");
+    },
+    setDetail(text) {
+      detail = text;
+      render();
+    },
+    clearDetail() {
+      detail = undefined;
+      render();
+    },
+    hide() {
+      hidePipelineProgress(hostId);
+    },
+  };
+}
+
 function showPostCallInlineProgress(message) {
   showInlineStageProgress("postcall-progress", message, { title: "Call analysis" });
 }
@@ -2731,9 +2779,13 @@ function showPostCallPipeline(steps, detail) {
   showPostCallInlineProgress(message);
 }
 
-function showPostCallGenOverlay(message) {
+function showPostCallGenOverlay(message, pct = 8) {
   show($("postcall-loading"), false);
-  showPostCallInlineProgress(message || POSTCALL_STAGE.scoring);
+  showPrepGenOverlay({
+    message: message || POSTCALL_STAGE.scoring,
+    pct,
+    theme: POSTCALL_GEN_THEME,
+  });
 }
 
 function hidePostCallGenOverlay(onHidden) {
@@ -3481,7 +3533,11 @@ async function confirmAndGenerate(e) {
   const { signal, gen } = beginPostcallPipeline();
   setButtonLoading(btn, true);
   show($("postcall-confirm-view"), false);
-  showPostCallInlineProgress(POSTCALL_STAGE.scoring);
+  activePostcallProgress?.hide();
+  activePostcallProgress = createPostcallProgress(["cache", "scoring"]);
+  activePostcallProgress.set("cache", "active");
+  showPostCallGenOverlay(POSTCALL_STAGE.cache);
+  showInlineStatus(status, { open: false });
 
   const companyName =
     accountName ||
@@ -3499,7 +3555,6 @@ async function confirmAndGenerate(e) {
     .filter(Boolean)
     .join("\n\n");
 
-  showPostCallInlineProgress(POSTCALL_STAGE.cache);
   let transcriptCaches = pipelineState.transcriptCaches || null;
   try {
     transcriptCaches = await postJson(
@@ -3516,6 +3571,7 @@ async function confirmAndGenerate(e) {
     if (err?.name === "AbortError") return;
     console.warn("[postcall] transcript cache prepare soft-fail:", err?.message || err);
   }
+  activePostcallProgress?.advance("cache", "scoring");
   const cacheFields = transcriptCaches ? { transcriptCaches } : {};
 
   const accountId = intakeAccount.createNewAccount
@@ -3605,13 +3661,11 @@ async function confirmAndGenerate(e) {
     !!pipelineState.payload.enableVideoPass &&
     ((pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0);
 
-  showInlineStatus(status, {
-    type: "info",
-    message: canRunPass2
-      ? "Scoring the call and sampling video in parallel…"
-      : "Scoring the call and filling sections as they complete…",
-    loading: true,
-  });
+  const scoringDetail = canRunPass2
+    ? "Scoring the call and sampling video in parallel…"
+    : "Scoring the call and filling sections as they complete…";
+  activePostcallProgress?.setDetail(scoringDetail);
+  showPostCallGenOverlay(scoringDetail, prepStepsToPct(activePostcallProgress?.steps || []));
 
   const videoP = canRunPass2
     ? postJson(
@@ -3764,7 +3818,9 @@ async function confirmAndGenerate(e) {
     });
   } catch (err) {
     if (err?.name === "AbortError") return;
-    showPostCallInlineProgress("Analysis failed");
+    activePostcallProgress?.hide();
+    activePostcallProgress = null;
+    void hidePostCallGenOverlay();
     show($("postcall-confirm-view"), true);
     show($("postcall-loading"), false);
     showInlineStatus(status, { type: "error", message: err.message || "Generation failed." });
@@ -3780,6 +3836,28 @@ async function confirmAndGenerate(e) {
     setButtonLoading(btn, false);
     generating = false;
   }
+}
+
+function buildGapsContext(additionalContext, summarise) {
+  const callNotes = typeof summarise?.callNotes === "string" ? summarise.callNotes.trim() : "";
+  return [
+    additionalContext,
+    callNotes
+      ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function stampArrTouchedOnPass6(pass6, arrPoint) {
+  if (!pass6 || arrPoint == null) return pass6;
+  const touched = Math.round(Number(arrPoint));
+  if (!Number.isFinite(touched)) return pass6;
+  return {
+    ...pass6,
+    productGaps: (pass6.productGaps || []).map((g) => ({ ...g, arrTouched: touched })),
+  };
 }
 
 async function runPostcallParallelHydration(ctx) {
@@ -3873,7 +3951,85 @@ async function runPostcallParallelHydration(ctx) {
     }
 
     setCallRecordProgress(recordId, POSTCALL_STAGE.committing);
-    const [commit, videoRes] = await Promise.all([commitP, videoP]);
+    const latest = getPostCallAnalysis(sessionEmail, recordId) || { id: recordId };
+    const effectiveDealId =
+      latest.dealId || latest.result?.confirmed?.dealId || dealId || null;
+    const effectiveAccountId =
+      latest.accountId || latest.result?.confirmed?.accountId || accountId || null;
+
+    const gapsContext = buildGapsContext(additionalContext, data.summarise);
+    const gapsP = postJson(
+      GAPS_URL,
+      {
+        transcript: pipelineState.resolve.transcript,
+        dealId: effectiveDealId,
+        accountId: effectiveAccountId,
+        companyName,
+        meetingTitle: pipelineState.payload.meetingTitle || companyName,
+        callType,
+        additionalContext: gapsContext || undefined,
+        ...cacheFields,
+      },
+      { signal },
+    ).catch((err) => {
+      if (err?.name === "AbortError") throw err;
+      console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
+      return null;
+    });
+
+    const arrWorkP = (async () => {
+      let arrInputs = await arrInputsP;
+      if (isPostcallPipelineStale(gen)) return { arrInputs: null, arrCompute: null };
+      if (!arrInputs && effectiveDealId && effectiveAccountId) {
+        arrInputs = await postJson(
+          ARR_INPUTS_URL,
+          {
+            transcript: pipelineState.resolve.transcript,
+            dealId: effectiveDealId,
+            callId: recordId,
+            companyName,
+            meetingTitle: pipelineState.payload.meetingTitle || companyName,
+            callType,
+            additionalContext,
+            ...cacheFields,
+          },
+          { signal },
+        ).catch((err) => {
+          if (err?.name === "AbortError") throw err;
+          console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
+          return null;
+        });
+      }
+
+      let arrCompute = null;
+      if (arrInputs && effectiveDealId && effectiveAccountId) {
+        const allowance = await Promise.all([
+          import("./domain/store.js"),
+          import("./domain/arr-service.js"),
+        ])
+          .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
+            accountAllowanceConsumedForDeal(getStore(), effectiveAccountId, effectiveDealId),
+          )
+          .catch(() => null);
+        arrCompute = await postJson(
+          ARR_COMPUTE_URL,
+          { ...arrInputs, accountAllowanceConsumed: allowance },
+          { signal },
+        ).catch((err) => {
+          if (err?.name === "AbortError") throw err;
+          console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
+          return null;
+        });
+      }
+      return { arrInputs, arrCompute };
+    })();
+
+    const [commit, videoRes, arrResult, pass6Raw] = await Promise.all([
+      commitP,
+      videoP,
+      arrWorkP,
+      gapsP,
+    ]);
     if (isPostcallPipelineStale(gen)) return;
     if (videoRes?.videoFacts) {
       pipelineState.videoFacts = videoRes.videoFacts;
@@ -3895,7 +4051,7 @@ async function runPostcallParallelHydration(ctx) {
           technicalCommit: commit.technicalCommit,
           tcDeltas: commit.tcDeltas || [],
         };
-        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.arr });
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.gaps });
         return rec;
       });
       dropPending("commit");
@@ -3903,12 +4059,6 @@ async function runPostcallParallelHydration(ctx) {
     } else if (commit === null) {
       markError("commit", "Technical commit could not be updated.", ["commit"]);
     }
-
-    const latest = getPostCallAnalysis(sessionEmail, recordId) || { id: recordId };
-    const effectiveDealId =
-      latest.dealId || latest.result?.confirmed?.dealId || dealId || null;
-    const effectiveAccountId =
-      latest.accountId || latest.result?.confirmed?.accountId || accountId || null;
 
     let technicalCommit = data.technicalCommit || latest.result?.technicalCommit || null;
     let tcDeltas = data.tcDeltas || latest.result?.tcDeltas || [];
@@ -3950,96 +4100,24 @@ async function runPostcallParallelHydration(ctx) {
       }
     }
 
-    setCallRecordProgress(recordId, POSTCALL_STAGE.arr);
-    let arrInputs = await arrInputsP;
-    if (isPostcallPipelineStale(gen)) return;
-    if (!arrInputs && effectiveDealId && effectiveAccountId) {
-      arrInputs = await postJson(
-        ARR_INPUTS_URL,
-        {
-          transcript: pipelineState.resolve.transcript,
-          dealId: effectiveDealId,
-          callId: recordId,
-          companyName,
-          meetingTitle: pipelineState.payload.meetingTitle || companyName,
-          callType,
-          additionalContext,
-          ...cacheFields,
-        },
-        { signal },
-      ).catch((err) => {
-        if (err?.name === "AbortError") throw err;
-        console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
-        return null;
+    const { arrInputs, arrCompute } = arrResult || {};
+    if (arrCompute) {
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.result = { ...(rec.result || {}), arrInputs, arrCompute };
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.gaps });
+        return rec;
       });
-    }
-
-    let arrCompute = null;
-    if (arrInputs && effectiveDealId && effectiveAccountId) {
-      const allowance = await Promise.all([
-        import("./domain/store.js"),
-        import("./domain/arr-service.js"),
-      ])
-        .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
-          accountAllowanceConsumedForDeal(getStore(), effectiveAccountId, effectiveDealId),
-        )
-        .catch(() => null);
-      arrCompute = await postJson(
-        ARR_COMPUTE_URL,
-        { ...arrInputs, accountAllowanceConsumed: allowance },
-        { signal },
-      ).catch((err) => {
-        if (err?.name === "AbortError") throw err;
-        console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
-        return null;
-      });
-      if (isPostcallPipelineStale(gen)) return;
-      if (arrCompute) {
-        await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
-          rec.result = { ...(rec.result || {}), arrInputs, arrCompute };
-          patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.gaps });
-          return rec;
-        });
-        dropPending("arr");
-        notifyCallRecordUpdated(recordId, ["arr"]);
-      } else {
-        markError("arr", "ARR estimate could not be computed.", ["arr"]);
-      }
+      dropPending("arr");
+      notifyCallRecordUpdated(recordId, ["arr"]);
+    } else if (effectiveDealId && effectiveAccountId && arrResult?.arrInputs) {
+      markError("arr", "ARR estimate could not be computed.", ["arr"]);
     } else {
       dropPending("arr");
     }
 
     setCallRecordProgress(recordId, POSTCALL_STAGE.gaps);
     const arrPoint = arrCompute?.arrPoint ?? arrCompute?.arrEstimatePoint ?? null;
-    const callNotes =
-      typeof data.summarise?.callNotes === "string" ? data.summarise.callNotes.trim() : "";
-    const gapsContext = [
-      additionalContext,
-      callNotes
-        ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const pass6 = await postJson(
-      GAPS_URL,
-      {
-        transcript: pipelineState.resolve.transcript,
-        dealId: effectiveDealId,
-        accountId: effectiveAccountId,
-        companyName,
-        meetingTitle: pipelineState.payload.meetingTitle || companyName,
-        callType,
-        arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
-        additionalContext: gapsContext || undefined,
-        ...cacheFields,
-      },
-      { signal },
-    ).catch((err) => {
-      if (err?.name === "AbortError") throw err;
-      console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
-      return null;
-    });
+    const pass6 = stampArrTouchedOnPass6(pass6Raw, arrPoint);
     if (isPostcallPipelineStale(gen)) return;
 
     if (pass6) {
@@ -4418,9 +4496,9 @@ async function collectIntakePayload() {
   const additionalContext =
     mergeContextAttachments(additionalContextRaw, contextAttachments) || undefined;
   const linkedinProfileExports = linkedinProfileExportsForPayload("postcall");
-  const enableVideoPass = !!$("pc-enable-video-pass")?.checked;
-  // Face/camera vision when Pass 2 runs — policy allows SE camera scoring.
-  const visualAnalysisConsent = enableVideoPass;
+  // Video analysis (Pass 2 + face/camera vision) runs by default — no opt-in required.
+  const enableVideoPass = true;
+  const visualAnalysisConsent = true;
 
   setFieldError(recordingField);
   setFieldError(emailsField);
@@ -4532,12 +4610,11 @@ async function startPipeline(e) {
   show($("postcall-result"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
-  showPostCallInlineProgress(POSTCALL_STAGE.resolve);
-  showInlineStatus(status, {
-    type: "info",
-    message: POSTCALL_STAGE.resolve,
-    loading: true,
-  });
+  activePostcallProgress?.hide();
+  activePostcallProgress = createPostcallProgress(["resolve", "classify"]);
+  activePostcallProgress.set("resolve", "active");
+  showPostCallGenOverlay(POSTCALL_STAGE.resolve);
+  showInlineStatus(status, { open: false });
 
   try {
     const ownerId = (await postCallOwnerId()) || undefined;
@@ -4575,12 +4652,8 @@ async function startPipeline(e) {
       payload.companyName = pipelineState.resolve.account.accountName;
     }
 
-    showPostCallInlineProgress(POSTCALL_STAGE.classify);
-    showInlineStatus(status, {
-      type: "info",
-      message: POSTCALL_STAGE.classify,
-      loading: true,
-    });
+    activePostcallProgress?.advance("resolve", "classify");
+    showPostCallGenOverlay(POSTCALL_STAGE.classify, prepStepsToPct(activePostcallProgress?.steps || []));
 
     const classify = await postJson(
       CLASSIFY_URL,
@@ -4594,6 +4667,9 @@ async function startPipeline(e) {
     pipelineState.classify = classify;
 
     hidePipelineProgress("postcall-progress");
+    activePostcallProgress?.hide();
+    activePostcallProgress = null;
+    void hidePostCallGenOverlay();
     showInlineStatus(status, { open: false });
     const intakeAccount = getIntakeAccountSelection();
     const dealsForConfirm = intakeAccount.createNewAccount
@@ -4659,6 +4735,8 @@ export function onSessionCleared() {
   pcLastAccountDeals = [];
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
+  activePostcallProgress?.hide();
+  activePostcallProgress = null;
   show($("postcall-form-view"), true);
   show($("postcall-result"), false);
   show($("postcall-confirm-view"), false);
