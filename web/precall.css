@@ -48,25 +48,19 @@ body.prep-gen-lock {
 }
 
 .prep-gen-brand {
-  position: relative;
   width: 88px;
   height: 88px;
   margin: 0 auto 18px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .prep-gen-logo {
-  position: relative;
-  z-index: 1;
+  width: 52px;
+  height: 52px;
   border-radius: 16px;
   box-shadow: var(--dew-shadow-island);
-}
-
-.prep-gen-orbit {
-  position: absolute;
-  inset: 0;
-  margin: auto;
 }
 
 .prep-gen-eyebrow {
