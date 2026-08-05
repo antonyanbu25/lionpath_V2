@@ -25,7 +25,7 @@
     "build:icp:kb-only": "node scripts/generate-icp-kb.mjs",
     "build:benchmark": "node scripts/extract-benchmark.mjs && node scripts/generate-benchmark-kb.mjs",
     "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs",
-    "eval:prep-golden": "node scripts/eval-prep-golden.mjs",
+    "eval:prep-golden": "tsx scripts/eval-prep-golden.mjs",
     "eval:self-consistency": "tsx scripts/self-consistency.mjs",
     "report:overrides": "tsx scripts/override-report.mjs"
   },

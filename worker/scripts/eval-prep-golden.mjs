@@ -22,7 +22,7 @@ const dryRun = args.includes("--dry-run");
 async function loadEnv() {
   try {
     const raw = await readFile(join(ROOT, ".dev.vars"), "utf8");
-    for (const line of raw.split("\n")) {
+    for (const line of raw.split(/\r?\n/)) {
       const m = line.match(/^([A-Z_]+)=(.*)$/);
       if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
     }
