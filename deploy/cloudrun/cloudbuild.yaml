@@ -1,16 +1,37 @@
-# Build prep-portal-api + prep-portal-web images for Cloud Run.
-# Run from repo root: gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
+# Build prep-portal-api + prep-portal-web images for Cloud Run, then deploy.
+# Manual:  gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
+# Git trigger: push to branch 2.1 on Antony-sagayaraj/SE-Labs
 #
-# Requires web/firebase-config.local.js on the build machine (gitignored) for Google SSO.
+# Prerequisites:
+#   - Secret Manager secret "firebase-config-local" (web SSO)
+#   - Cloud Build SA: secretmanager.secretAccessor, run.admin, iam.serviceAccountUser
+# Dockerfile.web runs npm run build inside the image; no local web/dist/ required.
 
 substitutions:
   _REGION: us-central1
   _PROJECT: se-singha-paathi
   _REPO: prep-portal
 
+availableSecrets:
+  secretManager:
+    - versionName: projects/${_PROJECT}/secrets/firebase-config-local/versions/latest
+      env: FIREBASE_CONFIG_LOCAL
+
 steps:
+  # Inject gitignored Firebase SSO config before web Docker build
+  - name: gcr.io/cloud-builders/gcloud
+    id: firebase-config
+    entrypoint: bash
+    secretEnv:
+      - FIREBASE_CONFIG_LOCAL
+    args:
+      - -c
+      - printf '%s' "$$FIREBASE_CONFIG_LOCAL" > web/firebase-config.local.js
+
   - name: gcr.io/cloud-builders/docker
     id: build-api
+    waitFor:
+      - "-"
     args:
       - build
       - -f=deploy/cloudrun/Dockerfile.api
@@ -20,12 +41,42 @@ steps:
 
   - name: gcr.io/cloud-builders/docker
     id: build-web
+    waitFor:
+      - firebase-config
     args:
       - build
       - -f=deploy/cloudrun/Dockerfile.web
       - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
       - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
       - .
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-api
+    waitFor:
+      - build-api
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - prep-portal-api
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}
+      - --region=${_REGION}
+      - --project=${_PROJECT}
+      - --platform=managed
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-web
+    waitFor:
+      - build-web
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - prep-portal-web
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${SHORT_SHA}
+      - --region=${_REGION}
+      - --project=${_PROJECT}
+      - --platform=managed
 
 images:
   - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${SHORT_SHA}

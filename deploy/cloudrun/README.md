@@ -189,22 +189,65 @@ Cloud Run default URLs (`*.run.app`) are only needed if you test SSO on the raw 
 
 ---
 
-## Redeploy after code changes
+## Git trigger setup (Antony-sagayaraj/SE-Labs branch `2.1`)
+
+Auto-deploy on every push to **`2.1`** on [Antony-sagayaraj/SE-Labs](https://github.com/Antony-sagayaraj/SE-Labs).
+
+### One-time (run in order)
 
 ```bash
-# 1. Ensure firebase-config.local.js exists if SSO is required
-# 2. Rebuild
+# 0. gcloud auth login && gcloud config set project se-singha-paathi
+
+# 1. GCP APIs, Artifact Registry, GCS bucket, IAM
+bash deploy/cloudrun/setup-gcp.sh
+
+# 2. Connect GitHub repo (Console — cannot be scripted)
+#    https://console.cloud.google.com/cloud-build/repositories?project=se-singha-paathi
+#    Connect repository → GitHub → Antony-sagayaraj/SE-Labs
+
+# 3. Firebase SSO secret for automated web builds
+cp web/firebase-config.local.example.js web/firebase-config.local.js
+# edit with Firebase Console web app values
+bash deploy/cloudrun/setup-firebase-secret.sh
+
+# 4. First deploy (full API env + volumes)
 gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+# If cloudbuild deploy steps fail before first service exists, run:
+bash deploy/cloudrun/first-deploy.sh
 
-# 3. Roll out new revisions
-gcloud run deploy prep-portal-api \
-  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-api:latest \
-  --region us-central1 --project se-singha-paathi
+# 5. Cloud Build trigger on branch 2.1
+bash deploy/cloudrun/setup-trigger.sh
 
-gcloud run deploy prep-portal-web \
-  --image us-central1-docker.pkg.dev/se-singha-paathi/prep-portal/prep-portal-web:latest \
-  --region us-central1 --project se-singha-paathi
+# 6. Custom domains (when *.run.app URLs work)
+bash deploy/cloudrun/setup-domains.sh
+# Firebase Console → Authentication → Authorized domains → portal.benjaminsquare.com
 ```
+
+### Day-to-day
+
+```bash
+git checkout 2.1
+git commit -am "your change"
+git push origin 2.1
+```
+
+Cloud Build builds both images, injects `firebase-config-local` from Secret Manager, and deploys `prep-portal-api` + `prep-portal-web`.
+
+Watch builds: [Cloud Build history](https://console.cloud.google.com/cloud-build/builds?project=se-singha-paathi)
+
+---
+
+## Redeploy after code changes
+
+With the git trigger (above), push to `2.1` — no manual steps.
+
+Manual fallback:
+
+```bash
+gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml --project se-singha-paathi
+```
+
+(`cloudbuild.yaml` builds, pushes, and deploys both services.)
 
 ---
 
@@ -215,7 +258,12 @@ gcloud run deploy prep-portal-web \
 | `Dockerfile.api` | Node worker (`worker/`) — same stack as VPS `Dockerfile.worker`, listens on Cloud Run `PORT` |
 | `Dockerfile.web` | nginx 1.27 serving `web/` on port 8080 |
 | `nginx-cloudrun.conf` | nginx config (from `deploy/vps/nginx.conf`, port 8788 → 8080) |
-| `cloudbuild.yaml` | Builds and pushes both images to Artifact Registry |
+| `cloudbuild.yaml` | Build, push, and deploy both images (Firebase secret + Cloud Run rollout) |
+| `setup-gcp.sh` | One-time APIs, Artifact Registry, GCS, IAM |
+| `setup-firebase-secret.sh` | Upload `web/firebase-config.local.js` to Secret Manager |
+| `setup-trigger.sh` | Create/update Cloud Build trigger on branch `2.1` |
+| `first-deploy.sh` | First API deploy with full env vars and GCS volume |
+| `setup-domains.sh` | Map `portal.*` / `portalapi.*` custom domains |
 
 ---
 
