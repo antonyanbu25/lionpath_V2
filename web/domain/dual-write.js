@@ -227,7 +227,95 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     (await resolveEffectiveOwnerId(session)) ||
     effectiveSessionUserId(session) ||
     sessionUserId(session);
-  if (!ownerId || !session?.teamId) return null;
+
+  const store = getStore();
+  const userDoc = store.getUser ? await store.getUser(ownerId).catch(() => null) : null;
+  const teamId = userDoc?.teamId || session?.teamId || null;
+  const orgId = userDoc?.orgId || session?.orgId || null;
+
+  if (!ownerId || !teamId) {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+      body: JSON.stringify({
+        sessionId: "8a85ad",
+        hypothesisId: "H-EARLY",
+        location: "dual-write.js:linkPostCallToLifecycle:gate",
+        message: "dual-write skipped early",
+        data: {
+          ownerId: ownerId || null,
+          sessionTeamId: session?.teamId || null,
+          sessionOrgId: session?.orgId || null,
+          userTeamId: userDoc?.teamId || null,
+          effectiveTeamId: teamId,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    console.warn(
+      "[DBG-8a85ad]",
+      JSON.stringify({
+        hypothesisId: "H-EARLY",
+        ownerId,
+        sessionTeamId: session?.teamId,
+        userTeamId: userDoc?.teamId,
+      }),
+    );
+    // #endregion
+    return null;
+  }
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+    body: JSON.stringify({
+      sessionId: "8a85ad",
+      hypothesisId: "H-ORG-TEAM",
+      location: "dual-write.js:linkPostCallToLifecycle:identity",
+      message: "dual-write identity resolved",
+      data: {
+        ownerId,
+        sessionTeamId: session.teamId || null,
+        sessionOrgId: session.orgId || null,
+        userTeamId: userDoc?.teamId || null,
+        userOrgId: userDoc?.orgId || null,
+        effectiveTeamId: teamId,
+        effectiveOrgId: orgId,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  console.warn(
+    "[DBG-8a85ad]",
+    JSON.stringify({
+      hypothesisId: "H-ORG-TEAM",
+      ownerId,
+      sessionTeamId: session.teamId,
+      userTeamId: userDoc?.teamId,
+      effectiveOrgId: orgId,
+    }),
+  );
+  // #endregion
+  if (!orgId) {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+      body: JSON.stringify({
+        sessionId: "8a85ad",
+        hypothesisId: "H-ORG-TEAM",
+        location: "dual-write.js:linkPostCallToLifecycle:noOrg",
+        message: "dual-write skipped — orgId missing",
+        data: { ownerId, sessionOrgId: session?.orgId || null, userOrgId: userDoc?.orgId || null },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    console.warn("[DBG-8a85ad]", JSON.stringify({ hypothesisId: "H-ORG-TEAM", reason: "noOrgId", ownerId }));
+    // #endregion
+    console.warn("[dual-write] post-call skipped. user orgId missing");
+    return null;
+  }
 
   const summarise = data?.summarise || null;
   const analysis = {
@@ -266,7 +354,6 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   // re-uses the contacts by email and completes the deal. Failing the other way round (deal
   // without contacts) is what this reordering exists to stop, and it cannot self-heal.
   const participantEmails = postCallParticipantEmails(payload);
-  const store = getStore();
   let knownAccount = null;
   if (payload?.createNewAccount) {
     knownAccount = null;
@@ -306,8 +393,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     dealRecord = await createDealWithExplicitTitle(
       account.id,
       ownerId,
-      session.teamId,
-      session.orgId || null,
+      teamId,
+      orgId,
       {
         title: payload.newDealTitle,
         type: payload.newDealType,
@@ -317,12 +404,12 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     dealId = dealRecord.id;
   }
 
-  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
+  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, teamId, {
     title: account.name || company,
     // Resolved above; the deal created here is the only chance to set it.
     primaryContactId,
     actorId: ownerId,
-    orgId: session.orgId || null,
+    orgId,
     dealId,
     prepType: prepType || undefined,
     useSessionContext: true,
@@ -367,8 +454,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     id: postCallId,
     ownerId,
     ownerName,
-    teamId: session.teamId,
-    orgId: session.orgId || lifecycle.orgId || null,
+    teamId,
+    orgId: orgId || lifecycle.orgId || null,
     accountId: account.id,
     accountName: account.name || company,
     dealId: lifecycle.dealId || dealId || null,
@@ -392,15 +479,18 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     updatedAt: tsNow,
   });
 
-  const postCall = await attachPostCall(
+  /** @type {object|null} */
+  let postCall = null;
+  try {
+    postCall = await attachPostCall(
     lifecycle.id,
     {
       id: postCallId,
       lifecycleId: lifecycle.id,
       dealId: lifecycle.dealId || null,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || lifecycle.orgId || null,
+      teamId,
+      orgId: orgId || lifecycle.orgId || null,
       accountId: account.id,
       zoomLink: payload?.recordingUrl || record?.zoomLink,
       title: callTitle,
@@ -420,6 +510,58 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     ownerId,
     callSummary,
   );
+  } catch (err) {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+      body: JSON.stringify({
+        sessionId: "8a85ad",
+        hypothesisId: "H-ATTACH",
+        location: "dual-write.js:linkPostCallToLifecycle:attachPostCall",
+        message: "attachPostCall failed",
+        data: {
+          error: err?.message || String(err),
+          code: err?.code || null,
+          ownerId,
+          teamId,
+          orgId,
+          postCallId,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    console.warn(
+      "[DBG-8a85ad]",
+      JSON.stringify({
+        hypothesisId: "H-ATTACH",
+        error: err?.message || String(err),
+        ownerId,
+        teamId,
+        orgId,
+      }),
+    );
+    // #endregion
+    throw err;
+  }
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+    body: JSON.stringify({
+      sessionId: "8a85ad",
+      hypothesisId: "H-ATTACH",
+      location: "dual-write.js:linkPostCallToLifecycle:attachPostCall",
+      message: "attachPostCall ok",
+      data: { postCallId: postCall?.id || null, ownerId, teamId, orgId },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  console.warn(
+    "[DBG-8a85ad]",
+    JSON.stringify({ hypothesisId: "H-ATTACH", ok: true, postCallId: postCall?.id, teamId, orgId }),
+  );
+  // #endregion
 
   void embedAndPersistCallSummary(callSummary, {
     objectionSummaries: summarise?.objections || [],
@@ -442,8 +584,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       await persistScorecardDraft(qip, {
         callId: postCall.id,
         ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
+        teamId,
+        orgId: orgId || lifecycle.orgId || null,
         accountId: account.id,
       });
     } catch (err) {
@@ -455,8 +597,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     callId: postCall.id,
     dealId: lifecycle.dealId || dealId || null,
     ownerId,
-    teamId: session.teamId,
-    orgId: session.orgId || lifecycle.orgId || null,
+    teamId,
+    orgId: orgId || lifecycle.orgId || null,
     accountId: account.id,
   };
 
@@ -575,9 +717,9 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       if (pass6Built.flatProductGaps.length && persistCtx.orgId) {
         await notifyGapClusteringPending(store, persistCtx.orgId, pass6Built.flatProductGaps.length);
       }
-      const orgId = session.orgId || lifecycle.orgId || persistCtx.orgId || null;
-      if (orgId) {
-        void maybeRunGapClusteringAfterPass6(store, orgId);
+      const pass6OrgId = orgId || lifecycle.orgId || persistCtx.orgId || null;
+      if (pass6OrgId) {
+        void maybeRunGapClusteringAfterPass6(store, pass6OrgId);
       }
     } catch (err) {
       console.warn("[dual-write] pass6 product signal persist failed:", err?.message || err);

@@ -2304,10 +2304,85 @@ async function boot() {
 
   setOnAnalysisSaved(async (record, payload, data) => {
     let linked = null;
-    if (sessionUserId(currentSession) && currentSession?.teamId) {
+    let session = currentSession;
+    try {
+      session = (await syncSessionWithDomainStore(currentSession)) || currentSession;
+    } catch (err) {
+      console.warn("[postcall] session sync before dual-write failed:", err?.message || err);
+    }
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+      body: JSON.stringify({
+        sessionId: "8a85ad",
+        hypothesisId: "H-GATE",
+        location: "app.js:onAnalysisSaved",
+        message: "onAnalysisSaved invoked",
+        data: {
+          recordId: record?.id || null,
+          sessionUserId: sessionUserId(session) || null,
+          sessionTeamId: session?.teamId || null,
+          sessionOrgId: session?.orgId || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    console.warn(
+      "[DBG-8a85ad]",
+      JSON.stringify({
+        hypothesisId: "H-GATE",
+        recordId: record?.id,
+        sessionTeamId: session?.teamId,
+        sessionOrgId: session?.orgId,
+      }),
+    );
+    // #endregion
+    if (sessionUserId(session) && session?.teamId) {
       try {
-        linked = await linkPostCallToLifecycle(currentSession, payload, data, record);
+        linked = await linkPostCallToLifecycle(session, payload, data, record);
+        // #region agent log
+        fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+          body: JSON.stringify({
+            sessionId: "8a85ad",
+            hypothesisId: "H-GATE",
+            location: "app.js:onAnalysisSaved:done",
+            message: "dual-write finished",
+            data: {
+              linked: !!linked,
+              postCallId: linked?.postCall?.id || null,
+              accountId: linked?.accountId || null,
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        console.warn(
+          "[DBG-8a85ad]",
+          JSON.stringify({
+            hypothesisId: "H-GATE",
+            linked: !!linked,
+            postCallId: linked?.postCall?.id,
+          }),
+        );
+        // #endregion
       } catch (err) {
+        // #region agent log
+        fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
+          body: JSON.stringify({
+            sessionId: "8a85ad",
+            hypothesisId: "H-ATTACH",
+            location: "app.js:onAnalysisSaved:catch",
+            message: "dual-write threw",
+            data: { error: err?.message || String(err), code: err?.code || null },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        console.warn("[DBG-8a85ad]", JSON.stringify({ hypothesisId: "H-ATTACH", error: err?.message || String(err) }));
+        // #endregion
         console.warn("Lifecycle dual-write (post-call) failed:", err);
       }
     }

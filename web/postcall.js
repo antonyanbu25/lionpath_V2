@@ -3384,6 +3384,17 @@ async function confirmAndGenerate(e) {
           { name: att.name, email: att.email },
           { actorId, source: "postcall_confirm" },
         );
+        // #region agent log
+        console.warn(
+          "[DBG-8a85ad]",
+          JSON.stringify({
+            hypothesisId: "H-CONTACTS-EARLY",
+            accountId: accountIdForContacts,
+            email: att.email ? "***" : null,
+            source: "postcall_confirm",
+          }),
+        );
+        // #endregion
       } catch (err) {
         console.warn("[postcall] ensure customer contact failed:", err?.message || err);
       }
