@@ -160,6 +160,20 @@ The **Recent news** card (Know tab, row 1) no longer back-fills from research fa
 | **Context supplement** | Non-overlapping AE metrics append below web bars with **INPUT** badge (`prep.fishContext`) |
 | **Context-only** | When web finds nothing, full INPUT bar card from AE notes only |
 
+### LLM usage tracking (2.1)
+
+Every worker LLM call records token counts, latency, and grounding usage to Firestore for org-level cost visibility (directors only).
+
+| Item | Detail |
+|------|--------|
+| **Storage** | Firestore collection `llmUsage` (one doc per call; fields include `passName`, `model`, `promptTokens`, `outputTokens`, `cachedTokens`, `groundingQueries`, `latencyMs`, `userId`, optional `callId`, `createdAt`) |
+| **Pricing** | Estimated USD via `worker/src/cost-rates.ts` (per-model input/output/cached rates) |
+| **Admin API** | `GET /api/admin/llm-usage?start=&end=` (ISO date or epoch ms; default last 7 days) — **director-only**; rollups by `passName` and `model` |
+| **Instrumentation** | Providers in `worker/src/providers/`; persistence in `worker/src/data/llm-usage.ts`; route `worker/src/routes/admin-llm-usage.ts` |
+
+**Firestore index:** queries filter `createdAt` range and order by `createdAt` desc. If the admin endpoint returns an index error, create a composite index on `llmUsage` for range + `orderBy createdAt` (use the link in the Firebase console error).
+
+**Deploy:** worker rebuild required (`bash upgrade-now.sh` or `bash update.sh` on the VPS). No web bundle change unless you only hit the JSON admin route.
 ### Files touched (this release)
 
 | Area | Paths |
