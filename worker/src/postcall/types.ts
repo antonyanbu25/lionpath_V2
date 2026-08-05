@@ -1,7 +1,10 @@
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import type { CallType } from "../rubric-profiles";
 import type { PostCallAnalysis, PostCallResult } from "../postcall-schema";
 import type { ZoomShareMedia } from "../zoomShare";
 import type { ScorecardDraft } from "./scorecard";
+
+export type { PostCallTranscriptCacheBundle };
 
 /** Brief snapshot for Pass 0 matching — supplied by the web client from Firestore. */
 export interface ResolveBriefSnapshot {
@@ -179,6 +182,8 @@ export interface PostCallGenerateInput {
   /** Usage attribution — set by route handlers. */
   userId?: string;
   callId?: string;
+  /** Gemini transcript cache handles from POST /api/postcall/cache/prepare. */
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallGenerateResult extends PostCallResult {

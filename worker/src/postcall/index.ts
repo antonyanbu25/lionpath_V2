@@ -1,3 +1,13 @@
+export {
+  preparePostCallTranscriptCaches,
+  releasePostCallTranscriptCaches,
+  withPostCallTranscriptCache,
+  buildVariantText,
+  buildCachedTranscriptPart,
+  transcriptCacheHandle,
+  type PostCallTranscriptCacheBundle,
+  type PostCallTranscriptVariant,
+} from "./transcript-cache-context";
 export { analyzePostCall, type PostCallInput } from "./analyze";
 export { runPostCallResolve } from "./resolve";
 export { runPostCallClassify } from "./classify";

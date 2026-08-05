@@ -11,7 +11,9 @@
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import { formatTimestampedTranscript, parseTranscript, parseTranscriptCues } from "../transcript";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 import { trimWords } from "../word-limits";
 import { assembleMomEmailDraft } from "./mom-email-draft.js";
 import { locateQuoteAtS } from "./timeline";
@@ -37,6 +39,7 @@ export interface PostCallSummariseInput {
   /** Optional brief / context for unanswered discovery fields. */
   additionalContext?: string;
   userId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallSummariseResult {
@@ -211,7 +214,7 @@ Rules:
 - Do NOT reuse or lightly edit internal call notes — write the MoM from the transcript directly.`;
 }
 
-function sharedUserPreamble(input: PostCallSummariseInput): string[] {
+function sharedUserPreamble(input: PostCallSummariseInput, omitTranscript = false): string[] {
   const parsed = parseTranscript(input.transcript);
   const lines = [
     `Company: ${input.companyName || "unknown"}`,
@@ -222,8 +225,10 @@ function sharedUserPreamble(input: PostCallSummariseInput): string[] {
   if (input.additionalContext?.trim()) {
     lines.push("", "Additional context:", input.additionalContext.trim());
   }
-  lines.push("", "=== TRANSCRIPT ===");
-  lines.push(formatTimestampedTranscript(input.transcript, 5500));
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===");
+    lines.push(formatTimestampedTranscript(input.transcript, 5500));
+  }
   return lines;
 }
 
@@ -409,6 +414,7 @@ async function generateJson(
     jsonSchema: Record<string, unknown>;
     maxTokens: number;
     step: string;
+    cachedContent?: string;
   },
   usage?: { userId?: string; callId?: string | null },
 ): Promise<unknown> {
@@ -424,6 +430,7 @@ async function generateJson(
     passName: "summarise",
     userId: usage?.userId,
     callId: usage?.callId ?? undefined,
+    cachedContent: opts.cachedContent,
   });
   return extractJson(result.text);
 }
@@ -439,7 +446,8 @@ export async function runPostCallSummarise(
   const transcript = input.transcript?.trim();
   if (!transcript) throw Object.assign(new Error("transcript is required."), { status: 400 });
 
-  const preamble = sharedUserPreamble(input).join("\n");
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "timestampedSummarise");
+  const preamble = sharedUserPreamble(input, !!transcriptCache).join("\n");
 
   const usage = { userId: input.userId, callId: input.callId };
   const [commitmentsRaw, notesRaw, momRaw] = await Promise.all([
@@ -449,6 +457,7 @@ export async function runPostCallSummarise(
       jsonSchema: COMMITMENTS_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 4000,
       step: "postcall-summarise-commitments",
+      cachedContent: transcriptCache,
     }, usage),
     generateJson(env, {
       system: callNotesSystemPrompt(),
@@ -456,6 +465,7 @@ export async function runPostCallSummarise(
       jsonSchema: CALL_NOTES_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 2500,
       step: "postcall-summarise-call-notes",
+      cachedContent: transcriptCache,
     }, usage),
     generateJson(env, {
       system: momSystemPrompt(),
@@ -463,6 +473,7 @@ export async function runPostCallSummarise(
       jsonSchema: MOM_SCHEMA as unknown as Record<string, unknown>,
       maxTokens: 2500,
       step: "postcall-summarise-mom",
+      cachedContent: transcriptCache,
     }, usage),
   ]);
 

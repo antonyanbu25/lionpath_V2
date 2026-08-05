@@ -44,6 +44,11 @@ import {
   type PostCallArrComputeInput,
   type PostCallGapsInput,
 } from "./postcall/index";
+import {
+  preparePostCallTranscriptCaches,
+  releasePostCallTranscriptCaches,
+} from "./postcall/transcript-cache-context";
+import type { PostCallTranscriptCacheBundle } from "./providers/gemini-cache";
 import { runGapClustering, type RunClusteringInput } from "./product-signal/index";
 import {
   generatePrep,
@@ -482,6 +487,48 @@ export async function handleFetchKaiaSummary(
     200,
     cors,
   );
+}
+
+/** Create Gemini cachedContents for post-call transcript variants (call once at confirm). */
+export async function handlePostCallCachePrepare(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  await requireUser(request, env);
+  const input = (await request.json()) as { transcript?: string; callId?: string };
+  if (!input.transcript?.trim()) {
+    return json({ error: "transcript is required." }, 400, cors);
+  }
+  try {
+    const bundle = await preparePostCallTranscriptCaches(env, {
+      transcript: input.transcript,
+      callId: input.callId,
+    });
+    return json(bundle, 200, cors);
+  } catch (err) {
+    console.warn("[postcall/cache/prepare] failed:", (err as Error).message);
+    return json({ caches: {}, skipped: true }, 200, cors);
+  }
+}
+
+/** Delete post-call transcript caches — call after gaps hydration completes. */
+export async function handlePostCallCacheRelease(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  await requireUser(request, env);
+  const input = (await request.json()) as { transcriptCaches?: PostCallTranscriptCacheBundle };
+  try {
+    await releasePostCallTranscriptCaches(env, input.transcriptCaches);
+    return new Response(null, { status: 204, headers: cors });
+  } catch (err) {
+    console.warn("[postcall/cache/release] failed:", (err as Error).message);
+    return new Response(null, { status: 204, headers: cors });
+  }
 }
 
 export async function handlePostCallResolve(
@@ -1082,6 +1129,8 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/kaia/share-content": { POST: handleKaiaShareContent },
   "/api/fetch-kaia-summary": { POST: handleFetchKaiaSummary },
   "/api/postcall/resolve": { POST: handlePostCallResolve },
+  "/api/postcall/cache/prepare": { POST: handlePostCallCachePrepare },
+  "/api/postcall/cache/release": { POST: handlePostCallCacheRelease },
   "/api/postcall/classify": { POST: handlePostCallClassify },
   "/api/postcall/generate": { POST: handlePostCallGenerate },
   "/api/postcall/summarise": { POST: handlePostCallSummarise },

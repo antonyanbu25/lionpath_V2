@@ -3,8 +3,10 @@
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import { POSTCALL_SCHEMA, type PostCallAnalysis, type PostCallResult } from "../postcall-schema";
 import { normalizeQualityCoach } from "../quality-score";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 import { parseTranscript, trimTranscript } from "../transcript";
 import { fetchTranscriptFromShareLink } from "../zoomShare";
 import { normalizePostCallOutput } from "../word-limits";
@@ -25,6 +27,7 @@ export interface PostCallInput {
   dealId?: string | null;
   userId?: string;
   callId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
@@ -94,7 +97,11 @@ Rules: never fabricate; empty arrays if not discussed; cite transcript evidence.
 ${schemaBlock}`;
 }
 
-function userPrompt(input: PostCallInput, parsed: ReturnType<typeof parseTranscript>): string {
+function userPrompt(
+  input: PostCallInput,
+  parsed: ReturnType<typeof parseTranscript>,
+  omitTranscript = false,
+): string {
   const lines = [
     "Analyze this call transcript.",
     "",
@@ -109,7 +116,9 @@ function userPrompt(input: PostCallInput, parsed: ReturnType<typeof parseTranscr
   if (input.additionalContext) {
     lines.push("", "Additional context from SE (RH answers, notes):", input.additionalContext);
   }
-  lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  }
   return lines.join("\n");
 }
 
@@ -155,10 +164,11 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     : env.POSTCALL_EFFORT || env.EFFORT || "low";
 
   const provider = getPostCallProvider(env);
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
   const result = await provider.generate({
     maxTokens: 6000,
     system: systemPrompt(env),
-    user: userPrompt({ ...input, meetingTitle }, parsed),
+    user: userPrompt({ ...input, meetingTitle }, parsed, !!transcriptCache),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -166,6 +176,7 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     passName: "analyze",
     userId: input.userId,
     callId: input.callId,
+    cachedContent: transcriptCache,
   });
 
   const analysis = parseAnalysis(

@@ -6,10 +6,13 @@
 
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
+import { getStaticCache, resolvePostCallCacheModel } from "../providers/gemini-cache";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import type { VolumeBasis, VolumeUnit } from "../arr/compute";
 import { parseTranscript, trimTranscript } from "../transcript";
 import { trimWords } from "../word-limits";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 
 export type Env = ProviderEnv;
 
@@ -103,6 +106,7 @@ export interface PostCallArrInputsInput {
   regionHint?: string | null;
   additionalContext?: string;
   userId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallArrInputsResult extends ArrInputsDraft {}
@@ -437,6 +441,7 @@ Never estimate quantities. Never derive quantities from agent count. Never compu
 function userPrompt(
   input: PostCallArrInputsInput,
   parsed: ReturnType<typeof parseTranscript>,
+  omitTranscript = false,
 ): string {
   const lines = [
     "Extract ARR pricing inputs from this call.",
@@ -455,7 +460,9 @@ function userPrompt(
   if (input.additionalContext?.trim()) {
     lines.push("", "Additional SE context:", input.additionalContext.trim());
   }
-  lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  }
   return lines.join("\n");
 }
 
@@ -471,11 +478,23 @@ export async function runPostCallArrInputs(
   const parsed = parseTranscript(transcript);
   const provider = getPostCallProvider(env);
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
+  const model = resolvePostCallCacheModel(env);
+  const systemText = systemPrompt();
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
+  const staticCache = transcriptCache
+    ? null
+    : await getStaticCache(env, {
+        cacheKey: "arr-inputs-system",
+        content: systemText,
+        model,
+        ttlSeconds: 7 * 24 * 3600,
+        asSystemInstruction: true,
+      });
 
   const result = await provider.generate({
     maxTokens: 4000,
-    system: systemPrompt(),
-    user: userPrompt(input, parsed),
+    system: staticCache ? "" : systemText,
+    user: userPrompt(input, parsed, !!transcriptCache),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -483,6 +502,8 @@ export async function runPostCallArrInputs(
     passName: "arr-inputs",
     userId: input.userId,
     callId: input.callId ?? undefined,
+    cachedContent: transcriptCache,
+    cachedSystemContent: staticCache?.name,
   });
 
   const inputs = normalizeArrInputsOutput(extractJson<Partial<ArrInputsDraft>>(result.text));

@@ -205,11 +205,28 @@ function buildGenerationConfig(req: LlmRequest, model: string, env?: ProviderEnv
 }
 
 function buildRequestBody(req: LlmRequest, model: string, env?: ProviderEnv): Record<string, unknown> {
+  const cacheRef = req.cachedSystemContent || req.cachedContent;
+  const useTranscriptCache = !!req.cachedContent && !req.cachedSystemContent;
+
+  // Transcript cachedContent cannot coexist with systemInstruction — fold system into user.
+  let userText = req.user;
+  if (useTranscriptCache && req.system?.trim()) {
+    userText = `${req.system.trim()}\n\n---\n\n${req.user}`;
+  }
+
   const body: Record<string, unknown> = {
-    systemInstruction: { parts: [{ text: req.system }] },
-    contents: [{ role: "user", parts: [{ text: req.user }] }],
+    contents: [{ role: "user", parts: [{ text: userText }] }],
     generationConfig: buildGenerationConfig(req, model, env),
   };
+
+  if (cacheRef) {
+    body.cachedContent = cacheRef;
+  }
+
+  // Rubric/static cache holds systemInstruction; plain path sends it normally.
+  if (!req.cachedSystemContent && !useTranscriptCache && req.system) {
+    body.systemInstruction = { parts: [{ text: req.system }] };
+  }
 
   // google_search grounding — supported on gemini-3.x with AI Studio keys.
   if (req.research) {

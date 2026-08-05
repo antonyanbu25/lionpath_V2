@@ -49,6 +49,7 @@ export async function runPostCallGenerate(
     dealId: input.dealId,
     userId: input.userId,
     callId: input.callId,
+    transcriptCaches: input.transcriptCaches,
   };
 
   const callType = (input.callType || "discovery") as CallType;
@@ -70,6 +71,7 @@ export async function runPostCallGenerate(
           videoFacts,
           userId: input.userId,
           callId: input.callId,
+          transcriptCaches: input.transcriptCaches,
         })
       : Promise.resolve(null),
   ]);

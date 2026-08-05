@@ -5,7 +5,9 @@
 
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
+import { getStaticCache, resolvePostCallCacheModel } from "../providers/gemini-cache";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import {
   analysisConfidenceForVideo,
   profileFor,
@@ -74,6 +76,7 @@ export interface PostCallScorecardInput {
   videoFacts?: VideoFactsDraft | null;
   userId?: string;
   callId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallScorecardResult {
@@ -580,9 +583,19 @@ export async function runPostCallScorecard(
   const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
 
   const provider = getPostCallProvider(env);
+  const model = resolvePostCallCacheModel(env);
+  const rubricText = buildScorecardSystemPrompt(profile);
+  const rubricCache = await getStaticCache(env, {
+    cacheKey: `scorecard-rubric-${profile.key}`,
+    content: rubricText,
+    model,
+    ttlSeconds: 7 * 24 * 3600,
+    asSystemInstruction: true,
+  });
+
   const result = await provider.generate({
     maxTokens: 12000,
-    system: buildScorecardSystemPrompt(profile),
+    system: rubricCache ? "" : rubricText,
     user: userPrompt(input, profile),
     effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
     research: false,
@@ -592,6 +605,7 @@ export async function runPostCallScorecard(
     passName: "scorecard",
     userId: input.userId,
     callId: input.callId,
+    cachedSystemContent: rubricCache?.name,
   });
 
   const parsed = extractJson<{

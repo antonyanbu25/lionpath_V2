@@ -8,10 +8,12 @@
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import { MEDDPICC_FIELD_KEYS, type MeddpiccFieldKey } from "../domain-model/meddpicc";
 import type { QualificationDraft, QualificationElement } from "../domain-model/qualification";
 import { parseTranscript, trimTranscript } from "../transcript";
 import { trimWords } from "../word-limits";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 
 export type Env = ProviderEnv;
 
@@ -26,6 +28,7 @@ export interface PostCallQualifyInput {
   briefContext?: string | null;
   additionalContext?: string;
   userId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallQualifyResult {
@@ -153,7 +156,11 @@ Optional contactId on champion or economicBuyer when a named attendee is obvious
 Do not score the SE. This is deal state, not call quality.`;
 }
 
-function userPrompt(input: PostCallQualifyInput, parsed: ReturnType<typeof parseTranscript>): string {
+function userPrompt(
+  input: PostCallQualifyInput,
+  parsed: ReturnType<typeof parseTranscript>,
+  omitTranscript = false,
+): string {
   const lines = [
     "Extract MEDDPICC qualification from this call.",
     "",
@@ -168,7 +175,9 @@ function userPrompt(input: PostCallQualifyInput, parsed: ReturnType<typeof parse
   if (input.additionalContext?.trim()) {
     lines.push("", "Additional SE context:", input.additionalContext.trim());
   }
-  lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  }
   return lines.join("\n");
 }
 
@@ -181,11 +190,12 @@ export async function runPostCallQualify(env: Env, input: PostCallQualifyInput):
   const parsed = parseTranscript(transcript);
   const provider = getPostCallProvider(env);
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
   const result = await provider.generate({
     maxTokens: 4000,
     system: systemPrompt(),
-    user: userPrompt(input, parsed),
+    user: userPrompt(input, parsed, !!transcriptCache),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -193,6 +203,7 @@ export async function runPostCallQualify(env: Env, input: PostCallQualifyInput):
     passName: "qualify",
     userId: input.userId,
     callId: input.callId ?? undefined,
+    cachedContent: transcriptCache,
   });
 
   const qualification = normalizeQualificationOutput(

@@ -19,6 +19,8 @@ export interface ProviderEnv {
   VERTEX_LOCATION?: string;
   GOOGLE_CLOUD_LOCATION?: string;
   ZOOMINFO_API_KEY?: string;
+  /** Post-call Gemini cachedContents TTL in seconds (default 900). */
+  POSTCALL_CACHE_TTL_SECONDS?: string;
 }
 
 /** Token and latency stats returned by provider adapters. */
@@ -52,6 +54,10 @@ export interface LlmRequest {
   /** Firestore usage attribution — set by route handlers when available. */
   userId?: string;
   callId?: string;
+  /** Gemini cachedContents resource name — transcript prefix cached per call. */
+  cachedContent?: string;
+  /** Gemini cachedContents for static system/rubric — used instead of inline systemInstruction. */
+  cachedSystemContent?: string;
 }
 
 /** A raw grounding citation as returned by a provider's web-search tool (e.g. Gemini groundingMetadata). */

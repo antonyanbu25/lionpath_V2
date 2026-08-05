@@ -96,6 +96,8 @@ const SUMMARISE_URL = `${WORKER_BASE_URL}/api/postcall/summarise`;
 const ARR_INPUTS_URL = `${WORKER_BASE_URL}/api/postcall/arr-inputs`;
 const ARR_COMPUTE_URL = `${WORKER_BASE_URL}/api/postcall/arr-compute`;
 const GAPS_URL = `${WORKER_BASE_URL}/api/postcall/gaps`;
+const CACHE_PREPARE_URL = `${WORKER_BASE_URL}/api/postcall/cache/prepare`;
+const CACHE_RELEASE_URL = `${WORKER_BASE_URL}/api/postcall/cache/release`;
 const VIDEO_PASS_URL = `${WORKER_BASE_URL}/api/video-pass`;
 
 const CALL_TYPES = [
@@ -3438,6 +3440,19 @@ async function confirmAndGenerate(e) {
   const additionalContext = [identityContext, pipelineState.payload.additionalContext]
     .filter(Boolean)
     .join("\n\n");
+
+  let transcriptCaches = pipelineState.transcriptCaches || null;
+  try {
+    transcriptCaches = await postJson(CACHE_PREPARE_URL, {
+      transcript: pipelineState.resolve.transcript,
+      callId: pipelineState.recordId || null,
+    });
+    pipelineState.transcriptCaches = transcriptCaches;
+  } catch (err) {
+    console.warn("[postcall] transcript cache prepare soft-fail:", err?.message || err);
+  }
+  const cacheFields = transcriptCaches ? { transcriptCaches } : {};
+
   const accountId = intakeAccount.createNewAccount
     ? null
     : intakeAccount.accountId || pipelineState.payload.accountId || null;
@@ -3449,6 +3464,7 @@ async function confirmAndGenerate(e) {
     callType,
     additionalContext,
     meetingDate: meetingDateFromResolve(pipelineState.resolve),
+    ...cacheFields,
   };
   const summariseBody = {
     transcript: pipelineState.resolve.transcript,
@@ -3458,6 +3474,7 @@ async function confirmAndGenerate(e) {
     callType,
     additionalContext,
     meetingDate: meetingDateFromResolve(pipelineState.resolve),
+    ...cacheFields,
   };
 
   const qualifyP = postJson(QUALIFY_URL, qualifyBody).catch((err) => {
@@ -3478,6 +3495,7 @@ async function confirmAndGenerate(e) {
           meetingTitle: pipelineState.payload.meetingTitle || companyName,
           callType,
           additionalContext,
+          ...cacheFields,
         }).catch((err) => {
           console.warn("[postcall] arr-inputs soft-fail:", err?.message || err);
           return null;
@@ -3512,6 +3530,7 @@ async function confirmAndGenerate(e) {
       ...qualifyBody,
       callId: pipelineState.recordId || null,
       previous: previousCommit,
+      ...cacheFields,
     }).catch((err) => {
       console.warn("[postcall] commit soft-fail:", err?.message || err);
       return null;
@@ -3595,6 +3614,7 @@ async function confirmAndGenerate(e) {
       callTypeOverride,
       dealMatchOverride,
       videoFacts: pipelineState.videoFacts || undefined,
+      ...cacheFields,
     };
 
     const [data, qualify, commit, summarise, videoRes] = await Promise.all([
@@ -3742,6 +3762,7 @@ async function confirmAndGenerate(e) {
             meetingDate: meetingDateFromResolve(pipelineState.resolve),
             callId: record.id,
             previous: prevCommit,
+            ...cacheFields,
           }).catch((err) => {
             console.warn("[postcall] deferred commit soft-fail:", err?.message || err);
             return null;
@@ -3762,6 +3783,7 @@ async function confirmAndGenerate(e) {
             meetingTitle: pipelineState.payload.meetingTitle || companyName,
             callType,
             additionalContext,
+            ...cacheFields,
           }).catch((err) => {
             console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
             return null;
@@ -3807,6 +3829,7 @@ async function confirmAndGenerate(e) {
           callType,
           arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
           additionalContext: gapsContext || undefined,
+          ...cacheFields,
         }).catch((err) => {
           console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
           return null;
@@ -3842,6 +3865,15 @@ async function confirmAndGenerate(e) {
         onCallRecordHydrated?.(record.id);
       } catch (err) {
         console.warn("[postcall] background hydration failed:", err?.message || err);
+      } finally {
+        if (pipelineState.transcriptCaches) {
+          postJson(CACHE_RELEASE_URL, { transcriptCaches: pipelineState.transcriptCaches }).catch(
+            (err) => {
+              console.warn("[postcall] transcript cache release soft-fail:", err?.message || err);
+            },
+          );
+          pipelineState.transcriptCaches = null;
+        }
       }
     })();
   } catch (err) {
@@ -3854,6 +3886,14 @@ async function confirmAndGenerate(e) {
     show($("postcall-loading"), false);
     void hidePostCallGenOverlay();
     showInlineStatus(status, { type: "error", message: err.message || "Generation failed." });
+    if (pipelineState.transcriptCaches) {
+      postJson(CACHE_RELEASE_URL, { transcriptCaches: pipelineState.transcriptCaches }).catch(
+        (releaseErr) => {
+          console.warn("[postcall] transcript cache release soft-fail:", releaseErr?.message || releaseErr);
+        },
+      );
+      pipelineState.transcriptCaches = null;
+    }
   } finally {
     setButtonLoading(btn, false);
     generating = false;

@@ -12,6 +12,7 @@ import { embedVerbatim } from "../embeddings";
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import type { ProductGapDraft } from "../domain-model/product-gap";
 import type { WhatWorksDraft } from "../domain-model/what-works";
 import {
@@ -31,6 +32,7 @@ import {
   type ProductArea,
 } from "../domain-model/product-taxonomy";
 import { parseTranscript, trimTranscript } from "../transcript";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 
 export type Env = ProviderEnv;
 
@@ -50,6 +52,7 @@ export interface PostCallGapsInput {
   arrSnapshot?: ArrSnapshotInput | null;
   additionalContext?: string;
   userId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallGapsResult {
@@ -181,7 +184,11 @@ Rules (strict):
 - Do not emit embedding fields.`;
 }
 
-function userPrompt(input: PostCallGapsInput, parsed: ReturnType<typeof parseTranscript>): string {
+function userPrompt(
+  input: PostCallGapsInput,
+  parsed: ReturnType<typeof parseTranscript>,
+  omitTranscript = false,
+): string {
   const lines = [
     "Extract product gaps and what landed from this call.",
     "",
@@ -193,7 +200,9 @@ function userPrompt(input: PostCallGapsInput, parsed: ReturnType<typeof parseTra
   if (input.additionalContext?.trim()) {
     lines.push("", "Additional SE context:", input.additionalContext.trim());
   }
-  lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  }
   return lines.join("\n");
 }
 
@@ -379,11 +388,12 @@ export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promi
   const parsed = parseTranscript(transcript);
   const provider = getPostCallProvider(env);
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
   const result = await provider.generate({
     maxTokens: 4000,
     system: systemPrompt(),
-    user: userPrompt(input, parsed),
+    user: userPrompt(input, parsed, !!transcriptCache),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -391,6 +401,7 @@ export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promi
     passName: "gaps",
     userId: input.userId,
     callId: input.callId ?? undefined,
+    cachedContent: transcriptCache,
   });
 
   const parsedJson = extractJson<{ productGaps?: unknown; whatWorks?: unknown }>(result.text);

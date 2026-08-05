@@ -3,6 +3,8 @@ import { toPrepGeminiResponseSchema } from "../gemini-schema";
 import { FRESHDESK_ICP_KB, FRESHDESK_OMNI_ICP_KB, FRESHDESK_OMNI_PERSONAS_KB } from "../icp-kb";
 import { extractJson } from "../json";
 import { getSynthesizeProvider } from "../providers";
+import { getStaticCache } from "../providers/gemini-cache";
+import { effectiveGeminiModel } from "../providers/gemini";
 import { PREP_SCHEMA, type Prep } from "../schema";
 import { normalizePrepOutput } from "../word-limits";
 import { canonicalizePrepSources } from "./canonicalize-sources";
@@ -164,6 +166,7 @@ function isGeminiInvalidSchemaError(err: unknown): boolean {
 }
 
 async function generateSynthesis(
+  env: Env,
   provider: ReturnType<typeof getSynthesizeProvider>,
   input: {
     companyName: string;
@@ -181,8 +184,17 @@ async function generateSynthesis(
   sources: SourceRef[],
 ) {
   const effort = input.effort || "medium";
+  const systemText = synthesizeSystemPrompt();
+  const model = effectiveGeminiModel(env, env.SYNTHESIZE_MODEL);
+  const staticCache = await getStaticCache(env, {
+    cacheKey: "prep-synthesize-system",
+    content: systemText,
+    model,
+    ttlSeconds: 7 * 24 * 3600,
+    asSystemInstruction: true,
+  });
   const base = {
-    system: synthesizeSystemPrompt(),
+    system: staticCache ? "" : systemText,
     user: synthesizeUserPrompt(input, facts, sources),
     maxTokens: 12000,
     temperature: 0,
@@ -192,6 +204,7 @@ async function generateSynthesis(
     passName: "synthesize",
     userId: input.userId,
     callId: input.callId,
+    cachedSystemContent: staticCache?.name,
   };
 
   try {
@@ -232,7 +245,7 @@ export async function synthesizePrep(
     input.additionalContext,
   );
 
-  const result = await generateSynthesis(provider, input, seFacts, seSources);
+  const result = await generateSynthesis(env, provider, input, seFacts, seSources);
 
   function finalizePrep(raw: Prep): Prep {
     // `raw.sources` is the model's own lossy echo of the source list; pass the real

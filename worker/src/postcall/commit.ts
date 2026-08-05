@@ -11,6 +11,7 @@
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
 import type { ProviderEnv } from "../providers/types";
+import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import {
   TC_SLOT_KEYS,
   TC_STATUSES,
@@ -24,6 +25,7 @@ import {
 } from "../domain-model/technical-commit";
 import { parseTranscript, trimTranscript } from "../transcript";
 import { trimWords } from "../word-limits";
+import { transcriptCacheHandle } from "./transcript-cache-context";
 
 export type Env = ProviderEnv;
 
@@ -39,6 +41,7 @@ export interface PostCallCommitInput {
   briefContext?: string | null;
   additionalContext?: string;
   userId?: string;
+  transcriptCaches?: PostCallTranscriptCacheBundle;
 }
 
 export interface PostCallCommitResult {
@@ -274,6 +277,7 @@ function slotLine(key: string, slot: TcFieldSlot | null | undefined): string | n
 function userPrompt(
   input: PostCallCommitInput,
   parsed: ReturnType<typeof parseTranscript>,
+  omitTranscript = false,
 ): string {
   const lines = ["Extract the technical commit state from this call.", "", `Word count: ${parsed.wordCount}`];
   if (input.companyName) lines.push(`Company: ${input.companyName}`);
@@ -302,7 +306,9 @@ function userPrompt(
   if (input.additionalContext?.trim()) {
     lines.push("", "Additional SE context:", input.additionalContext.trim());
   }
-  lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  if (!omitTranscript) {
+    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+  }
   return lines.join("\n");
 }
 
@@ -318,11 +324,12 @@ export async function runPostCallCommit(
   const parsed = parseTranscript(transcript);
   const provider = getPostCallProvider(env);
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
+  const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
   const result = await provider.generate({
     maxTokens: 4000,
     system: systemPrompt(),
-    user: userPrompt(input, parsed),
+    user: userPrompt(input, parsed, !!transcriptCache),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -330,6 +337,7 @@ export async function runPostCallCommit(
     passName: "commit",
     userId: input.userId,
     callId: input.callId ?? undefined,
+    cachedContent: transcriptCache,
   });
 
   const technicalCommit = normalizeCommitOutput(extractJson<Partial<RawCommit>>(result.text));
