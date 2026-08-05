@@ -25,7 +25,7 @@ export const AUTH_BUILD_ID = "2.1.22";
 /** Cache-bust query for ES module imports — bump with AUTH_BUILD_ID. */
 export const MODULE_BUILD = AUTH_BUILD_ID;
 
-function isProductionHost(host) {
+export function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
@@ -110,6 +110,8 @@ function workerBaseUrl() {
       return "https://yonus-api.benjaminsquare.com";
     }
     if (host.endsWith(".run.app")) {
+      const apiHost = host.replace(/^prep-portal-web-/, "prep-portal-api-");
+      if (apiHost !== host) return `https://${apiHost}`;
       return "https://prep-portal-api-781846715448.us-central1.run.app";
     }
     // Local dev: pin to IPv4 loopback. Worker may be IPv4-only; Chrome often

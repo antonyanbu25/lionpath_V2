@@ -70,7 +70,13 @@ import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
-import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
+import {
+  firebaseConfig,
+  WORKER_BASE_URL,
+  ALLOWED_EMAIL_DOMAIN,
+  loadFirebaseConfig,
+  isProductionHost,
+} from "./firebase-config.js";
 import {
   initPrecall,
   loadLocalBriefs,
@@ -116,8 +122,14 @@ const FETCH_KAIA_SUMMARY_URL = `${WORKER_BASE_URL}/api/fetch-kaia-summary`;
 const DASH_TAB_STORAGE_KEY = "lionpath-dashboard-tab"; /* legacy — no longer used */
 function workerDownMessage(status, errName) {
   const host = typeof location !== "undefined" ? location.hostname : "";
-  const isProd = host === "portal.benjaminsquare.com" || host === "yonus.benjaminsquare.com";
-  if (isProd) {
+  if (isProductionHost(host)) {
+    if (host.endsWith(".run.app")) {
+      const hint =
+        status === 403
+          ? "Cloud Run IAM blocked the API (403). Grant public invoker on prep-portal-api and add this web origin to ALLOWED_ORIGINS — see deploy/cloudrun/README.md."
+          : "Check prep-portal-api is running, allows unauthenticated invoke, and ALLOWED_ORIGINS includes this web URL.";
+      return `Cannot reach the API server at ${WORKER_BASE_URL}${status ? ` (HTTP ${status})` : ""}. ${hint}`;
+    }
     const hint =
       status === 502
         ? "The API worker is down (502). SSH into the VPS and run: cd /opt/se-singha-paathai && git fetch origin 2.0.7.2 && git reset --hard origin/2.0.7.2 && cd deploy/vps && docker compose build --no-cache worker && docker compose up -d"

@@ -301,13 +301,35 @@ powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
 
 | Symptom | Fix |
 |---------|-----|
-| CORS errors | `ALLOWED_ORIGINS` must include `https://portal.benjaminsquare.com` on API |
+| **"Cannot reach the API server"** on `*.run.app` web URL | Usually **IAM 403** (API not public) and/or **CORS**. Run the two commands below — no rebuild. |
+| CORS errors | `ALLOWED_ORIGINS` must include the exact web origin (`https://portal.benjaminsquare.com` or your `prep-portal-web-*.run.app` URL) on API |
 | 401 on API | Set `FIREBASE_PROJECT_ID=se-singha-paathi`; ensure user token is valid |
 | No Google sign-in button | Rebuild web with `web/firebase-config.local.js` present |
 | History not persisting | Check GCS volume mount and bucket IAM on compute SA |
 | Domain mapping stuck | Verify domain ownership in GCP; DNS CNAME propagated |
 | Gemini 403 on Cloud Run | Grant `roles/aiplatform.user` to the Cloud Run service account; enable `aiplatform.googleapis.com` |
 | Gemini works locally but not on Cloud Run | Local uses `GEMINI_API_KEY`; Cloud Run needs `GOOGLE_CLOUD_PROJECT` + Vertex IAM |
+
+**Fix `*.run.app` web → API without rebuild** (replace web URL if yours differs):
+
+```bash
+# 1. Allow browser access to the API (403 from Google Frontend = missing invoker)
+gcloud run services add-iam-policy-binding prep-portal-api \
+  --region=us-central1 \
+  --project=se-singha-paathi \
+  --member="allUsers" \
+  --role="roles/run.invoker"
+
+# 2. CORS — include the Cloud Run web origin
+gcloud run services update prep-portal-api \
+  --region=us-central1 \
+  --project=se-singha-paathi \
+  --update-env-vars "ALLOWED_ORIGINS=https://portal.benjaminsquare.com,https://prep-portal-web-781846715448.us-central1.run.app"
+
+# Verify (expect HTTP 200, Access-Control-Allow-Origin matching web URL)
+curl -sI "https://prep-portal-api-781846715448.us-central1.run.app/api/config" \
+  -H "Origin: https://prep-portal-web-781846715448.us-central1.run.app"
+```
 
 See also: [`docs/FIREBASE_SETUP.md`](../../docs/FIREBASE_SETUP.md), [`docs/VPS_DEPLOY.md`](../../docs/VPS_DEPLOY.md).
 

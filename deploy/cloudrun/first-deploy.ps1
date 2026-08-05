@@ -45,7 +45,23 @@ gcloud run deploy prep-portal-web `
   --max-instances 5 `
   --concurrency 80
 
+Write-Host "==> Public invoker (required for browser access to *.run.app URLs)"
+gcloud run services add-iam-policy-binding prep-portal-api `
+  --region $Region `
+  --project $Project `
+  --member="allUsers" `
+  --role="roles/run.invoker" `
+  --quiet
+
 $apiUrl = gcloud run services describe prep-portal-api --region=$Region --format="value(status.url)"
 $webUrl = gcloud run services describe prep-portal-web --region=$Region --format="value(status.url)"
+
+Write-Host "==> CORS: allow web origin on API"
+$allowedOrigins = "https://portal.benjaminsquare.com,$webUrl"
+gcloud run services update prep-portal-api `
+  --region $Region `
+  --project $Project `
+  --update-env-vars "ALLOWED_ORIGINS=$allowedOrigins"
+
 Write-Host "API: $apiUrl/api/health"
 Write-Host "Web: $webUrl/"
