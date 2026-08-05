@@ -135,33 +135,55 @@ INTERNAL_CRON_SECRET=your-random-secret
 GEMINI_API_KEY=your-gemini-api-key   # required for batch even if you use Vertex elsewhere
 ```
 
-Install crons on the VPS (adjust hostname if you use `lionpathapi` instead of `portalapi`):
+**Fix `.env` line endings (CRLF → LF).** If sourcing `.env` prints `$'\r': command not found`, the file was edited on Windows:
 
 ```bash
-# Poll open batch jobs — every 10 minutes
-*/10 * * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/poll
-
-# Inline fallback for stuck jobs — hourly
-0 * * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/fallback
-
-# Embedding backfill — daily 2am UTC
-0 2 * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" "https://lionpathapi.benjaminsquare.com/api/internal/batch/enqueue?workload=embedding-backfill"
-
-# Read-model full rebuild — daily 3am UTC (no LLM)
-0 3 * * * curl -sf -X POST -H "X-Cron-Secret: $INTERNAL_CRON_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/read-models/nightly-rebuild
+cd /opt/se-singha-paathai/deploy/vps   # adjust if INSTALL_DIR differs
+apt-get install -y dos2unix            # once, if missing
+dos2unix .env
+chmod 600 .env
 ```
 
-Load `INTERNAL_CRON_SECRET` into cron's environment (e.g. wrap in a small shell script sourced from `.env`, or export in root's crontab preamble).
+**Expose worker on localhost only** so host cron can reach the API without public DNS (e.g. `lionpathapi.*` may still point at shared hosting / cPanel, not this VPS). Under the `worker` service in `docker-compose.yml`, add:
+
+```yaml
+    ports:
+      - "127.0.0.1:8787:8787"
+```
+
+Then restart: `docker compose up -d worker`.
+
+**Install cron** (uses `deploy/vps/cron-batch.sh` → `http://127.0.0.1:8787`, **not** a public URL):
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash install-crontab.sh
+```
+
+Schedules installed:
+
+| Subcommand | Schedule | Endpoint |
+|------------|----------|----------|
+| `poll` | `*/10 * * * *` | `/api/internal/batch/poll` |
+| `fallback` | `0 * * * *` | `/api/internal/batch/fallback` |
+| `embedding` | `0 2 * * *` | `/api/internal/batch/enqueue?workload=embedding-backfill` |
+| `read-models` | `0 3 * * *` | `/api/internal/read-models/nightly-rebuild` |
+
+Logs: `/var/log/se-paathai-cron.log`.
 
 **Smoke test after deploy:**
 
 ```bash
-curl -sf -X POST -H "X-Cron-Secret: YOUR_SECRET" https://lionpathapi.benjaminsquare.com/api/internal/batch/poll
+cd /opt/se-singha-paathai/deploy/vps
+./cron-batch.sh poll
+# or manually:
+curl -sf -X POST -H "X-Cron-Secret: $(grep '^INTERNAL_CRON_SECRET=' .env | cut -d= -f2- | tr -d '\r')" \
+  http://127.0.0.1:8787/api/internal/batch/poll
 ```
 
 User-facing enqueue (authenticated, no cron secret): `POST /api/batch/summaries/enqueue`, `POST /api/batch/cluster-labels/enqueue`.
 
-Cloud Run equivalent: **[deploy/cloudrun/README.md](../deploy/cloudrun/README.md)** (Cloud Scheduler + Secret Manager).
+Cloud Run equivalent (dormant until migration): **[deploy/cloudrun/cloud-scheduler.example.sh](../deploy/cloudrun/cloud-scheduler.example.sh)** and **[deploy/cloudrun/README.md](../deploy/cloudrun/README.md)**.
 
 ---
 

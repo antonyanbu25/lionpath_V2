@@ -22,6 +22,8 @@ services:
     volumes:
       - /var/lib/se-paathai/history:/data/history
       - /var/lib/se-paathai/video:/data/video
+    ports:
+      - "127.0.0.1:8787:8787"
     expose:
       - "8787"
     healthcheck:
