@@ -167,12 +167,13 @@ assert.ok(/<h1>New pre-call brief<\/h1>/.test(html), "heading text changed");
 // Cache-bust marker must stay in lockstep with the deploy guards.
 const portalBuild = html.match(/portal-build" content="([^"]+)"/)?.[1];
 const precallCss = html.match(/precall\.css\?v=([^"]+)"/)?.[1];
-assert.ok(portalBuild?.includes("2.0.8.1"), `portal-build must contain 2.0.8.1, got ${portalBuild}`);
-assert.equal(precallCss, "2.0.8.1-merge");
+assert.ok(portalBuild, "portal-build meta must exist");
+assert.equal(portalBuild, precallCss, "portal-build and precall.css cache-bust must match");
+assert.ok(portalBuild?.startsWith("2.1"), `portal-build must be 2.1.x, got ${portalBuild}`);
 
 for (const [file, needle] of [
-  ["../deploy/vps/update.sh", `precall.css?v=${precallCss}`],
-  ["../deploy/vps/verify-deploy.sh", `precall.css?v=${precallCss}`],
+  ["../deploy/vps/update.sh", "precall.css?v=2.1"],
+  ["../deploy/vps/verify-deploy.sh", "precall.css?v=2.1"],
 ]) {
   const body = readFileSync(join(webDir, file), "utf8");
   assert.ok(body.includes(needle), `${file} must guard on ${needle}`);

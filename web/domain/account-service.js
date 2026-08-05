@@ -52,6 +52,11 @@ import {
   getAccountListInFlight,
   trackAccountListInFlight,
 } from "./session-list-cache.js";
+import {
+  getAccountRollupReadModel,
+  getAccountRollupReadModels,
+  hydrateAccountRollupDetail,
+} from "./read-models-service.js";
 import { stripEmbeddingFields } from "./field-masks.js";
 
 export { invalidateSessionListCache };
@@ -694,21 +699,46 @@ export async function listAccountsForSession(session, opts = {}) {
       byAccount.set(lifecycle.accountId, list);
     }
 
+    const accountIds = [...byAccount.keys()];
+    const rollupDocs = store.getReadModels
+      ? await safeStoreOp(
+          "getAccountRollupReadModels",
+          () => getAccountRollupReadModels(store, accountIds),
+          [],
+        )
+      : [];
+    const rollupByAccountId = new Map(rollupDocs.map((doc) => [doc.accountId || doc.id, doc]));
+
     const rows = await Promise.all(
       [...byAccount.entries()].map(async ([accountId, lcs]) => {
         try {
+          const rollupDoc = rollupByAccountId.get(accountId);
           let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
           if (!account) return null;
           if (!opts.forSearch) {
             account = stripEmbeddingFields(account);
           }
-          account = await safeStoreOp(
-            "backfillAccountSeTeam",
-            () => backfillAccountSeTeam(accountId),
-            account,
-          );
           const lifecycle = pickRowLifecycle(account, lcs);
           if (!lifecycle) return null;
+
+          if (rollupDoc?.listRow) {
+            const lr = rollupDoc.listRow;
+            return {
+              account,
+              lifecycle,
+              seTeamDisplay: lr.seTeamDisplay || [],
+              secondaryCount: lr.secondaryCount ?? 0,
+              lastActivityAt: lr.lastActivityAt ?? maxLastActivity(lcs),
+              dealType: lr.dealType || "new_business",
+              dealTypeLabel: lr.dealTypeLabel || DEAL_TYPE_LABELS[lr.dealType] || lr.dealType,
+              dealStage: lr.dealStage || lifecycle.stage,
+              deals: lr.deals || [],
+              canonicalDealId: lr.canonicalDealId || lifecycle.dealId || null,
+              _fromReadModel: true,
+            };
+          }
+
+          // READ-TIME AGGREGATION (fallback until accountRollup backfill — do not write on read)
           const seTeamDisplay = await safeStoreOp(
             "resolveSeTeamDisplay",
             () => resolveSeTeamDisplay(account),
@@ -1165,7 +1195,6 @@ export async function getAccountEngagementDetail(session, accountId, options = {
     }
     return null;
   }
-  account = await safeStoreOp("backfillAccountSeTeam", () => backfillAccountSeTeam(accountId), account);
 
   try {
     return await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
@@ -1341,27 +1370,37 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
     );
   }
 
-  const accountRollup = await safeStoreOp(
-    "loadAccountOverviewRollup",
-    () => loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts),
-    {
-      arrRollup: {
-        estimateBand: null,
-        linesByDealId: new Map(),
-        discussedUnquantified: [],
-        crossSellGaps: [],
-      },
-      dealRows: [],
-      accountCalls: [],
-      firmographics: {},
-      reasonForEvaluation: null,
-      whyAi: null,
-      hasEconomicBuyer: false,
-      health: deriveAccountHealth(null, null, account.updatedAt),
-      callCount: 0,
-      dealCount: (deals || []).length,
-    },
-  );
+  const storedRollup = store.getReadModel
+    ? await safeStoreOp(
+        "getAccountRollupReadModel",
+        () => getAccountRollupReadModel(store, accountId),
+        null,
+      )
+    : null;
+
+  const accountRollup = storedRollup?.detail
+    ? hydrateAccountRollupDetail(storedRollup.detail)
+    : await safeStoreOp(
+        "loadAccountOverviewRollup",
+        () => loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts),
+        {
+          arrRollup: {
+            estimateBand: null,
+            linesByDealId: new Map(),
+            discussedUnquantified: [],
+            crossSellGaps: [],
+          },
+          dealRows: [],
+          accountCalls: [],
+          firmographics: {},
+          reasonForEvaluation: null,
+          whyAi: null,
+          hasEconomicBuyer: false,
+          health: deriveAccountHealth(null, null, account.updatedAt),
+          callCount: 0,
+          dealCount: (deals || []).length,
+        },
+      );
 
   return {
     ...lensDetail,
@@ -1387,11 +1426,7 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
 
 /**
  * Account overview data: ARR roll-up, calls across deals, firmographics, deal rows.
- * @param {ReturnType<import("./store.js").getStore>} store
- * @param {import("./types.js").Account} account
- * @param {import("./types.js").Deal[]} deals
- * @param {object[]} seTeamDisplay
- * @param {import("./types.js").Contact[]} contacts
+ * @deprecated Prefer accountRollup/{accountId} read-model; kept as fallback until backfill parity.
  */
 async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts) {
   const arrRollup = await buildAccountArrRollup(store, account.id, deals);

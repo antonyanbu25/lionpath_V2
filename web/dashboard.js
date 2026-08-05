@@ -38,6 +38,11 @@ import { loadScoreOverridesForSession } from "./domain/score-override-service.js
 import { applyScoreOverridesToScorecard } from "./shared/qip-scorecard-normalize.js";
 import { getSessionGreeting } from "./greeting.js";
 import {
+  getOrgMetricsReadModel,
+  getSeLaunchpadReadModel,
+  getTeamMetricsReadModel,
+} from "./domain/read-models-service.js";
+import {
   normalizeDimensionKey,
   barClass,
   scorePct,
@@ -1497,10 +1502,28 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   if (!hasReady) {
     renderDashboardLoadingShell(container);
   }
-  const callRecords = await resolveCallRecords(email, opts);
-  const qualityRecords = analysesWithQualityFromRecords(callRecords);
-  const metrics = aggregateQualityMetrics(qualityRecords);
-  const launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+
+  const store = getStore();
+  let callRecords = await resolveCallRecords(email, opts);
+  let metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
+  let launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+
+  if (opts.session && store.getReadModel) {
+    const { effectiveSessionUserId } = await import("./domain/session.js");
+    const uid = effectiveSessionUserId(opts.session);
+    if (uid) {
+      const launchpadDoc = await getSeLaunchpadReadModel(store, uid);
+      if (launchpadDoc?.qualityMetrics) {
+        metrics = launchpadDoc.qualityMetrics;
+        launchCallMetrics = {
+          totalCalls: launchpadDoc.callMetrics?.totalCalls ?? launchCallMetrics.totalCalls,
+          callsThisWeek: launchpadDoc.callMetrics?.callsThisWeek ?? launchCallMetrics.callsThisWeek,
+          records: callRecords,
+        };
+      }
+    }
+  }
+
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = await countPrepsGenerated(briefsCountFetcher(opts));
   const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, opts);
@@ -1583,12 +1606,42 @@ async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
 
 async function buildTeamMetrics(session) {
   const isOrgView = session?.isOrgDirector === true;
+  const store = getStore();
+
+  if (store.getReadModel) {
+    if (isOrgView && session?.orgId) {
+      const orgDoc = await getOrgMetricsReadModel(store, session.orgId);
+      if (orgDoc?.teamMetrics && orgDoc?.seRows) {
+        return {
+          teamMetrics: orgDoc.teamMetrics,
+          seRows: orgDoc.seRows,
+          isOrgView: true,
+          gapClusterRollups: orgDoc.gapClusterRollups || [],
+          managerView: orgDoc.managerView || null,
+          _fromReadModel: true,
+        };
+      }
+    }
+    if (!isOrgView && session?.teamId) {
+      const teamDoc = await getTeamMetricsReadModel(store, session.teamId);
+      if (teamDoc?.teamMetrics && teamDoc?.seRows) {
+        return {
+          teamMetrics: teamDoc.teamMetrics,
+          seRows: teamDoc.seRows,
+          isOrgView: false,
+          managerView: teamDoc.managerView || null,
+          _fromReadModel: true,
+        };
+      }
+    }
+  }
+
+  // READ-TIME AGGREGATION (fallback until teamMetrics/orgMetrics backfill)
   const seEmails = session
     ? await listTeamSeEmailsAsync(session)
     : listTeamSeEmails();
 
   const storePostCalls = await loadTeamCallSummariesFromStore(session);
-  const store = getStore();
   const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
   const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 
@@ -1747,47 +1800,134 @@ function buildTeamCoachingQueue(allDeduped) {
     .slice(0, COACHING_QUEUE_MAX);
 }
 
+/** Rebuild coaching queue from read-model scorecards (applies score overrides at read time). */
+function buildCoachingQueueFromReadModel(managerView, scoreOverrides) {
+  if (!managerView?.seScorecardsByEmail) return [];
+  const items = [];
+  const callMeta = managerView.callMetaByCallId || {};
+
+  for (const [email, scorecards] of Object.entries(managerView.seScorecardsByEmail)) {
+    for (const sc of scorecards || []) {
+      const withOverrides = applyScoreOverridesToScorecard(sc, scoreOverrides);
+      if (!isEligibleForAggregate(withOverrides, COACHING_AGG_OPTS)) continue;
+      const composite = typeComposite([withOverrides], withOverrides.callType, COACHING_AGG_OPTS);
+      const score = composite.score;
+      if (score == null || score > COACHING_QUEUE_SCORE_MAX) continue;
+
+      let weakest = null;
+      for (const line of withOverrides.lines || []) {
+        const grade = line.grade ?? line.score;
+        const unavailable = line.evidenceUnavailable ?? !line.applicable;
+        if (unavailable) continue;
+        if (!weakest || grade < weakest.score) {
+          weakest = { themeKey: line.themeKey, score: grade };
+        }
+      }
+
+      const meta = callMeta[sc.callId] || {};
+      items.push({
+        callId: sc.callId,
+        company: meta.company || "Call",
+        seName: meta.seName || displayNameForEmail(email),
+        seEmail: meta.seEmail || email,
+        timestamp: meta.timestamp,
+        callType: withOverrides.callType,
+        callTypeLabel: CALL_TYPE_LABELS[withOverrides.callType] || withOverrides.callType,
+        score,
+        scoreLabel: formatTypeComposite(composite),
+        confidencePct:
+          withOverrides.confidence != null ? Math.round(withOverrides.confidence * 100) : null,
+        weakestTheme: weakest?.themeKey || null,
+        weakestScore: weakest?.score ?? null,
+      });
+    }
+  }
+
+  return items
+    .sort((a, b) => (a.score ?? 100) - (b.score ?? 100))
+    .slice(0, COACHING_QUEUE_MAX);
+}
+
+/** Apply score overrides to read-model scorecards grouped by SE email. */
+function hydrateManagerScorecardsFromReadModel(managerView, scoreOverrides) {
+  /** @type {Map<string, object[]>} */
+  const seScorecardsByEmail = new Map();
+  const allEligibleScorecards = [];
+
+  for (const [email, scorecards] of Object.entries(managerView.seScorecardsByEmail || {})) {
+    const eligible = (scorecards || [])
+      .map((sc) => applyScoreOverridesToScorecard(sc, scoreOverrides))
+      .filter((sc) => isEligibleForAggregate(sc, COACHING_AGG_OPTS));
+    seScorecardsByEmail.set(email, eligible);
+    allEligibleScorecards.push(...eligible);
+  }
+
+  return { seScorecardsByEmail, allEligibleScorecards };
+}
+
 async function buildManagerTeamView(session) {
   const base = await buildTeamMetrics(session);
   const scoreOverrides = await loadScoreOverridesForSession(session);
   const isOrgView = session?.isOrgDirector === true;
   const seEmails = session ? await listTeamSeEmailsAsync(session) : listTeamSeEmails();
-  const storePostCalls = await loadTeamCallSummariesFromStore(session);
   const store = getStore();
-  const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 
   /** @type {Map<string, object[]>} */
-  const seScorecardsByEmail = new Map();
-  const allEligibleScorecards = [];
-  const allEligibleRecords = [];
-  const allDeduped = [];
+  let seScorecardsByEmail = new Map();
+  let allEligibleScorecards = [];
+  let allEligibleRecords = [];
+  let allDeduped = [];
+  let coachingQueue = [];
 
-  for (const email of seEmails) {
-    let analyses = listAnalysesWithQuality(email);
-    const uid = emailToUid.get(email);
-    if (!analyses.length && storePostCalls.length && uid) {
+  if (base._fromReadModel && base.managerView?.seScorecardsByEmail) {
+    const hydrated = hydrateManagerScorecardsFromReadModel(base.managerView, scoreOverrides);
+    seScorecardsByEmail = hydrated.seScorecardsByEmail;
+    allEligibleScorecards = hydrated.allEligibleScorecards;
+    coachingQueue = buildCoachingQueueFromReadModel(base.managerView, scoreOverrides);
+
+    const storePostCalls = await loadTeamCallSummariesFromStore(session);
+    const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
+    for (const email of seEmails) {
+      const uid = emailToUid.get(email);
+      if (!uid || !storePostCalls.length) continue;
       const fromStore = storePostCalls.filter((r) => r.ownerId === uid);
-      analyses = fromStore.filter(hasCoachingAnalysis);
+      allEligibleRecords.push(...fromStore.filter(isCoachingQueueEligible));
     }
-    const deduped = dedupeAnalysesByCallIdentity(analyses).map((rec) => ({
-      ...rec,
-      _seEmail: email,
-      _seName: displayNameForEmail(email),
-    }));
-    allDeduped.push(...deduped);
+  } else {
+    const storePostCalls = await loadTeamCallSummariesFromStore(session);
+    const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 
-    const eligibleRecords = deduped.filter(isCoachingQueueEligible);
-    allEligibleRecords.push(...eligibleRecords);
-    const scorecards = eligibleRecords.map((rec) => scorecardFromRecord(rec, scoreOverrides)).filter(Boolean);
-    seScorecardsByEmail.set(email, scorecards);
-    allEligibleScorecards.push(...scorecards);
-  }
+    for (const email of seEmails) {
+      let analyses = listAnalysesWithQuality(email);
+      const uid = emailToUid.get(email);
+      if (!analyses.length && storePostCalls.length && uid) {
+        const fromStore = storePostCalls.filter((r) => r.ownerId === uid);
+        analyses = fromStore.filter(hasCoachingAnalysis);
+      }
+      const deduped = dedupeAnalysesByCallIdentity(analyses).map((rec) => ({
+        ...rec,
+        _seEmail: email,
+        _seName: displayNameForEmail(email),
+      }));
+      allDeduped.push(...deduped);
 
-  if (!allDeduped.length && storePostCalls.length) {
-    const dedupedStore = dedupeAnalysesByCallIdentity(
-      storePostCalls.filter(hasCoachingAnalysis),
-    );
-    allDeduped.push(...dedupedStore);
+      const eligibleRecords = deduped.filter(isCoachingQueueEligible);
+      allEligibleRecords.push(...eligibleRecords);
+      const scorecards = eligibleRecords
+        .map((rec) => scorecardFromRecord(rec, scoreOverrides))
+        .filter(Boolean);
+      seScorecardsByEmail.set(email, scorecards);
+      allEligibleScorecards.push(...scorecards);
+    }
+
+    if (!allDeduped.length && storePostCalls.length) {
+      const dedupedStore = dedupeAnalysesByCallIdentity(
+        storePostCalls.filter(hasCoachingAnalysis),
+      );
+      allDeduped.push(...dedupedStore);
+    }
+
+    coachingQueue = buildTeamCoachingQueue(allDeduped);
   }
 
   const dealRows = await listDealsForSession(session);
@@ -1816,7 +1956,7 @@ async function buildManagerTeamView(session) {
     seScorecardsByEmail,
     allEligibleScorecards,
     dealsNeedingAttention,
-    coachingQueue: buildTeamCoachingQueue(allDeduped),
+    coachingQueue,
     teamSummary: {
       spineScore: base.teamMetrics.spine?.score,
       coldDealCount: coldDeals.length,

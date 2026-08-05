@@ -24,6 +24,7 @@ import {
   routes,
 } from "./routes";
 import { dispatchDomainReadById } from "./routes/domain-reads";
+import { dispatchReadModelsById } from "./routes/read-models";
 
 export type { Env } from "./env";
 
@@ -72,6 +73,9 @@ export default {
 
       const domainRead = await dispatchDomainReadById(request, env, url, cors, path);
       if (domainRead) return domainRead;
+
+      const readModel = await dispatchReadModelsById(request, env, url, cors, path);
+      if (readModel) return readModel;
 
       return json({ error: "Not found." }, 404, cors);
     } catch (err) {

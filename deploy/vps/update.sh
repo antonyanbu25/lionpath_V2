@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command VPS update — discards local git drift on deploy scripts, pulls, rebuilds worker.
+# One-command VPS update â€” discards local git drift on deploy scripts, pulls, rebuilds worker.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -12,7 +12,7 @@ if [[ "${UPDATE_POST_RESET:-}" != "1" ]]; then
   echo "=== Fetching origin/2.1 ==="
   bash "$DEPLOY_DIR/git-fetch-origin.sh" "$REPO_ROOT" "2.1"
 
-  echo "=== Resetting to origin/2.1 (keeps .env — gitignored) ==="
+  echo "=== Resetting to origin/2.1 (keeps .env â€” gitignored) ==="
   cd "$REPO_ROOT"
   git checkout 2.1 2>/dev/null || git checkout -B 2.1
   git reset --hard "origin/2.1"
@@ -25,7 +25,7 @@ fi
 cd "$DEPLOY_DIR"
 
 if ! grep -q 'precall.css?v=2.1' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html missing 2.1 precall cache-bust after reset — git pull did not apply." >&2
+  echo "ERROR: web/index.html missing 2.1 precall cache-bust after reset â€” git pull did not apply." >&2
   echo "       Run: bash $DEPLOY_DIR/git-auth-diagnose.sh" >&2
   grep -E 'portal-build|precall.css|app.js' "$REPO_ROOT/web/index.html" 2>/dev/null | head -5 >&2 || true
   exit 1
@@ -38,29 +38,32 @@ if ! grep -qE 'portal-build" content="2\.1(\.[0-9]+)?(-[a-z0-9-]+)?"' "$REPO_ROO
 fi
 
 if ! grep -q 'postcall-intake-card' "$REPO_ROOT/web/index.html" 2>/dev/null; then
-  echo "ERROR: web/index.html missing postcall-intake-card — git reset did not apply 2.1 postcall UI." >&2
+  echo "ERROR: web/index.html missing postcall-intake-card â€” git reset did not apply 2.1 postcall UI." >&2
   exit 1
 fi
 
 if [[ ! -f .env ]]; then
-  echo "Missing .env — copy .env.example and set GEMINI_API_KEY." >&2
+  echo "Missing .env â€” copy .env.example and set GEMINI_API_KEY." >&2
   exit 1
 fi
 
-chmod +x start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
-sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
+chmod +x start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh build-web-bundle.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
+sed -i 's/\r$//' start.sh setup.sh doctor.sh update.sh verify-deploy.sh refresh-web.sh build-web-bundle.sh entrypoint-worker.sh git-fetch-origin.sh git-auth-diagnose.sh 2>/dev/null || true
 
 if ! grep -q 'DEMO_ASSET_LABELS' "$REPO_ROOT/worker/src/prep-assets.ts" 2>/dev/null; then
-  echo "ERROR: worker/src/prep-assets.ts missing DEMO_ASSET_LABELS — git reset did not apply." >&2
+  echo "ERROR: worker/src/prep-assets.ts missing DEMO_ASSET_LABELS â€” git reset did not apply." >&2
   exit 1
 fi
 
 PORTAL_BUILD="$(grep -o 'portal-build" content="[^"]*"' "$REPO_ROOT/web/index.html" 2>/dev/null | head -1 || true)"
 if [[ -z "$PORTAL_BUILD" ]]; then
-  echo "WARN: web/index.html has no portal-build meta — web UI may be stale." >&2
+  echo "WARN: web/index.html has no portal-build meta â€” web UI may be stale." >&2
 else
   echo "=== Portal build: $PORTAL_BUILD ==="
 fi
+
+echo "=== Building portal bundle (web/dist) ==="
+bash "$DEPLOY_DIR/build-web-bundle.sh"
 
 echo "=== Rebuilding worker (no cache) ==="
 docker compose build --no-cache worker

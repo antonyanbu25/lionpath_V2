@@ -1,4 +1,4 @@
-﻿# Lionpath â€” SE Singha Paathai
+# Lionpath â€” SE Singha Paathai
 
 **One portal for Freshworks Solution Engineers:** research a prospect **before** the call, debrief **after** the call, and track **accounts, contacts, and deal progress** in one place.
 
@@ -665,7 +665,8 @@ cd /opt/se-singha-paathai
 git fetch antony   # VPS: antonyanbu25/lionpath_V2
 git checkout 2.1
 git pull antony 2.1
-cd deploy/vps
+cd web && npm ci && npm run build   # production portal hosts need web/dist/
+cd ../deploy/vps
 docker compose build --no-cache worker web
 docker compose up -d
 # If Caddyfile changed:

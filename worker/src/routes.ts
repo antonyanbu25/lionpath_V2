@@ -69,6 +69,8 @@ import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { rerankWithEmbeddings, type RagEmbeddingCandidate } from "./search/rag-search";
 import { embedText } from "./embeddings";
 import { domainReadRoutes } from "./routes/domain-reads";
+import { handleReadModelsSchedulePost } from "./routes/read-models";
+import { handleDirectorAnalyticsGet } from "./routes/analytics";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -1030,4 +1032,6 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/search/rag": { POST: handleSearchRag },
   "/api/embed": { POST: handleEmbed },
+  "/api/read-models/schedule": { POST: handleReadModelsSchedulePost },
+  "/api/analytics/director-summary": { GET: handleDirectorAnalyticsGet },
 };

@@ -958,6 +958,15 @@ export function createLocalStore() {
       return upsertByNaturalKey("clusteringState", docData, (row) => row.orgId === docData.orgId);
     },
 
+    async getReadModel(collection, id) {
+      return findById(collection, id);
+    },
+
+    async getReadModels(collection, ids) {
+      const unique = [...new Set((ids || []).filter(Boolean))];
+      return unique.map((id) => findById(collection, id)).filter(Boolean);
+    },
+
     /** Clear all domain data (dev/testing). */
     clearAll() {
       _cache.clear();

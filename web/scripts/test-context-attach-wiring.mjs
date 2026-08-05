@@ -67,7 +67,9 @@ checks.push(
   ["attachments sent to the worker", /contextAttachments,\r?\n\s+prepType/.test(js)],
   [
     "hash uses the merged context, not the raw field",
-    /additionalContext: mergeContextAttachments\(additionalContext, contextAttachments\)/.test(js),
+    /additionalContext: mergeContextAttachments\(additionalContext, contextAttachments\)/.test(js) ||
+      (/const mergedContext = mergeContextAttachments\(additionalContext, contextAttachments\)/.test(js) &&
+        /additionalContext: mergedContext/.test(js)),
   ],
   [
     "render path merges attachments for the SE-context pass",

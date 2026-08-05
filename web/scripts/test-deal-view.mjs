@@ -249,6 +249,18 @@ await store.upsertPostCall({
   updatedAt: ts,
 });
 
+await store.upsertCallSummary({
+  id: "call_globex_1",
+  dealId: "deal_globex_nb",
+  accountId,
+  ownerId: session.uid,
+  teamId: session.teamId,
+  orgId: "",
+  title: "FD Omni with Copilot",
+  createdAt: ts,
+  updatedAt: ts,
+});
+
 await store.upsertMeddpiccDelta({
   id: "mdd_eb",
   callId: "call_globex_1",

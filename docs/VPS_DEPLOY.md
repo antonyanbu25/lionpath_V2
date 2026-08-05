@@ -1,8 +1,8 @@
-# VPS deployment — Netcup (or any Linux VPS)
+# VPS deployment â€” Netcup (or any Linux VPS)
 
 Host **SE Singha Paathai** on your own server instead of running the worker on a developer laptop or Mac tunnel.
 
-**Stack:** Docker Compose · Caddy (HTTPS) · nginx (static web) · Node worker (port 8787)
+**Stack:** Docker Compose Â· Caddy (HTTPS) Â· nginx (static web) Â· Node worker (port 8787)
 
 | Public URL | Service |
 |------------|---------|
@@ -14,7 +14,7 @@ Host **SE Singha Paathai** on your own server instead of running the worker on a
 ## Prerequisites
 
 - A Linux VPS (e.g. Netcup) with root SSH access
-- **Node is not required on the VPS** — everything runs in Docker
+- **Node is not required on the VPS** â€” everything runs in Docker
 - A **Gemini API key** ([Google AI Studio](https://aistudio.google.com/apikey))
 - DNS control for `benjaminsquare.com` (or your domain)
 
@@ -28,7 +28,7 @@ Host **SE Singha Paathai** on your own server instead of running the worker on a
 passwd
 ```
 
-Read **[deploy/vps/SECURITY.md](../deploy/vps/SECURITY.md)** — SSH keys, `.env` handling, file permissions.
+Read **[deploy/vps/SECURITY.md](../deploy/vps/SECURITY.md)** â€” SSH keys, `.env` handling, file permissions.
 
 ---
 
@@ -41,7 +41,7 @@ Point both hostnames to your VPS public IP (e.g. `89.58.33.163`):
 | A | `portal` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
 | A | `portalapi` | `YOUR_VPS_IP` | **DNS only** (grey cloud) |
 
-**Important:** Both records must be **DNS only** — not proxied through Cloudflare (orange cloud). Caddy on the VPS obtains Let's Encrypt certificates directly; proxied records route traffic to Cloudflare IPs and break HTTPS + CORS.
+**Important:** Both records must be **DNS only** â€” not proxied through Cloudflare (orange cloud). Caddy on the VPS obtains Let's Encrypt certificates directly; proxied records route traffic to Cloudflare IPs and break HTTPS + CORS.
 
 Verify after propagation:
 
@@ -52,13 +52,13 @@ nslookup portalapi.benjaminsquare.com
 
 Both should return your VPS IP (e.g. `89.58.33.163`), not Cloudflare proxy IPs (`104.21.x.x`).
 
-Wait for DNS propagation (often 5–30 minutes). Caddy will obtain Let's Encrypt certificates on first start.
+Wait for DNS propagation (often 5â€“30 minutes). Caddy will obtain Let's Encrypt certificates on first start.
 
 ---
 
 ## 3. SSH in and run one-time setup
 
-From your laptop (you type the password — nothing is stored in this repo):
+From your laptop (you type the password â€” nothing is stored in this repo):
 
 ```bash
 ssh root@YOUR_VPS_IP
@@ -73,9 +73,9 @@ chmod +x setup.sh start.sh
 ./setup.sh
 ```
 
-The repo is **private** — you need a GitHub **deploy key** (read-only) on the VPS before `git clone` / `update.sh` will work. See [Git authentication (private repo)](#git-authentication-private-repo) below.
+The repo is **private** â€” you need a GitHub **deploy key** (read-only) on the VPS before `git clone` / `update.sh` will work. See [Git authentication (private repo)](#git-authentication-private-repo) below.
 
-`setup.sh` installs Docker (if needed), clones/updates the repo, creates `/var/lib/se-paathai/history` (mode 700), and copies `.env.example` → `.env`.
+`setup.sh` installs Docker (if needed), clones/updates the repo, creates `/var/lib/se-paathai/history` (mode 700), and copies `.env.example` â†’ `.env`.
 
 ---
 
@@ -137,8 +137,8 @@ In a browser:
 
 1. Open **https://portal.benjaminsquare.com**
 2. Log in with demo credentials (`se@freshworks.com` / `se123`)
-3. Run a post-call analysis — Network tab should call `portalapi.benjaminsquare.com`
-4. Reload and check **History** — entries persist via file storage on the VPS
+3. Run a post-call analysis â€” Network tab should call `portalapi.benjaminsquare.com`
+4. Reload and check **History** â€” entries persist via file storage on the VPS
 
 ---
 
@@ -159,7 +159,7 @@ cd /opt/se-singha-paathai/deploy/vps
 bash update.sh
 ```
 
-`update.sh` fetches `2.0.7.2` via SSH (bypassing HTTPS rewrites), resets the repo, rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`.
+`update.sh` fetches `2.0.7.2` via SSH (bypassing HTTPS rewrites), resets the repo, runs **`build-web-bundle.sh`** (`cd web && npm ci && npm run build` → `web/dist/`, gitignored), rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`. Production hostnames load `./dist/boot.js`; without this step the portal boots unbundled modules and misses the esbuild graph.
 
 After pulling domain changes, restart Caddy so it picks up the new `Caddyfile`:
 
@@ -167,13 +167,21 @@ After pulling domain changes, restart Caddy so it picks up the new `Caddyfile`:
 docker compose restart caddy
 ```
 
+**Read-model backfill (after releases that change `teamMetrics` / `orgMetrics` / `accountRollup`):** from a machine with Firebase Admin credentials and `FIREBASE_PROJECT_ID` set, run once from the repo:
+
+```bash
+cd worker && npm run migrate:account-se-team && npm run backfill:read-models
+```
+
+Optional single account: `npm run backfill:read-models -- --account=acct_xxx`.
+
 ---
 
 ## Git authentication (private repo)
 
 Repository: **git@github.com:skut264/lionpath.git** (private)
 
-### Symptom — SSH remote but HTTPS password prompt
+### Symptom â€” SSH remote but HTTPS password prompt
 
 ```text
 origin  git@github.com:skut264/lionpath.git (fetch)
@@ -183,7 +191,7 @@ remote: Invalid username or token. Password authentication is not supported for 
 fatal: Authentication failed for 'https://github.com/skut264/lionpath.git/'
 ```
 
-**Root cause:** Git is rewriting `git@github.com:` → `https://github.com/` (global `url.*.insteadOf`), so `git fetch origin` uses HTTPS even though `origin` is SSH. GitHub no longer accepts account passwords — you need SSH keys or a Personal Access Token.
+**Root cause:** Git is rewriting `git@github.com:` â†’ `https://github.com/` (global `url.*.insteadOf`), so `git fetch origin` uses HTTPS even though `origin` is SSH. GitHub no longer accepts account passwords â€” you need SSH keys or a Personal Access Token.
 
 **Diagnose on VPS:**
 
@@ -205,7 +213,7 @@ If you see `url.https://github.com/.insteadof git@github.com:`, remove it:
 git config --global --unset-all url.https://github.com/.insteadOf
 ```
 
-### Fix — SSH deploy key (recommended)
+### Fix â€” SSH deploy key (recommended)
 
 On the **VPS** (as root):
 
@@ -215,7 +223,7 @@ cat /root/.ssh/lionpath_deploy.pub
 ```
 
 1. Copy the public key output.
-2. GitHub → **skut264/lionpath** → **Settings** → **Deploy keys** → **Add deploy key** (title: `vps-portal`, **read-only**).
+2. GitHub â†’ **skut264/lionpath** â†’ **Settings** â†’ **Deploy keys** â†’ **Add deploy key** (title: `vps-portal`, **read-only**).
 3. Configure SSH:
 
 ```bash
@@ -248,7 +256,7 @@ bash update.sh
 
 `update.sh` uses `git-fetch-origin.sh`, which fetches **directly** via `git@github.com:skut264/lionpath.git` so `insteadOf` rewrites on `origin` no longer matter.
 
-### Alternative — HTTPS + Personal Access Token
+### Alternative â€” HTTPS + Personal Access Token
 
 Only if you prefer HTTPS:
 
@@ -256,7 +264,7 @@ Only if you prefer HTTPS:
 git remote set-url origin https://github.com/skut264/lionpath.git
 git fetch origin 2.0.7.2
 # Username: skut264
-# Password: <GitHub PAT with repo scope — NOT your account password>
+# Password: <GitHub PAT with repo scope â€” NOT your account password>
 ```
 
 ---
@@ -265,12 +273,12 @@ git fetch origin 2.0.7.2
 
 ```
 Internet
-   │
-   ▼
-Caddy :443 ──┬── portal.benjaminsquare.com ──► nginx :8788 (static web/)
-             └── portalapi.benjaminsquare.com ──► worker :8787 (Node + Gemini)
-                                                        │
-                                                        ▼
+   â”‚
+   â–¼
+Caddy :443 â”€â”€â”¬â”€â”€ portal.benjaminsquare.com â”€â”€â–º nginx :8788 (static web/)
+             â””â”€â”€ portalapi.benjaminsquare.com â”€â”€â–º worker :8787 (Node + Gemini)
+                                                        â”‚
+                                                        â–¼
                                               /var/lib/se-paathai/history/
                                               (JSON per SE email, mode 600)
 ```
@@ -293,25 +301,25 @@ ufw status
 
 | Problem | Fix |
 |---------|-----|
-| Certificate error on first start | DNS not propagated — wait and `docker compose restart caddy` |
+| Certificate error on first start | DNS not propagated â€” wait and `docker compose restart caddy` |
 | `nslookup` shows Cloudflare IPs for API | Set `portalapi` A record to **DNS only** (grey cloud), not proxied |
-| `Failed to fetch` in browser | Worker down — `docker compose logs worker` |
+| `Failed to fetch` in browser | Worker down â€” `docker compose logs worker` |
 | CORS error | `ALLOWED_ORIGINS` in `.env` must include `https://portal.benjaminsquare.com` |
-| **"Cannot reach the API server at portalapi…"** banner after domain migration | API is up but CORS is wrong — see [Domain migration](#domain-migration-lionpath--portal) below |
+| **"Cannot reach the API server at portalapiâ€¦"** banner after domain migration | API is up but CORS is wrong â€” see [Domain migration](#domain-migration-lionpath--portal) below |
 | History empty after reload | Check `HISTORY_FILE_DIR` and volume mount; `ls -la /var/lib/se-paathai/history` |
-| 502 from Caddy | `docker compose ps` — ensure worker and web are healthy |
-| **`git fetch` asks for HTTPS password** (SSH remote) | Global `insteadOf` rewrite — see [Git authentication](#git-authentication-private-repo); run `bash git-auth-diagnose.sh` |
-| **`Invalid username or token`** on fetch | Set up SSH deploy key or GitHub PAT — passwords are not supported |
+| 502 from Caddy | `docker compose ps` â€” ensure worker and web are healthy |
+| **`git fetch` asks for HTTPS password** (SSH remote) | Global `insteadOf` rewrite â€” see [Git authentication](#git-authentication-private-repo); run `bash git-auth-diagnose.sh` |
+| **`Invalid username or token`** on fetch | Set up SSH deploy key or GitHub PAT â€” passwords are not supported |
 
 ---
 
-## Domain migration (lionpath → portal)
+## Domain migration (lionpath â†’ portal)
 
 After renaming `lionpath.benjaminsquare.com` / `lionpathapi.*` to `portal.*` / `portalapi.*`:
 
-1. **DNS** — A records for `portal` and `portalapi` → VPS IP, **DNS only** (grey cloud).
-2. **Caddyfile** — must list `portal.benjaminsquare.com` and `portalapi.benjaminsquare.com` (see `deploy/vps/Caddyfile`).
-3. **`.env` on the VPS** — `setup.sh` does **not** overwrite an existing `.env`. Update CORS manually:
+1. **DNS** â€” A records for `portal` and `portalapi` â†’ VPS IP, **DNS only** (grey cloud).
+2. **Caddyfile** â€” must list `portal.benjaminsquare.com` and `portalapi.benjaminsquare.com` (see `deploy/vps/Caddyfile`).
+3. **`.env` on the VPS** â€” `setup.sh` does **not** overwrite an existing `.env`. Update CORS manually:
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps
@@ -330,7 +338,7 @@ curl -sI -H "Origin: https://portal.benjaminsquare.com" \
 
 Expected: `access-control-allow-origin: https://portal.benjaminsquare.com`
 
-`curl` alone can return HTTP 200 even when browsers fail — always check the `Access-Control-Allow-Origin` header matches the web origin.
+`curl` alone can return HTTP 200 even when browsers fail â€” always check the `Access-Control-Allow-Origin` header matches the web origin.
 
 ---
 
@@ -340,4 +348,4 @@ For serverless hosting without a VPS, see [README.md](../README.md#4-deploy) and
 
 ---
 
-*Files live in `deploy/vps/` — `docker-compose.yml`, `Caddyfile`, `setup.sh`, `start.sh`, `.env.example`, `SECURITY.md`.*
+*Files live in `deploy/vps/` â€” `docker-compose.yml`, `Caddyfile`, `setup.sh`, `start.sh`, `.env.example`, `SECURITY.md`.*

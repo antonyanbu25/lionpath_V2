@@ -500,8 +500,8 @@ const checks = [
   )],
   ["resolveDisplayFacts fills company size", resolveDisplayFacts({
     facts: [{ key: "Company size", value: "unknown" }],
-    businessContext: { users: "200 staff" },
-  })[0].value === "200 staff"],
+    businessContext: { users: "200 employees" },
+  })[0].value === "200 employees"],
   ["know tab linkedin-only disc count", (discovery.match(/class="prep-v9-disc"/g) || []).length === 1 && (discovery.match(/prep-v9-attendee-thin/g) || []).length === 1],
   ["know tab linkedin competitor touchpoints shown", discoveryLinkedInProspect.includes("Zendesk admin")],
   ["know tab llm competitor touchpoints hidden", !discoveryLlmCompetitorHidden.includes("Hallucinated Vendor")],

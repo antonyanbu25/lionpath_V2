@@ -1530,6 +1530,17 @@ export function createFirestoreStore(fb) {
       await setDoc(ref, data, { merge: true });
       return data;
     },
+
+    /** Pre-aggregated read model (write-time rollup). */
+    async getReadModel(collection, id) {
+      if (!id) return null;
+      const snap = await getDoc(doc(db, collection, id));
+      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    },
+
+    async getReadModels(collection, ids) {
+      return getDocsByIdInChunks(collection, ids);
+    },
   };
 
   return storeApi;

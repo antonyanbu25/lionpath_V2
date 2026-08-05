@@ -41,6 +41,8 @@ import {
   embedAndPersistCallSummary,
   embedAndPersistDeal,
 } from "./embed-service.js";
+import { scheduleReadModelRebuildFromPostCall } from "./read-models-service.js";
+import { getWorkerAuthHeaders } from "../postcall.js";
 
 /**
  * Emails of the people on a post-call, customer-confirmed addresses first.
@@ -651,6 +653,9 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   }
 
   invalidateSessionListCache(session);
+
+  void scheduleReadModelRebuildFromPostCall(postCall, getWorkerAuthHeaders);
+
   return {
     lifecycle,
     postCall,

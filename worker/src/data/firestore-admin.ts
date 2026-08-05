@@ -109,6 +109,18 @@ export async function getDoc(col: string, id: string, env?: FirestoreEnv): Promi
   return snapToDoc(snap);
 }
 
+export async function setDoc(
+  col: string,
+  id: string,
+  data: Record<string, unknown>,
+  env?: FirestoreEnv,
+): Promise<FirestoreDoc> {
+  const db = await getDb(env);
+  const payload = { ...data, id };
+  await db.collection(col).doc(id).set(payload, { merge: true });
+  return payload as FirestoreDoc;
+}
+
 export async function getDocs(queryRef: import("firebase-admin/firestore").Query): Promise<FirestoreDoc[]> {
   const snap = await queryRef.get();
   return snapsToDocs(snap);

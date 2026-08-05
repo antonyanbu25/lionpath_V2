@@ -29,6 +29,8 @@ if ! grep -q 'postcall.css?v=2.0.8.1-merge' "$INDEX"; then
   exit 1
 fi
 
+bash "$DEPLOY_DIR/build-web-bundle.sh"
+
 cd "$DEPLOY_DIR"
 docker compose up -d --force-recreate web
 

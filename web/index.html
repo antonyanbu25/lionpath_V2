@@ -6,7 +6,6 @@
     <meta name="portal-build" content="2.1.14" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
-    <script type="module" src="./favicon-bounce.js"></script>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -683,8 +682,6 @@
       </fw-modal-content>
     </fw-modal>
 
-    <script type="module" src="./theme.js"></script>
-    <script type="module" src="./splash.js?v=2.1.14"></script>
     <script>
       // Static dispute modal shell — created once at page load
       (function initDisputeShell() {
@@ -761,7 +758,6 @@
         document.getElementById("prep-dispute-backdrop")?.addEventListener("click", closeDispute);
       })();
     </script>
-    <script type="module" src="./prep-disputes-boot.mjs?v=2.1.14"></script>
     <script>
       (function applyProductionLoginShellInline() {
         var h = location.hostname;
@@ -791,15 +787,40 @@
       }, true);
     </script>
     <script type="module">
-      import { MODULE_BUILD } from "./firebase-config.js";
-      import(`./app.js?v=${MODULE_BUILD}`).catch(function (err) {
+      const PROD_HOST =
+        /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com)$/.test(location.hostname) ||
+        /\.run\.app$/.test(location.hostname);
+      const useBundle = PROD_HOST || new URLSearchParams(location.search).has("bundle");
+
+      function showBootError(err) {
         console.error("App boot failed:", err);
-        var el = document.getElementById("login-error");
+        const el = document.getElementById("login-error");
         if (el) {
-          el.textContent = "App failed to start: " + (err.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";
+          el.textContent =
+            "App failed to start: " + (err?.message || err) + ". Hard-refresh (Ctrl+Shift+R) and try again.";
           el.hidden = false;
         }
-      });
+      }
+
+      async function bootDev() {
+        await import("./favicon-bounce.js");
+        await import("./theme.js");
+        await import("./splash.js?v=2.1.14");
+        await import("./prep-disputes-boot.mjs?v=2.1.14");
+        const { MODULE_BUILD } = await import("./firebase-config.js");
+        await import(`./app.js?v=${MODULE_BUILD}`);
+      }
+
+      async function bootProd() {
+        await import("./dist/boot.js");
+      }
+
+      try {
+        if (useBundle) await bootProd();
+        else await bootDev();
+      } catch (err) {
+        showBootError(err);
+      }
     </script>
   </body>
 </html>

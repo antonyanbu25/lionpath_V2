@@ -29,6 +29,7 @@ import { displayMrrFromArr, formatUsd, mountDealArrModule, renderDealArrModule }
 import { selectLatestArrLines } from "./domain/arr-service.js";
 import { getWorkerAuthHeaders } from "./postcall.js?v=2.1.14";
 import { esc } from "./shared.js";
+import { getDealTractionReadModels } from "./domain/read-models-service.js";
 
 const MEDDPICC_LETTERS = {
   metrics: "M",
@@ -150,7 +151,7 @@ export async function enrichDealListRows(store, rows, opts = {}) {
   const dealIds = rows.map((r) => r.deal.id);
   const orgId = opts.orgId || rows[0]?.deal?.orgId || null;
 
-  const [tcList, signalsByDeal, arrByDeal] = await Promise.all([
+  const [tcList, signalsByDeal, arrByDeal, tractionDocs] = await Promise.all([
     orgId && store.listTechnicalCommitsByOrg
       ? safeStoreOp("listTechnicalCommitsByOrg", () => store.listTechnicalCommitsByOrg(orgId, 500), [])
       : Promise.resolve(null),
@@ -160,7 +161,12 @@ export async function enrichDealListRows(store, rows, opts = {}) {
     store.listArrLinesForDeals
       ? safeStoreOp("listArrLinesForDeals", () => store.listArrLinesForDeals(dealIds), new Map())
       : Promise.resolve(null),
+    store.getReadModels
+      ? safeStoreOp("getDealTractionReadModels", () => getDealTractionReadModels(store, dealIds), [])
+      : Promise.resolve([]),
   ]);
+
+  const tractionByDeal = new Map((tractionDocs || []).map((doc) => [doc.dealId || doc.id, doc]));
 
   const tcByDeal = new Map();
   for (const tc of tcList || []) {
@@ -174,8 +180,18 @@ export async function enrichDealListRows(store, rows, opts = {}) {
       const meddpiccScore = med?.completionScore ?? computeMeddpiccScore(med);
 
       let tc = tcByDeal.get(deal.id) ?? null;
+      const tractionDoc = tractionByDeal.get(deal.id);
       let signals = signalsByDeal ? (signalsByDeal.get(deal.id) || []) : null;
       let arrLines = arrByDeal ? (arrByDeal.get(deal.id) || []) : null;
+
+      if (tractionDoc?.traction != null) {
+        signals = [
+          {
+            traction: tractionDoc.traction,
+            daysSilent: tractionDoc.daysSilent,
+          },
+        ];
+      }
 
       if (tcList === null && !tc) {
         tc = await safeStoreOp(
@@ -184,7 +200,7 @@ export async function enrichDealListRows(store, rows, opts = {}) {
           null,
         );
       }
-      if (signalsByDeal === null) {
+      if (signalsByDeal === null && !(tractionDoc?.traction != null)) {
         signals = await safeStoreOp(
           "listDealSignalsByDeal",
           () => (store.listDealSignalsByDeal ? store.listDealSignalsByDeal(deal.id, 1) : []),
