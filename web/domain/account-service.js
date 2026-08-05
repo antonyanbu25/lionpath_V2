@@ -116,15 +116,16 @@ export async function upsertAccountFromPrep(input) {
   if (!account) {
     const createMetadata = metadataPatch ? { ...metadataPatch } : {};
     if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
-    account = await store.createAccount({
+    const createPayload = {
       id: newId("account"),
       name: companyName || slug,
       domain: resolvedDomain,
       slug,
-      metadata: Object.keys(createMetadata).length ? createMetadata : undefined,
       createdAt: ts,
       updatedAt: ts,
-    });
+    };
+    if (Object.keys(createMetadata).length) createPayload.metadata = createMetadata;
+    account = await store.createAccount(createPayload);
   } else {
     const patch = { updatedAt: ts };
     const preserveName = explicitAccountId && account.id === explicitAccountId;
@@ -155,15 +156,16 @@ export async function upsertAccountFromPrep(input) {
     const researchMeta = draft?.metadata?.research || buildContactResearch(prospectMeta, ts);
 
     if (!contact) {
-      contact = await store.createContact({
+      const createPayload = {
         id: newId("contact"),
         accountId: account.id,
         email,
         ...contactPatch,
-        metadata: researchMeta ? { research: researchMeta } : undefined,
         createdAt: ts,
         updatedAt: ts,
-      });
+      };
+      if (researchMeta) createPayload.metadata = { research: researchMeta };
+      contact = await store.createContact(createPayload);
       if (input.actorId) {
         await recordContactEvent(contact.id, "contact_created", input.actorId, {
           source: "prep",

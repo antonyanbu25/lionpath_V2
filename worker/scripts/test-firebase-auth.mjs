@@ -37,6 +37,14 @@ assert.match(idJs, /stableUserIdForEmail/);
 assert.match(read("firestore.rules"), /authIndex/);
 assert.match(read("firestore.rules"), /currentUserId/);
 
+const seedDevJs = read("web/domain/seed-dev.js");
+assert.match(seedDevJs, /lookupUserForSession/);
+assert.match(seedDevJs, /safeStoreGet/);
+assert.ok(
+  seedDevJs.indexOf("getUserIdByAuthUid") < seedDevJs.indexOf("getUser by session id"),
+  "authIndex lookup must run before session userId getUser",
+);
+
 const appJs = read("web/app.js");
 assert.match(appJs, /completeFirebaseLogin/);
 assert.match(appJs, /configureFirebaseLoginUi/);

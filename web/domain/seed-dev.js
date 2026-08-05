@@ -450,6 +450,49 @@ export async function listTeamMemberEmails(teamId) {
   return emails;
 }
 
+/** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
+async function safeStoreGet(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[seed-dev] ${label} failed:`, err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Resolve domain user for a session. authIndex is checked first on Firebase login so a
+ * placeholder usr_dummy_* id from completeFirebaseLogin does not throw before lookup.
+ * @internal Exported for session-resolve tests.
+ */
+export async function lookupUserForSession(session, store) {
+  const lookupId = session?.userId || session?.uid;
+  let user = null;
+
+  if (session?.authUid && store.getUserIdByAuthUid) {
+    const mappedId = await safeStoreGet("authIndex lookup", () =>
+      store.getUserIdByAuthUid(session.authUid)
+    );
+    if (mappedId) {
+      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
+    }
+  }
+
+  if (!user && lookupId) {
+    user = await safeStoreGet("getUser by session id", () => store.getUser(lookupId));
+  }
+  if (!user && session?.email) {
+    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(session.email));
+  }
+  if (!user && session?.email) {
+    user = await safeStoreGet("getUser by stable id", () =>
+      store.getUser(stableUserIdForEmail(session.email))
+    );
+  }
+
+  return user;
+}
+
 /** Load user profile from store and merge into session. */
 export async function enrichSessionFromStore(session) {
   const lookupId = session?.userId || session?.uid;
@@ -460,17 +503,7 @@ export async function enrichSessionFromStore(session) {
   }
   const store = getStore();
 
-  let user = lookupId ? await store.getUser(lookupId) : null;
-  if (!user && session.authUid && store.getUserIdByAuthUid) {
-    const mappedId = await store.getUserIdByAuthUid(session.authUid);
-    if (mappedId) user = await store.getUser(mappedId);
-  }
-  if (!user && session.email) {
-    user = await store.getUserByEmail(session.email);
-  }
-  if (!user && session.email) {
-    user = await store.getUser(stableUserIdForEmail(session.email));
-  }
+  let user = await lookupUserForSession(session, store);
 
   if (!user && session.email) {
     const ts = now();
@@ -553,10 +586,21 @@ export async function upsertFirebaseUser(fbUser, roleHint) {
   const email = String(fbUser.email || "").trim().toLowerCase();
   const authUid = fbUser.uid;
 
-  let user = await store.getUserByEmail(email);
+  let user = null;
+
+  if (store.getUserIdByAuthUid) {
+    const mappedId = await safeStoreGet("authIndex lookup", () => store.getUserIdByAuthUid(authUid));
+    if (mappedId) {
+      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
+    }
+  }
 
   if (!user) {
-    const legacyByAuth = await store.getUser(authUid);
+    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(email));
+  }
+
+  if (!user) {
+    const legacyByAuth = await safeStoreGet("legacy getUser by authUid", () => store.getUser(authUid));
     if (legacyByAuth?.email === email) user = legacyByAuth;
   }
 
