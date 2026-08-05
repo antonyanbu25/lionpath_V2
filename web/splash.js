@@ -30,6 +30,20 @@ function shouldShowSplash() {
     return true;
   }
   if (params.get("splash") === "1") return true;
+  // Production SSO: skip pre-login splash — go straight to sign-in (post-auth loader handles wait states).
+  try {
+    const host = location.hostname;
+    if (
+      host === "portal.benjaminsquare.com" ||
+      host === "yonus.benjaminsquare.com" ||
+      host === "lionpath.benjaminsquare.com" ||
+      /\.run\.app$/.test(host)
+    ) {
+      return false;
+    }
+  } catch {
+    // ignore
+  }
   try {
     if (sessionStorage.getItem("se-sp-session") || localStorage.getItem("se-sp-session-local")) {
       return false;

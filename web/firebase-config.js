@@ -21,7 +21,7 @@ export const firebaseConfig = {
 };
 
 /** Bump when auth/bootstrap JS changes (cache-bust query on index.html module tags). */
-export const AUTH_BUILD_ID = "2.1.16";
+export const AUTH_BUILD_ID = "2.1.19";
 /** Cache-bust query for ES module imports — bump with AUTH_BUILD_ID. */
 export const MODULE_BUILD = AUTH_BUILD_ID;
 
@@ -29,6 +29,7 @@ function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
+    host === "lionpath.benjaminsquare.com" ||
     host.endsWith(".run.app")
   );
 }

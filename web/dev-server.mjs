@@ -4,11 +4,13 @@
  */
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { readFile, appendFile } from "node:fs/promises";
+import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
+const REPO_ROOT = join(ROOT, "..");
+const DEBUG_LOG = join(REPO_ROOT, "debug-f5acac.log");
 const PORT = Number(process.env.PORT || 8788);
 const HOST = process.env.HOST || "127.0.0.1";
 
@@ -33,6 +35,17 @@ const MIME = {
 const server = createServer(async (req, res) => {
   try {
     let pathname = (req.url || "/").split("?")[0];
+
+    if (req.method === "POST" && pathname === "/debug-ingest") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = Buffer.concat(chunks).toString("utf8");
+      await appendFile(DEBUG_LOG, `${body.trim()}\n`);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     if (pathname === "/") pathname = "/index.html";
 
     const filePath = join(ROOT, decodeURIComponent(pathname));

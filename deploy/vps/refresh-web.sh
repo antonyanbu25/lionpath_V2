@@ -23,8 +23,8 @@ if ! grep -q 'precall.css?v=2.1' "$INDEX"; then
   grep -E 'portal-build|precall.css|postcall.css' "$INDEX" | head -5 >&2 || true
   exit 1
 fi
-if ! grep -q 'postcall.css?v=2.0.8.1-merge' "$INDEX"; then
-  echo "ERROR: $INDEX missing postcall.css?v=2.0.8.1-merge after git reset." >&2
+if ! grep -qE 'postcall.css?v=2\.1' "$INDEX"; then
+  echo "ERROR: $INDEX missing postcall.css?v=2.1 after git reset." >&2
   grep -E 'portal-build|precall.css|postcall.css' "$INDEX" | head -5 >&2 || true
   exit 1
 fi

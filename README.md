@@ -63,21 +63,28 @@ Key paths: `web/styles.css`, `web/dew-theme.css`, `web/splash.js`, `web/favicon-
 
 Web-only deploy: `bash refresh-web.sh` on VPS.
 
-### Login & SSO UX (2.1.17)
+### Login & SSO UX (2.1.17–2.1.18)
 
 Fixes first-impression login loop, unreliable SSO clicks, and infinite dashboard loading:
 
 | Issue | Fix |
 |-------|-----|
 | **Login → splash → login loop** | Pre-login SE Labs splash **skipped on production SSO hosts** (`portal.*`, `yonus.*`, `lionpath.*`, Cloud Run). Sign-in card shows immediately. |
-| **SSO button needs 2–3 clicks** | Google button wired **before** Firebase SDK finishes loading via `bindActionOnce` + `customElements.whenDefined("fw-button")`. First click shows a waiting overlay while SDK/popup opens. |
-| **No feedback during SSO popup** | Full-screen Dew loader with staged messages: *Preparing Google sign-in…* → *Opening Google sign-in…* → *Completing sign-in…* → dashboard. |
+| **Stale session flash** | Inline `index.html` session-restore script **disabled on production SSO hosts** — no app-loading flash before Firebase validates auth. |
+| **SSO button needs 2–3 clicks** | Google button wired on **`DOMContentLoaded`** (before boot finishes) via `bindActionOnce` + `customElements.whenDefined("fw-button")`. |
+| **SSO completes but no session** | After popup, **`completeFirebaseLogin` is called explicitly** (not only via `onAuthStateChanged` race). |
+| **No feedback during SSO popup** | Full-screen Dew loader with staged messages: *Preparing…* → *Opening Google sign-in…* → *Completing sign-in…* → dashboard. |
 | **Premature logout during SSO** | `ssoInFlight` guard blocks `onAuthStateChanged(null)` and boot `showLogin()` while the popup is open. |
-| **Loading dashboard… forever** | Dashboard paints from **local data first** (no blocking Firestore brief/history fetch). Remote KPIs refresh in background. Firestore queries time out at 8–12s. Uncaught errors fall back to a minimal launchpad instead of leaving the skeleton. |
+| **Loading dashboard… forever** | Dashboard paints from **local data first**; Firestore queries time out at 8–12s; **12s watchdog** + fallback launchpad; `showApp` always clears `#app-loading` even if routing throws. |
 
-Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/firebase-config.js` (`AUTH_BUILD_ID` **2.1.17**).
+| **Stale local session without Firebase user** | **2.1.19:** removed eager `cachedEarly` restore; bootstrap **clears stale storage** and shows login when `currentUser` is null. |
+| **SSO blocked by in-flight showApp** | **2.1.19:** `showApp` waits for prior flight to finish on `freshLogin`. |
+
+Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/index.html`, `web/firebase-config.js` (`AUTH_BUILD_ID` **2.1.19**).
 
 After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/boot JS changes.
+
+**Deploy note:** production hostnames load `web/dist/boot.js`. After auth/dashboard changes run `cd web && npm run build` (or VPS `build-web-bundle.sh`) before `refresh-web.sh` / `update.sh` — otherwise the portal serves stale bundled JS.
 
 ### Account / deal deduplication & linking (2.1)
 
@@ -229,12 +236,14 @@ cd web && node scripts/test-precall-render.mjs
 
 ### Push workflow (branch 2.1)
 
-Production VPS deploys from **Tony's repo** (`https://github.com/antonyanbu25/lionpath_V2.git`, remote **`antony`**). On branch `2.1`, push only to `antony`, not `origin`:
+Production VPS deploys from **Tony's repo** (`https://github.com/antonyanbu25/lionpath_V2.git`). On your **dev machine**, add remote **`antony`** and push branch `2.1` there — not to `origin` (`skut264/lionpath`, which can lag Tony's `2.1`):
 
 ```bash
 git checkout 2.1
 git push antony 2.1
 ```
+
+On the **VPS**, the git remote is named **`origin`** (same Tony repo). Pull with `bash deploy/vps/update.sh` or `git pull origin 2.1` — there is no `antony` remote on the server.
 
 **Branch `2.0.2`** introduced the account-centric layer (lifecycle, contacts, MEDDPICC, artifacts). **`2.0.3`** adds per-contact enrichment, improved discovery prep layout, and account/sidebar UX polish. **`2.0.4`** adds Kaia-backed DISC inference, industry customer-reference links, Gemini/SSO reliability fixes, and faster login/boot through targeted refactors. **`2.0.5`** merges **`2.0.4`** with deeper Kaia integration (`POST /api/kaia/share-content`, research hash v2). **`2.0.6`** ships **CRM-style navigation**: separate **Accounts** and **Deals** objects, account overview vs opportunity workspace, and **MEDDPICC stored on deals** â€” see **[docs/adr/004-account-record-crm-ia.md](./docs/adr/004-account-record-crm-ia.md)** and **[docs/adr/005-meddpicc-on-deal.md](./docs/adr/005-meddpicc-on-deal.md)**. **`2.0.7`** (WIP) refactors post-call into a **multi-pass pipeline** under `worker/src/postcall/` â€” resolve â†’ classify â†’ generate â†’ qualify â†’ ARR â†’ gaps â†’ summarise â€” with `POST /api/analyze-call` kept as a legacy facade.
 
@@ -688,13 +697,19 @@ Full onboarding (tunnel sharing, team handoff): **[TEAM_SETUP.md](./TEAM_SETUP.m
 
 See **[docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)**. Stack: Caddy HTTPS, nginx web, Node worker, file-based history at `/var/lib/se-paathai/history`.
 
-**Deploy branch `2.1`:**
+**Deploy branch `2.1` on the VPS** (remote **`origin`** → `antonyanbu25/lionpath_V2`):
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps && bash update.sh
+```
+
+Manual equivalent:
 
 ```bash
 cd /opt/se-singha-paathai
-git fetch antony   # VPS: antonyanbu25/lionpath_V2
+git fetch origin
 git checkout 2.1
-git pull antony 2.1
+git pull origin 2.1
 cd web && npm ci && npm run build   # production portal hosts need web/dist/
 cd ../deploy/vps
 docker compose build --no-cache worker web
@@ -703,7 +718,7 @@ docker compose up -d
 docker compose restart caddy
 ```
 
-**Or one command:**
+**Quick upgrade** (same as `update.sh`):
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps && bash upgrade-now.sh

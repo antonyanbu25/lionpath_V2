@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.14" />
+    <meta name="portal-build" content="2.1.19" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -23,9 +23,9 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
-    <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.16" />
-    <link rel="stylesheet" href="./styles.css?v=2.1.16" />
-    <link rel="stylesheet" href="./precall.css?v=2.1.16" />
+    <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.17" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.17" />
+    <link rel="stylesheet" href="./precall.css?v=2.1.17" />
     <link rel="stylesheet" href="./postcall.css?v=2.1.14" />
     <link rel="stylesheet" href="./call-view.css?v=2.1.14" />
     <link rel="stylesheet" href="./lifecycle.css?v=2.1.14" />
@@ -151,6 +151,15 @@
     <script>
       (function () {
         try {
+          var h = location.hostname;
+          if (
+            h === "portal.benjaminsquare.com" ||
+            h === "yonus.benjaminsquare.com" ||
+            h === "lionpath.benjaminsquare.com" ||
+            /\.run\.app$/.test(h)
+          ) {
+            return;
+          }
           var raw =
             sessionStorage.getItem("se-sp-session") || localStorage.getItem("se-sp-session-local");
           if (!raw) return;
@@ -793,7 +802,7 @@
     <script>
       (function applyProductionLoginShellInline() {
         var h = location.hostname;
-        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
+        if (h !== "portal.benjaminsquare.com" && h !== "yonus.benjaminsquare.com" && h !== "lionpath.benjaminsquare.com" && !/\.run\.app$/.test(h)) return;
         function apply() {
           var form = document.getElementById("login-form");
           var hint = document.getElementById("login-hint");
@@ -820,7 +829,7 @@
     </script>
     <script type="module">
       const PROD_HOST =
-        /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com)$/.test(location.hostname) ||
+        /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com|lionpath\.benjaminsquare\.com)$/.test(location.hostname) ||
         /\.run\.app$/.test(location.hostname);
       const useBundle = PROD_HOST || new URLSearchParams(location.search).has("bundle");
 
@@ -837,7 +846,7 @@
       async function bootDev() {
         await import("./favicon-bounce.js");
         await import("./theme.js");
-        await import("./splash.js?v=2.1.14");
+        await import("./splash.js?v=2.1.17");
         await import("./prep-disputes-boot.mjs?v=2.1.14");
         const { MODULE_BUILD } = await import("./firebase-config.js");
         await import(`./app.js?v=${MODULE_BUILD}`);

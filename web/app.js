@@ -1,4 +1,13 @@
-import { readFieldValue, readFieldValueAsync, setFieldError, setFieldValue, fillShadowField } from "./crayons-ui.js";
+import { agentLog, flushAgentLogs } from "./debug-log.js";
+import {
+  readFieldValue,
+  readFieldValueAsync,
+  setFieldError,
+  setFieldValue,
+  fillShadowField,
+  bindActionOnce,
+  setButtonLoading,
+} from "./crayons-ui.js";
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initFeedback } from "./feedback.js";
@@ -428,6 +437,13 @@ function prepDocToBrief(doc) {
 }
 
 /** Lazy Firestore fetch — checks auth at call time so dashboard KPI is not stuck at 0. */
+function withFetchTimeout(promise, ms = 12000) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 function buildFetchAllRemotePreps() {
   return async () => {
     if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return [];
@@ -439,6 +455,7 @@ function buildFetchAllRemotePreps() {
     const docs = [];
 
     const collect = (snap) => {
+      if (!snap?.docs) return;
       for (const doc of snap.docs) {
         if (seen.has(doc.id)) continue;
         seen.add(doc.id);
@@ -447,22 +464,24 @@ function buildFetchAllRemotePreps() {
     };
 
     try {
-      collect(
-        await fb.getDocs(
+      const snap = await withFetchTimeout(
+        fb.getDocs(
           fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid)),
         ),
       );
+      collect(snap);
     } catch (err) {
       console.warn("[app] preps uid query failed:", err?.message || err);
     }
 
     if (email) {
       try {
-        collect(
-          await fb.getDocs(
+        const snap = await withFetchTimeout(
+          fb.getDocs(
             fb.query(fb.collection(fb.db, "preps"), fb.where("email", "==", email)),
           ),
         );
+        collect(snap);
       } catch (err) {
         console.warn("[app] preps email query failed:", err?.message || err);
       }
@@ -1609,6 +1628,7 @@ async function savePrep(input, prep, meta) {
 
 function showLogin() {
   if (getSession()?.email && !signingOut) return;
+  if (ssoInFlight) return;
   showAppInFlight = false;
   historyHydratedForEmail = null;
   show($("app-loading"), false);
@@ -1629,6 +1649,19 @@ function showLogin() {
 }
 
 let showAppInFlight = false;
+/** True while Google SSO popup is opening or completing — blocks premature logout. */
+let ssoInFlight = false;
+
+function setAppLoadingMessage(message) {
+  const span = $("app-loading")?.querySelector("span");
+  if (span) span.textContent = message;
+}
+
+function showAuthWaiting(message = "Waiting for Google sign-in…") {
+  setAppLoadingMessage(message);
+  show($("login-view"), false);
+  show($("app-loading"), true);
+}
 
 function applySessionAuthGetters() {
   const tokenFn = isFirebaseAuthEnabled() && fb?.auth?.currentUser
@@ -1794,7 +1827,15 @@ async function hydrateSessionAfterShow(session, sessionStillValid) {
 }
 
 async function showApp(session, opts = {}) {
-  if (showAppInFlight) return;
+  if (showAppInFlight) {
+    if (opts.freshLogin) {
+      while (showAppInFlight) {
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+    } else {
+      return;
+    }
+  }
   showAppInFlight = true;
   const expectedEmail = String(session?.email || "").trim().toLowerCase();
   const sessionStillValid = () => {
@@ -1834,7 +1875,18 @@ async function showApp(session, opts = {}) {
     refreshSidebarRecentWork();
 
     applySessionAuthGetters();
-    await applyInitialRouteFromHash(currentSession);
+    try {
+      await applyInitialRouteFromHash(currentSession);
+    } catch (err) {
+      console.warn("[app] initial route failed:", err?.message || err);
+      agentLog({
+        location: "app.js:showApp-route-error",
+        message: "applyInitialRouteFromHash failed",
+        data: { err: err?.message || String(err) },
+        hypothesisId: "A",
+      });
+      switchView(isManagerRole(currentSession) ? "manager" : "dashboard");
+    }
     await paintAuthenticatedShell();
 
     void (async () => {
@@ -1864,12 +1916,30 @@ async function showApp(session, opts = {}) {
     setTimeout(() => warmSearchIndex(() => currentSession), 2000);
 
     void hydrateSessionAfterShow(session, sessionStillValid);
+  } catch (err) {
+    console.warn("[app] showApp failed:", err?.message || err);
+    agentLog({
+      location: "app.js:showApp-error",
+      message: "showApp threw",
+      data: { err: err?.message || String(err) },
+      hypothesisId: "D",
+    });
   } finally {
-    if (!getSession()?.email) {
+    show($("app-loading"), false);
+    const hasSession = !!getSession()?.email;
+    const hasFirebaseUser = !!(fb?.auth?.currentUser);
+    agentLog({
+      location: "app.js:showApp-finally",
+      message: "showApp finally",
+      data: { hasSession, hasFirebaseUser, ssoInFlight, signingOut },
+      hypothesisId: "D",
+    });
+    if (!hasSession && !hasFirebaseUser && !ssoInFlight && !signingOut) {
       show($("login-view"), true);
       show($("app-shell"), false);
       show($("app-loading"), false);
-    } else if (!signingOut) {
+      setAppLoadingMessage("Loading your workspace…");
+    } else if ((hasSession || hasFirebaseUser) && !signingOut) {
       show($("login-view"), false);
       show($("app-shell"), true);
     }
@@ -1878,8 +1948,14 @@ async function showApp(session, opts = {}) {
 }
 
 function handleSession(session, opts = {}) {
-  if (session) void showApp(session, opts);
-  else showLogin();
+  if (session) {
+    ssoInFlight = false;
+    agentLog({ location: "app.js:handleSession", message: "Session established", data: { restored: !!opts.restored, freshLogin: !!opts.freshLogin }, hypothesisId: "D" });
+    void showApp(session, opts);
+  } else {
+    agentLog({ location: "app.js:handleSession-null", message: "Session cleared → showLogin", hypothesisId: "D" });
+    showLogin();
+  }
 }
 
 let loginInFlight = false;
@@ -2014,48 +2090,131 @@ function configureFirebaseLoginUi() {
   show($("login-subtitle"), false);
 }
 
-async function initFirebase() {
-  const [{ initializeApp }, authMod, fsMod] = await Promise.all([
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
-    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
-  ]);
-  const app = initializeApp(firebaseConfig);
-  const auth = authMod.getAuth(app);
-  const provider = new authMod.GoogleAuthProvider();
-  if (ALLOWED_EMAIL_DOMAIN) provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
-
-  fb = {
-    auth, provider,
-    signInWithPopup: authMod.signInWithPopup, signOut: authMod.signOut,
-    db: fsMod.getFirestore(app),
-    collection: fsMod.collection, addDoc: fsMod.addDoc, doc: fsMod.doc,
-    getDoc: fsMod.getDoc, getDocs: fsMod.getDocs, setDoc: fsMod.setDoc,
-    updateDoc: fsMod.updateDoc, deleteDoc: fsMod.deleteDoc, query: fsMod.query,
-    where: fsMod.where, orderBy: fsMod.orderBy, limit: fsMod.limit,
-    documentId: fsMod.documentId,
-    select: fsMod.select,
-    serverTimestamp: fsMod.serverTimestamp,
-    writeBatch: fsMod.writeBatch,
-  };
-
-  initDomainStore(fb);
-  configureFirebaseLoginUi();
-
-  $("signin-google")?.addEventListener("fwClick", async () => {
-    show($("signin-error"), false);
-    try {
-      await fb.signInWithPopup(auth, provider);
-    }
-    catch (err) { const e = $("signin-error"); e.textContent = err.message; show(e, true); }
+function wireFirebaseSignIn(runSignIn) {
+  const btn = $("signin-google");
+  const attach = () => bindActionOnce(btn, () => {
+    void runSignIn();
   });
+  if (customElements.get("fw-button")) attach();
+  else customElements.whenDefined("fw-button").then(attach);
+}
 
-  // Explicit persistence — v9 defaults to IndexedDB, which Safari/private mode can refuse.
-  try {
-    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
-  } catch (err) {
-    console.warn("[app] setPersistence failed, using default:", err?.message || err);
+/** @type {Promise<{ authMod: object, auth: object, provider: object }>|null} */
+let firebaseSdkReady = null;
+/** @type {import("firebase/auth").Auth|null} */
+let firebaseAuth = null;
+/** @type {import("firebase/auth").GoogleAuthProvider|null} */
+let firebaseProvider = null;
+let firebaseSignInWired = false;
+
+function ensureFirebaseSdk() {
+  if (!firebaseSdkReady) {
+    firebaseSdkReady = (async () => {
+      const [{ initializeApp }, authMod, fsMod] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
+      ]);
+      const app = initializeApp(firebaseConfig);
+      firebaseAuth = authMod.getAuth(app);
+      firebaseProvider = new authMod.GoogleAuthProvider();
+      if (ALLOWED_EMAIL_DOMAIN) firebaseProvider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+
+      fb = {
+        auth: firebaseAuth,
+        provider: firebaseProvider,
+        signInWithPopup: authMod.signInWithPopup,
+        signOut: authMod.signOut,
+        db: fsMod.getFirestore(app),
+        collection: fsMod.collection,
+        addDoc: fsMod.addDoc,
+        doc: fsMod.doc,
+        getDoc: fsMod.getDoc,
+        getDocs: fsMod.getDocs,
+        setDoc: fsMod.setDoc,
+        updateDoc: fsMod.updateDoc,
+        deleteDoc: fsMod.deleteDoc,
+        query: fsMod.query,
+        where: fsMod.where,
+        orderBy: fsMod.orderBy,
+        limit: fsMod.limit,
+        documentId: fsMod.documentId,
+        select: fsMod.select,
+        serverTimestamp: fsMod.serverTimestamp,
+        writeBatch: fsMod.writeBatch,
+      };
+
+      initDomainStore(fb);
+
+      try {
+        await authMod.setPersistence(firebaseAuth, authMod.browserLocalPersistence);
+      } catch (err) {
+        console.warn("[app] setPersistence failed, using default:", err?.message || err);
+      }
+
+      return { authMod, auth: firebaseAuth, provider: firebaseProvider };
+    })();
   }
+  return firebaseSdkReady;
+}
+
+async function runFirebaseSignIn() {
+  if (ssoInFlight) return;
+  ssoInFlight = true;
+  const btn = $("signin-google");
+  show($("signin-error"), false);
+  setButtonLoading(btn, true);
+  showAuthWaiting("Preparing Google sign-in…");
+  agentLog({ location: "app.js:sso-click", message: "SSO click started", data: { sdkReady: !!firebaseSdkReady }, hypothesisId: "F" });
+  try {
+    await ensureFirebaseSdk();
+    showAuthWaiting("Opening Google sign-in…");
+    await fb.signInWithPopup(firebaseAuth, firebaseProvider);
+    showAuthWaiting("Completing sign-in…");
+    const popupUser = fb.auth.currentUser;
+    agentLog({
+      location: "app.js:sso-popup-ok",
+      message: "SSO popup completed",
+      data: { hasUser: !!popupUser, hasSession: !!getSession()?.email },
+      hypothesisId: "E",
+    });
+    if (popupUser) {
+      await completeFirebaseLogin(popupUser, { freshLogin: !getSession()?.email });
+      agentLog({
+        location: "app.js:sso-completeFirebaseLogin",
+        message: "completeFirebaseLogin finished after popup",
+        data: { hasSession: !!getSession()?.email, showAppInFlight },
+        hypothesisId: "D",
+      });
+    }
+  } catch (err) {
+    const e = $("signin-error");
+    if (e) {
+      e.textContent = err?.message || "Sign-in failed.";
+      show(e, true);
+    }
+    show($("app-loading"), false);
+    show($("login-view"), true);
+    setAppLoadingMessage("Loading your workspace…");
+    agentLog({ location: "app.js:sso-error", message: "SSO popup failed", data: { errName: err?.name || "", code: err?.code || "" }, hypothesisId: "E" });
+  } finally {
+    setButtonLoading(btn, false);
+    ssoInFlight = false;
+  }
+}
+
+function ensureFirebaseSignInWired() {
+  if (firebaseSignInWired || !isFirebaseAuthEnabled()) return;
+  firebaseSignInWired = true;
+  configureFirebaseLoginUi();
+  wireFirebaseSignIn(runFirebaseSignIn);
+}
+
+async function initFirebase() {
+  ensureFirebaseSignInWired();
+
+  const { authMod } = await ensureFirebaseSdk();
+  const auth = firebaseAuth;
 
   let authResolved = false;
   const authReady = auth.authStateReady
@@ -2079,24 +2238,26 @@ async function initFirebase() {
     }
     // user === null. Before the first resolution this only means "not restored yet".
     if (!authResolved) return;
+    if (ssoInFlight) return;
     const cached = getSession();
     if (cached?.email) return;
+    agentLog({ location: "app.js:auth-null-logout", message: "onAuthStateChanged null → logout", data: { authResolved, ssoInFlight, hasCached: !!cached?.email }, hypothesisId: "D" });
     logout();
   });
 
   onSessionChange(handleSession);
 
-  // Restore cached session immediately so refresh/SSO return does not sit on login shell.
-  const cachedEarly = getSession();
-  if (cachedEarly?.email) {
-    handleSession(cachedEarly, { restored: true });
-  }
-
   firebaseBootstrapPromise = authReady.then(async () => {
     const user = fb.auth.currentUser;
     const existing = getSession();
-    if (existing?.email && currentSession?.email === existing.email) return;
+    agentLog({
+      location: "app.js:firebaseBootstrap",
+      message: "Firebase bootstrap resolved",
+      data: { hasUser: !!user, hasExisting: !!existing?.email, showAppInFlight },
+      hypothesisId: "D",
+    });
     if (user) {
+      if (existing?.email && currentSession?.email === existing.email) return;
       if (existing) {
         handleSession(existing, { restored: true });
         return;
@@ -2104,10 +2265,16 @@ async function initFirebase() {
       await completeFirebaseLogin(user, { restored: true });
       return;
     }
-    // Firebase signed out — still restore local/dummy tab session (no authUid).
     if (existing?.email) {
-      handleSession(existing, { restored: true });
+      agentLog({
+        location: "app.js:firebaseBootstrap-stale-clear",
+        message: "Clearing stale local session (no Firebase user)",
+        data: { email: existing.email },
+        hypothesisId: "D",
+      });
+      logout();
     }
+    if (!showAppInFlight && !ssoInFlight) showLogin();
   });
 }
 
@@ -2172,9 +2339,15 @@ function startWorkerHealthMonitoring() {
 }
 
 async function boot() {
+  if (typeof window !== "undefined") {
+    window.__flushAgentLogs = flushAgentLogs;
+  }
   restoreAuthenticatedShell();
   assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
+  if (authMode() === "firebase") {
+    ensureFirebaseSignInWired();
+  }
 
   initSidebar();
   wireUserMenu();
@@ -2453,7 +2626,7 @@ async function boot() {
     while (showAppInFlight && Date.now() < bootDeadline) {
       await new Promise((r) => requestAnimationFrame(r));
     }
-    if (!getSession() && !showAppInFlight) showLogin();
+    if (!getSession() && !showAppInFlight && !ssoInFlight && !fb?.auth?.currentUser) showLogin();
     else if (getSession()?.email && currentView === "dashboard" && !isManagerRole(currentSession)) {
       void loadPersistedHistory().then(() => refreshDashboardFromStorage());
     }
@@ -2475,3 +2648,12 @@ void boot().catch((err) => {
     show(errEl, true);
   }
 });
+
+if (typeof document !== "undefined" && isFirebaseAuthEnabled()) {
+  const wireOnDom = () => ensureFirebaseSignInWired();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireOnDom);
+  } else {
+    wireOnDom();
+  }
+}
