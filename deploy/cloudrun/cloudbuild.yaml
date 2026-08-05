@@ -57,10 +57,28 @@ steps:
       - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
       - .
 
+  - name: gcr.io/cloud-builders/docker
+    id: push-api
+    waitFor:
+      - build-api
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-web
+    waitFor:
+      - build-web
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-api
     waitFor:
-      - build-api
+      - push-api
     entrypoint: gcloud
     args:
       - run
@@ -74,7 +92,7 @@ steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-web
     waitFor:
-      - build-web
+      - push-web
     entrypoint: gcloud
     args:
       - run
