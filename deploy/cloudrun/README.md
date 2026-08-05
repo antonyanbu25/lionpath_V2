@@ -7,6 +7,19 @@
 
 **Project:** `se-singha-paathi` · **Region:** `us-central1`
 
+**Firestore location:** Firebase default for this project is **`us-central1`** (same multi-region bucket as Cloud Run and Vertex). Chennai-based SEs incur cross-region latency (~150–200 ms RTT) — Firestore location is **permanent** after project creation; only a new project + migration would colocate in `asia-south1`.
+
+### Cloud Run sizing (API)
+
+| Flag | Value | Rationale |
+|------|-------|-----------|
+| `--min-instances` | **1** | Avoid cold-start on first SE login |
+| `--concurrency` | **15** | Pairs with `FFMPEG_MAX_CONCURRENT=2` — limits in-flight ffmpeg while accepting parallel LLM passes |
+| `--timeout` | **300s** | Covers Phase 4 Gemini budgets (90s synthesize + retries) + ffmpeg queue wait (120s) |
+| `FFMPEG_MAX_CONCURRENT` | **2** | Process-wide ffmpeg slot limit (`worker/src/video/ffmpeg-semaphore.ts`) |
+
+**Health probes:** liveness `GET /api/health/live` · readiness `GET /api/health` (or `/api/health/ready`)
+
 ---
 
 ## Fast path (boss checklist — ~15 min)
@@ -87,8 +100,10 @@ gcloud run deploy prep-portal-api \
   --port 8080 \
   --memory 1Gi \
   --cpu 1 \
-  --min-instances 0 \
+  --min-instances 1 \
   --max-instances 10 \
+  --concurrency 15 \
+  --timeout 300 \
   --set-env-vars "\
 LLM_PROVIDER=gemini,\
 MODEL=gemini-3.1-flash-lite,\
@@ -101,7 +116,8 @@ VERTEX_LOCATION=us-central1,\
 ALLOWED_ORIGINS=https://portal.benjaminsquare.com,\
 ALLOWED_EMAIL_DOMAIN=freshworks.com,\
 FIREBASE_PROJECT_ID=se-singha-paathi,\
-HISTORY_FILE_DIR=/data/history" \
+HISTORY_FILE_DIR=/data/history,\
+FFMPEG_MAX_CONCURRENT=2" \
   --add-volume name=history,type=cloud-storage,bucket=se-singha-paathi-prep-history \
   --add-volume-mount volume=history,mount-path=/data/history
 ```
@@ -130,8 +146,9 @@ gcloud run deploy prep-portal-web \
   --port 8080 \
   --memory 256Mi \
   --cpu 1 \
-  --min-instances 0 \
-  --max-instances 5
+  --min-instances 1 \
+  --max-instances 5 \
+  --concurrency 80
 ```
 
 ### 5. Custom domains

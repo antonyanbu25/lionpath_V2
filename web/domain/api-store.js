@@ -4,13 +4,116 @@
 
 import { createFirestoreStore } from "./firestore-store.js";
 
+const DETAIL_TTL_MS = 30_000;
+const DETAIL_MAX_ENTRIES = 64;
+
+/** @typedef {{ value: object, expiresAt: number }} DetailCacheEntry */
+
+/** @param {Map<string, DetailCacheEntry>} cache @param {string} key */
+function peekDetail(cache, key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+/** @param {Map<string, DetailCacheEntry>} cache @param {string} key @param {object} value */
+function putDetail(cache, key, value) {
+  if (cache.size >= DETAIL_MAX_ENTRIES && !cache.has(key)) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { value, expiresAt: Date.now() + DETAIL_TTL_MS });
+}
+
+/** @param {Map<string, DetailCacheEntry>} cache @param {string} key */
+function invalidateDetail(cache, key) {
+  cache.delete(String(key || ""));
+}
+
+const CALL_DETAIL_WRITE_METHODS = new Set([
+  "upsertPostCall",
+  "upsertCallSummary",
+  "upsertPostCallWithSummary",
+  "deleteTranscriptTimelineByCall",
+  "upsertScorecard",
+  "upsertScorecardLine",
+  "deleteScorecard",
+  "deleteScorecardLinesByScorecardId",
+  "upsertVideoFacts",
+  "deleteVideoFacts",
+  "upsertTimelineSegment",
+  "deleteTimelineSegmentsByVideoFactsId",
+  "upsertTimelineMarker",
+  "upsertFollowUp",
+  "deleteFollowUp",
+  "upsertObjection",
+  "deleteObjection",
+  "upsertMomDraft",
+  "deleteMomDraft",
+  "upsertMeddpiccDelta",
+  "deleteMeddpiccDelta",
+  "upsertDealSignal",
+  "deleteDealSignal",
+  "upsertArrLine",
+  "deleteArrLine",
+  "upsertTcDelta",
+  "deleteTcDelta",
+  "upsertProductGap",
+  "upsertWhatWorks",
+]);
+
+const DEAL_DETAIL_WRITE_METHODS = new Set([
+  "updateDeal",
+  "upsertDealSummary",
+  "setPrimaryDealContact",
+  "upsertTechnicalCommit",
+  "upsertArrOverride",
+]);
+
+/** @param {string} method @param {unknown[]} args */
+function invalidateAfterWrite(method, args, callDetailCache, dealDetailCache) {
+  if (method === "upsertPostCallWithSummary") {
+    invalidateDetail(callDetailCache, args[0]?.id);
+    return;
+  }
+  if (method === "deleteTranscriptTimelineByCall") {
+    invalidateDetail(callDetailCache, args[0]);
+    return;
+  }
+  if (method === "upsertPostCall" || method === "upsertCallSummary") {
+    invalidateDetail(callDetailCache, args[0]?.id);
+    return;
+  }
+  if (method === "updateDeal" || method === "setPrimaryDealContact") {
+    invalidateDetail(dealDetailCache, args[0]);
+    return;
+  }
+  if (method === "upsertDealSummary") {
+    invalidateDetail(dealDetailCache, args[0]?.id || args[0]?.dealId);
+    return;
+  }
+  const doc = args[0];
+  if (doc && typeof doc === "object") {
+    const callId = doc.callId || doc.postCallId;
+    if (callId) invalidateDetail(callDetailCache, callId);
+    const dealId = doc.dealId;
+    if (dealId && (method === "upsertArrLine" || method === "upsertDealSignal" || method === "upsertTechnicalCommit")) {
+      invalidateDetail(dealDetailCache, dealId);
+    }
+  }
+}
+
 /** @param {{ workerBaseUrl: string, getToken?: () => Promise<string|undefined>, fb: object }} opts */
 export function createApiStore({ workerBaseUrl, getToken, fb }) {
   const base = String(workerBaseUrl || "").replace(/\/$/, "");
   const firestoreDelegate = createFirestoreStore(fb);
-  /** @type {Map<string, object>} */
+  /** @type {Map<string, DetailCacheEntry>} */
   const callDetailCache = new Map();
-  /** @type {Map<string, object>} */
+  /** @type {Map<string, DetailCacheEntry>} */
   const dealDetailCache = new Map();
 
   async function apiFetch(path) {
@@ -27,17 +130,19 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
 
   async function loadCallDetail(id) {
     const key = String(id || "");
-    if (callDetailCache.has(key)) return callDetailCache.get(key);
+    const cached = peekDetail(callDetailCache, key);
+    if (cached) return cached;
     const detail = await apiFetch(`/api/calls/${encodeURIComponent(key)}`);
-    callDetailCache.set(key, detail);
+    putDetail(callDetailCache, key, detail);
     return detail;
   }
 
   async function loadDealDetail(id) {
     const key = String(id || "");
-    if (dealDetailCache.has(key)) return dealDetailCache.get(key);
+    const cached = peekDetail(dealDetailCache, key);
+    if (cached) return cached;
     const detail = await apiFetch(`/api/deals/${encodeURIComponent(key)}`);
-    dealDetailCache.set(key, detail);
+    putDetail(dealDetailCache, key, detail);
     return detail;
   }
 
@@ -191,7 +296,16 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     get(target, prop, receiver) {
       if (prop in apiReads) return apiReads[prop];
       const value = Reflect.get(target, prop, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
+      if (typeof value !== "function") return value;
+      const method = String(prop);
+      if (!CALL_DETAIL_WRITE_METHODS.has(method) && !DEAL_DETAIL_WRITE_METHODS.has(method)) {
+        return value.bind(target);
+      }
+      return async (...args) => {
+        const result = await value.apply(target, args);
+        invalidateAfterWrite(method, args, callDetailCache, dealDetailCache);
+        return result;
+      };
     },
     set(target, prop, value, receiver) {
       if (prop === "readCacheEnabled") {

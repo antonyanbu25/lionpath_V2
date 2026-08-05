@@ -1,13 +1,16 @@
 // Google Gemini adapter — Google AI Studio (GEMINI_API_KEY) or Vertex AI on GCP (ADC).
 
 import { toGeminiResponseSchema } from "../gemini-schema";
+import {
+  fetchGeminiWithRetry,
+  isGeminiSchemaErrorMessage,
+  resolveGeminiTimeoutMs,
+} from "./gemini-retry";
 import type { Citation, LlmProvider, LlmRequest, LlmResult, LlmUsage, ProviderEnv } from "./types";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
 /** Default model for AI Studio keys — GA on generativelanguage.googleapis.com since May 2026. */
 const AI_STUDIO_DEFAULT_MODEL = DEFAULT_MODEL;
-/** Grounded web-search calls can stall under load; cap so one query cannot block research. */
-const RESEARCH_FETCH_TIMEOUT_MS = 45_000;
 
 interface GeminiPart {
   text?: string;
@@ -241,6 +244,7 @@ function buildUsage(
   usageMetadata: GeminiUsageMetadata | undefined,
   groundingMetadata: GeminiGroundingMetadata | undefined,
   latencyMs: number,
+  retryCount = 0,
 ): LlmUsage {
   return {
     model,
@@ -249,10 +253,16 @@ function buildUsage(
     cachedTokens: usageMetadata?.cachedContentTokenCount ?? 0,
     groundingQueries: groundingMetadata?.webSearchQueries?.length ?? 0,
     latencyMs,
+    retryCount,
   };
 }
 
-function parseGeminiResponse(data: GeminiResponse, model: string, latencyMs: number): LlmResult {
+function parseGeminiResponse(
+  data: GeminiResponse,
+  model: string,
+  latencyMs: number,
+  retryCount = 0,
+): LlmResult {
   if (data.error?.message) throw new Error(data.error.message);
 
   const cand = data.candidates?.[0];
@@ -280,7 +290,7 @@ function parseGeminiResponse(data: GeminiResponse, model: string, latencyMs: num
   if (meta?.webSearchQueries?.length) out.searchQueries = meta.webSearchQueries;
   const entryPoint = meta?.searchEntryPoint?.renderedContent;
   if (entryPoint) out.searchEntryPointHtml = entryPoint;
-  out.usage = buildUsage(model, data.usageMetadata, meta, latencyMs);
+  out.usage = buildUsage(model, data.usageMetadata, meta, latencyMs, retryCount);
   return out;
 }
 
@@ -342,23 +352,11 @@ async function fetchGemini(
   url: string,
   init: RequestInit,
   req: LlmRequest,
-): Promise<Response> {
-  if (!req.research) return fetch(url, init);
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RESEARCH_FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (err) {
-    if ((err as Error).name === "AbortError") {
-      throw new Error(
-        `[${req.step ?? "research"}] Gemini research timed out after ${RESEARCH_FETCH_TIMEOUT_MS / 1000}s`,
-      );
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
+): Promise<{ response: Response; retryCount: number }> {
+  return fetchGeminiWithRetry(url, init, {
+    timeoutMs: resolveGeminiTimeoutMs(req),
+    step: req.step ?? req.passName,
+  });
 }
 
 async function generateViaAiStudio(
@@ -372,7 +370,7 @@ async function generateViaAiStudio(
   const started = Date.now();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const res = await fetchGemini(
+  const { response: res, retryCount } = await fetchGemini(
     url,
     {
       method: "POST",
@@ -388,7 +386,12 @@ async function generateViaAiStudio(
     );
   }
 
-  return parseGeminiResponse((await res.json()) as GeminiResponse, model, Date.now() - started);
+  return parseGeminiResponse(
+    (await res.json()) as GeminiResponse,
+    model,
+    Date.now() - started,
+    retryCount,
+  );
 }
 
 async function generateViaVertex(
@@ -404,7 +407,7 @@ async function generateViaVertex(
     `https://${location}-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(project)}` +
     `/locations/${encodeURIComponent(location)}/publishers/google/models/${encodeURIComponent(model)}:generateContent`;
 
-  const res = await fetchGemini(
+  const { response: res, retryCount } = await fetchGemini(
     url,
     {
       method: "POST",
@@ -421,7 +424,12 @@ async function generateViaVertex(
     throw new Error(`Vertex AI Gemini ${res.status}: ${errBody.slice(0, 500)}`);
   }
 
-  return parseGeminiResponse((await res.json()) as GeminiResponse, model, Date.now() - started);
+  return parseGeminiResponse(
+    (await res.json()) as GeminiResponse,
+    model,
+    Date.now() - started,
+    retryCount,
+  );
 }
 
 export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmProvider {
@@ -449,6 +457,7 @@ export function geminiProvider(env: ProviderEnv, modelOverride?: string): LlmPro
         return await generateWithModel(model, req);
       } catch (err) {
         const msg = (err as Error).message;
+        if (isGeminiSchemaErrorMessage(msg)) throw err;
         if (
           req.research &&
           /MALFORMED_FUNCTION_CALL/.test(msg) &&

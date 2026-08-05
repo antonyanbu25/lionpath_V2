@@ -813,6 +813,78 @@ button.pc-deal-tile {
   background: transparent;
 }
 
+.postcall-inline-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  background: var(--dew-surface);
+}
+
+.postcall-inline-progress[hidden] {
+  display: none !important;
+}
+
+.postcall-inline-progress-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.postcall-inline-progress-label {
+  font-size: 13px;
+  color: var(--dew-text);
+}
+
+.postcall-inline-progress-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dew-primary);
+  flex: 0 0 auto;
+  animation: postcall-inline-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes postcall-inline-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.call-record-inline-progress {
+  margin-bottom: 12px;
+}
+
+.call-section-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.call-section-retry {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.call-section-retry-btn {
+  justify-self: start;
+}
+
+.mcard--pending .call-section-skeleton {
+  margin-top: 8px;
+}
+
 .postcall-pipeline-card {
   padding: 14px 18px;
   border: 1px solid var(--dew-border);

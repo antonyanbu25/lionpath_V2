@@ -85,6 +85,8 @@ import {
 } from "./routes/internal-batch";
 import { handleDirectorAnalyticsGet } from "./routes/analytics";
 import { handleAdminLlmUsageGet } from "./routes/admin-llm-usage";
+import { healthRoutes } from "./routes/health";
+import { logInfo, logWarn } from "./logger";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -209,10 +211,10 @@ export async function handleGeneratePrep(
     return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
   }
   if (input.lifecycleId) {
-    console.log("generate-prep lifecycleId:", input.lifecycleId);
+    logInfo("generate-prep lifecycleId", { lifecycleId: input.lifecycleId });
   }
   if (input.dealId) {
-    console.log("generate-prep dealId:", input.dealId);
+    logInfo("generate-prep dealId", { dealId: input.dealId });
   }
   const emails = resolveProspectEmails(input as PrepInput);
   if (!emails.length && !input.prospectEmail?.trim()) {
@@ -256,12 +258,13 @@ export async function handleContactEnrich(
   const verified = await requireUser(request, env);
   const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
   const body = (await request.json()) as ContactEnrichRequest;
-  console.warn(
-    `[prep/enrich] ${body.email} linkedinPdf=${body.sources?.linkedinPdf?.fileName || "none"}`,
-  );
+  logInfo("[prep/enrich] request", {
+    email: body.email,
+    linkedinPdf: body.sources?.linkedinPdf?.fileName || "none",
+  });
   try {
     const result = await enrichContact(env, { ...body, userId, callId: body.callId });
-    console.warn(`[prep/enrich] ok ${result.email} name=${result.profile?.name || "unknown"}`);
+    logInfo("[prep/enrich] ok", { email: result.email, name: result.profile?.name || "unknown" });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -400,7 +403,7 @@ export async function handleVideoPass(
     callType: typeof body.callType === "string" ? body.callType : null,
     visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
-    enableVideoPass: body.enableVideoPass !== false,
+    enableVideoPass: body.enableVideoPass === true,
     seIdentity: typeof body.seIdentity === "string" ? body.seIdentity : null,
     aeIdentity: typeof body.aeIdentity === "string" ? body.aeIdentity : null,
     customerIdentities: Array.isArray(body.customerIdentities)
@@ -516,7 +519,7 @@ export async function handlePostCallCachePrepare(
     });
     return json(bundle, 200, cors);
   } catch (err) {
-    console.warn("[postcall/cache/prepare] failed:", (err as Error).message);
+    logWarn("[postcall/cache/prepare] failed", { error: (err as Error).message });
     return json({ caches: {}, skipped: true }, 200, cors);
   }
 }
@@ -534,7 +537,7 @@ export async function handlePostCallCacheRelease(
     await releasePostCallTranscriptCaches(env, input.transcriptCaches);
     return new Response(null, { status: 204, headers: cors });
   } catch (err) {
-    console.warn("[postcall/cache/release] failed:", (err as Error).message);
+    logWarn("[postcall/cache/release] failed", { error: (err as Error).message });
     return new Response(null, { status: 204, headers: cors });
   }
 }
@@ -616,8 +619,8 @@ export async function handlePostCallGenerate(
   if (!input.callType) {
     return json({ error: "callType is required after confirmation." }, 400, cors);
   }
-  if (input.lifecycleId) console.log("postcall/generate lifecycleId:", input.lifecycleId);
-  if (input.dealId) console.log("postcall/generate dealId:", input.dealId);
+  if (input.lifecycleId) logInfo("postcall/generate lifecycleId", { lifecycleId: input.lifecycleId });
+  if (input.dealId) logInfo("postcall/generate dealId", { dealId: input.dealId });
   try {
     const result = await runPostCallConfirmedPipeline(
       env,
@@ -981,10 +984,10 @@ export async function handleAnalyzeCall(
     );
   }
   if (input.lifecycleId) {
-    console.log("analyze-call lifecycleId:", input.lifecycleId);
+    logInfo("analyze-call lifecycleId", { lifecycleId: input.lifecycleId });
   }
   if (input.dealId) {
-    console.log("analyze-call dealId:", input.dealId);
+    logInfo("analyze-call dealId", { dealId: input.dealId });
   }
   try {
     if (input.confirmed && input.callType) {
@@ -1141,9 +1144,11 @@ export async function handleFeedbackPost(
     createdAt: nested.createdAt || body.createdAt || Date.now(),
   };
   const entries = await appendFeedback(env, email, entry);
-  console.info(
-    `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
-  );
+  logInfo("[feedback] submitted", {
+    category: entry.category,
+    email,
+    preview: entry.message.slice(0, 80),
+  });
   return json({ email, entry, count: entries.length }, 200, cors);
 }
 
@@ -1219,6 +1224,7 @@ export async function handleEmbed(
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
+  ...healthRoutes,
   ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },

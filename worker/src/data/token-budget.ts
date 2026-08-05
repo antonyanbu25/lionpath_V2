@@ -10,6 +10,7 @@ import {
   utcDateKey,
   type CostControlEnv,
 } from "../cost-control-config";
+import { logWarn } from "../logger";
 import { firestoreAdminReady, getDb, type FirestoreEnv } from "./firestore-admin";
 
 const COLLECTION = "userDailyTokenUsage";
@@ -27,6 +28,19 @@ export class DailyTokenBudgetExceededError extends Error {
   }
 }
 
+export class DailyTokenBudgetUnavailableError extends Error {
+  readonly status = 503;
+  readonly code = "DAILY_TOKEN_BUDGET_UNAVAILABLE";
+
+  constructor() {
+    super(
+      "Daily analysis limit check is enabled but Firestore admin is not configured. " +
+        "Set FIREBASE_PROJECT_ID and service account credentials.",
+    );
+    this.name = "DailyTokenBudgetUnavailableError";
+  }
+}
+
 function docId(userId: string, dateKey: string): string {
   return `${userId}_${dateKey}`;
 }
@@ -38,7 +52,14 @@ function totalTokens(promptTokens: number, outputTokens: number): number {
 type BudgetEnv = FirestoreEnv & CostControlEnv;
 
 function budgetActive(env?: BudgetEnv): boolean {
-  return firestoreAdminReady(env) && dailyTokenBudgetEnabled(env);
+  return dailyTokenBudgetEnabled(env);
+}
+
+function assertBudgetStoreReady(env?: BudgetEnv): void {
+  if (!budgetActive(env)) return;
+  if (!firestoreAdminReady(env)) {
+    throw new DailyTokenBudgetUnavailableError();
+  }
 }
 
 /**
@@ -53,6 +74,8 @@ export async function reserveDailyTokenBudget(
   if (!userId?.trim() || !budgetActive(env)) {
     return async () => {};
   }
+
+  assertBudgetStoreReady(env);
 
   const limit = dailyTokenBudgetLimit(env);
   const reserve = reserveTokens ?? dailyTokenBudgetReserve(env);
@@ -98,10 +121,9 @@ export async function reserveDailyTokenBudget(
         updatedAt: Date.now(),
       });
     } catch (err) {
-      console.warn(
-        "[token-budget] settle failed:",
-        err instanceof Error ? err.message : err,
-      );
+      logWarn("[token-budget] settle failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 }
@@ -113,6 +135,7 @@ export async function getDailyTokenUsage(
   dateKey = utcDateKey(),
 ): Promise<{ totalTokens: number; limitTokens: number } | null> {
   if (!budgetActive(env)) return null;
+  if (!firestoreAdminReady(env)) return null;
   try {
     const db = await getDb(env);
     const snap = await db.collection(COLLECTION).doc(docId(userId, dateKey)).get();

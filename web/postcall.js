@@ -50,7 +50,11 @@ import {
   isGenOverlayActive,
   POSTCALL_GEN_THEME,
 } from "./prep-generation-overlay.js";
-import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
+import {
+  showPipelineProgress,
+  hidePipelineProgress,
+  showInlineStageProgress,
+} from "./pipeline-progress.js";
 import { esc, $, show, EMPTY_DISPLAY, namesEqual, titleCaseDisplayName } from "./shared.js";
 import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 export { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
@@ -311,6 +315,10 @@ let lastCrmMatchResult = null;
 
 /** @type {null | { payload: object, resolve: object|null, classify: object|null, generated: boolean, recordId: string|null }} */
 let pipelineState = null;
+
+/** @type {AbortController|null} */
+let postcallPipelineAbort = null;
+let postcallPipelineGen = 0;
 
 let currentSession = null;
 let getAuthToken = null;
@@ -2624,11 +2632,28 @@ export function setOnCallRecordHydrated(fn) {
   onCallRecordHydrated = fn;
 }
 
-async function postJson(url, body) {
+function beginPostcallPipeline() {
+  postcallPipelineAbort?.abort();
+  postcallPipelineAbort = new AbortController();
+  postcallPipelineGen += 1;
+  return { signal: postcallPipelineAbort.signal, gen: postcallPipelineGen };
+}
+
+function abortPostcallPipeline() {
+  postcallPipelineAbort?.abort();
+  postcallPipelineAbort = null;
+}
+
+function isPostcallPipelineStale(gen) {
+  return gen !== postcallPipelineGen;
+}
+
+async function postJson(url, body, opts = {}) {
   const res = await fetch(url, {
     method: "POST",
     headers: await authHeaders(),
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
   const raw = await res.text();
   let data;
@@ -2641,31 +2666,74 @@ async function postJson(url, body) {
   return data;
 }
 
+const POSTCALL_STAGE = {
+  resolve: "Fetching transcript and matching account…",
+  classify: "Classifying call type…",
+  cache: "Preparing transcript cache…",
+  scoring: "Scoring the call…",
+  qualifying: "Qualifying the deal…",
+  summarising: "Summarising next steps…",
+  committing: "Updating technical commit…",
+  arr: "Estimating ARR…",
+  gaps: "Extracting product gaps…",
+};
+
+function showPostCallInlineProgress(message) {
+  showInlineStageProgress("postcall-progress", message, { title: "Call analysis" });
+}
+
+function setCallRecordProgress(recordId, message) {
+  if (!recordId || !message) return;
+  window.dispatchEvent(
+    new CustomEvent("lionpath:call-record-progress", {
+      detail: { id: recordId, message },
+      bubbles: true,
+    }),
+  );
+}
+
+function notifyCallRecordUpdated(recordId, sections = []) {
+  if (!recordId) return;
+  window.dispatchEvent(
+    new CustomEvent("lionpath:call-record-updated", {
+      detail: { id: recordId, sections },
+      bubbles: true,
+    }),
+  );
+}
+
+function defaultHydrationPending(dealId, accountId) {
+  const pending = ["qualify", "summarise", "commit"];
+  if (dealId && accountId) pending.push("arr", "gaps");
+  else pending.push("gaps");
+  return pending;
+}
+
+function patchHydration(rec, { pending, errors, progressMessage }) {
+  const result = { ...(rec.result || {}) };
+  const prev = result.hydration || {};
+  result.hydration = {
+    pending: pending != null ? pending : prev.pending || [],
+    errors: errors != null ? errors : prev.errors || {},
+    progressMessage: progressMessage != null ? progressMessage : prev.progressMessage || "",
+  };
+  rec.result = result;
+  return rec;
+}
+
 function showPostCallPipeline(steps, detail) {
   if ($("postcall-confirm-view") && !$("postcall-confirm-view").hidden) {
     hidePipelineProgress("postcall-progress");
     return;
   }
-  showPipelineProgress("postcall-progress", steps, {
-    title: "Call analysis",
-    meta: detail,
-  });
-  if (isGenOverlayActive()) {
-    const active = steps.find((s) => s.status === "active");
-    updatePrepGenOverlay({
-      message: detail || active?.label || `${POSTCALL_GEN_THEME.title}…`,
-      pct: Math.max(prepStepsToPct(steps), 8),
-    });
-  }
+  const active = steps.find((s) => s.status === "active");
+  const message = detail || active?.label || POSTCALL_STAGE.scoring;
+  showPostCallInlineProgress(message);
 }
 
-function showPostCallGenOverlay(message, pct = 8) {
+function showPostCallGenOverlay(message) {
   show($("postcall-loading"), false);
-  showPrepGenOverlay({
-    theme: POSTCALL_GEN_THEME,
-    message: message || `${POSTCALL_GEN_THEME.title}…`,
-    pct,
-  });
+  showPostCallInlineProgress(message || POSTCALL_STAGE.scoring);
 }
 
 function hidePostCallGenOverlay(onHidden) {
@@ -3391,17 +3459,6 @@ async function confirmAndGenerate(e) {
           { name: att.name, email: att.email },
           { actorId, source: "postcall_confirm" },
         );
-        // #region agent log
-        console.warn(
-          "[DBG-8a85ad]",
-          JSON.stringify({
-            hypothesisId: "H-CONTACTS-EARLY",
-            accountId: accountIdForContacts,
-            email: att.email ? "***" : null,
-            source: "postcall_confirm",
-          }),
-        );
-        // #endregion
       } catch (err) {
         console.warn("[postcall] ensure customer contact failed:", err?.message || err);
       }
@@ -3421,9 +3478,10 @@ async function confirmAndGenerate(e) {
       : undefined;
 
   generating = true;
+  const { signal, gen } = beginPostcallPipeline();
   setButtonLoading(btn, true);
   show($("postcall-confirm-view"), false);
-  showPostCallGenOverlay("Starting analysis…");
+  showPostCallInlineProgress(POSTCALL_STAGE.scoring);
 
   const companyName =
     accountName ||
@@ -3441,14 +3499,21 @@ async function confirmAndGenerate(e) {
     .filter(Boolean)
     .join("\n\n");
 
+  showPostCallInlineProgress(POSTCALL_STAGE.cache);
   let transcriptCaches = pipelineState.transcriptCaches || null;
   try {
-    transcriptCaches = await postJson(CACHE_PREPARE_URL, {
-      transcript: pipelineState.resolve.transcript,
-      callId: pipelineState.recordId || null,
-    });
+    transcriptCaches = await postJson(
+      CACHE_PREPARE_URL,
+      {
+        transcript: pipelineState.resolve.transcript,
+        callId: pipelineState.recordId || null,
+      },
+      { signal },
+    );
+    if (isPostcallPipelineStale(gen)) return;
     pipelineState.transcriptCaches = transcriptCaches;
   } catch (err) {
+    if (err?.name === "AbortError") return;
     console.warn("[postcall] transcript cache prepare soft-fail:", err?.message || err);
   }
   const cacheFields = transcriptCaches ? { transcriptCaches } : {};
@@ -3466,37 +3531,35 @@ async function confirmAndGenerate(e) {
     meetingDate: meetingDateFromResolve(pipelineState.resolve),
     ...cacheFields,
   };
-  const summariseBody = {
-    transcript: pipelineState.resolve.transcript,
-    dealId: dealId || null,
-    companyName,
-    meetingTitle: pipelineState.payload.meetingTitle || companyName,
-    callType,
-    additionalContext,
-    meetingDate: meetingDateFromResolve(pipelineState.resolve),
-    ...cacheFields,
-  };
+  const summariseBody = { ...qualifyBody };
 
-  const qualifyP = postJson(QUALIFY_URL, qualifyBody).catch((err) => {
+  const qualifyP = postJson(QUALIFY_URL, qualifyBody, { signal }).catch((err) => {
+    if (err?.name === "AbortError") throw err;
     console.warn("[postcall] qualify soft-fail:", err?.message || err);
     return null;
   });
-  const summariseP = postJson(SUMMARISE_URL, summariseBody).catch((err) => {
+  const summariseP = postJson(SUMMARISE_URL, summariseBody, { signal }).catch((err) => {
+    if (err?.name === "AbortError") throw err;
     console.warn("[postcall] summarise soft-fail:", err?.message || err);
     return null;
   });
   const arrInputsP =
     dealId && accountId
-      ? postJson(ARR_INPUTS_URL, {
-          transcript: pipelineState.resolve.transcript,
-          dealId,
-          callId: pipelineState.recordId || null,
-          companyName,
-          meetingTitle: pipelineState.payload.meetingTitle || companyName,
-          callType,
-          additionalContext,
-          ...cacheFields,
-        }).catch((err) => {
+      ? postJson(
+          ARR_INPUTS_URL,
+          {
+            transcript: pipelineState.resolve.transcript,
+            dealId,
+            callId: pipelineState.recordId || null,
+            companyName,
+            meetingTitle: pipelineState.payload.meetingTitle || companyName,
+            callType,
+            additionalContext,
+            ...cacheFields,
+          },
+          { signal },
+        ).catch((err) => {
+          if (err?.name === "AbortError") throw err;
           console.warn("[postcall] arr-inputs soft-fail:", err?.message || err);
           return null;
         })
@@ -3514,30 +3577,23 @@ async function confirmAndGenerate(e) {
           return null;
         })
     : Promise.resolve(null);
-  const allowanceP =
-    dealId && accountId
-      ? Promise.all([import("./domain/store.js"), import("./domain/arr-service.js")])
-          .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
-            accountAllowanceConsumedForDeal(getStore(), accountId, dealId),
-          )
-          .catch((err) => {
-            console.warn("[postcall] allowance lookup failed:", err?.message || err);
-            return null;
-          })
-      : Promise.resolve(null);
   const commitP = prevCommitP.then((previousCommit) =>
-    postJson(COMMIT_URL, {
-      ...qualifyBody,
-      callId: pipelineState.recordId || null,
-      previous: previousCommit,
-      ...cacheFields,
-    }).catch((err) => {
+    postJson(
+      COMMIT_URL,
+      {
+        ...qualifyBody,
+        callId: pipelineState.recordId || null,
+        previous: previousCommit,
+        ...cacheFields,
+      },
+      { signal },
+    ).catch((err) => {
+      if (err?.name === "AbortError") throw err;
       console.warn("[postcall] commit soft-fail:", err?.message || err);
       return null;
     }),
   );
 
-  let videoFacts = null;
   const pass2Transcript = pipelineState.resolve.transcript?.trim() || "";
   const pass2RecordingUrl = pipelineState.payload.recordingUrl?.trim() || "";
   const pass2DurationSec =
@@ -3548,41 +3604,34 @@ async function confirmAndGenerate(e) {
   const canRunPass2 =
     !!pipelineState.payload.enableVideoPass &&
     ((pipelineState.resolve.videoAvailable && pass2RecordingUrl) || pass2Transcript.length > 0);
-  const pass2UsesFfmpeg = pass2RecordingUrl.length > 0;
 
-  showPostCallPipeline([
-    { label: "Resolve recording and match deal", status: "done" },
-    { label: "Classify call type", status: "done" },
-    { label: "Generate analysis + qualification + commitments", status: "active" },
-  ]);
   showInlineStatus(status, {
     type: "info",
-    message: canRunPass2 && pass2UsesFfmpeg
-      ? "Generating analysis and sampling video in parallel… usually 15–40 seconds."
-      : "Generating analysis, qualification, and commitments… usually 15–40 seconds.",
+    message: canRunPass2
+      ? "Scoring the call and sampling video in parallel…"
+      : "Scoring the call and filling sections as they complete…",
     loading: true,
-  });
-  updatePrepGenOverlay({
-    message: canRunPass2 && pass2UsesFfmpeg
-      ? "Generating analysis and sampling video in parallel…"
-      : "Generating analysis, qualification, and commitments…",
   });
 
   const videoP = canRunPass2
-    ? postJson(VIDEO_PASS_URL, {
-        callId: `call_pending_${Date.now()}`,
-        recordingUrl: pass2RecordingUrl || undefined,
-        recordingPassword: pipelineState.payload.recordingPassword,
-        // Do not pass resolve.media — Zoom signed URLs expire during the confirm gate.
-        transcript: pass2Transcript || undefined,
-        durationSec: pass2DurationSec,
-        callType,
-        visualAnalysisConsent: true,
-        enableVideoPass: true,
-        seIdentity,
-        aeIdentity,
-        customerIdentities,
-      }).catch((videoErr) => {
+    ? postJson(
+        VIDEO_PASS_URL,
+        {
+          callId: `call_pending_${Date.now()}`,
+          recordingUrl: pass2RecordingUrl || undefined,
+          recordingPassword: pipelineState.payload.recordingPassword,
+          transcript: pass2Transcript || undefined,
+          durationSec: pass2DurationSec,
+          callType,
+          visualAnalysisConsent: !!pipelineState.payload.visualAnalysisConsent,
+          enableVideoPass: !!pipelineState.payload.enableVideoPass,
+          seIdentity,
+          aeIdentity,
+          customerIdentities,
+        },
+        { signal },
+      ).catch((videoErr) => {
+        if (videoErr?.name === "AbortError") throw videoErr;
         const msg = videoErr?.message || String(videoErr);
         console.warn("[postcall] video-pass soft-fail:", msg);
         pipelineState.pass2Debug = { route: "unavailable", error: msg.slice(0, 200) };
@@ -3590,76 +3639,43 @@ async function confirmAndGenerate(e) {
       })
     : Promise.resolve(null);
 
+  const generateBody = {
+    transcript: pipelineState.resolve.transcript,
+    recordingUrl: pipelineState.payload.recordingUrl,
+    recordingPassword: pipelineState.payload.recordingPassword,
+    companyName,
+    prospectEmails: pipelineState.payload.prospectEmails,
+    additionalContext,
+    deckLink: pipelineState.payload.deckLink,
+    linkedinProfileExports: pipelineState.payload.linkedinProfileExports,
+    confirmed: true,
+    callType,
+    dealId,
+    accountId,
+    companyDomain: companyDomain || undefined,
+    meetingDate: meetingDateFromResolve(pipelineState.resolve),
+    resolveSnapshot: {
+      ...pipelineState.resolve,
+      seIdentity,
+      aeIdentity,
+      customerIdentities,
+    },
+    classifySnapshot: pipelineState.classify,
+    callTypeOverride,
+    dealMatchOverride,
+    videoFacts: pipelineState.videoFacts || undefined,
+    ...cacheFields,
+  };
+
   try {
-    const body = {
-      transcript: pipelineState.resolve.transcript,
-      recordingUrl: pipelineState.payload.recordingUrl,
-      recordingPassword: pipelineState.payload.recordingPassword,
-      companyName,
-      prospectEmails: pipelineState.payload.prospectEmails,
-      additionalContext,
-      deckLink: pipelineState.payload.deckLink,
-      linkedinProfileExports: pipelineState.payload.linkedinProfileExports,
-      confirmed: true,
-      callType,
-      dealId,
-      accountId,
-      companyDomain: companyDomain || undefined,
-      meetingDate: meetingDateFromResolve(pipelineState.resolve),
-      resolveSnapshot: {
-        ...pipelineState.resolve,
-        seIdentity,
-        aeIdentity,
-        customerIdentities,
-      },
-      classifySnapshot: pipelineState.classify,
-      callTypeOverride,
-      dealMatchOverride,
-      videoFacts: pipelineState.videoFacts || undefined,
-      ...cacheFields,
-    };
+    const data = await postJson(GENERATE_URL, generateBody, { signal });
+    if (isPostcallPipelineStale(gen)) return;
 
-    const [data, qualify, commit, summarise, videoRes] = await Promise.all([
-      postJson(GENERATE_URL, body),
-      qualifyP,
-      commitP,
-      summariseP,
-      videoP,
-    ]);
-    videoFacts = videoRes?.videoFacts || pipelineState.videoFacts || null;
-    if (videoRes?.videoFacts) {
-      pipelineState.videoFacts = videoRes.videoFacts;
-      data.videoFacts = videoRes.videoFacts;
-    }
-    pipelineState.pass2Debug = videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
-    if (qualify?.qualification) {
-      data.qualification = qualify.qualification;
-      data.framework = qualify.framework;
-    }
-    if (commit?.technicalCommit) {
-      data.technicalCommit = commit.technicalCommit;
-      data.tcDeltas = commit.tcDeltas || [];
-    }
-    if (summarise) {
-      data.summarise = summarise;
-      if (typeof summarise.callNotes === "string" && summarise.callNotes.trim()) {
-        data.analysis = { ...(data.analysis || {}), callNotes: summarise.callNotes };
-      }
-    }
     stampGenerateQipVersions(data);
-
     pipelineState.generated = true;
 
-    const meta = { title: "" };
-    meta.title = getCallTitle(data.analysis, meta);
-    hidePipelineProgress("postcall-progress");
-    show($("postcall-loading"), false);
-    updatePrepGenOverlay({ message: "Analysis ready", pct: 100 });
-    await hidePostCallGenOverlay();
-    showInlineStatus(status, { open: false });
-
-    let record = null;
     const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+    let record = null;
     if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
@@ -3687,9 +3703,15 @@ async function confirmAndGenerate(e) {
           customerIdentities,
         },
       };
+      const pending = defaultHydrationPending(dealId, accountId);
       record = await savePostCallHistory(sessionEmail, savePayload, {
         ...data,
-        videoFacts: data.videoFacts || pipelineState.videoFacts || videoFacts || undefined,
+        hydration: {
+          pending,
+          errors: {},
+          progressMessage: POSTCALL_STAGE.scoring,
+        },
+        videoFacts: data.videoFacts || pipelineState.videoFacts || undefined,
         analysisMeta: {
           ...(data.analysisMeta || {}),
           pass2Debug: pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null,
@@ -3706,187 +3728,45 @@ async function confirmAndGenerate(e) {
             console.warn("[postcall] analysis-saved hook failed:", err?.message || err);
           }
         }
-        const refreshed = getPostCallAnalysis(sessionEmail, record.id) || record;
-        navigateToCallRecord(refreshed.id);
+        hidePostCallLegacyResult();
+        show($("postcall-form-view"), false);
+        show($("postcall-confirm-view"), false);
+        showInlineStatus(status, { open: false });
+        navigateToCallRecord(record.id);
+        setCallRecordProgress(record.id, POSTCALL_STAGE.scoring);
       }
     }
 
-    // Call record is canonical after a successful generate — never show the legacy one-pager.
-    if (pipelineState.generated) {
-      hidePostCallLegacyResult();
-      show($("postcall-form-view"), false);
-      show($("postcall-confirm-view"), false);
-      if (!record?.id) {
-        console.warn("[postcall] generate succeeded but history save returned no record");
-      }
-    } else if (!record?.id) {
+    if (!record?.id) {
+      const meta = { title: getCallTitle(data.analysis, { title: "" }) };
+      hidePipelineProgress("postcall-progress");
+      showInlineStatus(status, { open: false });
       displayPostCall(data, meta);
     }
 
-    // Hydrate the slow passes after the SE is already looking at the analysis.
-    void (async () => {
-      try {
-        if (!record?.id || !sessionEmail) return;
-
-        const latest = getPostCallAnalysis(sessionEmail, record.id) || record;
-        const effectiveDealId =
-          latest.dealId ||
-          latest.result?.confirmed?.dealId ||
-          dealId ||
-          null;
-        const effectiveAccountId =
-          latest.accountId ||
-          latest.result?.confirmed?.accountId ||
-          accountId ||
-          null;
-
-        let technicalCommit = data.technicalCommit || null;
-        let tcDeltas = data.tcDeltas || [];
-
-        if (!technicalCommit) {
-          const prevCommit = effectiveDealId
-            ? await import("./domain/store.js")
-                .then(({ getStore }) => {
-                  const store = getStore();
-                  return store.getTechnicalCommitByDeal
-                    ? store.getTechnicalCommitByDeal(effectiveDealId)
-                    : null;
-                })
-                .catch(() => null)
-            : null;
-          const commitRes = await postJson(COMMIT_URL, {
-            transcript: pipelineState.resolve.transcript,
-            dealId: effectiveDealId,
-            companyName,
-            meetingTitle: pipelineState.payload.meetingTitle || companyName,
-            callType,
-            additionalContext,
-            meetingDate: meetingDateFromResolve(pipelineState.resolve),
-            callId: record.id,
-            previous: prevCommit,
-            ...cacheFields,
-          }).catch((err) => {
-            console.warn("[postcall] deferred commit soft-fail:", err?.message || err);
-            return null;
-          });
-          if (commitRes?.technicalCommit) {
-            technicalCommit = commitRes.technicalCommit;
-            tcDeltas = commitRes.tcDeltas || [];
-          }
-        }
-
-        let arrInputs = await arrInputsP;
-        if (!arrInputs && effectiveDealId && effectiveAccountId) {
-          arrInputs = await postJson(ARR_INPUTS_URL, {
-            transcript: pipelineState.resolve.transcript,
-            dealId: effectiveDealId,
-            callId: record.id,
-            companyName,
-            meetingTitle: pipelineState.payload.meetingTitle || companyName,
-            callType,
-            additionalContext,
-            ...cacheFields,
-          }).catch((err) => {
-            console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
-            return null;
-          });
-        }
-
-        let arrCompute = null;
-        if (arrInputs && effectiveDealId && effectiveAccountId) {
-          const allowance = await Promise.all([
-            import("./domain/store.js"),
-            import("./domain/arr-service.js"),
-          ])
-            .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
-              accountAllowanceConsumedForDeal(getStore(), effectiveAccountId, effectiveDealId),
-            )
-            .catch(() => null);
-          arrCompute = await postJson(ARR_COMPUTE_URL, {
-            ...arrInputs,
-            accountAllowanceConsumed: allowance,
-          }).catch((err) => {
-            console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
-            return null;
-          });
-        }
-        const arrPoint =
-          arrCompute?.arrPoint ?? arrCompute?.arrEstimatePoint ?? null;
-        const callNotes =
-          typeof data.summarise?.callNotes === "string" ? data.summarise.callNotes.trim() : "";
-        const gapsContext = [
-          additionalContext,
-          callNotes
-            ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-        const pass6 = await postJson(GAPS_URL, {
-          transcript: pipelineState.resolve.transcript,
-          dealId: effectiveDealId,
-          accountId: effectiveAccountId,
-          companyName,
-          meetingTitle: pipelineState.payload.meetingTitle || companyName,
-          callType,
-          arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
-          additionalContext: gapsContext || undefined,
-          ...cacheFields,
-        }).catch((err) => {
-          console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
-          return null;
-        });
-        const timeline = await deriveCallTimeline({
-          transcript: pipelineState.resolve.transcript,
-          gaps: pass6?.productGaps || [],
-          whatWorks: pass6?.whatWorks || [],
-          objections: data.summarise?.objections || [],
-          scorecardLines: data.scorecard?.lines || [],
-        });
-        const { updatePostCallAnalysis } = await import("./history.js");
-        await updatePostCallAnalysis(sessionEmail, record.id, (rec) => {
-          rec.pass6 = pass6 || rec.pass6 || null;
-          if (effectiveDealId) rec.dealId = effectiveDealId;
-          if (effectiveAccountId) rec.accountId = effectiveAccountId;
-          rec.result = {
-            ...(rec.result || {}),
-            arrInputs,
-            arrCompute,
-            pass6,
-            timeline,
-            technicalCommit: technicalCommit || rec.result?.technicalCommit || null,
-            tcDeltas: tcDeltas.length ? tcDeltas : rec.result?.tcDeltas || [],
-            confirmed: {
-              ...(rec.result?.confirmed || {}),
-              dealId: effectiveDealId || rec.result?.confirmed?.dealId || null,
-              accountId: effectiveAccountId || rec.result?.confirmed?.accountId || null,
-            },
-          };
-          return rec;
-        });
-        onCallRecordHydrated?.(record.id);
-      } catch (err) {
-        console.warn("[postcall] background hydration failed:", err?.message || err);
-      } finally {
-        if (pipelineState.transcriptCaches) {
-          postJson(CACHE_RELEASE_URL, { transcriptCaches: pipelineState.transcriptCaches }).catch(
-            (err) => {
-              console.warn("[postcall] transcript cache release soft-fail:", err?.message || err);
-            },
-          );
-          pipelineState.transcriptCaches = null;
-        }
-      }
-    })();
+    void runPostcallParallelHydration({
+      gen,
+      signal,
+      recordId: record?.id,
+      sessionEmail,
+      data,
+      dealId,
+      accountId,
+      companyName,
+      callType,
+      additionalContext,
+      cacheFields,
+      qualifyP,
+      summariseP,
+      commitP,
+      videoP,
+      arrInputsP,
+    });
   } catch (err) {
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "done" },
-      { label: "Classify call type", status: "done" },
-      { label: "Generate analysis", status: "error" },
-    ]);
+    if (err?.name === "AbortError") return;
+    showPostCallInlineProgress("Analysis failed");
     show($("postcall-confirm-view"), true);
     show($("postcall-loading"), false);
-    void hidePostCallGenOverlay();
     showInlineStatus(status, { type: "error", message: err.message || "Generation failed." });
     if (pipelineState.transcriptCaches) {
       postJson(CACHE_RELEASE_URL, { transcriptCaches: pipelineState.transcriptCaches }).catch(
@@ -3900,6 +3780,415 @@ async function confirmAndGenerate(e) {
     setButtonLoading(btn, false);
     generating = false;
   }
+}
+
+async function runPostcallParallelHydration(ctx) {
+  const {
+    gen,
+    signal,
+    recordId,
+    sessionEmail,
+    data: initialData,
+    dealId,
+    accountId,
+    companyName,
+    callType,
+    additionalContext,
+    cacheFields,
+    qualifyP,
+    summariseP,
+    commitP,
+    videoP,
+    arrInputsP,
+  } = ctx;
+  if (!recordId || !sessionEmail) return;
+
+  const { updatePostCallAnalysis } = await import("./history.js");
+  const data = { ...initialData };
+  let pending = defaultHydrationPending(dealId, accountId);
+  /** @type {Record<string, string>} */
+  const errors = {};
+
+  const syncHydration = async (sections, progressMessage) => {
+    if (isPostcallPipelineStale(gen)) return null;
+    await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+      patchHydration(rec, { pending, errors, progressMessage });
+      return rec;
+    });
+    if (progressMessage) setCallRecordProgress(recordId, progressMessage);
+    notifyCallRecordUpdated(recordId, sections);
+    return getPostCallAnalysis(sessionEmail, recordId);
+  };
+
+  const dropPending = (...keys) => {
+    pending = pending.filter((k) => !keys.includes(k));
+  };
+
+  const markError = (key, message, sections) => {
+    errors[key] = message;
+    dropPending(key);
+    void syncHydration(sections, "");
+  };
+
+  try {
+    setCallRecordProgress(recordId, POSTCALL_STAGE.qualifying);
+    const qualify = await qualifyP;
+    if (isPostcallPipelineStale(gen)) return;
+    if (qualify?.qualification) {
+      data.qualification = qualify.qualification;
+      data.framework = qualify.framework;
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.result = {
+          ...(rec.result || {}),
+          qualification: qualify.qualification,
+          framework: qualify.framework,
+        };
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.summarising });
+        return rec;
+      });
+      dropPending("qualify");
+      notifyCallRecordUpdated(recordId, ["qualify"]);
+    } else if (qualify === null) {
+      markError("qualify", "Qualification could not be generated.", ["qualify"]);
+    }
+
+    setCallRecordProgress(recordId, POSTCALL_STAGE.summarising);
+    const summarise = await summariseP;
+    if (isPostcallPipelineStale(gen)) return;
+    if (summarise) {
+      data.summarise = summarise;
+      if (typeof summarise.callNotes === "string" && summarise.callNotes.trim()) {
+        data.analysis = { ...(data.analysis || {}), callNotes: summarise.callNotes };
+      }
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        if (data.analysis) rec.analysis = { ...(rec.analysis || {}), ...data.analysis };
+        rec.result = { ...(rec.result || {}), summarise };
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.committing });
+        return rec;
+      });
+      dropPending("summarise");
+      notifyCallRecordUpdated(recordId, ["summarise", "callNotes"]);
+    } else if (summarise === null) {
+      markError("summarise", "Call summary could not be generated.", ["summarise", "callNotes"]);
+    }
+
+    setCallRecordProgress(recordId, POSTCALL_STAGE.committing);
+    const [commit, videoRes] = await Promise.all([commitP, videoP]);
+    if (isPostcallPipelineStale(gen)) return;
+    if (videoRes?.videoFacts) {
+      pipelineState.videoFacts = videoRes.videoFacts;
+      data.videoFacts = videoRes.videoFacts;
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.result = { ...(rec.result || {}), videoFacts: videoRes.videoFacts };
+        return rec;
+      });
+      notifyCallRecordUpdated(recordId, ["video"]);
+    }
+    pipelineState.pass2Debug =
+      videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
+    if (commit?.technicalCommit) {
+      data.technicalCommit = commit.technicalCommit;
+      data.tcDeltas = commit.tcDeltas || [];
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.result = {
+          ...(rec.result || {}),
+          technicalCommit: commit.technicalCommit,
+          tcDeltas: commit.tcDeltas || [],
+        };
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.arr });
+        return rec;
+      });
+      dropPending("commit");
+      notifyCallRecordUpdated(recordId, ["commit"]);
+    } else if (commit === null) {
+      markError("commit", "Technical commit could not be updated.", ["commit"]);
+    }
+
+    const latest = getPostCallAnalysis(sessionEmail, recordId) || { id: recordId };
+    const effectiveDealId =
+      latest.dealId || latest.result?.confirmed?.dealId || dealId || null;
+    const effectiveAccountId =
+      latest.accountId || latest.result?.confirmed?.accountId || accountId || null;
+
+    let technicalCommit = data.technicalCommit || latest.result?.technicalCommit || null;
+    let tcDeltas = data.tcDeltas || latest.result?.tcDeltas || [];
+
+    if (!technicalCommit && effectiveDealId) {
+      const prevCommit = await import("./domain/store.js")
+        .then(({ getStore }) => {
+          const store = getStore();
+          return store.getTechnicalCommitByDeal
+            ? store.getTechnicalCommitByDeal(effectiveDealId)
+            : null;
+        })
+        .catch(() => null);
+      const commitRes = await postJson(
+        COMMIT_URL,
+        {
+          transcript: pipelineState.resolve.transcript,
+          dealId: effectiveDealId,
+          companyName,
+          meetingTitle: pipelineState.payload.meetingTitle || companyName,
+          callType,
+          additionalContext,
+          meetingDate: meetingDateFromResolve(pipelineState.resolve),
+          callId: recordId,
+          previous: prevCommit,
+          ...cacheFields,
+        },
+        { signal },
+      ).catch((err) => {
+        if (err?.name === "AbortError") throw err;
+        console.warn("[postcall] deferred commit soft-fail:", err?.message || err);
+        return null;
+      });
+      if (isPostcallPipelineStale(gen)) return;
+      if (commitRes?.technicalCommit) {
+        technicalCommit = commitRes.technicalCommit;
+        tcDeltas = commitRes.tcDeltas || [];
+        dropPending("commit");
+      }
+    }
+
+    setCallRecordProgress(recordId, POSTCALL_STAGE.arr);
+    let arrInputs = await arrInputsP;
+    if (isPostcallPipelineStale(gen)) return;
+    if (!arrInputs && effectiveDealId && effectiveAccountId) {
+      arrInputs = await postJson(
+        ARR_INPUTS_URL,
+        {
+          transcript: pipelineState.resolve.transcript,
+          dealId: effectiveDealId,
+          callId: recordId,
+          companyName,
+          meetingTitle: pipelineState.payload.meetingTitle || companyName,
+          callType,
+          additionalContext,
+          ...cacheFields,
+        },
+        { signal },
+      ).catch((err) => {
+        if (err?.name === "AbortError") throw err;
+        console.warn("[postcall] deferred arr-inputs soft-fail:", err?.message || err);
+        return null;
+      });
+    }
+
+    let arrCompute = null;
+    if (arrInputs && effectiveDealId && effectiveAccountId) {
+      const allowance = await Promise.all([
+        import("./domain/store.js"),
+        import("./domain/arr-service.js"),
+      ])
+        .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
+          accountAllowanceConsumedForDeal(getStore(), effectiveAccountId, effectiveDealId),
+        )
+        .catch(() => null);
+      arrCompute = await postJson(
+        ARR_COMPUTE_URL,
+        { ...arrInputs, accountAllowanceConsumed: allowance },
+        { signal },
+      ).catch((err) => {
+        if (err?.name === "AbortError") throw err;
+        console.warn("[postcall] arr-compute soft-fail:", err?.message || err);
+        return null;
+      });
+      if (isPostcallPipelineStale(gen)) return;
+      if (arrCompute) {
+        await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+          rec.result = { ...(rec.result || {}), arrInputs, arrCompute };
+          patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.gaps });
+          return rec;
+        });
+        dropPending("arr");
+        notifyCallRecordUpdated(recordId, ["arr"]);
+      } else {
+        markError("arr", "ARR estimate could not be computed.", ["arr"]);
+      }
+    } else {
+      dropPending("arr");
+    }
+
+    setCallRecordProgress(recordId, POSTCALL_STAGE.gaps);
+    const arrPoint = arrCompute?.arrPoint ?? arrCompute?.arrEstimatePoint ?? null;
+    const callNotes =
+      typeof data.summarise?.callNotes === "string" ? data.summarise.callNotes.trim() : "";
+    const gapsContext = [
+      additionalContext,
+      callNotes
+        ? `Call notes (product gaps mentioned here MUST appear in productGaps when they describe missing product capability, SDKs, or integrations):\n${callNotes}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const pass6 = await postJson(
+      GAPS_URL,
+      {
+        transcript: pipelineState.resolve.transcript,
+        dealId: effectiveDealId,
+        accountId: effectiveAccountId,
+        companyName,
+        meetingTitle: pipelineState.payload.meetingTitle || companyName,
+        callType,
+        arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
+        additionalContext: gapsContext || undefined,
+        ...cacheFields,
+      },
+      { signal },
+    ).catch((err) => {
+      if (err?.name === "AbortError") throw err;
+      console.warn("[postcall] pass6 gaps soft-fail:", err?.message || err);
+      return null;
+    });
+    if (isPostcallPipelineStale(gen)) return;
+
+    if (pass6) {
+      const timeline = await deriveCallTimeline({
+        transcript: pipelineState.resolve.transcript,
+        gaps: pass6?.productGaps || [],
+        whatWorks: pass6?.whatWorks || [],
+        objections: data.summarise?.objections || [],
+        scorecardLines: data.scorecard?.lines || [],
+      });
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.pass6 = pass6;
+        if (effectiveDealId) rec.dealId = effectiveDealId;
+        if (effectiveAccountId) rec.accountId = effectiveAccountId;
+        rec.result = {
+          ...(rec.result || {}),
+          arrInputs,
+          arrCompute,
+          pass6,
+          timeline,
+          technicalCommit: technicalCommit || rec.result?.technicalCommit || null,
+          tcDeltas: tcDeltas.length ? tcDeltas : rec.result?.tcDeltas || [],
+          confirmed: {
+            ...(rec.result?.confirmed || {}),
+            dealId: effectiveDealId || rec.result?.confirmed?.dealId || null,
+            accountId: effectiveAccountId || rec.result?.confirmed?.accountId || null,
+          },
+        };
+        patchHydration(rec, { pending: [], errors, progressMessage: "" });
+        return rec;
+      });
+      dropPending("gaps");
+      notifyCallRecordUpdated(recordId, ["gaps", "timeline"]);
+    } else {
+      markError("gaps", "Product gaps could not be extracted.", ["gaps"]);
+    }
+
+    hidePipelineProgress("postcall-progress");
+    setCallRecordProgress(recordId, "");
+    onCallRecordHydrated?.(recordId);
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    console.warn("[postcall] background hydration failed:", err?.message || err);
+  } finally {
+    if (pipelineState?.transcriptCaches) {
+      postJson(CACHE_RELEASE_URL, { transcriptCaches: pipelineState.transcriptCaches }).catch(
+        (releaseErr) => {
+          console.warn("[postcall] transcript cache release soft-fail:", releaseErr?.message || releaseErr);
+        },
+      );
+      pipelineState.transcriptCaches = null;
+    }
+  }
+}
+
+/** Retry a deferred post-call section (ARR or product gaps). */
+export async function retryPostcallHydrationSection(recordId, section) {
+  const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+  if (!sessionEmail || !recordId || !pipelineState?.resolve) return false;
+  const record = getPostCallAnalysis(sessionEmail, recordId);
+  if (!record) return false;
+  const { signal, gen } = beginPostcallPipeline();
+  const dealId = record.dealId || record.result?.confirmed?.dealId || null;
+  const accountId = record.accountId || record.result?.confirmed?.accountId || null;
+  const callType = record.callType || record.result?.analysisMeta?.callType || "discovery";
+  const companyName =
+    record.companyName ||
+    record.result?.resolve?.account?.accountName ||
+    pipelineState.payload?.companyName ||
+    "";
+  const additionalContext = pipelineState.payload?.additionalContext || "";
+  const cacheFields = pipelineState.transcriptCaches ? { transcriptCaches: pipelineState.transcriptCaches } : {};
+
+  try {
+    if (section === "arr" && dealId && accountId) {
+      setCallRecordProgress(recordId, POSTCALL_STAGE.arr);
+      let arrInputs = await postJson(
+        ARR_INPUTS_URL,
+        {
+          transcript: pipelineState.resolve.transcript,
+          dealId,
+          callId: recordId,
+          companyName,
+          meetingTitle: pipelineState.payload?.meetingTitle || companyName,
+          callType,
+          additionalContext,
+          ...cacheFields,
+        },
+        { signal },
+      );
+      const allowance = await Promise.all([
+        import("./domain/store.js"),
+        import("./domain/arr-service.js"),
+      ])
+        .then(([{ getStore }, { accountAllowanceConsumedForDeal }]) =>
+          accountAllowanceConsumedForDeal(getStore(), accountId, dealId),
+        )
+        .catch(() => null);
+      const arrCompute = await postJson(
+        ARR_COMPUTE_URL,
+        { ...arrInputs, accountAllowanceConsumed: allowance },
+        { signal },
+      );
+      if (isPostcallPipelineStale(gen)) return false;
+      const { updatePostCallAnalysis } = await import("./history.js");
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        const hydration = rec.result?.hydration || {};
+        delete hydration.errors?.arr;
+        rec.result = { ...(rec.result || {}), arrInputs, arrCompute, hydration };
+        return rec;
+      });
+      notifyCallRecordUpdated(recordId, ["arr"]);
+      return true;
+    }
+    if (section === "gaps") {
+      setCallRecordProgress(recordId, POSTCALL_STAGE.gaps);
+      const arrPoint =
+        record.result?.arrCompute?.arrPoint ?? record.result?.arrCompute?.arrEstimatePoint ?? null;
+      const pass6 = await postJson(
+        GAPS_URL,
+        {
+          transcript: pipelineState.resolve.transcript,
+          dealId,
+          accountId,
+          companyName,
+          meetingTitle: pipelineState.payload?.meetingTitle || companyName,
+          callType,
+          arrSnapshot: arrPoint != null ? { arrEstimatePoint: arrPoint } : null,
+          additionalContext,
+          ...cacheFields,
+        },
+        { signal },
+      );
+      if (isPostcallPipelineStale(gen)) return false;
+      const { updatePostCallAnalysis } = await import("./history.js");
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        const hydration = rec.result?.hydration || {};
+        delete hydration.errors?.gaps;
+        rec.result = { ...(rec.result || {}), pass6, hydration };
+        rec.pass6 = pass6;
+        return rec;
+      });
+      notifyCallRecordUpdated(recordId, ["gaps"]);
+      return true;
+    }
+  } catch (err) {
+    console.warn("[postcall] hydration retry failed:", err?.message || err);
+  }
+  return false;
 }
 
 function restartPipeline(e) {
@@ -4088,6 +4377,7 @@ export function clearPostCallForm() {
 
 /** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
 export function resetPostCallView() {
+  abortPostcallPipeline();
   pipelineState = null;
   clearPostCallForm();
   void ensurePostCallProspectEmailsEmpty();
@@ -4105,7 +4395,7 @@ export function resetPostCallView() {
 }
 
 export function isPostCallGenerationBusy() {
-  return generating || isGenOverlayActive();
+  return generating;
 }
 
 async function collectIntakePayload() {
@@ -4235,21 +4525,17 @@ async function startPipeline(e) {
   }
   const { payload } = collected;
   pipelineState = { payload, resolve: null, classify: null, generated: false, recordId: null };
+  const { signal, gen } = beginPostcallPipeline();
 
   setButtonLoading(btn, true);
   setFormFieldsDisabled($("postcall-form"), true);
   show($("postcall-result"), false);
   show($("postcall-confirm-view"), false);
   show($("postcall-loading"), false);
-  showPostCallGenOverlay("Fetching transcript and matching account…");
-  showPostCallPipeline([
-    { label: "Resolve recording and match deal", status: "active" },
-    { label: "Classify call type", status: "pending" },
-    { label: "Generate analysis", status: "pending" },
-  ]);
+  showPostCallInlineProgress(POSTCALL_STAGE.resolve);
   showInlineStatus(status, {
     type: "info",
-    message: "Fetching transcript and matching account…",
+    message: POSTCALL_STAGE.resolve,
     loading: true,
   });
 
@@ -4258,21 +4544,26 @@ async function startPipeline(e) {
     const domainContext = ownerId
       ? await buildPostCallResolveContext(ownerId, postCallResolveOpts())
       : { briefs: [], accounts: [], deals: [] };
-    const resolve = await postJson(RESOLVE_URL, {
-      transcript: payload.transcript,
-      recordingUrl: payload.recordingUrl,
-      recordingPassword: payload.recordingPassword,
-      companyName: payload.companyName,
-      meetingTitle: payload.companyName,
-      participantEmails: payload.participantEmails,
-      accountId: payload.accountId,
-      ownerId,
-      ownerEmail: currentSession?.email || undefined,
-      ownerDisplayName: currentSession?.name || currentSession?.displayName || undefined,
-      briefs: domainContext.briefs,
-      accounts: domainContext.accounts,
-      deals: domainContext.deals,
-    });
+    const resolve = await postJson(
+      RESOLVE_URL,
+      {
+        transcript: payload.transcript,
+        recordingUrl: payload.recordingUrl,
+        recordingPassword: payload.recordingPassword,
+        companyName: payload.companyName,
+        meetingTitle: payload.companyName,
+        participantEmails: payload.participantEmails,
+        accountId: payload.accountId,
+        ownerId,
+        ownerEmail: currentSession?.email || undefined,
+        ownerDisplayName: currentSession?.name || currentSession?.displayName || undefined,
+        briefs: domainContext.briefs,
+        accounts: domainContext.accounts,
+        deals: domainContext.deals,
+      },
+      { signal },
+    );
+    if (isPostcallPipelineStale(gen)) return;
     const accountIdForDeals =
       resolve?.account?.accountId ||
       getIntakeAccountSelection().accountId ||
@@ -4284,28 +4575,25 @@ async function startPipeline(e) {
       payload.companyName = pipelineState.resolve.account.accountName;
     }
 
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "done" },
-      { label: "Classify call type", status: "active" },
-      { label: "Generate analysis", status: "pending" },
-    ]);
+    showPostCallInlineProgress(POSTCALL_STAGE.classify);
     showInlineStatus(status, {
       type: "info",
-      message: "Classifying call type from transcript…",
+      message: POSTCALL_STAGE.classify,
       loading: true,
     });
 
-    const classify = await postJson(CLASSIFY_URL, {
-      transcript: pipelineState.resolve.transcript,
-      meetingTitle: pipelineState.resolve.meetingTitle,
-    });
+    const classify = await postJson(
+      CLASSIFY_URL,
+      {
+        transcript: pipelineState.resolve.transcript,
+        meetingTitle: pipelineState.resolve.meetingTitle,
+      },
+      { signal },
+    );
+    if (isPostcallPipelineStale(gen)) return;
     pipelineState.classify = classify;
 
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "done" },
-      { label: "Classify call type", status: "done" },
-      { label: "Generate analysis", status: "pending" },
-    ]);
+    hidePipelineProgress("postcall-progress");
     showInlineStatus(status, { open: false });
     const intakeAccount = getIntakeAccountSelection();
     const dealsForConfirm = intakeAccount.createNewAccount
@@ -4322,17 +4610,11 @@ async function startPipeline(e) {
     });
     ensureIntakePayloadSynced(payload);
     pipelineState.payload = payload;
-    hidePipelineProgress("postcall-progress");
-    await hidePostCallGenOverlay();
     showConfirmationGate(pipelineState.resolve, classify);
   } catch (err) {
+    if (err?.name === "AbortError") return;
     const msg = err.message || "Something went wrong.";
-    showPostCallPipeline([
-      { label: "Resolve recording and match deal", status: "error" },
-      { label: "Classify call type", status: "pending" },
-      { label: "Generate analysis", status: "pending" },
-    ]);
-    void hidePostCallGenOverlay();
+    showPostCallInlineProgress("Could not start analysis");
     if (msg === "Failed to fetch" || /^networkerror/i.test(msg) || /load failed/i.test(msg)) {
       showInlineStatus(status, {
         type: "error",
@@ -4361,6 +4643,7 @@ export function onSessionReady(session, tokenFn) {
 }
 
 export function onSessionCleared() {
+  abortPostcallPipeline();
   currentSession = null;
   getAuthToken = null;
   pipelineState = null;

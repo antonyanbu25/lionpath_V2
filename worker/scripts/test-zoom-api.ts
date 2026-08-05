@@ -262,10 +262,39 @@ async function testMissingTranscriptIsHardError() {
   );
 }
 
+async function testConcurrentTokenRefresh() {
+  resetZoomApiTokenCache();
+  let inFlight = 0;
+  let peak = 0;
+  const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : String(input);
+    if (url.startsWith("https://zoom.us/oauth/token")) {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight--;
+      return new Response(JSON.stringify({ access_token: "tok_shared", expires_in: 3600 }), {
+        status: 200,
+      });
+    }
+    return new Response("not found", { status: 404 });
+  }) as unknown as typeof fetch;
+  const [t1, t2, t3] = await Promise.all([
+    getZoomApiToken(env, f),
+    getZoomApiToken(env, f),
+    getZoomApiToken(env, f),
+  ]);
+  assert.equal(t1, "tok_shared");
+  assert.equal(t2, "tok_shared");
+  assert.equal(t3, "tok_shared");
+  assert.equal(peak, 1, "concurrent refresh near expiry must share one OAuth fetch");
+}
+
 async function main() {
   testConfigDetection();
   testStartTimeExtraction();
   await testTokenFetchAndCache();
+  await testConcurrentTokenRefresh();
   await testTokenFailureSurfacesStatus();
   await testStartTimeMatching();
   testMediaSelection();

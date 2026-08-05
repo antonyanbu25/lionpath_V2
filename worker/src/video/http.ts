@@ -16,7 +16,7 @@ export interface VideoPassRequestBody {
   callType?: string | null;
   visualAnalysisConsent?: boolean;
   skipVision?: boolean;
-  /** Per-call opt-in — default true when omitted (API callers); web intake passes explicitly. */
+  /** Per-call opt-in — default false when omitted (web intake passes explicitly). */
   enableVideoPass?: boolean;
   seIdentity?: string | null;
   aeIdentity?: string | null;
@@ -53,7 +53,7 @@ export async function handleVideoPassNode(
     callType: body.callType,
     visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
-    enableVideoPass: body.enableVideoPass !== false,
+    enableVideoPass: body.enableVideoPass === true,
     seIdentity: body.seIdentity ?? null,
     aeIdentity: body.aeIdentity ?? null,
     customerIdentities: body.customerIdentities ?? null,

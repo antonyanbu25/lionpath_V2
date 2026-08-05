@@ -3,6 +3,7 @@
  */
 
 import type { LlmRequest, LlmUsage } from "../providers/types";
+import { logWarn } from "../logger";
 import { firestoreAdminReady, getDb, type FirestoreEnv } from "./firestore-admin";
 import { checkPass7UsageAnomaly } from "./usage-anomaly";
 import type { CostControlEnv } from "../cost-control-config";
@@ -54,11 +55,14 @@ export function recordLlmUsage(
         groundingQueries: record.groundingQueries,
         latencyMs: record.latencyMs,
         cacheHit: record.cacheHit === true,
+        retryCount: record.retryCount ?? 0,
         createdAt: Date.now(),
       });
       checkPass7UsageAnomaly(env, record);
     } catch (err) {
-      console.warn("[llm-usage] write failed:", err instanceof Error ? err.message : err);
+      logWarn("[llm-usage] write failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   })();
 }

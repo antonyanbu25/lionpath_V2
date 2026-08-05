@@ -9,8 +9,11 @@
 import { extractJson } from "../json";
 import { prepareVisionFrameBytes } from "./frame-image";
 import { recordLlmUsage } from "../data/llm-usage";
+import { reserveDailyTokenBudget, totalTokens } from "../data/token-budget";
+import type { CostControlEnv } from "../cost-control-config";
 import type { FirestoreEnv } from "../data/firestore-admin";
 import { effectiveGeminiModel } from "../providers/gemini";
+import { fetchGeminiWithRetry, GEMINI_TIMEOUT_MS } from "../providers/gemini-retry";
 import type { ProviderEnv } from "../providers/types";
 import type { SampleFrame } from "./facts";
 import {
@@ -82,7 +85,7 @@ async function buildImageParts(
 }
 
 async function callGeminiJson(
-  env: ProviderEnv & FirestoreEnv,
+  env: ProviderEnv & FirestoreEnv & CostControlEnv,
   textPrompt: string,
   imageParts: Array<Record<string, unknown>>,
   opts?: { userId?: string; callId?: string },
@@ -94,57 +97,74 @@ async function callGeminiJson(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
   const started = Date.now();
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: textPrompt }, ...imageParts] }],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    console.warn("[video/vision] Gemini", res.status, (await res.text()).slice(0, 200));
-    return null;
-  }
-
-  const body = (await res.json()) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
-      groundingMetadata?: { webSearchQueries?: string[] };
-    }>;
-    usageMetadata?: {
-      promptTokenCount?: number;
-      candidatesTokenCount?: number;
-      cachedContentTokenCount?: number;
-    };
-  };
-  if (opts?.userId) {
-    recordLlmUsage(env, {
-      userId: opts.userId,
-      callId: opts.callId,
-      passName: "video/vision",
-      model,
-      promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
-      outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
-      cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
-      groundingQueries: body.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0,
-      latencyMs: Date.now() - started,
-    });
-  }
-  const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
-  if (!text.trim()) return null;
+  const settleBudget = await reserveDailyTokenBudget(env, opts?.userId);
   try {
-    return extractJson<Record<string, unknown>>(text);
-  } catch (err) {
-    console.warn(
-      "[video/vision] JSON parse failed:",
-      err instanceof Error ? err.message : err,
-      text.slice(0, 200),
+    const { response: res, retryCount } = await fetchGeminiWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: textPrompt }, ...imageParts] }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json",
+          },
+        }),
+      },
+      { timeoutMs: GEMINI_TIMEOUT_MS.vision, step: "video/vision" },
     );
+
+    if (!res.ok) {
+      console.warn("[video/vision] Gemini", res.status, (await res.text()).slice(0, 200));
+      await settleBudget(0);
+      return null;
+    }
+
+    const body = (await res.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+        groundingMetadata?: { webSearchQueries?: string[] };
+      }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        cachedContentTokenCount?: number;
+      };
+    };
+    const promptTokens = body.usageMetadata?.promptTokenCount ?? 0;
+    const outputTokens = body.usageMetadata?.candidatesTokenCount ?? 0;
+    await settleBudget(totalTokens(promptTokens, outputTokens));
+
+    if (opts?.userId) {
+      recordLlmUsage(env, {
+        userId: opts.userId,
+        callId: opts.callId,
+        passName: "video/vision",
+        model,
+        promptTokens,
+        outputTokens,
+        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+        groundingQueries: body.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0,
+        latencyMs: Date.now() - started,
+        retryCount,
+      });
+    }
+    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    if (!text.trim()) return null;
+    try {
+      return extractJson<Record<string, unknown>>(text);
+    } catch (err) {
+      console.warn(
+        "[video/vision] JSON parse failed:",
+        err instanceof Error ? err.message : err,
+        text.slice(0, 200),
+      );
+      return null;
+    }
+  } catch (err) {
+    await settleBudget(0);
+    console.warn("[video/vision] Gemini call failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -153,7 +173,7 @@ async function callGeminiJson(
  * Full Pass 2 vision with strategic-window participant camera aggregation.
  */
 export async function analyzeKeyframes(
-  env: ProviderEnv & FirestoreEnv,
+  env: ProviderEnv & FirestoreEnv & CostControlEnv,
   keyframes: SampleFrame[],
   opts?: {
     visualAnalysisConsent?: boolean;

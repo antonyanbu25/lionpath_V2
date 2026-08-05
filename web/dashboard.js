@@ -3,7 +3,6 @@
  * Coaching charts exported for coaching.js.
  */
 
-import { agentLog } from "./debug-log.js";
 import { listAnalysesWithQuality, listPostCallAnalyses } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import {
@@ -1361,13 +1360,6 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
   if (typeof opts.fetchRemoteHistory !== "function" && typeof briefsCountFetcher(opts) !== "function") {
     return;
   }
-  const tRemote = Date.now();
-  agentLog({
-    location: "dashboard.js:refreshLaunchpadRemote:start",
-    message: "Remote KPI refresh started",
-    data: { hasHistory: typeof opts.fetchRemoteHistory === "function" },
-    hypothesisId: "B",
-  });
   try {
     const store = getStore();
     const prepsFetcher = briefsCountFetcher(opts);
@@ -1396,12 +1388,6 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
       launchpadPromise,
     ]);
 
-    agentLog({
-      location: "dashboard.js:refreshLaunchpadRemote:records",
-      message: "Remote call records loaded",
-      data: { ms: Date.now() - tRemote, count: remoteRecords.length },
-      hypothesisId: "B",
-    });
     if (!container.isConnected) return;
     const remoteMetrics = aggregateQualityMetrics(analysesWithQualityFromRecords(remoteRecords));
     let remoteLaunchMetrics = buildLaunchpadCallMetricsFromRecords(remoteRecords);
@@ -1429,16 +1415,6 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     }
     wireCallLinks(container, opts.onOpenCall);
     writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, remotePreps));
-    agentLog({
-      location: "dashboard.js:refreshLaunchpadRemote:done",
-      message: "Remote KPI refresh painted",
-      data: {
-        ms: Date.now() - tRemote,
-        calls: remoteLaunchMetrics.totalCalls,
-        preps: remotePreps,
-      },
-      hypothesisId: "B",
-    });
   } catch (err) {
     console.warn("[dashboard] remote refresh failed:", err?.message || err);
   }
@@ -1723,16 +1699,9 @@ function renderLaunchpadFallback(container, email, opts, err) {
   container._launchpadOpts = opts;
   wireLaunchKpiNav(container, email, opts);
   mountDashboardTasks(container, email, opts);
-  agentLog({
-    location: "dashboard.js:renderSeLaunchpad:fallback",
-    message: "Dashboard render used fallback",
-    data: { err: err?.message || String(err || "watchdog") },
-    hypothesisId: "C",
-  });
 }
 
 export async function renderSeLaunchpad(container, email, opts = {}) {
-  const t0 = Date.now();
   const cached = readKpiSnapshot(email);
   const cachedMetrics = metricsFromKpiSnapshot(cached);
   const hasLocalData =
@@ -1747,22 +1716,9 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
 
   const fastOpts = localOnlyDashboardOpts(opts);
 
-  agentLog({
-    location: "dashboard.js:renderSeLaunchpad:start",
-    message: "Dashboard render started",
-    data: { email: !!email, hasReady: !!hasReady, hasCachedKpi: !!cachedMetrics },
-    hypothesisId: "A",
-  });
-
   const watchdog = globalThis.setTimeout(() => {
     if (!container?.isConnected) return;
     if (!container.querySelector(".launchpad--loading")) return;
-    agentLog({
-      location: "dashboard.js:renderSeLaunchpad:watchdog",
-      message: "Dashboard watchdog fired",
-      data: { ms: Date.now() - t0 },
-      hypothesisId: "A",
-    });
     renderLaunchpadFallback(container, email, opts, new Error("dashboard render watchdog"));
   }, 12000);
 
@@ -1830,13 +1786,6 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     if (!remotePending.calls && !remotePending.preps) {
       writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount));
     }
-
-    agentLog({
-      location: "dashboard.js:renderSeLaunchpad:done",
-      message: "Dashboard render completed",
-      data: { ms: Date.now() - t0, callRecords: callRecords.length, fromCache: !!cachedMetrics },
-      hypothesisId: "A",
-    });
   } catch (err) {
     console.warn("[dashboard] renderSeLaunchpad failed:", err?.message || err);
     renderLaunchpadFallback(container, email, opts, err);

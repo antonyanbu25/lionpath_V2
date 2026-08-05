@@ -33,6 +33,8 @@ export interface LlmUsage {
   latencyMs: number;
   /** True when this call was skipped because a 30-day research bundle cache hit. */
   cacheHit?: boolean;
+  /** Provider-level retries (429/503/network) before a successful response. */
+  retryCount?: number;
 }
 
 export interface LlmRequest {

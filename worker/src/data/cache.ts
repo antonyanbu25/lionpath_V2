@@ -7,6 +7,8 @@ import type { FirestoreDoc } from "./firestore-admin";
 const LONG_TTL_MS = 60_000;
 const SHORT_TTL_MS = 15_000;
 const LONG_COLS = new Set(["users", "teams", "orgs", "accounts"]);
+/** Max in-process Firestore read cache entries before FIFO eviction. */
+export const FIRESTORE_READ_CACHE_MAX_ENTRIES = 500;
 
 interface CacheEntry {
   value: unknown;
@@ -23,6 +25,14 @@ function stableQueryKey(col: string, spec: unknown): string {
   return `query:${col}:${JSON.stringify(spec)}`;
 }
 
+function evictIfNeeded(): void {
+  while (store.size >= FIRESTORE_READ_CACHE_MAX_ENTRIES) {
+    const oldest = store.keys().next().value;
+    if (oldest === undefined) break;
+    store.delete(oldest);
+  }
+}
+
 function peek(key: string): { hit: true; value: unknown } | { hit: false } {
   const entry = store.get(key);
   if (!entry) return { hit: false };
@@ -34,6 +44,8 @@ function peek(key: string): { hit: true; value: unknown } | { hit: false } {
 }
 
 function put(key: string, value: unknown, ttlMs: number): void {
+  if (store.has(key)) store.delete(key);
+  evictIfNeeded();
   store.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env -S npx tsx
-/** Tests for rubric anchor validation, import guardrails, prompt text, and coverage. */
+/** v2.1 — rubric anchors retired; verify stubs and guardrails remain import-safe. */
 
 import {
+  ANCHORS_RETIRED,
   ANCHOR_SCORES,
   applyUnanchoredConfidenceCap,
   buildStorytellingAnchors,
@@ -15,101 +16,33 @@ import {
   UNANCHORED_PROMPT_NOTICE,
   validateRubricAnchors,
 } from "../src/rubric-anchors.ts";
-import { RUBRIC_PROFILES } from "../src/rubric-profiles.ts";
 
-const storytelling = buildStorytellingAnchors("demo");
+function throws(fn: () => unknown): boolean {
+  try {
+    fn();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+const coverage = computeAnchorCoverageReport();
 
 const checks: [string, boolean][] = [
-  ["storytelling template is anchored", isThemeAnchored(storytelling)],
-  ["storytelling has approvedBy", !!storytelling.approvedBy],
-  ["storytelling has five levels", storytelling.levels.length === 5],
-  [
-    "parse accepts valid storytelling payload",
-    parseRubricAnchors(storytelling).themeKey === "storytelling",
-  ],
-  [
-    "prepareRubricAnchorsWrite accepts valid payload",
-    prepareRubricAnchorsWrite(storytelling).approvedBy === storytelling.approvedBy,
-  ],
-  [
-    "reject missing approvedBy",
-    validateRubricAnchors({ ...storytelling, approvedBy: "" }, { requireApproval: true }).some((e) =>
-      /approvedBy/i.test(e),
-    ),
-  ],
-  [
-    "reject partial level set",
-    validateRubricAnchors({
-      ...storytelling,
-      levels: storytelling.levels.slice(0, 3),
-    }).some((e) => /partial|exactly 5/i.test(e)),
-  ],
-  [
-    "reject duplicate scores",
-    validateRubricAnchors({
-      ...storytelling,
-      levels: [
-        { score: 1, description: "a" },
-        { score: 1, description: "b" },
-        { score: 3, description: "c" },
-        { score: 4, description: "d" },
-        { score: 5, description: "e" },
-      ],
-    }).some((e) => /duplicate|monotonic/i.test(e)),
-  ],
-  [
-    "reject empty description",
-    validateRubricAnchors({
-      ...storytelling,
-      levels: storytelling.levels.map((lv, i) =>
-        i === 2 ? { ...lv, description: "  " } : lv,
-      ),
-    }).some((e) => /description/i.test(e)),
-  ],
-  [
-    "prompt includes anchor text verbatim",
-    formatAnchorBlockForPrompt(storytelling).includes("Named personas across all three lenses"),
-  ],
-  [
-    "unanchored prompt is explicit",
-    formatAnchorBlockForPrompt(null).includes(UNANCHORED_PROMPT_NOTICE),
-  ],
-  [
-    "unanchored confidence cap is named constant",
-    applyUnanchoredConfidenceCap(0.9) === UNANCHORED_CONFIDENCE_CAP,
-  ],
-  [
-    "monotonic scores constant",
-    ANCHOR_SCORES.length === 5 && ANCHOR_SCORES[0] === 1 && ANCHOR_SCORES[4] === 5,
-  ],
+  ["ANCHORS_RETIRED flag", ANCHORS_RETIRED === true],
+  ["buildStorytellingAnchors throws", throws(() => buildStorytellingAnchors("demo"))],
+  ["parseRubricAnchors throws", throws(() => parseRubricAnchors({}))],
+  ["prepareRubricAnchorsWrite throws", throws(() => prepareRubricAnchorsWrite())],
+  ["isThemeAnchored always false", !isThemeAnchored(null)],
+  ["applyUnanchoredConfidenceCap passthrough", applyUnanchoredConfidenceCap(0.9) === 0.9],
+  ["UNANCHORED_CONFIDENCE_CAP unchanged", UNANCHORED_CONFIDENCE_CAP === 0.55],
+  ["UNANCHORED_PROMPT_NOTICE mentions v2.1", UNANCHORED_PROMPT_NOTICE.includes("v2.1")],
+  ["validateRubricAnchors returns retirement message", validateRubricAnchors({}).some((e) => /retired/i.test(e))],
+  ["formatAnchorBlockForPrompt empty", formatAnchorBlockForPrompt(null) === ""],
+  ["formatAnchorCoverageReport mentions retirement", /retired/i.test(formatAnchorCoverageReport())],
+  ["computeAnchorCoverageReport zeroed", coverage.anchored === 0 && coverage.total === 0],
+  ["ANCHOR_SCORES still 1–5", ANCHOR_SCORES.length === 5 && ANCHOR_SCORES[0] === 1],
 ];
-
-let threw = false;
-try {
-  prepareRubricAnchorsWrite({ ...storytelling, approvedBy: "" });
-} catch {
-  threw = true;
-}
-checks.push(["prepareRubricAnchorsWrite throws without approvedBy", threw]);
-
-const report = computeAnchorCoverageReport();
-const demo = report.profiles.find((p) => p.callType === "demo")!;
-const discovery = report.profiles.find((p) => p.callType === "discovery")!;
-
-checks.push(
-  ["coverage report has eight profiles", report.profiles.length === RUBRIC_PROFILES.length],
-  ["demo has one anchored theme", demo.anchoredCount === 1 && demo.anchoredThemes.includes("storytelling")],
-  ["demo anchored weight is 5%", Math.abs(demo.anchoredWeightPct - 5) < 0.01],
-  ["discovery has zero anchored themes", discovery.anchoredCount === 0],
-  [
-    "coverage text mentions weight",
-    formatAnchorCoverageReport(report).includes("weight anchored"),
-  ],
-  [
-    "unique theme keys is 38",
-    report.uniqueThemeKeys === 38 && report.uniqueAnchoredThemeKeys === 1,
-  ],
-);
 
 const failed = checks.filter(([, ok]) => !ok);
 if (failed.length) {
@@ -118,4 +51,4 @@ if (failed.length) {
   process.exit(1);
 }
 
-console.log("test-rubric-anchors: OK");
+console.log("test-rubric-anchors: OK (v2.1 retirement stubs)");

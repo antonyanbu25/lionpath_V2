@@ -18,6 +18,8 @@
 
 import type { Env } from "./env";
 import { json } from "./http";
+import { logError } from "./logger";
+import { correlationIdFromRequest, runWithRequestContext } from "./request-context";
 import {
   handleTaskDelete,
   handleTaskPatch,
@@ -43,47 +45,69 @@ function corsHeaders(origin: string, allowed: string[]): Record<string, string> 
   };
 }
 
+function withCorrelationHeader(response: Response, correlationId: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", correlationId);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
-    const origin = request.headers.get("Origin") || "";
-    const cors = corsHeaders(origin, allowed);
+    const correlationId = correlationIdFromRequest(request);
+    return runWithRequestContext(correlationId, async () => {
+      const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
+      const origin = request.headers.get("Origin") || "";
+      const cors = corsHeaders(origin, allowed);
 
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    try {
-      const methodRoutes = routes[path];
-      const handler = methodRoutes?.[request.method];
-      if (handler) {
-        return handler(request, env, url, cors);
+      if (request.method === "OPTIONS") {
+        return withCorrelationHeader(new Response(null, { status: 204, headers: cors }), correlationId);
       }
 
-      const taskIdMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
-      if (taskIdMatch) {
-        if (request.method === "PATCH") {
-          return handleTaskPatch(request, env, url, cors, taskIdMatch[1]);
+      const url = new URL(request.url);
+      const path = url.pathname;
+
+      try {
+        const methodRoutes = routes[path];
+        const handler = methodRoutes?.[request.method];
+        if (handler) {
+          return withCorrelationHeader(await handler(request, env, url, cors), correlationId);
         }
-        if (request.method === "DELETE") {
-          return handleTaskDelete(request, env, url, cors, taskIdMatch[1]);
+
+        const taskIdMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
+        if (taskIdMatch) {
+          if (request.method === "PATCH") {
+            return withCorrelationHeader(
+              await handleTaskPatch(request, env, url, cors, taskIdMatch[1]),
+              correlationId,
+            );
+          }
+          if (request.method === "DELETE") {
+            return withCorrelationHeader(
+              await handleTaskDelete(request, env, url, cors, taskIdMatch[1]),
+              correlationId,
+            );
+          }
         }
+
+        const domainRead = await dispatchDomainReadById(request, env, url, cors, path);
+        if (domainRead) return withCorrelationHeader(domainRead, correlationId);
+
+        const readModel = await dispatchReadModelsById(request, env, url, cors, path);
+        if (readModel) return withCorrelationHeader(readModel, correlationId);
+
+        return withCorrelationHeader(json({ error: "Not found." }, 404, cors), correlationId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unexpected error.";
+        const status =
+          (err as { status?: number }).status ??
+          (/sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500);
+        logError("request failed", { path, status, error: message });
+        return withCorrelationHeader(json({ error: message }, status, cors), correlationId);
       }
-
-      const domainRead = await dispatchDomainReadById(request, env, url, cors, path);
-      if (domainRead) return domainRead;
-
-      const readModel = await dispatchReadModelsById(request, env, url, cors, path);
-      if (readModel) return readModel;
-
-      return json({ error: "Not found." }, 404, cors);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error.";
-      const status =
-        (err as { status?: number }).status ??
-        (/sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500);
-      return json({ error: message }, status, cors);
-    }
+    });
   },
 };

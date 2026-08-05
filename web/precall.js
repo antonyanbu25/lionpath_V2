@@ -187,6 +187,25 @@ export function getActivePrepContext() {
 }
 
 let deps = {};
+let prepAbortController = null;
+let prepGenerationId = 0;
+
+function beginPrepGeneration() {
+  prepAbortController?.abort();
+  prepAbortController = new AbortController();
+  prepGenerationId += 1;
+  return { signal: prepAbortController.signal, gen: prepGenerationId };
+}
+
+function abortPrepGeneration() {
+  prepAbortController?.abort();
+  prepAbortController = null;
+}
+
+function isPrepGenerationStale(gen) {
+  return gen !== prepGenerationId;
+}
+
 let state = {
   view: "form",
   tab: "discovery",
@@ -421,6 +440,7 @@ function clearFwInput(id) {
 /** Reset pre-call form to empty state (New brief). */
 export function resetPrecallForm() {
   if (state.loading) return;
+  abortPrepGeneration();
   state.view = "form";
   state.tab = "discovery";
   state.currentPrep = null;
@@ -918,12 +938,17 @@ async function buildPayload() {
   };
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, opts = {}) {
   const headers = { "content-type": "application/json" };
   if (deps.authEnabled && deps.getToken) {
     headers.Authorization = `Bearer ${await deps.getToken()}`;
   }
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
   const raw = await res.text();
   let data;
   try {
@@ -1030,7 +1055,7 @@ export function shouldRunProspectEnrich(payload, pdfCount = 0) {
   );
 }
 
-async function hydrateKaiaSummary(payload, statusEl) {
+async function hydrateKaiaSummary(payload, statusEl, signal) {
   const url = payload.kaiaMeetingUrl?.trim();
   if (!url || payload.kaiaSummary?.trim()) return false;
   const endpoint = deps.kaiaShareUrl || deps.fetchKaiaUrl;
@@ -1038,8 +1063,8 @@ async function hydrateKaiaSummary(payload, statusEl) {
 
   try {
     const data = deps.kaiaShareUrl
-      ? await postJson(deps.kaiaShareUrl, { url })
-      : await postJson(deps.fetchKaiaUrl, { kaiaUrl: url });
+      ? await postJson(deps.kaiaShareUrl, { url }, { signal })
+      : await postJson(deps.fetchKaiaUrl, { kaiaUrl: url }, { signal });
     const summary = String(data.summary || "").trim();
     if (!summary) return false;
     payload.kaiaContent = data.bundle || {
@@ -1144,6 +1169,7 @@ function formatResearchStepDetail(steps, factCount, sourceCount, cacheHit, softC
 
 async function runPrepEndToEnd(payload, meta, emails) {
   const status = $("prep-status");
+  const { signal, gen } = beginPrepGeneration();
   const pdfs = payload.linkedinProfileExports || [];
   const prepT0 = Date.now();
 
@@ -1207,7 +1233,8 @@ async function runPrepEndToEnd(payload, meta, emails) {
 
     if (cacheHit) progress.setDetail("Using cached research");
     logPrepDebug("research-api-call", { cacheMode: meta.cacheMode, factCount: cachedFactCount });
-    const data = await postJson(deps.researchUrl, researchPayload);
+    const data = await postJson(deps.researchUrl, researchPayload, { signal });
+    if (isPrepGenerationStale(gen)) return null;
     logPrepDebug("research-api-done", {
       ms: Date.now() - tResearch,
       cacheHit: data.researchMeta?.cacheHit ?? cacheHit,
@@ -1253,20 +1280,35 @@ async function runPrepEndToEnd(payload, meta, emails) {
   };
 
   // Kaia must finish before research (payload), but enrich can overlap Kaia fetches.
-  const kaiaPromise = willFetchKaia ? hydrateKaiaSummary(payload, status) : Promise.resolve(false);
+  const kaiaPromise = willFetchKaia ? hydrateKaiaSummary(payload, status, signal) : Promise.resolve(false);
   const enrichPromise = runEnrichStep();
 
   await kaiaPromise;
+  if (isPrepGenerationStale(gen)) {
+    clearLoading();
+    progress.hide();
+    return;
+  }
   if (willFetchKaia) progress.set("kaia", payload.kaiaSummary?.trim() ? "done" : "skipped");
   let kaiaFetched = !!payload.kaiaSummary?.trim();
 
   let research;
   try {
     const [researchResult, enrichProfiles] = await Promise.all([runResearchStep(), enrichPromise]);
+    if (isPrepGenerationStale(gen) || researchResult == null) {
+      clearLoading();
+      progress.hide();
+      return;
+    }
     research = researchResult;
     confirmedProspectProfiles = enrichProfiles;
     state.contactEnrichmentsByEmail = contactEnrichmentsByEmail;
   } catch (err) {
+    if (err?.name === "AbortError" || isPrepGenerationStale(gen)) {
+      clearLoading();
+      progress.hide();
+      return;
+    }
     progress.set("research", "error");
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {
@@ -1313,11 +1355,20 @@ async function runPrepEndToEnd(payload, meta, emails) {
   const tSynth = Date.now();
 
   try {
-    const data = await postJson(deps.synthesizeUrl, {
-      ...enrichPayload,
-      confirmedFacts,
-      researchBundle: research.researchBundle,
-    });
+    const data = await postJson(
+      deps.synthesizeUrl,
+      {
+        ...enrichPayload,
+        confirmedFacts,
+        researchBundle: research.researchBundle,
+      },
+      { signal },
+    );
+    if (isPrepGenerationStale(gen)) {
+      clearLoading();
+      progress.hide();
+      return;
+    }
 
     const enrichedMeta = {
       ...meta,
@@ -1379,6 +1430,10 @@ async function runPrepEndToEnd(payload, meta, emails) {
     });
     window.setTimeout(() => showInlineStatus(status, { open: false }), 4000);
   } catch (err) {
+    if (err?.name === "AbortError" || isPrepGenerationStale(gen)) {
+      progress.hide();
+      return;
+    }
     progress.set("synthesize", "error");
     const msg = err.message || "Something went wrong.";
     showInlineStatus(status, {

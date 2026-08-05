@@ -75,3 +75,25 @@ export function showPipelineProgress(hostId, steps, opts) {
 export function hidePipelineProgress(hostId) {
   show($(hostId), false);
 }
+
+/**
+ * Single-line stage progress (post-call progressive fill).
+ * Keeps one persistent affordance without replacing rendered content.
+ * @param {string} hostId
+ * @param {string} message
+ * @param {{ title?: string }} [opts]
+ */
+export function showInlineStageProgress(hostId, message, opts = {}) {
+  const host = $(hostId);
+  if (!host) return;
+  const title = opts.title || "Call analysis";
+  host.innerHTML = `
+    <div class="postcall-inline-progress" role="status" aria-live="polite" aria-busy="true">
+      <span class="postcall-inline-progress-dot" aria-hidden="true"></span>
+      <div class="postcall-inline-progress-copy">
+        <span class="prep-form-eyebrow">${esc(title)}</span>
+        <span class="postcall-inline-progress-label">${esc(message || "Working…")}</span>
+      </div>
+    </div>`;
+  show(host, true);
+}

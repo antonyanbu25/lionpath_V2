@@ -13,7 +13,7 @@ import {
 } from "../zoomShare";
 import { ffmpegAvailable, isNodeRuntime, videoPassReady } from "./capability";
 import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickVisionKeyframes } from "./facts";
-import { cleanupStaging, sampleStrategicWindowsFromUrl } from "./ffmpeg";
+import { cleanupJobDir, sampleStrategicWindowsFromUrl } from "./ffmpeg";
 import { mergeAttendeeCurveTalk } from "./sampling";
 import { inferVideoFactsFromTranscript } from "./transcript-infer";
 import { analyzeKeyframes } from "./vision";
@@ -258,8 +258,9 @@ async function runFfmpegPass(
 ): Promise<VideoPassResult> {
   const callId = input.callId.trim();
   const durationSec = media.durationSec ?? input.durationSec ?? null;
+  let workDir = "";
   try {
-    const { samples } = await sampleStrategicWindowsFromUrl({
+    const sampled = await sampleStrategicWindowsFromUrl({
       callId,
       mediaUrl: stream.url,
       referer: media.referer,
@@ -268,9 +269,11 @@ async function runFfmpegPass(
       durationSec: durationSec ?? undefined,
       sampleIntervalS: DEFAULT_SAMPLE_INTERVAL_S,
     });
+    workDir = sampled.workDir;
+    const { samples } = sampled;
 
     if (!samples.length) {
-      await cleanupStaging(callId);
+      await cleanupJobDir(workDir);
       return {
         ok: false,
         videoFacts: buildVideoFactsDraft({
@@ -315,7 +318,7 @@ async function runFfmpegPass(
       }
     }
 
-    await cleanupStaging(callId);
+    await cleanupJobDir(workDir);
 
     const draft = buildVideoFactsDraft({
       status: "ready",
@@ -343,7 +346,7 @@ async function runFfmpegPass(
       },
     };
   } catch (err) {
-    await cleanupStaging(callId).catch(() => {});
+    if (workDir) await cleanupJobDir(workDir).catch(() => {});
     const msg = err instanceof Error ? err.message : "Pass 2 ffmpeg failed";
     return {
       ok: false,

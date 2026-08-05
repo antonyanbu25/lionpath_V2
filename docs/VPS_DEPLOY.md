@@ -197,6 +197,8 @@ Cloud Run equivalent (dormant until migration): **[deploy/cloudrun/cloud-schedul
 
 ```bash
 # API health / config
+curl -s https://portalapi.benjaminsquare.com/api/health
+curl -s https://portalapi.benjaminsquare.com/api/health/live
 curl -s https://portalapi.benjaminsquare.com/api/config | head
 
 # Web UI

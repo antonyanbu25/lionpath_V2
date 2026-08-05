@@ -4,12 +4,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_SAMPLE_INTERVAL_S, type SampleFrame } from "./facts";
 import { ffmpegBinary, videoDataRoot } from "./capability";
+import { withFfmpegSlot } from "./ffmpeg-semaphore";
 import {
   computeStrategicSampleWindows,
   STRATEGIC_WINDOW_SAMPLE_INTERVAL_S,
@@ -53,6 +54,8 @@ export function formatExecFileError(err: unknown, label = "ffmpeg"): string {
 
 export interface SampleJobInput {
   callId: string;
+  /** Per-invocation suffix — isolates concurrent jobs for the same callId. */
+  jobSuffix?: string;
   mediaUrl: string;
   referer: string;
   /** Bearer header for Zoom API download URLs; absent for signed share-link streams. */
@@ -67,9 +70,20 @@ async function ensureDir(dir: string) {
   await mkdir(dir, { recursive: true });
 }
 
-function jobDir(callId: string): string {
+/** Unique suffix for one Pass 2 ffmpeg job directory. */
+export function createJobSuffix(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+function jobDir(callId: string, jobSuffix: string): string {
   const safe = callId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-  return path.join(videoDataRoot(), safe || "unknown");
+  const suffix = jobSuffix.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 32);
+  return path.join(videoDataRoot(), `${safe || "unknown"}__${suffix}`);
+}
+
+/** Resolve the on-disk work directory for a call + job suffix (tests / sweep). */
+export function resolveJobDir(callId: string, jobSuffix: string): string {
+  return jobDir(callId, jobSuffix);
 }
 
 /** Mean absolute difference between two JPEG buffers (coarse scene delta). */
@@ -84,17 +98,28 @@ export function jpegSceneDelta(a: Buffer, b: Buffer): number {
   return sum / (n / 17);
 }
 
+async function runFfmpeg(bin: string, args: string[], timeoutMs: number): Promise<void> {
+  await withFfmpegSlot(() =>
+    execFileAsync(bin, args, {
+      timeout: timeoutMs,
+      maxBuffer: 2 * 1024 * 1024,
+    }),
+  );
+}
+
 /**
  * Extract one JPEG every `sampleIntervalS` seconds via ffmpeg HTTP input.
- * Returns sample metadata; frames land under /data/video/{callId}/frames/.
+ * Returns sample metadata; frames land under /data/video/{callId}__{suffix}/frames/.
  */
 export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
   samples: SampleFrame[];
   workDir: string;
   framesDir: string;
+  jobSuffix: string;
 }> {
   const interval = input.sampleIntervalS ?? DEFAULT_SAMPLE_INTERVAL_S;
-  const workDir = jobDir(input.callId);
+  const jobSuffix = input.jobSuffix?.trim() || createJobSuffix();
+  const workDir = jobDir(input.callId, jobSuffix);
   const framesDir = path.join(workDir, "frames");
   const stagingDir = path.join(workDir, "staging");
   await rm(framesDir, { recursive: true, force: true }).catch(() => {});
@@ -145,10 +170,7 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
 
   try {
     const bin = await ffmpegBinary();
-    await execFileAsync(bin, args, {
-      timeout: 15 * 60 * 1000,
-      maxBuffer: 2 * 1024 * 1024,
-    });
+    await runFfmpeg(bin, args, 15 * 60 * 1000);
   } catch (err) {
     throw new Error(formatExecFileError(err, "ffmpeg sample"));
   }
@@ -171,7 +193,7 @@ export async function sampleFramesFromUrl(input: SampleJobInput): Promise<{
     });
   }
 
-  return { samples, workDir, framesDir };
+  return { samples, workDir, framesDir, jobSuffix };
 }
 
 /**
@@ -182,11 +204,13 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
   samples: SampleFrame[];
   workDir: string;
   framesDir: string;
+  jobSuffix: string;
 }> {
   const durationSec = Math.max(60, Math.round(input.durationSec ?? 0));
   const interval = STRATEGIC_WINDOW_SAMPLE_INTERVAL_S;
   const windows = computeStrategicSampleWindows(durationSec);
-  const workDir = jobDir(input.callId);
+  const jobSuffix = input.jobSuffix?.trim() || createJobSuffix();
+  const workDir = jobDir(input.callId, jobSuffix);
   const framesDir = path.join(workDir, "frames");
   const stagingDir = path.join(workDir, "staging");
   await rm(framesDir, { recursive: true, force: true }).catch(() => {});
@@ -241,10 +265,7 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
       outPattern,
     ];
     try {
-      await execFileAsync(bin, args, {
-        timeout: 5 * 60 * 1000,
-        maxBuffer: 2 * 1024 * 1024,
-      });
+      await runFfmpeg(bin, args, 5 * 60 * 1000);
     } catch (err) {
       console.warn(
         `[video/ffmpeg] window ${win.label} failed: ${formatExecFileError(err, "ffmpeg").slice(0, 400)}`,
@@ -288,17 +309,25 @@ export async function sampleStrategicWindowsFromUrl(input: SampleJobInput): Prom
   if (!samples.length) {
     console.warn("[video/ffmpeg] opening fallback empty; trying capped linear sample (90s max)");
     const capSec = Math.min(90, durationSec);
-    const linear = { ...input, durationSec: capSec, sampleIntervalS: interval };
+    const linear = { ...input, jobSuffix, durationSec: capSec, sampleIntervalS: interval };
     const linearOut = await sampleFramesFromUrl(linear);
     return linearOut;
   }
 
-  return { samples, workDir, framesDir };
+  return { samples, workDir, framesDir, jobSuffix };
 }
 
-export async function cleanupStaging(callId: string): Promise<void> {
-  const staging = path.join(jobDir(callId), "staging");
-  await rm(staging, { recursive: true, force: true }).catch(() => {});
+/** Remove an entire Pass 2 job directory (frames + staging). */
+export async function cleanupJobDir(workDir: string): Promise<void> {
+  const trimmed = workDir?.trim();
+  if (!trimmed) return;
+  const root = path.resolve(videoDataRoot());
+  const target = path.resolve(trimmed);
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    console.warn("[video/ffmpeg] cleanupJobDir refused path outside video root:", workDir);
+    return;
+  }
+  await rm(target, { recursive: true, force: true }).catch(() => {});
 }
 
 /** Stable hash for tests / cache keys — not used for security. */

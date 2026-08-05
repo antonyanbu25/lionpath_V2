@@ -11,6 +11,7 @@ import type { CostControlEnv } from "../cost-control-config";
 import type { FirestoreEnv } from "../data/firestore-admin";
 import { recordLlmUsage } from "../data/llm-usage";
 import { reserveDailyTokenBudget, totalTokens } from "../data/token-budget";
+import { logInfo } from "../logger";
 import type { LlmProvider, LlmRequest, LlmResult, ProviderEnv } from "./types";
 import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
@@ -40,6 +41,7 @@ function wrapWithUsageRecording(provider: LlmProvider, fsEnv?: ProviderFsEnv): L
               callId: req.callId,
               passName: req.passName,
               cacheHit: req.cacheHit,
+              retryCount: result.usage.retryCount ?? 0,
               ...result.usage,
             });
           }
@@ -67,13 +69,14 @@ export type { PassModelConfig, PassTier, PrepPassName } from "./pass-models";
 
 /** Log resolved models once at worker startup (Cloud Run / VPS logs). */
 export function logResolvedModels(env: ProviderEnv): void {
-  console.warn(
-    "[llm] resolved models — " +
-      `MODEL=${resolveDefaultModel(env)} ` +
-      `RESEARCH_MODEL=${resolveResearchModel(env)} ` +
-      `SYNTHESIZE_MODEL=${resolveSynthesizeModel(env)} ` +
-      `POSTCALL_MODEL=${resolvePostCallModel(env)}`,
-  );
+  const visionModel = resolvePostCallModel(env);
+  logInfo("[llm] resolved models", {
+    MODEL: resolveDefaultModel(env),
+    RESEARCH_MODEL: resolveResearchModel(env),
+    SYNTHESIZE_MODEL: resolveSynthesizeModel(env),
+    POSTCALL_MODEL: resolvePostCallModel(env),
+    VISION_MODEL: visionModel,
+  });
 }
 
 export function getProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {

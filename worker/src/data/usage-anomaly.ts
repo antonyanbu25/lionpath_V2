@@ -11,6 +11,7 @@ import {
   summariseAnomalyMultiplier,
   type CostControlEnv,
 } from "../cost-control-config";
+import { logWarn } from "../logger";
 import { firestoreAdminReady, getDb, getDoc, queryBy, setDoc, type FirestoreEnv } from "./firestore-admin";
 import type { LlmUsageRecord } from "./llm-usage";
 
@@ -107,7 +108,9 @@ async function getSummariseBaseline(env: AnomalyEnv): Promise<BaselineCache> {
     },
     env,
   ).catch((err) => {
-    console.warn("[usage-anomaly] baseline persist failed:", err instanceof Error ? err.message : err);
+    logWarn("[usage-anomaly] baseline persist failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   return computed;
@@ -145,7 +148,9 @@ async function postCostAlertWebhook(env: AnomalyEnv, payload: Record<string, unk
       body: JSON.stringify(payload),
     });
   } catch (err) {
-    console.warn("[usage-anomaly] webhook failed:", err instanceof Error ? err.message : err);
+    logWarn("[usage-anomaly] webhook failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -177,10 +182,12 @@ async function emitSummariseAnomalyAlert(
     alertedAt: Date.now(),
   };
 
-  console.warn(
-    `[cost-alert] Pass 7 summarise anomaly: callId=${params.callId} ` +
-      `tokens=${params.tokensTotal} threshold=${params.threshold} p95=${params.p95Baseline}`,
-  );
+  logWarn("[cost-alert] Pass 7 summarise anomaly", {
+    callId: params.callId,
+    tokensTotal: params.tokensTotal,
+    threshold: params.threshold,
+    p95Baseline: params.p95Baseline,
+  });
 
   await setDoc(ALERT_COLLECTION, alertId, { id: alertId, ...payload }, env);
   void postCostAlertWebhook(env, payload);
@@ -221,7 +228,9 @@ export function checkPass7UsageAnomaly(
         sampleCount: baseline.sampleCount,
       });
     } catch (err) {
-      console.warn("[usage-anomaly] check failed:", err instanceof Error ? err.message : err);
+      logWarn("[usage-anomaly] check failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   })();
 }

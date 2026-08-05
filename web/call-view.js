@@ -13,7 +13,7 @@ import { sessionToUser } from "./domain/rbac.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { formatTypeComposite, isEligibleForAggregate, typeComposite, scoreCall } from "./quality-score.js";
 import { RUBRIC_VERSION, profileFor, effectiveRubricVersion } from "./rubric-profiles.js";
-import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js?v=2.1.14";
+import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
 import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
 import { assembleMomEmailDraft, greetingNameFromDraft } from "./shared/mom-email-draft.js";
 import { renderQipRadar } from "./qip-radar.js";
@@ -425,6 +425,141 @@ function resolveCategoryScores(scorecard, callType) {
 function resolvePass6(record) {
   const resultBlob = record?.result || {};
   return record?.pass6 || resultBlob.pass6 || resultBlob.result?.pass6 || null;
+}
+
+function resolveRecordHydration(record) {
+  const h = record?.result?.hydration || {};
+  return {
+    pending: Array.isArray(h.pending) ? h.pending : [],
+    errors: h.errors && typeof h.errors === "object" ? h.errors : {},
+    progressMessage: typeof h.progressMessage === "string" ? h.progressMessage : "",
+  };
+}
+
+function renderCallInlineProgress(message) {
+  if (!message) return "";
+  return `<div class="call-record-inline-progress postcall-inline-progress" role="status" aria-live="polite" aria-busy="true">
+    <span class="postcall-inline-progress-dot" aria-hidden="true"></span>
+    <span class="postcall-inline-progress-label">${esc(message)}</span>
+  </div>`;
+}
+
+function renderCallSectionSkeleton(label, minHeight = 120) {
+  const rectH = Math.max(64, minHeight - 52);
+  return `<div class="call-section-skeleton" style="min-height:${minHeight}px" aria-hidden="true" aria-label="${esc(label)} loading">
+    <fw-skeleton variant="text" width="28%" effect="sheen"></fw-skeleton>
+    <fw-skeleton variant="text" count="2" effect="sheen"></fw-skeleton>
+    <fw-skeleton variant="rect" height="${rectH}px" effect="sheen"></fw-skeleton>
+  </div>`;
+}
+
+function renderCallSectionRetry(section, message, recordId) {
+  return `<div class="call-section-retry card-wire" data-retry-section="${esc(section)}" data-record-id="${esc(recordId)}">
+    <fw-inline-message type="warning" open closable="false">${esc(message)}</fw-inline-message>
+    <button type="button" class="btn-wire call-section-retry-btn" data-action="retry-hydration" data-retry-section="${esc(section)}">Retry</button>
+  </div>`;
+}
+
+function buildLocalCallBundle(session, record) {
+  const email = session.email;
+  const resultBlob = record.result || {};
+  const pass6 = resolvePass6(record);
+  const summarise = resultBlob.summarise || {};
+  const analysis = record.analysis || resultBlob.analysis || {};
+  const analysisMeta = resolveAnalysisMeta(record);
+  const callType = resolveCallType(record);
+  let scorecard = resolveScorecard(record);
+  if (scorecard?.lines?.length) {
+    scorecard = normalizeQipScorecard(scorecard, analysisMeta);
+  } else if (scorecard && (scorecard.categoryScores || typeof scorecard.overall === "number")) {
+    scorecard = normalizeQipScorecard({ ...scorecard, lines: scorecard.lines || [] }, analysisMeta);
+  }
+  const qipScore = resolveQipOverallScore(scorecard, callType, analysisMeta);
+  const momentumStatus = analysis?.momentum?.status || "-";
+  const sentiment = resolveCallSentiment(analysis);
+  const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
+  const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
+  const med = resultBlob.qualification
+    ? rollupMeddpiccFromHistoryRecords([{ ...record, result: { ...resultBlob, qualification: resultBlob.qualification } }])
+    : null;
+  const meddpiccScore = med ? computeMeddpiccScore(med) : null;
+  const meddpiccFilled = countMeddpiccFilled(med);
+  const arrPoint =
+    resultBlob.arrCompute?.arrPoint ?? resultBlob.arrCompute?.arrEstimatePoint ?? null;
+  const arrLabel =
+    arrPoint != null && Number.isFinite(Number(arrPoint))
+      ? `$${Math.round(Number(arrPoint)).toLocaleString()}`
+      : null;
+  const identities = resolveConfirmedIdentities(record);
+  const attendees = analysis?.callHeader?.attendees || [];
+  const draftVf = resultBlob.videoFacts;
+  const draftTimeline = resultBlob.timeline;
+  const productGaps = (pass6?.productGaps || []).map(normalizeProductSignalRow).filter(Boolean);
+  const whatWorks = (pass6?.whatWorks || []).map(normalizeProductSignalRow).filter(Boolean);
+  const deltaInfo = qipScore != null ? qipDeltaForType(email, callType, qipScore, record.id) : null;
+  const callNotes = (() => {
+    const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
+    if (fromAnalysis) return fromAnalysis;
+    const fromSummarise = summarise.callNotes;
+    return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
+  })();
+
+  return {
+    record,
+    deal: null,
+    dealId: resolveDealId(record),
+    account: null,
+    sequence: null,
+    callType,
+    callTypeLabel: CALL_TYPE_LABELS[callType] || callType,
+    scorecard,
+    analysisMeta,
+    qipLabel:
+      qipScore != null
+        ? formatTypeComposite({
+            score: qipScore,
+            callType: scorecard?.callType || callType,
+            rubricVersion: scorecard?.rubricVersion || analysisMeta.rubricVersion || RUBRIC_VERSION,
+          })
+        : null,
+    qipScore,
+    qipDeltaHtml: deltaInfo ? formatDelta(deltaInfo.delta) : "",
+    qipDeltaPill: deltaInfo ? formatDeltaPill(deltaInfo.delta) : "",
+    meddpiccScore,
+    meddpiccFilled,
+    meddpicc: med,
+    momentumStatus,
+    sentiment,
+    confidencePct,
+    arrLabel,
+    tensionLine: buildVerdictTension({
+      qipScore,
+      qipDelta: deltaInfo?.delta,
+      meddpiccScore,
+      momentumStatus,
+      confidencePct,
+    }),
+    hasVideo: resolveVideoAvailable(record),
+    kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
+    callNotes,
+    identities,
+    attendees,
+    timeline: {
+      facts: draftVf || null,
+      segments: draftTimeline?.segments || draftVf?.segments || [],
+      markers: draftTimeline?.markers || [],
+    },
+    videoFacts: draftVf || null,
+    productSignal: { productGaps, whatWorks, clusterLabels: {} },
+    technicalCommit: resultBlob.technicalCommit || null,
+    tcDeltas: resultBlob.tcDeltas || [],
+    meddpiccDeltas: [],
+    objections: summarise.objections || [],
+    followUps: summarise.followUps || [],
+    momDraft: summarise.momDraft || resultBlob.momDraft || null,
+    dealSignal: null,
+    stakeholderRows: buildStakeholderRows(identities, attendees, draftVf),
+  };
 }
 
 function formatQipScoreValue(score) {
@@ -1109,8 +1244,11 @@ function resolveDealDisplayTitle(deal, account) {
   return titleCaseDisplayName(rawTitle) || rawTitle;
 }
 
-function renderDealContextLine(ctx) {
+function renderDealContextLine(ctx, opts = {}) {
   const { deal, account, momentumStatus, arrLabel, technicalCommit } = ctx;
+  const pending = opts.pending instanceof Set ? opts.pending : new Set(Array.isArray(opts.pending) ? opts.pending : []);
+  const errors = opts.errors || {};
+  const recordId = opts.recordId || "";
   const pairs = [];
 
   if (deal?.id || deal?.title || account?.name) {
@@ -1127,7 +1265,17 @@ function renderDealContextLine(ctx) {
   const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : null;
   if (stage) pairs.push({ label: "Stage", value: `<span class="pill">${esc(stage)}</span>` });
 
-  if (arrLabel) pairs.push({ label: "ARR", value: `<span class="num">${esc(arrLabel)}</span>` });
+  if (errors.arr && recordId) {
+    return renderCallSectionRetry("arr", errors.arr, recordId);
+  }
+  if (pending.has("arr") && !arrLabel) {
+    pairs.push({
+      label: "ARR",
+      value: `<span class="call-deal-context-skeleton">${renderCallSectionSkeleton("ARR", 40)}</span>`,
+    });
+  } else if (arrLabel) {
+    pairs.push({ label: "ARR", value: `<span class="num">${esc(arrLabel)}</span>` });
+  }
 
   const tcStatus = technicalCommit?.status;
   if (tcStatus) {
@@ -1187,7 +1335,7 @@ function sentimentColor(label) {
   return CHART_PALETTE.text;
 }
 
-function renderPostcallKpiStack(ctx) {
+function renderPostcallKpiStack(ctx, pending = null) {
   const {
     qipScore,
     meddpiccScore,
@@ -1198,16 +1346,31 @@ function renderPostcallKpiStack(ctx) {
     callType,
     analysisMeta,
   } = ctx;
+  const pendingSet = pending instanceof Set ? pending : new Set(Array.isArray(pending) ? pending : []);
   const qipNum = formatQipScoreValue(qipScore);
   const qipPct = qipMeterPct(qipScore);
-  const medNum = meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
-  const medSub =
-    meddpiccFilled != null
+  const medPending = pendingSet.has("qualify");
+  const medNum = medPending ? null : meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
+  const medSub = medPending
+    ? "Qualifying deal…"
+    : meddpiccFilled != null
       ? `${esc(String(meddpiccFilled))} of ${esc(String(MEDDPICC_FIELD_KEYS.length))} surfaced`
       : "-";
   const sentimentLabel = sentiment?.label || "Neutral";
   const sentimentSub = sentiment?.sub ? esc(sentiment.sub) : "";
   const confLabel = confidenceBandLabel(confidencePct);
+
+  const medCard = medPending
+    ? `<div class="mcard call-section-skeleton mcard--pending" style="--accent:${CHART_PALETTE.amber};min-height:132px">
+        <span class="lab">Qualification · MEDDPICC</span>
+        ${renderCallSectionSkeleton("Qualification", 96)}
+      </div>`
+    : `<div class="mcard" style="--accent:${CHART_PALETTE.amber}">
+      <span class="lab">Qualification · MEDDPICC</span>
+      <span class="big" style="--val:${CHART_PALETTE.amber}">${medNum}<span class="u"> / 100</span></span>
+      ${meddpiccPipsHtml(meddpiccFilled)}
+      <span class="subline">${medSub}</span>
+    </div>`;
 
   return `<div class="metrics" aria-label="Call KPIs">
     <div class="mcard" style="--accent:${CHART_PALETTE.green}">
@@ -1215,12 +1378,7 @@ function renderPostcallKpiStack(ctx) {
       <span class="big" style="--val:${CHART_PALETTE.green}">${esc(qipNum)}<span class="u"> / 10</span></span>
       <div class="meter"><span style="width:${qipPct}%;background:${CHART_PALETTE.green}"></span></div>
     </div>
-    <div class="mcard" style="--accent:${CHART_PALETTE.amber}">
-      <span class="lab">Qualification · MEDDPICC</span>
-      <span class="big" style="--val:${CHART_PALETTE.amber}">${medNum}<span class="u"> / 100</span></span>
-      ${meddpiccPipsHtml(meddpiccFilled)}
-      <span class="subline">${medSub}</span>
-    </div>
+    ${medCard}
     <div class="mcard" style="--accent:${sentimentColor(sentimentLabel)}">
       <span class="lab">Overall call sentiment</span>
       <span class="sentiment" style="color:${sentimentColor(sentimentLabel)}">${esc(sentimentLabel)}</span>
@@ -1247,7 +1405,7 @@ function scorecardHasRadarInput(scorecard, categoryScores, qipScore) {
   );
 }
 
-function renderPostcallSummaryRow(bundle, stakeholderRows) {
+function renderPostcallSummaryRow(bundle, stakeholderRows, pending = null) {
   const categoryScores = resolveCategoryScores(bundle.scorecard, bundle.callType);
   const hasRadarData = scorecardHasRadarInput(bundle.scorecard, categoryScores, bundle.qipScore);
   const radarHtml = hasRadarData
@@ -1257,12 +1415,16 @@ function renderPostcallSummaryRow(bundle, stakeholderRows) {
         animate: true,
       })
     : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">QIP category scores appear here once analysis completes.</p></div>`;
+  const tensionHtml = bundle.tensionLine
+    ? `<div class="call-verdict-tension-band">${renderTensionBand(bundle.tensionLine)}</div>`
+    : "";
   return `
     <section class="toprow call-postcall-summary-row">
-      ${renderPostcallKpiStack({ ...bundle, analysisMeta: bundle.analysisMeta })}
+      ${renderPostcallKpiStack({ ...bundle, analysisMeta: bundle.analysisMeta }, pending)}
       ${radarHtml}
       ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows, bundle.analysisMeta)}
-    </section>`;
+    </section>
+    ${tensionHtml}`;
 }
 
 function renderVideoEmptySection(title, detail) {
@@ -1349,12 +1511,16 @@ function renderCallNotesBulletsHtml(notes, maxLines = 3) {
     .join("")}</ul>`;
 }
 
-function renderCallNotesSection(notes) {
+function renderCallNotesSection(notes, opts = {}) {
+  const pending = opts.pending instanceof Set ? opts.pending : new Set(Array.isArray(opts.pending) ? opts.pending : []);
+  const body = pending.has("summarise")
+    ? renderCallSectionSkeleton("Call notes", 88)
+    : renderCallNotesBulletsHtml(notes);
   return `
     <section class="call-section call-notes-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="prep-form-eyebrow">Call notes · what happened in this call</div>
-        <div id="call-notes-read" class="call-notes-read">${renderCallNotesBulletsHtml(notes)}</div>
+        <div id="call-notes-read" class="call-notes-read">${body}</div>
       </div>
     </section>`;
 }
@@ -1845,6 +2011,8 @@ export function renderMinutesTab(record, opts = {}) {
 
 function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
   const coachAudience = tabs.coachAudience || "se";
+  const pending = tabs.pending instanceof Set ? tabs.pending : new Set(Array.isArray(tabs.pending) ? tabs.pending : []);
+  const errors = tabs.errors || {};
   let qipHtml;
   try {
     qipHtml =
@@ -1881,13 +2049,19 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
     {
       id: "signal",
       label: "Product signal",
-      body: `<div class="call-tab-panel-inner call-tab-signal">${renderCallProductSignalTab(record, {
-        productGaps: tabs.productGaps,
-        whatWorks: tabs.whatWorks,
-        clusterLabels: tabs.clusterLabels || {},
-        objections: tabs.objections,
-        timelineMarkers: tabs.timelineMarkers,
-      })}</div>`,
+      body: `<div class="call-tab-panel-inner call-tab-signal">${
+        errors.gaps
+          ? renderCallSectionRetry("gaps", errors.gaps, record.id)
+          : pending.has("gaps") && !(tabs.productGaps || []).length && !(tabs.whatWorks || []).length
+            ? renderCallSectionSkeleton("Product signal", 280)
+            : renderCallProductSignalTab(record, {
+                productGaps: tabs.productGaps,
+                whatWorks: tabs.whatWorks,
+                clusterLabels: tabs.clusterLabels || {},
+                objections: tabs.objections,
+                timelineMarkers: tabs.timelineMarkers,
+              })
+      }</div>`,
     },
     {
       id: "minutes",
@@ -1935,17 +2109,16 @@ async function safeEnrich(label, fn, fallback) {
   }
 }
 
-/** Immediate shell while Firestore enrichments load (overlay handles visible loading UI). */
+/** Immediate full-layout shell while enrichments load. */
 function renderCallLoadingShell(record) {
-  const title = resolveCallTitleFromRecord(record);
-  return `
-    <div class="lifecycle-detail call-record call-record--loading">
-      <div class="call-record-page">
-        <header class="call-record-hero">
-          <h1 class="call-record-title">${esc(title)}</h1>
-        </header>
-      </div>
-    </div>`;
+  const hydration = resolveRecordHydration(record);
+  return renderCallRecordSkeleton(record, {
+    pending: hydration.pending.length
+      ? hydration.pending
+      : ["qualify", "summarise", "commit", "arr", "gaps"],
+    errors: hydration.errors,
+    progressMessage: hydration.progressMessage || "Loading deal context…",
+  });
 }
 
 async function loadCallBundle(session, record) {
@@ -2282,8 +2455,17 @@ function parseDurationMinutesLabel(record, timeline) {
   return null;
 }
 
-function renderCallRecord(bundle) {
+/** Full layout skeleton — same structure as the final call record. */
+function renderCallRecordSkeleton(record, opts = {}) {
+  const bundle = buildLocalCallBundle({ email: "" }, record);
+  return renderCallRecord(bundle, opts);
+}
+
+function renderCallRecord(bundle, opts = {}) {
   const { record, callTypeLabel, account } = bundle;
+  const pending = opts.pending instanceof Set ? opts.pending : new Set(Array.isArray(opts.pending) ? opts.pending : []);
+  const errors = opts.errors || {};
+  const progressMessage = opts.progressMessage || "";
   const analysis = record.analysis || record.result?.analysis || {};
   const title = resolveCallTitleFromRecord(record, { accountName: account?.name });
   const durationLabel = parseDurationMinutesLabel(record, bundle.timeline);
@@ -2307,8 +2489,9 @@ function renderCallRecord(bundle) {
     : "";
 
   return `
-    <div class="lifecycle-detail call-record">
+    <div class="lifecycle-detail call-record${pending.size || progressMessage ? " call-record--progressive" : ""}">
       <div class="call-record-page">
+        ${renderCallInlineProgress(progressMessage)}
         <div class="call-record-title-block">
           <div class="call-record-title-row">
             <div class="call-record-title-main">
@@ -2322,9 +2505,9 @@ function renderCallRecord(bundle) {
           </div>
           ${metaBits.length ? `<p class="call-record-meta-line muted">${metaBits.join(" · ")}</p>` : ""}
         </div>
-        ${renderDealContextLine(bundle)}
-        ${renderCallNotesSection(bundle.callNotes)}
-        ${renderPostcallSummaryRow(bundle, stakeholderRows)}
+        ${renderDealContextLine(bundle, { pending, errors, recordId: record.id })}
+        ${renderCallNotesSection(bundle.callNotes, { pending })}
+        ${renderPostcallSummaryRow(bundle, stakeholderRows, pending)}
         ${renderTimelineSection(bundle.hasVideo, bundle.timeline, durationLabel, {
           kaiaSource: bundle.kaiaSource,
         })}
@@ -2344,6 +2527,8 @@ function renderCallRecord(bundle) {
           deal: bundle.deal,
           coachAudience: bundle.coachAudience || "se",
           company: companyFromCallTitle(title) || account?.name || "",
+          pending,
+          errors,
         })}
       </div>
     </div>`;
@@ -2459,6 +2644,23 @@ function wireCallRecord(container, session, bundle, opts) {
     wireScoreDisputes(container, email);
   }
 
+  container.querySelectorAll('[data-action="retry-hydration"]').forEach((btn) => {
+    const retry = async () => {
+      const section = btn.getAttribute("data-retry-section");
+      if (!section) return;
+      btn.disabled = true;
+      try {
+        const { retryPostcallHydrationSection } = await import("./postcall.js");
+        await retryPostcallHydrationSection(recordId, section);
+      } catch (err) {
+        console.warn("[call-view] hydration retry failed:", err?.message || err);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    btn.addEventListener("click", () => { void retry(); });
+  });
+
   container.querySelectorAll(".score-override-trigger").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -2536,16 +2738,36 @@ export async function renderCallView(container, session, opts = {}) {
       return;
     }
 
-    container.innerHTML = renderCallLoadingShell(resolvedRecord);
-    const bundle = await loadCallBundle(activeSession, resolvedRecord);
-    await hidePrepGenOverlay();
+    const hydration = resolveRecordHydration(resolvedRecord);
     const coachAudience =
       normalizeSeEmail(ownerEmail) !== selfEmail &&
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
+    const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);
+    container.innerHTML = renderCallRecord(
+      { ...localBundle, coachAudience },
+      {
+        pending: hydration.pending,
+        errors: hydration.errors,
+        progressMessage: hydration.progressMessage,
+      },
+    );
+    wireCallRecord(container, activeSession, { ...localBundle, coachAudience }, opts);
+
+    const bundle = await loadCallBundle(activeSession, resolvedRecord);
+    const freshRecord = getPostCallAnalysis(ownerEmail, opts.callId) || resolvedRecord;
+    const freshHydration = resolveRecordHydration(freshRecord);
+    await hidePrepGenOverlay();
     if (opts.shouldApply && !opts.shouldApply()) return;
-    container.innerHTML = renderCallRecord({ ...bundle, coachAudience });
+    container.innerHTML = renderCallRecord(
+      { ...bundle, coachAudience },
+      {
+        pending: freshHydration.pending,
+        errors: freshHydration.errors,
+        progressMessage: freshHydration.progressMessage,
+      },
+    );
     wireCallRecord(container, activeSession, { ...bundle, coachAudience }, opts);
   } catch (err) {
     console.error("[call-view] failed to render call:", err);

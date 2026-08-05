@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { pickVisionKeyframes } from "../src/video/facts.ts";
-import { buildFfmpegHttpHeaders, formatExecFileError } from "../src/video/ffmpeg.ts";
+import { buildFfmpegHttpHeaders, createJobSuffix, formatExecFileError, resolveJobDir } from "../src/video/ffmpeg.ts";
 import {
   aggregateParticipantCamera,
   buildAttendeeCurveFromAggregated,
@@ -15,6 +15,15 @@ import {
   parseVisionCameraResponse,
   seCameraOnPctFromParticipants,
 } from "../src/video/sampling.ts";
+
+function testJobDirSuffixIsolation() {
+  const callId = "call_abc";
+  const a = resolveJobDir(callId, createJobSuffix());
+  const b = resolveJobDir(callId, createJobSuffix());
+  assert.notEqual(a, b, "concurrent jobs for same callId must not share a directory");
+  assert.ok(a.includes("call_abc__"), a);
+  assert.ok(b.includes("call_abc__"), b);
+}
 
 function testBuildFfmpegHttpHeaders() {
   const headers = buildFfmpegHttpHeaders({
@@ -229,6 +238,7 @@ function testParseVisionTopLevelParticipantsObject() {
   assert.equal(curve[1].cameraOn, false);
 }
 
+testJobDirSuffixIsolation();
 testBuildFfmpegHttpHeaders();
 testFormatExecFileErrorIncludesStderr();
 testWindows();

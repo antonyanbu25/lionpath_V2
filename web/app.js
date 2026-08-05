@@ -1,4 +1,3 @@
-import { agentLog, flushAgentLogs } from "./debug-log.js";
 import {
   readFieldValue,
   readFieldValueAsync,
@@ -27,6 +26,11 @@ import {
   sessionUserId,
   withEffectiveUserId,
 } from "./auth.js";
+import {
+  sessionMatchesFirebaseUser,
+  shouldDeferNullAuth,
+  shouldLogoutAfterNullCheck,
+} from "./auth-firebase-guards.js";
 import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
@@ -90,7 +94,7 @@ import {
   hidePostCallLegacyResult,
   isPostCallGenerationBusy,
   scheduleProspectEmailAutofillGuard,
-} from "./postcall.js?v=2.1.14";
+} from "./postcall.js";
 import {
   applyAutoCompanyDomain,
   domainFromFirstProspectEmail,
@@ -444,6 +448,9 @@ function withFetchTimeout(promise, ms = 12000) {
   ]);
 }
 
+/** Max prep docs fetched for dashboard KPI (most-recent first). */
+const PREP_HISTORY_LIMIT = 100;
+
 function buildFetchAllRemotePreps() {
   return async () => {
     if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return [];
@@ -466,7 +473,12 @@ function buildFetchAllRemotePreps() {
     try {
       const snap = await withFetchTimeout(
         fb.getDocs(
-          fb.query(fb.collection(fb.db, "preps"), fb.where("uid", "==", user.uid)),
+          fb.query(
+            fb.collection(fb.db, "preps"),
+            fb.where("uid", "==", user.uid),
+            fb.orderBy("createdAt", "desc"),
+            fb.limit(PREP_HISTORY_LIMIT),
+          ),
         ),
       );
       collect(snap);
@@ -478,7 +490,12 @@ function buildFetchAllRemotePreps() {
       try {
         const snap = await withFetchTimeout(
           fb.getDocs(
-            fb.query(fb.collection(fb.db, "preps"), fb.where("email", "==", email)),
+            fb.query(
+              fb.collection(fb.db, "preps"),
+              fb.where("email", "==", email),
+              fb.orderBy("createdAt", "desc"),
+              fb.limit(PREP_HISTORY_LIMIT),
+            ),
           ),
         );
         collect(snap);
@@ -1651,6 +1668,32 @@ function showLogin() {
 let showAppInFlight = false;
 /** True while Google SSO popup is opening or completing — blocks premature logout. */
 let ssoInFlight = false;
+/** Short grace before clearing session on user===null (token-refresh flicker). */
+const AUTH_NULL_GRACE_MS = 800;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let authNullGraceTimer = null;
+
+function clearAuthNullGrace() {
+  if (authNullGraceTimer) {
+    clearTimeout(authNullGraceTimer);
+    authNullGraceTimer = null;
+  }
+}
+
+function scheduleDefinitiveSignOut() {
+  clearAuthNullGrace();
+  authNullGraceTimer = setTimeout(() => {
+    authNullGraceTimer = null;
+    if (!shouldLogoutAfterNullCheck({
+      liveFirebaseUser: fb?.auth?.currentUser ?? null,
+      ssoInFlight,
+      signingOut,
+    })) {
+      return;
+    }
+    logout();
+  }, AUTH_NULL_GRACE_MS);
+}
 
 function setAppLoadingMessage(message) {
   const el = $("app-loading-message") || $("app-loading")?.querySelector(".app-loading-message");
@@ -1882,12 +1925,6 @@ async function showApp(session, opts = {}) {
       await applyInitialRouteFromHash(currentSession);
     } catch (err) {
       console.warn("[app] initial route failed:", err?.message || err);
-      agentLog({
-        location: "app.js:showApp-route-error",
-        message: "applyInitialRouteFromHash failed",
-        data: { err: err?.message || String(err) },
-        hypothesisId: "A",
-      });
       switchView(isManagerRole(currentSession) ? "manager" : "dashboard");
     }
     await paintAuthenticatedShell();
@@ -1921,22 +1958,10 @@ async function showApp(session, opts = {}) {
     void hydrateSessionAfterShow(session, sessionStillValid);
   } catch (err) {
     console.warn("[app] showApp failed:", err?.message || err);
-    agentLog({
-      location: "app.js:showApp-error",
-      message: "showApp threw",
-      data: { err: err?.message || String(err) },
-      hypothesisId: "D",
-    });
   } finally {
     show($("app-loading"), false);
     const hasSession = !!getSession()?.email;
     const hasFirebaseUser = !!(fb?.auth?.currentUser);
-    agentLog({
-      location: "app.js:showApp-finally",
-      message: "showApp finally",
-      data: { hasSession, hasFirebaseUser, ssoInFlight, signingOut },
-      hypothesisId: "D",
-    });
     if (!hasSession && !hasFirebaseUser && !ssoInFlight && !signingOut) {
       show($("login-view"), true);
       show($("app-shell"), false);
@@ -1953,10 +1978,8 @@ async function showApp(session, opts = {}) {
 function handleSession(session, opts = {}) {
   if (session) {
     ssoInFlight = false;
-    agentLog({ location: "app.js:handleSession", message: "Session established", data: { restored: !!opts.restored, freshLogin: !!opts.freshLogin }, hypothesisId: "D" });
     void showApp(session, opts);
   } else {
-    agentLog({ location: "app.js:handleSession-null", message: "Session cleared → showLogin", hypothesisId: "D" });
     showLogin();
   }
 }
@@ -2168,27 +2191,14 @@ async function runFirebaseSignIn() {
   show($("signin-error"), false);
   setButtonLoading(btn, true);
   showAuthWaiting("Preparing Google sign-in…");
-  agentLog({ location: "app.js:sso-click", message: "SSO click started", data: { sdkReady: !!firebaseSdkReady }, hypothesisId: "F" });
   try {
     await ensureFirebaseSdk();
     showAuthWaiting("Opening Google sign-in…");
     await fb.signInWithPopup(firebaseAuth, firebaseProvider);
     showAuthWaiting("Completing sign-in…");
     const popupUser = fb.auth.currentUser;
-    agentLog({
-      location: "app.js:sso-popup-ok",
-      message: "SSO popup completed",
-      data: { hasUser: !!popupUser, hasSession: !!getSession()?.email },
-      hypothesisId: "E",
-    });
     if (popupUser) {
       await completeFirebaseLogin(popupUser, { freshLogin: !getSession()?.email });
-      agentLog({
-        location: "app.js:sso-completeFirebaseLogin",
-        message: "completeFirebaseLogin finished after popup",
-        data: { hasSession: !!getSession()?.email, showAppInFlight },
-        hypothesisId: "D",
-      });
     }
   } catch (err) {
     const e = $("signin-error");
@@ -2199,7 +2209,6 @@ async function runFirebaseSignIn() {
     show($("app-loading"), false);
     show($("login-view"), true);
     setAppLoadingMessage("Loading your workspace…");
-    agentLog({ location: "app.js:sso-error", message: "SSO popup failed", data: { errName: err?.name || "", code: err?.code || "" }, hypothesisId: "E" });
   } finally {
     setButtonLoading(btn, false);
     ssoInFlight = false;
@@ -2231,21 +2240,19 @@ async function initFirebase() {
     const allowed =
       user && (!ALLOWED_EMAIL_DOMAIN || (user.email || "").endsWith(`@${ALLOWED_EMAIL_DOMAIN}`));
     if (allowed) {
+      clearAuthNullGrace();
       if (!signingOut) void completeFirebaseLogin(user);
       return;
     }
     if (user) {
+      clearAuthNullGrace();
       fb.signOut(auth);
       logout();
       return;
     }
-    // user === null. Before the first resolution this only means "not restored yet".
-    if (!authResolved) return;
-    if (ssoInFlight) return;
-    const cached = getSession();
-    if (cached?.email) return;
-    agentLog({ location: "app.js:auth-null-logout", message: "onAuthStateChanged null → logout", data: { authResolved, ssoInFlight, hasCached: !!cached?.email }, hypothesisId: "D" });
-    logout();
+    // user === null: unresolved = wait; SSO in flight = defer; resolved + still null = sign out.
+    if (shouldDeferNullAuth({ authResolved, ssoInFlight, signingOut })) return;
+    scheduleDefinitiveSignOut();
   });
 
   onSessionChange(handleSession);
@@ -2253,31 +2260,19 @@ async function initFirebase() {
   firebaseBootstrapPromise = authReady.then(async () => {
     const user = fb.auth.currentUser;
     const existing = getSession();
-    agentLog({
-      location: "app.js:firebaseBootstrap",
-      message: "Firebase bootstrap resolved",
-      data: { hasUser: !!user, hasExisting: !!existing?.email, showAppInFlight },
-      hypothesisId: "D",
-    });
     if (user) {
-      if (existing?.email && currentSession?.email === existing.email) return;
-      if (existing) {
-        handleSession(existing, { restored: true });
+      clearAuthNullGrace();
+      if (sessionMatchesFirebaseUser(existing, user)) {
+        if (existing) handleSession(existing, { restored: true });
+        void completeFirebaseLogin(user, { restored: true });
         return;
       }
+      if (existing?.email) logout();
       await completeFirebaseLogin(user, { restored: true });
       return;
     }
-    if (existing?.email) {
-      agentLog({
-        location: "app.js:firebaseBootstrap-restore",
-        message: "Restoring persisted session while Firebase auth pending",
-        data: { email: existing.email },
-        hypothesisId: "D",
-      });
-      handleSession(existing, { restored: true });
-      return;
-    }
+    // Auth resolved with no Firebase user — cached session is not valid auth evidence.
+    if (existing?.email) logout();
     if (!showAppInFlight && !ssoInFlight) showLogin();
   });
 }
@@ -2343,9 +2338,6 @@ function startWorkerHealthMonitoring() {
 }
 
 async function boot() {
-  if (typeof window !== "undefined") {
-    window.__flushAgentLogs = flushAgentLogs;
-  }
   restoreAuthenticatedShell();
   const bootSession = getSession();
   if (bootSession?.email) {
@@ -2430,6 +2422,26 @@ async function boot() {
       void renderCallPanel();
     }
   });
+  window.addEventListener("lionpath:call-record-updated", (ev) => {
+    const id = ev.detail?.id;
+    if (selectedCallId === id && currentView === "calls") {
+      void renderCallPanel();
+    }
+  });
+  window.addEventListener("lionpath:call-record-progress", (ev) => {
+    const id = ev.detail?.id;
+    const message = ev.detail?.message;
+    if (selectedCallId !== id || currentView !== "calls") return;
+    const label = document.querySelector(
+      "#call-panel .call-record-inline-progress .postcall-inline-progress-label",
+    );
+    if (label && message != null) {
+      label.textContent = message;
+      label.closest(".call-record-inline-progress")?.toggleAttribute("hidden", !message);
+    } else if (message) {
+      void renderCallPanel();
+    }
+  });
 
   document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea, #postcall-form fw-input, #postcall-form fw-textarea").forEach((el) => fillShadowField(el));
 
@@ -2450,7 +2462,6 @@ async function boot() {
   });
 
   $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
-  $("companyDomain")?.addEventListener("input", onCompanyDomainInput);
 
   document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
     btn.addEventListener("fwClick", () => switchView(btn.dataset.view));
@@ -2497,79 +2508,10 @@ async function boot() {
     } catch (err) {
       console.warn("[postcall] session sync before dual-write failed:", err?.message || err);
     }
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-      body: JSON.stringify({
-        sessionId: "8a85ad",
-        hypothesisId: "H-GATE",
-        location: "app.js:onAnalysisSaved",
-        message: "onAnalysisSaved invoked",
-        data: {
-          recordId: record?.id || null,
-          sessionUserId: sessionUserId(session) || null,
-          sessionTeamId: session?.teamId || null,
-          sessionOrgId: session?.orgId || null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    console.warn(
-      "[DBG-8a85ad]",
-      JSON.stringify({
-        hypothesisId: "H-GATE",
-        recordId: record?.id,
-        sessionTeamId: session?.teamId,
-        sessionOrgId: session?.orgId,
-      }),
-    );
-    // #endregion
     if (sessionUserId(session) && session?.teamId) {
       try {
         linked = await linkPostCallToLifecycle(session, payload, data, record);
-        // #region agent log
-        fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-          body: JSON.stringify({
-            sessionId: "8a85ad",
-            hypothesisId: "H-GATE",
-            location: "app.js:onAnalysisSaved:done",
-            message: "dual-write finished",
-            data: {
-              linked: !!linked,
-              postCallId: linked?.postCall?.id || null,
-              accountId: linked?.accountId || null,
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        console.warn(
-          "[DBG-8a85ad]",
-          JSON.stringify({
-            hypothesisId: "H-GATE",
-            linked: !!linked,
-            postCallId: linked?.postCall?.id,
-          }),
-        );
-        // #endregion
       } catch (err) {
-        // #region agent log
-        fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-          body: JSON.stringify({
-            sessionId: "8a85ad",
-            hypothesisId: "H-ATTACH",
-            location: "app.js:onAnalysisSaved:catch",
-            message: "dual-write threw",
-            data: { error: err?.message || String(err), code: err?.code || null },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        console.warn("[DBG-8a85ad]", JSON.stringify({ hypothesisId: "H-ATTACH", error: err?.message || String(err) }));
-        // #endregion
         console.warn("Lifecycle dual-write (post-call) failed:", err);
       }
     }

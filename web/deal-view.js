@@ -27,7 +27,7 @@ import { filterDealRowsForList } from "./domain/se-access-service.js";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { displayMrrFromArr, formatUsd, mountDealArrModule, renderDealArrModule } from "./deal-arr-module.js";
 import { selectLatestArrLines } from "./domain/arr-service.js";
-import { getWorkerAuthHeaders } from "./postcall.js?v=2.1.14";
+import { getWorkerAuthHeaders } from "./postcall.js";
 import { esc } from "./shared.js";
 import { getDealTractionReadModels } from "./domain/read-models-service.js";
 

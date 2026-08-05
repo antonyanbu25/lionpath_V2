@@ -235,85 +235,9 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const orgId = userDoc?.orgId || session?.orgId || null;
 
   if (!ownerId || !teamId) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-      body: JSON.stringify({
-        sessionId: "8a85ad",
-        hypothesisId: "H-EARLY",
-        location: "dual-write.js:linkPostCallToLifecycle:gate",
-        message: "dual-write skipped early",
-        data: {
-          ownerId: ownerId || null,
-          sessionTeamId: session?.teamId || null,
-          sessionOrgId: session?.orgId || null,
-          userTeamId: userDoc?.teamId || null,
-          effectiveTeamId: teamId,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    console.warn(
-      "[DBG-8a85ad]",
-      JSON.stringify({
-        hypothesisId: "H-EARLY",
-        ownerId,
-        sessionTeamId: session?.teamId,
-        userTeamId: userDoc?.teamId,
-      }),
-    );
-    // #endregion
     return null;
   }
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-    body: JSON.stringify({
-      sessionId: "8a85ad",
-      hypothesisId: "H-ORG-TEAM",
-      location: "dual-write.js:linkPostCallToLifecycle:identity",
-      message: "dual-write identity resolved",
-      data: {
-        ownerId,
-        sessionTeamId: session.teamId || null,
-        sessionOrgId: session.orgId || null,
-        userTeamId: userDoc?.teamId || null,
-        userOrgId: userDoc?.orgId || null,
-        effectiveTeamId: teamId,
-        effectiveOrgId: orgId,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  console.warn(
-    "[DBG-8a85ad]",
-    JSON.stringify({
-      hypothesisId: "H-ORG-TEAM",
-      ownerId,
-      sessionTeamId: session.teamId,
-      userTeamId: userDoc?.teamId,
-      effectiveOrgId: orgId,
-    }),
-  );
-  // #endregion
   if (!orgId) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-      body: JSON.stringify({
-        sessionId: "8a85ad",
-        hypothesisId: "H-ORG-TEAM",
-        location: "dual-write.js:linkPostCallToLifecycle:noOrg",
-        message: "dual-write skipped — orgId missing",
-        data: { ownerId, sessionOrgId: session?.orgId || null, userOrgId: userDoc?.orgId || null },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    console.warn("[DBG-8a85ad]", JSON.stringify({ hypothesisId: "H-ORG-TEAM", reason: "noOrgId", ownerId }));
-    // #endregion
     console.warn("[dual-write] post-call skipped. user orgId missing");
     return null;
   }
@@ -377,36 +301,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   const { contactIds, primaryContactId, contactIdByEmail } = upserted;
   const account = upserted.account || { id: upserted.accountId, name: company };
 
-  // #region agent log
-  console.warn(
-    "[DBG-8a85ad]",
-    JSON.stringify({ hypothesisId: "H-STEP", step: "upsertAccount", accountId: account.id, ownerId }),
-  );
-  // #endregion
-
-  try {
-    await ensureSeTeamForPrepActor(account.id, ownerId);
-    // #region agent log
-    console.warn(
-      "[DBG-8a85ad]",
-      JSON.stringify({ hypothesisId: "H-LIFECYCLE-QUERY", ok: true, accountId: account.id, ownerId }),
-    );
-    // #endregion
-  } catch (err) {
-    // #region agent log
-    console.warn(
-      "[DBG-8a85ad]",
-      JSON.stringify({
-        hypothesisId: "H-LIFECYCLE-QUERY",
-        ok: false,
-        error: err?.message || String(err),
-        accountId: account.id,
-        ownerId,
-      }),
-    );
-    // #endregion
-    throw err;
-  }
+  await ensureSeTeamForPrepActor(account.id, ownerId);
 
   const engagementCtx = getAccountEngagementContext();
   const ctxMatchesAccount = engagementCtx.accountId === account.id;
@@ -434,65 +329,16 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     dealId = dealRecord.id;
   }
 
-  const lifecycle = await (async () => {
-    try {
-      return await getOrCreateLifecycle(ownerId, account.id, teamId, {
-        title: account.name || company,
-        // Resolved above; the deal created here is the only chance to set it.
-        primaryContactId,
-        actorId: ownerId,
-        orgId,
-        dealId,
-        prepType: prepType || undefined,
-        useSessionContext: true,
-      });
-    } catch (err) {
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-        body: JSON.stringify({
-          sessionId: "8a85ad",
-          hypothesisId: "H-DEAL-QUERY",
-          location: "dual-write.js:linkPostCallToLifecycle:getOrCreateLifecycle",
-          message: "getOrCreateLifecycle failed",
-          data: {
-            error: err?.message || String(err),
-            accountId: account.id,
-            ownerId,
-            teamId,
-            orgId,
-            dealId,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      console.warn(
-        "[DBG-8a85ad]",
-        JSON.stringify({
-          hypothesisId: "H-DEAL-QUERY",
-          error: err?.message || String(err),
-          accountId: account.id,
-          ownerId,
-          teamId,
-        }),
-      );
-      // #endregion
-      throw err;
-    }
-  })();
-  // #region agent log
-  console.warn(
-    "[DBG-8a85ad]",
-    JSON.stringify({
-      hypothesisId: "H-STEP",
-      step: "getOrCreateLifecycle",
-      lifecycleId: lifecycle?.id,
-      dealId: lifecycle?.dealId,
-      ownerId,
-    }),
-  );
-  // #endregion
+  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, teamId, {
+    title: account.name || company,
+    // Resolved above; the deal created here is the only chance to set it.
+    primaryContactId,
+    actorId: ownerId,
+    orgId,
+    dealId,
+    prepType: prepType || undefined,
+    useSessionContext: true,
+  });
 
   const identityKey = callIdentityKey(record || { zoomLink: payload?.recordingUrl, analysis, id: record?.id });
   const qip = data?.scorecard;
@@ -559,9 +405,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
   });
 
   /** @type {object|null} */
-  let postCall = null;
-  try {
-    postCall = await attachPostCall(
+  let postCall = await attachPostCall(
     lifecycle.id,
     {
       id: postCallId,
@@ -589,58 +433,6 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     ownerId,
     callSummary,
   );
-  } catch (err) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-      body: JSON.stringify({
-        sessionId: "8a85ad",
-        hypothesisId: "H-ATTACH",
-        location: "dual-write.js:linkPostCallToLifecycle:attachPostCall",
-        message: "attachPostCall failed",
-        data: {
-          error: err?.message || String(err),
-          code: err?.code || null,
-          ownerId,
-          teamId,
-          orgId,
-          postCallId,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    console.warn(
-      "[DBG-8a85ad]",
-      JSON.stringify({
-        hypothesisId: "H-ATTACH",
-        error: err?.message || String(err),
-        ownerId,
-        teamId,
-        orgId,
-      }),
-    );
-    // #endregion
-    throw err;
-  }
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8a85ad" },
-    body: JSON.stringify({
-      sessionId: "8a85ad",
-      hypothesisId: "H-ATTACH",
-      location: "dual-write.js:linkPostCallToLifecycle:attachPostCall",
-      message: "attachPostCall ok",
-      data: { postCallId: postCall?.id || null, ownerId, teamId, orgId },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  console.warn(
-    "[DBG-8a85ad]",
-    JSON.stringify({ hypothesisId: "H-ATTACH", ok: true, postCallId: postCall?.id, teamId, orgId }),
-  );
-  // #endregion
 
   void embedAndPersistCallSummary(callSummary, {
     objectionSummaries: summarise?.objections || [],

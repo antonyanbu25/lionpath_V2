@@ -18,6 +18,7 @@ interface TokenBucket {
   latencyMs: number;
   callCount: number;
   cacheHits: number;
+  retryCount: number;
   estimatedCostUsd: number;
 }
 
@@ -30,6 +31,7 @@ function emptyBucket(): TokenBucket {
     latencyMs: 0,
     callCount: 0,
     cacheHits: 0,
+    retryCount: 0,
     estimatedCostUsd: 0,
   };
 }
@@ -45,6 +47,7 @@ function addRecord(bucket: TokenBucket, row: Record<string, unknown>): void {
   bucket.groundingQueries += Number(row.groundingQueries) || 0;
   bucket.latencyMs += Number(row.latencyMs) || 0;
   bucket.callCount += 1;
+  bucket.retryCount += Number(row.retryCount) || 0;
   if (row.cacheHit === true) bucket.cacheHits += 1;
   bucket.estimatedCostUsd += estimateTokenCostUsd(model, {
     promptTokens,

@@ -1,0 +1,29 @@
+# Minimal CI — npm ci && npm test for worker and web.
+# Pre-existing Windows-only failure (test-node-boot spawn EINVAL) does not apply on ubuntu-latest.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [worker, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+
+      - name: Install and test (${{ matrix.package }})
+        working-directory: ${{ matrix.package }}
+        run: npm ci && npm test

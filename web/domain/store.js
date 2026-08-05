@@ -15,9 +15,13 @@ function useFirestore(fb) {
   return !!firebaseConfig.projectId && !!fb?.db;
 }
 
-function readViaApi() {
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem("lionpath.readVia") === "api";
+/** @returns {"local"|"firestore"|"api"} */
+function resolveStoreMode(fb) {
+  if (!useFirestore(fb)) return "local";
+  if (typeof localStorage !== "undefined" && localStorage.getItem("lionpath.readVia") === "firestore") {
+    return "firestore";
+  }
+  return "api";
 }
 
 /**
@@ -25,19 +29,19 @@ function readViaApi() {
  * @param {object|null} fb Firebase helpers from initFirebase (null for dummy mode)
  */
 export function initDomainStore(fb) {
-  if (useFirestore(fb)) {
-    if (readViaApi()) {
-      storeInstance = createApiStore({
-        workerBaseUrl: WORKER_BASE_URL,
-        getToken: () => fb?.auth?.currentUser?.getIdToken(),
-        fb,
-      });
-    } else {
-      storeInstance = createFirestoreStore(fb);
-    }
+  const mode = resolveStoreMode(fb);
+  if (mode === "api") {
+    storeInstance = createApiStore({
+      workerBaseUrl: WORKER_BASE_URL,
+      getToken: () => fb?.auth?.currentUser?.getIdToken(),
+      fb,
+    });
+  } else if (mode === "firestore") {
+    storeInstance = createFirestoreStore(fb);
   } else {
     storeInstance = createLocalStore();
   }
+  console.info("[domain] store mode:", mode);
   void runMeddpiccDealMigrationIfNeeded(storeInstance).catch((err) => {
     console.warn("[domain] meddpicc deal migration failed:", err.message);
   });

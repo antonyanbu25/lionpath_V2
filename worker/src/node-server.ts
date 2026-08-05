@@ -7,8 +7,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
 import { firestoreAdminBootStatus } from "./data/firestore-admin";
+import { logError, logInfo } from "./logger";
 import { logResolvedModels } from "./providers";
 import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
+import { sweepStaleVideoJobs } from "./video/job-sweep";
+import { ffmpegMaxConcurrent } from "./video/ffmpeg-semaphore";
 import type { HistoryEnv } from "./history";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
@@ -171,7 +174,7 @@ createServer(async (req, res) => {
     }
     res.end();
   } catch (err) {
-    console.error("[worker]", err);
+    logError("node-server request failed", { error: err instanceof Error ? err.message : String(err) });
     if (!res.headersSent) {
       res.statusCode = (err as { status?: number }).status || 500;
       for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
@@ -184,17 +187,24 @@ createServer(async (req, res) => {
 }).listen(PORT, HOST, () => {
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
   logResolvedModels(env);
-  console.log(`SE Paathai worker listening on http://${HOST}:${PORT}`);
-  console.log(
-    historyDir
-      ? `History storage: file (${historyDir})`
-      : "History storage: not configured (set HISTORY_FILE_DIR)",
+  logInfo("SE Paathai worker listening", { host: HOST, port: PORT });
+  logInfo(
+    historyDir ? "History storage configured" : "History storage not configured",
+    historyDir ? { historyDir } : { hint: "set HISTORY_FILE_DIR" },
   );
   const passEnabled = videoPassEnvEnabled(env);
   void ffmpegAvailable().then((ffmpegOk) => {
-    console.log(
-      `Video Pass 2: ${passEnabled ? "enabled" : "disabled (VIDEO_PASS_ENABLED=0)"} → ${process.env.VIDEO_DATA_DIR || "/data/video"} · ffmpeg=${ffmpegOk ? "ok" : "MISSING — camera vision will fall back to transcript"}`,
-    );
+    logInfo("Video Pass 2 status", {
+      enabled: passEnabled,
+      videoDataDir: process.env.VIDEO_DATA_DIR || "/data/video",
+      ffmpeg: ffmpegOk ? "ok" : "MISSING",
+      ffmpegMaxConcurrent: ffmpegMaxConcurrent(),
+    });
   });
-  void firestoreAdminBootStatus(env).then((line) => console.log(line));
+  void sweepStaleVideoJobs().then(({ removed, scanned }) => {
+    if (removed > 0) {
+      logInfo("Video job sweep completed", { removed, scanned });
+    }
+  });
+  void firestoreAdminBootStatus(env).then((line) => logInfo(line));
 });

@@ -28,6 +28,7 @@ function apiError(message: string, opts: { status?: number; fallback?: boolean }
 }
 
 let cachedToken: { token: string; expiresAtMs: number; key: string } | null = null;
+let refreshPromise: Promise<string> | null = null;
 
 function basicAuth(clientId: string, clientSecret: string): string {
   const raw = `${clientId}:${clientSecret}`;
@@ -48,38 +49,49 @@ export async function getZoomApiToken(
   if (cachedToken && cachedToken.key === key && cachedToken.expiresAtMs > now) {
     return cachedToken.token;
   }
-  const url = `${TOKEN_URL}?grant_type=account_credentials&account_id=${encodeURIComponent(env.ZOOM_ACCOUNT_ID!)}`;
-  const res = await fetchImpl(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basicAuth(env.ZOOM_CLIENT_ID!, env.ZOOM_CLIENT_SECRET!)}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-  });
-  const body = await res.text();
-  if (!res.ok) {
-    throw apiError(
-      `Zoom OAuth token failed (${res.status}). Check ZOOM_ACCOUNT_ID / client credentials. ${body.slice(0, 200)}`,
-      { status: 502 },
-    );
+  if (refreshPromise) {
+    return refreshPromise;
   }
-  let parsed: { access_token?: string; expires_in?: number };
-  try {
-    parsed = JSON.parse(body) as { access_token?: string; expires_in?: number };
-  } catch {
-    throw apiError("Zoom OAuth token response was not JSON.", { status: 502 });
-  }
-  if (!parsed.access_token) {
-    throw apiError("Zoom OAuth token response had no access_token.", { status: 502 });
-  }
-  const ttlMs = Math.max(60, parsed.expires_in ?? 3600) * 1000;
-  cachedToken = { token: parsed.access_token, expiresAtMs: now + ttlMs - 60_000, key };
-  return parsed.access_token;
+  refreshPromise = (async () => {
+    try {
+      const url = `${TOKEN_URL}?grant_type=account_credentials&account_id=${encodeURIComponent(env.ZOOM_ACCOUNT_ID!)}`;
+      const res = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${basicAuth(env.ZOOM_CLIENT_ID!, env.ZOOM_CLIENT_SECRET!)}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+      const body = await res.text();
+      if (!res.ok) {
+        throw apiError(
+          `Zoom OAuth token failed (${res.status}). Check ZOOM_ACCOUNT_ID / client credentials. ${body.slice(0, 200)}`,
+          { status: 502 },
+        );
+      }
+      let parsed: { access_token?: string; expires_in?: number };
+      try {
+        parsed = JSON.parse(body) as { access_token?: string; expires_in?: number };
+      } catch {
+        throw apiError("Zoom OAuth token response was not JSON.", { status: 502 });
+      }
+      if (!parsed.access_token) {
+        throw apiError("Zoom OAuth token response had no access_token.", { status: 502 });
+      }
+      const ttlMs = Math.max(60, parsed.expires_in ?? 3600) * 1000;
+      cachedToken = { token: parsed.access_token, expiresAtMs: Date.now() + ttlMs - 60_000, key };
+      return parsed.access_token;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 /** Test seam — clears the module-level token cache. */
 export function resetZoomApiTokenCache(): void {
   cachedToken = null;
+  refreshPromise = null;
 }
 
 export interface ZoomRecordingFile {
