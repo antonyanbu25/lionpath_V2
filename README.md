@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)**, **four-layer cost control**, **LLM usage admin** ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)**, **four-layer cost control**, **LLM usage admin**, **post-call demo UX (2.1.20)** — compact call timeline, single-pass call record paint, seamless hydration ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** â€” Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** â€” Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -87,6 +87,21 @@ After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/bo
 **Deploy note:** production hostnames load `web/dist/boot.js`. After auth/dashboard changes run `cd web && npm run build` (or VPS `build-web-bundle.sh`) before `refresh-web.sh` / `update.sh` — otherwise the portal serves stale bundled JS.
 
 **Verify live:** `curl -s https://portal.benjaminsquare.com/ | grep portal-build` must show **2.1.19** (not 2.1.14). Bundled `dist/boot.js` must include SSO fixes — VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
+
+### Post-call demo UX (2.1.20)
+
+SVP-demo polish on **`2.1`** — deploy from **`antony/2.1`** (`lionpath_V2`):
+
+| Area | Fix |
+|------|-----|
+| **Call timeline** | Fixed-height spine; colored dots on bar (hover for full moment); humanized labels; no expanding event list |
+| **Evaluation signal** | Radar renders once; no triple re-animation during hydration |
+| **Call notes** | Bullets as soon as summarise data exists |
+| **Hydration** | One final panel paint when background passes complete |
+| **Start analysis** | Instant loading overlay; CRM account flush on submit |
+| **Accounts / Deals / Dashboard** | Loading shell on first paint (no white flash) |
+
+Key paths: `web/call-view.js`, `web/app.js`, `web/postcall.js`, `web/dashboard.js`. VPS: `bash upgrade-now.sh`.
 
 ### Account / deal deduplication & linking (2.1)
 

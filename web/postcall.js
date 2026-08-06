@@ -2584,9 +2584,6 @@ function navigateToCallRecord(recordId) {
   if (typeof onCallRecordReady === "function") {
     onCallRecordReady(recordId);
   }
-  window.dispatchEvent(
-    new CustomEvent("lionpath:open-call-record", { detail: { id: recordId }, bubbles: true }),
-  );
   if (!location.hash.includes(recordId)) {
     location.hash = `#calls/${recordId}`;
   }

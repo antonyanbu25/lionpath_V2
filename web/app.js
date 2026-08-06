@@ -6,6 +6,7 @@ import {
   fillShadowField,
   bindActionOnce,
   setButtonLoading,
+  renderLoadingPanel,
 } from "./crayons-ui.js";
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
@@ -653,7 +654,11 @@ async function renderSePanel() {
 }
 
 async function renderDashboardPanels(email, opts = {}) {
-  await renderDashboard($("dash-panel"), email, opts);
+  const panel = $("dash-panel");
+  if (panel && !panel.querySelector(".launchpad")) {
+    renderDashboardLoadingShell(panel);
+  }
+  await renderDashboard(panel, email, opts);
 }
 
 async function renderCoachingPanel(email, opts = {}) {
@@ -895,6 +900,9 @@ function switchView(name, opts = {}) {
 async function renderAccountPanel() {
   const panel = $("account-panel");
   if (!panel || !currentSession?.email) return;
+  if (!selectedAccountId && !panel.querySelector(".account-list-view")) {
+    panel.innerHTML = `<div class="lifecycle-list-view account-list-view account-list-view--loading">${renderLoadingPanel("Loading accounts…")}</div>`;
+  }
   const gen = ++accountPanelRenderGen;
   let session = currentSession;
   if (!sessionUserId(session)) {
@@ -1049,6 +1057,9 @@ async function renderProductSignalPanel() {
 async function renderDealPanel() {
   const panel = $("deal-panel");
   if (!panel || !currentSession?.email) return;
+  if (!selectedDealNavId && !panel.querySelector(".deal-list-view")) {
+    panel.innerHTML = `<div class="lifecycle-list-view deal-list-view deal-list-view--loading">${renderLoadingPanel("Loading deals…")}</div>`;
+  }
   const gen = ++dealPanelRenderGen;
   let session = currentSession;
   if (!sessionUserId(session)) {
@@ -1212,6 +1223,12 @@ function backToBriefsList() {
 
 function scheduleCallRecordPanelRefresh(id, { immediate = false } = {}) {
   if (selectedCallId !== id || currentView !== "calls") return;
+  const record = currentSession?.email ? getPostCallAnalysis(currentSession.email, id) : null;
+  const pending = record?.result?.hydration?.pending || [];
+  if (!immediate && pending.length > 0) {
+    callRecordRefreshTargetId = id;
+    return;
+  }
   callRecordRefreshTargetId = id;
   window.clearTimeout(callRecordRefreshTimer);
   if (immediate) {
@@ -1225,7 +1242,7 @@ function scheduleCallRecordPanelRefresh(id, { immediate = false } = {}) {
       callRecordRefreshTargetId = null;
       void renderCallPanel();
     }
-  }, 650);
+  }, 900);
 }
 
 async function renderCallPanel() {
@@ -2461,9 +2478,7 @@ async function boot() {
   });
   window.addEventListener("lionpath:call-record-updated", (ev) => {
     const id = ev.detail?.id;
-    const sections = ev.detail?.sections || [];
-    const finalSections = sections.some((s) => s === "timeline" || s === "gaps");
-    scheduleCallRecordPanelRefresh(id, { immediate: finalSections });
+    scheduleCallRecordPanelRefresh(id);
   });
   window.addEventListener("lionpath:call-record-progress", (ev) => {
     const id = ev.detail?.id;
@@ -2519,11 +2534,6 @@ async function boot() {
     if (!currentSession?.email) handleSession(session, { restored: true });
     else void paintAuthenticatedShell();
   });
-  window.addEventListener("lionpath:open-call-record", (ev) => {
-    const id = ev.detail?.id;
-    if (id) openCallRecord(id);
-  });
-
   $("sidebar-toggle")?.addEventListener("fwClick", openSidebar);
   $("sidebar-close")?.addEventListener("fwClick", closeSidebar);
   $("sidebar-backdrop").onclick = closeSidebar;

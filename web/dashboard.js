@@ -1709,9 +1709,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     loadAllLocalBriefs().length > 0;
   const hasReady = container.querySelector(".launchpad:not(.launchpad--loading)");
   if (!hasReady) {
-    if (!cachedMetrics && !hasLocalData) {
-      renderDashboardLoadingShell(container);
-    }
+    renderDashboardLoadingShell(container);
   }
 
   const fastOpts = localOnlyDashboardOpts(opts);

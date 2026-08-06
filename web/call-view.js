@@ -230,23 +230,8 @@ function renderCombinedSpineLegend(markers) {
   return `<div class="call-spine-legend" aria-hidden="true">${segmentItems}${markerItems}</div>`;
 }
 
-function renderSpineMarkerList(markers) {
-  if (!markers?.length) return "";
-  const items = markers
-    .slice()
-    .sort((a, b) => (a.atS || 0) - (b.atS || 0))
-    .map((m) => {
-      const kind = m.kind || "gap";
-      const label = markerDisplayLabel(m);
-      const tip = m.quote ? ` title="${esc(String(m.quote).slice(0, 240))}"` : "";
-      return `<li class="call-spine-event call-spine-event--${esc(kind)}"${tip}>
-        <span class="call-spine-event-time num">${esc(formatSegmentTime(m.atS))}</span>
-        <span class="pill pill--${esc(kind)}">${esc(MARKER_LABELS[kind] || kind)}</span>
-        <span class="call-spine-event-label">${esc(label)}</span>
-      </li>`;
-    })
-    .join("");
-  return `<ul class="call-spine-events" aria-label="Key moments">${items}</ul>`;
+function renderSpineMarkerList(_markers) {
+  return "";
 }
 
 function renderSpineLegend() {
@@ -1081,11 +1066,11 @@ function renderVisualSpine(segments, markers, durationSec) {
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "edc907" },
     body: JSON.stringify({
       sessionId: "edc907",
-      runId: "timeline-polish",
-      hypothesisId: "E",
+      runId: "timeline-compact",
+      hypothesisId: "F",
       location: "call-view.js:renderVisualSpine",
-      message: "clean spine bar only",
-      data: { totalSec: total, markerCount: (markers || []).length, layout: "bar-only" },
+      message: "compact spine with dot markers",
+      data: { totalSec: total, markerCount: (markers || []).length },
       timestamp: Date.now(),
     }),
   }).catch(() => {});
@@ -1104,6 +1089,15 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
+  for (const m of markers || []) {
+    const at = Number(m.atS);
+    if (!Number.isFinite(at)) continue;
+    const left = (at / total) * 100;
+    const kind = m.kind || "gap";
+    const readable = markerDisplayLabel(m);
+    const tip = `${formatSegmentTime(at)} · ${MARKER_LABELS[kind] || kind} · ${readable}`;
+    html += `<div class="mk-dot mk-dot--${esc(kind)}" style="left:${left}%" title="${esc(tip)}" aria-label="${esc(tip)}"></div>`;
+  }
   html += "</div></div>";
   return html;
 }
@@ -1495,7 +1489,7 @@ function renderPostcallSummaryRow(bundle, stakeholderRows, pending = null) {
     ? renderQipRadar(categoryScores, {
         overallScore: bundle.qipScore,
         title: "Evaluation signal",
-        animate: true,
+        animate: false,
       })
     : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">QIP category scores appear here once analysis completes.</p></div>`;
   const tensionHtml = bundle.tensionLine
@@ -1596,9 +1590,11 @@ function renderCallNotesBulletsHtml(notes, maxLines = 3) {
 
 function renderCallNotesSection(notes, opts = {}) {
   const pending = opts.pending instanceof Set ? opts.pending : new Set(Array.isArray(opts.pending) ? opts.pending : []);
-  const body = pending.has("summarise")
-    ? renderCallSectionSkeleton("Call notes", 88)
-    : renderCallNotesBulletsHtml(notes);
+  const hasNotes = String(notes || "").trim().length > 0;
+  const body =
+    !hasNotes && pending.has("summarise")
+      ? renderCallSectionSkeleton("Call notes", 88)
+      : renderCallNotesBulletsHtml(notes);
   return `
     <section class="call-section call-notes-section card-wire">
       <div class="call-section-body call-section-body--flat">
@@ -1761,7 +1757,6 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     body += renderVisualSpine(segments, markers, durationSec);
     body += renderSpineTimeAxis(durationSec);
     body += renderCombinedSpineLegend(markers);
-    if (markers.length) body += renderSpineMarkerList(markers);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
     }
@@ -2847,15 +2842,18 @@ export async function renderCallView(container, session, opts = {}) {
     const freshHydration = resolveRecordHydration(freshRecord);
     await hidePrepGenOverlay();
     if (opts.shouldApply && !opts.shouldApply()) return;
-    container.innerHTML = renderCallRecord(
-      { ...bundle, coachAudience },
-      {
-        pending: freshHydration.pending,
-        errors: freshHydration.errors,
-        progressMessage: freshHydration.progressMessage,
-      },
-    );
-    wireCallRecord(container, activeSession, { ...bundle, coachAudience }, opts);
+    const hydrationStillPending = (freshHydration.pending || []).length > 0;
+    if (!hydrationStillPending) {
+      container.innerHTML = renderCallRecord(
+        { ...bundle, coachAudience },
+        {
+          pending: freshHydration.pending,
+          errors: freshHydration.errors,
+          progressMessage: freshHydration.progressMessage,
+        },
+      );
+      wireCallRecord(container, activeSession, { ...bundle, coachAudience }, opts);
+    }
   } catch (err) {
     console.error("[call-view] failed to render call:", err);
     container.innerHTML = renderCallEmptyState(
