@@ -22,6 +22,7 @@ import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-se
 import {
   enrichDealFromHistoryRecords,
   rollupMeddpiccFromHistoryRecords,
+  technicalCommitFromHistoryRecords,
 } from "./domain/history-deal-enrichment.js";
 import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
@@ -541,6 +542,11 @@ function renderCallSectionRetry(section, message, recordId) {
   </div>`;
 }
 
+function listHistoryRecordsForDeal(email, dealId) {
+  if (!email || !dealId) return [];
+  return listPostCallAnalyses(email).filter((r) => resolveDealId(r) === dealId);
+}
+
 function buildLocalCallBundle(session, record) {
   const email = session.email;
   const resultBlob = record.result || {};
@@ -560,9 +566,18 @@ function buildLocalCallBundle(session, record) {
   const sentiment = resolveCallSentiment(analysis);
   const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
-  const med = resultBlob.qualification
-    ? rollupMeddpiccFromHistoryRecords([{ ...record, result: { ...resultBlob, qualification: resultBlob.qualification } }])
-    : null;
+  const dealId = resolveDealId(record);
+  const dealRecords = listHistoryRecordsForDeal(email, dealId);
+  let deal = dealId ? { id: dealId } : null;
+  if (deal && dealRecords.length) {
+    deal = enrichDealFromHistoryRecords(deal, dealRecords);
+  }
+  let med = deal ? resolveDealMeddpicc(deal, null) : null;
+  if (!med && dealRecords.length) {
+    med = rollupMeddpiccFromHistoryRecords(dealRecords);
+  } else if (!med && resultBlob.qualification) {
+    med = rollupMeddpiccFromHistoryRecords([record]);
+  }
   const meddpiccScore = med ? computeMeddpiccScore(med) : null;
   const meddpiccFilled = countMeddpiccFilled(med);
   const arrPoint =
@@ -585,10 +600,14 @@ function buildLocalCallBundle(session, record) {
     return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
   })();
 
+  const technicalCommit =
+    resultBlob.technicalCommit ||
+    (dealRecords.length ? technicalCommitFromHistoryRecords(dealRecords) : null);
+
   return {
     record,
-    deal: null,
-    dealId: resolveDealId(record),
+    deal,
+    dealId,
     account: null,
     sequence: null,
     callType,
@@ -632,7 +651,7 @@ function buildLocalCallBundle(session, record) {
     },
     videoFacts: draftVf || null,
     productSignal: { productGaps, whatWorks, clusterLabels: {} },
-    technicalCommit: resultBlob.technicalCommit || null,
+    technicalCommit,
     tcDeltas: resultBlob.tcDeltas || [],
     meddpiccDeltas: [],
     objections: summarise.objections || [],
@@ -2411,9 +2430,7 @@ async function loadCallBundle(session, record) {
   // Same enrichment the deal record uses — Firestore metadata.meddpicc lags behind
   // the Pass 4 qualification blobs sitting in local history.
   if (deal) {
-    const dealRecords = listPostCallAnalyses(email).filter(
-      (r) => resolveDealId(r) === dealId,
-    );
+    const dealRecords = listHistoryRecordsForDeal(email, dealId);
     if (dealRecords.length) deal = enrichDealFromHistoryRecords(deal, dealRecords);
   }
 
@@ -2912,11 +2929,6 @@ export async function renderCallView(container, session, opts = {}) {
     return;
   }
 
-  const currentId = container.querySelector?.(".call-record[data-call-id]")?.getAttribute("data-call-id");
-  if (currentId && currentId !== targetCallId) {
-    container.innerHTML = renderCallLoadingShell({ id: targetCallId });
-  }
-
   try {
     const ownerEmail = opts.ownerEmail || activeSession.email;
     const selfEmail = normalizeSeEmail(activeSession.email);
@@ -2933,14 +2945,12 @@ export async function renderCallView(container, session, opts = {}) {
       return;
     }
 
-    const hydration = resolveRecordHydration(resolvedRecord);
     const coachAudience =
       normalizeSeEmail(ownerEmail) !== selfEmail &&
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
-    const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);
-    paintCallRecord(container, activeSession, localBundle, coachAudience, hydration, opts);
+    container.innerHTML = renderCallLoadingShell(resolvedRecord);
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
     const bundle = await loadCallBundle(activeSession, resolvedRecord);
