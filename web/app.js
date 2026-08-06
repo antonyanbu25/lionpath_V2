@@ -38,9 +38,10 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=2.1.14";
-import { renderDealView } from "./deal-view.js";
+import { renderDealView, isDealListCacheFresh } from "./deal-view.js";
+import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1.14";
-import { renderCallView } from "./call-view.js";
+import { renderCallView, resolveEffectiveHydrationPending } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
@@ -1069,7 +1070,10 @@ async function renderAccountPanel() {
   const panel = $("account-panel");
   if (!panel || !currentSession?.email) return;
   if (!selectedAccountId && !panel.querySelector(".account-list-view")) {
-    panel.innerHTML = `<div class="lifecycle-list-view account-list-view account-list-view--loading">${renderLoadingPanel("Loading accounts…")}</div>`;
+    const cachedAccounts = getCachedAccountListRows(withEffectiveUserId(currentSession));
+    if (!cachedAccounts?.length) {
+      panel.innerHTML = `<div class="lifecycle-list-view account-list-view account-list-view--loading">${renderLoadingPanel("Loading accounts…")}</div>`;
+    }
   }
   const gen = ++accountPanelRenderGen;
   let session = currentSession;
@@ -1226,7 +1230,9 @@ async function renderDealPanel() {
   const panel = $("deal-panel");
   if (!panel || !currentSession?.email) return;
   if (!selectedDealNavId && !panel.querySelector(".deal-list-view")) {
-    panel.innerHTML = `<div class="lifecycle-list-view deal-list-view deal-list-view--loading">${renderLoadingPanel("Loading deals…")}</div>`;
+    if (!isDealListCacheFresh(withEffectiveUserId(currentSession))) {
+      panel.innerHTML = `<div class="lifecycle-list-view deal-list-view deal-list-view--loading">${renderLoadingPanel("Loading deals…")}</div>`;
+    }
   }
   const gen = ++dealPanelRenderGen;
   let session = currentSession;
@@ -1389,11 +1395,21 @@ function backToBriefsList() {
   switchView("precall", { briefList: true, drillDown: true });
 }
 
-function scheduleCallRecordPanelRefresh(id, { immediate = false } = {}) {
+function scheduleCallRecordPanelRefresh(id, { immediate = false, sections = [] } = {}) {
   if (selectedCallId !== id || currentView !== "calls") return;
   const record = currentSession?.email ? getPostCallAnalysis(currentSession.email, id) : null;
-  const pending = record?.result?.hydration?.pending || [];
-  if (!immediate && pending.length > 0) {
+  const pending = resolveEffectiveHydrationPending(
+    record,
+    record?.result?.hydration?.pending || [],
+  );
+  if (!immediate && sections.length > 0) {
+    const blocked = sections.some((key) => pending.includes(key));
+    if (blocked) {
+      callRecordRefreshTargetId = id;
+      return;
+    }
+    immediate = true;
+  } else if (!immediate && pending.length > 0) {
     callRecordRefreshTargetId = id;
     return;
   }
@@ -2671,7 +2687,8 @@ async function boot() {
   });
   window.addEventListener("lionpath:call-record-updated", (ev) => {
     const id = ev.detail?.id;
-    scheduleCallRecordPanelRefresh(id);
+    const sections = Array.isArray(ev.detail?.sections) ? ev.detail.sections : [];
+    scheduleCallRecordPanelRefresh(id, { sections });
   });
   window.addEventListener("lionpath:call-record-progress", (ev) => {
     const id = ev.detail?.id;

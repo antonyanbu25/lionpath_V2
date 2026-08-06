@@ -217,31 +217,71 @@ function markerDisplayLabel(marker) {
   return humanizeMarkerLabel(String(raw).trim(), marker?.kind);
 }
 
-function renderCombinedSpineLegend(markers) {
-  const kinds = new Set((markers || []).map((m) => m.kind).filter(Boolean));
-  const segmentItems = SPINE_LEGEND.map(
-    ([, label, bg, fg]) =>
-      `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
-  ).join("");
-  const markerItems = MARKER_LEGEND.filter(([kind]) => kinds.has(kind))
-    .map(
-      ([kind, label]) =>
-        `<span class="call-spine-legend-item"><span class="call-spine-dot call-spine-dot--${esc(kind)}"></span>${esc(label)}</span>`,
-    )
-    .join("");
-  return `<div class="call-spine-legend" aria-hidden="true">${segmentItems}${markerItems}</div>`;
+function spineLegendGroupKey(type) {
+  const t = String(type || "none");
+  if (t === "product" || t === "cde" || t === "demo" || t === "next_steps") return "product";
+  if (t === "customer_screen" || t === "discovery") return "customer_screen";
+  if (t === "slides" || t === "intro") return "slides";
+  if (t === "none" || t === "scene_change") return "none";
+  return t;
+}
+
+function presentSpineLegendKeys(segments) {
+  const keys = new Set();
+  for (const seg of segments || []) {
+    keys.add(spineLegendGroupKey(seg.segmentType));
+  }
+  return keys;
+}
+
+function isSingleFullSpanSegment(segments, totalSec) {
+  if (!segments?.length || segments.length !== 1 || !totalSec) return false;
+  const seg = segments[0];
+  const start = Number(seg.startS) || 0;
+  const end = Number(seg.endS) || start;
+  return start <= 1 && end >= totalSec * 0.98;
+}
+
+function renderCombinedSpineLegend(markers, segments) {
+  return `${renderSpineLegend(segments)}${renderMarkerLegend(markers)}`;
 }
 
 function renderSpineMarkerList(_markers) {
   return "";
 }
 
-function renderSpineLegend() {
-  return renderCombinedSpineLegend([]);
+function renderSpineLegend(segments) {
+  if (!segments?.length) return "";
+  const total = Math.max(
+    ...segments.map((s) => Math.max(Number(s.startS) || 0, Number(s.endS) || 0)),
+    1,
+  );
+  if (isSingleFullSpanSegment(segments, total)) {
+    const seg = segments[0];
+    const label = spineSegmentLabel(seg.segmentType, seg.label || segmentTypeLabel(seg.segmentType));
+    return `<p class="call-spine-caption muted">${esc(`Whole call: ${label}`)}</p>`;
+  }
+  const present = presentSpineLegendKeys(segments);
+  const items = SPINE_LEGEND.filter(([key]) => present.has(key))
+    .map(
+      ([, label, bg, fg]) =>
+        `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
+    )
+    .join("");
+  if (!items) return "";
+  return `<div class="call-spine-legend call-spine-segment-legend" aria-hidden="true">${items}</div>`;
 }
 
 function renderMarkerLegend(markers) {
-  return renderCombinedSpineLegend(markers);
+  const kinds = new Set((markers || []).map((m) => m.kind).filter(Boolean));
+  if (!kinds.size) return "";
+  const markerItems = MARKER_LEGEND.filter(([kind]) => kinds.has(kind))
+    .map(
+      ([kind, label]) =>
+        `<span class="call-spine-legend-item"><span class="call-spine-dot call-spine-dot--${esc(kind)}"></span>${esc(label)}</span>`,
+    )
+    .join("");
+  return `<div class="call-spine-legend call-spine-marker-legend" aria-hidden="true">${markerItems}</div>`;
 }
 
 function stripObjectionFraming(text) {
@@ -477,6 +517,17 @@ function resolvePass6(record) {
   return record?.pass6 || resultBlob.pass6 || resultBlob.result?.pass6 || null;
 }
 
+/** Call notes from local history / embedded analysis — not Firestore. */
+function resolveCallNotes(record) {
+  const resultBlob = record?.result || {};
+  const analysis = record?.analysis || resultBlob.analysis || {};
+  const summarise = resultBlob.summarise || {};
+  const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
+  if (fromAnalysis) return fromAnalysis;
+  const fromSummarise = summarise.callNotes;
+  return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
+}
+
 function resolveRecordHydration(record) {
   const h = record?.result?.hydration || {};
   const pending = Array.isArray(h.pending) ? h.pending : [];
@@ -593,12 +644,7 @@ function buildLocalCallBundle(session, record) {
   const productGaps = (pass6?.productGaps || []).map(normalizeProductSignalRow).filter(Boolean);
   const whatWorks = (pass6?.whatWorks || []).map(normalizeProductSignalRow).filter(Boolean);
   const deltaInfo = qipScore != null ? qipDeltaForType(email, callType, qipScore, record.id) : null;
-  const callNotes = (() => {
-    const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
-    if (fromAnalysis) return fromAnalysis;
-    const fromSummarise = summarise.callNotes;
-    return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
-  })();
+  const callNotes = resolveCallNotes(record);
 
   const technicalCommit =
     resultBlob.technicalCommit ||
@@ -1105,12 +1151,368 @@ function renderFitmentCard(deal) {
   </div>`;
 }
 
+const SPINE_LANE_PINS_PX = 18;
+const SPINE_LANE_BAND_PX = 26;
+const SPINE_LANE_LABEL_ROW_PX = 16;
+const SPINE_LANE_LABEL_MAX_ROWS = 2;
+const SPINE_LANE_AXIS_PX = 24;
+const SPINE_MARKER_CLUSTER_PX = 72;
+const SPINE_MARKER_LABEL_GAP_PX = 6;
+const SPINE_MARKER_LABEL_MIN_PX = 48;
+
 const SPINE_SEGMENT_COLORS = SPINE_SEGMENT_PALETTE;
 
-const SPINE_TRACK_STYLE =
-  "position:relative;height:56px;border-radius:10px;overflow:visible;margin-bottom:6px;width:100%;";
-const SPINE_SEG_STYLE =
-  "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
+function spinePct(atS, total) {
+  return Math.min(100, Math.max(0, (atS / total) * 100));
+}
+
+function spineDurationMinutesLabel(totalSec) {
+  const mins = Math.round(totalSec / 60);
+  return mins === 1 ? "1 minute" : `${mins} minutes`;
+}
+
+function spineAriaSummary(totalSec, segments, markers, durationLabel) {
+  let dur;
+  if (durationLabel) {
+    const m = String(durationLabel).match(/(\d+)\s*minute/i);
+    dur = m ? `${m[1]} minute` : String(durationLabel).trim();
+  } else {
+    dur = spineDurationMinutesLabel(totalSec);
+  }
+  const segN = segments.length;
+  const mkN = markers.length;
+  const segWord = segN === 1 ? "segment" : "segments";
+  const mkWord = mkN === 1 ? "marked moment" : "marked moments";
+  return `${dur} call: ${segN} share ${segWord}, ${mkN} ${mkWord}`;
+}
+
+function renderSpineA11yList(segments, markers, total) {
+  const segItems = segments
+    .map((seg) => {
+      const label = spineSegmentLabel(seg.segmentType, seg.label || segmentTypeLabel(seg.segmentType));
+      return `<li>${esc(formatSegmentTime(seg.startS))}–${esc(formatSegmentTime(seg.endS))}: ${esc(label)}</li>`;
+    })
+    .join("");
+  const mkItems = markers
+    .map((m) => {
+      const readable = markerDisplayLabel(m);
+      return `<li>${esc(formatSegmentTime(m.atS))}: ${esc(MARKER_LABELS[m.kind] || m.kind)} — ${esc(readable)}</li>`;
+    })
+    .join("");
+  return `<ol class="visually-hidden">${segItems}${mkItems}</ol>`;
+}
+
+function renderVisualSpine(segments, markers, durationSec, durationLabel) {
+  const normalizedMarkers = normalizeTimelineMarkers(markers).sort((a, b) => a.atS - b.atS);
+  const total = resolveSpineDuration(durationSec, segments, normalizedMarkers);
+  const ariaLabel = esc(spineAriaSummary(total, segments, normalizedMarkers, durationLabel));
+  const labelRows = Math.min(SPINE_LANE_LABEL_MAX_ROWS, Math.max(1, normalizedMarkers.length ? 1 : 0));
+  const maxStaggerMs = Math.min(Math.max(segments.length - 1, 0) * 35, 240);
+  const pinDelayMs = 380 + maxStaggerMs + 60;
+
+  let html = `<div class="call-spine-wrap" data-spine-duration="${total}">`;
+  html += `<div class="call-spine-grid" style="--spine-label-rows:${labelRows * SPINE_LANE_LABEL_ROW_PX}px;--spine-pin-delay:${pinDelayMs}ms;--spine-seg-count:${segments.length}" role="img" aria-label="${ariaLabel}">`;
+  html += renderSpineA11yList(segments, normalizedMarkers, total);
+
+  html += '<div class="call-spine-lane call-spine-lane--pins">';
+  normalizedMarkers.forEach((m, i) => {
+    const at = m.atS;
+    const pct = spinePct(at, total);
+    const kind = m.kind || "gap";
+    const color = MARKER_COLORS[kind] || "#5a6b82";
+    const id = `spine-mk-${i}`;
+    const readable = markerDisplayLabel(m);
+    const tip = `${formatSegmentTime(at)} · ${MARKER_LABELS[kind] || kind} · ${readable}`;
+    html += `<button type="button" class="mk-pin mk-pin--${esc(kind)}" data-marker-id="${id}" data-at-s="${at}" style="--x:${pct}%;--mk-color:${color};--i:${i}" tabindex="0" title="${esc(tip)}" aria-label="${esc(tip)}"><span class="mk-pin-stem" aria-hidden="true"></span><span class="mk-pin-cap" aria-hidden="true"></span></button>`;
+  });
+  html += "</div>";
+
+  html += '<div class="call-spine-lane call-spine-lane--band"><div class="call-spine-band">';
+  segments.forEach((seg, i) => {
+    const start = Number(seg.startS) || 0;
+    const end = Number(seg.endS) || start;
+    const left = spinePct(start, total);
+    const width = Math.max(spinePct(end, total) - left, 0.5);
+    const type = seg.segmentType || "none";
+    const [bg, fg] = SPINE_SEGMENT_COLORS[type] || SPINE_SEGMENT_COLORS.none;
+    const label = spineSegmentLabel(type, seg.label || segmentTypeLabel(type));
+    const edge =
+      i === 0 && i === segments.length - 1
+        ? "seg--solo"
+        : i === 0
+          ? "seg--first"
+          : i === segments.length - 1
+            ? "seg--last"
+            : "seg--mid";
+    html += `<div class="seg ${edge}" style="--x:${left}%;--w:${width}%;--i:${i};background:${bg};color:${fg}" data-seg-label="${esc(label)}" title="${esc(label)}"><span class="seg-label">${esc(label)}</span></div>`;
+  });
+  html += "</div></div>";
+
+  html += '<div class="call-spine-lane call-spine-lane--labels">';
+  normalizedMarkers.forEach((m, i) => {
+    const at = m.atS;
+    const pct = spinePct(at, total);
+    const kind = m.kind || "gap";
+    const color = MARKER_COLORS[kind] || "#5a6b82";
+    const id = `spine-mk-${i}`;
+    const readable = markerDisplayLabel(m);
+    html += `<span class="mkl mk-label mk-label--${esc(kind)}" data-marker-id="${id}" data-at-s="${at}" style="--x:${pct}%;--mk-color:${color}">${esc(readable)}</span>`;
+  });
+  html += "</div>";
+
+  html += renderSpineTimeAxis(total);
+  html += '<div class="call-spine-scrub" hidden aria-hidden="true"><span class="call-spine-scrub-line"></span><span class="call-spine-scrub-bubble"></span></div>';
+  html += "</div>";
+  html += '<div class="call-spine-overflow" hidden></div>';
+  html += "</div>";
+  return html;
+}
+
+function renderSpineTimeAxis(durationSec) {
+  if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) return "";
+  const fractions = [0, 0.25, 0.5, 0.75, 1];
+  const ticks = fractions.map((f, i) => {
+    const pct = f * 100;
+    const label = formatSegmentTime(durationSec * f);
+    const edge =
+      i === 0 ? "call-spine-tick--first" : i === fractions.length - 1 ? "call-spine-tick--last" : "";
+    return `<span class="call-spine-tick ${edge}" style="--x:${pct}%">${esc(label)}</span>`;
+  });
+  return `<div class="call-spine-lane call-spine-lane--axis"><div class="call-spine-axis">${ticks.join("")}</div></div>`;
+}
+
+function renderSpineMarkerOverflow(markers) {
+  if (!markers?.length) return "";
+  const items = markers
+    .map((m) => {
+      const readable = markerDisplayLabel(m);
+      const kind = m.kind || "gap";
+      return `<li class="call-spine-overflow-item"><span class="call-spine-dot call-spine-dot--${esc(kind)}"></span>${esc(formatSegmentTime(m.atS))} · ${esc(readable)}</li>`;
+    })
+    .join("");
+  return `<ul class="call-spine-overflow-list">${items}</ul>`;
+}
+
+function layoutSpineMarkerLabels(wrap, trackWidth) {
+  const lane = wrap?.querySelector(".call-spine-lane--labels");
+  const overflowEl = wrap?.querySelector(".call-spine-overflow");
+  if (!lane) return;
+
+  const width = trackWidth > 0 ? trackWidth : lane.getBoundingClientRect().width;
+  if (!width) return;
+
+  const labels = [...lane.querySelectorAll(".mkl")].sort(
+    (a, b) => parseFloat(a.style.getPropertyValue("--x")) - parseFloat(b.style.getPropertyValue("--x")),
+  );
+
+  for (const el of labels) {
+    el.hidden = false;
+    el.style.removeProperty("left");
+    el.style.removeProperty("top");
+    el.dataset.row = "";
+  }
+
+  if (!labels.length) {
+    lane.dataset.labelRows = "0";
+    wrap.querySelector(".call-spine-grid")?.style.setProperty("--spine-label-rows", "0px");
+    if (overflowEl) {
+      overflowEl.hidden = true;
+      overflowEl.innerHTML = "";
+    }
+    return;
+  }
+
+  /** @type {{ el: Element, center: number, half: number, id: string, marker: object }[]} */
+  const items = labels.map((el) => {
+    el.style.left = el.style.getPropertyValue("--x");
+    const center = (parseFloat(el.style.getPropertyValue("--x")) / 100) * width;
+    const half = Math.max(el.offsetWidth / 2, SPINE_MARKER_LABEL_MIN_PX / 2);
+    return { el, center, half, id: el.dataset.markerId || "" };
+  });
+
+  /** @type {typeof items[]} */
+  const clusters = [];
+  let cluster = [];
+  for (const item of items) {
+    if (!cluster.length || item.center - cluster[cluster.length - 1].center <= SPINE_MARKER_CLUSTER_PX) {
+      cluster.push(item);
+    } else {
+      clusters.push(cluster);
+      cluster = [item];
+    }
+  }
+  if (cluster.length) clusters.push(cluster);
+
+  /** @type {typeof items[]} */
+  const rows = [[], []];
+  const overflow = [];
+
+  for (const group of clusters) {
+    for (const item of group) {
+      let placed = false;
+      for (let r = 0; r < SPINE_LANE_LABEL_MAX_ROWS; r += 1) {
+        const row = rows[r];
+        const left = item.center - item.half;
+        const right = item.center + item.half;
+        const collision = row.some((other) => {
+          const oLeft = other.center - other.half - SPINE_MARKER_LABEL_GAP_PX;
+          const oRight = other.center + other.half + SPINE_MARKER_LABEL_GAP_PX;
+          return left < oRight && right > oLeft;
+        });
+        if (!collision) {
+          row.push(item);
+          item.el.dataset.row = String(r);
+          item.el.style.top = `${r * SPINE_LANE_LABEL_ROW_PX}px`;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) overflow.push(item);
+    }
+  }
+
+  for (const item of overflow) {
+    item.el.hidden = true;
+  }
+
+  const usedRows = rows.some((r) => r.length) ? (rows[1].length ? 2 : 1) : 0;
+  lane.dataset.labelRows = String(usedRows);
+  wrap.querySelector(".call-spine-grid")?.style.setProperty(
+    "--spine-label-rows",
+    `${usedRows * SPINE_LANE_LABEL_ROW_PX}px`,
+  );
+
+  if (overflowEl) {
+    if (overflow.length) {
+      const overflowMarkers = overflow.map((o) => {
+        const atS = Number(o.el.dataset.atS);
+        const kind = o.el.className.match(/mk-label--([\w_]+)/)?.[1] || "gap";
+        return { atS, kind, label: o.el.textContent };
+      });
+      overflowEl.hidden = false;
+      overflowEl.innerHTML = `<p class="call-spine-overflow-head muted">${overflow.length} more moment${overflow.length === 1 ? "" : "s"}</p>${renderSpineMarkerOverflow(overflowMarkers)}`;
+    } else {
+      overflowEl.hidden = true;
+      overflowEl.innerHTML = "";
+    }
+  }
+}
+
+function measureSpineSegmentLabels(wrap) {
+  const band = wrap?.querySelector(".call-spine-band");
+  if (!band) return;
+  const bandW = band.getBoundingClientRect().width;
+  if (!bandW) return;
+  for (const seg of band.querySelectorAll(".seg")) {
+    const labelEl = seg.querySelector(".seg-label");
+    if (!labelEl) continue;
+    const segW = (parseFloat(seg.style.getPropertyValue("--w")) / 100) * bandW;
+    const labelW = labelEl.scrollWidth || labelEl.offsetWidth;
+    seg.dataset.fits = labelW + 8 <= segW ? "1" : "0";
+  }
+}
+
+function wireCallSpineScrub(wrap) {
+  const grid = wrap.querySelector(".call-spine-grid");
+  const scrub = wrap.querySelector(".call-spine-scrub");
+  const bubble = scrub?.querySelector(".call-spine-scrub-bubble");
+  const band = wrap.querySelector(".call-spine-lane--band");
+  const duration = Number(wrap.dataset.spineDuration) || 0;
+  if (!grid || !scrub || !bubble || !band || !duration) return;
+
+  if (!window.matchMedia("(hover: hover)").matches) return;
+
+  let raf = 0;
+  const move = (ev) => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const rect = band.getBoundingClientRect();
+      const x = Math.min(rect.width, Math.max(0, ev.clientX - rect.left));
+      const pct = (x / rect.width) * 100;
+      const atS = (pct / 100) * duration;
+      scrub.hidden = false;
+      scrub.style.setProperty("--scrub-x", `${pct}%`);
+      bubble.textContent = formatSegmentTime(atS);
+    });
+  };
+  const leave = () => {
+    scrub.hidden = true;
+  };
+  grid.addEventListener("pointermove", move);
+  grid.addEventListener("pointerleave", leave);
+}
+
+function wireCallSpinePins(wrap) {
+  const pins = wrap.querySelectorAll(".mk-pin");
+  const labels = wrap.querySelectorAll(".mkl");
+  const activate = (id, on) => {
+    wrap.querySelectorAll(`[data-marker-id="${id}"]`).forEach((el) => {
+      el.classList.toggle("mk-pin--active", on && el.classList.contains("mk-pin"));
+      el.classList.toggle("mkl--active", on && el.classList.contains("mkl"));
+    });
+  };
+  for (const pin of pins) {
+    const id = pin.dataset.markerId;
+    pin.addEventListener("mouseenter", () => activate(id, true));
+    pin.addEventListener("mouseleave", () => activate(id, false));
+    pin.addEventListener("focus", () => activate(id, true));
+    pin.addEventListener("blur", () => activate(id, false));
+    pin.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        pin.click();
+      }
+    });
+  }
+  for (const label of labels) {
+    const id = label.dataset.markerId;
+    label.addEventListener("mouseenter", () => activate(id, true));
+    label.addEventListener("mouseleave", () => activate(id, false));
+  }
+}
+
+function wireCallSpineAnimation(wrap) {
+  if (wrap.dataset.spineAnimated === "1") return;
+  const grid = wrap.querySelector(".call-spine-grid");
+  if (!grid) return;
+  wrap.dataset.spineAnimated = "1";
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  grid.classList.add("call-spine-grid--animate");
+}
+
+export function wireCallSpine(root) {
+  if (!root?.querySelectorAll) return;
+  for (const wrap of root.querySelectorAll(".call-spine-wrap")) {
+    if (wrap.dataset.spineWired === "1") continue;
+    wrap.dataset.spineWired = "1";
+
+    const band = wrap.querySelector(".call-spine-band");
+    const relayout = () => {
+      const w = band?.getBoundingClientRect().width || 0;
+      measureSpineSegmentLabels(wrap);
+      layoutSpineMarkerLabels(wrap, w);
+    };
+
+    relayout();
+    wireCallSpinePins(wrap);
+    wireCallSpineScrub(wrap);
+    wireCallSpineAnimation(wrap);
+
+    if (typeof ResizeObserver !== "undefined" && band) {
+      let roRaf = 0;
+      const ro = new ResizeObserver(() => {
+        if (roRaf) return;
+        roRaf = requestAnimationFrame(() => {
+          roRaf = 0;
+          relayout();
+        });
+      });
+      ro.observe(band);
+      wrap._spineRo = ro;
+    }
+  }
+}
 
 function markerAtSeconds(marker) {
   if (!marker || typeof marker !== "object") return null;
@@ -1145,56 +1547,6 @@ export function resolveSpineDuration(durationSec, segments, markers) {
   if (!Number.isFinite(raw) || raw <= 0) return evidenceEnd;
   if (evidenceEnd > 0 && raw > evidenceEnd * 4) return evidenceEnd;
   return Math.max(raw, evidenceEnd);
-}
-
-function renderVisualSpine(segments, markers, durationSec) {
-  const normalizedMarkers = normalizeTimelineMarkers(markers);
-  const total = resolveSpineDuration(durationSec, segments, normalizedMarkers);
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "edc907" },
-    body: JSON.stringify({
-      sessionId: "edc907",
-      runId: "timeline-compact",
-      hypothesisId: "F",
-      location: "call-view.js:renderVisualSpine",
-      message: "compact spine with dot markers",
-      data: { totalSec: total, markerCount: (markers || []).length },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-  let html = '<div class="call-spine-wrap">';
-  html += `<div class="call-spine spine" style="${SPINE_TRACK_STYLE}" role="img" aria-label="Call scene timeline">`;
-  segments.forEach((seg, i) => {
-    const start = Number(seg.startS) || 0;
-    const end = Number(seg.endS) || start;
-    const left = (start / total) * 100;
-    const width = Math.max(((end - start) / total) * 100, 0.5);
-    const type = seg.segmentType || "none";
-    const [bg, fg] = SPINE_SEGMENT_COLORS[type] || SPINE_SEGMENT_COLORS.none;
-    const label = spineSegmentLabel(type, seg.label || segmentTypeLabel(type));
-    const radius =
-      i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
-    html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
-  });
-  for (const m of normalizeTimelineMarkers(markers)) {
-    const at = m.atS;
-    const left = Math.min(100, Math.max(0, (at / total) * 100));
-    const kind = m.kind || "gap";
-    const readable = markerDisplayLabel(m);
-    const tip = `${formatSegmentTime(at)} · ${MARKER_LABELS[kind] || kind} · ${readable}`;
-    html += `<div class="mk-dot mk-dot--${esc(kind)}" style="left:${left}%" title="${esc(tip)}" aria-label="${esc(tip)}"></div>`;
-  }
-  html += "</div></div>";
-  return html;
-}
-
-function renderSpineTimeAxis(durationSec) {
-  if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) return "";
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => formatSegmentTime(durationSec * f));
-  return `<div class="call-spine-axis">${ticks.map((t) => `<span>${esc(t)}</span>`).join("")}</div>`;
 }
 
 function coerceAttendeeCurve(raw) {
@@ -1855,9 +2207,8 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
 
   let body = "";
   if (segments.length) {
-    body += renderVisualSpine(segments, markers, durationSec);
-    body += renderSpineTimeAxis(durationSec);
-    body += renderCombinedSpineLegend(markers);
+    body += renderVisualSpine(segments, markers, durationSec, durationLabel);
+    body += renderCombinedSpineLegend(markers, segments);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
     }
@@ -2566,8 +2917,17 @@ async function loadCallBundle(session, record) {
     accountContacts,
   );
 
+  // Parallel hydration can finish summarise (and peers) while enrich calls above run.
+  const latestRecord = getPostCallAnalysis(email, record.id) || record;
+  const latestResult = latestRecord.result || {};
+  const latestSummarise = latestResult.summarise || {};
+  if (latestSummarise.objections?.length) objections = latestSummarise.objections;
+  if (latestSummarise.followUps?.length) followUps = latestSummarise.followUps;
+  if (latestSummarise.momDraft) momDraft = latestSummarise.momDraft;
+  else if (!momDraft && latestResult.momDraft) momDraft = latestResult.momDraft;
+
   return {
-    record,
+    record: latestRecord,
     deal,
     dealId: navigableDealId,
     account,
@@ -2596,12 +2956,7 @@ async function loadCallBundle(session, record) {
     }),
     hasVideo: resolveVideoAvailable(record),
     kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
-    callNotes: (() => {
-      const fromAnalysis = typeof analysis.callNotes === "string" ? analysis.callNotes.trim() : "";
-      if (fromAnalysis) return fromAnalysis;
-      const fromSummarise = summarise.callNotes;
-      return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
-    })(),
+    callNotes: resolveCallNotes(latestRecord),
     identities,
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
@@ -2898,6 +3253,7 @@ function paintCallRecord(container, session, bundle, coachAudience, hydration, o
   );
   wireCallRecord(container, session, { ...bundle, coachAudience }, opts);
   wireCallViewAnimations(container);
+  wireCallSpine(container);
 }
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
@@ -2952,6 +3308,8 @@ export async function renderCallView(container, session, opts = {}) {
         : "se";
     container.innerHTML = renderCallLoadingShell(resolvedRecord);
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+    wireCallSpine(container);
+    wireCallViewAnimations(container);
 
     const bundle = await loadCallBundle(activeSession, resolvedRecord);
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;

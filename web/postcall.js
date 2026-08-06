@@ -3981,6 +3981,7 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("summarise");
+      notifyCallRecordUpdated(recordId, ["summarise"]);
     } else if (summarise === null) {
       markError("summarise", "Call summary could not be generated.", ["summarise", "callNotes"]);
     }
