@@ -112,8 +112,10 @@ export const GAPS_RESPONSE_SCHEMA = {
   additionalProperties: false,
   required: ["productGaps", "whatWorks"],
   properties: {
-    productGaps: { type: "array", maxItems: 12, items: GAP_ITEM_SCHEMA },
-    whatWorks: { type: "array", maxItems: 8, items: WHAT_WORKS_ITEM_SCHEMA },
+    // Do not set maxItems here — gemini-3.1-flash-lite rejects responseSchema with
+    // maxItems on arrays (400 INVALID_ARGUMENT). Cap counts in normalize*Output instead.
+    productGaps: { type: "array", items: GAP_ITEM_SCHEMA },
+    whatWorks: { type: "array", items: WHAT_WORKS_ITEM_SCHEMA },
   },
 };
 
@@ -371,6 +373,44 @@ async function attachEmbeddings(env: Env, gaps: ProductGapDraft[]): Promise<Prod
   );
 }
 
+function isGeminiInvalidSchemaError(err: unknown): boolean {
+  const msg = (err as Error)?.message || "";
+  return msg.includes("Gemini API 400") && /INVALID_ARGUMENT|invalid argument/i.test(msg);
+}
+
+async function generateGapsJson(
+  env: Env,
+  provider: ReturnType<typeof getPostCallProvider>,
+  input: PostCallGapsInput,
+  parsed: ReturnType<typeof parseTranscript>,
+  transcriptCache: ReturnType<typeof transcriptCacheHandle>,
+  effort: string,
+) {
+  const base = {
+    maxTokens: 4000,
+    system: systemPrompt(),
+    user: userPrompt(input, parsed, !!transcriptCache),
+    effort,
+    research: false as const,
+    thinkingBudget: 0,
+    passName: "gaps",
+    userId: input.userId,
+    callId: input.callId ?? undefined,
+    cachedContent: transcriptCache,
+  };
+
+  try {
+    return await provider.generate({
+      ...base,
+      jsonSchema: GAPS_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
+    });
+  } catch (err) {
+    if (!isGeminiInvalidSchemaError(err)) throw err;
+    console.warn("[gaps] responseSchema rejected; retrying jsonMimeOnly:", (err as Error).message);
+    return provider.generate({ ...base, jsonMimeOnly: true });
+  }
+}
+
 export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promise<PostCallGapsResult> {
   const transcript = input.transcript?.trim();
   if (!transcript) {
@@ -382,19 +422,7 @@ export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promi
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
   const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
-  const result = await provider.generate({
-    maxTokens: 4000,
-    system: systemPrompt(),
-    user: userPrompt(input, parsed, !!transcriptCache),
-    effort,
-    research: false,
-    thinkingBudget: 0,
-    jsonSchema: GAPS_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
-    passName: "gaps",
-    userId: input.userId,
-    callId: input.callId ?? undefined,
-    cachedContent: transcriptCache,
-  });
+  const result = await generateGapsJson(env, provider, input, parsed, transcriptCache, effort);
 
   const parsedJson = extractJson<{ productGaps?: unknown; whatWorks?: unknown }>(result.text);
   const productGaps = await attachEmbeddings(

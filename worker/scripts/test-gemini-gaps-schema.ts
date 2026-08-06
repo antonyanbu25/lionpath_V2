@@ -10,6 +10,7 @@ const gemini = toGeminiResponseSchema(GAPS_RESPONSE_SCHEMA as unknown as Record<
 const json = JSON.stringify(gemini);
 
 assert(!json.includes('"maxItems":0'), "Gemini gaps schema must not contain maxItems: 0");
+assert(!json.includes('"maxItems":'), "Gemini 3.1-flash-lite rejects maxItems on gaps arrays");
 assert(gemini.type === "object", "root type object");
 
 const gapItems = (
