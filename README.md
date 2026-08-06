@@ -4,8 +4,10 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.29`** — org hierarchy, pre/post-call CRM parity, contact dedupe, pre-call dual-write fixes, fish sizing, DISC dos/donts |
-| **Portal build** | `2.1.29` (`web/index.html` → `portal-build` meta) |
+| **This branch** | **`2.1-org-hierarchy`** — org hierarchy, pre/post-call CRM parity, contact dedupe (portal build **2.1.29**) |
+| **Portal build** | `2.1.29` (`web/index.html`, `app.js?v=2.1.29`) |
+| **Worker build** | `2.1.29` (`worker/src/build-id.ts`, `GET /api/config`) |
+| **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.29** (optional tag `v2.1-org-hierarchy`) |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
@@ -156,7 +158,7 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ```bash
 git clone https://github.com/skut264/lionpath.git
 cd lionpath
-git checkout 2.1.29
+git checkout 2.1-org-hierarchy
 
 cd worker
 cp .dev.vars.example .dev.vars
@@ -256,15 +258,14 @@ See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
 
 | Remote | Repo | Branch | Purpose |
 |--------|------|--------|---------|
-| **`skut264`** | skut264/lionpath | `2.1.29` | Upstream / team development (this push) |
-| **`antony`** | antonyanbu25/lionpath_V2 | `2.1` | Production VPS deploy |
-| **`origin`** | antonyanbu25/lionpath_V2 | `2.1` | Local default (same as antony) |
+| **`skut264`** | skut264/lionpath | `2.1-org-hierarchy` | Upstream / team development |
+| **`origin`** | antonyanbu25/lionpath_V2 | `2.1-org-hierarchy` | Side branch for review (this push) |
 
 To publish this release to skut264:
 
 ```bash
-git checkout 2.1.29
-git push -u skut264 2.1.29
+git checkout 2.1-org-hierarchy
+git push -u origin 2.1-org-hierarchy
 ```
 
 To deploy to production after review, merge/cherry-pick into `2.1` on the antony fork and push `antony 2.1`.
@@ -304,10 +305,10 @@ git remote add skut264 https://github.com/skut264/lionpath.git
 git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
 
 # Feature workflow
-git checkout -b feature/my-change 2.1.29
+git checkout -b feature/my-change 2.1-org-hierarchy
 # ... develop, npm test ...
 git push -u skut264 feature/my-change
-# Open PR to 2.1.29 on skut264/lionpath
+# Open PR to 2.1-org-hierarchy on skut264/lionpath
 ```
 
 **Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, API keys, `.cursor/` debug logs.
