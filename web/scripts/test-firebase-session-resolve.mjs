@@ -46,6 +46,7 @@ const mockStore = {
 };
 
 const { lookupUserForSession, resolveEffectiveOwnerId } = await import(webUrl("domain/user-resolve.js"));
+const { effectiveSessionUserId } = await import(webUrl("domain/session.js"));
 
 const resolved = await lookupUserForSession(
   { userId: DUMMY_ID, uid: DUMMY_ID, authUid: AUTH_UID, email: EMAIL },
@@ -59,5 +60,11 @@ const ownerId = await resolveEffectiveOwnerId(
   mockStore,
 );
 assert.equal(ownerId, REAL_USER_ID, "resolveEffectiveOwnerId prefers authIndex over usr_dummy_*");
+
+const syncOwnerId = effectiveSessionUserId(
+  { userId: DUMMY_ID, uid: DUMMY_ID, authUid: AUTH_UID, email: EMAIL },
+);
+assert.equal(syncOwnerId, DUMMY_ID, "effectiveSessionUserId returns placeholder without authIndex lookup");
+assert.notEqual(syncOwnerId, REAL_USER_ID, "briefs KPI must not rely on effectiveSessionUserId alone");
 
 console.log("Firebase session resolve tests passed.");

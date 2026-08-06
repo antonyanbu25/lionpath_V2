@@ -153,9 +153,11 @@ export function bindActionOnce(el, handler) {
   const wrapped = (ev) => {
     if (pending) return;
     pending = true;
-    queueMicrotask(() => {
+    // fwClick and native click can arrive in separate tasks; microtask-only dedupe
+    // let the second event through (e.g. SSO button needing multiple clicks).
+    setTimeout(() => {
       pending = false;
-    });
+    }, 400);
     handler(ev);
   };
   el.addEventListener("fwClick", wrapped);

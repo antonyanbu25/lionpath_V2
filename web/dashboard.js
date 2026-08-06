@@ -1431,8 +1431,8 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     const launchpadPromise =
       opts.session && store.getReadModel
         ? (async () => {
-            const { effectiveSessionUserId } = await import("./domain/session.js");
-            const uid = effectiveSessionUserId(opts.session);
+            const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
+            const uid = (await resolveEffectiveOwnerId(opts.session)) || null;
             if (!uid) return null;
             try {
               return await withDashboardTimeout(

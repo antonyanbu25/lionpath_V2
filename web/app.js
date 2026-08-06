@@ -490,6 +490,19 @@ function docsToRemoteBriefs(prepDocs, prepBriefDocs) {
   return briefs;
 }
 
+/** Domain owner ids for prepBriefs — authIndex wins over usr_dummy_* placeholders. */
+async function resolveRemoteBriefsOwnerIds(session = currentSession) {
+  const syncId = effectiveSessionUserId(session);
+  let resolvedId = syncId;
+  try {
+    const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
+    resolvedId = (await resolveEffectiveOwnerId(session)) || syncId;
+  } catch (err) {
+    console.warn("[app] resolveRemoteBriefsOwnerIds failed:", err?.message || err);
+  }
+  return [...new Set([resolvedId, syncId].filter(Boolean))];
+}
+
 async function queryRemotePrepCollections() {
   if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) {
     return { prepDocs: [], prepBriefDocs: [] };
@@ -498,10 +511,11 @@ async function queryRemotePrepCollections() {
   const email = String(user.email || currentSession?.email || "")
     .trim()
     .toLowerCase();
-  const ownerId = effectiveSessionUserId(currentSession);
+  const ownerIds = await resolveRemoteBriefsOwnerIds(currentSession);
   const prepSeen = new Set();
   const prepDocs = [];
   const prepBriefDocs = [];
+  const prepBriefSeen = new Set();
 
   const collectPreps = (snap) => {
     if (!snap?.docs) return;
@@ -546,7 +560,7 @@ async function queryRemotePrepCollections() {
     }
   }
 
-  if (ownerId) {
+  for (const ownerId of ownerIds) {
     try {
       const snap = await withFetchTimeout(
         fb.getDocs(
@@ -557,7 +571,12 @@ async function queryRemotePrepCollections() {
           ),
         ),
       );
-      if (snap?.docs) prepBriefDocs.push(...snap.docs);
+      if (!snap?.docs) continue;
+      for (const doc of snap.docs) {
+        if (prepBriefSeen.has(doc.id)) continue;
+        prepBriefSeen.add(doc.id);
+        prepBriefDocs.push(doc);
+      }
     } catch (err) {
       console.warn("[app] prepBriefs owner query failed:", err?.message || err);
     }
@@ -594,21 +613,27 @@ function buildSubscribeRemotePreps() {
     const email = String(user.email || currentSession?.email || "")
       .trim()
       .toLowerCase();
-    const ownerId = effectiveSessionUserId(currentSession);
     const prepDocsByUid = new Map();
     const prepDocsByEmail = new Map();
-    const prepBriefDocs = new Map();
+    /** @type {Map<string, Map<string, object>>} */
+    const prepBriefDocsByOwner = new Map();
+    let cancelled = false;
+    const unsubs = [];
 
     const emit = () => {
+      if (cancelled) return;
+      const prepBriefDocs = [];
+      for (const bucket of prepBriefDocsByOwner.values()) {
+        prepBriefDocs.push(...bucket.values());
+      }
       onChange(
         docsToRemoteBriefs(
           [...prepDocsByUid.values(), ...prepDocsByEmail.values()],
-          [...prepBriefDocs.values()],
+          prepBriefDocs,
         ),
       );
     };
 
-    const unsubs = [];
     const watch = (label, q, bucket) => {
       try {
         const unsub = fb.onSnapshot(
@@ -648,19 +673,26 @@ function buildSubscribeRemotePreps() {
         prepDocsByEmail,
       );
     }
-    if (ownerId) {
-      watch(
-        "prepBriefs owner",
-        fb.query(
-          fb.collection(fb.db, "prepBriefs"),
-          fb.where("ownerId", "==", ownerId),
-          fb.limit(PREP_HISTORY_LIMIT),
-        ),
-        prepBriefDocs,
-      );
-    }
+
+    void resolveRemoteBriefsOwnerIds(currentSession).then((ownerIds) => {
+      if (cancelled) return;
+      for (const ownerId of ownerIds) {
+        const bucket = new Map();
+        prepBriefDocsByOwner.set(ownerId, bucket);
+        watch(
+          `prepBriefs owner ${ownerId}`,
+          fb.query(
+            fb.collection(fb.db, "prepBriefs"),
+            fb.where("ownerId", "==", ownerId),
+            fb.limit(PREP_HISTORY_LIMIT),
+          ),
+          bucket,
+        );
+      }
+    });
 
     return () => {
+      cancelled = true;
       for (const unsub of unsubs) unsub();
     };
   };
@@ -2314,11 +2346,13 @@ function configureFirebaseLoginUi() {
 
 function wireFirebaseSignIn(runSignIn) {
   const btn = $("signin-google");
+  setSignInButtonReady(false);
   const attach = () => bindActionOnce(btn, () => {
     void runSignIn();
   });
   if (customElements.get("fw-button")) attach();
   else customElements.whenDefined("fw-button").then(attach);
+  void waitForFirebaseBootstrap().then(() => setSignInButtonReady(true));
 }
 
 /** @type {Promise<{ authMod: object, auth: object, provider: object }>|null} */
@@ -2328,6 +2362,18 @@ let firebaseAuth = null;
 /** @type {import("firebase/auth").GoogleAuthProvider|null} */
 let firebaseProvider = null;
 let firebaseSignInWired = false;
+/** Resolves once Firebase auth bootstrap (authStateReady + session restore) finishes. */
+let firebaseBootstrapReadyPromise = null;
+
+function waitForFirebaseBootstrap() {
+  return firebaseBootstrapReadyPromise || Promise.resolve();
+}
+
+function setSignInButtonReady(ready) {
+  const btn = $("signin-google");
+  if (!btn) return;
+  btn.disabled = !ready;
+}
 
 function ensureFirebaseSdk() {
   if (!firebaseSdkReady) {
@@ -2389,6 +2435,7 @@ async function runFirebaseSignIn() {
   setButtonLoading(btn, true);
   showAuthWaiting("Preparing Google sign-in…");
   try {
+    await waitForFirebaseBootstrap();
     await ensureFirebaseSdk();
     showAuthWaiting("Opening Google sign-in…");
     await fb.signInWithPopup(firebaseAuth, firebaseProvider);
@@ -2472,6 +2519,7 @@ async function initFirebase() {
     if (existing?.email) logout();
     if (!showAppInFlight && !ssoInFlight) showLogin();
   });
+  firebaseBootstrapReadyPromise = firebaseBootstrapPromise;
 }
 
 async function warnIfWorkerDown() {
@@ -2546,7 +2594,11 @@ async function boot() {
   assertThemeScoreSuppressionReady();
   await loadFirebaseConfig();
   if (authMode() === "firebase") {
+    await initFirebase();
+    await authReadyPromise;
     ensureFirebaseSignInWired();
+  } else {
+    initDomainStore(null);
   }
 
   initSidebar();
@@ -2758,11 +2810,7 @@ async function boot() {
     }
   });
 
-  initDomainStore(null);
-
   if (authMode() === "firebase") {
-    await initFirebase();
-    await authReadyPromise;
     await firebaseBootstrapPromise;
     const bootDeadline = Date.now() + 8000;
     while (showAppInFlight && Date.now() < bootDeadline) {
