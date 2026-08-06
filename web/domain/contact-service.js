@@ -3,6 +3,7 @@
  */
 
 import { getStore } from "./store.js";
+import { contactScopeFromAccount } from "./account-se-team.js";
 import { newId, now } from "./types.js";
 
 export const MEDDPICC_FIELD_KEYS = [
@@ -586,6 +587,7 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
 
   const contacts = await store.listContactsByAccount(accountId);
   const allChanges = [];
+  const account = store.getAccount ? await store.getAccount(accountId).catch(() => null) : null;
 
   for (const attendee of attendees) {
     let contact = null;
@@ -593,16 +595,18 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
     if (email && email.includes("@")) {
       contact = await store.findContactByAccountEmail(accountId, email);
       if (!contact) {
-        contact = await store.createContact({
-          id: newId("contact"),
-          accountId,
-          email,
-          name: attendee.name,
-          title: attendee.role,
-          role: attendee.role,
-          createdAt: now(),
-          updatedAt: now(),
-        });
+        contact = await store.createContact(
+          contactScopeFromAccount(account || { id: accountId }, {
+            id: newId("contact"),
+            accountId,
+            email,
+            name: attendee.name,
+            title: attendee.role,
+            role: attendee.role,
+            createdAt: now(),
+            updatedAt: now(),
+          }),
+        );
         await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
           source: "postcall",
           lifecycleId: ctx.lifecycleId,
@@ -654,16 +658,19 @@ export async function ensureCustomerContact(accountId, attendee, ctx = {}) {
   let contact = await store.findContactByAccountEmail(accountId, email);
   if (contact) return contact;
 
-  contact = await store.createContact({
-    id: newId("contact"),
-    accountId,
-    email,
-    name: attendee.name || email.split("@")[0],
-    title: attendee.title || null,
-    role: "Customer",
-    createdAt: now(),
-    updatedAt: now(),
-  });
+  const account = store.getAccount ? await store.getAccount(accountId).catch(() => null) : null;
+  contact = await store.createContact(
+    contactScopeFromAccount(account || { id: accountId }, {
+      id: newId("contact"),
+      accountId,
+      email,
+      name: attendee.name || email.split("@")[0],
+      title: attendee.title || null,
+      role: "Customer",
+      createdAt: now(),
+      updatedAt: now(),
+    }),
+  );
   await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
     source: ctx.source || "postcall_confirm",
   });

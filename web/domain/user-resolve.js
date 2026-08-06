@@ -7,26 +7,49 @@ import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
 
+/** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
+async function safeStoreGet(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[user-resolve] ${label} failed:`, err?.message || err);
+    return null;
+  }
+}
+
 /**
- * Lookup user by session authUid / email / userId.
+ * Resolve domain user for a session. authIndex is checked first on Firebase login so a
+ * placeholder usr_dummy_* id from persistFirebaseSession fallback does not throw.
  * @param {object} session
  * @param {object} store
  */
 export async function lookupUserForSession(session, store) {
   if (!session) return null;
-  if (session.authUid && store.getUserByAuthUid) {
-    const byAuth = await store.getUserByAuthUid(session.authUid);
-    if (byAuth) return byAuth;
-  }
   const lookupId = session.userId || session.uid;
-  if (lookupId && !lookupId.startsWith("usr_dummy_")) {
-    const byId = await store.getUser(lookupId);
-    if (byId) return byId;
+  let user = null;
+
+  if (session.authUid && store.getUserIdByAuthUid) {
+    const mappedId = await safeStoreGet("authIndex lookup", () =>
+      store.getUserIdByAuthUid(session.authUid),
+    );
+    if (mappedId) {
+      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
+    }
   }
-  if (session.email && store.getUserByEmail) {
-    return store.getUserByEmail(session.email);
+
+  if (!user && lookupId && !lookupId.startsWith("usr_dummy_") && lookupId !== session.authUid) {
+    user = await safeStoreGet("getUser by session id", () => store.getUser(lookupId));
   }
-  return null;
+  if (!user && session.email && store.getUserByEmail) {
+    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(session.email));
+  }
+  if (!user && session.email) {
+    user = await safeStoreGet("getUser by stable id", () =>
+      store.getUser(stableUserIdForEmail(session.email)),
+    );
+  }
+
+  return user;
 }
 
 /**
@@ -79,16 +102,6 @@ export function stableIdForEmail(email) {
 }
 
 export { now };
-
-/** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
-async function safeStoreGet(label, fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    console.warn(`[user-resolve] ${label} failed:`, err?.message || err);
-    return null;
-  }
-}
 
 /** Resolve team member emails for manager views (single team). */
 export async function listTeamMemberEmails(teamId) {

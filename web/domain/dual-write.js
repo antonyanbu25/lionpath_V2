@@ -158,6 +158,8 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     researchBundle: meta?.researchBundle,
     contactDrafts: meta?.contactDrafts,
     actorId: ownerId,
+    orgId: orgId || null,
+    teamId: teamId || null,
   });
 
   await ensureSeTeamForPrepActor(accountId, ownerId);
@@ -304,6 +306,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     companyDomain: payload?.companyDomain || knownAccount?.domain || null,
     prospectEmails: participantEmails,
     actorId: ownerId,
+    orgId: orgId || null,
+    teamId: teamId || null,
   });
   const { contactIds, primaryContactId, contactIdByEmail } = upserted;
   const account = upserted.account || { id: upserted.accountId, name: company };

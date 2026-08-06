@@ -45,7 +45,7 @@ const mockStore = {
   },
 };
 
-const { lookupUserForSession, resolveEffectiveOwnerId } = await import(webUrl("domain/seed-dev.js"));
+const { lookupUserForSession, resolveEffectiveOwnerId } = await import(webUrl("domain/user-resolve.js"));
 
 const resolved = await lookupUserForSession(
   { userId: DUMMY_ID, uid: DUMMY_ID, authUid: AUTH_UID, email: EMAIL },

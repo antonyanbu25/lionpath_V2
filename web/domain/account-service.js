@@ -26,6 +26,7 @@ import {
 } from "./contact-service.js";
 import {
   backfillAccountSeTeam,
+  contactScopeFromAccount,
   ensureSeTeamForPrepActor,
   resolveSeTeamDisplay,
   seTeamUserIds,
@@ -116,6 +117,11 @@ export async function upsertAccountFromPrep(input) {
   if (metadataPatch && !Object.keys(metadataPatch).length) metadataPatch = undefined;
 
   if (!account) {
+    const actorId = input.actorId || null;
+    const orgId = input.orgId || null;
+    const seTeam = actorId
+      ? [{ seUserId: actorId, role: "primary", addedAt: ts, addedBy: actorId }]
+      : [];
     const createMetadata = metadataPatch ? { ...metadataPatch } : {};
     if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
     const createPayload = {
@@ -123,6 +129,10 @@ export async function upsertAccountFromPrep(input) {
       name: companyName || slug,
       domain: resolvedDomain,
       slug,
+      orgId,
+      seTeam,
+      seTeamUserIds: actorId ? [actorId] : [],
+      primarySeUserId: actorId,
       createdAt: ts,
       updatedAt: ts,
     };
@@ -167,7 +177,7 @@ export async function upsertAccountFromPrep(input) {
         updatedAt: ts,
       };
       if (researchMeta) createPayload.metadata = { research: researchMeta };
-      contact = await store.createContact(createPayload);
+      contact = await store.createContact(contactScopeFromAccount(account, createPayload));
       if (input.actorId) {
         await recordContactEvent(contact.id, "contact_created", input.actorId, {
           source: "prep",

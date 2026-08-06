@@ -357,8 +357,13 @@ async function ensurePostCallSession() {
 /** Resolved domain owner id (authIndex over placeholder usr_dummy_*). */
 async function postCallOwnerId() {
   await ensurePostCallSession();
-  const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
-  return resolveEffectiveOwnerId(currentSession);
+  try {
+    const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
+    return resolveEffectiveOwnerId(currentSession);
+  } catch (err) {
+    console.warn("[postcall] owner resolve failed:", err?.message || err);
+    return sessionUserId(currentSession);
+  }
 }
 
 const isUnknown = (v) => {
