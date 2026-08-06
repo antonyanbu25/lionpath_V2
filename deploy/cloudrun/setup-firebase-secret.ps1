@@ -11,7 +11,7 @@ if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
   Write-Error "gcloud not found. Install Google Cloud SDK first."
 }
 if (-not (Test-Path $ConfigFile)) {
-  Write-Error "Missing $ConfigFile — copy web/firebase-config.local.example.js and fill Firebase values."
+  Write-Error "Missing $ConfigFile - copy web/firebase-config.local.example.js and fill Firebase values."
 }
 
 gcloud config set project $Project
