@@ -1,6 +1,6 @@
 /**
  * Shared QIP category radar — post-call result and call record.
- * 5-axis radar polygon: tips on axes, jewel-tone fill, glowing core.
+ * Classic 5-axis pentagon radar: concentric grid rings, filled score polygon, center QIP.
  */
 import { CATEGORY_KEYS, CATEGORY_LABELS, QIP_RADAR_LABELS } from "./rubric-profiles.js";
 import { esc } from "./shared.js";
@@ -20,28 +20,15 @@ const LABEL_R = 232;
 /** Clockwise from north, 72° apart (radians). */
 const AXIS_ANGLES = CATEGORY_KEYS.map((_, i) => (i * 2 * Math.PI) / 5);
 
+/** Grid rings at scores 2, 4, 6, 8, 10. */
 const RING_RADII = [42, 84, 126, 168, 210];
-
-const GRADIENT_STOPS = [
-  ["#10a884", "#0ba0b2"],
-  ["#0ba0b2", "#e0982a"],
-  ["#e0982a", "#e06a4c"],
-  ["#e06a4c", "#7a5bd0"],
-  ["#7a5bd0", "#10a884"],
-];
+const SCALE_LABELS = [2, 4, 6, 8, 10];
 
 const AXIS_AT_MAX = AXIS_ANGLES.map((a) => vertex(CX, CY, R, a));
 
-const GRADIENT_DEFS = AXIS_AT_MAX.map(([x1, y1], i) => {
-  const [x2, y2] = AXIS_AT_MAX[(i + 1) % 5];
-  const [c0, c1] = GRADIENT_STOPS[i];
-  return { x1, y1, x2, y2, c0, c1 };
-});
-
-const AXIS_COLORS = ["#10a884", "#0ba0b2", "#e0982a", "#e06a4c", "#7a5bd0"];
-const AXIS_STROKES = ["#12b892", "#0aacc0", "#eaa236", "#ec7458", "#8a6ce0"];
 const LABEL_SCORE_COLORS = ["#0e9c7a", "#0a94a5", "#c9871f", "#d85f42", "#6d54c9"];
-const RING_STROKES = ["#f2ece1", "#eee7db", "#eae2d4", "#e6ddcd", "#dcd1be"];
+const RING_STROKES = ["#f2ece1", "#eee7db", "#eae2d4", "#e6ddcd", "#e4dccd"];
+const SCALE_COLORS = ["#d8d0c0", "#d3cab7", "#cec5b2", "#c9bfab", "#c9bfab"];
 
 const LABEL_ANCHORS = ["middle", "start", "start", "end", "end"];
 
@@ -108,8 +95,15 @@ function labelPositions(i) {
 
 function axisRadius(score) {
   const ratio = Math.max(0, Math.min(10, Number(score) || 0)) / 10;
-  if (ratio <= 0.05) return 0;
   return R * ratio;
+}
+
+/** Pentagon vertices at radius r on each axis. */
+function pentagonPoints(r) {
+  return AXIS_ANGLES.map((a) => {
+    const [x, y] = vertex(CX, CY, r, a);
+    return `${fmtCoord(x)},${fmtCoord(y)}`;
+  }).join(" ");
 }
 
 /** 5-vertex pentagon: one tip per axis (classic radar chart). */
@@ -120,7 +114,7 @@ function buildPentagonGeometry(scores) {
 }
 
 /**
- * Jewel-tone QIP radar for category scores (0–10 scale).
+ * QIP pentagon radar for category scores (0–10 scale).
  * @param {object} [opts]
  * @param {number|null} [opts.overallScore] Shown in glowing core
  * @param {string} [opts.title] Card eyebrow (default Evaluation signal)
@@ -132,7 +126,7 @@ export function renderQipRadar(categoryScores, opts = {}) {
   const hint = opts.hint || "Five categories · spike length = score / 10";
   const animate = opts.animate !== false;
   const seq = ++qipRadarSeq;
-  const uid = `qip-star-${seq}`;
+  const uid = `qip-radar-${seq}`;
 
   const scores = CATEGORY_KEYS.map((key) =>
     Math.max(0, Math.min(10, Number(categoryScores?.[key] ?? 0) || 0)),
@@ -146,45 +140,29 @@ export function renderQipRadar(categoryScores, opts = {}) {
 
   const animClass = animate ? " qip-star-animated" : " qip-star-static";
 
-  const gradients = GRADIENT_DEFS.map(
-    (g, i) =>
-      `<linearGradient id="${uid}-g${i}" gradientUnits="userSpaceOnUse" x1="${fmtCoord(g.x1)}" y1="${fmtCoord(g.y1)}" x2="${fmtCoord(g.x2)}" y2="${fmtCoord(g.y2)}"><stop offset="0" stop-color="${g.c0}"/><stop offset="1" stop-color="${g.c1}"/></linearGradient>`,
-  ).join("");
-
-  const wedgePolys = AXIS_AT_MAX.map((_, i) => {
-    const [x1, y1] = AXIS_AT_MAX[i];
-    const [x2, y2] = AXIS_AT_MAX[(i + 1) % 5];
-    return `<polygon points="${CX},${CY} ${fmtCoord(x1)},${fmtCoord(y1)} ${fmtCoord(x2)},${fmtCoord(y2)}" fill="url(#${uid}-g${i})"/>`;
-  }).join("");
-
-  const edgePaths = CATEGORY_KEYS.map((_, i) => {
-    const [x1, y1] = tips[i];
-    const [x2, y2] = tips[(i + 1) % 5];
-    return `<path d="M ${fmtCoord(x1)},${fmtCoord(y1)} L ${fmtCoord(x2)},${fmtCoord(y2)}" stroke="${AXIS_STROKES[i]}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`;
-  }).join("");
-
-  const halos = tips
-    .map(
-      (t, i) =>
-        `<circle class="halo g${i}" cx="${fmtCoord(t[0])}" cy="${fmtCoord(t[1])}" r="10" fill="${AXIS_COLORS[i]}" filter="url(#${uid}-bMed)" opacity=".5"/>`,
-    )
-    .join("");
-
-  const gems = tips
-    .map(
-      (t, i) =>
-        `<circle class="gem g${i}" cx="${fmtCoord(t[0])}" cy="${fmtCoord(t[1])}" r="4.5" fill="${AXIS_COLORS[i]}" stroke="#fff" stroke-width="2.2"/>`,
-    )
-    .join("");
-
   const rings = RING_RADII.map((r, i) => {
     const outer = i === RING_RADII.length - 1;
-    return `<circle class="ring r${i + 1}" cx="${CX}" cy="${CY}" r="${fmtCoord(r)}" fill="none" stroke="${RING_STROKES[i]}" stroke-width="${outer ? 1.1 : 1}"${outer ? ' stroke-dasharray="2 5"' : ""}/>`;
+    const ringCls = outer ? "ring r5 qip-radar-ring qip-radar-ring-outer" : `ring r${i + 1} qip-radar-ring`;
+    return `<polygon class="${ringCls}" points="${pentagonPoints(r)}" fill="${outer ? "#fdfbf7" : "none"}" stroke="${RING_STROKES[i]}" stroke-width="${outer ? 1.3 : 1}"/>`;
   }).join("");
 
   const spokes = AXIS_AT_MAX.map(
-    ([x, y]) => `<line class="spoke" x1="${CX}" y1="${CY}" x2="${fmtCoord(x)}" y2="${fmtCoord(y)}"/>`,
+    ([x, y]) =>
+      `<line class="spoke qip-radar-spoke" x1="${CX}" y1="${CY}" x2="${fmtCoord(x)}" y2="${fmtCoord(y)}"/>`,
   ).join("");
+
+  const scaleLabels = SCALE_LABELS.map((label, i) => {
+    const frac = label / 10;
+    const y = fmtCoord(CY - R * frac + 8);
+    return `<text class="lab qip-radar-scale" x="${CX - 8}" y="${y}" text-anchor="end" font-size="8.5" font-weight="700" fill="${SCALE_COLORS[i]}">${label}</text>`;
+  }).join("");
+
+  const dots = tips
+    .map(
+      (t, i) =>
+        `<circle class="gem g${i} qip-radar-dot" cx="${fmtCoord(t[0])}" cy="${fmtCoord(t[1])}" r="4" fill="#fff" stroke="#17a086" stroke-width="2.2"/>`,
+    )
+    .join("");
 
   const labelMarkup = CATEGORY_KEYS.map((key, i) => {
     const lines = labelDisplayLines(key);
@@ -192,16 +170,14 @@ export function renderQipRadar(categoryScores, opts = {}) {
     const line1 = lines[0] || "";
     const line2 = lines[1] || "";
     const displayScore = scores[i] % 1 === 0 ? String(Math.round(scores[i])) : String(Math.round(scores[i] * 10) / 10);
-    return `<text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line1Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line1)}</text>
-            <text class="lab" x="${fmtCoord(layout.x)}" y="${layout.line2Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line2)}</text>
-            <text class="lab" x="${fmtCoord(layout.x)}" y="${layout.scoreY}" text-anchor="${layout.anchor}" font-size="14.5" font-weight="800" fill="${LABEL_SCORE_COLORS[i]}">${esc(displayScore)}</text>`;
+    return `<text class="lab qip-radar-axis-label" x="${fmtCoord(layout.x)}" y="${layout.line1Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line1)}</text>
+            <text class="lab qip-radar-axis-label" x="${fmtCoord(layout.x)}" y="${layout.line2Y}" text-anchor="${layout.anchor}" font-size="12" font-weight="700" fill="#3d3a34">${esc(line2)}</text>
+            <text class="lab qip-radar-value" x="${fmtCoord(layout.x)}" y="${layout.scoreY}" text-anchor="${layout.anchor}" font-size="14.5" font-weight="800" fill="${LABEL_SCORE_COLORS[i]}">${esc(displayScore)}</text>`;
   }).join("");
 
   const coreText = overall
-    ? `<text x="${CX}" y="${CY + 9}" text-anchor="middle" font-size="28" font-weight="800" letter-spacing="-1.5" fill="url(#${uid}-num)">${esc(overall)}</text>`
+    ? `<text class="qip-radar-center-label" x="${CX}" y="${CY + 9}" text-anchor="middle" font-size="28" font-weight="800" letter-spacing="-1.5" fill="url(#${uid}-num)">${esc(overall)}</text>`
     : "";
-
-  const scaleY = (frac) => fmtCoord(CY - R * frac + 8);
 
   return `
     <div class="star-card qip-star-card${animClass}">
@@ -212,26 +188,16 @@ export function renderQipRadar(categoryScores, opts = {}) {
       <div class="qip-star-stage">
       <svg class="star-svg qip-star-svg qip-radar-svg" viewBox="${VIEWBOX}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${ariaLabel}">
         <defs>
-          ${gradients}
           <radialGradient id="${uid}-core" cx="40%" cy="34%" r="72%"><stop offset="0" stop-color="#ffffff"/><stop offset="46%" stop-color="#eafaf4"/><stop offset="100%" stop-color="#cdeae0"/></radialGradient>
-          <radialGradient id="${uid}-sheen" cx="50%" cy="46%" r="58%"><stop offset="0" stop-color="#ffffff" stop-opacity=".42"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
           <linearGradient id="${uid}-num" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e9c7a"/><stop offset="1" stop-color="#0a94a5"/></linearGradient>
           <filter id="${uid}-bBig" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="9"/></filter>
-          <filter id="${uid}-bMed" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>
-          <clipPath id="${uid}-dataClip"><polygon points="${dataPoly}"/></clipPath>
         </defs>
         ${rings}
         <g stroke="#efe8db" stroke-width="1">${spokes}</g>
-        <text class="lab" x="${CX - 8}" y="${scaleY(1)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#c9bfab">10</text>
-        <text class="lab" x="${CX - 8}" y="${scaleY(0.8)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#cec5b2">8</text>
-        <text class="lab" x="${CX - 8}" y="${scaleY(0.6)}" text-anchor="end" font-size="8.5" font-weight="700" fill="#d3cab7">6</text>
+        ${scaleLabels}
         <g id="${uid}-dataGroup" class="qip-star-data">
-          <polygon class="aura" points="${dataPoly}" fill="#1aa88f" filter="url(#${uid}-bBig)" opacity=".3"/>
-          <g clip-path="url(#${uid}-dataClip)" opacity=".82">${wedgePolys}</g>
-          <polygon points="${dataPoly}" fill="url(#${uid}-sheen)" opacity=".35"/>
-          <g fill="none" stroke-width="1.2" opacity=".55">${edgePaths}</g>
-          ${halos}
-          <g>${gems}</g>
+          <polygon class="qip-radar-data" points="${dataPoly}" fill="#17a086" fill-opacity="0.24" stroke="#17a086" stroke-width="2.6" stroke-linejoin="round"/>
+          <g>${dots}</g>
         </g>
         <g id="${uid}-coreGroup" class="qip-star-core">
           <circle cx="${CX}" cy="${CY}" r="40" fill="#8fe6d2" filter="url(#${uid}-bBig)" opacity=".45"/>

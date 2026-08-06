@@ -1846,6 +1846,52 @@ button.pc-deal-tile {
   transform: none;
 }
 
+#postcall-result .qip-radar-ring {
+  fill: none;
+  stroke: #efe8da;
+  stroke-width: 1;
+}
+
+#postcall-result .qip-radar-ring-outer {
+  fill: #fdfbf7;
+  stroke: #e4dccd;
+  stroke-width: 1.3;
+}
+
+#postcall-result .qip-radar-spoke {
+  stroke: #e4dccd;
+  stroke-width: 1;
+}
+
+#postcall-result .qip-radar-scale {
+  font-size: 8.5px;
+  font-weight: 600;
+  fill: #b7ad9b;
+}
+
+#postcall-result .qip-radar-data {
+  stroke: #17a086;
+  stroke-width: 2.6;
+  stroke-linejoin: round;
+}
+
+#postcall-result .qip-radar-dot {
+  fill: #fff;
+  stroke: #17a086;
+  stroke-width: 2.2;
+}
+
+#postcall-result .qip-radar-value {
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+#postcall-result .qip-radar-axis-label {
+  font-size: 12px;
+  font-weight: 700;
+  fill: #3d3a34;
+}
+
 #postcall-result .qip-category-row {
   border-top: 1px solid var(--dew-hairline);
 }

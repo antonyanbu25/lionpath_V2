@@ -120,10 +120,12 @@ assert(!container.innerHTML.includes("Transcript-only call"), "no transcript-onl
 const starCount = (container.innerHTML.match(/class="[^"]*\bqip-star-svg\b[^"]*"/g) || []).length;
 assert(starCount === 1, "QIP radar shown once at top");
 assert(container.innerHTML.includes('viewBox="0 0 700 600"'), "radar uses 700x600 viewBox");
-assert(container.innerHTML.includes("-dataClip"), "radar has dataClip clipPath");
-const clipMatch = container.innerHTML.match(/clipPath id="[^"]*-dataClip"><polygon points="([^"]+)"/);
-const radarVerts = clipMatch ? clipMatch[1].trim().split(/\s+/).length : 0;
+assert(container.innerHTML.includes("qip-radar-ring"), "radar has pentagon grid rings");
+assert(!container.innerHTML.match(/<circle class="ring r\d"/), "radar grid uses pentagons not circles");
+const dataMatch = container.innerHTML.match(/class="qip-radar-data" points="([^"]+)"/);
+const radarVerts = dataMatch ? dataMatch[1].trim().split(/\s+/).length : 0;
 assert(radarVerts === 5, "radar data polygon is 5-vertex pentagon not 10-vertex star");
+assert(container.innerHTML.includes("qip-radar-ring-outer"), "radar has outer pentagon boundary at score 10");
 assert(container.innerHTML.includes("qip-star-core"), "star has glowing core group");
 assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in star core");
 assert(container.innerHTML.includes("qip-star-animated"), "star has entrance animations");
@@ -132,10 +134,10 @@ assert(container.innerHTML.includes('class="chip done"'), "scorecard has done ch
 assert(container.innerHTML.includes('class="chip part"'), "scorecard has partial chip");
 assert(container.innerHTML.includes('class="chip miss"'), "scorecard has missed chip");
 assert(container.innerHTML.includes('class="pill high"') || container.innerHTML.includes('class="pill med"'), "scorecard uses wireframe confidence pills");
-assert(container.innerHTML.includes("-g0"), "star has jewel gradient wedges");
+assert(container.innerHTML.includes("qip-radar-data"), "radar has filled score polygon");
+assert(!container.innerHTML.includes("-dataClip"), "radar no longer uses wedge clipPath fill");
 assert(!container.innerHTML.includes("Demo profile"), "no profile version subline on KPI");
 assert(!container.innerHTML.includes('viewBox="0 0 400 400"'), "old 400x400 radar removed");
-assert(!container.innerHTML.includes("qip-radar-data"), "old teal polygon radar removed");
 assert(container.innerHTML.includes("Who was in the room"), "shows room panel");
 assert(container.innerHTML.includes("QIP scorecard"), "shows QIP tab");
 assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
