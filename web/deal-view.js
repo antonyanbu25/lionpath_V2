@@ -52,6 +52,23 @@ export function invalidateDealListCache() {
   dealListCache = null;
 }
 
+function dealListCacheKey(session) {
+  return sessionUserId(session) || "";
+}
+
+/** @param {object} session @returns {object[]|null} */
+export function getDealListCacheRows(session) {
+  const key = dealListCacheKey(session);
+  if (dealListCache?.key !== key || Date.now() - dealListCache.at >= DEAL_LIST_TTL_MS) return null;
+  return dealListCache.rows;
+}
+
+/** @param {object} session */
+export function isDealListCacheFresh(session) {
+  const rows = getDealListCacheRows(session);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
 function dealListRowsChanged(prev, next) {
   if (!prev || !next) return true;
   if (prev.length !== next.length) return true;
