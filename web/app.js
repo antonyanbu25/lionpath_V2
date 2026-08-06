@@ -495,12 +495,21 @@ async function resolveRemoteBriefsOwnerIds(session = currentSession) {
   const syncId = effectiveSessionUserId(session);
   let resolvedId = syncId;
   try {
-    const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
-    resolvedId = (await resolveEffectiveOwnerId(session)) || syncId;
+    const { resolveAuthIndexOwnerId, resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
+    resolvedId =
+      (await resolveAuthIndexOwnerId(fb, session)) ||
+      (await resolveEffectiveOwnerId(session, undefined, fb)) ||
+      syncId;
   } catch (err) {
     console.warn("[app] resolveRemoteBriefsOwnerIds failed:", err?.message || err);
   }
-  return [...new Set([resolvedId, syncId].filter(Boolean))];
+  const ownerIds = [...new Set([resolvedId, syncId].filter(Boolean))].filter(
+    (id) => !String(id).startsWith("usr_dummy_"),
+  );
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{syncId:syncId?.slice?.(0,28),resolvedId:resolvedId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return ownerIds;
 }
 
 async function queryRemotePrepCollections() {
@@ -508,9 +517,6 @@ async function queryRemotePrepCollections() {
     return { prepDocs: [], prepBriefDocs: [] };
   }
   const user = fb.auth.currentUser;
-  const email = String(user.email || currentSession?.email || "")
-    .trim()
-    .toLowerCase();
   const ownerIds = await resolveRemoteBriefsOwnerIds(currentSession);
   const prepSeen = new Set();
   const prepDocs = [];
@@ -532,32 +538,23 @@ async function queryRemotePrepCollections() {
         fb.query(
           fb.collection(fb.db, "preps"),
           fb.where("uid", "==", user.uid),
-          fb.orderBy("createdAt", "desc"),
           fb.limit(PREP_HISTORY_LIMIT),
         ),
       ),
     );
-    collectPreps(snap);
+    if (snap?.docs?.length) {
+      const sorted = [...snap.docs].sort(
+        (a, b) => (b.data()?.createdAt || 0) - (a.data()?.createdAt || 0),
+      );
+      collectPreps({ docs: sorted });
+    }
   } catch (err) {
     console.warn("[app] preps uid query failed:", err?.message || err);
   }
 
-  if (email) {
-    try {
-      const snap = await withFetchTimeout(
-        fb.getDocs(
-          fb.query(
-            fb.collection(fb.db, "preps"),
-            fb.where("email", "==", email),
-            fb.orderBy("createdAt", "desc"),
-            fb.limit(PREP_HISTORY_LIMIT),
-          ),
-        ),
-      );
-      collectPreps(snap);
-    } catch (err) {
-      console.warn("[app] preps email query failed:", err?.message || err);
-    }
+  if (!ownerIds.length) {
+    console.warn("[app] prepBriefs skipped: no resolved owner id (authIndex pending?)");
+    return { prepDocs, prepBriefDocs };
   }
 
   for (const ownerId of ownerIds) {
@@ -610,11 +607,7 @@ function buildSubscribeRemotePreps() {
       return () => {};
     }
     const user = fb.auth.currentUser;
-    const email = String(user.email || currentSession?.email || "")
-      .trim()
-      .toLowerCase();
     const prepDocsByUid = new Map();
-    const prepDocsByEmail = new Map();
     /** @type {Map<string, Map<string, object>>} */
     const prepBriefDocsByOwner = new Map();
     let cancelled = false;
@@ -626,12 +619,11 @@ function buildSubscribeRemotePreps() {
       for (const bucket of prepBriefDocsByOwner.values()) {
         prepBriefDocs.push(...bucket.values());
       }
-      onChange(
-        docsToRemoteBriefs(
-          [...prepDocsByUid.values(), ...prepDocsByEmail.values()],
-          prepBriefDocs,
-        ),
-      );
+      const briefs = docsToRemoteBriefs([...prepDocsByUid.values()], prepBriefDocs);
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:subscribeRemotePreps.emit",message:"briefs snapshot emit",data:{prepsLegacy:prepDocsByUid.size,prepBriefs:prepBriefDocs.length,merged:briefs.length,owners:[...prepBriefDocsByOwner.keys()].map((id)=>id?.slice?.(0,24))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      onChange(briefs);
     };
 
     const watch = (label, q, bucket) => {
@@ -656,27 +648,15 @@ function buildSubscribeRemotePreps() {
       fb.query(
         fb.collection(fb.db, "preps"),
         fb.where("uid", "==", user.uid),
-        fb.orderBy("createdAt", "desc"),
         fb.limit(PREP_HISTORY_LIMIT),
       ),
       prepDocsByUid,
     );
-    if (email) {
-      watch(
-        "preps email",
-        fb.query(
-          fb.collection(fb.db, "preps"),
-          fb.where("email", "==", email),
-          fb.orderBy("createdAt", "desc"),
-          fb.limit(PREP_HISTORY_LIMIT),
-        ),
-        prepDocsByEmail,
-      );
-    }
 
-    void resolveRemoteBriefsOwnerIds(currentSession).then((ownerIds) => {
-      if (cancelled) return;
+    const attachPrepBriefWatchers = (ownerIds) => {
+      if (cancelled || !ownerIds.length) return;
       for (const ownerId of ownerIds) {
+        if (prepBriefDocsByOwner.has(ownerId)) continue;
         const bucket = new Map();
         prepBriefDocsByOwner.set(ownerId, bucket);
         watch(
@@ -689,6 +669,21 @@ function buildSubscribeRemotePreps() {
           bucket,
         );
       }
+    };
+
+    const retryOwnerResolve = (attempt = 0) => {
+      if (cancelled || attempt >= 6) return;
+      setTimeout(async () => {
+        if (cancelled) return;
+        const ids = await resolveRemoteBriefsOwnerIds(currentSession);
+        attachPrepBriefWatchers(ids);
+        if (!ids.length && !cancelled) retryOwnerResolve(attempt + 1);
+      }, 400 * (attempt + 1));
+    };
+
+    void resolveRemoteBriefsOwnerIds(currentSession).then((ownerIds) => {
+      attachPrepBriefWatchers(ownerIds);
+      if (!ownerIds.length && !cancelled) retryOwnerResolve(0);
     });
 
     return () => {
@@ -728,6 +723,7 @@ function dashboardOpts(extra = {}) {
   return {
     session: currentSession,
     seName: currentSession?.name,
+    resolveOwnerFb: fb,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
     subscribeRemotePreps: buildSubscribeRemotePreps(),
@@ -2348,11 +2344,14 @@ function wireFirebaseSignIn(runSignIn) {
   const btn = $("signin-google");
   setSignInButtonReady(false);
   const attach = () => bindActionOnce(btn, () => {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H5",location:"app.js:wireFirebaseSignIn",message:"SSO button activated",data:{disabled:!!btn?.disabled,ssoInFlight},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     void runSignIn();
   });
   if (customElements.get("fw-button")) attach();
   else customElements.whenDefined("fw-button").then(attach);
-  void waitForFirebaseBootstrap().then(() => setSignInButtonReady(true));
+  void ensureFirebaseSdk().then(() => setSignInButtonReady(true));
 }
 
 /** @type {Promise<{ authMod: object, auth: object, provider: object }>|null} */

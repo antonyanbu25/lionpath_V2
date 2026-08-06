@@ -53,25 +53,57 @@ export async function lookupUserForSession(session, store) {
 }
 
 /**
+ * Read authIndex directly (rules allow own doc) — bypasses store lookups that fail on usr_dummy_*.
+ * @param {object | null | undefined} fb Firebase helpers (auth, db, getDoc, doc)
+ * @param {object | null | undefined} session
+ * @returns {Promise<string | null>}
+ */
+export async function resolveAuthIndexOwnerId(fb, session) {
+  const raw = session?.userId || session?.uid;
+  const isDummy = raw?.startsWith("usr_dummy_");
+  const isAuthUidAsProfile = session?.authUid && raw === session.authUid;
+  if (raw && !isDummy && !isAuthUidAsProfile) return raw;
+
+  const authUid = session?.authUid || fb?.auth?.currentUser?.uid;
+  if (authUid && fb?.db && fb?.getDoc && fb?.doc) {
+    try {
+      const snap = await fb.getDoc(fb.doc(fb.db, "authIndex", authUid));
+      const userId = snap.exists() ? snap.data()?.userId : null;
+      // #region agent log
+      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"user-resolve.js:resolveAuthIndexOwnerId",message:"authIndex direct read",data:{authUid:authUid?.slice?.(0,8),userId:userId?.slice?.(0,24),sessionRaw:raw?.slice?.(0,24),exists:snap.exists()},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (userId && !String(userId).startsWith("usr_dummy_")) return userId;
+    } catch (err) {
+      console.warn("[user-resolve] authIndex direct read failed:", err?.message || err);
+    }
+  }
+  return null;
+}
+
+/**
  * Domain owner id for Firestore reads/writes — authIndex wins over placeholders.
  * @param {object | null | undefined} session
  * @param {object} [storeOverride]
+ * @param {object} [fb] optional Firebase helpers for direct authIndex read
  * @returns {Promise<string | null>}
  */
-export async function resolveEffectiveOwnerId(session, storeOverride) {
+export async function resolveEffectiveOwnerId(session, storeOverride, fb) {
   if (!session) return null;
   const raw = session.userId || session.uid;
   const isDummy = raw?.startsWith("usr_dummy_");
   const isAuthUidAsProfile = session.authUid && raw === session.authUid;
   if (raw && !isDummy && !isAuthUidAsProfile) return raw;
 
+  const fromAuthIndex = await resolveAuthIndexOwnerId(fb, session);
+  if (fromAuthIndex) return fromAuthIndex;
+
   if (session.authUid || session.email) {
     const store = storeOverride || getStore();
     const user = await lookupUserForSession(session, store);
-    if (user?.id) return user.id;
+    if (user?.id && !String(user.id).startsWith("usr_dummy_")) return user.id;
   }
 
-  return raw || (session.email ? stableUserIdForEmail(session.email) : null);
+  return isDummy ? fromAuthIndex : raw || (session.email ? stableUserIdForEmail(session.email) : null);
 }
 
 /** Load user profile from store and merge into session (production path). */

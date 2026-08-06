@@ -45,7 +45,9 @@ const mockStore = {
   },
 };
 
-const { lookupUserForSession, resolveEffectiveOwnerId } = await import(webUrl("domain/user-resolve.js"));
+const { lookupUserForSession, resolveEffectiveOwnerId, resolveAuthIndexOwnerId } = await import(
+  webUrl("domain/user-resolve.js")
+);
 const { effectiveSessionUserId } = await import(webUrl("domain/session.js"));
 
 const resolved = await lookupUserForSession(
@@ -66,5 +68,22 @@ const syncOwnerId = effectiveSessionUserId(
 );
 assert.equal(syncOwnerId, DUMMY_ID, "effectiveSessionUserId returns placeholder without authIndex lookup");
 assert.notEqual(syncOwnerId, REAL_USER_ID, "briefs KPI must not rely on effectiveSessionUserId alone");
+
+const mockFb = {
+  auth: { currentUser: { uid: AUTH_UID } },
+  db: {},
+  doc: (_db, col, id) => ({ col, id }),
+  getDoc: async (ref) =>
+    ref.id === AUTH_UID && ref.col === "authIndex"
+      ? { exists: () => true, data: () => ({ userId: REAL_USER_ID }) }
+      : { exists: () => false, data: () => null },
+};
+const fromIndex = await resolveAuthIndexOwnerId(mockFb, {
+  userId: DUMMY_ID,
+  uid: DUMMY_ID,
+  authUid: AUTH_UID,
+  email: EMAIL,
+});
+assert.equal(fromIndex, REAL_USER_ID, "resolveAuthIndexOwnerId reads authIndex doc directly");
 
 console.log("Firebase session resolve tests passed.");
