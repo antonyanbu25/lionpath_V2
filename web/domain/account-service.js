@@ -29,6 +29,8 @@ import {
   ensureSeTeamForPrepActor,
   resolveSeTeamDisplay,
   seTeamUserIds,
+  seTeamTeamIds,
+  syncAccountScopeDenorm,
   userDisplayFields,
 } from "./account-se-team.js";
 import { getOrg, getVisibleScope, resolveOrgForUser, userWithDirectorFlag } from "./org-service.js";
@@ -1120,9 +1122,14 @@ async function canReadAccountEngagement(user, account, lifecycles) {
   if (!user || !account) return false;
   const ids = seTeamUserIds(account);
   const orgId = lifecycles[0]?.orgId || user.orgId || null;
+  const teamIds = seTeamTeamIds(account);
+  const seTeamTeamIdsForRules = teamIds.length
+    ? teamIds
+    : [...new Set(lifecycles.map((l) => l.teamId).filter(Boolean))];
   return can(user, "read_account", {
     ownerId: account.primarySeUserId || lifecycles[0]?.ownerId,
     seTeamUserIds: ids,
+    seTeamTeamIds: seTeamTeamIdsForRules,
     accountOrgId: orgId,
     teamId: user.teamId || undefined,
     orgId: user.orgId || undefined,
@@ -1655,6 +1662,7 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
     }
     seTeam.push({ seUserId: addId, role: "secondary", addedAt: ts, addedBy: actorId });
     account = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
+    account = (await syncAccountScopeDenorm(accountId)) || account;
 
     const targetUser = await store.getUser(addId);
     const lc = await getOrCreateLifecycle(addId, accountId, targetUser?.teamId || user.teamId || "", {

@@ -341,7 +341,10 @@ function applyConfirmedProfiles(
 /** Full pipeline: research → extract → synthesize → validate. */
 export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepResult> {
   const input = normalizePrepInput(rawInput);
-  if (input.prepType === "expansion") {
+  const expansionEnabled =
+    (env.PREP_EXPANSION_ENABLED || process.env.PREP_EXPANSION_ENABLED || "false").toLowerCase() ===
+    "true";
+  if (input.prepType === "expansion" && !expansionEnabled) {
     throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
   }
 
@@ -500,7 +503,10 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 /** Research-only step for human-in-the-loop confirmation. */
 export async function runPrepResearch(env: Env, rawInput: PrepInput): Promise<ResearchOnlyResult> {
   const input = normalizePrepInput(rawInput);
-  if (input.prepType === "expansion") {
+  const expansionEnabled =
+    (env.PREP_EXPANSION_ENABLED || process.env.PREP_EXPANSION_ENABLED || "false").toLowerCase() ===
+    "true";
+  if (input.prepType === "expansion" && !expansionEnabled) {
     throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
   }
 

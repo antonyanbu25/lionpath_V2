@@ -274,15 +274,31 @@ export function createLocalStore() {
       return findById("dealContacts", dealContactId(dealId, contactId)) || null;
     },
 
-    async listContactsByDeal(dealId) {
+    async listDealContactLinks(dealId) {
       const key = String(dealId || "").trim();
       if (!key) return [];
       return findMany(
         "dealContacts",
         (d) => d.dealId === key,
-        // Primary first, then stable by contactId so the order never flickers between reads.
         (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.contactId.localeCompare(b.contactId),
       );
+    },
+
+    async listContactsByDeal(dealId) {
+      const links = await this.listDealContactLinks(dealId);
+      return links
+        .map((link) => {
+          const contact = findById("contacts", link.contactId);
+          if (!contact) return null;
+          return {
+            ...contact,
+            contactId: contact.id,
+            dealRole: link.role,
+            isPrimary: link.isPrimary,
+            dealContactId: link.id,
+          };
+        })
+        .filter(Boolean);
     },
 
     async listDealsByContact(contactId) {
@@ -359,15 +375,21 @@ export function createLocalStore() {
     async findActiveDeal(accountId, type, opts = {}) {
       const ownerId = opts.ownerId || null;
       const teamId = opts.teamId || null;
-      return findOne(
-        "deals",
-        (d) =>
-          d.accountId === accountId &&
-          d.type === type &&
-          d.status === "active" &&
-          (!ownerId || d.ownerId === ownerId) &&
-          (!teamId || d.teamId === teamId),
-      );
+      const includeGrace = opts.includeGrace === true;
+      const statuses = includeGrace ? ["active", "closed_won_grace"] : ["active"];
+      for (const status of statuses) {
+        const match = findOne(
+          "deals",
+          (d) =>
+            d.accountId === accountId &&
+            d.type === type &&
+            d.status === status &&
+            (!ownerId || d.ownerId === ownerId) &&
+            (!teamId || d.teamId === teamId),
+        );
+        if (match) return match;
+      }
+      return null;
     },
 
     async createDeal(deal) {

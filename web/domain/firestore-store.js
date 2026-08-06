@@ -399,18 +399,16 @@ export function createFirestoreStore(fb) {
     async createDealContact(link) {
       const id = dealContactId(link.dealId, link.contactId);
       const ref = doc(db, "dealContacts", id);
-      const existing = await getDoc(ref);
       const ts = now();
       const data = {
-        ...(existing.exists() ? existing.data() : {}),
         ...link,
         id,
         role: normalizeDealContactRole(link.role),
         isPrimary: !!link.isPrimary,
-        createdAt: existing.exists() ? existing.data().createdAt : ts,
+        createdAt: link.createdAt || ts,
         updatedAt: ts,
       };
-      await setDoc(ref, data);
+      await setDoc(ref, data, { merge: true });
       return data;
     },
 
@@ -419,19 +417,59 @@ export function createFirestoreStore(fb) {
       return snap.exists() ? { id: snap.id, ...snap.data() } : null;
     },
 
-    async listContactsByDeal(dealId) {
+    async listDealContactLinks(dealId) {
       const key = String(dealId || "").trim();
       if (!key) return [];
       const q = query(collection(db, "dealContacts"), where("dealId", "==", key));
       const snap = await getDocs(q);
       return snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        // Primary first, then stable by contactId so the order never flickers between reads.
         .sort(
           (a, b) =>
             Number(!!b.isPrimary) - Number(!!a.isPrimary) ||
             String(a.contactId).localeCompare(String(b.contactId)),
         );
+    },
+
+    async listContactsByDeal(dealId) {
+      const links = await this.listDealContactLinks(dealId);
+      if (!links.length) return [];
+      const contactIds = links.map((l) => l.contactId);
+      const contacts = await this.getContactsByIds(contactIds);
+      const byId = new Map(contacts.map((c) => [c.id, c]));
+      return links
+        .map((link) => {
+          const contact = byId.get(link.contactId);
+          if (!contact) return null;
+          return {
+            ...contact,
+            contactId: contact.id,
+            dealRole: link.role,
+            isPrimary: link.isPrimary,
+            dealContactId: link.id,
+          };
+        })
+        .filter(Boolean);
+    },
+
+    async getContactsByIds(ids) {
+      const unique = [...new Set(ids.filter(Boolean))];
+      if (!unique.length) return [];
+      const out = [];
+      for (let i = 0; i < unique.length; i += 30) {
+        const chunk = unique.slice(i, i + 30);
+        const refs = chunk.map((id) => doc(db, "contacts", id));
+        const snaps = await Promise.all(refs.map((r) => getDoc(r)));
+        for (const snap of snaps) {
+          if (snap.exists()) out.push({ id: snap.id, ...snap.data() });
+        }
+      }
+      return out;
+    },
+
+    /** @deprecated use listDealContactLinks */
+    async _listContactsByDealJoinRows(dealId) {
+      return this.listDealContactLinks(dealId);
     },
 
     async listDealsByContact(contactId) {
@@ -538,18 +576,24 @@ export function createFirestoreStore(fb) {
     async findActiveDeal(accountId, type, opts = {}) {
       const ownerId = opts.ownerId || null;
       const teamId = opts.teamId || null;
-      const filters = [
-        where("accountId", "==", accountId),
-        where("type", "==", type),
-        where("status", "==", "active"),
-        ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
-        ...(teamId ? [where("teamId", "==", teamId)] : []),
-      ];
-      const q = query(collection(db, "deals"), ...filters, limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      const d = snap.docs[0];
-      return { id: d.id, ...d.data() };
+      const includeGrace = opts.includeGrace === true;
+      const statuses = includeGrace ? ["active", "closed_won_grace"] : ["active"];
+      for (const status of statuses) {
+        const filters = [
+          where("accountId", "==", accountId),
+          where("type", "==", type),
+          where("status", "==", status),
+          ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+          ...(teamId ? [where("teamId", "==", teamId)] : []),
+        ];
+        const q = query(collection(db, "deals"), ...filters, limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          return { id: d.id, ...d.data() };
+        }
+      }
+      return null;
     },
 
     async createDeal(deal) {
