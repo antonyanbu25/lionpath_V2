@@ -406,7 +406,7 @@ export async function listLifecyclesForSession(session) {
         );
         if (lc) lifecycles.push(lc);
       }
-    } else if (scope.type === "team") {
+    } else if (scope.type === "team" || scope.type === "segment") {
       const seen = new Set();
       for (const teamId of scope.teamIds) {
         const teamLcs = await safeStoreOp(

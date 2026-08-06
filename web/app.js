@@ -21,6 +21,8 @@ import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
+import { getStoredProxySe, resolveActingOwnerEmail } from "./domain/acting-owner.js";
+import { wireProxySeSelectors, readProxySeUserId } from "./prep-proxy-se-ui.js";
 import { renderAccountView } from "./account-view.js?v=2.1";
 import { renderDealView } from "./deal-view.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1";
@@ -32,6 +34,7 @@ import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHisto
 import {
   syncTasksOnLogin,
   syncTasksAfterActivity,
+  purgePrepTasksForEmail,
   setTasksAuthGetter,
   clearTasksAuthGetter,
 } from "./tasks.js";
@@ -50,10 +53,12 @@ import { renderPipelineView } from "./pipeline-view.js";
 import { renderProductSignalView } from "./product-signal-view.js";
 import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-service.js";
 import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1";
-import { initUserMenu, refreshUserMenu } from "./user-menu.js";
+import { initUserMenu, refreshUserMenu, closeUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
+import { renderOrgStructureView } from "./org-structure-view.js";
+import { canEditOrgStructure } from "./domain/org-structure-service.js";
 import { firebaseConfig, WORKER_BASE_URL, ALLOWED_EMAIL_DOMAIN, loadFirebaseConfig } from "./firebase-config.js";
 import {
   initPrecall,
@@ -136,6 +141,7 @@ const VIEW_TITLES = {
   manager: "Team",
   se: "SE detail",
   profile: "Profile settings",
+  "org-structure": "Team structure",
   pipeline: "Pipeline review",
   signal: "Product signal",
 };
@@ -526,8 +532,6 @@ function dashboardOpts() {
   };
 }
 
-const MANAGER_DRILL_VIEWS = new Set(["accounts", "deals", "calls", "se"]);
-
 function managerDashboardOpts() {
   return {
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
@@ -608,6 +612,7 @@ function updateNavForRole() {
   const isManager = isManagerRole(currentSession);
   const isLeader = currentSession?.isOrgDirector === true;
   const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
+  const canStructure = canEditOrgStructure(currentSession);
   let rollupVisible = false;
   document.querySelectorAll(".nav-item[data-role]").forEach((btn) => {
     const role = btn.dataset.role;
@@ -615,16 +620,41 @@ function updateNavForRole() {
     if (role === "manager") showBtn = isManager;
     else if (role === "leader") showBtn = isLeader;
     else if (role === "curator") showBtn = isCurator;
+    else if (role === "structure") showBtn = canStructure;
+    else if (role === "se") showBtn = true;
     else showBtn = !isManager;
     btn.hidden = !showBtn;
-    if (showBtn && (role === "manager" || role === "leader" || role === "curator")) {
+    if (showBtn && (role === "manager" || role === "leader" || role === "curator" || role === "structure")) {
       rollupVisible = true;
     }
   });
   const rollupGrp = document.querySelector(".nav-grp--rollup");
   if (rollupGrp) rollupGrp.hidden = !rollupVisible;
   const globalSearch = $("global-search-input");
-  if (globalSearch) globalSearch.hidden = isManager;
+  if (globalSearch) globalSearch.hidden = false;
+}
+
+async function refreshProxySeUi() {
+  if (!currentSession?.email) return;
+  await wireProxySeSelectors(currentSession, {
+    onChange: () => {
+      if (currentView === "dashboard" && isManagerRole(currentSession)) {
+        void renderManagerSeDashboard();
+      }
+    },
+  });
+}
+
+function renderManagerSeDashboard() {
+  const dashPanel = $("dash-panel");
+  if (!dashPanel || !currentSession?.email) return;
+  const proxy = getStoredProxySe(currentSession);
+  if (proxy?.email) {
+    void renderDashboardPanels(proxy.email, dashboardOpts());
+    return;
+  }
+  dashPanel.innerHTML =
+    '<fw-inline-message type="info">Select an SE using the <strong>Run for SE</strong> picker on Pre-call or Post-call to view their dashboard here.</fw-inline-message>';
 }
 
 function refreshActiveDashboard() {
@@ -632,6 +662,9 @@ function refreshActiveDashboard() {
   if (isManagerRole(currentSession)) {
     if (currentView === "manager") {
       void renderManagerDashboard($("view-manager"), currentSession, managerDashboardOpts());
+    }
+    if (currentView === "dashboard") {
+      renderManagerSeDashboard();
     }
     if (currentView === "pipeline" && currentSession?.isOrgDirector) {
       void renderPipelinePanel();
@@ -680,6 +713,7 @@ function switchView(name, opts = {}) {
     signal: $("view-signal"),
     se: $("view-se"),
     profile: $("view-profile"),
+    "org-structure": $("view-org-structure"),
   };
 
   if (name === "pipeline" && !currentSession?.isOrgDirector) {
@@ -698,17 +732,28 @@ function switchView(name, opts = {}) {
       onSaved: (next) => {
         currentSession = next;
       },
+      onSignOut: () => void handleSignOut(),
     });
     location.hash = "profile";
     return;
   }
 
-  if (isManager) {
-    const allowDrill = opts.drillDown === true || MANAGER_DRILL_VIEWS.has(name);
-    if (!allowDrill && (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall")) {
-      name = "manager";
+  if (name === "org-structure") {
+    if (!canEditOrgStructure(currentSession)) {
+      name = "profile";
+    } else {
+      Object.entries(panels).forEach(([key, el]) => show(el, key === "org-structure"));
+      $("main-view-title").textContent = VIEW_TITLES["org-structure"];
+      document.querySelectorAll(".nav-item").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.view === "org-structure");
+      });
+      void renderOrgStructureView($("org-structure-root"), currentSession);
+      location.hash = "org-structure";
+      return;
     }
-  } else if (name === "manager") {
+  }
+
+  if (name === "manager" && !isManager) {
     name = "dashboard";
   } else if (name === "se" && !selectedSeEmail) {
     name = "dashboard";
@@ -721,7 +766,10 @@ function switchView(name, opts = {}) {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
 
-  if (name === "dashboard" && !isManager) {
+  if (name === "dashboard" && isManager) {
+    void refreshProxySeUi();
+    renderManagerSeDashboard();
+  } else if (name === "dashboard" && !isManager) {
     void renderDashboardPanels(currentSession.email, dashboardOpts());
   } else if (name === "coaching" && !isManager) {
     void renderCoachingPanel(currentSession.email, dashboardOpts());
@@ -825,12 +873,16 @@ function switchView(name, opts = {}) {
       resetPrecallForm();
     }
     syncPrepEngagementMotion();
+    if (isManager) void refreshProxySeUi();
   }
-  if (name === "postcall" && !isPostCallGenerationBusy()) {
-    resetPostCallView();
-    void setFieldValue($("login-email"), "");
-    void setFieldValue($("login-password"), "");
-    scheduleProspectEmailAutofillGuard();
+  if (name === "postcall") {
+    if (isManager) void refreshProxySeUi();
+    if (!isPostCallGenerationBusy()) {
+      resetPostCallView();
+      void setFieldValue($("login-email"), "");
+      void setFieldValue($("login-password"), "");
+      scheduleProspectEmailAutofillGuard();
+    }
   }
 }
 
@@ -1397,6 +1449,7 @@ async function loadPersistedHistory() {
       syncTasksOnLogin(currentSession.email),
     ]);
     await syncTasksAfterActivity(currentSession.email, { seName: currentSession.name });
+    purgePrepTasksForEmail(currentSession.email);
     refreshSidebarHistory();
     const count = list.length;
     console.info(`[app] loaded ${count} post-call record(s) for ${currentSession.email}`);
@@ -1536,7 +1589,6 @@ function refreshUserMenuFromSession() {
 function wireUserMenu() {
   initUserMenu({
     getSession: () => currentSession,
-    onProfileSettings: () => switchView("profile"),
     onSignOut: () => void handleSignOut(),
   });
 }
@@ -1547,6 +1599,8 @@ async function handleSignOut() {
   if (signingOut) return;
   signingOut = true;
   try {
+    closeUserMenu();
+    closeSidebar();
     if (fb?.auth && fb?.signOut) {
       try {
         await fb.signOut(fb.auth);
@@ -1554,6 +1608,10 @@ async function handleSignOut() {
         // ignore sign-out errors
       }
     }
+    clearHistoryAuthGetter();
+    clearTasksAuthGetter();
+    clearSummariesAuthGetter();
+    clearProductSignalAuthGetter();
     logout();
     handleSession(null);
   } finally {
@@ -1666,6 +1724,7 @@ async function showApp(session, opts = {}) {
     }
 
     updateNavForRole();
+    void refreshProxySeUi();
 
     await loadPersistedHistory();
     invalidateSessionListCache(currentSession);
@@ -1674,7 +1733,7 @@ async function showApp(session, opts = {}) {
 
     if (!sessionStillValid()) return;
 
-    const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
+    const defaultView = "dashboard";
     const { path: hashPath, params: hashParams } = parseLocationHash();
     const hash = hashPath;
     const hashAliases = {
@@ -2121,19 +2180,25 @@ async function boot() {
     switchView,
     onGenerated: async (payload, prep, meta) => {
       let lifecycleId = null;
-      if (sessionUserId(currentSession) && currentSession?.teamId) {
+      let linked = null;
+      const session = withEffectiveUserId(currentSession);
+      if (session?.email) {
         try {
-          const linked = await linkPrepToLifecycle(currentSession, payload, prep, meta);
+          linked = await linkPrepToLifecycle(session, payload, prep, meta);
           lifecycleId = linked?.lifecycle?.id || null;
         } catch (err) {
-          console.warn("Lifecycle dual-write (prep) failed:", err);
+          console.warn("Lifecycle dual-write (prep) failed:", err?.message || err);
         }
+      } else {
+        console.warn("[dual-write] prep skipped — no signed-in session");
+      }
+      if (linked?.accountId || linked?.dealId) {
+        meta.accountId = linked.accountId || meta.accountId;
+        meta.dealId = linked.dealId || meta.dealId;
       }
       if (currentSession?.email) {
         void syncTasksAfterActivity(currentSession.email, {
           seName: currentSession.name,
-          prepResult: prep,
-          company: payload.companyName,
           lifecycleId,
           session: currentSession,
         }).then(() => {
@@ -2230,10 +2295,22 @@ async function boot() {
     // Dual-write may create the deal when confirm had none — stamp it onto history
     // so Open deal / deal strip work on the call view that opens next.
     const linkedDealId = linked?.lifecycle?.dealId || linked?.postCall?.dealId || null;
-    if (linkedDealId && currentSession?.email && record?.id) {
+    let historyEmail = currentSession?.email;
+    if (isManagerRole(currentSession)) {
+      try {
+        historyEmail =
+          (await resolveActingOwnerEmail(
+            currentSession,
+            payload?.proxySeUserId || readProxySeUserId(currentSession),
+          )) || historyEmail;
+      } catch {
+        // keep caller email if proxy resolution fails
+      }
+    }
+    if (linkedDealId && historyEmail && record?.id) {
       try {
         const { updatePostCallAnalysis } = await import("./history.js");
-        await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
+        await updatePostCallAnalysis(historyEmail, record.id, (rec) => {
           rec.dealId = linkedDealId;
           if (linked?.accountId) rec.accountId = linked.accountId;
           if (data?.scorecard?.lines?.length && !rec.scorecard?.lines?.length) {

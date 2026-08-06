@@ -37,7 +37,10 @@ import {
   contextAttachmentsForPayload,
 } from "./prep-context-files.js";
 import { mergeContextAttachments } from "./prep-context-attachments.js";
-import { isPrepFormReady, isPrepContextReady, prepContextRequiredMessage } from "./prep-form-validation.js";
+import { isPrepFormReady, isPrepContextReady, prepContextRequiredMessage, proxySeRequiredMessage } from "./prep-form-validation.js";
+import { getSession, isManagerRole } from "./auth.js";
+import { readProxySeUserId, wireProxySeSelectors } from "./prep-proxy-se-ui.js";
+import { getStoredProxySe, actingAuditFields, resolveActingOwnerId } from "./domain/acting-owner.js";
 import { enrichProspectsParallel, toConfirmedProspectProfiles, mergeEnrichmentsIntoPrep, applyPdfNameFallbacks, sanitizeIncompleteDiscHints } from "./prep-contact-enrich.js";
 import { applySeContextToDiscovery, applySeContextToFacts, applySeContextToPrep } from "./prep-se-context.js";
 import { canonicalizePrepSources } from "./prep-source-canon.js";
@@ -718,6 +721,16 @@ function pushBriefRecord(record) {
 export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
   if (!isV8Prep(prep)) return;
   const id = `${accountId(meta)}-${Date.now()}`;
+  const session = getSession();
+  const proxy = getStoredProxySe(session);
+  const ownerMeta =
+    isManagerRole(session) && proxy?.id
+      ? {
+          ownerId: proxy.id,
+          ownerEmail: proxy.email,
+          ...actingAuditFields(session, proxy.id),
+        }
+      : {};
   const storedInput = {
     companyName: input.companyName,
     companyDomain: input.companyDomain,
@@ -741,9 +754,11 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
     kind: "Discovery",
     when: new Date().toLocaleDateString(),
     prep,
-    meta,
+    meta: { ...meta, ...ownerMeta },
     input: storedInput,
     lifecycleId: lifecycleId || null,
+    accountId: meta.accountId || null,
+    dealId: meta.dealId || null,
   });
   state.activeBriefId = id;
   renderPrepRecentBriefs();
@@ -864,6 +879,23 @@ async function buildPayload() {
 
   const prepType = engagementCtx.prepType || "new_business";
 
+  const session = getSession();
+  const proxySeUserId = readProxySeUserId(session);
+  if (isManagerRole(session)) {
+    const proxyMsg = proxySeRequiredMessage(session, proxySeUserId);
+    if (proxyMsg) {
+      const errEl = $("prep-proxy-se-error");
+      if (errEl) {
+        errEl.textContent = proxyMsg;
+        errEl.hidden = false;
+      }
+      throw new Error(proxyMsg);
+    }
+    await resolveActingOwnerId(session, proxySeUserId);
+    const errEl = $("prep-proxy-se-error");
+    if (errEl) errEl.hidden = true;
+  }
+
   return {
     payload: {
       companyName,
@@ -874,6 +906,7 @@ async function buildPayload() {
       seAdditionalContext: additionalContext,
       contextAttachments,
       prepType,
+      proxySeUserId: isManagerRole(session) ? proxySeUserId : undefined,
       // "+ New deal" must not inherit a dealId from the session context the SE arrived with —
       // that context still names the deal they navigated from, and letting it through here is
       // what made the choice a no-op. createNewDeal and dealId are mutually exclusive.
@@ -1405,7 +1438,13 @@ export function initPrecall(options) {
     const missingLinkedIn = emailsMissingLinkedInPdf(emails);
     const contextAttachments = contextAttachmentsForPayload();
     const additionalContext = readAdditionalContextLive();
-    const formReady = isPrepFormReady(emails, missingLinkedIn, additionalContext, contextAttachments);
+    const session = getSession();
+    const isManager = isManagerRole(session);
+    const proxySeUserId = readProxySeUserId(session);
+    const formReady = isPrepFormReady(emails, missingLinkedIn, additionalContext, contextAttachments, {
+      isManager,
+      proxySeUserId,
+    });
     const btn = $("generate");
     if (btn) btn.disabled = busy || !formReady;
     document.querySelectorAll(".nb-linkedin-upload-btn").forEach((el) => {
@@ -1445,6 +1484,8 @@ export function initPrecall(options) {
 
   syncGenerateGateRef = syncGenerateGate;
   syncGenerateGate();
+
+  void wireProxySeSelectors(getSession(), { onChange: syncGenerateGate });
 
   initPrepCrmResolve();
   wireBriefResultBack();

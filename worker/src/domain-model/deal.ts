@@ -27,9 +27,13 @@ export interface Deal {
   postCallCount: number;
   openTaskCount: number;
   latestQualityScore: number | null;
+  closedWonAt?: number | null;
+  crmOpportunityId?: string | null;
   /** Deal-scoped metadata (ARR, MEDDPICC rollup, AE — see ENTITY_CATALOG.md). */
   metadata?: {
     ae?: DealAe;
+    closedWonAt?: number | null;
+    crmOpportunityId?: string | null;
     [key: string]: unknown;
   };
   createdAt: number;

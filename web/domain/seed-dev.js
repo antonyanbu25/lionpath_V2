@@ -1,5 +1,5 @@
 /**
- * Dev seed data — Freshworks CX SE org (Vipin → senior managers → squad managers → ICs).
+ * Dev seed data — Freshworks CX SE org (Vipin → senior managers → team managers → ICs).
  */
 
 import { DUMMY_USERS } from "../dummy-users.js";
@@ -7,16 +7,24 @@ import { firebaseConfig } from "../firebase-config.js";
 import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
-import { getOrg, isOrgLeader, userWithDirectorFlag } from "./org-service.js";
+import {
+  getOrg,
+  isOrgLeader,
+  userWithDirectorFlag,
+  getSegmentForLeader,
+  isOrgDirector,
+} from "./org-service.js";
 
 import {
   DEMO_ORG_ID,
-  SQUAD_TEAM_IDS,
+  ORG_TEAM_IDS,
   TEAM_AJAY_ID,
   TEAM_NIKIL_ID,
-  TEAM_PREETHI_SRI_ID,
-  TEAM_PREETHI_SRIRAM_ID,
+  TEAM_MARY_ID,
+  TEAM_VARUN_ID,
+  TEAM_AKSHITA_ID,
   TEAM_DISPLAY_NAMES,
+  ORG_SEGMENT_DEFS,
 } from "./constants.js";
 
 export { stableUserIdForEmail as dummyUidForEmail };
@@ -45,18 +53,14 @@ export async function seedDevDomainIfNeeded() {
   const directorId = stableUserIdForEmail(VIPIN_EMAIL);
   const seniorLeaderIds = SENIOR_LEADER_EMAILS.map((e) => stableUserIdForEmail(e));
 
-  const teamMembers = {
-    [TEAM_AJAY_ID]: [],
-    [TEAM_NIKIL_ID]: [],
-    [TEAM_PREETHI_SRI_ID]: [],
-    [TEAM_PREETHI_SRIRAM_ID]: [],
-  };
+  const teamMembers = Object.fromEntries(ORG_TEAM_IDS.map((id) => [id, []]));
 
-  const squadManagers = {
+  const teamManagers = {
     [TEAM_AJAY_ID]: stableUserIdForEmail("ajay.raghavan@freshworks.com"),
     [TEAM_NIKIL_ID]: stableUserIdForEmail("nikil.ravi@freshworks.com"),
-    [TEAM_PREETHI_SRI_ID]: stableUserIdForEmail("manager.preethi.sri@freshworks.com"),
-    [TEAM_PREETHI_SRIRAM_ID]: stableUserIdForEmail("manager.preethi.sriram@freshworks.com"),
+    [TEAM_MARY_ID]: stableUserIdForEmail("mary.sheeba@freshworks.com"),
+    [TEAM_VARUN_ID]: stableUserIdForEmail("varun.barathy@freshworks.com"),
+    [TEAM_AKSHITA_ID]: stableUserIdForEmail("preethi.sri@freshworks.com"),
   };
 
   for (const [email, profile] of Object.entries(DUMMY_USERS)) {
@@ -82,18 +86,29 @@ export async function seedDevDomainIfNeeded() {
 
     await store.upsertUser({ ...existing, ...userDoc });
 
-    if (profile.role === "se" && profile.teamId && teamMembers[profile.teamId]) {
+    if (
+      (profile.role === "se" || profile.role === "admin") &&
+      profile.teamId &&
+      teamMembers[profile.teamId]
+    ) {
       teamMembers[profile.teamId].push(userId);
     }
   }
 
   const org = await store.getOrg?.(DEMO_ORG_ID);
+  const segments = ORG_SEGMENT_DEFS.map((def) => ({
+    id: def.id,
+    name: def.name,
+    leaderId: stableUserIdForEmail(def.leaderEmail),
+    teamIds: [...def.teamIds],
+  }));
   const orgDoc = {
     id: DEMO_ORG_ID,
     name: "Freshworks CX Solution Engineering",
     directorId,
     seniorLeaderIds,
-    teamIds: SQUAD_TEAM_IDS,
+    teamIds: ORG_TEAM_IDS,
+    segments,
     createdAt: org?.createdAt ?? ts,
     updatedAt: ts,
   };
@@ -106,37 +121,21 @@ export async function seedDevDomainIfNeeded() {
       id: teamId,
       name: name,
       orgId: DEMO_ORG_ID,
-      managerId: team?.managerId || managerId,
+      managerId: managerId,
       memberIds: mergedMembers,
       createdAt: team?.createdAt ?? ts,
       updatedAt: ts,
     });
   }
 
-  await upsertTeam(
-    TEAM_AJAY_ID,
-    TEAM_DISPLAY_NAMES[TEAM_AJAY_ID],
-    squadManagers[TEAM_AJAY_ID],
-    teamMembers[TEAM_AJAY_ID]
-  );
-  await upsertTeam(
-    TEAM_NIKIL_ID,
-    TEAM_DISPLAY_NAMES[TEAM_NIKIL_ID],
-    squadManagers[TEAM_NIKIL_ID],
-    teamMembers[TEAM_NIKIL_ID]
-  );
-  await upsertTeam(
-    TEAM_PREETHI_SRI_ID,
-    TEAM_DISPLAY_NAMES[TEAM_PREETHI_SRI_ID],
-    squadManagers[TEAM_PREETHI_SRI_ID],
-    teamMembers[TEAM_PREETHI_SRI_ID]
-  );
-  await upsertTeam(
-    TEAM_PREETHI_SRIRAM_ID,
-    TEAM_DISPLAY_NAMES[TEAM_PREETHI_SRIRAM_ID],
-    squadManagers[TEAM_PREETHI_SRIRAM_ID],
-    teamMembers[TEAM_PREETHI_SRIRAM_ID]
-  );
+  for (const teamId of ORG_TEAM_IDS) {
+    await upsertTeam(
+      teamId,
+      TEAM_DISPLAY_NAMES[teamId],
+      teamManagers[teamId],
+      teamMembers[teamId] || []
+    );
+  }
 
   await seedProductSignalDemoIfNeeded(store, ts);
 }
@@ -520,6 +519,8 @@ export async function enrichSessionFromStore(session) {
   }
 
   const org = user.orgId ? await getOrg(user.orgId) : null;
+  const segment = getSegmentForLeader(user.id, org);
+  const actualDirector = isOrgDirector(user.id, org);
 
   let managerName = null;
   if (user.managerId) {
@@ -542,6 +543,11 @@ export async function enrichSessionFromStore(session) {
     jobTitle: user.jobTitle || null,
     avatarDataUrl: user.avatarDataUrl || null,
     isOrgDirector: isOrgLeader(user.id, org),
+    isActualDirector: actualDirector,
+    isSegmentLeader: !!segment,
+    segmentId: segment?.id || null,
+    segmentName: segment?.name || null,
+    segmentTeamIds: segment?.teamIds || [],
     name: user.displayName || session.name,
   };
 }

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import {
   isPrepContextReady,
   isPrepFormReady,
+  isProxySeReady,
   prepContextRequiredMessage,
+  proxySeRequiredMessage,
 } from "../prep-form-validation.js";
 
 assert.equal(isPrepContextReady("", []), false);
@@ -38,5 +40,18 @@ assert.equal(
 );
 
 assert.match(prepContextRequiredMessage(), /context from the AE/i);
+
+assert.equal(isProxySeReady(false, null), true);
+assert.equal(isProxySeReady(true, null), false);
+assert.equal(isProxySeReady(true, "usr_se_a"), true);
+assert.match(proxySeRequiredMessage(), /Select which SE/i);
+assert.equal(
+  isPrepFormReady(["a@corp.com"], [], "AE notes", [], { isManager: true, proxySeUserId: null }),
+  false,
+);
+assert.equal(
+  isPrepFormReady(["a@corp.com"], [], "AE notes", [], { isManager: true, proxySeUserId: "usr_se_a" }),
+  true,
+);
 
 console.log("test-prep-form-validation.mjs: ok");

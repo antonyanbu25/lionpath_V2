@@ -23,7 +23,12 @@ import { canonicalizePrepSources } from "./canonicalize-sources";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
 import { generateRivalComparison } from "./rivals";
-import { extractFishSizingFromContext } from "./rivals-context";
+import {
+  extractFishSizingFromContext,
+  buildFishSizingPromptContext,
+  fishSizingFromResearchFacts,
+  mergeFishContextSizing,
+} from "./rivals-context";
 import { generateCompanyNews } from "./company-news";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
 import { padSources } from "./source-table";
@@ -43,6 +48,26 @@ export { resolveProspectEmails, deriveDomain, normalizePrepInput, computeInputHa
 export type { PrepInput, PrepResult, ResearchOnlyResult, Env } from "./types";
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
+
+/** Fish sizing: research facts first, then LLM pass over company + facts + AE notes. */
+async function resolveFishContext(
+  env: Env,
+  input: NormalizedPrepInput,
+  emails: string[],
+  facts: ResearchFact[],
+  mergedContext: string | undefined,
+) {
+  const fromFacts = fishSizingFromResearchFacts(facts);
+  const promptContext = buildFishSizingPromptContext({
+    companyName: input.companyName,
+    companyDomain: input.companyDomain,
+    emails,
+    facts,
+    aeContext: mergedContext,
+  });
+  const fromContext = await extractFishSizingFromContext(env, promptContext, input.companyName);
+  return mergeFishContextSizing(fromFacts, fromContext);
+}
 
 function mergeFacts(...groups: ResearchFact[][]): ResearchFact[] {
   const seen = new Set<string>();
@@ -335,9 +360,6 @@ function applyConfirmedProfiles(
 /** Full pipeline: research → extract → synthesize → validate. */
 export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepResult> {
   const input = normalizePrepInput(rawInput);
-  if (input.prepType === "expansion") {
-    throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
-  }
 
   const emails = resolveProspectEmails(input);
   const inputHash = computeInputHash(input, emails);
@@ -360,7 +382,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 
   // Parallel — see the note in runPrepSynthesize.
   const mergedContext = research.mergedContext || input.additionalContext;
-  const hasAeContext = !!String(mergedContext || "").trim();
   const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
@@ -402,9 +423,7 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyName: input.companyName,
       companyDomain: input.companyDomain,
     }),
-    hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
-      : Promise.resolve(null),
+    resolveFishContext(env, input, emails, facts, mergedContext),
   ]);
   timings.synthesize = Date.now() - t1;
 
@@ -479,9 +498,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 /** Research-only step for human-in-the-loop confirmation. */
 export async function runPrepResearch(env: Env, rawInput: PrepInput): Promise<ResearchOnlyResult> {
   const input = normalizePrepInput(rawInput);
-  if (input.prepType === "expansion") {
-    throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
-  }
 
   const emails = resolveProspectEmails(input);
   const inputHash = computeInputHash(input, emails);
@@ -545,7 +561,6 @@ export async function runPrepSynthesize(
   // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
   // incumbent, never the finished demo script, so it stays off the critical path. It is
   // also the smaller call, so it finishes first and adds ~0s wall clock.
-  const hasAeContext = !!String(mergedContext || "").trim();
   const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
@@ -588,9 +603,7 @@ export async function runPrepSynthesize(
       companyName: input.companyName,
       companyDomain: input.companyDomain,
     }),
-    hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName)
-      : Promise.resolve(null),
+    resolveFishContext(env, input, emails, facts, mergedContext),
   ]);
 
   let { prep, lowConfidence } = validatePrep(stripProspectDiscHints(prepRaw));

@@ -1,4 +1,4 @@
-import { requireUser, resolveHistoryEmail } from "./auth";
+import { requireUser, resolveHistoryEmail, resolveHistoryEmailForWrite, assertManagerProxyOwnerEmail } from "./auth";
 import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import {
   appendFeedback,
@@ -66,6 +66,7 @@ import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
+import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import type { Env } from "./env";
 
@@ -465,6 +466,7 @@ export async function handlePostCallResolve(
 ): Promise<Response> {
   await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallResolveInput>;
+  await assertManagerProxyOwnerEmail(request, env, input.ownerEmail);
   if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
     return json(
       { error: "Paste a transcript or a Zoom/Kaia recording link (with passcode if needed)." },
@@ -941,10 +943,12 @@ export async function handleHistoryPost(
   }
   const body = (await request.json()) as {
     email?: string;
+    targetEmail?: string;
+    proxySeActing?: boolean;
     entry?: HistoryEntry;
     entries?: HistoryEntry[];
   };
-  const email = await resolveHistoryEmail(request, env, body.email || "");
+  const email = await resolveHistoryEmailForWrite(request, env, body);
 
   if (Array.isArray(body.entries)) {
     const entries = await replaceHistory(env, email, body.entries);
@@ -1004,4 +1008,5 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/search/rag": { POST: handleSearchRag },
+  "/api/org/structure": { GET: handleOrgStructureGet, PATCH: handleOrgStructurePatch },
 };

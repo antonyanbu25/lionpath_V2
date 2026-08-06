@@ -104,3 +104,59 @@ export async function resolveHistoryEmail(
   }
   return assertAllowedEmail(fallbackEmail || "", env);
 }
+
+function isDemoManagerEmail(email: string): boolean {
+  const e = normalizeHistoryEmail(email);
+  return e.startsWith("manager@") || /^ajay\.|^antony\.|^vipin\./.test(e.split("@")[0] || "");
+}
+
+/** History write target — supports manager proxy to team SE email. */
+export async function resolveHistoryEmailForWrite(
+  request: Request,
+  env: Env,
+  body: { email?: string; targetEmail?: string; proxySeActing?: boolean },
+): Promise<string> {
+  const callerEmail = await resolveHistoryEmail(request, env, body.email || "");
+  const target = body.targetEmail ? normalizeHistoryEmail(body.targetEmail) : "";
+  if (!target || target === callerEmail) return callerEmail;
+
+  if (!body.proxySeActing) {
+    throw Object.assign(new Error("Proxy history write requires proxySeActing."), { status: 403 });
+  }
+
+  const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
+  if (domain) {
+    if (!target.endsWith(`@${domain}`) || !callerEmail.endsWith(`@${domain}`)) {
+      throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
+    }
+  }
+
+  if (env.FIREBASE_PROJECT_ID) {
+    return target;
+  }
+
+  if (!isDemoManagerEmail(callerEmail)) {
+    throw Object.assign(new Error("Only managers may write history on behalf of another SE."), {
+      status: 403,
+    });
+  }
+  return target;
+}
+
+/** Reject cross-user proxy on post-call resolve when caller is not a manager (demo mode). */
+export async function assertManagerProxyOwnerEmail(
+  request: Request,
+  env: Env,
+  ownerEmail?: string,
+): Promise<void> {
+  const normalized = ownerEmail ? normalizeHistoryEmail(ownerEmail) : "";
+  if (!normalized) return;
+  const callerEmail = await resolveHistoryEmail(request, env, "");
+  if (normalized === callerEmail) return;
+  if (env.FIREBASE_PROJECT_ID) return;
+  if (!isDemoManagerEmail(callerEmail)) {
+    throw Object.assign(new Error("Only managers may act on behalf of another SE."), {
+      status: 403,
+    });
+  }
+}

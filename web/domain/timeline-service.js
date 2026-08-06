@@ -57,7 +57,7 @@ export async function deriveCallTimeline(input) {
 
 /**
  * @param {object} draft — CallTimelineDraft from the worker
- * @param {{ callId: string, ownerId: string, teamId?: string, orgId?: string }} ctx
+ * @param {{ callId: string, ownerId: string, teamId?: string, orgId?: string, dealId?: string|null }} ctx
  */
 export async function persistCallTimelineDraft(draft, ctx) {
   if (!draft || !ctx?.callId || !ctx?.ownerId) return null;
@@ -76,6 +76,7 @@ export async function persistCallTimelineDraft(draft, ctx) {
     const row = {
       id: newId("timelineSegment"),
       callId: ctx.callId,
+      dealId: ctx.dealId || null,
       videoFactsId: null,
       source: "transcript",
       startS: seg.startS,
@@ -95,6 +96,7 @@ export async function persistCallTimelineDraft(draft, ctx) {
     const row = {
       id: newId("timelineMarker"),
       callId: ctx.callId,
+      dealId: ctx.dealId || null,
       atS: marker.atS,
       kind: marker.kind,
       label: marker.label || "",

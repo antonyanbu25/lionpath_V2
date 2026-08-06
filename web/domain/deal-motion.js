@@ -8,6 +8,9 @@ import { getAccountEngagementContext } from "./account-context.js";
 
 export const NEW_BUSINESS_TEAM_IDS = new Set([TEAM_AJAY_ID, TEAM_NIKIL_ID]);
 
+/** 90-day NB grace after closed_won — activities stay on won NB deal, then expansion routing. */
+export const NB_GRACE_PERIOD_MS = 90 * 24 * 60 * 60 * 1000;
+
 /** @type {{ accountIds: string[], slugs: string[] } | null} */
 let allowlistCache = null;
 
@@ -52,9 +55,49 @@ export function isNewBusinessActor(user) {
   return false;
 }
 
+/** @param {import("./types.js").Deal | null | undefined} deal */
+export function getClosedWonAt(deal) {
+  if (!deal) return null;
+  const fromMeta = deal.metadata?.closedWonAt;
+  if (typeof fromMeta === "number" && fromMeta > 0) return fromMeta;
+  if (typeof deal.closedWonAt === "number" && deal.closedWonAt > 0) return deal.closedWonAt;
+  return null;
+}
+
+/** @param {import("./types.js").Deal | null | undefined} deal @param {number} [asOfMs] */
+export function isWithinNbGracePeriod(deal, asOfMs = Date.now()) {
+  const wonAt = getClosedWonAt(deal);
+  if (!wonAt || deal?.type !== "new_business" || deal?.stage !== "closed_won") return false;
+  return asOfMs <= wonAt + NB_GRACE_PERIOD_MS;
+}
+
+/**
+ * After grace expires, route new activities to expansion motion (not the won NB deal).
+ * @param {import("./types.js").Deal | null | undefined} deal
+ * @param {number} [asOfMs]
+ * @returns {"new_business"|"expansion"|null}
+ */
+export function shouldRouteWonNbToExpansion(deal, asOfMs = Date.now()) {
+  if (!deal || deal.type !== "new_business" || deal.stage !== "closed_won") return null;
+  const wonAt = getClosedWonAt(deal);
+  if (!wonAt) return null;
+  return asOfMs > wonAt + NB_GRACE_PERIOD_MS ? "expansion" : "new_business";
+}
+
+/**
+ * Prefer routing to archived won NB during grace (returns deal id).
+ * @param {import("./types.js").Account | null | undefined} account
+ * @param {import("./types.js").Deal | null | undefined} wonNbDeal
+ * @param {number} [asOfMs]
+ */
+export function shouldUseWonNbDeal(account, wonNbDeal, asOfMs = Date.now()) {
+  if (!wonNbDeal || !isWithinNbGracePeriod(wonNbDeal, asOfMs)) return null;
+  return wonNbDeal.id;
+}
+
 /**
  * @typedef {'new_business' | 'expansion'} DealMotionType
- * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'actor' | 'default'} DealMotionSource
+ * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'actor' | 'default' | 'won_grace'} DealMotionSource
  */
 
 /**
@@ -64,8 +107,11 @@ export function isNewBusinessActor(user) {
  *   actor?: import("./types.js").User | null,
  *   explicitDealId?: string | null,
  *   explicitPrepType?: string | null,
+ *   explicitDealType?: DealMotionType | null,
  *   sessionContext?: { dealId?: string, prepType?: string } | null,
  *   allowlist?: { accountIds: Set<string>, slugs: Set<string> },
+ *   wonNbDealInGrace?: import("./types.js").Deal | null,
+ *   asOfMs?: number,
  * }} input
  * @returns {{ prepType: DealMotionType, dealId: string | null, source: DealMotionSource }}
  */
@@ -75,16 +121,30 @@ export function resolveEngagementDealInput(input) {
     actor,
     explicitDealId,
     explicitPrepType,
+    explicitDealType,
     sessionContext,
     allowlist,
+    wonNbDealInGrace,
+    asOfMs = Date.now(),
   } = input;
 
   if (explicitDealId) {
+    let prepType = "new_business";
+    if (explicitPrepType === "expansion" || explicitDealType === "expansion") {
+      prepType = "expansion";
+    } else if (explicitPrepType === "new_business" || explicitDealType === "new_business") {
+      prepType = "new_business";
+    }
     return {
-      prepType: explicitPrepType === "expansion" ? "expansion" : "new_business",
+      prepType,
       dealId: explicitDealId,
       source: "manual",
     };
+  }
+
+  const graceDealId = shouldUseWonNbDeal(account, wonNbDealInGrace, asOfMs);
+  if (graceDealId) {
+    return { prepType: "new_business", dealId: graceDealId, source: "won_grace" };
   }
 
   const accountOverride = account?.metadata?.engagementOverride;
@@ -122,6 +182,10 @@ export function resolveEngagementDealInput(input) {
     return { prepType: explicitPrepType, dealId: null, source: "manual" };
   }
 
+  if (wonNbDealInGrace && shouldRouteWonNbToExpansion(wonNbDealInGrace, asOfMs) === "expansion") {
+    return { prepType: "expansion", dealId: null, source: "won_grace" };
+  }
+
   if (account?.programPhase === "expansion") {
     return { prepType: "expansion", dealId: null, source: "phase" };
   }
@@ -141,7 +205,7 @@ export function resolveEngagementDealInput(input) {
  * Full async resolution for link flows.
  * @param {string} accountId
  * @param {string} actorId
- * @param {{ explicitDealId?: string|null, explicitPrepType?: string|null, useSessionContext?: boolean }} opts
+ * @param {{ explicitDealId?: string|null, explicitPrepType?: string|null, useSessionContext?: boolean, asOfMs?: number }} opts
  */
 export async function resolveEngagementMotion(accountId, actorId, opts = {}) {
   const store = getStore();
@@ -149,14 +213,28 @@ export async function resolveEngagementMotion(accountId, actorId, opts = {}) {
   const actor = actorId ? await store.getUser(actorId) : null;
   const allowlist = await loadNbAccountAllowlist();
   const sessionContext = opts.useSessionContext !== false ? getAccountEngagementContext() : null;
+  const wonNbDealInGrace = store.findWonNbDealInGrace
+    ? await store.findWonNbDealInGrace(accountId, opts.asOfMs)
+    : null;
+
+  let explicitDealType = null;
+  if (opts.explicitDealId && store.getDeal) {
+    const pinned = await store.getDeal(opts.explicitDealId);
+    if (pinned?.type === "expansion" || pinned?.type === "new_business") {
+      explicitDealType = pinned.type;
+    }
+  }
 
   return resolveEngagementDealInput({
     account,
     actor,
     explicitDealId: opts.explicitDealId,
     explicitPrepType: opts.explicitPrepType,
+    explicitDealType,
     sessionContext,
     allowlist,
+    wonNbDealInGrace,
+    asOfMs: opts.asOfMs,
   });
 }
 

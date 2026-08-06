@@ -352,6 +352,26 @@ export function createLocalStore() {
       );
     },
 
+    async findWonNbDealInGrace(accountId, asOfMs = Date.now()) {
+      const { NB_GRACE_PERIOD_MS } = await import("./deal-motion.js");
+      const matches = findMany(
+        "deals",
+        (d) =>
+          d.accountId === accountId &&
+          d.type === "new_business" &&
+          d.status === "archived" &&
+          d.stage === "closed_won",
+        (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
+      );
+      for (const deal of matches) {
+        const wonAt = deal.metadata?.closedWonAt || deal.closedWonAt;
+        if (typeof wonAt === "number" && asOfMs <= wonAt + NB_GRACE_PERIOD_MS) {
+          return deal;
+        }
+      }
+      return null;
+    },
+
     async createDeal(deal) {
       return upsertById("deals", deal);
     },

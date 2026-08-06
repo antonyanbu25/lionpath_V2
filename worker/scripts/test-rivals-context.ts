@@ -6,7 +6,13 @@
 
 import assert from "node:assert/strict";
 
-import { filterFishContextMetrics, fishContextSupplementMetrics } from "../src/prep/rivals-context.ts";
+import {
+  filterFishContextMetrics,
+  fishContextSupplementMetrics,
+  fishSizingFromResearchFacts,
+  buildFishSizingPromptContext,
+  mergeFishContextSizing,
+} from "../src/prep/rivals-context.ts";
 
 let checks = 0;
 const ok = (c: unknown, m: string) => {
@@ -64,6 +70,40 @@ const eq = (a: unknown, b: unknown, m: string) => {
   );
   eq(sup.length, 1, "drops axis already covered by web");
   eq(sup[0].label, "Customer base", "keeps non-overlapping context metric");
+}
+
+{
+  const fromFacts = fishSizingFromResearchFacts([
+    { key: "Company size", value: "500", category: "signal", sourceLabel: "S1" },
+    { key: "Support team", value: "40 agents", category: "signal", sourceLabel: "S1" },
+    { key: "Industry", value: "SaaS", category: "signal", sourceLabel: "S1" },
+  ]);
+  ok(fromFacts?.metrics.length === 3, "research facts map to fish metrics");
+  eq(fromFacts?.metrics[0].label, "Employees", "company size maps to employees");
+}
+
+{
+  const prompt = buildFishSizingPromptContext({
+    companyName: "Acme",
+    companyDomain: "acme.com",
+    emails: ["buyer@acme.com"],
+    facts: [{ key: "Company size", value: "500", category: "signal", sourceLabel: "S1" }],
+    aeContext: "They have 120 support agents globally.",
+  });
+  ok(prompt.includes("Company: Acme"), "prompt includes company");
+  ok(prompt.includes("Domain: acme.com"), "prompt includes domain");
+  ok(prompt.includes("Employees: 500"), "prompt includes fact sizing");
+  ok(prompt.includes("120 support agents"), "prompt includes AE notes");
+}
+
+{
+  const merged = mergeFishContextSizing(
+    fishSizingFromResearchFacts([
+      { key: "Company size", value: "500", category: "signal", sourceLabel: "S1" },
+    ]),
+    { metrics: [{ label: "Support agents", value: "120" }], source: "context" },
+  );
+  eq(merged?.metrics.length, 2, "merge keeps distinct labels");
 }
 
 console.log(`test-rivals-context.ts: ok (${checks} checks)`);

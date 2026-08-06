@@ -122,8 +122,8 @@ Resolution order (see `web/domain/deal-motion.js`):
 2. `account.metadata.engagementOverride` (manual, managers or deal team)
 3. Session `getAccountEngagementContext()` from account detail
 4. Account on `web/config/nb-account-allowlist.json`
-5. Actor on new-business squads (`TEAM_AJAY_ID` → **International - NB**, `TEAM_NIKIL_ID` → **North America - NB**)
-6. Default **expansion** (e.g. Preethi squads) unless allowlist or override
+5. Actor on new-business teams (`TEAM_AJAY_ID` → **International - NB**, `TEAM_NIKIL_ID` → **North America - NB**)
+6. Default **expansion** (e.g. Preethi teams) unless allowlist or override
 
 Account UI pursuit type + “Apply to next prep/post-call” / “Remember for this account” call `setAccountEngagementOverride`.
 

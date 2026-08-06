@@ -2,7 +2,8 @@
  * Bridge prep/post-call flows to the lifecycle domain layer (dual-write).
  */
 
-import { upsertAccountFromPrep, findAccountByCompanyName, collectProspectEmails, ensureSeTeamForPrepActor, invalidateSessionListCache } from "./account-service.js?v=2.1";
+import { findAccountByCompanyName, invalidateSessionListCache } from "./account-service.js?v=2.1";
+import { resolveEngagementEntities, collectParticipantEmails } from "./engagement-entities.js";
 import { getOrCreateLifecycle, attachPrep, attachPostCall, attachTask } from "./lifecycle-service.js";
 import { applyPrepContactFrameworks, applyPostCallContactFrameworks } from "./contact-service.js";
 import { applyQualificationToDeal } from "./meddpicc-qualify-service.js";
@@ -12,7 +13,6 @@ import {
   regenerateSummariesAfterPostCall,
   persistArrAfterPostCall,
   linkContactsToDealRecord,
-  createDealWithExplicitTitle,
 } from "./deal-service.js";
 import { persistScorecardDraft } from "./scorecard-service.js";
 import { persistVideoFactsDraft } from "./video-facts-service.js";
@@ -26,42 +26,12 @@ import { getStore } from "./store.js";
 import { newId, now } from "./types.js";
 import { callIdentityKey } from "../call-identity.js";
 import { callTitleFor, productDiscussedFromContext, aiShortFormFromAnalysis } from "../call-type-labels.js";
-import { getAccountEngagementContext } from "./account-context.js";
 import { sessionUserId, effectiveSessionUserId } from "./session.js";
+import { resolveActingWriteContext } from "./acting-owner.js";
 import {
   persistPass6ProductGaps,
   maybeRunGapClusteringAfterPass6,
 } from "./product-signal-service.js";
-
-/**
- * Emails of the people on a post-call, customer-confirmed addresses first.
- *
- * The SE types these into the intake form (`prospectEmails`, mirrored as `participantEmails`) and
- * then ticks the customer attendees at the confirm gate. `customerIdentities` are free-form person
- * labels that often, but not always, carry an address. Order is load-bearing:
- * `upsertAccountFromPrep` makes the first email the primary contact, and someone the SE explicitly
- * confirmed as a customer is a better primary than whichever address happened to be typed first.
- * @param {object} payload post-call save payload
- * @returns {string[]} lower-cased, deduped
- */
-function postCallParticipantEmails(payload) {
-  const seen = new Set();
-  /** @type {string[]} */
-  const out = [];
-  const add = (raw) => {
-    const email = String(raw || "").trim().toLowerCase();
-    if (!email.includes("@") || seen.has(email)) return;
-    seen.add(email);
-    out.push(email);
-  };
-  for (const label of payload?.confirmedIdentities?.customerIdentities || []) {
-    const match = String(label || "").match(/[^\s<>,;"']+@[^\s<>,;"']+/);
-    if (match) add(match[0]);
-  }
-  for (const email of payload?.prospectEmails || []) add(email);
-  for (const email of payload?.participantEmails || []) add(email);
-  return out;
-}
 
 /**
  * Link a call's participants to its deal.
@@ -111,42 +81,36 @@ async function linkContactsToDeal(dealId, accountId, contactIds, primaryContactI
  * @param {object} meta { company, domain, additionalContext }
  */
 export async function linkPrepToLifecycle(session, payload, prep, meta) {
-  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
-  if (!ownerId || !session?.teamId) return null;
-
-  const {
-    accountId,
-    contactIds,
-    primaryContactId,
-    contactIdByEmail,
-    account,
-  } = await upsertAccountFromPrep({
-    companyName: payload.companyName,
-    // The CRM panel's explicit selection. Was resolved into the payload and then dropped here,
-    // so the account the SE picked was re-derived from the typed name and could fork a duplicate.
-    accountId: payload.accountId || meta?.accountId || null,
-    companyDomain: payload.companyDomain || meta?.companyDomain,
-    prospectEmail: payload.prospectEmail,
-    prospectEmails: payload.prospectEmails,
-    domain: meta?.domain || meta?.companyDomain,
+  const entities = await resolveEngagementEntities(session, payload, {
+    meta,
     prep,
     researchBundle: meta?.researchBundle,
     contactDrafts: meta?.contactDrafts,
-    actorId: ownerId,
+    company: payload.companyName || meta?.company,
   });
+  if (!entities) return null;
 
-  await ensureSeTeamForPrepActor(accountId, ownerId);
+  const {
+    ownerId,
+    teamId,
+    orgId,
+    audit,
+    account,
+    accountId,
+    contactIds,
+    primaryContactId,
+    prepType,
+    dealId,
+  } = entities;
 
-  const lifecycle = await getOrCreateLifecycle(ownerId, accountId, session.teamId, {
+  const lifecycle = await getOrCreateLifecycle(ownerId, accountId, teamId, {
     title: account?.name || meta?.company || payload.companyName,
     primaryContactId,
     actorId: ownerId,
-    orgId: session.orgId || account?.orgId || null,
-    prepType: payload.prepType || "new_business",
-    dealId: payload.dealId || meta?.dealId || null,
-    // Set only by the "+ New deal" choice in the pre-call CRM panel. Strict === true so a
-    // truthy leftover in a re-submitted stored payload cannot silently fork a second deal.
-    createNewDeal: payload.createNewDeal === true,
+    orgId,
+    prepType: prepType || payload.prepType,
+    dealId: dealId || null,
+    useSessionContext: true,
   });
 
   const prepBrief = await attachPrep(
@@ -156,20 +120,18 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
       lifecycleId: lifecycle.id,
       dealId: lifecycle.dealId || null,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || lifecycle.orgId || null,
+      teamId,
+      orgId: orgId || lifecycle.orgId || null,
       accountId,
       input: payload,
       prep,
       meta: meta || { company: payload.companyName },
+      ...audit,
     },
     ownerId
   );
 
-  const emails = collectProspectEmails({
-    prospectEmail: payload.prospectEmail,
-    prospectEmails: payload.prospectEmails,
-  });
+  const emails = collectParticipantEmails(payload);
   if (prep && emails.length) {
     await applyPrepContactFrameworks(accountId, prep, emails, {
       lifecycleId: lifecycle.id,
@@ -188,7 +150,6 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
     accountId,
     contactIds,
     primaryContactId,
-    contactIdByEmail,
     dealId: lifecycle.dealId || null,
   };
 }
@@ -201,9 +162,6 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
  * @param {object} record history record from savePostCallHistory
  */
 export async function linkPostCallToLifecycle(session, payload, data, record) {
-  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
-  if (!ownerId || !session?.teamId) return null;
-
   const summarise = data?.summarise || null;
   const analysis = {
     ...(data?.analysis || record?.analysis || {}),
@@ -219,83 +177,36 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     record?.title?.split("-")[0]?.trim() ||
     "";
 
-  if (!company) {
+  if (!company && !payload?.accountId) {
     console.warn("[dual-write] post-call skipped. no company/account to attach");
     return null;
   }
 
-  // ---- Account + contacts, BEFORE the lifecycle/deal. ---------------------------------------
-  // This ordering looks arbitrary and is not. getOrCreateLifecycle → resolveDealForEngagement
-  // stamps `primaryContactId` onto the deal it creates and never backfills it, so a deal born
-  // before its contacts is permanently pointed at null. Contacts used to be ensured dead last, by
-  // applyPostCallContactFrameworks inside a try/catch that only console.warn'd — which is how
-  // post-calls shipped an account and a deal with zero contacts and no signal to the caller.
-  //
-  // The upsert is unconditional now, not just when the account is missing: an account that already
-  // exists still needs its participants turned into contacts, and this is the only place that does
-  // it before deal creation. It is idempotent (slug lookup, then contacts matched by email).
-  //
-  // Still NOT atomic, and cannot be — neither local-store nor firestore-store exposes a
-  // transaction, so a throw between these writes and the deal write leaves the account and its
-  // contacts committed with no deal. That is the cheap direction to fail: re-running the same call
-  // re-uses the contacts by email and completes the deal. Failing the other way round (deal
-  // without contacts) is what this reordering exists to stop, and it cannot self-heal.
-  const participantEmails = postCallParticipantEmails(payload);
-  const store = getStore();
-  let knownAccount = null;
-  if (payload?.createNewAccount) {
-    knownAccount = null;
-  } else if (payload?.accountId) {
-    knownAccount = await store.getAccount(payload.accountId);
-  }
-  if (!knownAccount && !payload?.createNewAccount) {
-    knownAccount = await findAccountByCompanyName(company, payload?.companyDomain);
-  }
-  const upserted = await upsertAccountFromPrep({
-    accountId: payload?.createNewAccount ? null : payload?.accountId || knownAccount?.id || null,
-    createNewAccount: payload?.createNewAccount === true,
-    // `record.title` ("Acme - Discovery") is a display string: good enough to find an account,
-    // not good enough to rename one, so an account we already know keeps its own name.
-    companyName: knownAccount?.name || company,
-    companyDomain: payload?.companyDomain || knownAccount?.domain || null,
-    prospectEmails: participantEmails,
-    actorId: ownerId,
+  // Account + contacts BEFORE lifecycle/deal — see resolveEngagementEntities / engagement-entities.js.
+  const entities = await resolveEngagementEntities(session, payload, {
+    record,
+    company,
   });
-  const { contactIds, primaryContactId, contactIdByEmail } = upserted;
-  const account = upserted.account || { id: upserted.accountId, name: company };
+  if (!entities) return null;
 
-  await ensureSeTeamForPrepActor(account.id, ownerId);
+  const {
+    ownerId,
+    teamId,
+    orgId,
+    audit,
+    account,
+    contactIds,
+    primaryContactId,
+    participantEmails,
+    prepType,
+    dealId,
+  } = entities;
 
-  const engagementCtx = getAccountEngagementContext();
-  const ctxMatchesAccount = engagementCtx.accountId === account.id;
-  const prepType = payload?.prepType || (ctxMatchesAccount ? engagementCtx.prepType : undefined);
-  let dealId =
-    payload?.dealId ||
-    record?.dealId ||
-    (ctxMatchesAccount && !payload?.createNewDeal ? engagementCtx.dealId : null) ||
-    null;
-
-  if (payload?.createNewDeal) {
-    const newDeal = await createDealWithExplicitTitle(
-      account.id,
-      ownerId,
-      session.teamId,
-      session.orgId || null,
-      {
-        title: payload.newDealTitle,
-        type: payload.newDealType,
-        accountName: account.name || company,
-      },
-    );
-    dealId = newDeal.id;
-  }
-
-  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, session.teamId, {
+  const lifecycle = await getOrCreateLifecycle(ownerId, account.id, teamId, {
     title: account.name || company,
-    // Resolved above; the deal created here is the only chance to set it.
     primaryContactId,
     actorId: ownerId,
-    orgId: session.orgId || null,
+    orgId,
     dealId,
     prepType: prepType || undefined,
     useSessionContext: true,
@@ -330,8 +241,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       lifecycleId: lifecycle.id,
       dealId: lifecycle.dealId || null,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || lifecycle.orgId || null,
+      teamId,
+      orgId: orgId || lifecycle.orgId || null,
       accountId: account.id,
       zoomLink: payload?.recordingUrl || record?.zoomLink,
       title: callTitle,
@@ -343,6 +254,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       analysisConfidence: data?.analysisMeta?.analysisConfidence ?? qip?.confidence ?? null,
       provisional: data?.analysisMeta?.provisional ?? qip?.provisional ?? false,
       rubricVersion: data?.analysisMeta?.rubricVersion || qip?.rubricVersion || null,
+      ...audit,
     },
     ownerId
   );
@@ -351,9 +263,10 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     try {
       await persistScorecardDraft(qip, {
         callId: postCall.id,
+        dealId: lifecycle.dealId || dealId || null,
         ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
+        teamId,
+        orgId: orgId || lifecycle.orgId || null,
         accountId: account.id,
       });
     } catch (err) {
@@ -366,9 +279,10 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     try {
       await persistVideoFactsDraft(videoFacts, {
         callId: postCall.id,
+        dealId: lifecycle.dealId || dealId || null,
         ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
+        teamId,
+        orgId: orgId || lifecycle.orgId || null,
         accountId: account.id,
       });
     } catch (err) {
@@ -381,9 +295,10 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     try {
       await persistCallTimelineDraft(timeline, {
         callId: postCall.id,
+        dealId: lifecycle.dealId || dealId || null,
         ownerId,
-        teamId: session.teamId,
-        orgId: session.orgId || lifecycle.orgId || null,
+        teamId,
+        orgId: orgId || lifecycle.orgId || null,
       });
     } catch (err) {
       console.warn("[dual-write] timeline persist failed:", err?.message || err);
@@ -394,8 +309,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     callId: postCall.id,
     dealId: lifecycle.dealId || dealId || null,
     ownerId,
-    teamId: session.teamId,
-    orgId: session.orgId || lifecycle.orgId || null,
+    teamId,
+    orgId: orgId || lifecycle.orgId || null,
     accountId: account.id,
   };
 
@@ -554,7 +469,6 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     accountId: account.id,
     contactIds,
     primaryContactId,
-    contactIdByEmail,
     warnings,
   };
 }
@@ -613,8 +527,13 @@ async function stampCallIdentities({ account, lifecycle, postCall, confirmedIden
  * Link imported task to lifecycle when company/context known.
  */
 export async function linkTaskToLifecycle(session, task, lifecycleId) {
-  const ownerId = sessionUserId(session);
-  if (!ownerId || !session?.teamId || !lifecycleId) return null;
+  if (!lifecycleId) return null;
+  const sessionOwnerId = sessionUserId(session);
+  const proxySeUserId =
+    task?.proxySeUserId ||
+    (task?.ownerId && task.ownerId !== sessionOwnerId ? task.ownerId : null);
+  const { ownerId, teamId, orgId } = await resolveActingWriteContext(session, proxySeUserId);
+  if (!ownerId || !teamId) return null;
 
   return attachTask(
     lifecycleId,
@@ -623,8 +542,8 @@ export async function linkTaskToLifecycle(session, task, lifecycleId) {
       id: task.id || newId("task"),
       lifecycleId,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || null,
+      teamId,
+      orgId: orgId || null,
       accountId: task.accountId,
       createdAt: task.createdAt || now(),
     },

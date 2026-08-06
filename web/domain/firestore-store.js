@@ -450,6 +450,28 @@ export function createFirestoreStore(fb) {
       return { id: d.id, ...d.data() };
     },
 
+    async findWonNbDealInGrace(accountId, asOfMs = Date.now()) {
+      const { NB_GRACE_PERIOD_MS } = await import("./deal-motion.js");
+      const q = query(
+        collection(db, "deals"),
+        where("accountId", "==", accountId),
+        where("type", "==", "new_business"),
+        where("status", "==", "archived"),
+        where("stage", "==", "closed_won"),
+        orderBy("lastActivityAt", "desc"),
+        limit(5),
+      );
+      const snap = await getDocs(q);
+      for (const docSnap of snap.docs) {
+        const deal = { id: docSnap.id, ...docSnap.data() };
+        const wonAt = deal.metadata?.closedWonAt || deal.closedWonAt;
+        if (typeof wonAt === "number" && asOfMs <= wonAt + NB_GRACE_PERIOD_MS) {
+          return deal;
+        }
+      }
+      return null;
+    },
+
     async createDeal(deal) {
       const ref = deal.id ? doc(db, "deals", deal.id) : doc(collection(db, "deals"));
       const data = { ...deal, id: ref.id };

@@ -51,6 +51,7 @@ Future roles (e.g. dedicated `enablement`) get a new role value + new resource t
 | Read own lifecycles + artifacts | Yes | — | — | Yes |
 | Read team lifecycles + artifacts | — | Yes (same `teamId`) | — | Yes |
 | Create/update own lifecycles + artifacts | Yes | — | — | Yes |
+| Create prep/post-call **on behalf of team SE** (`create_on_behalf`) | No | Yes (same `teamId`, SE owner) | Yes (segment `teamIds`) | Yes (org scope) |
 | Update lifecycle stage (own) | Yes | — | — | Yes |
 | Edit another SE's artifacts | No | No | No | Yes |
 | Delete artifacts | No | No | No | Yes |
@@ -125,7 +126,7 @@ PM users are seeded.
 
 **Traction principle (spec §9):** Deal traction is hot / warm / cold — never a 0–100 score. Always with visible reasons and one recommended action. Lives in `dealSignals` (Pass 8 rollup), not on `PostCall.analysis.momentum` (per-call hero unchanged).
 
-**Manager principle:** Managers **read** team data for coaching; they do not edit SE prep or post-call artifacts.
+**Manager principle:** Managers **read** team data for coaching. Managers may **create** prep briefs and post-call analyses **on behalf of team SEs** (proxy ownership: `ownerId` = selected SE, `createdByUserId` = manager). They still **do not edit or delete** existing SE prep/post-call artifacts.
 
 **Rubric principle:** Rubrics are org-wide reference config. All signed-in users read; only admins create or update (seed script uses admin credentials).
 
@@ -167,20 +168,7 @@ Implementation: [`worker/src/domain-model/permissions.ts`](../worker/src/domain-
 
 ## Firestore rules (summary)
 
-After ADR 001, ownership uses internal user id via auth index:
-
-```javascript
-function currentUserId() {
-  return get(.../authIndex/$(request.auth.uid)).data.userId;
-}
-
-function canReadTeamResource(ownerId, teamId) {
-  return currentUserId() == ownerId
-      || (isManager() && userTeamId() == teamId);
-}
-```
-
-User profile read: `users/{userId}` where `userId == currentUserId()` or caller is admin.
+After ADR 001, ownership uses internal user id via auth index. **2026-08-06:** accounts and contacts are scoped by `Account.seTeam` and manager team/segment membership (`canReadAccountData`). `dealContacts` join collection has explicit read/write rules via parent deal (`canReadDealResource` / `canWriteDealResource`). Manager proxy writes use target SE `teamId`/`orgId` (`canCreateTeamResource` + extended `canWriteAsManagerForOwner` for segment leaders and org directors). Secondary SEs on an account can read deals via seTeam membership even when not deal owner.
 
 ---
 
@@ -202,19 +190,33 @@ Each User has `teamId` → Team.id and `orgId` → Org.id. Team managers see **t
 ```
 Org
   directorId       → User.id of org director (role: manager)
-  seniorLeaderIds  → User.id[] of senior managers with org-wide read (role: manager)
+  seniorLeaderIds  → User.id[] of senior managers (role: manager)
   teamIds[]        → Team.id[] in this org
+  segments[]       → { id, name, leaderId, teamIds[] } — business segments
 ```
 
-**Director** and **senior managers** are not separate roles — they are managers listed on the org document. Senior managers get the same org-wide read scope as the director via `seniorLeaderIds`.
+**Director** and **senior managers** are not separate roles — they are managers listed on the org document. Session flag `isOrgDirector` is true for **any org leader** (director + senior managers) so pipeline review and org dashboards work without a new role.
 
-| User | Read scope |
-|------|------------|
-| SE | own `ownerId` |
-| Team manager | `resource.teamId === user.teamId` |
-| Org director or senior manager | `resource.orgId === user.orgId` |
-| PM (product signal) | `user.role === "pm"` → org-wide read on `productGaps` + `whatWorks` |
-| Admin | all |
+#### Segments (Freshworks CX SE org)
+
+| Segment | Leader | Teams |
+|---------|--------|-------|
+| New Business | Antony | Ajay, Nikil |
+| Nurture | Preethi Sriram | Mary, Varun |
+| Digital | Preethi Sri | Digital (ICs report directly) |
+
+Segment leaders also appear in `seniorLeaderIds` for org-wide **pipeline review** read scope. The **Team** rollup dashboard uses **segment-scoped** visibility (`getVisibleScope()` → `type: "segment"`) so a segment leader sees only their teams there, while the director sees the full org.
+
+| User | Team dashboard scope | Artifact read (pipeline) | Structure editor |
+|------|---------------------|--------------------------|------------------|
+| SE | own | own | — |
+| Team manager | `user.teamId` | same team | — |
+| Segment leader | segment `teamIds` | org-wide via `isOrgDirector` | own segment only (`manage_org_structure`) |
+| Org director | all org teams | org-wide | full org (`manage_org_structure`) |
+| PM (product signal) | — | org-wide on signal collections | — |
+| Admin | all | all | all |
+
+Structure edits use `GET/PATCH /api/org/structure` (worker) or local store in dev. Cross-segment IC moves require the actual director (`isActualDirector`); segment leaders may reassign ICs within their segment only.
 
 ### Direct reporting line (optional complement)
 
@@ -265,7 +267,20 @@ See [adr/001-user-identity.md](./adr/001-user-identity.md).
 
 ## UI guards
 
-Hide create/edit actions when `can(sessionUser, action, resource)` is false. Managers see read-only lifecycle and artifact views.
+Hide create/edit actions when `can(sessionUser, action, resource)` is false. Managers see read-only lifecycle and artifact views for existing SE work. Managers running pre-call or post-call must pick a **Run for SE** target; writes use the SE as `ownerId` and stamp `createdByUserId` for audit.
+
+---
+
+## Manual QA — manager proxy flows
+
+| Actor | Action | Expected |
+|-------|--------|----------|
+| Manager | Create prep for SE A | Brief/lifecycle under SE A `ownerId`; visible on SE A dashboard and manager team views |
+| Manager | Run post-call for SE A | History under SE A email; scorecard in team coaching |
+| Manager | Try without SE picker | Blocked with validation message |
+| Manager | Pick SE from other team | Blocked (client + Firestore rules) |
+| SE | Unchanged workflow | No regression |
+| Manager | Edit SE's existing call | Still blocked (read-only) |
 
 Session user object for RBAC:
 

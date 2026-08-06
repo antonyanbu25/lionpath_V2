@@ -1,5 +1,5 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
-import { isFirebaseAuthEnabled, getSession } from "./auth.js";
+import { isFirebaseAuthEnabled, getSession, isManagerRole } from "./auth.js";
 import { savePostCallHistory, getPostCallAnalysis, normalizeUserEmail } from "./history.js";
 import {
   normalizeQipScorecard,
@@ -16,6 +16,14 @@ import { buildPostCallResolveContext, invalidatePostCallResolveContext } from ".
 import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
 import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId, effectiveSessionUserId } from "./domain/session.js";
+import {
+  resolveActingOwnerId,
+  resolveActingOwnerEmail,
+  proxySeRequiredMessage,
+} from "./domain/acting-owner.js";
+import { isProxySeReady } from "./prep-form-validation.js";
+import { wireProxySeSelectors } from "./prep-proxy-se-ui.js";
+import { isSeOwner, filterSeActionSteps } from "./follow-ups.js";
 import { domainFromEmail } from "./domain/types.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import {
@@ -1029,7 +1037,7 @@ async function prefillCompanyFromEmails() {
     pcDraftAccountName = "";
   }
 
-  const ownerId = effectiveSessionUserId(currentSession);
+  const ownerId = await resolveActingOwnerId(currentSession, readProxySeUserId(currentSession)).catch(() => null);
   if (!ownerId) return;
   try {
     const ctx = await buildPostCallResolveContext(ownerId);
@@ -2371,6 +2379,7 @@ export function renderPostCall(data, meta = {}) {
   const metaLine = [hdr.duration, hdr.date].filter((x) => !isUnknown(x)).map(esc).join(" · ");
 
   const followRows = (a.followUpTable || [])
+    .filter((row) => row.category === "se_action")
     .filter((row) => !isUnknown(row.thisCall) || !isUnknown(row.followUp))
     .map(
       (row) => `<tr>
@@ -2395,7 +2404,8 @@ export function renderPostCall(data, meta = {}) {
       : '<p class="muted">-</p>';
   };
 
-  const nextRows = (a.nextSteps || [])
+  const seName = currentSession?.name || getSession()?.name || "";
+  const nextRows = filterSeActionSteps(a.nextSteps || [], seName)
     .filter((row) => !isUnknown(row.action))
     .map(
       (row) => `<tr class="${row.isRisk ? "risk-row" : ""}">
@@ -3668,7 +3678,21 @@ async function confirmAndGenerate(e) {
     showInlineStatus(status, { open: false });
 
     let record = null;
-    const sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+    let sessionEmail = normalizeUserEmail(currentSession?.email || getSession()?.email);
+    if (isManagerRole(currentSession)) {
+      try {
+        sessionEmail = normalizeUserEmail(
+          await resolveActingOwnerEmail(
+            currentSession,
+            pipelineState.payload?.proxySeUserId || readProxySeUserId(currentSession),
+          ),
+        );
+      } catch {
+        // fall back to manager email
+      }
+    }
+    const isProxyActing = isManagerRole(currentSession);
+    const createdByUserId = isProxyActing ? effectiveSessionUserId(currentSession) || undefined : undefined;
     if (sessionEmail) {
       const savePayload = {
         ...pipelineState.payload,
@@ -3695,6 +3719,7 @@ async function confirmAndGenerate(e) {
           aeIdentity,
           customerIdentities,
         },
+        proxySeUserId: pipelineState.payload?.proxySeUserId || readProxySeUserId(currentSession) || undefined,
       };
       record = await savePostCallHistory(sessionEmail, savePayload, {
         ...data,
@@ -3703,6 +3728,9 @@ async function confirmAndGenerate(e) {
           ...(data.analysisMeta || {}),
           pass2Debug: pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null,
         },
+      }, {
+        proxySeActing: isProxyActing,
+        createdByUserId,
       });
       if (record?.id) {
         pipelineState.recordId = record.id;
@@ -4074,27 +4102,6 @@ export function clearPostCallForm() {
 
 /** Reset post-call UI for a fresh analysis (e.g. nav back from call record). */
 export function resetPostCallView() {
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a8151a" },
-    body: JSON.stringify({
-      sessionId: "a8151a",
-      runId: "postcall-ui-check",
-      hypothesisId: "H1",
-      location: "postcall.js:resetPostCallView",
-      message: "postcall UI shell markers",
-      data: {
-        portalBuild: document.querySelector('meta[name="portal-build"]')?.getAttribute("content") || null,
-        hasIntakeCard: !!document.querySelector(".postcall-intake-card"),
-        hasAccountPreview: !!document.getElementById("pc-account-deal-preview"),
-        hasOldCompanyField: !!document.getElementById("pc-company-name"),
-        heading: document.querySelector("#view-postcall h1")?.textContent?.trim() || null,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   pipelineState = null;
   clearPostCallForm();
   void ensurePostCallProspectEmailsEmpty();
@@ -4168,6 +4175,19 @@ async function collectIntakePayload() {
     return { error: message };
   }
 
+  const proxySeUserId = readProxySeUserId(currentSession);
+  if (!isProxySeReady(isManagerRole(currentSession), proxySeUserId)) {
+    const message = proxySeRequiredMessage(currentSession, proxySeUserId);
+    const errEl = $("postcall-proxy-se-error");
+    if (errEl) {
+      errEl.textContent = message;
+      errEl.hidden = false;
+    }
+    return { error: message };
+  }
+  const proxyErrEl = $("postcall-proxy-se-error");
+  if (proxyErrEl) proxyErrEl.hidden = true;
+
   const prospectDomain = domainFromEmail(prospectEmails[0] || "");
   const shouldCreateAccount =
     pcCreateNewAccount || (!pcResolvedAccount?.id && !!companyName);
@@ -4200,6 +4220,7 @@ async function collectIntakePayload() {
       createNewDeal: pcCreateNewDeal || undefined,
       newDealType: pcCreateNewDeal || !pcSelectedDealId ? inferDealTypeFromTitle(newDealTitle) : undefined,
       newDealTitle: pcCreateNewDeal || !pcSelectedDealId ? newDealTitle || undefined : undefined,
+      proxySeUserId: isManagerRole(currentSession) ? proxySeUserId || undefined : undefined,
     },
   };
 }
@@ -4258,7 +4279,10 @@ async function startPipeline(e) {
   });
 
   try {
-    const ownerId = effectiveSessionUserId(currentSession) || undefined;
+    const proxySeUserId = payload.proxySeUserId || readProxySeUserId(currentSession);
+    const ownerId = await resolveActingOwnerId(currentSession, proxySeUserId);
+    const ownerEmail = await resolveActingOwnerEmail(currentSession, proxySeUserId);
+    payload.proxySeUserId = proxySeUserId || undefined;
     const domainContext = ownerId
       ? await buildPostCallResolveContext(ownerId)
       : { briefs: [], accounts: [], deals: [] };
@@ -4271,7 +4295,7 @@ async function startPipeline(e) {
       participantEmails: payload.participantEmails,
       accountId: payload.accountId,
       ownerId,
-      ownerEmail: currentSession?.email || undefined,
+      ownerEmail: ownerEmail || undefined,
       ownerDisplayName: currentSession?.name || currentSession?.displayName || undefined,
       briefs: domainContext.briefs,
       accounts: domainContext.accounts,
@@ -4466,4 +4490,6 @@ export function initPostcall() {
       if (addBtn) addBtn.disabled = on;
     },
   });
+
+  void wireProxySeSelectors(currentSession || getSession());
 }

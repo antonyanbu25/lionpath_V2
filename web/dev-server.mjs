@@ -4,11 +4,12 @@
  */
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
+const DEBUG_LOG = join(ROOT, "..", ".cursor", "debug-8a8233.log");
 const PORT = Number(process.env.PORT || 8788);
 const HOST = process.env.HOST || "127.0.0.1";
 
@@ -30,9 +31,25 @@ const MIME = {
   ".webm": "audio/webm",
 };
 
+async function handleDebugIngest(req, res) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const line = Buffer.concat(chunks).toString("utf8").trim();
+  if (line) {
+    await mkdir(join(ROOT, "..", ".cursor"), { recursive: true });
+    await appendFile(DEBUG_LOG, `${line}\n`, "utf8");
+  }
+  res.writeHead(204);
+  res.end();
+}
+
 const server = createServer(async (req, res) => {
   try {
     let pathname = (req.url || "/").split("?")[0];
+    if (pathname === "/__debug/ingest" && req.method === "POST") {
+      await handleDebugIngest(req, res);
+      return;
+    }
     if (pathname === "/") pathname = "/index.html";
 
     const filePath = join(ROOT, decodeURIComponent(pathname));

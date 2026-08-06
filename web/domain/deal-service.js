@@ -435,11 +435,21 @@ export async function archiveDeal(dealId, actorId, opts = {}) {
 
   const ts = now();
   const stage = opts.stage || deal.stage;
-  const updated = await store.updateDeal(dealId, {
+  /** @type {Record<string, unknown>} */
+  const patch = {
     status: "archived",
     stage,
     lastActivityAt: ts,
-  });
+  };
+  if (stage === "closed_won") {
+    const closedWonAt = ts;
+    patch.closedWonAt = closedWonAt;
+    patch.metadata = {
+      ...(deal.metadata || {}),
+      closedWonAt,
+    };
+  }
+  const updated = await store.updateDeal(dealId, patch);
   await syncLifecycleFromDeal(updated, { status: "archived" });
 
   const lc = await store.findLifecycleByDealAndOwner(dealId, deal.ownerId);
@@ -664,10 +674,23 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     }
   }
 
+  // During 90-day NB grace, route to the won NB deal — do not create expansion deal yet.
   await store.updateAccount(accountId, {
-    programPhase: "expansion",
+    programPhase: "live",
     updatedAt: now(),
   });
+
+  const archivedNb = nbDeal ? await store.getDeal(nbDeal.id) : null;
+  if (archivedNb) {
+    return {
+      success: true,
+      expansionDeal: null,
+      nbDeal: archivedNb,
+      lifecycle: null,
+      accountId,
+      gracePeriod: true,
+    };
+  }
 
   const teamId = user.teamId || session.teamId;
   const orgId = user.orgId || session.orgId || null;
@@ -685,5 +708,10 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     orgId,
   });
 
-  return { success: true, expansionDeal, lifecycle, accountId };
+  await store.updateAccount(accountId, {
+    programPhase: "expansion",
+    updatedAt: now(),
+  });
+
+  return { success: true, expansionDeal, lifecycle, accountId, gracePeriod: false };
 }

@@ -26,6 +26,7 @@ import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
+import { isSeOwner } from "./follow-ups.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc, titleCaseDisplayName } from "./shared.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
@@ -1064,14 +1065,42 @@ function buildStakeholderRows(identities, attendees, videoFacts, contacts = []) 
   });
 }
 
-async function enrichStakeholderContacts(accountId, rows, contacts = null) {
+async function loadContactsForCallContext(store, accountId, dealId) {
+  if (!accountId && !dealId) return [];
+  if (dealId && store?.listContactsByDeal) {
+    try {
+      const links = await store.listContactsByDeal(dealId);
+      if (links?.length && accountId && store.listContactsByAccount) {
+        const allAccountContacts = await store.listContactsByAccount(accountId);
+        const byId = new Map(allAccountContacts.map((c) => [c.id, c]));
+        const seen = new Set();
+        const hydrated = links
+          .map((link) => byId.get(link.contactId))
+          .filter((c) => {
+            if (!c || seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          });
+        if (hydrated.length) return hydrated;
+      }
+    } catch {
+      // fall through to account-wide list
+    }
+  }
+  if (accountId && store?.listContactsByAccount) {
+    return store.listContactsByAccount(accountId);
+  }
+  return [];
+}
+
+async function enrichStakeholderContacts(accountId, rows, contacts = null, dealId = null) {
   if (!accountId || !rows?.length) return rows;
   const store = getStore();
-  if (!store?.listContactsByAccount && !contacts?.length) return rows;
+  if (!store?.listContactsByAccount && !store?.listContactsByDeal && !contacts?.length) return rows;
   let resolvedContacts = contacts;
-  if (!resolvedContacts?.length && store?.listContactsByAccount) {
+  if (!resolvedContacts?.length) {
     try {
-      resolvedContacts = await store.listContactsByAccount(accountId);
+      resolvedContacts = await loadContactsForCallContext(store, accountId, dealId);
     } catch {
       return rows;
     }
@@ -1557,7 +1586,7 @@ function renderTechnicalCommitTab(technicalCommit, tcDeltas, followUps, whatWork
     .join("");
 
   const pendingRows = (followUps || [])
-    .filter((f) => f?.description)
+    .filter((f) => f?.description && (f.owner === "se" || isSeOwner(f.owner)))
     .slice(0, 5)
     .map((f) => {
       const owner = ownerLabel(f.owner) || "Open";
@@ -1686,10 +1715,14 @@ export function resolveMinutesViewModel(record, momDraft, followUps) {
 
   const rawOutcome = (mom?.outcome || "").trim();
   const keyPoints = Array.isArray(mom?.keyPoints) ? mom.keyPoints.filter((k) => k?.title) : [];
-  let actionItems = Array.isArray(mom?.actionItems) ? mom.actionItems.filter((a) => a?.text) : [];
+  let actionItems = Array.isArray(mom?.actionItems)
+    ? mom.actionItems.filter((a) => a?.text && (a.owner === "se" || isSeOwner(a.owner)))
+    : [];
 
   if (!actionItems.length && fus.length) {
-    actionItems = fus.map((f) => ({
+    actionItems = fus
+      .filter((f) => f.owner === "se" || isSeOwner(f.owner))
+      .map((f) => ({
       text: f.description,
       owner: f.owner || null,
       dueDate: f.dueDate || null,
@@ -2193,11 +2226,12 @@ async function loadCallBundle(session, record) {
   }
 
   const accountId = deal?.accountId || account?.id || null;
+  const resolvedDealId = navigableDealId || dealId || null;
   let accountContacts = [];
-  if (accountId && store?.listContactsByAccount) {
+  if (accountId || resolvedDealId) {
     accountContacts = await safeEnrich(
-      "listContactsByAccount",
-      () => store.listContactsByAccount(accountId),
+      "loadContactsForCallContext",
+      () => loadContactsForCallContext(store, accountId, resolvedDealId),
       [],
     );
   }
@@ -2205,6 +2239,7 @@ async function loadCallBundle(session, record) {
     accountId,
     buildStakeholderRows(identities, attendees, videoFacts, accountContacts),
     accountContacts,
+    resolvedDealId,
   );
 
   return {

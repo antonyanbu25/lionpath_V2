@@ -9,7 +9,9 @@ import { DUMMY_USERS } from "./dummy-users.js";
 import { DEMO_TEAM_ID } from "./domain/constants.js";
 import { stableUserIdForEmail } from "./domain/id.js";
 import { enrichSessionFromStore, listTeamMemberEmails, upsertFirebaseUser } from "./domain/seed-dev.js";
-import { listVisibleSeEmails } from "./domain/org-service.js";
+import { listVisibleSeEmails, getVisibleScope, userWithDirectorFlag, getOrg, listSeEmailsForTeamIds } from "./domain/org-service.js";
+import { effectiveSessionUserId } from "./domain/session.js";
+import { getStore } from "./domain/store.js";
 
 export { DUMMY_USERS };
 
@@ -124,6 +126,12 @@ export function logout() {
   sessionStorage.removeItem(SESSION_KEY);
   try {
     localStorage.removeItem(SESSION_LOCAL_KEY);
+    const keysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("se-sp-proxy-se:")) keysToRemove.push(k);
+    }
+    keysToRemove.forEach((k) => sessionStorage.removeItem(k));
   } catch {
     // ignore private-mode / quota errors
   }
@@ -222,12 +230,31 @@ export function listTeamSeEmails() {
 
 /** Preferred: team member emails from domain store (Firestore or local shim). */
 export async function listTeamSeEmailsAsync(session) {
-  if (session?.isOrgDirector) {
+  if (session?.userId || session?.email) {
     try {
       const emails = await listVisibleSeEmails(session);
       if (emails.length) return emails;
     } catch (err) {
-      console.warn("Could not load org-visible SEs from domain store:", err);
+      console.warn("Could not load visible SEs from domain store:", err);
+    }
+
+    try {
+      const store = getStore();
+      const lookupId = effectiveSessionUserId(session);
+      let user = lookupId ? await store.getUser(lookupId) : null;
+      if (!user && session.email) {
+        user = await store.getUserByEmail?.(session.email.trim().toLowerCase());
+      }
+      if (user) {
+        const org = user.orgId ? await getOrg(user.orgId) : null;
+        const scope = await getVisibleScope(userWithDirectorFlag(user, org));
+        if (scope.teamIds?.length) {
+          const scoped = await listSeEmailsForTeamIds(scope.teamIds);
+          if (scoped.length) return scoped;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load scoped SEs from domain store:", err);
     }
   }
 
@@ -238,6 +265,7 @@ export async function listTeamSeEmailsAsync(session) {
   } catch (err) {
     console.warn("Could not load team members from domain store:", err);
   }
+  if (isFirebaseAuthEnabled()) return [];
   return listTeamSeEmails();
 }
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /** Smoke: handoff to expansion */
 
+import assert from "node:assert/strict";
+
 const mem = new Map();
 globalThis.localStorage = {
   getItem: (k) => mem.get(k) ?? null,
@@ -56,8 +58,15 @@ async function testHandoff() {
   const session = { email: "se@test.com", teamId: "team_1", orgId: null, userId: ownerId };
   const result = await handoffToExpansion(session, accountId);
   if (!result.success) throw new Error(result.error || "handoff failed");
+  assert.equal(result.gracePeriod, true, "handoff enters 90-day NB grace without immediate expansion deal");
+  const account = await store.getAccount(accountId);
+  assert.equal(account.programPhase, "live");
   const deals = await store.listDealsByAccount(accountId);
-  if (deals.length < 2) throw new Error("expected NB + expansion deals");
+  const archivedNb = deals.find((d) => d.type === "new_business" && d.status === "archived");
+  assert.ok(archivedNb, "NB deal archived at closed_won");
+  assert.ok(archivedNb.metadata?.closedWonAt || archivedNb.closedWonAt, "closedWonAt stamped");
+  const activeExp = deals.find((d) => d.type === "expansion" && d.status === "active");
+  assert.equal(activeExp, undefined, "no expansion deal during grace period");
   console.log("handoff: ok");
 }
 

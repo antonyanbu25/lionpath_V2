@@ -33,7 +33,7 @@ flowchart TB
 
 ## Visibility scope (target model)
 
-Artifacts and lifecycles carry **`teamId`** (squad) and **`ownerId`** (SE).
+Artifacts and lifecycles carry **`teamId`** (team) and **`ownerId`** (SE).
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ flowchart LR
     B["International - NB<br/>or North America - NB<br/>(teams I manage)"]
   end
   subgraph senior["Senior manager"]
-    C["Both NB squads under<br/>my line managers"]
+    C["Both NB teams under<br/>my line managers"]
   end
   subgraph dir["Director"]
     D["All teams in org"]
@@ -55,7 +55,7 @@ flowchart LR
 
 ```
                  ┌─────────────────────────────────────┐
-                 │ DIRECTOR — all squads in org        │
+                 │ DIRECTOR — all teams in org        │
                  │  ┌───────────────────────────────┐  │
                  │  │ SENIOR — subtree (NB example) │  │
                  │  │  ┌──────────────┐ ┌─────────┐ │  │

@@ -15,6 +15,10 @@ export function sessionToUser(session) {
     teamId: session.teamId || null,
     orgId: session.orgId || null,
     isOrgDirector: session.isOrgDirector === true,
+    isActualDirector: session.isActualDirector === true,
+    isSegmentLeader: session.isSegmentLeader === true,
+    segmentId: session.segmentId || null,
+    segmentTeamIds: session.segmentTeamIds || [],
   };
 }
 
@@ -32,6 +36,8 @@ export function applyRoleVisibility(session, root = document) {
   root.querySelectorAll("[data-role]").forEach((el) => {
     const role = el.dataset.role;
     if (role === "manager") el.hidden = !isManager;
-    else if (role === "se") el.hidden = isManager;
+    else if (role === "se") el.hidden = false;
+    else if (role === "leader") el.hidden = !session?.isOrgDirector;
+    else if (role === "curator") el.hidden = session?.role !== "admin" && session?.role !== "pm";
   });
 }

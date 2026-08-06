@@ -7,7 +7,7 @@ import { newId, now } from "./types.js";
 
 /**
  * @param {object} draft — ScorecardDraft from worker
- * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string, dealId?: string|null }} ctx
  */
 export async function persistScorecardDraft(draft, ctx) {
   if (!draft?.lines?.length || !ctx?.callId || !ctx?.ownerId) return null;
@@ -30,6 +30,7 @@ export async function persistScorecardDraft(draft, ctx) {
   const scorecard = {
     id: scorecardId,
     callId: ctx.callId,
+    dealId: ctx.dealId || null,
     rubricId: draft.rubricId,
     overall: draft.overall,
     totalCredits: draft.totalCredits,

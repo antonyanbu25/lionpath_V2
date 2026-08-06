@@ -21,7 +21,7 @@ import { buildTeamThemeAverages as teamThemeAveragesFromAccess } from "./domain/
 import { aggregateFollowUps } from "./follow-ups.js";
 import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./auth.js";
 import { getStore } from "./domain/store.js";
-import { mapEmailToTeamName } from "./domain/org-service.js";
+import { mapEmailToTeamName, getVisibleScope } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
@@ -1492,10 +1492,14 @@ async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
   const { dummyUidForEmail } = await import("./domain/seed-dev.js");
   const emailToUid = new Map();
 
-  const canBulkOrg =
-    isOrgView && session?.orgId && typeof store.listUsersByOrg === "function";
+  const scopeBulk =
+    session?.orgId &&
+    (isOrgView || session?.isSegmentLeader) &&
+    typeof store.listUsersByOrg === "function";
+
+  const canBulkOrg = scopeBulk;
   const canBulkMgr =
-    !isOrgView && session?.userId && typeof store.listUsersByManagerId === "function";
+    !canBulkOrg && session?.userId && typeof store.listUsersByManagerId === "function";
 
   if (canBulkOrg || canBulkMgr) {
     const users = canBulkOrg
@@ -1525,13 +1529,29 @@ async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
 }
 
 async function buildTeamMetrics(session) {
-  const isOrgView = session?.isOrgDirector === true;
+  const store = getStore();
+  let scope = null;
+  if (session?.userId) {
+    const user = await store.getUser(session.userId);
+    if (user) {
+      scope = await getVisibleScope({
+        ...user,
+        isOrgDirector: session.isOrgDirector,
+        isActualDirector: session.isActualDirector,
+        isSegmentLeader: session.isSegmentLeader,
+        segmentId: session.segmentId,
+        segmentName: session.segmentName,
+        segmentTeamIds: session.segmentTeamIds,
+      });
+    }
+  }
+  const isOrgView = scope?.type === "org";
+  const segmentName = scope?.segmentName || session?.segmentName || null;
   const seEmails = session
     ? await listTeamSeEmailsAsync(session)
     : listTeamSeEmails();
 
   const storePostCalls = await loadTeamPostCallsFromStore(session);
-  const store = getStore();
   const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
   const emailToUid = await resolveEmailToUidMap(store, session, seEmails, isOrgView);
 
@@ -1572,7 +1592,7 @@ async function buildTeamMetrics(session) {
   }
 
   const teamMetrics = aggregateQualityMetrics(allAnalyses);
-  return { teamMetrics, seRows, isOrgView };
+  return { teamMetrics, seRows, isOrgView, segmentName, scopeType: scope?.type || null };
 }
 
 function formatCompactUsd(n) {
@@ -1699,7 +1719,7 @@ function buildTeamCoachingQueue(allDeduped) {
 async function buildManagerTeamView(session) {
   const base = await buildTeamMetrics(session);
   const scoreOverrides = await loadScoreOverridesForSession(session);
-  const isOrgView = session?.isOrgDirector === true;
+  const isOrgView = base.isOrgView === true;
   const seEmails = session ? await listTeamSeEmailsAsync(session) : listTeamSeEmails();
   const storePostCalls = await loadTeamPostCallsFromStore(session);
   const store = getStore();
@@ -2156,9 +2176,10 @@ function renderManagerSeTable(seRows, isOrgView = false) {
 }
 
 function managerDashboardSubtitle(view) {
-  const { seRows, teamSummary, isOrgView } = view;
+  const { seRows, teamSummary, isOrgView, segmentName } = view;
   const parts = [];
   if (isOrgView) parts.push("Org-wide roll-up");
+  else if (segmentName) parts.push(`${segmentName} segment`);
   parts.push(`${seRows.length} SE${seRows.length === 1 ? "" : "s"}`);
   if (teamSummary.callsScored) {
     parts.push(`${teamSummary.callsScored} call${teamSummary.callsScored === 1 ? "" : "s"} scored`);

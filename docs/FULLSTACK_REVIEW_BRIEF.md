@@ -159,7 +159,7 @@ Since Firebase Auth and Firestore are **already** in production use, the app is 
 ### 5.1 Cloud Firestore — *already in use*
 - **Role:** Sole system of record for the domain model (`users`, `teams`, `accounts`, `contacts`, `lifecycles` + `events` subcollection, `prepBriefs`, `postCalls`, `tasks`) and `authIndex` (Firebase UID → internal user id mapping).
 - **Mode:** Native mode, document/collection model — good fit here because the domain is naturally document-shaped (a `Lifecycle` with nested/related artifacts) rather than relational-join-heavy.
-- **Security model:** `firestore.rules` is doing real work — role-based (`se`/`manager`/`admin`), team-scoped, and org-hierarchy-aware (director → senior leader → squad manager → IC visibility, per `docs/adr/002-org-hierarchy.md`). This is enforced **at the database layer**, independent of the API — which is a strong pattern to keep regardless of where you deploy.
+- **Security model:** `firestore.rules` is doing real work — role-based (`se`/`manager`/`admin`), team-scoped, and org-hierarchy-aware (director → senior leader → team manager → IC visibility, per `docs/adr/002-org-hierarchy.md`). This is enforced **at the database layer**, independent of the API — which is a strong pattern to keep regardless of where you deploy.
 - **What's missing today:** the legacy parallel storage (localStorage / KV / flat files) undermines "Firestore is the source of truth." Finishing the cutover is the highest-value Firestore work, not new Firestore features.
 - **Indexes:** `firestore.indexes.json` exists and is deployed via `firebase deploy --only firestore:indexes` — keep this in the CI/CD pipeline once one exists.
 

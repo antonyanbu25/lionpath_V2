@@ -23,6 +23,8 @@ import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
   loadContactEventsForAccount,
   recordContactEvent,
+  resolveContactOnAccount,
+  dedupeContactsForDisplay,
 } from "./contact-service.js";
 import {
   backfillAccountSeTeam,
@@ -137,42 +139,32 @@ export async function upsertAccountFromPrep(input) {
     const email = emails[i];
     const prospectMeta = prospects[i] || prospects.find((p) => p?.email === email);
     const draft = contactDrafts.find((d) => String(d?.email || "").toLowerCase() === email);
-    let contact = await store.findContactByAccountEmail(account.id, email);
+    let contact = await resolveContactOnAccount(
+      account.id,
+      {
+        email,
+        name: prospectMeta?.name || draft?.name,
+        title: prospectMeta?.title || draft?.role,
+        role: prospectMeta?.role || draft?.role,
+      },
+      { actorId: input.actorId, source: "prep", lifecycleId: input.lifecycleId, artifactId: input.prepBriefId },
+    );
+    if (!contact) continue;
     const contactPatch = {
       name: prospectMeta?.name || draft?.name || contact?.name,
       title: prospectMeta?.title || draft?.role || contact?.title,
       role: prospectMeta?.role || draft?.role || contact?.role,
     };
-
     const researchMeta = draft?.metadata?.research || buildContactResearch(prospectMeta, ts);
-
-    if (!contact) {
-      contact = await store.createContact({
-        id: newId("contact"),
-        accountId: account.id,
-        email,
-        ...contactPatch,
-        metadata: researchMeta ? { research: researchMeta } : undefined,
-        createdAt: ts,
-        updatedAt: ts,
-      });
-      if (input.actorId) {
-        await recordContactEvent(contact.id, "contact_created", input.actorId, {
-          source: "prep",
-          lifecycleId: input.lifecycleId,
-        });
-      }
-    } else {
-      const patch = { updatedAt: ts, ...contactPatch };
-      if (researchMeta) {
-        patch.metadata = {
-          ...(contact.metadata || {}),
-          research: { ...(contact.metadata?.research || {}), ...researchMeta },
-        };
-      }
-      if (patch.name || patch.title || patch.role || patch.metadata) {
-        contact = await store.updateContact(contact.id, patch);
-      }
+    const patch = { updatedAt: ts, ...contactPatch };
+    if (researchMeta) {
+      patch.metadata = {
+        ...(contact.metadata || {}),
+        research: { ...(contact.metadata?.research || {}), ...researchMeta },
+      };
+    }
+    if (patch.name || patch.title || patch.role || patch.metadata) {
+      contact = await store.updateContact(contact.id, patch);
     }
 
     contactIds.push(contact.id);
@@ -699,7 +691,7 @@ export async function listAccountsForSession(session, opts = {}) {
           const deals = store.listDealsByAccount
             ? await safeStoreOp(
                 "listDealsByAccount",
-                () => store.listDealsByAccount(accountId, ownerId || undefined),
+                () => store.listDealsByAccount(accountId),
                 [],
               )
             : [];
@@ -1218,11 +1210,37 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
   }
   mergedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
-  const contacts = await safeStoreOp(
-    "listContactsByAccount",
-    () => store.listContactsByAccount(accountId),
-    [],
-  );
+  const contactsRaw = selectedDealId && store.listContactsByDeal
+    ? await (async () => {
+        const links = await safeStoreOp(
+          "listContactsByDeal",
+          () => store.listContactsByDeal(selectedDealId),
+          [],
+        );
+        const allAccountContacts = await safeStoreOp(
+          "listContactsByAccount",
+          () => store.listContactsByAccount(accountId),
+          [],
+        );
+        const byId = new Map(allAccountContacts.map((c) => [c.id, c]));
+        const seen = new Set();
+        return links
+          .map((link) => byId.get(link.contactId))
+          .filter((c) => {
+            if (!c || seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          });
+      })()
+    : await safeStoreOp(
+        "listContactsByAccount",
+        () => store.listContactsByAccount(accountId),
+        [],
+      );
+  const contacts = dedupeContactsForDisplay(contactsRaw, {
+    primaryContactId: lensLifecycle?.primaryContactId || null,
+    accountDomain: account.domain || null,
+  });
   const contactEventsByContactId = await safeStoreOp(
     "loadContactEventsForAccount",
     () => loadContactEventsForAccount(contacts, 10),

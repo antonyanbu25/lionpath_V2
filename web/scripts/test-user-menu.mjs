@@ -15,7 +15,7 @@ const checks = [
   ["user menu panel in sidebar", html.includes('user-menu-panel--sidebar')],
   ["sidebar user trigger", html.includes('id="sidebar-user"')],
   ["no topbar user menu trigger visible", !html.includes('class="user-menu-trigger"') || html.includes('user-menu-trigger" hidden')],
-  ["profile settings menu item", html.includes('id="user-menu-profile"')],
+  ["no profile settings in popup", !html.includes('id="user-menu-profile"')],
   ["theme submenu", html.includes('id="user-menu-theme-submenu"')],
   ["sign out in menu", html.includes('id="user-menu-signout"')],
   ["profile view panel", html.includes('id="view-profile"')],

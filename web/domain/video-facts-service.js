@@ -7,7 +7,7 @@ import { newId, now } from "./types.js";
 
 /**
  * @param {object} draft — VideoFactsDraft from worker
- * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string }} ctx
+ * @param {{ callId: string, ownerId: string, teamId: string, orgId: string, accountId: string, dealId?: string|null }} ctx
  */
 export async function persistVideoFactsDraft(draft, ctx) {
   if (!draft || !ctx?.callId || !ctx?.ownerId) return null;
@@ -28,6 +28,7 @@ export async function persistVideoFactsDraft(draft, ctx) {
   const facts = {
     id: factsId,
     callId: ctx.callId,
+    dealId: ctx.dealId || null,
     status: draft.status || "unavailable",
     cameraOnPct: draft.cameraOnPct ?? null,
     keyframeRefs: Array.isArray(draft.keyframeRefs) ? draft.keyframeRefs : [],
