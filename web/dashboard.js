@@ -24,6 +24,7 @@ import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js?v=2.1.14";
+import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { renderLoadingPanel, wireCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
@@ -1316,6 +1317,70 @@ function briefsCountFetcher(opts = {}) {
   return opts.fetchAllRemotePreps ?? opts.fetchRemotePreps;
 }
 
+function stopRemotePrepsSubscribe(container) {
+  if (typeof container?._prepsUnsub === "function") {
+    container._prepsUnsub();
+    container._prepsUnsub = null;
+  }
+}
+
+function patchLaunchKpiValue(container, stat, value) {
+  const el = container.querySelector(`.launch-kpi-value[data-stat="${stat}"]`);
+  if (!el) return false;
+  const next = String(value);
+  const syncing = el.querySelector(".launch-kpi-syncing");
+  if (el.classList.contains("launch-kpi-value--pending")) {
+    el.classList.remove("launch-kpi-value--pending");
+    el.removeAttribute("aria-busy");
+    el.innerHTML = syncing ? `${next}${syncing.outerHTML}` : next;
+  } else if (el.textContent.replace(/\s*↻\s*/g, "").trim() !== next) {
+    el.innerHTML = syncing ? `${next}${syncing.outerHTML}` : next;
+  } else {
+    return false;
+  }
+  const card = el.closest(".launch-kpi-card");
+  const delta = card?.querySelector(".launch-kpi-delta");
+  if (stat === "preps" && delta) {
+    if (value > 0) {
+      delta.textContent = `${value} total`;
+      delta.className = "launch-kpi-delta good";
+      delta.hidden = false;
+    } else {
+      delta.hidden = true;
+    }
+  }
+  return true;
+}
+
+function patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount) {
+  patchLaunchKpiValue(container, "open", taskMetrics.openTotal);
+  patchLaunchKpiValue(container, "calls", callMetrics.totalCalls);
+  patchLaunchKpiValue(container, "preps", prepsCount);
+}
+
+async function applyRemoteBriefsToLaunchpad(container, email, opts, remoteBriefs) {
+  if (!container?.isConnected) return;
+  const prepsCount = mergeAllBriefs(loadAllLocalBriefs(), remoteBriefs || []).length;
+  patchLaunchKpiValue(container, "preps", prepsCount);
+  const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+  const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
+  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, {
+    ...opts,
+    fetchAllRemotePreps: async () => remoteBriefs || [],
+  });
+  const taskMetrics = aggregateTaskMetrics(listTasks(email));
+  const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
+}
+
+function wireRemotePrepsSubscribe(container, email, opts = {}) {
+  stopRemotePrepsSubscribe(container);
+  if (typeof opts.subscribeRemotePreps !== "function") return;
+  container._prepsUnsub = opts.subscribeRemotePreps((remoteBriefs) => {
+    void applyRemoteBriefsToLaunchpad(container, email, opts, remoteBriefs);
+  });
+}
+
 function withDashboardTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
@@ -1382,9 +1447,12 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
           })()
         : Promise.resolve(null);
 
+    const realtimePreps = typeof opts.subscribeRemotePreps === "function";
     const [remoteRecords, remotePreps, launchpadDoc] = await Promise.all([
       resolveCallRecords(email, { ...opts, skipRemoteHistory: false }),
-      typeof prepsFetcher === "function" ? countPrepsGenerated(prepsFetcher) : Promise.resolve(0),
+      realtimePreps || typeof prepsFetcher !== "function"
+        ? Promise.resolve(null)
+        : countPrepsGenerated(prepsFetcher),
       launchpadPromise,
     ]);
 
@@ -1404,9 +1472,21 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     if (!container.isConnected) return;
     const taskMetrics = aggregateTaskMetrics(listTasks(email));
     const grid = container.querySelector(".launch-kpi-grid");
+    const prepsCount =
+      remotePreps ??
+      Number(
+        container
+          .querySelector('.launch-kpi-value[data-stat="preps"]')
+          ?.textContent?.replace(/\s*↻\s*/g, "")
+          .trim() || 0,
+      );
     if (grid) {
-      grid.outerHTML = renderLaunchKpis(taskMetrics, remoteLaunchMetrics, remotePreps);
-      wireLaunchKpiNav(container, email, opts);
+      if (realtimePreps) {
+        patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
+      } else {
+        grid.outerHTML = renderLaunchKpis(taskMetrics, remoteLaunchMetrics, prepsCount);
+        wireLaunchKpiNav(container, email, opts);
+      }
     }
     const section = container.querySelector(".dash-side-recent");
     if (section) {
@@ -1414,7 +1494,7 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
       wireRecentActivitySection(container, opts);
     }
     wireCallLinks(container, opts.onOpenCall);
-    writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, remotePreps));
+    writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, prepsCount));
   } catch (err) {
     console.warn("[dashboard] remote refresh failed:", err?.message || err);
   }
@@ -1641,8 +1721,12 @@ async function updateLaunchKpis(container, email, opts = {}) {
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
-    grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
-    wireLaunchKpiNav(container, email, opts);
+    if (typeof opts.subscribeRemotePreps === "function") {
+      patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount);
+    } else {
+      grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
+      wireLaunchKpiNav(container, email, opts);
+    }
   }
   writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
   await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
@@ -1707,8 +1791,9 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
   const hasLocalData =
     dedupeAnalysesByCallIdentity(listPostCallAnalyses(email)).length > 0 ||
     loadAllLocalBriefs().length > 0;
+  const hasCachedKpis = !!cachedMetrics;
   const hasReady = container.querySelector(".launchpad:not(.launchpad--loading)");
-  if (!hasReady) {
+  if (!hasReady && !hasCachedKpis && !hasLocalData) {
     renderDashboardLoadingShell(container);
   }
 
@@ -1784,6 +1869,8 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     if (!remotePending.calls && !remotePending.preps) {
       writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount));
     }
+
+    wireRemotePrepsSubscribe(container, email, opts);
   } catch (err) {
     console.warn("[dashboard] renderSeLaunchpad failed:", err?.message || err);
     renderLaunchpadFallback(container, email, opts, err);

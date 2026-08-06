@@ -25,6 +25,7 @@ import {
   setSession,
   isFirebaseAuthEnabled,
   sessionUserId,
+  effectiveSessionUserId,
   withEffectiveUserId,
 } from "./auth.js";
 import {
@@ -456,6 +457,114 @@ function prepDocToBrief(doc) {
   });
 }
 
+function prepBriefDocToBrief(doc) {
+  const data = doc.data();
+  const createdAt = data.createdAt;
+  let when = data.when || "";
+  if (!when && createdAt?.toDate) when = createdAt.toDate().toLocaleDateString();
+  else if (!when && typeof createdAt === "number") when = new Date(createdAt).toLocaleDateString();
+  return normalizeRemoteBrief({
+    id: doc.id,
+    company: data.meta?.company || data.input?.companyName,
+    when,
+    prep: data.prep,
+    meta: data.meta,
+    input: data.input,
+    lifecycleId: data.lifecycleId,
+    prospectEmail: data.input?.prospectEmail || data.prospectEmail,
+    companyDomain: data.meta?.domain || data.meta?.companyDomain,
+  });
+}
+
+function docsToRemoteBriefs(prepDocs, prepBriefDocs) {
+  const seen = new Set();
+  const briefs = [];
+  const add = (brief) => {
+    if (!brief?.id || seen.has(brief.id)) return;
+    seen.add(brief.id);
+    briefs.push(brief);
+  };
+  for (const doc of prepDocs || []) add(prepDocToBrief(doc));
+  for (const doc of prepBriefDocs || []) add(prepBriefDocToBrief(doc));
+  return briefs;
+}
+
+async function queryRemotePrepCollections() {
+  if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) {
+    return { prepDocs: [], prepBriefDocs: [] };
+  }
+  const user = fb.auth.currentUser;
+  const email = String(user.email || currentSession?.email || "")
+    .trim()
+    .toLowerCase();
+  const ownerId = effectiveSessionUserId(currentSession);
+  const prepSeen = new Set();
+  const prepDocs = [];
+  const prepBriefDocs = [];
+
+  const collectPreps = (snap) => {
+    if (!snap?.docs) return;
+    for (const doc of snap.docs) {
+      if (prepSeen.has(doc.id)) continue;
+      prepSeen.add(doc.id);
+      prepDocs.push(doc);
+    }
+  };
+
+  try {
+    const snap = await withFetchTimeout(
+      fb.getDocs(
+        fb.query(
+          fb.collection(fb.db, "preps"),
+          fb.where("uid", "==", user.uid),
+          fb.orderBy("createdAt", "desc"),
+          fb.limit(PREP_HISTORY_LIMIT),
+        ),
+      ),
+    );
+    collectPreps(snap);
+  } catch (err) {
+    console.warn("[app] preps uid query failed:", err?.message || err);
+  }
+
+  if (email) {
+    try {
+      const snap = await withFetchTimeout(
+        fb.getDocs(
+          fb.query(
+            fb.collection(fb.db, "preps"),
+            fb.where("email", "==", email),
+            fb.orderBy("createdAt", "desc"),
+            fb.limit(PREP_HISTORY_LIMIT),
+          ),
+        ),
+      );
+      collectPreps(snap);
+    } catch (err) {
+      console.warn("[app] preps email query failed:", err?.message || err);
+    }
+  }
+
+  if (ownerId) {
+    try {
+      const snap = await withFetchTimeout(
+        fb.getDocs(
+          fb.query(
+            fb.collection(fb.db, "prepBriefs"),
+            fb.where("ownerId", "==", ownerId),
+            fb.limit(PREP_HISTORY_LIMIT),
+          ),
+        ),
+      );
+      if (snap?.docs) prepBriefDocs.push(...snap.docs);
+    } catch (err) {
+      console.warn("[app] prepBriefs owner query failed:", err?.message || err);
+    }
+  }
+
+  return { prepDocs, prepBriefDocs };
+}
+
 /** Lazy Firestore fetch — checks auth at call time so dashboard KPI is not stuck at 0. */
 function withFetchTimeout(promise, ms = 12000) {
   return Promise.race([
@@ -469,58 +578,90 @@ const PREP_HISTORY_LIMIT = 100;
 
 function buildFetchAllRemotePreps() {
   return async () => {
-    if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return [];
+    const { prepDocs, prepBriefDocs } = await queryRemotePrepCollections();
+    return docsToRemoteBriefs(prepDocs, prepBriefDocs);
+  };
+}
+
+/** Realtime Firestore listener for dashboard brief count + all-briefs merge. */
+function buildSubscribeRemotePreps() {
+  return (onChange) => {
+    if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db || typeof onChange !== "function") {
+      return () => {};
+    }
     const user = fb.auth.currentUser;
     const email = String(user.email || currentSession?.email || "")
       .trim()
       .toLowerCase();
-    const seen = new Set();
-    const docs = [];
+    const ownerId = effectiveSessionUserId(currentSession);
+    const prepDocsByUid = new Map();
+    const prepDocsByEmail = new Map();
+    const prepBriefDocs = new Map();
 
-    const collect = (snap) => {
-      if (!snap?.docs) return;
-      for (const doc of snap.docs) {
-        if (seen.has(doc.id)) continue;
-        seen.add(doc.id);
-        docs.push(doc);
+    const emit = () => {
+      onChange(
+        docsToRemoteBriefs(
+          [...prepDocsByUid.values(), ...prepDocsByEmail.values()],
+          [...prepBriefDocs.values()],
+        ),
+      );
+    };
+
+    const unsubs = [];
+    const watch = (label, q, bucket) => {
+      try {
+        const unsub = fb.onSnapshot(
+          q,
+          (snap) => {
+            bucket.clear();
+            for (const doc of snap.docs) bucket.set(doc.id, doc);
+            emit();
+          },
+          (err) => console.warn(`[app] ${label} snapshot failed:`, err?.message || err),
+        );
+        unsubs.push(unsub);
+      } catch (err) {
+        console.warn(`[app] ${label} snapshot setup failed:`, err?.message || err);
       }
     };
 
-    try {
-      const snap = await withFetchTimeout(
-        fb.getDocs(
-          fb.query(
-            fb.collection(fb.db, "preps"),
-            fb.where("uid", "==", user.uid),
-            fb.orderBy("createdAt", "desc"),
-            fb.limit(PREP_HISTORY_LIMIT),
-          ),
-        ),
-      );
-      collect(snap);
-    } catch (err) {
-      console.warn("[app] preps uid query failed:", err?.message || err);
-    }
-
+    watch(
+      "preps uid",
+      fb.query(
+        fb.collection(fb.db, "preps"),
+        fb.where("uid", "==", user.uid),
+        fb.orderBy("createdAt", "desc"),
+        fb.limit(PREP_HISTORY_LIMIT),
+      ),
+      prepDocsByUid,
+    );
     if (email) {
-      try {
-        const snap = await withFetchTimeout(
-          fb.getDocs(
-            fb.query(
-              fb.collection(fb.db, "preps"),
-              fb.where("email", "==", email),
-              fb.orderBy("createdAt", "desc"),
-              fb.limit(PREP_HISTORY_LIMIT),
-            ),
-          ),
-        );
-        collect(snap);
-      } catch (err) {
-        console.warn("[app] preps email query failed:", err?.message || err);
-      }
+      watch(
+        "preps email",
+        fb.query(
+          fb.collection(fb.db, "preps"),
+          fb.where("email", "==", email),
+          fb.orderBy("createdAt", "desc"),
+          fb.limit(PREP_HISTORY_LIMIT),
+        ),
+        prepDocsByEmail,
+      );
+    }
+    if (ownerId) {
+      watch(
+        "prepBriefs owner",
+        fb.query(
+          fb.collection(fb.db, "prepBriefs"),
+          fb.where("ownerId", "==", ownerId),
+          fb.limit(PREP_HISTORY_LIMIT),
+        ),
+        prepBriefDocs,
+      );
     }
 
-    return docs.map(prepDocToBrief).filter(Boolean);
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
   };
 }
 
@@ -556,6 +697,7 @@ function dashboardOpts(extra = {}) {
     seName: currentSession?.name,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
+    subscribeRemotePreps: buildSubscribeRemotePreps(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
     skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
@@ -655,9 +797,6 @@ async function renderSePanel() {
 
 async function renderDashboardPanels(email, opts = {}) {
   const panel = $("dash-panel");
-  if (panel && !panel.querySelector(".launchpad")) {
-    renderDashboardLoadingShell(panel);
-  }
   await renderDashboard(panel, email, opts);
 }
 
@@ -2213,6 +2352,7 @@ function ensureFirebaseSdk() {
         doc: fsMod.doc,
         getDoc: fsMod.getDoc,
         getDocs: fsMod.getDocs,
+        onSnapshot: fsMod.onSnapshot,
         setDoc: fsMod.setDoc,
         updateDoc: fsMod.updateDoc,
         deleteDoc: fsMod.deleteDoc,
