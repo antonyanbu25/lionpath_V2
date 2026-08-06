@@ -25,7 +25,7 @@ export const AUTH_BUILD_ID = "2.1.29";
 /** Cache-bust query for ES module imports — bump with AUTH_BUILD_ID. */
 export const MODULE_BUILD = AUTH_BUILD_ID;
 
-function isProductionHost(host) {
+export function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
