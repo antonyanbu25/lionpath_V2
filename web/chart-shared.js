@@ -95,6 +95,7 @@ export const SPINE_SEGMENT_PALETTE = {
   objection_handling: ["#f4e7df", "#b8544a"],
   next_steps: ["#e3efec", "#2e897b"],
   none: ["#faf8f4", "#8a8072"],
+  scene_change: ["#f3ecda", "#a5883f"],
 };
 
 export const TIMELINE_MARKER_COLORS = {

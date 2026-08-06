@@ -148,6 +148,26 @@ function testEscaping() {
   assert.match(html, /&lt;img/);
 }
 
+function testSpineHasInlineLayout() {
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: [],
+    facts: { durationSec: 900 },
+  });
+  assert.match(html, /call-spine spine" style="[^"]*height:56px/);
+  assert.match(html, /class="seg" style="[^"]*position:absolute/);
+}
+
+function testSpineSurvivesBadDuration() {
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: [],
+    facts: { durationSec: 9_999_999 },
+  });
+  const widths = [...html.matchAll(/width:([0-9.]+)%/g)].map((m) => Number(m[1]));
+  assert.ok(widths.some((w) => w > 10), "segments stay visible when duration metadata is wrong");
+}
+
 testVideoSpineWireframe();
 testTranscriptSpine();
 testInlineMarkersOnBar();
@@ -157,4 +177,6 @@ testEmptyStateIsHonest();
 testVideoWinsWhenBothExist();
 testObjectionQaFormat();
 testEscaping();
+testSpineHasInlineLayout();
+testSpineSurvivesBadDuration();
 console.log("test-call-timeline-render: ok");

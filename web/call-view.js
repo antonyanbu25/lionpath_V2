@@ -993,12 +993,27 @@ function renderFitmentCard(deal) {
 
 const SPINE_SEGMENT_COLORS = SPINE_SEGMENT_PALETTE;
 
+const SPINE_TRACK_STYLE =
+  "position:relative;height:56px;border-radius:10px;overflow:visible;margin-bottom:6px;width:100%;";
+const SPINE_SEG_STYLE =
+  "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
+
+/** Prefer segment coverage when stored duration is missing or wildly off (unit mismatch). */
+function resolveSpineDuration(durationSec, segments) {
+  const segmentEnd = Math.max(
+    ...segments.map((s) => Math.max(Number(s.startS) || 0, Number(s.endS) || 0)),
+    1,
+  );
+  const raw = Number(durationSec);
+  if (!Number.isFinite(raw) || raw <= 0) return segmentEnd;
+  if (segmentEnd > 0 && raw > segmentEnd * 4) return segmentEnd;
+  return Math.max(raw, segmentEnd);
+}
+
 function renderVisualSpine(segments, markers, durationSec) {
-  const total = durationSec && Number.isFinite(durationSec) && durationSec > 0
-    ? durationSec
-    : Math.max(...segments.map((s) => Number(s.endS) || 0), 1);
+  const total = resolveSpineDuration(durationSec, segments);
   let html = '<div class="call-spine-wrap">';
-  html += '<div class="call-spine spine" aria-hidden="true">';
+  html += `<div class="call-spine spine" style="${SPINE_TRACK_STYLE}" role="img" aria-label="Call scene timeline">`;
   segments.forEach((seg, i) => {
     const start = Number(seg.startS) || 0;
     const end = Number(seg.endS) || start;
@@ -1009,7 +1024,7 @@ function renderVisualSpine(segments, markers, durationSec) {
     const label = spineSegmentLabel(type, seg.label || segmentTypeLabel(type));
     const radius =
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
-    html += `<div class="seg" style="left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
+    html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
   for (const m of markers || []) {
     const at = Number(m.atS);
@@ -1018,7 +1033,7 @@ function renderVisualSpine(segments, markers, durationSec) {
     const kind = m.kind || "gap";
     const label = markerDisplayLabel(m);
     const tip = `${formatSegmentTime(at)} · ${label}`;
-    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}" aria-hidden="true"></div>`;
+    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}"></div>`;
     html += `<div class="mkl mkl--${esc(kind)}" style="left:${left}%" title="${esc(tip)}">${esc(label)}</div>`;
   }
   html += "</div></div>";
@@ -1665,9 +1680,13 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   const transcriptSegments = all.filter((s) => s.source === "transcript");
   const usingTranscript = !videoSegments.length && transcriptSegments.length > 0;
   const segments = videoSegments.length ? videoSegments : transcriptSegments;
-  const durationSec =
-    timeline?.facts?.durationSec ??
-    (segments.length ? Math.max(...segments.map((s) => Number(s.endS) || 0)) : null);
+  const durationSec = segments.length
+    ? resolveSpineDuration(
+        timeline?.facts?.durationSec ??
+          (segments.length ? Math.max(...segments.map((s) => Number(s.endS) || 0)) : null),
+        segments,
+      )
+    : null;
 
   let body = "";
   if (segments.length) {
