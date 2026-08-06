@@ -79,3 +79,80 @@ export function stableIdForEmail(email) {
 }
 
 export { now };
+
+/** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
+async function safeStoreGet(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[user-resolve] ${label} failed:`, err?.message || err);
+    return null;
+  }
+}
+
+/** Resolve team member emails for manager views (single team). */
+export async function listTeamMemberEmails(teamId) {
+  const store = getStore();
+  const team = await store.getTeam(teamId);
+  if (!team?.memberIds?.length) return [];
+
+  const emails = [];
+  for (const memberId of team.memberIds) {
+    const user = await store.getUser(memberId);
+    if (user?.email && user.role === "se") emails.push(user.email);
+  }
+  return emails;
+}
+
+/** Upsert Firebase user on login. internal User.id + authIndex (no dev seed). */
+export async function upsertFirebaseUser(fbUser, roleHint) {
+  const store = getStore();
+  const ts = now();
+  const email = String(fbUser.email || "").trim().toLowerCase();
+  const authUid = fbUser.uid;
+
+  let user = null;
+
+  if (store.getUserIdByAuthUid) {
+    const mappedId = await safeStoreGet("authIndex lookup", () => store.getUserIdByAuthUid(authUid));
+    if (mappedId) {
+      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
+    }
+  }
+
+  if (!user) {
+    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(email));
+  }
+
+  if (!user) {
+    const legacyByAuth = await safeStoreGet("legacy getUser by authUid", () => store.getUser(authUid));
+    if (legacyByAuth?.email === email) user = legacyByAuth;
+  }
+
+  const role =
+    user?.role ||
+    (email.includes("vipin.") || email.startsWith("director@") ? "manager" : roleHint || "se");
+
+  const profile = {
+    id: user?.id || stableUserIdForEmail(email),
+    email,
+    authUid,
+    displayName: fbUser.displayName || user?.displayName || email.split("@")[0],
+    role,
+    teamId: user?.teamId ?? null,
+    orgId: user?.orgId ?? null,
+    managerId: user?.managerId ?? null,
+    jobTitle: user?.jobTitle ?? null,
+    avatarDataUrl: user?.avatarDataUrl ?? null,
+    status: user?.status ?? "active",
+    createdAt: user?.createdAt ?? ts,
+    updatedAt: ts,
+  };
+
+  await store.upsertUser(profile);
+  if (store.upsertAuthIndex) {
+    await store.upsertAuthIndex(authUid, profile.id, email);
+  }
+
+  return profile;
+}

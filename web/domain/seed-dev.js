@@ -37,7 +37,7 @@ function managerIdForProfile(profile) {
 /** Seed org, teams, and users if not already present. Idempotent. */
 export async function seedDevDomainIfNeeded() {
   // Production Firestore is seeded via worker scripts — dev upserts fail under SE rules.
-  if (firebaseConfig.projectId) return;
+  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) return;
 
   const store = getStore();
   const ts = now();

@@ -55,6 +55,8 @@ function entryKey(entryPoint) {
 
 await mkdir(OUT, { recursive: true });
 
+const productionBuild = process.env.PRODUCTION_BUILD === "1";
+
 const result = await esbuild.build({
   entryPoints: ENTRIES,
   bundle: true,
@@ -69,6 +71,7 @@ const result = await esbuild.build({
   target: ["es2020"],
   legalComments: "none",
   logLevel: "info",
+  define: productionBuild ? { __PROD_BUNDLE__: "true" } : {},
 });
 
 /** @type {Record<string, string>} */

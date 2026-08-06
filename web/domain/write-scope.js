@@ -27,15 +27,30 @@ export async function resolveWriteScope(session, opts = {}) {
 
   const isProxy = ownerId !== actorId;
   if (isProxy) {
-    // Option A: proxy descoped — reject cross-owner writes at call sites via can().
+    // Option A: proxy descoped — dual-write rejects reason === "proxy_descoped".
+    // Still resolve target owner team/org for authorized flows (e.g. handoff stamping).
+    const targetDoc = await store.getUser(ownerId).catch(() => null);
+    let teamId = targetDoc?.teamId ?? null;
+    let orgId = targetDoc?.orgId ?? null;
+    let degraded = !teamId;
+    let reason = "proxy_descoped";
+    if (!teamId && session.teamId) {
+      teamId = session.teamId;
+      degraded = true;
+      reason = "proxy_descoped";
+    }
+    if (!orgId && session.orgId) {
+      orgId = session.orgId;
+      degraded = true;
+    }
     return {
       ownerId,
-      teamId: null,
-      orgId: null,
+      teamId,
+      orgId,
       actorId,
       isProxy: true,
-      degraded: true,
-      reason: "proxy_descoped",
+      degraded,
+      reason,
     };
   }
 

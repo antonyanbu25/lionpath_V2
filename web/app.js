@@ -33,7 +33,6 @@ import {
 } from "./auth-firebase-guards.js";
 import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
-import { seedDevDomainIfNeeded } from "./domain/seed-dev.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=2.1.14";
 import { renderDealView } from "./deal-view.js";
@@ -1944,7 +1943,10 @@ async function showApp(session, opts = {}) {
     void (async () => {
       if (!sessionStillValid()) return;
       try {
-        await seedDevDomainIfNeeded();
+        if (!isFirebaseAuthEnabled() && !(typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) {
+          const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
+          await seedDevDomainIfNeeded();
+        }
         const enriched = (await syncSessionWithDomainStore(session)) || session;
         if (!sessionStillValid()) return;
         if (enriched?.email) {
@@ -2020,7 +2022,7 @@ async function submitLogin(e) {
     setFieldError($("login-email"));
     setFieldError($("login-password"));
 
-    const result = loginDummy(email, password, { persist: false });
+    const result = await loginDummy(email, password, { persist: false });
     if (!result.ok) {
       setFieldError($("login-password"), result.error);
       errEl.textContent = result.error;

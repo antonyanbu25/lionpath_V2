@@ -1797,7 +1797,7 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
 }
 
 async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
-  const { dummyUidForEmail } = await import("./domain/seed-dev.js");
+  const { stableUserIdForEmail } = await import("./domain/id.js");
   const emailToUid = new Map();
 
   const canBulkOrg =
@@ -1820,7 +1820,7 @@ async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
     }
     for (const email of unresolved) {
       const user = await store.getUserByEmail(email);
-      emailToUid.set(email, user?.id || dummyUidForEmail(email));
+      emailToUid.set(email, user?.id || stableUserIdForEmail(email));
     }
     return emailToUid;
   }
@@ -1867,7 +1867,7 @@ async function buildTeamMetrics(session) {
   // READ-TIME AGGREGATION (fallback until teamMetrics/orgMetrics backfill)
   const seEmails = session
     ? await listTeamSeEmailsAsync(session)
-    : listTeamSeEmails();
+    : await listTeamSeEmails();
 
   const storePostCalls = await loadTeamCallSummariesFromStore(session);
   const teamNameByEmail = isOrgView ? await mapEmailToTeamName(seEmails) : new Map();
@@ -2097,7 +2097,7 @@ async function buildManagerTeamView(session) {
   const base = await buildTeamMetrics(session);
   const scoreOverrides = await loadScoreOverridesForSession(session);
   const isOrgView = session?.isOrgDirector === true;
-  const seEmails = session ? await listTeamSeEmailsAsync(session) : listTeamSeEmails();
+  const seEmails = session ? await listTeamSeEmailsAsync(session) : await listTeamSeEmails();
   const store = getStore();
 
   /** @type {Map<string, object[]>} */

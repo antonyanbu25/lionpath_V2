@@ -15,7 +15,7 @@ import { canSessionAction, sessionToUser } from "./rbac.js";
 import { isManagerRole } from "./types.js";
 import { getStore } from "./store.js";
 import { normalizeUserEmail } from "../shared.js";
-import { dummyUidForEmail } from "./seed-dev.js";
+import { stableUserIdForEmail as dummyUidForEmail } from "./id.js";
 import { themeAverage } from "../quality-score.js";
 
 const COACHING_AGG_OPTS = { requireHighConfidence: true };

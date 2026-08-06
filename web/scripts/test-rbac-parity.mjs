@@ -2,6 +2,9 @@
 /** RBAC parity — shared persona fixture vs web/domain/types.js#can(). */
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { can } from "../domain/types.js";
 
 const ORG = "org_1";
@@ -49,6 +52,21 @@ assert.equal(
   can(personas.mgrSameTeam, "create", { ownerId: "u1", teamId: TEAM_A, seTeamUserIds: ["u1"] }),
   false,
   "manager proxy create rejected",
+);
+assert.equal(
+  can(personas.mgrSameTeam, "update", { ownerId: "u1", teamId: TEAM_A, seTeamUserIds: ["u1"] }),
+  false,
+  "manager proxy update rejected",
+);
+
+// Firestore rules parity: writes require ownerId == auth uid (canWriteOwnResource).
+const rulesPath = join(dirname(fileURLToPath(import.meta.url)), "../../firestore.rules");
+const rules = await readFile(rulesPath, "utf8");
+assert.match(rules, /function canWriteOwnResource\(ownerId\)/, "rules define canWriteOwnResource");
+assert.match(
+  rules,
+  /allow create: if canWriteOwnResource\(request\.resource\.data\.ownerId\)/,
+  "rules reject proxy create (ownerId must match auth)",
 );
 
 console.log("test-rbac-parity.mjs: ok");

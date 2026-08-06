@@ -5,14 +5,14 @@
  */
 
 import { firebaseConfig } from "./firebase-config.js";
-import { DUMMY_USERS } from "./dummy-users.js";
 import { DEMO_TEAM_ID } from "./domain/constants.js";
 import { stableUserIdForEmail } from "./domain/id.js";
-import { enrichSessionFromStore } from "./domain/user-resolve.js";
-import { upsertFirebaseUser, listTeamMemberEmails } from "./domain/seed-dev.js";
+import {
+  enrichSessionFromStore,
+  upsertFirebaseUser,
+  listTeamMemberEmails,
+} from "./domain/user-resolve.js";
 import { listVisibleSeEmails } from "./domain/org-service.js";
-
-export { DUMMY_USERS };
 
 const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
@@ -101,7 +101,11 @@ export function onSessionChange(fn) {
  * @param {string} password
  * @returns {{ ok: true, session: object } | { ok: false, error: string }}
  */
-export function loginDummy(email, password, opts = {}) {
+export async function loginDummy(email, password, opts = {}) {
+  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) {
+    return { ok: false, error: "Dummy login is disabled in production." };
+  }
+  const { DUMMY_USERS } = await import("./dummy-users.js");
   const key = String(email || "").trim().toLowerCase();
   const user = DUMMY_USERS[key];
   if (!user) return { ok: false, error: "Unknown account. Use a @freshworks.com SE or manager login." };
@@ -199,7 +203,9 @@ export function isSeRole(session) {
 }
 
 /** Sync fallback: dummy accounts + localStorage history scan. */
-export function listTeamSeEmails() {
+export async function listTeamSeEmails() {
+  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) return [];
+  const { DUMMY_USERS } = await import("./dummy-users.js");
   const fromAccounts = Object.entries(DUMMY_USERS)
     .filter(([, u]) => u.role === "se")
     .map(([email]) => email);
@@ -245,5 +251,5 @@ export async function listTeamSeEmailsAsync(session) {
 /** @param {string} email */
 export function displayNameForEmail(email) {
   const key = String(email || "").trim().toLowerCase();
-  return DUMMY_USERS[key]?.name || key.split("@")[0] || "SE";
+  return key.split("@")[0] || "SE";
 }

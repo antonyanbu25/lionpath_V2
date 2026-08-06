@@ -6,6 +6,7 @@ import { getStore } from "./store.js";
 import { newId, now, stageAfterFirstPostCall, can } from "./types.js";
 import { sessionUserId } from "./session.js";
 import { resolveEngagementMotion, resolveDealOwnerId } from "./deal-motion.js";
+import { resolveWriteScope } from "./write-scope.js";
 import { safeStoreOp } from "./safe-store.js";
 
 /** Deal readable + writable by the acting SE (Firestore client rules). */
@@ -621,6 +622,7 @@ export async function ensureDealForLifecycle(lifecycle) {
     ownerId: dealOwnerId,
     teamId: lifecycle.teamId,
     orgId: lifecycle.orgId || null,
+    lastActorId: lifecycle.ownerId,
     primaryContactId: lifecycle.primaryContactId,
     title: await resolveNewDealTitle(
       lifecycle.accountId,
@@ -709,9 +711,16 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     user.role === "admin";
   if (!canHandoff) return { success: false, error: "Not allowed to hand off account" };
 
+  const targetScope = await resolveWriteScope(session, { ownerId: targetOwnerId });
+  if (!targetScope?.teamId) {
+    return { success: false, error: "Missing team scope for handoff" };
+  }
+  const { teamId, orgId } = targetScope;
+
+  const actorScope = await resolveWriteScope(session);
   const nbDeal = await store.findActiveDeal(accountId, "new_business", {
     ownerId: actorId,
-    teamId: user.teamId || session.teamId,
+    teamId: actorScope?.teamId || user.teamId,
   });
   if (nbDeal) {
     const ts = now();
@@ -735,8 +744,6 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     updatedAt: now(),
   });
 
-  const teamId = user.teamId || session.teamId;
-  const orgId = user.orgId || session.orgId || null;
   const expansionDeal = await createExpansionDeal(accountId, targetOwnerId, teamId, orgId, {
     title: `${account.name || "Account"}. Expansion`,
     primaryContactId: nbDeal?.primaryContactId ?? null,
