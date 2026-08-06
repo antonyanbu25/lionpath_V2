@@ -176,7 +176,7 @@ export function renderQipRadar(categoryScores, opts = {}) {
   }).join("");
 
   const coreText = overall
-    ? `<text class="qip-radar-center-label" x="${CX}" y="${CY + 9}" text-anchor="middle" font-size="28" font-weight="800" letter-spacing="-1.5" fill="url(#${uid}-num)">${esc(overall)}</text>`
+    ? `<text class="qip-radar-center-label" x="${CX}" y="${CY + 8}" text-anchor="middle" font-size="40" font-weight="800" letter-spacing="-1.5" fill="url(#${uid}-num)">${esc(overall)}</text>`
     : "";
 
   return `

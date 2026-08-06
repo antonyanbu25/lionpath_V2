@@ -1892,6 +1892,11 @@ button.pc-deal-tile {
   fill: #3d3a34;
 }
 
+#postcall-result .qip-radar-center-label {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
 #postcall-result .qip-category-row {
   border-top: 1px solid var(--dew-hairline);
 }
