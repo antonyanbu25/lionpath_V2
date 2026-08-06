@@ -92,7 +92,7 @@ import { canonicalCallType } from "./call-type-labels.js";
 import { buildCoachOutput, coachTextForSubParameter, insightfulCoachTip, loadScoreOverrides } from "./coach/index.js";
 
 const RESOLVE_URL = `${WORKER_BASE_URL}/api/postcall/resolve`;
-const RESOLVE_CONTEXT_TIMEOUT_MS = 12_000;
+const RESOLVE_CONTEXT_TIMEOUT_MS = 5_000;
 const CLASSIFY_URL = `${WORKER_BASE_URL}/api/postcall/classify`;
 const GENERATE_URL = `${WORKER_BASE_URL}/api/postcall/generate`;
 const QUALIFY_URL = `${WORKER_BASE_URL}/api/postcall/qualify`;
@@ -535,13 +535,13 @@ function parseProspectEmails(raw) {
 
 function scheduleCompanyPrefill() {
   window.clearTimeout(companyPrefillTimer);
-  companyPrefillTimer = window.setTimeout(() => { void prefillCompanyFromEmails(); }, 300);
+  companyPrefillTimer = window.setTimeout(() => { void prefillCompanyFromEmails(); }, 150);
   scheduleCrmMatches();
 }
 
 function scheduleCrmMatches() {
   window.clearTimeout(crmMatchesTimer);
-  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 120);
+  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 50);
 }
 
 /** Cancel debounced CRM preview and run immediately (e.g. on Start analysis). */
@@ -555,18 +555,20 @@ async function flushCrmMatchesPanel() {
 async function resolveIntakeCompanyName(prospectEmails) {
   let name = (await readAccountNameValue()) || "";
   if (name) return name;
+  if (prospectEmails.length) {
+    const derived =
+      titleCaseDisplayName(companyNameFromEmail(prospectEmails[0])) ||
+      companyNameFromEmail(prospectEmails[0]) ||
+      "";
+    if (derived) {
+      writeAccountName(derived, { titleCaseOnWrite: true });
+      return derived;
+    }
+  }
   if (!prospectEmails.length) return "";
   await flushCrmMatchesPanel();
   name = (await readAccountNameValue()) || "";
   if (name) return name;
-  const derived =
-    titleCaseDisplayName(companyNameFromEmail(prospectEmails[0])) ||
-    companyNameFromEmail(prospectEmails[0]) ||
-    "";
-  if (derived) {
-    writeAccountName(derived, { titleCaseOnWrite: true });
-    return derived;
-  }
   return "";
 }
 
@@ -3918,14 +3920,13 @@ async function runPostcallParallelHydration(ctx) {
   /** @type {Record<string, string>} */
   const errors = {};
 
-  const syncHydration = async (sections, progressMessage) => {
+  const syncHydration = async (_sections, progressMessage) => {
     if (isPostcallPipelineStale(gen)) return null;
     await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
       patchHydration(rec, { pending, errors, progressMessage });
       return rec;
     });
     if (progressMessage) setCallRecordProgress(recordId, progressMessage);
-    notifyCallRecordUpdated(recordId, sections);
     return getPostCallAnalysis(sessionEmail, recordId);
   };
 
@@ -3956,7 +3957,6 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("qualify");
-      notifyCallRecordUpdated(recordId, ["qualify"]);
     } else if (qualify === null) {
       markError("qualify", "Qualification could not be generated.", ["qualify"]);
     }
@@ -3976,7 +3976,6 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("summarise");
-      notifyCallRecordUpdated(recordId, ["summarise", "callNotes"]);
     } else if (summarise === null) {
       markError("summarise", "Call summary could not be generated.", ["summarise", "callNotes"]);
     }
@@ -4069,7 +4068,6 @@ async function runPostcallParallelHydration(ctx) {
         rec.result = { ...(rec.result || {}), videoFacts: videoRes.videoFacts };
         return rec;
       });
-      notifyCallRecordUpdated(recordId, ["video"]);
     }
     pipelineState.pass2Debug =
       videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
@@ -4086,7 +4084,6 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("commit");
-      notifyCallRecordUpdated(recordId, ["commit"]);
     } else if (commit === null) {
       markError("commit", "Technical commit could not be updated.", ["commit"]);
     }
@@ -4139,7 +4136,6 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("arr");
-      notifyCallRecordUpdated(recordId, ["arr"]);
     } else if (effectiveDealId && effectiveAccountId && arrResult?.arrInputs) {
       markError("arr", "ARR estimate could not be computed.", ["arr"]);
     } else {
@@ -4181,7 +4177,6 @@ async function runPostcallParallelHydration(ctx) {
         return rec;
       });
       dropPending("gaps");
-      notifyCallRecordUpdated(recordId, ["gaps", "timeline"]);
     } else {
       markError("gaps", "Product gaps could not be extracted.", ["gaps"]);
     }
@@ -4671,6 +4666,10 @@ async function startPipeline(e) {
   showPostCallGenOverlay(POSTCALL_STAGE.resolve);
   showInlineStatus(status, { open: false });
 
+  const domainContextP = postCallOwnerId().then((ownerId) =>
+    ownerId ? loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] },
+  );
+
   const collected = await collectIntakePayload();
   if (collected.error) {
     cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
@@ -4685,7 +4684,7 @@ async function startPipeline(e) {
 
   try {
     const ownerId = (await postCallOwnerId()) || undefined;
-    const domainContext = ownerId ? await loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] };
+    const domainContext = await domainContextP;
     const resolve = await postJson(
       RESOLVE_URL,
       {

@@ -477,11 +477,43 @@ function resolvePass6(record) {
 
 function resolveRecordHydration(record) {
   const h = record?.result?.hydration || {};
+  const pending = Array.isArray(h.pending) ? h.pending : [];
   return {
-    pending: Array.isArray(h.pending) ? h.pending : [],
+    pending: resolveEffectiveHydrationPending(record, pending),
     errors: h.errors && typeof h.errors === "object" ? h.errors : {},
     progressMessage: typeof h.progressMessage === "string" ? h.progressMessage : "",
   };
+}
+
+/** Drop hydration keys when generate-pass data is already on the record (avoids pocket skeletons). */
+export function resolveEffectiveHydrationPending(record, pendingKeys) {
+  const pending = Array.isArray(pendingKeys) ? pendingKeys : [];
+  if (!pending.length) return [];
+  const result = record?.result || {};
+  const analysis = record?.analysis || result.analysis || {};
+  const summarise = result.summarise || {};
+  const pass6 = resolvePass6(record);
+  const hasArr =
+    result.arrCompute?.arrPoint != null || result.arrCompute?.arrEstimatePoint != null;
+  const hasGaps =
+    (pass6?.productGaps?.length || 0) > 0 || (pass6?.whatWorks?.length || 0) > 0;
+
+  return pending.filter((key) => {
+    switch (key) {
+      case "qualify":
+        return !result.qualification;
+      case "summarise":
+        return !String(summarise.callNotes || analysis.callNotes || "").trim();
+      case "commit":
+        return !result.technicalCommit;
+      case "arr":
+        return !hasArr;
+      case "gaps":
+        return !hasGaps;
+      default:
+        return true;
+    }
+  });
 }
 
 function renderCallInlineProgress(message) {
@@ -1046,20 +1078,44 @@ const SPINE_TRACK_STYLE =
 const SPINE_SEG_STYLE =
   "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
 
-/** Prefer segment coverage when stored duration is missing or wildly off (unit mismatch). */
-function resolveSpineDuration(durationSec, segments) {
+function markerAtSeconds(marker) {
+  if (!marker || typeof marker !== "object") return null;
+  for (const key of ["atS", "atSec", "at_sec", "seconds"]) {
+    const v = Number(marker[key]);
+    if (Number.isFinite(v) && v >= 0) return v;
+  }
+  const ms = Number(marker.atMs ?? marker.timestampMs ?? marker.timestamp);
+  if (Number.isFinite(ms) && ms > 0) return ms > 1e5 ? ms / 1000 : ms;
+  return null;
+}
+
+function normalizeTimelineMarkers(markers) {
+  return (markers || [])
+    .map((m) => {
+      const atS = markerAtSeconds(m);
+      if (atS == null) return null;
+      return { ...m, atS };
+    })
+    .filter(Boolean);
+}
+
+/** Prefer segment + marker coverage when stored duration is missing or wildly off (unit mismatch). */
+export function resolveSpineDuration(durationSec, segments, markers) {
   const segmentEnd = Math.max(
     ...segments.map((s) => Math.max(Number(s.startS) || 0, Number(s.endS) || 0)),
     1,
   );
+  const markerEnd = Math.max(0, ...normalizeTimelineMarkers(markers).map((m) => m.atS));
+  const evidenceEnd = Math.max(segmentEnd, markerEnd, 1);
   const raw = Number(durationSec);
-  if (!Number.isFinite(raw) || raw <= 0) return segmentEnd;
-  if (segmentEnd > 0 && raw > segmentEnd * 4) return segmentEnd;
-  return Math.max(raw, segmentEnd);
+  if (!Number.isFinite(raw) || raw <= 0) return evidenceEnd;
+  if (evidenceEnd > 0 && raw > evidenceEnd * 4) return evidenceEnd;
+  return Math.max(raw, evidenceEnd);
 }
 
 function renderVisualSpine(segments, markers, durationSec) {
-  const total = resolveSpineDuration(durationSec, segments);
+  const normalizedMarkers = normalizeTimelineMarkers(markers);
+  const total = resolveSpineDuration(durationSec, segments, normalizedMarkers);
   // #region agent log
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
@@ -1089,10 +1145,9 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
-  for (const m of markers || []) {
-    const at = Number(m.atS);
-    if (!Number.isFinite(at)) continue;
-    const left = (at / total) * 100;
+  for (const m of normalizeTimelineMarkers(markers)) {
+    const at = m.atS;
+    const left = Math.min(100, Math.max(0, (at / total) * 100));
     const kind = m.kind || "gap";
     const readable = markerDisplayLabel(m);
     const tip = `${formatSegmentTime(at)} · ${MARKER_LABELS[kind] || kind} · ${readable}`;
@@ -1426,7 +1481,8 @@ function renderPostcallKpiStack(ctx, pending = null) {
   const pendingSet = pending instanceof Set ? pending : new Set(Array.isArray(pending) ? pending : []);
   const qipNum = formatQipScoreValue(qipScore);
   const qipPct = qipMeterPct(qipScore);
-  const medPending = pendingSet.has("qualify");
+  const medPending =
+    pendingSet.has("qualify") && meddpiccScore == null && meddpiccFilled == null;
   const medNum = medPending ? null : meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
   const medSub = medPending
     ? "Qualifying deal…"
@@ -1739,7 +1795,7 @@ function renderTimelineSpine(segments, markers) {
  */
 export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = {}) {
   const all = timeline?.segments || [];
-  const markers = (timeline?.markers || []).slice().sort((a, b) => (a.atS || 0) - (b.atS || 0));
+  const markers = normalizeTimelineMarkers(timeline?.markers).sort((a, b) => a.atS - b.atS);
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
   const transcriptSegments = all.filter((s) => s.source === "transcript");
   const usingTranscript = !videoSegments.length && transcriptSegments.length > 0;
@@ -1749,6 +1805,7 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
         timeline?.facts?.durationSec ??
           (segments.length ? Math.max(...segments.map((s) => Number(s.endS) || 0)) : null),
         segments,
+        markers,
       )
     : null;
 

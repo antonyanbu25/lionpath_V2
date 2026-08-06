@@ -5,6 +5,7 @@ import {
   renderTimelineSection,
   resolveObjectionQa,
   humanizeMarkerLabel,
+  resolveSpineDuration,
 } from "../call-view.js";
 
 const videoSegments = [
@@ -52,7 +53,38 @@ function testNoEventListExpansion() {
   assert.ok((html.match(/mk-dot--/g) || []).length === 12);
 }
 
+/** Markers after video share window must extend the spine scale (not clip off-bar). */
+function testMarkerDurationScale() {
+  const lateMarkers = [
+    { atS: 1200, kind: "gap", label: "product_gap" },
+    { atS: 2400, kind: "objection", label: "pricing" },
+  ];
+  const total = resolveSpineDuration(3824, videoSegments, lateMarkers);
+  assert.ok(total >= 2400, `expected spine to include late markers, got ${total}`);
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: lateMarkers,
+    facts: { durationSec: 3824 },
+  });
+  assert.match(html, /mk-dot mk-dot--gap/);
+  assert.match(html, /mk-dot mk-dot--objection/);
+  const gapLeft = html.match(/mk-dot mk-dot--gap" style="left:([\d.]+)%"/);
+  assert.ok(gapLeft, "gap dot should render on bar");
+  assert.ok(Number(gapLeft[1]) > 0 && Number(gapLeft[1]) <= 100);
+}
+
+function testAlternateAtField() {
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: [{ atSec: 450, kind: "win", label: "demo_flow" }],
+    facts: { durationSec: 900 },
+  });
+  assert.match(html, /mk-dot mk-dot--win/);
+}
+
 testHumanizeLabels();
 testCompactSpine();
 testNoEventListExpansion();
+testMarkerDurationScale();
+testAlternateAtField();
 console.log("test-call-timeline-render: ok");

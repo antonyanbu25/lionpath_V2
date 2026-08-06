@@ -103,6 +103,18 @@ SVP-demo polish on **`2.1`** — deploy from **`antony/2.1`** (`lionpath_V2`):
 
 Key paths: `web/call-view.js`, `web/app.js`, `web/postcall.js`, `web/dashboard.js`. VPS: `bash upgrade-now.sh`.
 
+### Post-call demo UX (2.1.21)
+
+Follow-up on **`2.1`** for VPS demo blockers:
+
+| Area | Fix |
+|------|-----|
+| **Timeline dots** | Spine scale includes marker timestamps (not just video segments); normalize `atS`/`atSec`; larger on-bar dots |
+| **Call record paint** | Effective hydration pending skips skeletons when generate-pass data exists; no mid-hydration panel re-renders |
+| **Start analysis** | Resolve context pre-warmed in parallel with intake; email-domain company name before CRM flush; shorter debounce/timeouts |
+
+Regression: `node web/scripts/test-call-timeline-render.mjs`
+
 ### Account / deal deduplication & linking (2.1)
 
 | Issue | Fix |

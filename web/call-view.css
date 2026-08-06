@@ -3427,15 +3427,16 @@
 
 .call-spine .mk-dot {
   position: absolute;
-  top: 25px;
-  width: 8px;
-  height: 8px;
+  top: 22px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   transform: translateX(-50%);
-  border: 1.5px solid #fff;
-  box-shadow: 0 0 0 1px rgba(45, 42, 38, 0.12);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(45, 42, 38, 0.18);
   cursor: default;
-  z-index: 2;
+  z-index: 5;
+  pointer-events: auto;
 }
 
 .call-spine .mk-dot--gap {
