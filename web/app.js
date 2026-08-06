@@ -10,6 +10,7 @@ import {
 } from "./crayons-ui.js";
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
+import { initSidebarIdleAnimation } from "./sidebar-idle.js";
 import { initFeedback } from "./feedback.js";
 import { initPrepDisputes } from "./prep-disputes.js";
 import {
@@ -2549,6 +2550,7 @@ async function boot() {
   }
 
   initSidebar();
+  initSidebarIdleAnimation();
   wireUserMenu();
   updateTopbarDate();
   initGlobalSearch({

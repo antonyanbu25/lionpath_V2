@@ -3563,6 +3563,77 @@
   font-size: 10.5px;
 }
 
+/* Call record data animations — subtle count-up / reveal */
+.call-record .call-count-up {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.call-record .call-count-up--active {
+  opacity: 0.92;
+}
+
+.call-record .call-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: none;
+}
+
+.call-record:not(.call-record-anim-ready) .qip-category-pentagon,
+.call-record:not(.call-record-anim-ready) .cat-pentagon {
+  opacity: 0;
+  transform: scale(0.82);
+  transform-origin: center;
+}
+
+.call-record.call-record-anim-ready .qip-category-pentagon,
+.call-record.call-record-anim-ready .cat-pentagon {
+  animation: call-pentagon-reveal 0.55s cubic-bezier(0.2, 0.85, 0.25, 1.08) forwards;
+}
+
+.call-record.call-record-anim-ready .qip-category-row:nth-child(1) .qip-category-pentagon,
+.call-record.call-record-anim-ready details.cat:nth-child(1) .cat-pentagon { animation-delay: 0.04s; }
+.call-record.call-record-anim-ready .qip-category-row:nth-child(2) .qip-category-pentagon,
+.call-record.call-record-anim-ready details.cat:nth-child(2) .cat-pentagon { animation-delay: 0.1s; }
+.call-record.call-record-anim-ready .qip-category-row:nth-child(3) .qip-category-pentagon,
+.call-record.call-record-anim-ready details.cat:nth-child(3) .cat-pentagon { animation-delay: 0.16s; }
+.call-record.call-record-anim-ready .qip-category-row:nth-child(4) .qip-category-pentagon,
+.call-record.call-record-anim-ready details.cat:nth-child(4) .cat-pentagon { animation-delay: 0.22s; }
+.call-record.call-record-anim-ready .qip-category-row:nth-child(5) .qip-category-pentagon,
+.call-record.call-record-anim-ready details.cat:nth-child(5) .cat-pentagon { animation-delay: 0.28s; }
+
+.call-stakeholder-pill--cam {
+  animation: call-cam-soft 3.2s ease-in-out infinite;
+}
+
+@keyframes call-pentagon-reveal {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes call-cam-soft {
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  50% { opacity: 0.88; transform: translateY(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .call-record .call-count-up--active,
+  .call-record .call-meter-fill {
+    transition: none !important;
+  }
+
+  .call-record .qip-category-pentagon,
+  .call-record .cat-pentagon,
+  .call-stakeholder-pill--cam {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 .call-health-tab,
 .call-health-tab .ev,
 .call-health-side-card {

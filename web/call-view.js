@@ -37,6 +37,7 @@ import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType } f
 import { mergeCallIdentities } from "./identity-merge.js";
 import { renderCallProductSignalTab } from "./call-product-signal.js";
 import { wireScoreDisputes } from "./score-disputes.js";
+import { wireCallViewAnimations } from "./call-view-animate.js";
 
 const CALL_TYPE_LABELS = {
   demo: "Demo",
@@ -646,6 +647,20 @@ function formatQipScoreValue(score) {
   if (score == null || !Number.isFinite(Number(score))) return "-";
   const n = Number(score);
   return n % 1 === 0 ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
+}
+
+function qipScoreDecimals(score) {
+  if (score == null || !Number.isFinite(Number(score))) return 0;
+  return Number(score) % 1 === 0 ? 0 : 1;
+}
+
+function renderCountUpValue(value, decimals = 0) {
+  if (value == null || value === "-" || !Number.isFinite(Number(value))) {
+    return esc(String(value ?? "-"));
+  }
+  const num = Number(value);
+  const display = decimals > 0 ? formatQipScoreValue(num) : String(Math.round(num));
+  return `<span class="call-count-up" data-count-to="${esc(String(num))}" data-count-decimals="${decimals}">${esc(display)}</span>`;
 }
 
 function resolveQipOverallScore(scorecard, callType, analysisMeta = {}) {
@@ -1483,7 +1498,11 @@ function renderPostcallKpiStack(ctx, pending = null) {
   const qipPct = qipMeterPct(qipScore);
   const medPending =
     pendingSet.has("qualify") && meddpiccScore == null && meddpiccFilled == null;
-  const medNum = medPending ? null : meddpiccScore != null ? esc(String(meddpiccScore)) : "-";
+  const medNum = medPending
+    ? null
+    : meddpiccScore != null
+      ? renderCountUpValue(meddpiccScore, 0)
+      : "-";
   const medSub = medPending
     ? "Qualifying deal…"
     : meddpiccFilled != null
@@ -1505,11 +1524,16 @@ function renderPostcallKpiStack(ctx, pending = null) {
       <span class="subline">${medSub}</span>
     </div>`;
 
+  const qipCountHtml =
+    qipScore != null && Number.isFinite(Number(qipScore))
+      ? renderCountUpValue(qipScore, qipScoreDecimals(qipScore))
+      : esc(qipNum);
+
   return `<div class="metrics" aria-label="Call KPIs">
     <div class="mcard" style="--accent:${CHART_PALETTE.green}">
       <span class="lab">QIP score</span>
-      <span class="big" style="--val:${CHART_PALETTE.green}">${esc(qipNum)}<span class="u"> / 10</span></span>
-      <div class="meter"><span style="width:${qipPct}%;background:${CHART_PALETTE.green}"></span></div>
+      <span class="big" style="--val:${CHART_PALETTE.green}">${qipCountHtml}<span class="u"> / 10</span></span>
+      <div class="meter"><span class="call-meter-fill" data-meter-target="${esc(String(qipPct))}" style="width:0%;background:${CHART_PALETTE.green}"></span></div>
     </div>
     ${medCard}
     <div class="mcard" style="--accent:${sentimentColor(sentimentLabel)}">
@@ -1545,7 +1569,7 @@ function renderPostcallSummaryRow(bundle, stakeholderRows, pending = null) {
     ? renderQipRadar(categoryScores, {
         overallScore: bundle.qipScore,
         title: "Evaluation signal",
-        animate: false,
+        animate: true,
       })
     : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">QIP category scores appear here once analysis completes.</p></div>`;
   const tensionHtml = bundle.tensionLine
@@ -1717,12 +1741,13 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
           : r.cameraOnPct != null
             ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
             : r.cameraOn ? "On" : "Off";
+        const camAnimCls = camKnown ? " call-stakeholder-pill--cam" : "";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
           <div class="call-stakeholder-main">
             <div class="call-stakeholder-name-row">${renderStakeholderName(r)}</div>
             <div class="sub call-stakeholder-role">${esc(r.role)}</div>
-            <div class="call-stakeholder-signals">${talkPill}<span class="pill ${camCls} call-stakeholder-pill">cam ${camLabel}</span></div>
+            <div class="call-stakeholder-signals">${talkPill}<span class="pill ${camCls} call-stakeholder-pill${camAnimCls}">cam ${camLabel}</span></div>
           </div>
         </div>`;
       })
@@ -2628,7 +2653,7 @@ function renderCallRecord(bundle, opts = {}) {
     : "";
 
   return `
-    <div class="lifecycle-detail call-record${pending.size || progressMessage ? " call-record--progressive" : ""}">
+    <div class="lifecycle-detail call-record${pending.size || progressMessage ? " call-record--progressive" : ""}" data-call-id="${esc(record.id)}">
       <div class="call-record-page">
         ${renderCallInlineProgress(progressMessage)}
         <div class="call-record-title-block">
@@ -2839,8 +2864,30 @@ function renderCallEmptyState(message) {
     </div>`;
 }
 
+function callRecordMatches(container, callId) {
+  if (!callId) return true;
+  const node = container.querySelector?.(".call-record[data-call-id]");
+  return !node || node.getAttribute("data-call-id") === callId;
+}
+
+function paintCallRecord(container, session, bundle, coachAudience, hydration, opts) {
+  container.innerHTML = renderCallRecord(
+    { ...bundle, coachAudience },
+    {
+      pending: hydration.pending,
+      errors: hydration.errors,
+      progressMessage: hydration.progressMessage,
+    },
+  );
+  wireCallRecord(container, session, { ...bundle, coachAudience }, opts);
+  wireCallViewAnimations(container);
+}
+
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallView(container, session, opts = {}) {
+  const targetCallId = opts.callId;
+  const canApply = () => !opts.shouldApply || opts.shouldApply();
+
   let activeSession = session;
   if (!sessionUserId(activeSession)) {
     try {
@@ -2849,6 +2896,8 @@ export async function renderCallView(container, session, opts = {}) {
       console.warn("[call-view] session sync failed:", err);
     }
   }
+  if (!canApply()) return;
+
   activeSession = withEffectiveUserId(activeSession);
 
   if (!activeSession?.email) {
@@ -2856,11 +2905,16 @@ export async function renderCallView(container, session, opts = {}) {
     return;
   }
 
-  if (!opts.callId) {
+  if (!targetCallId) {
     container.innerHTML = renderCallEmptyState(
       "Open a call from your dashboard, coaching view, or after post-call analysis.",
     );
     return;
+  }
+
+  const currentId = container.querySelector?.(".call-record[data-call-id]")?.getAttribute("data-call-id");
+  if (currentId && currentId !== targetCallId) {
+    container.innerHTML = renderCallLoadingShell({ id: targetCallId });
   }
 
   try {
@@ -2868,11 +2922,13 @@ export async function renderCallView(container, session, opts = {}) {
     const selfEmail = normalizeSeEmail(activeSession.email);
     const record =
       !opts.ownerEmail || normalizeSeEmail(ownerEmail) === selfEmail
-        ? getPostCallAnalysis(ownerEmail, opts.callId)
+        ? getPostCallAnalysis(ownerEmail, targetCallId)
         : null;
     const resolvedRecord =
-      record || (await getPostCallForSession(activeSession, opts.callId, ownerEmail));
-    if (!resolvedRecord) {
+      record || (await getPostCallForSession(activeSession, targetCallId, ownerEmail));
+    if (!canApply()) return;
+
+    if (!resolvedRecord || resolvedRecord.id !== targetCallId) {
       container.innerHTML = renderCallEmptyState("Call not found. It may have been cleared from this browser.");
       return;
     }
@@ -2884,34 +2940,22 @@ export async function renderCallView(container, session, opts = {}) {
         ? "manager"
         : "se";
     const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);
-    container.innerHTML = renderCallRecord(
-      { ...localBundle, coachAudience },
-      {
-        pending: hydration.pending,
-        errors: hydration.errors,
-        progressMessage: hydration.progressMessage,
-      },
-    );
-    wireCallRecord(container, activeSession, { ...localBundle, coachAudience }, opts);
+    paintCallRecord(container, activeSession, localBundle, coachAudience, hydration, opts);
+    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
     const bundle = await loadCallBundle(activeSession, resolvedRecord);
-    const freshRecord = getPostCallAnalysis(ownerEmail, opts.callId) || resolvedRecord;
+    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+
+    const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
+    if (freshRecord.id !== targetCallId) return;
+
     const freshHydration = resolveRecordHydration(freshRecord);
     await hidePrepGenOverlay();
-    if (opts.shouldApply && !opts.shouldApply()) return;
-    const hydrationStillPending = (freshHydration.pending || []).length > 0;
-    if (!hydrationStillPending) {
-      container.innerHTML = renderCallRecord(
-        { ...bundle, coachAudience },
-        {
-          pending: freshHydration.pending,
-          errors: freshHydration.errors,
-          progressMessage: freshHydration.progressMessage,
-        },
-      );
-      wireCallRecord(container, activeSession, { ...bundle, coachAudience }, opts);
-    }
+    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+
+    paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
   } catch (err) {
+    if (!canApply()) return;
     console.error("[call-view] failed to render call:", err);
     container.innerHTML = renderCallEmptyState(
       "Could not load this call right now. Refresh the page or try again in a moment.",

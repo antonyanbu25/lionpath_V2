@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **SSO/login UX (2.1.17)**, **four-layer cost control**, **LLM usage admin**, **post-call demo UX (2.1.20)** — compact call timeline, single-pass call record paint, seamless hydration ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
+| **Current branch** | **`2.1`** — account/deal deduplication, RAG omni-search, session restore, Know tab UI, **LinkedIn PDF required**, **Recent news**, **parallel fish sizing**, **Dew splash + favicon bounce**, **UI micro-animations (2.1.22)**, **SSO/login UX (2.1.17)**, **four-layer cost control**, **LLM usage admin**, **post-call demo UX (2.1.20)** — compact call timeline, single-pass call record paint, seamless hydration ([tree/2.1](https://github.com/skut264/lionpath/tree/2.1)) |
 | **Previous release** | **`2.0.8.2`** â€” Know tab pre-call UI ([tree/2.0.8.2](https://github.com/skut264/lionpath/tree/2.0.8.2)) |
 | **Earlier release** | **`2.0.5`** â€” Kaia share-content hardening ([tree/2.0.5](https://github.com/skut264/lionpath/tree/2.0.5)) |
 | **Live app** | **[https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com)** |
@@ -56,10 +56,26 @@ First-visit intro on `index.html` — once per browser (`lionpath_splash_seen` c
 | **Theme** | Warm cream background (`--dew-bg`) with soft teal radial glow; card-style loader matches login card |
 | **Logo** | Freshworks logomark centered in the white loader card; spinner pinned to card bottom (does not shift logo) |
 | **Animation** | Gentle glow breathe (4s), logo float (2.8s), content rise/fade; respects `prefers-reduced-motion` |
-| **Favicon bounce** | Canvas-based tab icon bounce (±2.5px, 2.2s) on index + about; pauses when tab hidden |
+| **Favicon bounce** | When the tab is **inactive** (Page Visibility API), canvas redraw with ±2.5px sine bounce and a subtle multi-hue brand glow; static icon while the tab is focused. Respects `prefers-reduced-motion` |
 | **Replay** | `index.html?splash=1` or clear `lionpath_splash_seen` cookie |
 
 Key paths: `web/styles.css`, `web/dew-theme.css`, `web/splash.js`, `web/favicon-bounce.js`, `web/index.html`, `web/about.html`.
+
+### UI micro-animations (2.1.22)
+
+Subtle, professional motion across the portal — all respect `prefers-reduced-motion`:
+
+| Area | Behavior |
+|------|----------|
+| **Favicon (inactive tab)** | Page Visibility API: logo bounces ±2.5px and cycles a soft teal/blue/green/amber glow while the user is in another tab; static favicon when the tab is active |
+| **Call record KPIs** | QIP score and MEDDPICC numbers count up with a brief typewriter scramble; meter bar fills from zero |
+| **Evaluation signal** | Pentagon radar entrance animation (same family as post-call QIP) |
+| **Cam on/off pills** | Gentle opacity/translate pulse on stakeholder camera badges |
+| **QIP scorecard pentagons** | Staggered reveal on category rows |
+| **Sidebar idle** | After **1 minute** without mouse/keyboard/scroll, nav icons nudge one-by-one (~520ms apart); any activity resets the timer |
+| **Call navigation fix** | `shouldApply` guards after every async step; `data-call-id` on the panel; loading shell when switching calls — prevents a stale previous call from flashing |
+
+Key paths: `web/favicon-bounce.js`, `web/call-view-animate.js`, `web/call-view.js`, `web/call-view.css`, `web/sidebar-idle.js`, `web/styles.css`, `web/app.js`.
 
 Web-only deploy: `bash refresh-web.sh` on VPS.
 
@@ -138,7 +154,7 @@ Freshdesk-inspired global search (âŒ˜K / topbar):
 | **Scope** | Accounts, deals, contacts, discovery briefs, call reviews, open tasks |
 | **Filter chips** | All Â· Accounts Â· Deals Â· Contacts Â· Briefs Â· Calls Â· Tasks |
 | **Recently searched / viewed** | Per-user localStorage with Clear actions |
-| **RAG rerank** | Token match locally â†’ `POST /api/search/rag` embedding rerank (Gemini `text-embedding-004`) when worker key is configured |
+| **RAG rerank** | Token match locally â†’ `POST /api/search/rag` embedding rerank (Gemini `gemini-embedding-001`) when worker key is configured |
 | **Speed / index** | Sync localStorage history/briefs/calls before Firestore; instant token hits + async RAG rerank (`3aeab26`) |
 | **Panel alignment** | Omni-search dropdown anchored to topbar input width/position (`1258713`) |
 | **Open from search** | Account/contact/deal result clicks clear stale deal context and open the correct object (`2.1.12`) |
