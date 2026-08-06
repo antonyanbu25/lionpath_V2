@@ -1827,7 +1827,7 @@ async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {
 
   for (const email of seEmails) {
     const user = await store.getUserByEmail(email);
-    emailToUid.set(email, user?.id || dummyUidForEmail(email));
+    emailToUid.set(email, user?.id || stableUserIdForEmail(email));
   }
   return emailToUid;
 }

@@ -112,6 +112,7 @@ import {
 } from "./prep-domain.js";
 import { esc, $, show } from "./shared.js";
 
+const prodBundle = typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__;
 
 const PREP_RESEARCH_URL = `${WORKER_BASE_URL}/api/prep/research`;
 const PREP_SYNTHESIZE_URL = `${WORKER_BASE_URL}/api/prep/synthesize`;
@@ -1943,10 +1944,12 @@ async function showApp(session, opts = {}) {
     void (async () => {
       if (!sessionStillValid()) return;
       try {
-        if (!isFirebaseAuthEnabled() && !(typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) {
+        /* DEV-ONLY-START */
+        if (!prodBundle && !isFirebaseAuthEnabled()) {
           const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
           await seedDevDomainIfNeeded();
         }
+        /* DEV-ONLY-END */
         const enriched = (await syncSessionWithDomainStore(session)) || session;
         if (!sessionStillValid()) return;
         if (enriched?.email) {
@@ -2073,6 +2076,7 @@ function wireLoginHandlers() {
 }
 
 function initDummyAuth() {
+  if (prodBundle || isFirebaseAuthEnabled()) return;
   if (customElements.get("fw-button")) {
     wireLoginHandlers();
   } else {

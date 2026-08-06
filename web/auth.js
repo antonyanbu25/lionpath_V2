@@ -14,6 +14,8 @@ import {
 } from "./domain/user-resolve.js";
 import { listVisibleSeEmails } from "./domain/org-service.js";
 
+const prodBundle = typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__;
+
 const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
 
@@ -102,7 +104,8 @@ export function onSessionChange(fn) {
  * @returns {{ ok: true, session: object } | { ok: false, error: string }}
  */
 export async function loginDummy(email, password, opts = {}) {
-  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) {
+  /* DEV-ONLY-START */
+  if (prodBundle || firebaseConfig.projectId) {
     return { ok: false, error: "Dummy login is disabled in production." };
   }
   const { DUMMY_USERS } = await import("./dummy-users.js");
@@ -122,6 +125,8 @@ export async function loginDummy(email, password, opts = {}) {
   };
   if (opts.persist !== false) setSession(session);
   return { ok: true, session };
+  /* DEV-ONLY-END */
+  return { ok: false, error: "Dummy login is disabled in production." };
 }
 
 /** Clears auth session only. post-call history stays in localStorage per email. */
@@ -204,7 +209,8 @@ export function isSeRole(session) {
 
 /** Sync fallback: dummy accounts + localStorage history scan. */
 export async function listTeamSeEmails() {
-  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) return [];
+  /* DEV-ONLY-START */
+  if (prodBundle || firebaseConfig.projectId) return [];
   const { DUMMY_USERS } = await import("./dummy-users.js");
   const fromAccounts = Object.entries(DUMMY_USERS)
     .filter(([, u]) => u.role === "se")
@@ -225,6 +231,8 @@ export async function listTeamSeEmails() {
     // ignore private-mode errors
   }
   return fromAccounts;
+  /* DEV-ONLY-END */
+  return [];
 }
 
 /** Preferred: team member emails from domain store (Firestore or local shim). */

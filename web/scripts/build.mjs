@@ -9,12 +9,32 @@
  */
 
 import * as esbuild from "esbuild";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const OUT = join(ROOT, "dist");
+const DEV_ONLY_RE = /\/\* DEV-ONLY-START \*\/[\s\S]*?\/\* DEV-ONLY-END \*\//g;
+
+/** Strip dev-only blocks when building the production bundle. */
+function stripDevOnlyPlugin(enabled) {
+  return {
+    name: "strip-dev-only",
+    setup(build) {
+      if (!enabled) return;
+      build.onLoad({ filter: /\.(js|mjs)$/ }, async (args) => {
+        if (!args.path.startsWith(ROOT)) return null;
+        const contents = await readFile(args.path, "utf8");
+        if (!contents.includes("DEV-ONLY-START")) return null;
+        return {
+          contents: contents.replace(DEV_ONLY_RE, ""),
+          loader: args.path.endsWith(".mjs") ? "js" : "js",
+        };
+      });
+    },
+  };
+}
 
 const ENTRIES = {
   app: join(ROOT, "app.js"),
@@ -71,7 +91,8 @@ const result = await esbuild.build({
   target: ["es2020"],
   legalComments: "none",
   logLevel: "info",
-  define: productionBuild ? { __PROD_BUNDLE__: "true" } : {},
+  define: { __PROD_BUNDLE__: productionBuild ? "true" : "false" },
+  plugins: [stripDevOnlyPlugin(productionBuild)],
 });
 
 /** @type {Record<string, string>} */
