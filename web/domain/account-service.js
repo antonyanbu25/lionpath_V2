@@ -812,6 +812,16 @@ export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
  * @param {ReturnType<import("./store.js").getStore>} store
  * @param {object} row
  */
+
+/**
+ * Batch-enrich account list rows for the accounts view.
+ * @param {ReturnType<import("./store.js").getStore>} store
+ * @param {object[]} rows
+ */
+export async function enrichAccountListRows(store, rows) {
+  if (!rows?.length) return [];
+  return Promise.all(rows.map((row) => enrichAccountListRow(store, row)));
+}
 export async function enrichAccountListRow(store, row) {
   if (!row?.account?.id) return row;
 
