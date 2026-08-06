@@ -3,11 +3,11 @@
 Live portal check (from your PC):
 
 ```powershell
-curl.exe -sf "https://portal.benjaminsquare.com/" | findstr /i "portal-build pc-company-name postcall-intake"
+curl.exe -sf "https://portal.benjaminsquare.com/" | findstr /i "portal-build pc-company-name postcall-intake pc-account-deal-preview postcall.css"
 ```
 
-**Old (broken):** `2.0.7.4`, `pc-company-name`  
-**Fixed:** `2.0.8.1-merge`, `postcall-intake-card`, no `pc-company-name`
+**Old (broken):** `2.0.7.4`, `pc-company-name`, no `postcall-intake-card`  
+**Fixed (2.1):** `portal-build=2.1.x`, `postcall-intake-card`, `pc-account-deal-preview`, `postcall.css?v=` matches `portal-build`, no `pc-company-name`
 
 ## Option A — Git upgrade on VPS (recommended)
 

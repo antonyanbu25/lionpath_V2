@@ -206,6 +206,9 @@ function testReconcileClearsStaleResolvedAccount() {
 
 function testProspectEmailFieldNotPrefilledInHtml() {
   const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  assert(html.includes('id="pc-account-deal-preview"'), "pc-account-deal-preview container in index.html");
+  assert(html.includes("postcall-intake-card"), "postcall-intake-card in index.html");
+  assert(!html.includes('id="pc-company-name"'), "legacy pc-company-name field removed");
   const match = html.match(/id="pc-prospect-emails"[\s\S]*?<\/fw-input>/);
   assert(match, "pc-prospect-emails fw-input present");
   assert(!/\bvalue\s*=/.test(match[0]), "prospect email field has no default value attribute");

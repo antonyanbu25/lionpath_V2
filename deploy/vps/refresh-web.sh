@@ -35,6 +35,14 @@ if ! grep -qF 'postcall.css?v=2.1' "$INDEX"; then
   grep -E 'portal-build|precall.css|postcall.css' "$INDEX" | head -5 >&2 || true
   exit 1
 fi
+if ! grep -q 'pc-account-deal-preview' "$INDEX"; then
+  echo "ERROR: $INDEX missing pc-account-deal-preview after git reset." >&2
+  exit 1
+fi
+if ! grep -q 'postcall-intake-card' "$INDEX"; then
+  echo "ERROR: $INDEX missing postcall-intake-card after git reset." >&2
+  exit 1
+fi
 
 bash "$DEPLOY_DIR/build-web-bundle.sh"
 

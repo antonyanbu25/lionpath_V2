@@ -167,9 +167,12 @@ assert.ok(/<h1>New pre-call brief<\/h1>/.test(html), "heading text changed");
 // Cache-bust marker must stay in lockstep with the deploy guards.
 const portalBuild = html.match(/portal-build" content="([^"]+)"/)?.[1];
 const precallCss = html.match(/precall\.css\?v=([^"]+)"/)?.[1];
+const postcallCss = html.match(/postcall\.css\?v=([^"]+)"/)?.[1];
 assert.ok(portalBuild, "portal-build meta must exist");
 assert.equal(portalBuild, precallCss, "portal-build and precall.css cache-bust must match");
+assert.equal(portalBuild, postcallCss, "portal-build and postcall.css cache-bust must match");
 assert.ok(portalBuild?.startsWith("2.1"), `portal-build must be 2.1.x, got ${portalBuild}`);
+assert.ok(html.includes('id="pc-account-deal-preview"'), "post-call account/deal preview container present");
 
 for (const [file, needle] of [
   ["../deploy/vps/update.sh", "precall.css?v=2.1"],

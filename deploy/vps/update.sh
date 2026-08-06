@@ -42,6 +42,17 @@ if ! grep -q 'postcall-intake-card' "$REPO_ROOT/web/index.html" 2>/dev/null; the
   exit 1
 fi
 
+if ! grep -q 'pc-account-deal-preview' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing pc-account-deal-preview â€” git reset did not apply account/deal tile picker." >&2
+  exit 1
+fi
+
+if ! grep -qF 'postcall.css?v=2.1' "$REPO_ROOT/web/index.html" 2>/dev/null; then
+  echo "ERROR: web/index.html missing postcall.css?v=2.1 cache-bust after reset." >&2
+  grep -E 'portal-build|postcall.css' "$REPO_ROOT/web/index.html" 2>/dev/null | head -3 >&2 || true
+  exit 1
+fi
+
 if [[ ! -f .env ]]; then
   echo "Missing .env â€” copy .env.example and set GEMINI_API_KEY." >&2
   exit 1

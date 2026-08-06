@@ -128,4 +128,4 @@ Deploy script checks accept `2.1`, `2.1.N`, and suffixed tags like `2.1.10-searc
 bash /opt/se-singha-paathai/deploy/vps/verify-deploy.sh
 ```
 
-Expect `portal-build" content="2.1.12"` and `workerBuild` including `2.1.5`. Portal should not show the "Speed fixes not deployed" banner when both portal and worker are on 2.1.x.
+Expect `portal-build" content="2.1.23"`, `postcall.css?v=2.1.23` (aligned with portal-build), `pc-account-deal-preview`, `postcall-intake-card`, and `workerBuild` including `2.1.5`. Portal should not show the "Speed fixes not deployed" banner when both portal and worker are on 2.1.x.

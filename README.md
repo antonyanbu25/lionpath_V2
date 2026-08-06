@@ -103,7 +103,7 @@ After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/bo
 
 **Deploy note:** production hostnames load `web/dist/boot.js`. After auth/dashboard changes run `cd web && npm run build` (or VPS `build-web-bundle.sh`) before `refresh-web.sh` / `update.sh` — otherwise the portal serves stale bundled JS.
 
-**Verify live:** `curl -s https://portal.benjaminsquare.com/ | grep portal-build` must show **2.1.19** (not 2.1.14). Bundled `dist/boot.js` must include SSO fixes — VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
+**Verify live:** `bash deploy/vps/verify-deploy.sh` (or `curl -s https://portal.benjaminsquare.com/ | grep -E 'portal-build|postcall.css|pc-account-deal-preview'`). Expect **`portal-build=2.1.23`**, **`postcall.css?v=2.1.23`** (must match portal-build), **`pc-account-deal-preview`**, and **`workerBuild`** including `2.1`. VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
 
 ### Post-call demo UX (2.1.20)
 
