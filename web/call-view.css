@@ -3425,59 +3425,59 @@
   padding: 0 4px;
 }
 
-.call-spine .mk {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  height: 16px;
-  transform: translateX(-50%);
-  border-radius: 1px;
-  background: var(--dew-text-muted);
+.call-spine-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.call-spine .mk--gap {
+.call-spine-dot--gap {
   background: #d6455d;
 }
 
-.call-spine .mk--objection {
+.call-spine-dot--objection {
   background: #b7791f;
 }
 
-.call-spine .mk--win {
+.call-spine-dot--win {
   background: #127a56;
 }
 
-.call-spine .mk--weak_cta {
+.call-spine-dot--weak_cta {
   background: #a4262c;
 }
 
-.call-spine .mkl {
-  position: absolute;
-  top: 44px;
-  font-size: 10px;
-  color: var(--dew-text-muted);
+.call-spine-events {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--dew-border, #e3e8ef);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.call-spine-event {
+  display: grid;
+  grid-template-columns: 52px auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.call-spine-event-time {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  max-width: 88px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--dew-text-muted);
 }
 
-.call-spine .mkl--gap {
-  color: #d6455d;
-}
-
-.call-spine .mkl--objection {
-  color: #b7791f;
-}
-
-.call-spine .mkl--win {
-  color: #127a56;
-}
-
-.call-spine .mkl--weak_cta {
-  color: #a4262c;
+.call-spine-event-label {
+  color: var(--dew-text);
+  word-break: break-word;
 }
 
 .call-spine-marker-legend {
@@ -3485,9 +3485,9 @@
 }
 
 .call-spine-marker-swatch {
-  width: 2px;
-  height: 12px;
-  border-radius: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
@@ -3497,7 +3497,7 @@
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--dew-text-muted);
-  margin-top: 24px;
+  margin-top: 8px;
   border-top: 1px solid var(--dew-border);
   padding-top: 9px;
 }

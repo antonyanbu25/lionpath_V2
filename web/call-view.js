@@ -29,6 +29,7 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { esc, titleCaseDisplayName } from "./shared.js";
+import { themeLabel } from "./theme-library.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
 import { hidePrepGenOverlay } from "./prep-generation-overlay.js";
 import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
@@ -170,28 +171,90 @@ function spineSegmentLabel(type, customLabel) {
   return segmentTypeLabel(type);
 }
 
+const MARKER_KIND_WORDS = new Set(["gap", "objection", "win", "weak_cta", "gap raised", "what worked", "weak cta"]);
+
+/** Turn snake_case product areas and theme keys into readable labels. */
+export function humanizeMarkerLabel(raw, kind) {
+  const s = String(raw || "").trim();
+  if (!s) return MARKER_LABELS[kind] || kind || "";
+  const lower = s.toLowerCase();
+  if (MARKER_KIND_WORDS.has(lower)) return MARKER_LABELS[kind] || MARKER_LABELS[lower.replace(/\s+/g, "_")] || s;
+
+  if (/^[a-z][a-z0-9_]*$/i.test(s) && s.includes("_")) {
+    const themed = themeLabel(s);
+    if (themed && themed !== s) return themed;
+    return s
+      .split("_")
+      .filter(Boolean)
+      .map((word) => {
+        const w = word.toLowerCase();
+        if (w === "ai") return "AI";
+        if (w === "cde") return "CDE";
+        if (w === "sso") return "SSO";
+        if (w === "api") return "API";
+        if (w === "ui") return "UI";
+        if (w === "se") return "SE";
+        if (w === "ae") return "AE";
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(" ");
+  }
+
+  if (s.includes(" · ")) {
+    return s
+      .split(" · ")
+      .map((part) => humanizeMarkerLabel(part, kind))
+      .join(" · ");
+  }
+
+  return s;
+}
+
 function markerDisplayLabel(marker) {
   const raw = marker?.label || MARKER_LABELS[marker?.kind] || marker?.kind || "";
-  return String(raw).trim();
+  return humanizeMarkerLabel(String(raw).trim(), marker?.kind);
+}
+
+function renderCombinedSpineLegend(markers) {
+  const kinds = new Set((markers || []).map((m) => m.kind).filter(Boolean));
+  const segmentItems = SPINE_LEGEND.map(
+    ([, label, bg, fg]) =>
+      `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
+  ).join("");
+  const markerItems = MARKER_LEGEND.filter(([kind]) => kinds.has(kind))
+    .map(
+      ([kind, label]) =>
+        `<span class="call-spine-legend-item"><span class="call-spine-dot call-spine-dot--${esc(kind)}"></span>${esc(label)}</span>`,
+    )
+    .join("");
+  return `<div class="call-spine-legend" aria-hidden="true">${segmentItems}${markerItems}</div>`;
+}
+
+function renderSpineMarkerList(markers) {
+  if (!markers?.length) return "";
+  const items = markers
+    .slice()
+    .sort((a, b) => (a.atS || 0) - (b.atS || 0))
+    .map((m) => {
+      const kind = m.kind || "gap";
+      const label = markerDisplayLabel(m);
+      const tip = m.quote ? ` title="${esc(String(m.quote).slice(0, 240))}"` : "";
+      return `<li class="call-spine-event call-spine-event--${esc(kind)}"${tip}>
+        <span class="call-spine-event-time num">${esc(formatSegmentTime(m.atS))}</span>
+        <span class="pill pill--${esc(kind)}">${esc(MARKER_LABELS[kind] || kind)}</span>
+        <span class="call-spine-event-label">${esc(label)}</span>
+      </li>`;
+    })
+    .join("");
+  return `<ul class="call-spine-events" aria-label="Key moments">${items}</ul>`;
 }
 
 function renderSpineLegend() {
-  return `<div class="call-spine-legend" aria-hidden="true">${SPINE_LEGEND.map(
-    ([, label, bg, fg]) =>
-      `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
-  ).join("")}</div>`;
+  return renderCombinedSpineLegend([]);
 }
 
 function renderMarkerLegend(markers) {
-  const kinds = [...new Set((markers || []).map((m) => m.kind).filter(Boolean))];
-  if (!kinds.length) return "";
-  const items = MARKER_LEGEND.filter(([kind]) => kinds.includes(kind))
-    .map(([kind, label]) => {
-      const color = MARKER_COLORS[kind] || "#5a6b82";
-      return `<span class="call-spine-legend-item"><span class="call-spine-marker-swatch call-spine-marker-swatch--${esc(kind)}" style="background:${color}"></span>${esc(label)}</span>`;
-    })
-    .join("");
-  return `<div class="call-spine-legend call-spine-marker-legend" aria-hidden="true">${items}</div>`;
+  return renderCombinedSpineLegend(markers);
 }
 
 function stripObjectionFraming(text) {
@@ -998,52 +1061,6 @@ const SPINE_TRACK_STYLE =
 const SPINE_SEG_STYLE =
   "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
 
-const SPINE_LABEL_BAR_PX = 640;
-
-function estimateLabelHalfWidthPct(text, totalSec) {
-  const durationScale = totalSec >= 5400 ? 0.72 : totalSec >= 3600 ? 0.82 : totalSec >= 2700 ? 0.9 : 1;
-  const t = String(text || "");
-  const px = (Math.min(Math.max(t.length * 5.6 + 10, 22), 110) / 2) * durationScale;
-  return (px / SPINE_LABEL_BAR_PX) * 100;
-}
-
-function spineMarkerShortLabel(marker, totalSec) {
-  const raw = markerDisplayLabel(marker);
-  const maxLen = totalSec >= 5400 ? 9 : totalSec >= 3600 ? 12 : totalSec >= 2700 ? 14 : 18;
-  if (raw.length <= maxLen) return raw;
-  return `${raw.slice(0, maxLen - 1)}…`;
-}
-
-/** Single-row labels; skip ticks that would overlap — full text stays on hover. */
-export function layoutSpineMarkerLabels(markers, totalSec) {
-  const sorted = (markers || [])
-    .map((m, i) => ({ m, i, at: Number(m.atS) }))
-    .filter((x) => Number.isFinite(x.at))
-    .sort((a, b) => a.at - b.at || a.i - b.i);
-
-  const minGap = sorted.length > 10 ? 4.2 : sorted.length > 6 ? 3.4 : 2.6;
-  let occupiedRight = -Infinity;
-  const placements = [];
-
-  for (const item of sorted) {
-    const leftPct = (item.at / totalSec) * 100;
-    const shortLabel = spineMarkerShortLabel(item.m, totalSec);
-    const halfW = estimateLabelHalfWidthPct(shortLabel, totalSec);
-    const left = leftPct - halfW;
-    const right = leftPct + halfW;
-    const showLabel = left >= occupiedRight + minGap * 0.35;
-    if (showLabel) occupiedRight = right;
-    placements.push({
-      marker: item.m,
-      leftPct,
-      label: showLabel ? shortLabel : null,
-      tip: `${formatSegmentTime(item.at)} · ${markerDisplayLabel(item.m)}`,
-    });
-  }
-
-  return { placements, visibleLabels: placements.filter((p) => p.label).length, total: sorted.length };
-}
-
 /** Prefer segment coverage when stored duration is missing or wildly off (unit mismatch). */
 function resolveSpineDuration(durationSec, segments) {
   const segmentEnd = Math.max(
@@ -1058,18 +1075,17 @@ function resolveSpineDuration(durationSec, segments) {
 
 function renderVisualSpine(segments, markers, durationSec) {
   const total = resolveSpineDuration(durationSec, segments);
-  const { placements, visibleLabels, total: markerTotal } = layoutSpineMarkerLabels(markers, total);
   // #region agent log
   fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "edc907" },
     body: JSON.stringify({
       sessionId: "edc907",
-      runId: "timeline-layout",
-      hypothesisId: "D",
+      runId: "timeline-polish",
+      hypothesisId: "E",
       location: "call-view.js:renderVisualSpine",
-      message: "spine label layout",
-      data: { totalSec: total, markerTotal, visibleLabels, durationMin: Math.round(total / 60) },
+      message: "clean spine bar only",
+      data: { totalSec: total, markerCount: (markers || []).length, layout: "bar-only" },
       timestamp: Date.now(),
     }),
   }).catch(() => {});
@@ -1088,14 +1104,6 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
-  for (const p of placements) {
-    const m = p.marker;
-    const kind = m.kind || "gap";
-    html += `<div class="mk mk--${esc(kind)}" style="left:${p.leftPct}%" title="${esc(p.tip)}"></div>`;
-    if (p.label) {
-      html += `<div class="mkl mkl--${esc(kind)}" style="left:${p.leftPct}%" title="${esc(p.tip)}">${esc(p.label)}</div>`;
-    }
-  }
   html += "</div></div>";
   return html;
 }
@@ -1704,7 +1712,7 @@ function renderTimelineMarkers(markers) {
         (m) => `<li class="call-timeline-marker call-timeline-marker--${esc(m.kind)}">
           <span class="call-timeline-time num">${esc(formatSegmentTime(m.atS))}</span>
           <span class="pill pill--${esc(m.kind)}">${esc(MARKER_LABELS[m.kind] || m.kind)}</span>
-          <span class="call-timeline-marker-label">${esc(m.label || "")}</span>
+          <span class="call-timeline-marker-label">${esc(markerDisplayLabel(m))}</span>
         </li>`,
       )
       .join("")}
@@ -1751,9 +1759,9 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   let body = "";
   if (segments.length) {
     body += renderVisualSpine(segments, markers, durationSec);
-    body += renderSpineLegend();
-    if (markers.length) body += renderMarkerLegend(markers);
     body += renderSpineTimeAxis(durationSec);
+    body += renderCombinedSpineLegend(markers);
+    if (markers.length) body += renderSpineMarkerList(markers);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
     }

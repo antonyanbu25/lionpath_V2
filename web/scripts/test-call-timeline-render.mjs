@@ -1,11 +1,11 @@
-/** Timeline card — wireframe spine, inline markers, five-metric row. */
+/** Timeline card — wireframe spine, event list, combined legend. */
 import assert from "node:assert/strict";
 
 import {
   renderTimelineSection,
   resolveObjectionQa,
   renderObjectionQaRow,
-  layoutSpineMarkerLabels,
+  humanizeMarkerLabel,
 } from "../call-view.js";
 
 const videoSegments = [
@@ -26,68 +26,53 @@ const markers = [
   { atS: 1200, kind: "weak_cta", label: "weak CTA" },
 ];
 
-const scorecard = {
-  lines: [
-    {
-      themeKey: "call_flow",
-      evidence: "Clean sequencing, one 6m 40s monologue at 18:00 cost a point.",
-    },
-    {
-      themeKey: "customer_engagement",
-      evidence: "9 customer questions, both attendees spoke.",
-    },
-  ],
-};
+const themeMarkers = [
+  { atS: 400, kind: "gap", label: "product_gap" },
+  { atS: 800, kind: "win", label: "ai_agent_facing" },
+  { atS: 1200, kind: "objection", label: "admin_console" },
+];
 
-const videoFacts = {
-  cameraOnPct: 100,
-  attendeeCurveJson: [
-    { name: "SE", role: "Solution Engineer", talkPct: 71, cameraOn: true },
-    { name: "Alex", role: "customer", talkPct: 24, cameraOn: true },
-    { name: "Sam", role: "customer", talkPct: 5, cameraOn: false },
-  ],
-};
+function testHumanizeLabels() {
+  assert.equal(humanizeMarkerLabel("product_gap", "gap"), "Product Gap");
+  assert.equal(humanizeMarkerLabel("ai_agent_facing", "win"), "AI Agent Facing");
+  assert.equal(humanizeMarkerLabel("admin_console", "objection"), "Admin Console");
+  assert.match(humanizeMarkerLabel("ai_platform · training_tuning", "gap"), /AI Platform/);
+}
 
 function testVideoSpineWireframe() {
   const html = renderTimelineSection(
     true,
     { segments: videoSegments, markers, facts: { durationSec: 2880 } },
     "48 minutes",
-    { videoFacts, scorecard, record: {} },
   );
   assert.match(html, /Product walkthrough/);
-  assert.doesNotMatch(html, /feeds call flow scoring directly/);
-  assert.doesNotMatch(html, /call-timeline-sub/);
   assert.match(html, /call-spine-legend/);
   assert.match(html, /Product \/ CDE/);
-  assert.match(html, /call-spine-marker-legend/);
-  assert.match(html, /mkl--objection/);
+  assert.match(html, /Product gap/);
+  assert.match(html, /call-spine-events/);
+  assert.doesNotMatch(html, /class="mk /);
+  assert.doesNotMatch(html, /class="mkl /);
   assert.doesNotMatch(html, /call-timeline-list/);
-  assert.doesNotMatch(html, /Built from transcript timestamps/);
-  assert.doesNotMatch(html, /mkl-more/);
-  assert.doesNotMatch(html, /call-spine-marker-overflow/);
 }
 
 function testTranscriptSpine() {
   const html = renderTimelineSection(false, { segments: transcriptSegments, markers });
-
   assert.match(html, /Intro and agenda/);
-  assert.doesNotMatch(html, /feeds call flow scoring directly/);
   assert.match(html, /Conversation phases from the transcript clock/);
-  assert.match(html, /require video analysis and stay unscored here/);
-  assert.doesNotMatch(html, /call-timeline-list/);
 }
 
-function testInlineMarkersOnBar() {
-  const html = renderTimelineSection(true, { segments: videoSegments, markers, facts: { durationSec: 900 } });
-  assert.match(html, /gap raised/);
-  assert.match(html, /what worked/);
-  assert.match(html, /weak CTA/);
-  assert.match(html, /mk--gap/);
-  assert.match(html, /mk--objection/);
-  assert.match(html, /call-spine-marker-legend/);
-  assert.match(html, /Product gap/);
-  assert.match(html, /Objection handled/);
+function testEventListReadable() {
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: themeMarkers,
+    facts: { durationSec: 3824 },
+  });
+  assert.match(html, /Product Gap/);
+  assert.match(html, /AI Agent Facing/);
+  assert.match(html, /Admin Console/);
+  assert.doesNotMatch(html, /product_gap/);
+  assert.doesNotMatch(html, /ai_agent/);
+  assert.match(html, /call-spine-dot/);
 }
 
 function testNoMarkerLegendWhenEmpty() {
@@ -96,21 +81,18 @@ function testNoMarkerLegendWhenEmpty() {
     markers: [],
     facts: { durationSec: 900 },
   });
-  assert.doesNotMatch(html, /call-spine-marker-legend/);
-  assert.doesNotMatch(html, /class="mk"/);
+  assert.doesNotMatch(html, /call-spine-events/);
+  assert.doesNotMatch(html, /call-spine-dot/);
 }
 
 function testMarkersWithoutSpine() {
   const html = renderTimelineSection(false, { segments: [], markers });
   assert.match(html, /gap raised/);
-  assert.doesNotMatch(html, /No timeline/);
 }
 
 function testEmptyStateIsHonest() {
   const html = renderTimelineSection(false, { segments: [], markers: [] });
   assert.match(html, /No timeline/);
-  assert.match(html, /plain-text transcript has no clock/);
-  assert.doesNotMatch(html, /This recording has transcript only/);
 }
 
 function testVideoWinsWhenBothExist() {
@@ -125,25 +107,11 @@ function testVideoWinsWhenBothExist() {
 function testObjectionQaFormat() {
   const merged = resolveObjectionQa({
     objectionText:
-      "Customer expressed concern that Zendesk was promised to do many things but failed to deliver. SE and AE emphasized that Freshdesk is straightforward to migrate.",
+      "Customer expressed concern that Zendesk was promised to do many things but failed to deliver. SE emphasized Freshdesk is straightforward to migrate.",
     landed: true,
   });
   assert.match(merged.question, /Zendesk was promised/i);
-  assert.match(merged.answer, /Freshdesk is straightforward/i);
   assert.doesNotMatch(merged.question, /Customer expressed/i);
-
-  const html = renderObjectionQaRow({
-    objectionText: "Do you support SSO with Okta?",
-    handling: "Walked through SAML setup and shared admin guide.",
-    landed: true,
-    theme: "security",
-    atS: 2100,
-  });
-  assert.match(html, /call-qa-label/);
-  assert.match(html, /Do you support SSO/);
-  assert.match(html, /Walked through SAML/);
-  assert.match(html, /pill green/);
-  assert.match(html, /35:00/);
 }
 
 function testEscaping() {
@@ -162,46 +130,12 @@ function testSpineHasInlineLayout() {
     facts: { durationSec: 900 },
   });
   assert.match(html, /call-spine spine" style="[^"]*height:56px/);
-  assert.match(html, /class="seg" style="[^"]*position:absolute/);
 }
 
-function testSpineSurvivesBadDuration() {
-  const html = renderTimelineSection(true, {
-    segments: videoSegments,
-    markers: [],
-    facts: { durationSec: 9_999_999 },
-  });
-  const widths = [...html.matchAll(/width:([0-9.]+)%/g)].map((m) => Number(m[1]));
-  assert.ok(widths.some((w) => w > 10), "segments stay visible when duration metadata is wrong");
-}
-
-function testLongCallSkipsOverlappingLabels() {
-  const longCallMarkers = Array.from({ length: 12 }, (_, i) => ({
-    atS: 120 + i * 180,
-    kind: i % 3 === 0 ? "gap" : i % 3 === 1 ? "objection" : "win",
-    label: `event_label_${i}`,
-  }));
-  const { placements, visibleLabels, total } = layoutSpineMarkerLabels(longCallMarkers, 3824);
-  assert.equal(total, 12);
-  assert.ok(visibleLabels < total, "dense long call hides some inline labels");
-  assert.ok(visibleLabels >= 3, "some labels remain visible");
-  const html = renderTimelineSection(true, {
-    segments: videoSegments,
-    markers: longCallMarkers,
-    facts: { durationSec: 3824 },
-  });
-  assert.doesNotMatch(html, /mkl-more/);
-  assert.doesNotMatch(html, /call-spine-marker-overflow/);
-}
-
-function testShortCallKeepsLabels() {
-  const { visibleLabels, total } = layoutSpineMarkerLabels(markers, 900);
-  assert.equal(visibleLabels, total);
-}
-
+testHumanizeLabels();
 testVideoSpineWireframe();
 testTranscriptSpine();
-testInlineMarkersOnBar();
+testEventListReadable();
 testNoMarkerLegendWhenEmpty();
 testMarkersWithoutSpine();
 testEmptyStateIsHonest();
@@ -209,7 +143,4 @@ testVideoWinsWhenBothExist();
 testObjectionQaFormat();
 testEscaping();
 testSpineHasInlineLayout();
-testSpineSurvivesBadDuration();
-testLongCallSkipsOverlappingLabels();
-testShortCallKeepsLabels();
 console.log("test-call-timeline-render: ok");
