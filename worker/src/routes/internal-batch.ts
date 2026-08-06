@@ -24,6 +24,7 @@ import {
   pollAndApplyBatchJob,
   runBatchJobFallback,
 } from "../data/gemini-batch-orchestrator";
+import { runDealGraceSweep } from "../jobs/deal-grace-sweep";
 import {
   rebuildAccountRollup,
   rebuildDealTraction,
@@ -228,4 +229,17 @@ export async function handleReadModelsNightlyRebuildPost(
     200,
     cors,
   );
+}
+
+/** POST /api/internal/deal-grace-sweep — archive closed_won_grace deals past 90 days. */
+export async function handleDealGraceSweepPost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  ensureNodeFirestore(env);
+  if (!verifyInternalCronAuth(request, env)) return unauthorized(cors);
+  const result = await runDealGraceSweep(fsEnv(env));
+  return json(result, 200, cors);
 }

@@ -82,6 +82,7 @@ import {
   handleBatchFallbackPost,
   handleBatchPollPost,
   handleReadModelsNightlyRebuildPost,
+  handleDealGraceSweepPost,
 } from "./routes/internal-batch";
 import { handleDirectorAnalyticsGet } from "./routes/analytics";
 import { handleAdminLlmUsageGet } from "./routes/admin-llm-usage";
@@ -1257,6 +1258,7 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/internal/batch/poll": { POST: handleBatchPollPost },
   "/api/internal/batch/fallback": { POST: handleBatchFallbackPost },
   "/api/internal/read-models/nightly-rebuild": { POST: handleReadModelsNightlyRebuildPost },
+  "/api/internal/deal-grace-sweep": { POST: handleDealGraceSweepPost },
   "/api/video-pass": { POST: handleVideoPass },
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },

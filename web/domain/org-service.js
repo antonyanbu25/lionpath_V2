@@ -96,6 +96,16 @@ export async function getVisibleScope(user) {
     };
   }
 
+  if (user.role === "manager" && !user.teamId && !orgLeader) {
+    return {
+      type: "none",
+      teamIds: [],
+      orgId: user.orgId || null,
+      isOrgDirector: false,
+      reason: "manager_without_team",
+    };
+  }
+
   return {
     type: "team",
     teamIds: user.teamId ? [user.teamId] : [],
@@ -115,14 +125,33 @@ export async function listVisibleSeEmails(session) {
   const enriched = userWithDirectorFlag(user, org);
   const scope = await getVisibleScope(enriched);
 
+  if (scope.type === "org" && scope.orgId && store.listUsersByOrg) {
+    try {
+      const users = await store.listUsersByOrg(scope.orgId);
+      return users
+        .filter((u) => u.role === "se" && u.email)
+        .map((u) => u.email);
+    } catch (err) {
+      console.warn("[org] listUsersByOrg failed:", err?.message || err);
+    }
+  }
+
+  if (scope.type === "org" && scope.teamIds.length && store.listUsersByOrg && scope.orgId) {
+    const users = await store.listUsersByOrg(scope.orgId);
+    const teamSet = new Set(scope.teamIds);
+    return users
+      .filter((u) => u.role === "se" && u.email && u.teamId && teamSet.has(u.teamId))
+      .map((u) => u.email);
+  }
+
   if (scope.type === "org" && scope.teamIds.length) {
     const emails = [];
     const seen = new Set();
     for (const teamId of scope.teamIds) {
-      const team = await store.getTeam(teamId);
+      const team = await store.getTeam(teamId); // serial-ok: fallback when listUsersByOrg unavailable
       if (!team?.memberIds?.length) continue;
-      for (const memberId of team.memberIds) {
-        const member = await store.getUser(memberId);
+      const members = await Promise.all(team.memberIds.map((id) => store.getUser(id))); // serial-ok: batched per team fallback
+      for (const member of members) {
         if (member?.email && member.role === "se" && !seen.has(member.email)) {
           seen.add(member.email);
           emails.push(member.email);
@@ -133,13 +162,18 @@ export async function listVisibleSeEmails(session) {
   }
 
   if (scope.type === "team" && scope.teamIds[0]) {
-    const team = await store.getTeam(scope.teamIds[0]);
-    const emails = [];
-    for (const memberId of team?.memberIds || []) {
-      const member = await store.getUser(memberId);
-      if (member?.email && member.role === "se") emails.push(member.email);
+    const teamId = scope.teamIds[0];
+    if (scope.orgId && store.listUsersByOrg) {
+      const users = await store.listUsersByOrg(scope.orgId);
+      return users
+        .filter((u) => u.role === "se" && u.teamId === teamId && u.email)
+        .map((u) => u.email);
     }
-    return emails;
+    const team = await store.getTeam(teamId);
+    const memberIds = team?.memberIds || [];
+    if (!memberIds.length) return [];
+    const members = await Promise.all(memberIds.map((id) => store.getUser(id)));
+    return members.filter((m) => m?.email && m.role === "se").map((m) => m.email);
   }
 
   return [];
@@ -152,12 +186,19 @@ export async function listVisibleSeEmails(session) {
 export async function mapEmailToTeamName(emails) {
   const store = getStore();
   const map = new Map();
-  for (const email of emails) {
-    const user = await store.getUserByEmail(email);
-    if (!user?.teamId) continue;
-    const team = await store.getTeam(user.teamId);
-    if (team?.name) map.set(email, team.name);
-  }
+  const unique = [...new Set(emails.filter(Boolean))];
+  if (!unique.length) return map;
+
+  const users = await Promise.all(unique.map((email) => store.getUserByEmail(email)));
+  const teamIds = [...new Set(users.map((u) => u?.teamId).filter(Boolean))];
+  const teams = await Promise.all(teamIds.map((id) => store.getTeam(id)));
+  const teamNameById = new Map(teams.filter(Boolean).map((t) => [t.id, t.name]));
+
+  unique.forEach((email, i) => {
+    const teamId = users[i]?.teamId;
+    const name = teamId ? teamNameById.get(teamId) : null;
+    if (name) map.set(email, name);
+  });
   return map;
 }
 

@@ -8,7 +8,8 @@ import { firebaseConfig } from "./firebase-config.js";
 import { DUMMY_USERS } from "./dummy-users.js";
 import { DEMO_TEAM_ID } from "./domain/constants.js";
 import { stableUserIdForEmail } from "./domain/id.js";
-import { enrichSessionFromStore, listTeamMemberEmails, upsertFirebaseUser } from "./domain/seed-dev.js";
+import { enrichSessionFromStore } from "./domain/user-resolve.js";
+import { upsertFirebaseUser, listTeamMemberEmails } from "./domain/seed-dev.js";
 import { listVisibleSeEmails } from "./domain/org-service.js";
 
 export { DUMMY_USERS };

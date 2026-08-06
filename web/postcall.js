@@ -354,7 +354,7 @@ async function ensurePostCallSession() {
 /** Resolved domain owner id (authIndex over placeholder usr_dummy_*). */
 async function postCallOwnerId() {
   await ensurePostCallSession();
-  const { resolveEffectiveOwnerId } = await import("./domain/seed-dev.js");
+  const { resolveEffectiveOwnerId } = await import("./domain/user-resolve.js");
   return resolveEffectiveOwnerId(currentSession);
 }
 
