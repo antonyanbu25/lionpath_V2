@@ -112,22 +112,11 @@ function axisRadius(score) {
   return R * ratio;
 }
 
-/** 10-vertex star: tip on each axis, valley on bisector between tips. */
-function buildStarGeometry(scores) {
+/** 5-vertex pentagon: one tip per axis (classic radar chart). */
+function buildPentagonGeometry(scores) {
   const tips = scores.map((s, i) => vertex(CX, CY, axisRadius(s), AXIS_ANGLES[i]));
-  const tipRadii = scores.map((s) => axisRadius(s));
-  const positiveTips = tipRadii.filter((r) => r > 0);
-  const smallestTip = positiveTips.length ? Math.min(...positiveTips) : 0;
-  const valleyR = Math.min(0.3 * R, 0.62 * smallestTip);
-  const valleys = AXIS_ANGLES.map((_, i) =>
-    vertex(CX, CY, valleyR, AXIS_ANGLES[i] + Math.PI / 5),
-  );
-  const starVerts = [];
-  for (let i = 0; i < 5; i++) {
-    starVerts.push(tips[i], valleys[i]);
-  }
-  const dataPoly = starVerts.map((p) => p.map(fmtCoord).join(",")).join(" ");
-  return { tips, valleys, dataPoly };
+  const dataPoly = tips.map((p) => p.map(fmtCoord).join(",")).join(" ");
+  return { tips, dataPoly };
 }
 
 /**
@@ -148,7 +137,7 @@ export function renderQipRadar(categoryScores, opts = {}) {
   const scores = CATEGORY_KEYS.map((key) =>
     Math.max(0, Math.min(10, Number(categoryScores?.[key] ?? 0) || 0)),
   );
-  const { tips, valleys, dataPoly } = buildStarGeometry(scores);
+  const { tips, dataPoly } = buildPentagonGeometry(scores);
   const overall = formatOverall(opts.overallScore);
 
   const ariaParts = CATEGORY_KEYS.map((key, i) => `${axisLabel(key).replace(/\n/g, " ")} ${scores[i]}`);
@@ -170,9 +159,8 @@ export function renderQipRadar(categoryScores, opts = {}) {
 
   const edgePaths = CATEGORY_KEYS.map((_, i) => {
     const [x1, y1] = tips[i];
-    const [vx, vy] = valleys[i];
     const [x2, y2] = tips[(i + 1) % 5];
-    return `<path d="M ${fmtCoord(x1)},${fmtCoord(y1)} L ${fmtCoord(vx)},${fmtCoord(vy)} L ${fmtCoord(x2)},${fmtCoord(y2)}" stroke="${AXIS_STROKES[i]}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`;
+    return `<path d="M ${fmtCoord(x1)},${fmtCoord(y1)} L ${fmtCoord(x2)},${fmtCoord(y2)}" stroke="${AXIS_STROKES[i]}" stroke-width="2.4" stroke-linecap="round" fill="none"/>`;
   }).join("");
 
   const halos = tips

@@ -118,9 +118,12 @@ assert(!container.innerHTML.includes("call-record-notes-row"), "old notes+room r
 assert(!container.innerHTML.includes("← All calls"), "no All calls back button");
 assert(!container.innerHTML.includes("Transcript-only call"), "no transcript-only dev copy");
 const starCount = (container.innerHTML.match(/class="[^"]*\bqip-star-svg\b[^"]*"/g) || []).length;
-assert(starCount === 1, "star radar shown once at top");
-assert(container.innerHTML.includes('viewBox="0 0 700 600"'), "star uses 700x600 radar viewBox");
-assert(container.innerHTML.includes("-dataClip"), "star has dataClip clipPath");
+assert(starCount === 1, "QIP radar shown once at top");
+assert(container.innerHTML.includes('viewBox="0 0 700 600"'), "radar uses 700x600 viewBox");
+assert(container.innerHTML.includes("-dataClip"), "radar has dataClip clipPath");
+const clipMatch = container.innerHTML.match(/clipPath id="[^"]*-dataClip"><polygon points="([^"]+)"/);
+const radarVerts = clipMatch ? clipMatch[1].trim().split(/\s+/).length : 0;
+assert(radarVerts === 5, "radar data polygon is 5-vertex pentagon not 10-vertex star");
 assert(container.innerHTML.includes("qip-star-core"), "star has glowing core group");
 assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in star core");
 assert(container.innerHTML.includes("qip-star-animated"), "star has entrance animations");

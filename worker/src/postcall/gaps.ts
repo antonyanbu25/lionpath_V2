@@ -75,16 +75,7 @@ const COMPETITOR_SCHEMA = {
 const GAP_ITEM_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "productArea",
-    "subArea",
-    "crossCuttingTags",
-    "verbatim",
-    "headline",
-    "disposition",
-    "dealImpact",
-    "gapType",
-  ],
+  required: ["productArea", "subArea", "verbatim", "disposition", "dealImpact", "gapType"],
   properties: {
     productArea: { type: "string", enum: [...PRODUCT_AREAS] },
     subArea: { type: "string" },
@@ -105,7 +96,7 @@ const GAP_ITEM_SCHEMA = {
 const WHAT_WORKS_ITEM_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["productArea", "verbatim", "headline", "referenceCandidate"],
+  required: ["productArea", "verbatim", "referenceCandidate"],
   properties: {
     productArea: { type: "string", enum: [...PRODUCT_AREAS] },
     verbatim: { type: "string" },
@@ -115,7 +106,8 @@ const WHAT_WORKS_ITEM_SCHEMA = {
   },
 };
 
-const GAPS_SCHEMA = {
+/** Pass 6 Gemini response schema — exported for schema regression tests. */
+export const GAPS_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["productGaps", "whatWorks"],
@@ -371,12 +363,12 @@ export function normalizeWhatWorksOutput(raw: unknown): WhatWorksDraft[] {
 
 async function attachEmbeddings(env: Env, gaps: ProductGapDraft[]): Promise<ProductGapDraft[]> {
   if (!gaps.length) return gaps;
-  const out: ProductGapDraft[] = [];
-  for (const gap of gaps) {
-    const embedding = await embedVerbatim(env, gap.verbatim);
-    out.push({ ...gap, embedding });
-  }
-  return out;
+  return Promise.all(
+    gaps.map(async (gap) => {
+      const embedding = await embedVerbatim(env, gap.verbatim);
+      return { ...gap, embedding };
+    }),
+  );
 }
 
 export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promise<PostCallGapsResult> {
@@ -397,7 +389,7 @@ export async function runPostCallGaps(env: Env, input: PostCallGapsInput): Promi
     effort,
     research: false,
     thinkingBudget: 0,
-    jsonSchema: GAPS_SCHEMA as unknown as Record<string, unknown>,
+    jsonSchema: GAPS_RESPONSE_SCHEMA as unknown as Record<string, unknown>,
     passName: "gaps",
     userId: input.userId,
     callId: input.callId ?? undefined,

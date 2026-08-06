@@ -216,6 +216,9 @@ function testProspectEmailFieldNotPrefilledInHtml() {
   assert(html.includes('id="postcall-form" autocomplete="off"'), "postcall form disables autocomplete");
   assert(html.includes("postcall-autofill-decoys"), "decoy autofill trap fields present");
   assert(!html.includes('id="pc-enable-video-pass"'), "video pass opt-in toggle removed");
+  assert(!html.includes("postcall-video-pass-opt"), "video pass opt-in block removed");
+  assert(!html.includes("Enable video analysis"), "video analysis consent label removed");
+  assert(!html.includes("Camera, slides, and screen-share scoring"), "video pass hint removed");
 }
 
 function testSessionEmailRejectedFromProspects() {

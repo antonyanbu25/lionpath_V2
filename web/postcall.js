@@ -1797,8 +1797,8 @@ const QIP_CHEV_SVG =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 const QIP_CHEV_SVG_SM =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
-const QIP_STAR_SVG =
-  '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2.6a.5.5 0 0 1 .9 0l2.5 5.1 5.6.8a.5.5 0 0 1 .3.9l-4 3.9 1 5.6a.5.5 0 0 1-.8.5L12 17.3l-5 2.6a.5.5 0 0 1-.8-.5l1-5.6-4-3.9a.5.5 0 0 1 .3-.9l5.6-.8Z"/></svg>';
+const QIP_PENTAGON_SVG =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.8 20.2 9.4 16.8 19.6 7.2 19.6 3.8 9.4Z"/></svg>';
 
 function qipScoreHex(score) {
   if (score >= 8) return "#4a7a5c";
@@ -1942,7 +1942,7 @@ function renderWireframeCategoryRow(categoryKey, score, lines, profile, callType
   return `
     <details class="cat">
       <summary class="cat-sum">
-        <span class="cat-star" style="color:${qipScoreHex(score)}">${QIP_STAR_SVG}</span>
+        <span class="cat-pentagon" style="color:${qipScoreHex(score)}">${QIP_PENTAGON_SVG}</span>
         <span class="cat-name">${esc(name)}</span>
         <span class="cat-score" style="color:${qipScoreHex(score)}">${esc(score)}<span class="d"> / 10</span></span>
         ${qipConfidencePill(catConf, fallbackConf)}
@@ -2122,7 +2122,7 @@ function renderQipCategoryRow(categoryKey, score, lines, profile, callType, fall
   return `
     <details class="qip-category-row qip-category-row--${qipScoreTone(score)}">
       <summary class="qip-category-summary">
-        <span class="qip-category-star" style="color:${qipScoreColor(score)}" aria-hidden="true">★</span>
+        <span class="qip-category-pentagon" style="color:${qipScoreColor(score)}" aria-hidden="true">${QIP_PENTAGON_SVG}</span>
         <span class="qip-category-name">${esc(name)}</span>
         <span class="qip-category-score"><strong style="color:${qipScoreColor(score)}">${esc(score)}</strong><span class="qip-line-max"> / 10</span></span>
         ${qipConfidencePill(catConf, fallbackConf)}
