@@ -12,7 +12,11 @@ globalThis.localStorage = {
 };
 
 import { initDomainStore, getStore } from "../domain/store.js";
-import { buildPostCallResolveContext } from "../postcall-resolve-context.js";
+import {
+  buildPostCallResolveContext,
+  enrichResolveDealsForAccount,
+  invalidatePostCallResolveContext,
+} from "../postcall-resolve-context.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -116,17 +120,34 @@ async function main() {
     "both deals on account",
   );
 
-  const { enrichResolveDealsForAccount } = await import("../postcall-resolve-context.js");
   const enriched = await enrichResolveDealsForAccount({ deals: [] }, accountId);
   assert(enriched.deals.length === 2, "enrich adds global deals for confirm gate");
 
+  const enrichedOtherOwnerOpt = await enrichResolveDealsForAccount({ deals: [] }, accountId, {
+    ownerId: "usr_other_se",
+  });
+  assert(
+    enrichedOtherOwnerOpt.deals.length === 2,
+    "enrich ignores ownerId — lists all deals on account for confirm gate",
+  );
+
   const originalList = store.listLifecyclesByOwner;
+  store.listLifecyclesByOwner = async () => {
+    throw new Error("simulated store read failure");
+  };
+  invalidatePostCallResolveContext(ownerId);
+  const resilient = await buildPostCallResolveContext(ownerId);
+  store.listLifecyclesByOwner = originalList;
+  assert(
+    JSON.stringify(resilient) === JSON.stringify({ ownerId, briefs: [], accounts: [], deals: [] }),
+    "non-permission store errors fall back to empty context",
+  );
+
   store.listLifecyclesByOwner = async () => {
     const err = new Error("Missing or insufficient permissions.");
     err.code = "permission-denied";
     throw err;
   };
-  const { invalidatePostCallResolveContext } = await import("../postcall-resolve-context.js");
   invalidatePostCallResolveContext(ownerId);
   const fallback = await buildPostCallResolveContext(ownerId);
   store.listLifecyclesByOwner = originalList;

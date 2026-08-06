@@ -92,6 +92,7 @@ import { canonicalCallType } from "./call-type-labels.js";
 import { buildCoachOutput, coachTextForSubParameter, insightfulCoachTip, loadScoreOverrides } from "./coach/index.js";
 
 const RESOLVE_URL = `${WORKER_BASE_URL}/api/postcall/resolve`;
+const RESOLVE_CONTEXT_TIMEOUT_MS = 12_000;
 const CLASSIFY_URL = `${WORKER_BASE_URL}/api/postcall/classify`;
 const GENERATE_URL = `${WORKER_BASE_URL}/api/postcall/generate`;
 const QUALIFY_URL = `${WORKER_BASE_URL}/api/postcall/qualify`;
@@ -145,6 +146,8 @@ const CONFIRM_ROLE_TONE = {
 let linkedinParsing = false;
 let contextParsing = false;
 let generating = false;
+/** Pass 0 (resolve + classify) before confirm gate — blocks resetPostCallView mid-flight. */
+let pass0Busy = false;
 let confirmGateAccountLookupTeardown = null;
 /** @type {(() => void)[]} */
 let confirmGateContactLookupTeardowns = [];
@@ -4473,7 +4476,39 @@ export function resetPostCallView() {
 }
 
 export function isPostCallGenerationBusy() {
-  return generating;
+  return generating || pass0Busy;
+}
+
+/** Load CRM context for Pass 0; never block confirm gate on slow/broken Firestore reads. */
+async function loadPostCallResolveContext(ownerId) {
+  const empty = { ownerId, briefs: [], accounts: [], deals: [] };
+  if (!ownerId) return empty;
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.warn("[postcall] resolve context timed out; continuing without CRM context");
+      resolve(empty);
+    }, RESOLVE_CONTEXT_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([
+      buildPostCallResolveContext(ownerId, postCallResolveOpts()),
+      timeout,
+    ]);
+  } catch (err) {
+    console.warn("[postcall] resolve context failed; continuing without CRM context:", err?.message || err);
+    return empty;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function cleanupPass0Attempt({ hideOverlay = false, reenableForm = false } = {}) {
+  hidePipelineProgress("postcall-progress");
+  activePostcallProgress?.hide();
+  activePostcallProgress = null;
+  if (hideOverlay) void hidePostCallGenOverlay();
+  if (reenableForm) setFormFieldsDisabled($("postcall-form"), false);
 }
 
 async function collectIntakePayload() {
@@ -4616,11 +4651,10 @@ async function startPipeline(e) {
   showPostCallGenOverlay(POSTCALL_STAGE.resolve);
   showInlineStatus(status, { open: false });
 
+  pass0Busy = true;
   try {
     const ownerId = (await postCallOwnerId()) || undefined;
-    const domainContext = ownerId
-      ? await buildPostCallResolveContext(ownerId, postCallResolveOpts())
-      : { briefs: [], accounts: [], deals: [] };
+    const domainContext = ownerId ? await loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] };
     const resolve = await postJson(
       RESOLVE_URL,
       {
@@ -4688,7 +4722,11 @@ async function startPipeline(e) {
     pipelineState.payload = payload;
     showConfirmationGate(pipelineState.resolve, classify);
   } catch (err) {
-    if (err?.name === "AbortError") return;
+    if (err?.name === "AbortError") {
+      cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
+      return;
+    }
+    cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
     const msg = err.message || "Something went wrong.";
     showPostCallInlineProgress("Could not start analysis");
     if (msg === "Failed to fetch" || /^networkerror/i.test(msg) || /load failed/i.test(msg)) {
@@ -4701,8 +4739,8 @@ async function startPipeline(e) {
     } else {
       showInlineStatus(status, { type: "error", message: msg });
     }
-    setFormFieldsDisabled($("postcall-form"), false);
   } finally {
+    pass0Busy = false;
     setButtonLoading(btn, false);
   }
 }

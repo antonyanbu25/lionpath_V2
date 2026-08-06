@@ -76,6 +76,13 @@ function isFirestorePermissionError(err) {
   return code === "permission-denied" || /missing or insufficient permissions/i.test(msg);
 }
 
+/** Account membership — supports seTeamUserIds (Firestore) and seTeam[].seUserId (local). */
+function accountOnSeTeam(account, ownerId) {
+  if (!account || !ownerId) return false;
+  if (Array.isArray(account.seTeamUserIds) && account.seTeamUserIds.includes(ownerId)) return true;
+  return (account.seTeam || []).some((m) => m.seUserId === ownerId);
+}
+
 /**
  * @param {string} ownerId
  * @returns {Promise<{ ownerId: string, briefs: object[], accounts: object[], deals: object[] }>}
@@ -97,13 +104,23 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
     const accountsById = new Map();
 
     if (store.listLifecyclesByOwner) {
-      const lifecycles = await store.listLifecyclesByOwner(ownerId, 300);
+      const lifecycles = await safeStoreOp(
+        "listLifecyclesByOwner",
+        () => store.listLifecyclesByOwner(ownerId, 300),
+        [],
+      );
       for (const lc of lifecycles) {
         if (lc.accountId) accountIds.add(lc.accountId);
       }
       if (store.listPrepBriefsByLifecycle) {
         const prepArrays = await Promise.all(
-          lifecycles.map((lc) => store.listPrepBriefsByLifecycle(lc.id, ownerId)),
+          lifecycles.map((lc) =>
+            safeStoreOp(
+              "listPrepBriefsByLifecycle",
+              () => store.listPrepBriefsByLifecycle(lc.id, ownerId),
+              [],
+            ),
+          ),
         );
         for (const preps of prepArrays) {
           for (const prep of preps) {
@@ -124,9 +141,9 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
 
     // Accounts where this SE is on the deal team — cross-SE visibility on shared accounts.
     if (store.listAccounts) {
-      const allAccounts = await store.listAccounts();
+      const allAccounts = await safeStoreOp("listAccounts", () => store.listAccounts(), []);
       for (const account of allAccounts) {
-        if ((account.seTeam || []).some((m) => m.seUserId === ownerId)) {
+        if (accountOnSeTeam(account, ownerId)) {
           accountIds.add(account.id);
         }
       }
@@ -134,7 +151,9 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
 
     const accountResults = await Promise.all(
       [...accountIds].map(async (accountId) => {
-        const account = store.getAccount ? await store.getAccount(accountId) : null;
+        const account = store.getAccount
+          ? await safeStoreOp("getAccount", () => store.getAccount(accountId), null)
+          : null;
         if (!account) return null;
         return {
           id: account.id,
@@ -173,15 +192,16 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
     contextCache.set(ownerId, { at: Date.now(), value: result });
     return result;
   } catch (err) {
+    contextCache.delete(ownerId);
     if (isFirestorePermissionError(err)) {
-      contextCache.delete(ownerId);
       console.warn(
         "[postcall] Firestore resolve context denied. continuing without domain match:",
         err?.message || err,
       );
-      return empty;
+    } else {
+      console.warn("[postcall] resolve context build failed; continuing without CRM context:", err?.message || err);
     }
-    throw err;
+    return empty;
   }
 }
 
@@ -193,10 +213,8 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
  */
 export async function enrichResolveDealsForAccount(resolve, accountId, opts = {}) {
   if (!resolve || !accountId) return resolve;
-  const dealOpts = {
-    ...(opts.teamId ? { teamId: opts.teamId } : {}),
-    ...(opts.ownerId ? { ownerId: opts.ownerId } : {}),
-  };
+  // Team-scoped only — confirm gate needs every deal on the account, not just ownerId's.
+  const dealOpts = opts.teamId ? { teamId: opts.teamId } : {};
   const globalDeals = await safeStoreOp(
     "listDealsForAccount",
     () => listDealsForAccount(accountId, dealOpts),
