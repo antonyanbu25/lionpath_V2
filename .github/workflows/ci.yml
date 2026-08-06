@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [worker, web]
+        package: [worker, web, rules]
     steps:
       - uses: actions/checkout@v4
 
@@ -25,5 +25,11 @@ jobs:
           cache-dependency-path: ${{ matrix.package }}/package-lock.json
 
       - name: Install and test (${{ matrix.package }})
-        working-directory: ${{ matrix.package }}
-        run: npm ci && npm test
+        working-directory: ${{ matrix.package == 'rules' && '.' || matrix.package }}
+        run: |
+          if [ "${{ matrix.package }}" = "rules" ]; then
+            npm run test:rules
+          else
+            npm ci && npm test
+          fi
+        shell: bash

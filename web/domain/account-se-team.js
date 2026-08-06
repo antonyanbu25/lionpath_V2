@@ -9,7 +9,56 @@ import { isFirebasePermissionError } from "./safe-store.js";
 
 /** @param {import("./types.js").Account|null|undefined} account */
 export function seTeamUserIds(account) {
-  return (account?.seTeam || []).map((m) => m.seUserId);
+  const fromTeam = (account?.seTeam || []).map((m) => m.seUserId);
+  if (fromTeam.length) return fromTeam;
+  return account?.seTeamUserIds || [];
+}
+
+/** @param {import("./types.js").Account|null|undefined} account */
+export function seTeamTeamIds(account) {
+  if (account?.seTeamTeamIds?.length) return account.seTeamTeamIds;
+  return [];
+}
+
+/**
+ * Denormalized scope fields for Firestore rules (cheap membership checks).
+ * @param {import("./types.js").Account} account
+ * @param {Map<string, import("./types.js").User>|null} [usersById]
+ */
+export async function buildAccountScopeDenorm(account, usersById = null) {
+  const store = getStore();
+  const memberIds = (account.seTeam || []).map((m) => m.seUserId);
+  const teamIds = new Set();
+  for (const memberId of memberIds) {
+    const user = usersById?.get(memberId) || (await store.getUser(memberId));
+    if (user?.teamId) teamIds.add(user.teamId);
+  }
+  return {
+    seTeamUserIds: memberIds,
+    seTeamTeamIds: [...teamIds],
+    orgId: account.orgId || null,
+  };
+}
+
+/** Persist denormalized scope onto account after seTeam mutation. */
+export async function syncAccountScopeDenorm(accountId) {
+  const store = getStore();
+  const account = await store.getAccount(accountId);
+  if (!account) return null;
+  const denorm = await buildAccountScopeDenorm(account);
+  return store.updateAccount(accountId, { ...denorm, updatedAt: now() });
+}
+
+/** Copy account scope denorm onto a contact doc. */
+export function contactScopeFromAccount(account, contactPatch = {}) {
+  return {
+    ...contactPatch,
+    orgId: account?.orgId || contactPatch.orgId || null,
+    seTeamUserIds: seTeamUserIds(account),
+    seTeamTeamIds: seTeamTeamIds(account).length
+      ? seTeamTeamIds(account)
+      : contactPatch.seTeamTeamIds || [],
+  };
 }
 
 /** Backfill seTeam from active lifecycles when missing (dev/local migration). */
@@ -51,6 +100,7 @@ export async function backfillAccountSeTeam(accountId, opts = {}) {
 
   const primarySeUserId = seTeam.find((m) => m.role === "primary")?.seUserId || seTeam[0]?.seUserId || null;
   account = await store.updateAccount(accountId, { seTeam, primarySeUserId, updatedAt: ts });
+  await syncAccountScopeDenorm(accountId);
   return account;
 }
 
@@ -72,7 +122,7 @@ export async function ensureSeTeamForPrepActor(accountId, actorId) {
       seTeam,
       primarySeUserId: actorId,
       updatedAt: ts,
-    });
+    }).then(() => syncAccountScopeDenorm(accountId));
   }
 
   if (seTeam.some((m) => m.seUserId === actorId)) {
@@ -84,7 +134,8 @@ export async function ensureSeTeamForPrepActor(accountId, actorId) {
   }
 
   seTeam.push({ seUserId: actorId, role: "secondary", addedAt: ts, addedBy: actorId });
-  return store.updateAccount(accountId, { seTeam, updatedAt: ts });
+  const updated = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
+  return syncAccountScopeDenorm(accountId) || updated;
 }
 
 /** @param {import("./types.js").User|null|undefined} user */

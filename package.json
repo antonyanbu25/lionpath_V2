@@ -8,6 +8,7 @@
     "dev:web": "npm run dev --prefix web",
     "dev:worker": "npm run dev:node --prefix worker",
     "stop:dev": "node -e \"const {execSync}=require('child_process');[8788,8787].forEach(p=>{try{execSync('lsof -ti :'+p+' | xargs kill 2>/dev/null',{stdio:'ignore',shell:true})}catch(e){}}); console.log('Stopped processes on 8787/8788 (if any).');\"",
-    "test:web": "npm test --prefix web"
+    "test:web": "npm test --prefix web",
+    "test:rules": "npm ci --prefix rules-tests && node rules-tests/run-all.mjs"
   }
 }

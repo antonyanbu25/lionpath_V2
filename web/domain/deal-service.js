@@ -175,29 +175,50 @@ function normalizeContactLinks(contacts, primaryContactId = null) {
  * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
  */
 async function linkDealContacts(deal, links) {
-  if (!deal?.id || !links?.length) return deal;
+  if (!deal?.id || !links?.length) return { deal, joinFailures: [] };
   const store = getStore();
-  if (typeof store.createDealContact !== "function") return deal;
+  if (typeof store.createDealContact !== "function") {
+    return { deal, joinFailures: [{ reason: "store_unsupported" }] };
+  }
 
+  const scope = {
+    ownerId: deal.ownerId,
+    teamId: deal.teamId,
+    orgId: deal.orgId,
+  };
+  /** @type {{ contactId: string, reason: string, error?: string }[]} */
+  const joinFailures = [];
   const nominatesPrimary = links.some((l) => l.isPrimary);
   let requestedPrimary = null;
   for (const link of links) {
+    const contact = store.getContact ? await store.getContact(link.contactId).catch(() => null) : null;
+    if (contact?.accountId && contact.accountId !== deal.accountId) {
+      joinFailures.push({
+        contactId: link.contactId,
+        reason: "account_mismatch",
+        error: `contact ${link.contactId} account ${contact.accountId} != deal ${deal.accountId}`,
+      });
+      continue;
+    }
     try {
       const prev = store.findDealContact ? await store.findDealContact(deal.id, link.contactId) : null;
       await store.createDealContact({
         dealId: deal.id,
         contactId: link.contactId,
         accountId: deal.accountId,
+        ...scope,
         role: link.role || prev?.role || "unknown",
         isPrimary: link.isPrimary || (!!prev?.isPrimary && !nominatesPrimary),
       });
       if (link.isPrimary && !requestedPrimary) requestedPrimary = link.contactId;
     } catch (err) {
-      console.warn("[deal-service] deal contact link failed:", err?.message || err);
+      const message = err?.message || String(err);
+      console.error("[deal-service] deal contact link failed:", message);
+      joinFailures.push({ contactId: link.contactId, reason: "write_failed", error: message });
     }
   }
 
-  if (!requestedPrimary) return deal;
+  if (!requestedPrimary) return { deal, joinFailures };
 
   const currentPrimary = deal.primaryContactId || null;
   const primaryContactId = currentPrimary || requestedPrimary;
@@ -208,6 +229,7 @@ async function linkDealContacts(deal, links) {
         dealId: deal.id,
         contactId: requestedPrimary,
         accountId: deal.accountId,
+        ...scope,
         role: links.find((l) => l.contactId === requestedPrimary)?.role || "unknown",
         isPrimary: false,
       });
@@ -219,29 +241,40 @@ async function linkDealContacts(deal, links) {
           dealId: deal.id,
           contactId: currentPrimary,
           accountId: deal.accountId,
+          ...scope,
           role: "unknown",
           isPrimary: true,
         });
       }
     } catch (err) {
-      console.warn("[deal-service] deal contact reconcile failed:", err?.message || err);
+      const message = err?.message || String(err);
+      console.error("[deal-service] deal contact reconcile failed:", message);
+      joinFailures.push({ contactId: requestedPrimary, reason: "reconcile_failed", error: message });
     }
   }
 
   try {
     if (store.setPrimaryDealContact) await store.setPrimaryDealContact(deal.id, primaryContactId);
   } catch (err) {
-    console.warn("[deal-service] set primary deal contact failed:", err?.message || err);
+    const message = err?.message || String(err);
+    console.error("[deal-service] set primary deal contact failed:", message);
+    joinFailures.push({ contactId: primaryContactId, reason: "set_primary_failed", error: message });
   }
 
-  if (primaryContactId === currentPrimary) return deal;
-  try {
-    const updated = await store.updateDeal(deal.id, { primaryContactId });
-    return updated || { ...deal, primaryContactId };
-  } catch (err) {
-    console.warn("[deal-service] primaryContactId backfill failed:", err?.message || err);
-    return { ...deal, primaryContactId };
+  let resultDeal = deal;
+  if (primaryContactId !== currentPrimary) {
+    try {
+      const updated = await store.updateDeal(deal.id, { primaryContactId });
+      resultDeal = updated || { ...deal, primaryContactId };
+    } catch (err) {
+      const message = err?.message || String(err);
+      console.error("[deal-service] primaryContactId backfill failed:", message);
+      joinFailures.push({ contactId: primaryContactId, reason: "pointer_failed", error: message });
+      resultDeal = { ...deal, primaryContactId };
+    }
   }
+
+  return { deal: resultDeal, joinFailures };
 }
 
 /**
@@ -253,10 +286,10 @@ async function linkDealContacts(deal, links) {
  * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
  */
 export async function linkContactsToDealRecord(dealId, opts = {}) {
-  if (!dealId || !opts.contacts?.length) return null;
+  if (!dealId || !opts.contacts?.length) return { deal: null, joinFailures: [] };
   const store = getStore();
   const deal = await store.getDeal(dealId);
-  if (!deal) return null;
+  if (!deal) return { deal: null, joinFailures: [{ reason: "deal_not_found" }] };
   return linkDealContacts(deal, normalizeContactLinks(opts.contacts, opts.primaryContactId));
 }
 
@@ -448,11 +481,16 @@ export async function archiveDeal(dealId, actorId, opts = {}) {
 
   const ts = now();
   const stage = opts.stage || deal.stage;
-  const updated = await store.updateDeal(dealId, {
-    status: "archived",
+  /** @type {Record<string, unknown>} */
+  const patch = {
+    status: opts.status || "archived",
     stage,
     lastActivityAt: ts,
-  });
+  };
+  if (stage === "closed_won" && !deal.wonAt) patch.wonAt = ts;
+  if (stage === "closed_lost" && !deal.lostAt) patch.lostAt = ts;
+
+  const updated = await store.updateDeal(dealId, patch);
   await syncLifecycleFromDeal(updated, { status: "archived" });
 
   const lc = await store.findLifecycleByDealAndOwner(dealId, deal.ownerId);
@@ -676,7 +714,13 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     teamId: user.teamId || session.teamId,
   });
   if (nbDeal) {
-    await archiveDeal(nbDeal.id, actorId, { stage: "closed_won" });
+    const ts = now();
+    await store.updateDeal(nbDeal.id, {
+      status: "closed_won_grace",
+      stage: "closed_won",
+      wonAt: nbDeal.wonAt || ts,
+      lastActivityAt: ts,
+    });
   }
 
   for (const lc of teamLifecycles) {

@@ -27,16 +27,27 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(currentUserId())).data;
     }
 
+    function claimsVersion() {
+      return request.auth.token.claimsVersion;
+    }
+
+    function hasScopeClaims() {
+      return claimsVersion() >= 1
+        && request.auth.token.role is string
+        && request.auth.token.teamId is string
+        && request.auth.token.orgId is string;
+    }
+
     function userRole() {
-      return userDoc().role;
+      return hasScopeClaims() ? request.auth.token.role : userDoc().role;
     }
 
     function userTeamId() {
-      return userDoc().teamId;
+      return hasScopeClaims() ? request.auth.token.teamId : userDoc().teamId;
     }
 
     function userOrgId() {
-      return userDoc().orgId;
+      return hasScopeClaims() ? request.auth.token.orgId : userDoc().orgId;
     }
 
     function isAdmin() {
@@ -119,25 +130,98 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // --- Accounts (shared across SEs) ---
+    function onAccountSeTeam(accountData) {
+      return accountData.keys().hasAny(['seTeamUserIds'])
+        && currentUserId() in accountData.seTeamUserIds;
+    }
+
+    function managerCanReadAccount(accountData) {
+      return isManager()
+        && (
+          (accountData.keys().hasAny(['seTeamTeamIds']) && userTeamId() in accountData.seTeamTeamIds)
+          || (isOrgLeader() && sameOrg(accountData.orgId))
+        );
+    }
+
+    function canReadAccount(accountData) {
+      return isAdmin()
+        || onAccountSeTeam(accountData)
+        || managerCanReadAccount(accountData);
+    }
+
+    function accountProtectedFields() {
+      return ['metadata', 'primarySeUserId', 'programPhase', 'arrActual'];
+    }
+
+    function canMutateAccountProtectedFields(accountData) {
+      return isAdmin()
+        || accountData.primarySeUserId == currentUserId()
+        || managerCanReadAccount(accountData)
+        || (isOrgLeader() && sameOrg(accountData.orgId));
+    }
+
+    function accountUpdateAllowed(accountData) {
+      let diff = request.resource.data.diff(accountData);
+      let protectedChanged = diff.changedKeys().hasAny(accountProtectedFields());
+      return canReadAccount(accountData)
+        && (!protectedChanged || canMutateAccountProtectedFields(accountData));
+    }
+
+    // --- Accounts (shared across SEs on deal team) ---
     match /accounts/{accountId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+      allow read: if isSignedIn() && canReadAccount(resource.data);
+      allow create: if isSignedIn()
+                    && request.resource.data.orgId == userOrgId()
+                    && onAccountSeTeam(request.resource.data);
+      allow update: if isSignedIn() && accountUpdateAllowed(resource.data);
       allow delete: if isAdmin();
+    }
+
+    function canReadContact(contactData) {
+      return isAdmin()
+        || (contactData.keys().hasAny(['seTeamUserIds']) && currentUserId() in contactData.seTeamUserIds)
+        || (isManager() && contactData.keys().hasAny(['seTeamTeamIds']) && userTeamId() in contactData.seTeamTeamIds)
+        || (isOrgLeader() && sameOrg(contactData.orgId));
     }
 
     // --- Contacts ---
     match /contacts/{contactId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow read: if isSignedIn() && canReadContact(resource.data);
+      allow create: if isSignedIn()
+                    && canReadContact(request.resource.data);
+      allow update: if isSignedIn() && canReadContact(resource.data);
       allow delete: if isAdmin();
 
       match /events/{eventId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
+        allow read: if isSignedIn()
+                    && canReadContact(
+                      get(/databases/$(database)/documents/contacts/$(contactId)).data
+                    );
+        allow create: if isSignedIn()
+                      && canReadContact(
+                        get(/databases/$(database)/documents/contacts/$(contactId)).data
+                      );
         allow update, delete: if false;
       }
+    }
+
+    // --- Deal↔Contact join (OpportunityContactRole mirror) ---
+    match /dealContacts/{linkId} {
+      allow read: if canReadTeamResource(
+        resource.data.ownerId, resource.data.teamId, resource.data.orgId
+      );
+      allow create: if canWriteOwnResource(request.resource.data.ownerId)
+                    && request.resource.data.teamId == userTeamId()
+                    && request.resource.data.orgId == userOrgId()
+                    && request.resource.data.dealId is string
+                    && request.resource.data.contactId is string
+                    && request.resource.data.accountId is string;
+      allow update: if canWriteOwnResource(resource.data.ownerId)
+                    && (
+                      !request.resource.data.keys().hasAny(['createdAt'])
+                      || request.resource.data.createdAt == resource.data.createdAt
+                    );
+      allow delete: if canWriteOwnResource(resource.data.ownerId) || isAdmin();
     }
 
     // --- Deals (opportunities on account) ---
@@ -206,7 +290,7 @@ service cloud.firestore {
                     && request.resource.data.teamId == userTeamId()
                     && request.resource.data.orgId == userOrgId();
       allow update: if canWriteOwnResource(resource.data.ownerId);
-      allow delete: if canAdmin() || canWriteOwnResource(resource.data.ownerId);
+      allow delete: if isAdmin() || canWriteOwnResource(resource.data.ownerId);
     }
 
     // --- QIP rubrics (org-wide reference) ---
@@ -433,10 +517,6 @@ service cloud.firestore {
       allow read: if canReadProductSignal(resource.data.orgId);
       allow create, update: if canReadProductSignal(request.resource.data.orgId);
       allow delete: if isAdmin();
-    }
-
-    function canAdmin() {
-      return isAdmin();
     }
 
     // --- Legacy collections (read-only during migration) ---

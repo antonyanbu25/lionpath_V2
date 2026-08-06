@@ -11,19 +11,19 @@ import { isFreeMailDomain } from "./constants.js";
  * @typedef {{ seUserId: string, role: SeTeamRole, addedAt: number, addedBy?: string }} AccountSeTeamMember
  * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, programPhase?: "new_business"|"live"|"expansion", metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, embedding?: number[]|null, embeddingModel?: string|null, createdAt: number, updatedAt: number }} Account
  * @typedef {"new_business"|"expansion"} DealType
- * @typedef {"active"|"paused"|"archived"} DealStatus
+ * @typedef {"active"|"paused"|"archived"|"closed_won_grace"} DealStatus
  * @typedef {{ value?: string, status?: "unknown"|"partial"|"confirmed", source?: string, updatedAt?: number, contactId?: string }} MeddpiccFieldSlot
  * @typedef {{ metrics?: MeddpiccFieldSlot, economicBuyer?: MeddpiccFieldSlot, decisionCriteria?: MeddpiccFieldSlot, decisionProcess?: MeddpiccFieldSlot, paperProcess?: MeddpiccFieldSlot, identifyPain?: MeddpiccFieldSlot, champion?: MeddpiccFieldSlot, competition?: MeddpiccFieldSlot, lastUpdatedAt?: number, completionScore?: number }} MeddpiccRollup
  * Deal.latestQualityScore is deprecated — QIP belongs on the call, not the deal (POST_CALL_SPEC_V2 §2.1). Field retained until migration.
  * @typedef {{ name?: string, email?: string }} DealAe   Account Executive on the deal (name and/or email).
- * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup, ae?: DealAe }, embedding?: number[]|null, embeddingModel?: string|null, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
+ * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, wonAt?: number|null, lostAt?: number|null, wonAtInferred?: boolean, lastActorId?: string|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup, ae?: DealAe }, embedding?: number[]|null, embeddingModel?: string|null, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
  * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
  * Deal↔Contact is many-to-many, mirroring Salesforce's OpportunityContactRole: an account's
  * contacts are not automatically on every one of its deals, and a contact carries a different
  * role on each deal they touch. `Deal.primaryContactId` is retained as the denormalised pointer
  * to the row with isPrimary — the join row is authoritative, the field is the fast read.
  * @typedef {"economic_buyer"|"champion"|"evaluator"|"influencer"|"technical_buyer"|"end_user"|"unknown"} DealContactRole
- * @typedef {{ id: string, dealId: string, contactId: string, accountId: string, role: DealContactRole, isPrimary: boolean, createdAt: number, updatedAt: number }} DealContact
+ * @typedef {{ id: string, dealId: string, contactId: string, accountId: string, ownerId: string, teamId: string, orgId: string, role: DealContactRole, isPrimary: boolean, createdAt: number, updatedAt: number }} DealContact
  * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
  * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
@@ -190,12 +190,14 @@ export function can(user, action, resource = {}) {
       if (isManager && isOrgDirector && (sameOrg || accountSameOrg)) return true;
       if (isManager && sameTeam) return true;
       return false;
-    case "read_account":
+    case "read_account": {
       if (onSeTeam) return true;
       if (isOwner) return true;
       if (isManager && isOrgDirector && accountSameOrg) return true;
-      if (isManager && seTeamIds.length) return true;
+      const seTeamTeamIds = resource.seTeamTeamIds || [];
+      if (isManager && user.teamId && seTeamTeamIds.includes(user.teamId)) return true;
       return false;
+    }
     case "manage_account_team":
       if (isManager && isOrgDirector && accountSameOrg) return true;
       if (isManager && user.teamId && seTeamIds.length) return true;

@@ -43,6 +43,7 @@ import {
   embedAndPersistDeal,
 } from "./embed-service.js";
 import { scheduleReadModelRebuildFromPostCall } from "./read-models-service.js";
+import { resolveWriteScope } from "./write-scope.js";
 import { getWorkerAuthHeaders } from "../postcall.js";
 
 /**
@@ -112,7 +113,14 @@ async function linkContactsToDeal(dealId, accountId, contactIds, primaryContactI
     role: contactsById.get(contactId)?.metadata?.influence?.decisionRole,
   }));
 
-  await linkContactsToDealRecord(dealId, { contacts, primaryContactId });
+  const { deal: _deal, joinFailures } = await linkContactsToDealRecord(dealId, {
+    contacts,
+    primaryContactId,
+  });
+  if (joinFailures?.length) {
+    console.error("[dual-write] deal contact join degraded:", JSON.stringify(joinFailures));
+  }
+  return joinFailures?.length ? { degraded: true, joinFailures } : null;
 }
 
 /**
@@ -123,8 +131,13 @@ async function linkContactsToDeal(dealId, accountId, contactIds, primaryContactI
  * @param {object} meta { company, domain, additionalContext }
  */
 export async function linkPrepToLifecycle(session, payload, prep, meta) {
-  const ownerId = effectiveSessionUserId(session) || sessionUserId(session);
-  if (!ownerId || !session?.teamId) return null;
+  const scope = await resolveWriteScope(session);
+  if (!scope?.ownerId || scope.reason === "proxy_descoped") return null;
+  const { ownerId, teamId, orgId, degraded, reason } = scope;
+  if (!teamId) {
+    console.error("[dual-write] prep skipped: missing teamId", { ownerId, degraded, reason });
+    return null;
+  }
 
   const {
     accountId,
@@ -149,11 +162,11 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
 
   await ensureSeTeamForPrepActor(accountId, ownerId);
 
-  const lifecycle = await getOrCreateLifecycle(ownerId, accountId, session.teamId, {
+  const lifecycle = await getOrCreateLifecycle(ownerId, accountId, teamId, {
     title: account?.name || meta?.company || payload.companyName,
     primaryContactId,
     actorId: ownerId,
-    orgId: session.orgId || account?.orgId || null,
+    orgId: orgId || account?.orgId || null,
     prepType: payload.prepType || "new_business",
     dealId: payload.dealId || meta?.dealId || null,
     // Set only by the "+ New deal" choice in the pre-call CRM panel. Strict === true so a
@@ -170,8 +183,8 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
       lifecycleId: lifecycle.id,
       dealId: lifecycle.dealId || null,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || lifecycle.orgId || null,
+      teamId,
+      orgId: orgId || lifecycle.orgId || null,
       accountId,
       input: payload,
       prep,
@@ -223,18 +236,12 @@ export async function linkPrepToLifecycle(session, payload, prep, meta) {
  * @param {object} record history record from savePostCallHistory
  */
 export async function linkPostCallToLifecycle(session, payload, data, record) {
-  const { resolveEffectiveOwnerId } = await import("./seed-dev.js");
-  const ownerId =
-    (await resolveEffectiveOwnerId(session)) ||
-    effectiveSessionUserId(session) ||
-    sessionUserId(session);
+  const scope = await resolveWriteScope(session);
+  if (!scope?.ownerId || scope.reason === "proxy_descoped") return null;
+  const { ownerId, teamId, orgId, degraded, reason } = scope;
 
-  const store = getStore();
-  const userDoc = store.getUser ? await store.getUser(ownerId).catch(() => null) : null;
-  const teamId = userDoc?.teamId || session?.teamId || null;
-  const orgId = userDoc?.orgId || session?.orgId || null;
-
-  if (!ownerId || !teamId) {
+  if (!teamId) {
+    console.error("[dual-write] post-call skipped: missing teamId", { ownerId, degraded, reason });
     return null;
   }
   if (!orgId) {
@@ -591,12 +598,8 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
       });
       setDetailArray(detail, "productGaps", pass6Built.productGaps);
       setDetailArray(detail, "whatWorks", pass6Built.whatWorks);
-      for (const doc of pass6Built.flatProductGaps) {
-        await store.upsertProductGap(doc);
-      }
-      for (const doc of pass6Built.flatWhatWorks) {
-        await store.upsertWhatWorks(doc);
-      }
+      await Promise.all(pass6Built.flatProductGaps.map((doc) => store.upsertProductGap(doc)));
+      await Promise.all(pass6Built.flatWhatWorks.map((doc) => store.upsertWhatWorks(doc)));
       if (pass6Built.flatProductGaps.length && persistCtx.orgId) {
         await notifyGapClusteringPending(store, persistCtx.orgId, pass6Built.flatProductGaps.length);
       }
@@ -725,9 +728,15 @@ async function stampCallIdentities({ account, lifecycle, postCall, confirmedIden
   const emails = (participantEmails || [])
     .map((e) => String(e || "").trim().toLowerCase())
     .filter((e) => e.includes("@"));
+  const accountContacts = store.listContactsByAccount
+    ? await store.listContactsByAccount(account.id)
+    : [];
+  const byEmail = new Map(
+    accountContacts.map((c) => [String(c.email || "").trim().toLowerCase(), c]),
+  );
   const contactIds = [];
   for (const email of emails) {
-    const c = store.findContactByAccountEmail ? await store.findContactByAccountEmail(account.id, email) : null;
+    const c = byEmail.get(email);
     if (c?.id) contactIds.push(c.id);
   }
 
@@ -755,8 +764,9 @@ async function stampCallIdentities({ account, lifecycle, postCall, confirmedIden
  * Link imported task to lifecycle when company/context known.
  */
 export async function linkTaskToLifecycle(session, task, lifecycleId) {
-  const ownerId = sessionUserId(session);
-  if (!ownerId || !session?.teamId || !lifecycleId) return null;
+  const scope = await resolveWriteScope(session);
+  if (!scope?.ownerId || !scope.teamId || !lifecycleId) return null;
+  const { ownerId, teamId, orgId } = scope;
 
   return attachTask(
     lifecycleId,
@@ -765,8 +775,8 @@ export async function linkTaskToLifecycle(session, task, lifecycleId) {
       id: task.id || newId("task"),
       lifecycleId,
       ownerId,
-      teamId: session.teamId,
-      orgId: session.orgId || null,
+      teamId,
+      orgId: orgId || null,
       accountId: task.accountId,
       createdAt: task.createdAt || now(),
     },
