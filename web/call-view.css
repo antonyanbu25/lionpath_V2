@@ -3453,31 +3453,84 @@
 
 .call-spine .mkl {
   position: absolute;
-  top: 44px;
-  font-size: 10px;
-  color: var(--dew-text-muted);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--dew-text);
   transform: translateX(-50%);
   white-space: nowrap;
-  max-width: 88px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
+  pointer-events: auto;
+}
+
+.call-spine .mkl--row-0 {
+  top: 44px;
+}
+
+.call-spine .mkl--row-1 {
+  top: 59px;
+}
+
+.call-spine .mkl--row-2 {
+  top: 74px;
+}
+
+.call-spine .mkl-more {
+  margin-left: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.88;
 }
 
 .call-spine .mkl--gap {
-  color: #d6455d;
+  color: #c42d44;
 }
 
 .call-spine .mkl--objection {
-  color: #b7791f;
+  color: #9a6410;
 }
 
 .call-spine .mkl--win {
-  color: #127a56;
+  color: #0f6b4a;
 }
 
 .call-spine .mkl--weak_cta {
-  color: #a4262c;
+  color: #922028;
+}
+
+.call-spine-marker-overflow {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--dew-border, #e3e8ef);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.call-spine-marker-overflow-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  max-width: 100%;
+}
+
+.call-spine-marker-overflow-time {
+  flex-shrink: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--dew-text-muted);
+}
+
+.call-spine-marker-overflow-label {
+  color: var(--dew-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .call-spine-marker-legend {
@@ -3497,7 +3550,7 @@
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 10.5px;
   color: var(--dew-text-muted);
-  margin-top: 24px;
+  margin-top: 10px;
   border-top: 1px solid var(--dew-border);
   padding-top: 9px;
 }

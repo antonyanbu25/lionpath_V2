@@ -998,6 +998,124 @@ const SPINE_TRACK_STYLE =
 const SPINE_SEG_STYLE =
   "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
 
+const SPINE_LABEL_CLUSTER_PCT = 3.5;
+const SPINE_LABEL_MAX_ROWS = 3;
+const SPINE_LABEL_ROW_PX = 15;
+const SPINE_LABEL_BAR_PX = 640;
+
+/** Rough half-width of a spine marker label as % of the bar (for collision checks). */
+function estimateLabelHalfWidthPct(text) {
+  const t = String(text || "");
+  const px = Math.min(Math.max(t.length * 6.2 + 12, 28), 150) / 2;
+  return (px / SPINE_LABEL_BAR_PX) * 100;
+}
+
+function spineLabelFitsRow(rowSlots, row, centerPct, halfWidthPct) {
+  const left = centerPct - halfWidthPct;
+  const right = centerPct + halfWidthPct;
+  const slots = rowSlots[row] || [];
+  return !slots.some(([a, b]) => right > a && left < b);
+}
+
+function occupySpineLabelRow(rowSlots, row, centerPct, halfWidthPct) {
+  if (!rowSlots[row]) rowSlots[row] = [];
+  rowSlots[row].push([centerPct - halfWidthPct, centerPct + halfWidthPct]);
+}
+
+function clusterSpineMarkers(markers, totalSec) {
+  const sorted = (markers || [])
+    .map((m, i) => ({ m, i, at: Number(m.atS) }))
+    .filter((x) => Number.isFinite(x.at))
+    .sort((a, b) => a.at - b.at || a.i - b.i);
+
+  const clusters = [];
+  for (const item of sorted) {
+    const pct = (item.at / totalSec) * 100;
+    const last = clusters.at(-1);
+    if (last && pct - last.endPct <= SPINE_LABEL_CLUSTER_PCT) {
+      last.items.push(item);
+      last.endPct = pct;
+      last.centerPct = (last.startPct + pct) / 2;
+    } else {
+      clusters.push({ items: [item], startPct: pct, endPct: pct, centerPct: pct });
+    }
+  }
+  return clusters;
+}
+
+/**
+ * Place marker labels on staggered rows; cluster dense ticks; hide overflow with tooltip fallback.
+ * @returns {{ placements: Array, hidden: Array, labelRows: number }}
+ */
+export function layoutSpineMarkerLabels(markers, totalSec) {
+  const clusters = clusterSpineMarkers(markers, totalSec);
+  const rowSlots = [];
+  const placements = [];
+  const hidden = [];
+  let maxRow = 0;
+
+  for (const cluster of clusters) {
+    const count = cluster.items.length;
+    const rep = cluster.items[0];
+    const label = markerDisplayLabel(rep.m);
+    const clusterExtra = count > 1 ? count - 1 : 0;
+    const layoutText = clusterExtra ? `${label} +${clusterExtra} more` : label;
+    const halfW = estimateLabelHalfWidthPct(layoutText);
+
+    let row = 0;
+    for (; row < SPINE_LABEL_MAX_ROWS; row++) {
+      if (spineLabelFitsRow(rowSlots, row, cluster.centerPct, halfW)) break;
+    }
+    const showLabel = row < SPINE_LABEL_MAX_ROWS;
+    if (showLabel) {
+      occupySpineLabelRow(rowSlots, row, cluster.centerPct, halfW);
+      maxRow = Math.max(maxRow, row + 1);
+    } else {
+      hidden.push(...cluster.items.map((x) => x.m));
+    }
+
+    const clusterTip = cluster.items
+      .map((x) => `${formatSegmentTime(x.at)} · ${markerDisplayLabel(x.m)}`)
+      .join("\n");
+
+    for (const item of cluster.items) {
+      placements.push({
+        marker: item.m,
+        tickLeftPct: (item.at / totalSec) * 100,
+        tip: clusterTip,
+        label:
+          item === rep && showLabel
+            ? { leftPct: cluster.centerPct, row, text: label, clusterExtra, tip: clusterTip }
+            : null,
+      });
+    }
+  }
+
+  return { placements, hidden, labelRows: maxRow, clusters };
+}
+
+function renderSpineMarkerOverflow(markers, totalSec) {
+  if (!markers.length) return "";
+  const items = markers
+    .slice()
+    .sort((a, b) => (a.atS || 0) - (b.atS || 0))
+    .map((m) => {
+      const kind = m.kind || "gap";
+      const label = markerDisplayLabel(m);
+      return `<li class="call-spine-marker-overflow-item call-spine-marker-overflow-item--${esc(kind)}">
+        <span class="call-spine-marker-overflow-time num">${esc(formatSegmentTime(m.atS))}</span>
+        <span class="pill pill--${esc(kind)}">${esc(MARKER_LABELS[kind] || kind)}</span>
+        <span class="call-spine-marker-overflow-label">${esc(label)}</span>
+      </li>`;
+    })
+    .join("");
+  return `<ul class="call-spine-marker-overflow" aria-label="Additional timeline events">${items}</ul>`;
+}
+
+function spineMarkerTip(marker, atS) {
+  return `${formatSegmentTime(atS)} · ${markerDisplayLabel(marker)}`;
+}
+
 /** Prefer segment coverage when stored duration is missing or wildly off (unit mismatch). */
 function resolveSpineDuration(durationSec, segments) {
   const segmentEnd = Math.max(
@@ -1012,8 +1130,12 @@ function resolveSpineDuration(durationSec, segments) {
 
 function renderVisualSpine(segments, markers, durationSec) {
   const total = resolveSpineDuration(durationSec, segments);
+  const { placements, hidden, labelRows, clusters } = layoutSpineMarkerLabels(markers, total);
+  const labelPad = labelRows * SPINE_LABEL_ROW_PX;
+  const spineStyle = `${SPINE_TRACK_STYLE}${labelPad ? `padding-bottom:${labelPad}px;` : ""}`;
+
   let html = '<div class="call-spine-wrap">';
-  html += `<div class="call-spine spine" style="${SPINE_TRACK_STYLE}" role="img" aria-label="Call scene timeline">`;
+  html += `<div class="call-spine spine" style="${spineStyle}" role="img" aria-label="Call scene timeline">`;
   segments.forEach((seg, i) => {
     const start = Number(seg.startS) || 0;
     const end = Number(seg.endS) || start;
@@ -1026,17 +1148,31 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
-  for (const m of markers || []) {
-    const at = Number(m.atS);
-    if (!Number.isFinite(at)) continue;
-    const left = (at / total) * 100;
+  for (const p of placements) {
+    const m = p.marker;
     const kind = m.kind || "gap";
-    const label = markerDisplayLabel(m);
-    const tip = `${formatSegmentTime(at)} · ${label}`;
-    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}"></div>`;
-    html += `<div class="mkl mkl--${esc(kind)}" style="left:${left}%" title="${esc(tip)}">${esc(label)}</div>`;
+    const at = Number(m.atS);
+    const tip = p.tip || spineMarkerTip(m, at);
+    html += `<div class="mk mk--${esc(kind)}" style="left:${p.tickLeftPct}%" title="${esc(tip)}"></div>`;
+    if (p.label) {
+      const rowCls = `mkl--row-${p.label.row}`;
+      const clusterBadge = p.label.clusterExtra
+        ? `<span class="mkl-more">+${p.label.clusterExtra} more</span>`
+        : "";
+      html += `<div class="mkl mkl--${esc(kind)} ${rowCls}" style="left:${p.label.leftPct}%" title="${esc(p.label.tip || tip)}">${esc(p.label.text)}${clusterBadge}</div>`;
+    }
   }
-  html += "</div></div>";
+  html += "</div>";
+  const clusterOverflow = (clusters || [])
+    .filter((c) => c.items.length > 1)
+    .flatMap((c) => c.items.map((x) => x.m));
+  const overflowByKey = new Map();
+  for (const m of [...hidden, ...clusterOverflow]) {
+    overflowByKey.set(`${m.atS}:${m.kind}:${markerDisplayLabel(m)}`, m);
+  }
+  const overflowMarkers = [...overflowByKey.values()];
+  if (overflowMarkers.length) html += renderSpineMarkerOverflow(overflowMarkers, total);
+  html += "</div>";
   return html;
 }
 

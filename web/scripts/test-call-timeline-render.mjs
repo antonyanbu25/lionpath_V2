@@ -1,7 +1,12 @@
 /** Timeline card — wireframe spine, inline markers, five-metric row. */
 import assert from "node:assert/strict";
 
-import { renderTimelineSection, resolveObjectionQa, renderObjectionQaRow } from "../call-view.js";
+import {
+  renderTimelineSection,
+  resolveObjectionQa,
+  renderObjectionQaRow,
+  layoutSpineMarkerLabels,
+} from "../call-view.js";
 
 const videoSegments = [
   { source: "video", startS: 0, endS: 300, segmentType: "slides", label: "Intro deck" },
@@ -168,6 +173,58 @@ function testSpineSurvivesBadDuration() {
   assert.ok(widths.some((w) => w > 10), "segments stay visible when duration metadata is wrong");
 }
 
+function testMarkerLabelsStaggerRows() {
+  const dense = [
+    { atS: 100, kind: "gap", label: "font_gap" },
+    { atS: 130, kind: "gap", label: "ai_customer_f" },
+    { atS: 160, kind: "objection", label: "reporting_ana" },
+    { atS: 400, kind: "win", label: "what worked" },
+  ];
+  const { placements, hidden } = layoutSpineMarkerLabels(dense, 900);
+  const labeled = placements.filter((p) => p.label);
+  assert.ok(labeled.length >= 2, "some labels remain visible");
+  const rows = new Set(labeled.map((p) => p.label.row));
+  assert.ok(rows.size >= 2 || labeled.some((p) => p.label.clusterExtra), "labels stagger or cluster");
+  assert.equal(hidden.length, 0, "moderate density should not overflow");
+}
+
+function testClusterBadgeForDenseEnd() {
+  const clustered = [
+    { atS: 850, kind: "gap", label: "font_gap" },
+    { atS: 860, kind: "gap", label: "knowledge_gap" },
+    { atS: 870, kind: "objection", label: "pricing_push" },
+    { atS: 880, kind: "win", label: "demo_win" },
+  ];
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: clustered,
+    facts: { durationSec: 900 },
+  });
+  assert.match(html, /mkl-more/);
+  assert.match(html, /\+3 more/);
+  assert.match(html, /font_gap/);
+}
+
+function testOverflowListWhenLabelsHidden() {
+  const many = Array.from({ length: 14 }, (_, i) => ({
+    atS: 820 + i * 2,
+    kind: i % 2 ? "gap" : "objection",
+    label: `event_${i}`,
+  }));
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: many,
+    facts: { durationSec: 900 },
+  });
+  assert.match(html, /call-spine-marker-overflow/);
+  assert.match(html, /event_13/);
+}
+
+function testMarkerLabelRowClasses() {
+  const html = renderTimelineSection(true, { segments: videoSegments, markers, facts: { durationSec: 900 } });
+  assert.match(html, /mkl--row-/);
+}
+
 testVideoSpineWireframe();
 testTranscriptSpine();
 testInlineMarkersOnBar();
@@ -179,4 +236,8 @@ testObjectionQaFormat();
 testEscaping();
 testSpineHasInlineLayout();
 testSpineSurvivesBadDuration();
+testMarkerLabelsStaggerRows();
+testClusterBadgeForDenseEnd();
+testOverflowListWhenLabelsHidden();
+testMarkerLabelRowClasses();
 console.log("test-call-timeline-render: ok");
