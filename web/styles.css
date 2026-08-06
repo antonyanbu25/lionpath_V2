@@ -915,20 +915,16 @@ fw-button.nav-item.active .nav-icon-text {
   background: color-mix(in srgb, var(--dew-brand) 16%, var(--dew-surface-subtle));
 }
 
-/* Sidebar idle — one icon nudges every ~520ms after 1 min without input */
-.sidebar-idle-active .nav-item.sidebar-idle-nudge .nav-icon svg {
-  animation: sidebar-idle-nudge 2.1s ease-in-out;
-}
-
-@keyframes sidebar-idle-nudge {
-  0%, 100% { transform: translateY(0); opacity: 1; }
-  35% { transform: translateY(-2px); opacity: 0.92; }
-  70% { transform: translateY(0); opacity: 1; }
+/* Sidebar idle — nudge driven by sidebar-idle.js (WAAPI); class marks active cycle */
+.sidebar-idle-active fw-button.nav-item .nav-icon svg,
+.sidebar-idle-active .nav-item .nav-icon svg {
+  will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-idle-active .nav-item.sidebar-idle-nudge .nav-icon svg {
-    animation: none !important;
+  .sidebar-idle-active fw-button.nav-item .nav-icon svg,
+  .sidebar-idle-active .nav-item .nav-icon svg {
+    will-change: auto;
   }
 }
 

@@ -67,7 +67,8 @@ Subtle, professional motion across the portal — all respect `prefers-reduced-m
 
 | Area | Behavior |
 |------|----------|
-| **Favicon (inactive tab)** | Page Visibility API: logo bounces ±2.5px and cycles a soft teal/blue/green/amber glow while the user is in another tab; static favicon when the tab is active |
+| **Favicon (active tab)** | Logo bounces ±2.5px on a ~2.4s loop — no glow while this tab is focused |
+| **Favicon (inactive tab)** | Same bounce plus a soft teal/blue/green/amber glow cycle via Page Visibility API |
 | **Call record KPIs** | QIP score and MEDDPICC numbers count up with a brief typewriter scramble; meter bar fills from zero |
 | **Evaluation signal** | Pentagon radar entrance animation (same family as post-call QIP) |
 | **Cam on/off pills** | Gentle opacity/translate pulse on stakeholder camera badges |
