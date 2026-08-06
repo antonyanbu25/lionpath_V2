@@ -207,6 +207,9 @@ let pipelineSortKey = "agents";
 
 /** Selected call when viewing call record (#calls/:id) */
 let selectedCallId = null;
+/** Coalesce rapid post-call hydration updates into one panel refresh. */
+let callRecordRefreshTimer = null;
+let callRecordRefreshTargetId = null;
 /** Selected brief when viewing from all-briefs list (#precall/briefs/:id) */
 let selectedPrepBriefId = null;
 /** True when pre-call shows all-briefs list (#precall/briefs) */
@@ -1205,6 +1208,24 @@ function backToBriefsList() {
   selectedPrepBriefId = null;
   precallBriefListMode = true;
   switchView("precall", { briefList: true, drillDown: true });
+}
+
+function scheduleCallRecordPanelRefresh(id, { immediate = false } = {}) {
+  if (selectedCallId !== id || currentView !== "calls") return;
+  callRecordRefreshTargetId = id;
+  window.clearTimeout(callRecordRefreshTimer);
+  if (immediate) {
+    callRecordRefreshTargetId = null;
+    void renderCallPanel();
+    return;
+  }
+  callRecordRefreshTimer = window.setTimeout(() => {
+    callRecordRefreshTimer = null;
+    if (callRecordRefreshTargetId === id) {
+      callRecordRefreshTargetId = null;
+      void renderCallPanel();
+    }
+  }, 650);
 }
 
 async function renderCallPanel() {
@@ -2436,15 +2457,13 @@ async function boot() {
   initPostcall();
   setOnCallRecordReady((id) => openCallRecord(id));
   setOnCallRecordHydrated((id) => {
-    if (selectedCallId === id && currentView === "calls") {
-      void renderCallPanel();
-    }
+    scheduleCallRecordPanelRefresh(id, { immediate: true });
   });
   window.addEventListener("lionpath:call-record-updated", (ev) => {
     const id = ev.detail?.id;
-    if (selectedCallId === id && currentView === "calls") {
-      void renderCallPanel();
-    }
+    const sections = ev.detail?.sections || [];
+    const finalSections = sections.some((s) => s === "timeline" || s === "gaps");
+    scheduleCallRecordPanelRefresh(id, { immediate: finalSections });
   });
   window.addEventListener("lionpath:call-record-progress", (ev) => {
     const id = ev.detail?.id;

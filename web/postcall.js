@@ -541,7 +541,33 @@ function scheduleCompanyPrefill() {
 
 function scheduleCrmMatches() {
   window.clearTimeout(crmMatchesTimer);
-  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 350);
+  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 120);
+}
+
+/** Cancel debounced CRM preview and run immediately (e.g. on Start analysis). */
+async function flushCrmMatchesPanel() {
+  window.clearTimeout(crmMatchesTimer);
+  crmMatchesTimer = null;
+  await renderCrmMatchesPanel();
+}
+
+/** Resolve account name for submit — preview tile, flushed CRM lookup, or email domain. */
+async function resolveIntakeCompanyName(prospectEmails) {
+  let name = (await readAccountNameValue()) || "";
+  if (name) return name;
+  if (!prospectEmails.length) return "";
+  await flushCrmMatchesPanel();
+  name = (await readAccountNameValue()) || "";
+  if (name) return name;
+  const derived =
+    titleCaseDisplayName(companyNameFromEmail(prospectEmails[0])) ||
+    companyNameFromEmail(prospectEmails[0]) ||
+    "";
+  if (derived) {
+    writeAccountName(derived, { titleCaseOnWrite: true });
+    return derived;
+  }
+  return "";
 }
 
 /** Show the per-email CRM panel only when tiles alone are not enough to act. */
@@ -4524,10 +4550,10 @@ async function collectIntakePayload() {
     await readFieldValueAsync(recordingField),
     await readFieldValueAsync($("pc-recording-pwd")),
   );
-  const companyName = await readAccountNameValue();
   const prospectEmailsRaw = (await readFieldValueAsync(emailsField))?.trim() || "";
   const allProspectEmails = parseProspectEmails(prospectEmailsRaw);
   const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
+  let companyName = await resolveIntakeCompanyName(prospectEmails);
   const transcript = (await readFieldValueAsync($("pc-transcript")))?.trim() || "";
   const deckLink = (await readFieldValueAsync($("pc-deck-link")))?.trim() || undefined;
   const additionalContextRaw =
@@ -4632,19 +4658,11 @@ function ensureIntakePayloadSynced(payload) {
 
 async function startPipeline(e) {
   e?.preventDefault?.();
-  if (linkedinParsing || contextParsing) return;
+  if (linkedinParsing || contextParsing || pass0Busy || generating) return;
   const btn = $("analyze-call");
   const status = $("postcall-status");
 
-  const collected = await collectIntakePayload();
-  if (collected.error) {
-    showInlineStatus(status, { type: "error", message: collected.error });
-    return;
-  }
-  const { payload } = collected;
-  pipelineState = { payload, resolve: null, classify: null, generated: false, recordId: null };
-  const { signal, gen } = beginPostcallPipeline();
-
+  pass0Busy = true;
   setButtonLoading(btn, true);
   setFormFieldsDisabled($("postcall-form"), true);
   show($("postcall-result"), false);
@@ -4656,7 +4674,18 @@ async function startPipeline(e) {
   showPostCallGenOverlay(POSTCALL_STAGE.resolve);
   showInlineStatus(status, { open: false });
 
-  pass0Busy = true;
+  const collected = await collectIntakePayload();
+  if (collected.error) {
+    cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
+    pass0Busy = false;
+    setButtonLoading(btn, false);
+    showInlineStatus(status, { type: "error", message: collected.error });
+    return;
+  }
+  const { payload } = collected;
+  pipelineState = { payload, resolve: null, classify: null, generated: false, recordId: null };
+  const { signal, gen } = beginPostcallPipeline();
+
   try {
     const ownerId = (await postCallOwnerId()) || undefined;
     const domainContext = ownerId ? await loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] };

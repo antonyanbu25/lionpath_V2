@@ -1,7 +1,12 @@
 /** Timeline card — wireframe spine, inline markers, five-metric row. */
 import assert from "node:assert/strict";
 
-import { renderTimelineSection, resolveObjectionQa, renderObjectionQaRow } from "../call-view.js";
+import {
+  renderTimelineSection,
+  resolveObjectionQa,
+  renderObjectionQaRow,
+  layoutSpineMarkerLabels,
+} from "../call-view.js";
 
 const videoSegments = [
   { source: "video", startS: 0, endS: 300, segmentType: "slides", label: "Intro deck" },
@@ -170,6 +175,30 @@ function testSpineSurvivesBadDuration() {
   assert.ok(widths.some((w) => w > 10), "segments stay visible when duration metadata is wrong");
 }
 
+function testLongCallSkipsOverlappingLabels() {
+  const longCallMarkers = Array.from({ length: 12 }, (_, i) => ({
+    atS: 120 + i * 180,
+    kind: i % 3 === 0 ? "gap" : i % 3 === 1 ? "objection" : "win",
+    label: `event_label_${i}`,
+  }));
+  const { placements, visibleLabels, total } = layoutSpineMarkerLabels(longCallMarkers, 3824);
+  assert.equal(total, 12);
+  assert.ok(visibleLabels < total, "dense long call hides some inline labels");
+  assert.ok(visibleLabels >= 3, "some labels remain visible");
+  const html = renderTimelineSection(true, {
+    segments: videoSegments,
+    markers: longCallMarkers,
+    facts: { durationSec: 3824 },
+  });
+  assert.doesNotMatch(html, /mkl-more/);
+  assert.doesNotMatch(html, /call-spine-marker-overflow/);
+}
+
+function testShortCallKeepsLabels() {
+  const { visibleLabels, total } = layoutSpineMarkerLabels(markers, 900);
+  assert.equal(visibleLabels, total);
+}
+
 testVideoSpineWireframe();
 testTranscriptSpine();
 testInlineMarkersOnBar();
@@ -181,4 +210,6 @@ testObjectionQaFormat();
 testEscaping();
 testSpineHasInlineLayout();
 testSpineSurvivesBadDuration();
+testLongCallSkipsOverlappingLabels();
+testShortCallKeepsLabels();
 console.log("test-call-timeline-render: ok");

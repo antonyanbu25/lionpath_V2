@@ -998,6 +998,52 @@ const SPINE_TRACK_STYLE =
 const SPINE_SEG_STYLE =
   "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
 
+const SPINE_LABEL_BAR_PX = 640;
+
+function estimateLabelHalfWidthPct(text, totalSec) {
+  const durationScale = totalSec >= 5400 ? 0.72 : totalSec >= 3600 ? 0.82 : totalSec >= 2700 ? 0.9 : 1;
+  const t = String(text || "");
+  const px = (Math.min(Math.max(t.length * 5.6 + 10, 22), 110) / 2) * durationScale;
+  return (px / SPINE_LABEL_BAR_PX) * 100;
+}
+
+function spineMarkerShortLabel(marker, totalSec) {
+  const raw = markerDisplayLabel(marker);
+  const maxLen = totalSec >= 5400 ? 9 : totalSec >= 3600 ? 12 : totalSec >= 2700 ? 14 : 18;
+  if (raw.length <= maxLen) return raw;
+  return `${raw.slice(0, maxLen - 1)}…`;
+}
+
+/** Single-row labels; skip ticks that would overlap — full text stays on hover. */
+export function layoutSpineMarkerLabels(markers, totalSec) {
+  const sorted = (markers || [])
+    .map((m, i) => ({ m, i, at: Number(m.atS) }))
+    .filter((x) => Number.isFinite(x.at))
+    .sort((a, b) => a.at - b.at || a.i - b.i);
+
+  const minGap = sorted.length > 10 ? 4.2 : sorted.length > 6 ? 3.4 : 2.6;
+  let occupiedRight = -Infinity;
+  const placements = [];
+
+  for (const item of sorted) {
+    const leftPct = (item.at / totalSec) * 100;
+    const shortLabel = spineMarkerShortLabel(item.m, totalSec);
+    const halfW = estimateLabelHalfWidthPct(shortLabel, totalSec);
+    const left = leftPct - halfW;
+    const right = leftPct + halfW;
+    const showLabel = left >= occupiedRight + minGap * 0.35;
+    if (showLabel) occupiedRight = right;
+    placements.push({
+      marker: item.m,
+      leftPct,
+      label: showLabel ? shortLabel : null,
+      tip: `${formatSegmentTime(item.at)} · ${markerDisplayLabel(item.m)}`,
+    });
+  }
+
+  return { placements, visibleLabels: placements.filter((p) => p.label).length, total: sorted.length };
+}
+
 /** Prefer segment coverage when stored duration is missing or wildly off (unit mismatch). */
 function resolveSpineDuration(durationSec, segments) {
   const segmentEnd = Math.max(
@@ -1012,6 +1058,22 @@ function resolveSpineDuration(durationSec, segments) {
 
 function renderVisualSpine(segments, markers, durationSec) {
   const total = resolveSpineDuration(durationSec, segments);
+  const { placements, visibleLabels, total: markerTotal } = layoutSpineMarkerLabels(markers, total);
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "edc907" },
+    body: JSON.stringify({
+      sessionId: "edc907",
+      runId: "timeline-layout",
+      hypothesisId: "D",
+      location: "call-view.js:renderVisualSpine",
+      message: "spine label layout",
+      data: { totalSec: total, markerTotal, visibleLabels, durationMin: Math.round(total / 60) },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   let html = '<div class="call-spine-wrap">';
   html += `<div class="call-spine spine" style="${SPINE_TRACK_STYLE}" role="img" aria-label="Call scene timeline">`;
   segments.forEach((seg, i) => {
@@ -1026,15 +1088,13 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
-  for (const m of markers || []) {
-    const at = Number(m.atS);
-    if (!Number.isFinite(at)) continue;
-    const left = (at / total) * 100;
+  for (const p of placements) {
+    const m = p.marker;
     const kind = m.kind || "gap";
-    const label = markerDisplayLabel(m);
-    const tip = `${formatSegmentTime(at)} · ${label}`;
-    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}"></div>`;
-    html += `<div class="mkl mkl--${esc(kind)}" style="left:${left}%" title="${esc(tip)}">${esc(label)}</div>`;
+    html += `<div class="mk mk--${esc(kind)}" style="left:${p.leftPct}%" title="${esc(p.tip)}"></div>`;
+    if (p.label) {
+      html += `<div class="mkl mkl--${esc(kind)}" style="left:${p.leftPct}%" title="${esc(p.tip)}">${esc(p.label)}</div>`;
+    }
   }
   html += "</div></div>";
   return html;
