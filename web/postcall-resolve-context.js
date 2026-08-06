@@ -170,12 +170,16 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
     // Global deals per account — every SE's opportunity on the account, not just ownerId's.
     const deals = [];
     const seenDealIds = new Set();
-    for (const accountId of accountIds) {
-      const accountDeals = await safeStoreOp(
-        "listDealsForAccount",
-        () => listDealsForAccount(accountId, dealOpts),
-        [],
-      );
+    const dealLists = await Promise.all(
+      [...accountIds].map((accountId) =>
+        safeStoreOp(
+          "listDealsForAccount",
+          () => listDealsForAccount(accountId, dealOpts),
+          [],
+        ),
+      ),
+    );
+    for (const accountDeals of dealLists) {
       for (const deal of accountDeals) {
         if (seenDealIds.has(deal.id)) continue;
         seenDealIds.add(deal.id);

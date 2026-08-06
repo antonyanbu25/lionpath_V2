@@ -18,6 +18,7 @@ import {
   dealSignalsFromPostCalls,
   tcDeltasFromPostCalls,
 } from "./post-call-detail.js";
+import { isFirestoreIndexError, stripUndefinedFields } from "./safe-store.js";
 
 /**
  * Drop the listAccountsForSession row cache after writing anything it aggregates —
@@ -373,13 +374,16 @@ export function createFirestoreStore(fb) {
 
     async createContact(contact) {
       const ref = contact.id ? doc(db, "contacts", contact.id) : doc(collection(db, "contacts"));
-      const data = { ...contact, id: ref.id };
+      const data = stripUndefinedFields({ ...contact, id: ref.id });
       await setDoc(ref, data);
       return data;
     },
 
     async updateContact(id, patch) {
-      await updateDoc(doc(db, "contacts", id), { ...patch, updatedAt: now() });
+      await updateDoc(
+        doc(db, "contacts", id),
+        stripUndefinedFields({ ...patch, updatedAt: now() }),
+      );
       return getById("contacts", id);
     },
 
@@ -617,26 +621,52 @@ export function createFirestoreStore(fb) {
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       const fields = dealFields(!!opts.forSearch);
       const teamId = opts.teamId || null;
-      const filters = [
+
+      async function runQuery(filters) {
+        const q = select
+          ? query(
+              collection(db, "deals"),
+              ...filters,
+              orderBy("lastActivityAt", "desc"),
+              select(...fields),
+            )
+          : query(collection(db, "deals"), ...filters, orderBy("lastActivityAt", "desc"));
+        const snap = await getDocs(q);
+        const rows = mapSnapDocs(snap);
+        return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
+      }
+
+      const fullFilters = [
         where("accountId", "==", accountId),
         ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
         ...(teamId ? [where("teamId", "==", teamId)] : []),
       ];
-      const q = select
-        ? query(
-            collection(db, "deals"),
-            ...filters,
-            orderBy("lastActivityAt", "desc"),
-            select(...fields),
-          )
-        : query(
-            collection(db, "deals"),
-            ...filters,
-            orderBy("lastActivityAt", "desc"),
-          );
-      const snap = await getDocs(q);
-      const rows = mapSnapDocs(snap);
-      return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
+
+      try {
+        return await runQuery(fullFilters);
+      } catch (err) {
+        if (!isFirestoreIndexError(err)) throw err;
+        console.warn("[firestore] listDealsByAccount index fallback:", accountId);
+      }
+
+      if (ownerId) {
+        try {
+          const rows = await runQuery([
+            where("accountId", "==", accountId),
+            where("ownerId", "==", ownerId),
+          ]);
+          return teamId ? rows.filter((d) => d.teamId === teamId) : rows;
+        } catch (err) {
+          if (!isFirestoreIndexError(err)) throw err;
+        }
+      }
+
+      const rows = await runQuery([where("accountId", "==", accountId)]);
+      return rows.filter((d) => {
+        if (ownerId && d.ownerId !== ownerId) return false;
+        if (teamId && d.teamId !== teamId) return false;
+        return true;
+      });
     },
 
     async listDealsByOwner(ownerId, limitCount = 300, opts = {}) {
@@ -1274,14 +1304,24 @@ export function createFirestoreStore(fb) {
       const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
       const fromDetail = dealSignalsFromPostCalls(postCalls, limitCount);
       if (fromDetail.length) return fromDetail;
-      const q = query(
-        collection(db, "dealSignals"),
-        where("dealId", "==", dealId),
-        orderBy("createdAt", "desc"),
-        limit(limitCount)
-      );
-      const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      try {
+        const q = query(
+          collection(db, "dealSignals"),
+          where("dealId", "==", dealId),
+          orderBy("createdAt", "desc"),
+          limit(limitCount)
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      } catch (err) {
+        if (!isFirestoreIndexError(err)) throw err;
+        const q = query(collection(db, "dealSignals"), where("dealId", "==", dealId), limit(limitCount));
+        const snap = await getDocs(q);
+        return snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+          .slice(0, limitCount);
+      }
     },
 
     async listDealSignalsForDeals(dealIds, perDealLimit = 1) {
@@ -1305,19 +1345,35 @@ export function createFirestoreStore(fb) {
       const chunkSize = 30;
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const q = query(
-          collection(db, "dealSignals"),
-          where("dealId", "in", chunk),
-          orderBy("createdAt", "desc"),
-        );
-        const snap = await getDocs(q);
-        for (const d of snap.docs) {
-          const row = { id: d.id, ...d.data() };
-          const dealId = row.dealId;
-          if (!dealId) continue;
-          if (!byDeal.has(dealId)) byDeal.set(dealId, []);
-          const arr = byDeal.get(dealId);
-          if (arr.length < perDealLimit) arr.push(row);
+        try {
+          const q = query(
+            collection(db, "dealSignals"),
+            where("dealId", "in", chunk),
+            orderBy("createdAt", "desc"),
+          );
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            const row = { id: d.id, ...d.data() };
+            const dealId = row.dealId;
+            if (!dealId) continue;
+            if (!byDeal.has(dealId)) byDeal.set(dealId, []);
+            const arr = byDeal.get(dealId);
+            if (arr.length < perDealLimit) arr.push(row);
+          }
+        } catch (err) {
+          if (!isFirestoreIndexError(err)) throw err;
+          const q = query(collection(db, "dealSignals"), where("dealId", "in", chunk));
+          const snap = await getDocs(q);
+          const rows = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          for (const row of rows) {
+            const dealId = row.dealId;
+            if (!dealId) continue;
+            if (!byDeal.has(dealId)) byDeal.set(dealId, []);
+            const arr = byDeal.get(dealId);
+            if (arr.length < perDealLimit) arr.push(row);
+          }
         }
       }
       return byDeal;

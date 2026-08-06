@@ -92,7 +92,7 @@ import { canonicalCallType } from "./call-type-labels.js";
 import { buildCoachOutput, coachTextForSubParameter, insightfulCoachTip, loadScoreOverrides } from "./coach/index.js";
 
 const RESOLVE_URL = `${WORKER_BASE_URL}/api/postcall/resolve`;
-const RESOLVE_CONTEXT_TIMEOUT_MS = 5_000;
+const RESOLVE_CONTEXT_TIMEOUT_MS = 8_000;
 const CLASSIFY_URL = `${WORKER_BASE_URL}/api/postcall/classify`;
 const GENERATE_URL = `${WORKER_BASE_URL}/api/postcall/generate`;
 const QUALIFY_URL = `${WORKER_BASE_URL}/api/postcall/qualify`;
@@ -2690,7 +2690,12 @@ async function postJson(url, body, opts = {}) {
     body: JSON.stringify(body),
     signal: opts.signal,
   });
+  if (res.status === 204) return {};
   const raw = await res.text();
+  if (!raw.trim()) {
+    if (res.ok) return {};
+    throw new Error(`Request failed (${res.status}).`);
+  }
   let data;
   try {
     data = JSON.parse(raw);
