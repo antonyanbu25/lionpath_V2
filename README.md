@@ -97,13 +97,13 @@ Fixes first-impression login loop, unreliable SSO clicks, and infinite dashboard
 | **Stale local session without Firebase user** | **2.1.19:** removed eager `cachedEarly` restore; bootstrap **clears stale storage** and shows login when `currentUser` is null. |
 | **SSO blocked by in-flight showApp** | **2.1.19:** `showApp` waits for prior flight to finish on `freshLogin`. |
 
-Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/index.html`, `web/firebase-config.js` (`AUTH_BUILD_ID` **2.1.19**).
+Key paths: `web/app.js`, `web/dashboard.js`, `web/splash.js`, `web/index.html`, `web/firebase-config.js` (`AUTH_BUILD_ID` **2.1.24**).
 
 After deploy: hard-refresh (Ctrl+Shift+R). Bump `AUTH_BUILD_ID` whenever auth/boot JS changes.
 
 **Deploy note:** production hostnames load `web/dist/boot.js`. After auth/dashboard changes run `cd web && npm run build` (or VPS `build-web-bundle.sh`) before `refresh-web.sh` / `update.sh` — otherwise the portal serves stale bundled JS.
 
-**Verify live:** `bash deploy/vps/verify-deploy.sh` (or `curl -s https://portal.benjaminsquare.com/ | grep -E 'portal-build|postcall.css|pc-account-deal-preview'`). Expect **`portal-build=2.1.23`**, **`postcall.css?v=2.1.23`** (must match portal-build), **`pc-account-deal-preview`**, and **`workerBuild`** including `2.1`. VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
+**Verify live:** `bash deploy/vps/verify-deploy.sh` (or `curl -s https://portal.benjaminsquare.com/ | grep -E 'portal-build|postcall.css|pc-account-deal-preview'`). Expect **`portal-build=2.1.24`**, **`postcall.css?v=2.1.24`** (must match portal-build), **`pc-account-deal-preview`**, and **`workerBuild`** including `2.1`. VPS: `cd /opt/se-singha-paathai/deploy/vps && bash refresh-web.sh`.
 
 ### Post-call demo UX (2.1.20)
 
