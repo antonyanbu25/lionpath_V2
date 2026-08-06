@@ -68,12 +68,16 @@ export function dueUrgency(dueDate) {
   return "upcoming";
 }
 
+const NON_SE_OWNER =
+  /^(ae|account executive|sales rep|rep|customer|client|prospect|partner|vendor|buyer|procurement)\b/i;
+
 /** @param {string} owner @param {string} [seName] */
 export function isSeOwner(owner, seName) {
   const o = String(owner ?? "").trim();
   if (!o || UNKNOWN_DUE.has(o.toLowerCase())) return false;
+  if (NON_SE_OWNER.test(o)) return false;
   if (/^(se|solution engineer|solutions engineer|sales engineer)$/i.test(o)) return true;
-  if (/se\b|solution engineer|sales engineer/i.test(o)) return true;
+  if (/\bse\b|solution engineer|sales engineer/i.test(o)) return true;
   if (seName) {
     const name = String(seName).trim().toLowerCase();
     if (name && o.toLowerCase().includes(name)) return true;
@@ -81,6 +85,11 @@ export function isSeOwner(owner, seName) {
     if (first.length > 2 && o.toLowerCase().includes(first)) return true;
   }
   return false;
+}
+
+/** @param {object[]} steps @param {string} [seName] */
+export function filterSeActionSteps(steps, seName) {
+  return (steps || []).filter((step) => isSeOwner(step.owner, seName));
 }
 
 function companyFromRecord(record) {
@@ -95,7 +104,7 @@ function normalizeSteps(record) {
   for (const step of a.nextSteps || []) {
     if (!step?.action || UNKNOWN_DUE.has(String(step.action).toLowerCase())) continue;
     items.push({
-      owner: step.owner || "SE",
+      owner: step.owner || "",
       action: step.action,
       due: step.due || "",
       source: "nextSteps",

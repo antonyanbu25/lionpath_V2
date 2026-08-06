@@ -229,6 +229,11 @@
             <span slot="before-label" class="nav-icon" data-nav-icon="deal" aria-hidden="true"></span>
             <span class="nav-label">Pipeline review</span>
           </fw-button>
+
+          <fw-button type="button" class="nav-item" data-view="org-structure" data-role="structure" color="secondary" fill="clear" title="Team structure" hidden>
+            <span slot="before-label" class="nav-icon" data-nav-icon="settings" aria-hidden="true"></span>
+            <span class="nav-label">Team structure</span>
+          </fw-button>
           <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="coaching" aria-hidden="true"></span>
             <span class="nav-label">Product signal</span>
@@ -337,6 +342,11 @@
             <div id="pipeline-panel" class="lifecycle-panel pipeline-panel"></div>
           </section>
 
+
+          <!-- Team structure editor (director + segment leaders) -->
+          <section id="view-org-structure" class="view-panel" hidden>
+            <div id="org-structure-root"></div>
+          </section>
           <!-- Product signal (PM / admin) -->
           <section id="view-signal" class="view-panel" hidden>
             <div id="product-signal-panel" class="lifecycle-panel product-signal-panel"></div>

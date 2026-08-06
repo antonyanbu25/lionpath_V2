@@ -6,24 +6,24 @@ import { isFreeMailDomain } from "./constants.js";
  * @typedef {"active"|"inactive"} UserStatus
  * @typedef {{ id: string, email: string, authUid: string|null, displayName: string, role: UserRole, teamId: string|null, orgId: string|null, managerId: string|null, jobTitle: string|null, status: UserStatus, avatarDataUrl?: string|null, createdAt: number, updatedAt: number }} User
  * @typedef {{ id: string, name: string, orgId: string|null, managerId: string, memberIds: string[], createdAt: number, updatedAt: number }} Team
- * @typedef {{ id: string, name: string, directorId: string, seniorLeaderIds: string[], teamIds: string[], createdAt: number, updatedAt: number }} Org
+ * @typedef {{ id: string, name: string, directorId: string, seniorLeaderIds: string[], teamIds: string[], segments?: { id: string, name: string, leaderId: string, teamIds: string[] }[], createdAt: number, updatedAt: number }} Org
  * @typedef {"primary"|"secondary"} SeTeamRole
  * @typedef {{ seUserId: string, role: SeTeamRole, addedAt: number, addedBy?: string }} AccountSeTeamMember
- * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, programPhase?: "new_business"|"live"|"expansion", metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, embedding?: number[]|null, embeddingModel?: string|null, createdAt: number, updatedAt: number }} Account
+ * @typedef {{ id: string, name: string, domain: string|null, slug: string, industry?: string, programPhase?: "new_business"|"live"|"expansion", metadata?: object, seTeam?: AccountSeTeamMember[], primarySeUserId?: string|null, crmAccountId?: string|null, createdAt: number, updatedAt: number }} Account
  * @typedef {"new_business"|"expansion"} DealType
- * @typedef {"active"|"paused"|"archived"|"closed_won_grace"} DealStatus
+ * @typedef {"active"|"paused"|"archived"} DealStatus
  * @typedef {{ value?: string, status?: "unknown"|"partial"|"confirmed", source?: string, updatedAt?: number, contactId?: string }} MeddpiccFieldSlot
  * @typedef {{ metrics?: MeddpiccFieldSlot, economicBuyer?: MeddpiccFieldSlot, decisionCriteria?: MeddpiccFieldSlot, decisionProcess?: MeddpiccFieldSlot, paperProcess?: MeddpiccFieldSlot, identifyPain?: MeddpiccFieldSlot, champion?: MeddpiccFieldSlot, competition?: MeddpiccFieldSlot, lastUpdatedAt?: number, completionScore?: number }} MeddpiccRollup
  * Deal.latestQualityScore is deprecated — QIP belongs on the call, not the deal (POST_CALL_SPEC_V2 §2.1). Field retained until migration.
  * @typedef {{ name?: string, email?: string }} DealAe   Account Executive on the deal (name and/or email).
- * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, wonAt?: number|null, lostAt?: number|null, wonAtInferred?: boolean, lastActorId?: string|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup, ae?: DealAe }, embedding?: number[]|null, embeddingModel?: string|null, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
- * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, metadata?: object, createdAt: number, updatedAt: number }} Contact
+ * @typedef {{ id: string, accountId: string, type: DealType, stage: LifecycleStage, status: DealStatus, ownerId: string, teamId: string, orgId: string, primaryContactId: string|null, title: string, prepCount: number, postCallCount: number, openTaskCount: number, latestQualityScore?: number|null, closedWonAt?: number|null, crmOpportunityId?: string|null, arrEstimateLow?: number|null, arrEstimateHigh?: number|null, arrEstimatePoint?: number|null, arrActual?: number|null, arrSource?: "derived_from_agents"|"opp_amount"|"se_override"|null, arrPriceBookVersion?: string|null, assumptionsBookVersion?: string|null, arrInputsJson?: object|null, arrComputedAt?: number|null, metadata?: { meddpicc?: MeddpiccRollup, ae?: DealAe, closedWonAt?: number|null, crmOpportunityId?: string|null }, createdAt: number, updatedAt: number, lastActivityAt: number }} Deal
+ * @typedef {{ id: string, accountId: string, email: string, name?: string, title?: string, role?: string, crmContactId?: string|null, metadata?: object, createdAt: number, updatedAt: number }} Contact
  * Deal↔Contact is many-to-many, mirroring Salesforce's OpportunityContactRole: an account's
  * contacts are not automatically on every one of its deals, and a contact carries a different
  * role on each deal they touch. `Deal.primaryContactId` is retained as the denormalised pointer
  * to the row with isPrimary — the join row is authoritative, the field is the fast read.
  * @typedef {"economic_buyer"|"champion"|"evaluator"|"influencer"|"technical_buyer"|"end_user"|"unknown"} DealContactRole
- * @typedef {{ id: string, dealId: string, contactId: string, accountId: string, ownerId: string, teamId: string, orgId: string, role: DealContactRole, isPrimary: boolean, createdAt: number, updatedAt: number }} DealContact
+ * @typedef {{ id: string, dealId: string, contactId: string, accountId: string, role: DealContactRole, isPrimary: boolean, createdAt: number, updatedAt: number }} DealContact
  * @typedef {"contact_created"|"field_updated"|"disc_updated"|"influence_updated"|"linked_from_prep"|"linked_from_postcall"} ContactEventType
  * @typedef {{ id: string, contactId: string, type: ContactEventType, actorId: string, timestamp: number, payload: object }} ContactEvent
  * @typedef {"research"|"discovery"|"demo"|"evaluation"|"business_case"|"closed_won"|"closed_lost"|"nurture"} LifecycleStage
@@ -34,9 +34,7 @@ import { isFreeMailDomain } from "./constants.js";
  * @typedef {{ id: string, lifecycleId: string, type: LifecycleEventType, actorId: string, timestamp: number, payload: object }} LifecycleEvent
  * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, input: object, prep: object, meta: { company: string, domain?: string, additionalContext?: string }, createdAt: number }} PrepBrief
  * @typedef {{ aeName?: string|null, aeEmail?: string|null, primarySeUserId?: string|null, secondarySeUserIds?: string[], contactIds?: string[] }} CallIdentities   AE + primary/secondary SE + customer contacts on a call.
- * @typedef {{ videoFacts?: object[], timelineSegments?: object[], timelineMarkers?: object[], technicalCommit?: object|null, tcDeltas?: object[], meddpiccDeltas?: object[], objections?: object[], followUps?: object[], momDrafts?: object[], dealSignals?: object[], productGaps?: object[], whatWorks?: object[] }} PostCallDetailMap
- * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, zoomLink?: string, title?: string, callIdentityKey: string, analysis: object, transcriptMeta?: unknown, qualityScore?: number|null, analysisGcsUri?: string|null, analysisByteSize?: number|null, transcriptMetaGcsUri?: string|null, transcriptMetaByteSize?: number|null, detail?: PostCallDetailMap|null, detailGcsUri?: string|null, detailByteSize?: number|null, arrSnapshot?: object|null, identities?: CallIdentities, createdAt: number, updatedAt: number }} PostCallDoc
- * @typedef {{ id: string, ownerId: string, ownerName?: string|null, teamId: string, orgId?: string|null, accountId: string, accountName?: string|null, dealId?: string|null, dealTitle?: string|null, dealStage?: string|null, dealType?: string|null, callType?: string|null, title?: string|null, aiShortForm?: string|null, createdAt: number, updatedAt: number, qualityScore?: number|null, qipOverall?: number|null, qipCategoryScores?: object|null, analysisConfidence?: number|null, provisional?: boolean, rubricVersion?: string|null, productsDiscussed?: string[], topGapKeys?: string[], followUpCount?: number, objectionCount?: number, hasVideoFacts?: boolean, searchTokens?: string[], embedding?: number[]|null, embeddingModel?: string|null }} CallSummaryDoc
+ * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, zoomLink?: string, title?: string, callIdentityKey: string, analysis: object, transcriptMeta?: unknown, qualityScore?: number|null, arrSnapshot?: object|null, identities?: CallIdentities, createdAt: number, updatedAt: number }} PostCallDoc
  * @typedef {{ id: string, lifecycleId: string, dealId?: string|null, ownerId: string, teamId: string, orgId: string, accountId: string, title: string, status: string, source: string, sourceKey?: string, callId?: string, company?: string, due?: string, dueDate?: number|null, createdAt: number, completedAt?: number }} TaskDoc
  */
 
@@ -168,7 +166,7 @@ export function isManagerRole(role) {
   return role === "manager" || role === "admin";
 }
 
-/** @param {User|null} user @param {string} action @param {{ ownerId?: string, teamId?: string, orgId?: string, seTeamUserIds?: string[], accountOrgId?: string|null }} [resource] */
+/** @param {User|null} user @param {string} action @param {{ ownerId?: string, teamId?: string, orgId?: string, seTeamUserIds?: string[], seTeamMemberTeamIds?: string[], accountOrgId?: string|null, targetRole?: string, segmentId?: string }} [resource] */
 export function can(user, action, resource = {}) {
   if (!user) return false;
   if (user.role === "admin") return true;
@@ -180,8 +178,17 @@ export function can(user, action, resource = {}) {
     user.orgId && resource.accountOrgId && user.orgId === resource.accountOrgId;
   const isManager = user.role === "manager";
   const isOrgDirector = user.isOrgDirector === true;
+  const isActualDirector = user.isActualDirector === true;
+  const isSegmentLeader = user.isSegmentLeader === true;
+  const segmentTeamIds = user.segmentTeamIds || [];
   const seTeamIds = resource.seTeamUserIds || [];
+  const seTeamMemberTeamIds = resource.seTeamMemberTeamIds || [];
   const onSeTeam = seTeamIds.includes(user.id);
+  const onSeTeamMemberTeam =
+    user.teamId && seTeamMemberTeamIds.includes(user.teamId);
+  const segmentCanSeeAccount =
+    isSegmentLeader &&
+    seTeamMemberTeamIds.some((tid) => segmentTeamIds.includes(tid));
 
   switch (action) {
     case "read":
@@ -190,26 +197,45 @@ export function can(user, action, resource = {}) {
       if (isManager && isOrgDirector && (sameOrg || accountSameOrg)) return true;
       if (isManager && sameTeam) return true;
       return false;
-    case "read_account": {
+    case "read_account":
       if (onSeTeam) return true;
       if (isOwner) return true;
       if (isManager && isOrgDirector && accountSameOrg) return true;
-      const seTeamTeamIds = resource.seTeamTeamIds || [];
-      if (isManager && user.teamId && seTeamTeamIds.includes(user.teamId)) return true;
+      if (isManager && onSeTeamMemberTeam) return true;
+      if (isManager && segmentCanSeeAccount) return true;
       return false;
-    }
     case "manage_account_team":
       if (isManager && isOrgDirector && accountSameOrg) return true;
-      if (isManager && user.teamId && seTeamIds.length) return true;
+      if (isManager && onSeTeamMemberTeam) return true;
+      if (isManager && segmentCanSeeAccount) return true;
+      return false;
+    case "create_on_behalf":
+      if (!isManager || !resource.ownerId || resource.ownerId === user.id) return false;
+      if (resource.targetRole !== "se") return false;
+      if (user.teamId && resource.teamId && user.teamId === resource.teamId) return true;
+      if (isSegmentLeader && resource.teamId && segmentTeamIds.includes(resource.teamId)) return true;
+      if (isOrgDirector && sameOrg) return true;
       return false;
     case "create":
     case "update":
-      return user.role === "se" && (isOwner || onSeTeam);
+      if (user.role === "se" && (isOwner || onSeTeam)) return true;
+      return false;
     case "delete":
       return user.role === "admin";
     case "manage_team":
     case "manage_users":
       return user.role === "admin";
+    case "manage_org_structure":
+      if (user.role === "admin") return true;
+      if (isActualDirector) return true;
+      if (isSegmentLeader) {
+        if (resource.segmentId && user.segmentId && resource.segmentId !== user.segmentId) return false;
+        if (resource.teamId && segmentTeamIds.length && !segmentTeamIds.includes(resource.teamId)) {
+          return false;
+        }
+        return true;
+      }
+      return false;
     case "read_product_signal":
       return user.role === "pm" && sameOrg;
     default:

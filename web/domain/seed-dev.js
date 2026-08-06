@@ -1,5 +1,5 @@
 /**
- * Dev seed data — Freshworks CX SE org (Vipin → senior managers → squad managers → ICs).
+ * Dev seed data — Freshworks CX SE org (Vipin → senior managers → team managers → ICs).
  */
 
 import { DUMMY_USERS } from "../dummy-users.js";
@@ -7,16 +7,24 @@ import { firebaseConfig } from "../firebase-config.js";
 import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
-import { getOrg, isOrgLeader, userWithDirectorFlag } from "./org-service.js";
+import {
+  getOrg,
+  isOrgLeader,
+  userWithDirectorFlag,
+  getSegmentForLeader,
+  isOrgDirector,
+} from "./org-service.js";
 
 import {
   DEMO_ORG_ID,
-  SQUAD_TEAM_IDS,
+  ORG_TEAM_IDS,
   TEAM_AJAY_ID,
   TEAM_NIKIL_ID,
-  TEAM_PREETHI_SRI_ID,
-  TEAM_PREETHI_SRIRAM_ID,
+  TEAM_MARY_ID,
+  TEAM_VARUN_ID,
+  TEAM_AKSHITA_ID,
   TEAM_DISPLAY_NAMES,
+  ORG_SEGMENT_DEFS,
 } from "./constants.js";
 
 export { stableUserIdForEmail as dummyUidForEmail };
@@ -37,7 +45,7 @@ function managerIdForProfile(profile) {
 /** Seed org, teams, and users if not already present. Idempotent. */
 export async function seedDevDomainIfNeeded() {
   // Production Firestore is seeded via worker scripts — dev upserts fail under SE rules.
-  if (firebaseConfig.projectId || (typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__)) return;
+  if (firebaseConfig.projectId) return;
 
   const store = getStore();
   const ts = now();
@@ -45,18 +53,14 @@ export async function seedDevDomainIfNeeded() {
   const directorId = stableUserIdForEmail(VIPIN_EMAIL);
   const seniorLeaderIds = SENIOR_LEADER_EMAILS.map((e) => stableUserIdForEmail(e));
 
-  const teamMembers = {
-    [TEAM_AJAY_ID]: [],
-    [TEAM_NIKIL_ID]: [],
-    [TEAM_PREETHI_SRI_ID]: [],
-    [TEAM_PREETHI_SRIRAM_ID]: [],
-  };
+  const teamMembers = Object.fromEntries(ORG_TEAM_IDS.map((id) => [id, []]));
 
-  const squadManagers = {
+  const teamManagers = {
     [TEAM_AJAY_ID]: stableUserIdForEmail("ajay.raghavan@freshworks.com"),
     [TEAM_NIKIL_ID]: stableUserIdForEmail("nikil.ravi@freshworks.com"),
-    [TEAM_PREETHI_SRI_ID]: stableUserIdForEmail("manager.preethi.sri@freshworks.com"),
-    [TEAM_PREETHI_SRIRAM_ID]: stableUserIdForEmail("manager.preethi.sriram@freshworks.com"),
+    [TEAM_MARY_ID]: stableUserIdForEmail("mary.sheeba@freshworks.com"),
+    [TEAM_VARUN_ID]: stableUserIdForEmail("varun.barathy@freshworks.com"),
+    [TEAM_AKSHITA_ID]: stableUserIdForEmail("preethi.sri@freshworks.com"),
   };
 
   for (const [email, profile] of Object.entries(DUMMY_USERS)) {
@@ -82,18 +86,29 @@ export async function seedDevDomainIfNeeded() {
 
     await store.upsertUser({ ...existing, ...userDoc });
 
-    if (profile.role === "se" && profile.teamId && teamMembers[profile.teamId]) {
+    if (
+      (profile.role === "se" || profile.role === "admin") &&
+      profile.teamId &&
+      teamMembers[profile.teamId]
+    ) {
       teamMembers[profile.teamId].push(userId);
     }
   }
 
   const org = await store.getOrg?.(DEMO_ORG_ID);
+  const segments = ORG_SEGMENT_DEFS.map((def) => ({
+    id: def.id,
+    name: def.name,
+    leaderId: stableUserIdForEmail(def.leaderEmail),
+    teamIds: [...def.teamIds],
+  }));
   const orgDoc = {
     id: DEMO_ORG_ID,
     name: "Freshworks CX Solution Engineering",
     directorId,
     seniorLeaderIds,
-    teamIds: SQUAD_TEAM_IDS,
+    teamIds: ORG_TEAM_IDS,
+    segments,
     createdAt: org?.createdAt ?? ts,
     updatedAt: ts,
   };
@@ -106,37 +121,21 @@ export async function seedDevDomainIfNeeded() {
       id: teamId,
       name: name,
       orgId: DEMO_ORG_ID,
-      managerId: team?.managerId || managerId,
+      managerId: managerId,
       memberIds: mergedMembers,
       createdAt: team?.createdAt ?? ts,
       updatedAt: ts,
     });
   }
 
-  await upsertTeam(
-    TEAM_AJAY_ID,
-    TEAM_DISPLAY_NAMES[TEAM_AJAY_ID],
-    squadManagers[TEAM_AJAY_ID],
-    teamMembers[TEAM_AJAY_ID]
-  );
-  await upsertTeam(
-    TEAM_NIKIL_ID,
-    TEAM_DISPLAY_NAMES[TEAM_NIKIL_ID],
-    squadManagers[TEAM_NIKIL_ID],
-    teamMembers[TEAM_NIKIL_ID]
-  );
-  await upsertTeam(
-    TEAM_PREETHI_SRI_ID,
-    TEAM_DISPLAY_NAMES[TEAM_PREETHI_SRI_ID],
-    squadManagers[TEAM_PREETHI_SRI_ID],
-    teamMembers[TEAM_PREETHI_SRI_ID]
-  );
-  await upsertTeam(
-    TEAM_PREETHI_SRIRAM_ID,
-    TEAM_DISPLAY_NAMES[TEAM_PREETHI_SRIRAM_ID],
-    squadManagers[TEAM_PREETHI_SRIRAM_ID],
-    teamMembers[TEAM_PREETHI_SRIRAM_ID]
-  );
+  for (const teamId of ORG_TEAM_IDS) {
+    await upsertTeam(
+      teamId,
+      TEAM_DISPLAY_NAMES[teamId],
+      teamManagers[teamId],
+      teamMembers[teamId] || []
+    );
+  }
 
   await seedProductSignalDemoIfNeeded(store, ts);
 }
@@ -450,77 +449,6 @@ export async function listTeamMemberEmails(teamId) {
   return emails;
 }
 
-/** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
-async function safeStoreGet(label, fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    console.warn(`[seed-dev] ${label} failed:`, err?.message || err);
-    return null;
-  }
-}
-
-/**
- * Resolve domain user for a session. authIndex is checked first on Firebase login so a
- * placeholder usr_dummy_* id from completeFirebaseLogin does not throw before lookup.
- * @internal Exported for session-resolve tests.
- */
-export async function lookupUserForSession(session, store) {
-  const lookupId = session?.userId || session?.uid;
-  let user = null;
-
-  if (session?.authUid && store.getUserIdByAuthUid) {
-    const mappedId = await safeStoreGet("authIndex lookup", () =>
-      store.getUserIdByAuthUid(session.authUid)
-    );
-    if (mappedId) {
-      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
-    }
-  }
-
-  if (!user && lookupId) {
-    user = await safeStoreGet("getUser by session id", () => store.getUser(lookupId));
-  }
-  if (!user && session?.email) {
-    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(session.email));
-  }
-  if (!user && session?.email) {
-    user = await safeStoreGet("getUser by stable id", () =>
-      store.getUser(stableUserIdForEmail(session.email))
-    );
-  }
-
-  return user;
-}
-
-/**
- * Domain owner id for Firestore reads/writes — authIndex wins over usr_dummy_* placeholders.
- * @param {object | null | undefined} session
- * @param {object} [store] optional store override (tests)
- * @returns {Promise<string | null>}
- */
-export async function resolveEffectiveOwnerId(session, storeOverride) {
-  if (!session) return null;
-  const raw = session.userId || session.uid;
-  const isDummy = raw?.startsWith("usr_dummy_");
-  const isAuthUidAsProfile = session.authUid && raw === session.authUid;
-  if (raw && !isDummy && !isAuthUidAsProfile) return raw;
-
-  if (session.authUid || session.email) {
-    let store = storeOverride;
-    if (!store) {
-      if (!firebaseConfig.projectId) {
-        await seedDevDomainIfNeeded();
-      }
-      store = getStore();
-    }
-    const user = await lookupUserForSession(session, store);
-    if (user?.id) return user.id;
-  }
-
-  return raw || (session.email ? stableUserIdForEmail(session.email) : null);
-}
-
 /** Load user profile from store and merge into session. */
 export async function enrichSessionFromStore(session) {
   const lookupId = session?.userId || session?.uid;
@@ -531,7 +459,17 @@ export async function enrichSessionFromStore(session) {
   }
   const store = getStore();
 
-  let user = await lookupUserForSession(session, store);
+  let user = lookupId ? await store.getUser(lookupId) : null;
+  if (!user && session.authUid && store.getUserIdByAuthUid) {
+    const mappedId = await store.getUserIdByAuthUid(session.authUid);
+    if (mappedId) user = await store.getUser(mappedId);
+  }
+  if (!user && session.email) {
+    user = await store.getUserByEmail(session.email);
+  }
+  if (!user && session.email) {
+    user = await store.getUser(stableUserIdForEmail(session.email));
+  }
 
   if (!user && session.email) {
     const ts = now();
@@ -580,11 +518,13 @@ export async function enrichSessionFromStore(session) {
     return session;
   }
 
-  const org = user.orgId ? await safeStoreGet("getOrg", () => getOrg(user.orgId)) : null;
+  const org = user.orgId ? await getOrg(user.orgId) : null;
+  const segment = getSegmentForLeader(user.id, org);
+  const actualDirector = isOrgDirector(user.id, org);
 
   let managerName = null;
   if (user.managerId) {
-    const mgr = await safeStoreGet("getUser manager", () => store.getUser(user.managerId));
+    const mgr = await store.getUser(user.managerId);
     if (mgr) {
       managerName = mgr.displayName || mgr.email?.split("@")[0] || null;
     }
@@ -603,6 +543,11 @@ export async function enrichSessionFromStore(session) {
     jobTitle: user.jobTitle || null,
     avatarDataUrl: user.avatarDataUrl || null,
     isOrgDirector: isOrgLeader(user.id, org),
+    isActualDirector: actualDirector,
+    isSegmentLeader: !!segment,
+    segmentId: segment?.id || null,
+    segmentName: segment?.name || null,
+    segmentTeamIds: segment?.teamIds || [],
     name: user.displayName || session.name,
   };
 }
@@ -614,21 +559,10 @@ export async function upsertFirebaseUser(fbUser, roleHint) {
   const email = String(fbUser.email || "").trim().toLowerCase();
   const authUid = fbUser.uid;
 
-  let user = null;
-
-  if (store.getUserIdByAuthUid) {
-    const mappedId = await safeStoreGet("authIndex lookup", () => store.getUserIdByAuthUid(authUid));
-    if (mappedId) {
-      user = await safeStoreGet("getUser by authIndex", () => store.getUser(mappedId));
-    }
-  }
+  let user = await store.getUserByEmail(email);
 
   if (!user) {
-    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(email));
-  }
-
-  if (!user) {
-    const legacyByAuth = await safeStoreGet("legacy getUser by authUid", () => store.getUser(authUid));
+    const legacyByAuth = await store.getUser(authUid);
     if (legacyByAuth?.email === email) user = legacyByAuth;
   }
 

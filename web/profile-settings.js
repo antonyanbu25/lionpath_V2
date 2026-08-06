@@ -111,6 +111,7 @@ export function renderProfileSettings(container, session, opts = {}) {
           </div>
           <div class="profile-settings-actions">
             <fw-button id="profile-save-btn" type="button" color="primary">Save changes</fw-button>
+            <fw-button id="profile-signout-btn" type="button" color="secondary">Sign out</fw-button>
           </div>
           <fw-inline-message id="profile-save-msg" type="success" closable="false" hidden></fw-inline-message>
           <fw-inline-message id="profile-save-err" type="error" closable="false" hidden></fw-inline-message>
@@ -216,6 +217,14 @@ export function renderProfileSettings(container, session, opts = {}) {
   saveBtn?.addEventListener("fwClick", (e) => {
     e?.preventDefault?.();
     void saveName();
+  });
+  container.querySelector("#profile-signout-btn")?.addEventListener("fwClick", (e) => {
+    e?.preventDefault?.();
+    opts.onSignOut?.();
+  });
+  container.querySelector("#profile-signout-btn")?.addEventListener("click", (e) => {
+    e?.preventDefault?.();
+    opts.onSignOut?.();
   });
   form?.addEventListener("submit", (e) => {
     e.preventDefault();

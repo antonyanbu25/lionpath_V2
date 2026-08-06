@@ -73,6 +73,8 @@ import { initUserMenu, refreshUserMenu } from "./user-menu.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
+import { renderOrgStructureView } from "./org-structure-view.js";
+import { canEditOrgStructure } from "./domain/org-structure-service.js";
 import {
   firebaseConfig,
   WORKER_BASE_URL,
@@ -168,6 +170,7 @@ const VIEW_TITLES = {
   manager: "Team",
   se: "SE detail",
   profile: "Profile settings",
+  "org-structure": "Team structure",
   pipeline: "Pipeline review",
   signal: "Product signal",
 };
@@ -840,6 +843,7 @@ function updateNavForRole() {
   const isManager = isManagerRole(currentSession);
   const isLeader = currentSession?.isOrgDirector === true;
   const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
+  const canStructure = canEditOrgStructure(currentSession);
   let rollupVisible = false;
   document.querySelectorAll(".nav-item[data-role]").forEach((btn) => {
     const role = btn.dataset.role;
@@ -847,9 +851,10 @@ function updateNavForRole() {
     if (role === "manager") showBtn = isManager;
     else if (role === "leader") showBtn = isLeader;
     else if (role === "curator") showBtn = isCurator;
+    else if (role === "structure") showBtn = canStructure;
     else showBtn = !isManager;
     btn.hidden = !showBtn;
-    if (showBtn && (role === "manager" || role === "leader" || role === "curator")) {
+    if (showBtn && (role === "manager" || role === "leader" || role === "curator" || role === "structure")) {
       rollupVisible = true;
     }
   });
@@ -911,7 +916,8 @@ function switchView(name, opts = {}) {
     pipeline: $("view-pipeline"),
     signal: $("view-signal"),
     se: $("view-se"),
-    profile: $("view-profile"),
+    profile: $('view-profile'),
+    "org-structure": $('view-org-structure'),
   };
 
   if (name === "pipeline" && !currentSession?.isOrgDirector) {
@@ -922,6 +928,21 @@ function switchView(name, opts = {}) {
     name = isManager ? "manager" : "dashboard";
   }
 
+
+  if (name === "org-structure") {
+    if (!canEditOrgStructure(currentSession)) {
+      name = "profile";
+    } else {
+      Object.entries(panels).forEach(([key, el]) => show(el, key === "org-structure"));
+      $("main-view-title").textContent = VIEW_TITLES["org-structure"];
+      document.querySelectorAll(".nav-item").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.view === "org-structure");
+      });
+      void renderOrgStructureView($("org-structure-root"), currentSession);
+      location.hash = "org-structure";
+      return;
+    }
+  }
   if (name === "profile") {
     Object.entries(panels).forEach(([key, el]) => show(el, key === "profile"));
     $("main-view-title").textContent = VIEW_TITLES.profile;

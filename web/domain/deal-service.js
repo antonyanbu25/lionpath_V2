@@ -6,17 +6,6 @@ import { getStore } from "./store.js";
 import { newId, now, stageAfterFirstPostCall, can } from "./types.js";
 import { sessionUserId } from "./session.js";
 import { resolveEngagementMotion, resolveDealOwnerId } from "./deal-motion.js";
-import { resolveWriteScope } from "./write-scope.js";
-import { safeStoreOp } from "./safe-store.js";
-
-/** Deal readable + writable by the acting SE (Firestore client rules). */
-async function dealForActor(dealId, accountId, ownerId) {
-  if (!dealId || !ownerId) return null;
-  const store = getStore();
-  const deal = await safeStoreOp("getDeal", () => store.getDeal(dealId), null);
-  if (!deal || deal.accountId !== accountId || deal.ownerId !== ownerId) return null;
-  return deal;
-}
 
 /** @type {Record<import("./types.js").DealType, string>} */
 export const DEAL_TYPE_LABELS = {
@@ -176,50 +165,29 @@ function normalizeContactLinks(contacts, primaryContactId = null) {
  * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
  */
 async function linkDealContacts(deal, links) {
-  if (!deal?.id || !links?.length) return { deal, joinFailures: [] };
+  if (!deal?.id || !links?.length) return deal;
   const store = getStore();
-  if (typeof store.createDealContact !== "function") {
-    return { deal, joinFailures: [{ reason: "store_unsupported" }] };
-  }
+  if (typeof store.createDealContact !== "function") return deal;
 
-  const scope = {
-    ownerId: deal.ownerId,
-    teamId: deal.teamId,
-    orgId: deal.orgId,
-  };
-  /** @type {{ contactId: string, reason: string, error?: string }[]} */
-  const joinFailures = [];
   const nominatesPrimary = links.some((l) => l.isPrimary);
   let requestedPrimary = null;
   for (const link of links) {
-    const contact = store.getContact ? await store.getContact(link.contactId).catch(() => null) : null;
-    if (contact?.accountId && contact.accountId !== deal.accountId) {
-      joinFailures.push({
-        contactId: link.contactId,
-        reason: "account_mismatch",
-        error: `contact ${link.contactId} account ${contact.accountId} != deal ${deal.accountId}`,
-      });
-      continue;
-    }
     try {
       const prev = store.findDealContact ? await store.findDealContact(deal.id, link.contactId) : null;
       await store.createDealContact({
         dealId: deal.id,
         contactId: link.contactId,
         accountId: deal.accountId,
-        ...scope,
         role: link.role || prev?.role || "unknown",
         isPrimary: link.isPrimary || (!!prev?.isPrimary && !nominatesPrimary),
       });
       if (link.isPrimary && !requestedPrimary) requestedPrimary = link.contactId;
     } catch (err) {
-      const message = err?.message || String(err);
-      console.error("[deal-service] deal contact link failed:", message);
-      joinFailures.push({ contactId: link.contactId, reason: "write_failed", error: message });
+      console.warn("[deal-service] deal contact link failed:", err?.message || err);
     }
   }
 
-  if (!requestedPrimary) return { deal, joinFailures };
+  if (!requestedPrimary) return deal;
 
   const currentPrimary = deal.primaryContactId || null;
   const primaryContactId = currentPrimary || requestedPrimary;
@@ -230,7 +198,6 @@ async function linkDealContacts(deal, links) {
         dealId: deal.id,
         contactId: requestedPrimary,
         accountId: deal.accountId,
-        ...scope,
         role: links.find((l) => l.contactId === requestedPrimary)?.role || "unknown",
         isPrimary: false,
       });
@@ -242,40 +209,29 @@ async function linkDealContacts(deal, links) {
           dealId: deal.id,
           contactId: currentPrimary,
           accountId: deal.accountId,
-          ...scope,
           role: "unknown",
           isPrimary: true,
         });
       }
     } catch (err) {
-      const message = err?.message || String(err);
-      console.error("[deal-service] deal contact reconcile failed:", message);
-      joinFailures.push({ contactId: requestedPrimary, reason: "reconcile_failed", error: message });
+      console.warn("[deal-service] deal contact reconcile failed:", err?.message || err);
     }
   }
 
   try {
     if (store.setPrimaryDealContact) await store.setPrimaryDealContact(deal.id, primaryContactId);
   } catch (err) {
-    const message = err?.message || String(err);
-    console.error("[deal-service] set primary deal contact failed:", message);
-    joinFailures.push({ contactId: primaryContactId, reason: "set_primary_failed", error: message });
+    console.warn("[deal-service] set primary deal contact failed:", err?.message || err);
   }
 
-  let resultDeal = deal;
-  if (primaryContactId !== currentPrimary) {
-    try {
-      const updated = await store.updateDeal(deal.id, { primaryContactId });
-      resultDeal = updated || { ...deal, primaryContactId };
-    } catch (err) {
-      const message = err?.message || String(err);
-      console.error("[deal-service] primaryContactId backfill failed:", message);
-      joinFailures.push({ contactId: primaryContactId, reason: "pointer_failed", error: message });
-      resultDeal = { ...deal, primaryContactId };
-    }
+  if (primaryContactId === currentPrimary) return deal;
+  try {
+    const updated = await store.updateDeal(deal.id, { primaryContactId });
+    return updated || { ...deal, primaryContactId };
+  } catch (err) {
+    console.warn("[deal-service] primaryContactId backfill failed:", err?.message || err);
+    return { ...deal, primaryContactId };
   }
-
-  return { deal: resultDeal, joinFailures };
 }
 
 /**
@@ -287,10 +243,10 @@ async function linkDealContacts(deal, links) {
  * @returns {Promise<object|null>} the deal, re-patched if the pointer moved
  */
 export async function linkContactsToDealRecord(dealId, opts = {}) {
-  if (!dealId || !opts.contacts?.length) return { deal: null, joinFailures: [] };
+  if (!dealId || !opts.contacts?.length) return null;
   const store = getStore();
   const deal = await store.getDeal(dealId);
-  if (!deal) return { deal: null, joinFailures: [{ reason: "deal_not_found" }] };
+  if (!deal) return null;
   return linkDealContacts(deal, normalizeContactLinks(opts.contacts, opts.primaryContactId));
 }
 
@@ -320,10 +276,10 @@ async function syncLifecycleFromDeal(deal, extraPatch = {}) {
  */
 export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  // Firestore rules: client can only create/read deals where ownerId == current user.
-  const dealOwnerId = opts.dealOwnerId || ownerId;
-  const existing = await store.findActiveDeal(accountId, "new_business", { ownerId: dealOwnerId, teamId });
+  const existing = await store.findActiveDeal(accountId, "new_business");
   if (existing) return existing;
+
+  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
   const ts = now();
   return store.createDeal({
     id: newId("deal"),
@@ -355,9 +311,10 @@ export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, org
  */
 export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
-  const dealOwnerId = opts.dealOwnerId || ownerId;
-  const existing = await store.findActiveDeal(accountId, "expansion", { ownerId: dealOwnerId, teamId });
+  const existing = await store.findActiveDeal(accountId, "expansion");
   if (existing) return existing;
+
+  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
   const ts = now();
   return store.createDeal({
     id: newId("deal"),
@@ -392,7 +349,7 @@ export function inferDealTypeFromTitle(title) {
  * @param {import("./types.js").DealType} [opts.type]
  */
 export async function createDealWithExplicitTitle(accountId, ownerId, teamId, orgId, opts = {}) {
-  const dealOwnerId = opts.dealOwnerId || ownerId;
+  const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
   const ts = now();
   const dealType = opts.type || inferDealTypeFromTitle(opts.title) || "new_business";
   const explicit = String(opts.title || "").trim();
@@ -419,15 +376,11 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
   });
 }
 
-/**
- * All opportunities on an account (global — any SE's deal on the account).
- * Deals are account-scoped, not owner-scoped, so post-call / prep can link to the same opp.
- * @param {string} accountId
- */
-export async function listDealsForAccount(accountId, opts = {}) {
+/** @param {string} accountId @param {string} [ownerId] */
+export async function listDealsForAccount(accountId, ownerId) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  const deals = await store.listDealsByAccount(accountId, opts.ownerId || null, opts);
+  const deals = await store.listDealsByAccount(accountId, ownerId);
   return Promise.all(deals.map((d) => ensureDealTitle(d)));
 }
 
@@ -484,13 +437,18 @@ export async function archiveDeal(dealId, actorId, opts = {}) {
   const stage = opts.stage || deal.stage;
   /** @type {Record<string, unknown>} */
   const patch = {
-    status: opts.status || "archived",
+    status: "archived",
     stage,
     lastActivityAt: ts,
   };
-  if (stage === "closed_won" && !deal.wonAt) patch.wonAt = ts;
-  if (stage === "closed_lost" && !deal.lostAt) patch.lostAt = ts;
-
+  if (stage === "closed_won") {
+    const closedWonAt = ts;
+    patch.closedWonAt = closedWonAt;
+    patch.metadata = {
+      ...(deal.metadata || {}),
+      closedWonAt,
+    };
+  }
   const updated = await store.updateDeal(dealId, patch);
   await syncLifecycleFromDeal(updated, { status: "archived" });
 
@@ -519,11 +477,10 @@ export async function bumpDealAfterPrep(dealId, patch = {}) {
   return updated;
 }
 
-export async function bumpDealAfterPostCall(dealId, { isNew, stage, actorId }) {
+export async function bumpDealAfterPostCall(dealId, { isNew, stage }) {
   const store = getStore();
-  const deal = await safeStoreOp("getDeal", () => store.getDeal(dealId), null);
+  const deal = await store.getDeal(dealId);
   if (!deal) return null;
-  if (actorId && deal.ownerId !== actorId) return deal;
   const ts = now();
   /** @type {Partial<import("./types.js").Deal>} */
   const dealPatch = {
@@ -572,12 +529,6 @@ export async function regenerateSummariesAfterPostCall(dealId, accountId, ctx) {
   return regenerateDealAndAccountSummaries(dealId, accountId, ctx);
 }
 
-/** Fire-and-forget Pass 9 via Gemini Batch. */
-export async function enqueueSummariesAfterPostCall(dealId, accountId, ctx) {
-  const { enqueueSummariesAfterPostCall: enqueue } = await import("./summaries-service.js");
-  return enqueue(dealId, accountId, ctx);
-}
-
 export async function bumpDealAfterTask(dealId) {
   const store = getStore();
   const deal = await store.getDeal(dealId);
@@ -603,15 +554,13 @@ export async function ensureDealForLifecycle(lifecycle) {
   }
 
   const store = getStore();
-  const dealOwnerId = await resolveDealOwnerId(lifecycle.accountId, lifecycle.ownerId);
-  const existingNb = await store.findActiveDeal(lifecycle.accountId, "new_business", {
-    ownerId: dealOwnerId,
-    teamId: lifecycle.teamId,
-  });
+  const existingNb = await store.findActiveDeal(lifecycle.accountId, "new_business");
   if (existingNb) {
     await store.updateLifecycle(lifecycle.id, { dealId: existingNb.id });
     return existingNb;
   }
+
+  const dealOwnerId = await resolveDealOwnerId(lifecycle.accountId, lifecycle.ownerId);
   const ts = now();
   const deal = await store.createDeal({
     id: newId("deal"),
@@ -622,7 +571,6 @@ export async function ensureDealForLifecycle(lifecycle) {
     ownerId: dealOwnerId,
     teamId: lifecycle.teamId,
     orgId: lifecycle.orgId || null,
-    lastActorId: lifecycle.ownerId,
     primaryContactId: lifecycle.primaryContactId,
     title: await resolveNewDealTitle(
       lifecycle.accountId,
@@ -651,9 +599,10 @@ export async function ensureDealForLifecycle(lifecycle) {
  * @param {{ prepType?: string, dealId?: string|null, title?: string, primaryContactId?: string|null }} opts
  */
 export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId, opts = {}) {
+  const store = getStore();
   if (opts.dealId) {
-    const deal = await dealForActor(opts.dealId, accountId, ownerId);
-    if (deal) return deal;
+    const deal = await store.getDeal(opts.dealId);
+    if (deal && deal.accountId === accountId) return deal;
   }
 
   const motion = await resolveEngagementMotion(accountId, ownerId, {
@@ -663,14 +612,16 @@ export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId
   });
 
   if (motion.dealId) {
-    const deal = await dealForActor(motion.dealId, accountId, ownerId);
-    if (deal) return deal;
+    const deal = await store.getDeal(motion.dealId);
+    if (deal && deal.accountId === accountId) return deal;
   }
 
   const prepType = motion.prepType;
+  const dealOwnerId = await resolveDealOwnerId(accountId, ownerId);
   const common = {
     title: opts.title,
     primaryContactId: opts.primaryContactId,
+    dealOwnerId,
   };
 
   if (prepType === "expansion") {
@@ -711,25 +662,9 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     user.role === "admin";
   if (!canHandoff) return { success: false, error: "Not allowed to hand off account" };
 
-  const targetScope = await resolveWriteScope(session, { ownerId: targetOwnerId });
-  if (!targetScope?.teamId) {
-    return { success: false, error: "Missing team scope for handoff" };
-  }
-  const { teamId, orgId } = targetScope;
-
-  const actorScope = await resolveWriteScope(session);
-  const nbDeal = await store.findActiveDeal(accountId, "new_business", {
-    ownerId: actorId,
-    teamId: actorScope?.teamId || user.teamId,
-  });
+  const nbDeal = await store.findActiveDeal(accountId, "new_business");
   if (nbDeal) {
-    const ts = now();
-    await store.updateDeal(nbDeal.id, {
-      status: "closed_won_grace",
-      stage: "closed_won",
-      wonAt: nbDeal.wonAt || ts,
-      lastActivityAt: ts,
-    });
+    await archiveDeal(nbDeal.id, actorId, { stage: "closed_won" });
   }
 
   for (const lc of teamLifecycles) {
@@ -739,11 +674,26 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     }
   }
 
+  // During 90-day NB grace, route to the won NB deal — do not create expansion deal yet.
   await store.updateAccount(accountId, {
-    programPhase: "expansion",
+    programPhase: "live",
     updatedAt: now(),
   });
 
+  const archivedNb = nbDeal ? await store.getDeal(nbDeal.id) : null;
+  if (archivedNb) {
+    return {
+      success: true,
+      expansionDeal: null,
+      nbDeal: archivedNb,
+      lifecycle: null,
+      accountId,
+      gracePeriod: true,
+    };
+  }
+
+  const teamId = user.teamId || session.teamId;
+  const orgId = user.orgId || session.orgId || null;
   const expansionDeal = await createExpansionDeal(accountId, targetOwnerId, teamId, orgId, {
     title: `${account.name || "Account"}. Expansion`,
     primaryContactId: nbDeal?.primaryContactId ?? null,
@@ -758,5 +708,10 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
     orgId,
   });
 
-  return { success: true, expansionDeal, lifecycle, accountId };
+  await store.updateAccount(accountId, {
+    programPhase: "expansion",
+    updatedAt: now(),
+  });
+
+  return { success: true, expansionDeal, lifecycle, accountId, gracePeriod: false };
 }

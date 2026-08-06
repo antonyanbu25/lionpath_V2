@@ -21,16 +21,14 @@ export const firebaseConfig = {
 };
 
 /** Bump when auth/bootstrap JS changes (cache-bust query on index.html module tags). */
-export const AUTH_BUILD_ID = "2.1.24";
+export const AUTH_BUILD_ID = "2.1.29";
 /** Cache-bust query for ES module imports — bump with AUTH_BUILD_ID. */
 export const MODULE_BUILD = AUTH_BUILD_ID;
 
-export function isProductionHost(host) {
+function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
-    host === "janus.benjaminsquare.com" ||
-    host === "lionpath.benjaminsquare.com" ||
     host.endsWith(".run.app")
   );
 }
@@ -110,12 +108,7 @@ function workerBaseUrl() {
     if (host === "yonus.benjaminsquare.com") {
       return "https://yonus-api.benjaminsquare.com";
     }
-    if (host === "janus.benjaminsquare.com") {
-      return "https://janus-api.benjaminsquare.com";
-    }
     if (host.endsWith(".run.app")) {
-      const apiHost = host.replace(/^prep-portal-web-/, "prep-portal-api-");
-      if (apiHost !== host) return `https://${apiHost}`;
       return "https://prep-portal-api-781846715448.us-central1.run.app";
     }
     // Local dev: pin to IPv4 loopback. Worker may be IPv4-only; Chrome often

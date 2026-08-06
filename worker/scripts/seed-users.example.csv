@@ -1,33 +1,47 @@
-email,role,teamId,displayName,orgId,managerEmail
-vipin.thomas@freshworks.com,manager,-,Vipin Thomas,org_freshworks_se,
-antony.sagayaraj@freshworks.com,manager,-,Antony Sagayaraj,org_freshworks_se,vipin.thomas@freshworks.com
-preethi.sri@freshworks.com,manager,-,Preethi Sri,org_freshworks_se,vipin.thomas@freshworks.com
-preethi.sriram@freshworks.com,manager,-,Preethi Sriram,org_freshworks_se,vipin.thomas@freshworks.com
-ajay.raghavan@freshworks.com,manager,team_ajay,Ajay Simhan,org_freshworks_se,antony.sagayaraj@freshworks.com
-nikil.ravi@freshworks.com,manager,team_nikil,Nikil Ravi,org_freshworks_se,antony.sagayaraj@freshworks.com
-manager.preethi.sri@freshworks.com,manager,team_preethi_sri,Anita Desai,org_freshworks_se,preethi.sri@freshworks.com
-manager.preethi.sriram@freshworks.com,manager,team_preethi_sriram,Karthik Menon,org_freshworks_se,preethi.sriram@freshworks.com
-saketh.poruri@freshworks.com,se,team_ajay,Saketh Poruri,org_freshworks_se,ajay.raghavan@freshworks.com
-balaji.ramkumar@freshworks.com,se,team_ajay,Balaji R,org_freshworks_se,ajay.raghavan@freshworks.com
-shaun.rozario@freshworks.com,se,team_ajay,Shaun Rozario,org_freshworks_se,ajay.raghavan@freshworks.com
-jishnu.sadanandan@freshworks.com,se,team_ajay,Jishnu S,org_freshworks_se,ajay.raghavan@freshworks.com
-vivehanandan.agoram@freshworks.com,se,team_nikil,Vivehanandan Agoram,org_freshworks_se,nikil.ravi@freshworks.com
-mohamed.husaam@freshworks.com,se,team_nikil,Mohamed Husaam,org_freshworks_se,nikil.ravi@freshworks.com
-sathish.kuttan@freshworks.com,se,team_nikil,Sathish kuttan,org_freshworks_se,nikil.ravi@freshworks.com
-shamron.mariyas@freshworks.com,se,team_nikil,Shamron Mariya S,org_freshworks_se,nikil.ravi@freshworks.com
-karthik.muthiah@freshworks.com,se,team_nikil,Karthik Muthiah,org_freshworks_se,nikil.ravi@freshworks.com
-nivedha.natarajan@freshworks.com,se,team_nikil,Nivedha Natarajan,org_freshworks_se,nikil.ravi@freshworks.com
-aakash.poraith1@freshworks.com,se,team_nikil,Aakash P,org_freshworks_se,nikil.ravi@freshworks.com
-nitish.radha@freshworks.com,se,team_nikil,Nitish Radha,org_freshworks_se,nikil.ravi@freshworks.com
-kritika.saxena@freshworks.com,se,team_nikil,Kritika Saxena,org_freshworks_se,nikil.ravi@freshworks.com
-khader.hussain@freshworks.com,se,team_nikil,Khader Sha,org_freshworks_se,nikil.ravi@freshworks.com
-thajudeen.shaheen@freshworks.com,se,team_nikil,Thajudeen Shaheen,org_freshworks_se,nikil.ravi@freshworks.com
-sowrav.sunil@freshworks.com,se,team_nikil,Sowrav Sunil,org_freshworks_se,nikil.ravi@freshworks.com
-swetha.suresh@freshworks.com,se,team_nikil,Swetha Suresh,org_freshworks_se,nikil.ravi@freshworks.com
-gayathri.ravikumar@freshworks.com,se,team_nikil,Gayathri T R,org_freshworks_se,nikil.ravi@freshworks.com
-pavithra.velkannan@freshworks.com,se,team_nikil,Pavithra Velkannan,org_freshworks_se,nikil.ravi@freshworks.com
-se.preethi.sri.1@freshworks.com,se,team_preethi_sri,Meera Iyer,org_freshworks_se,manager.preethi.sri@freshworks.com
-se.preethi.sri.2@freshworks.com,se,team_preethi_sri,Vikram Singh,org_freshworks_se,manager.preethi.sri@freshworks.com
-se.preethi.sriram.1@freshworks.com,se,team_preethi_sriram,Divya Nair,org_freshworks_se,manager.preethi.sriram@freshworks.com
-se.preethi.sriram.2@freshworks.com,se,team_preethi_sriram,Rohan Das,org_freshworks_se,manager.preethi.sriram@freshworks.com
-se@freshworks.com,se,team_ajay,Alex SE,org_freshworks_se,ajay.raghavan@freshworks.com
+email,role,teamId,displayName,orgId,managerEmail,segmentId,jobTitle
+vipin.thomas@freshworks.com,manager,-,Vipin Thomas,org_freshworks_se,,,Senior Director - CX Customer Solutions & Strategy
+antony.sagayaraj@freshworks.com,manager,-,Antony Sagayaraj,org_freshworks_se,vipin.thomas@freshworks.com,seg_new_business,Senior Manager - Solution Engineering
+preethi.sri@freshworks.com,manager,-,Preethi Sri,org_freshworks_se,vipin.thomas@freshworks.com,seg_digital,Senior Manager - Solution Engineering
+preethi.sriram@freshworks.com,manager,-,Preethi Sriram,org_freshworks_se,vipin.thomas@freshworks.com,seg_nurture,Senior Manager - Solution Engineering
+ajay.raghavan@freshworks.com,manager,team_ajay,Ajay Simhan,org_freshworks_se,antony.sagayaraj@freshworks.com,seg_new_business,Manager - Solution Engineering
+nikil.ravi@freshworks.com,manager,team_nikil,Nikil Ravi,org_freshworks_se,antony.sagayaraj@freshworks.com,seg_new_business,Manager - Solution Engineering
+mary.sheeba@freshworks.com,manager,team_mary,Mary Sheeba,org_freshworks_se,preethi.sriram@freshworks.com,seg_nurture,Manager - Solution Engineering
+varun.barathy@freshworks.com,manager,team_varun,Varun Kanna,org_freshworks_se,preethi.sriram@freshworks.com,seg_nurture,Manager - Solution Engineering
+product.pm@freshworks.com,pm,-,Maya Chen,org_freshworks_se,vipin.thomas@freshworks.com,,Product Manager - CX Platform
+saketh.poruri@freshworks.com,se,team_ajay,Saketh Poruri,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Solution Engineer
+balaji.ramkumar@freshworks.com,se,team_ajay,Balaji R,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Lead - Solution Engineer
+shaun.rozario@freshworks.com,se,team_ajay,Shaun Rozario,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Senior Solution Engineer
+jishnu.sadanandan@freshworks.com,se,team_ajay,Jishnu S,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Senior Solution Engineer
+snehil.nair@freshworks.com,se,team_ajay,Snehil Nair,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Solution Engineer
+aakash.poraith1@freshworks.com,se,team_nikil,Aakash P,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+gayathri.ravikumar@freshworks.com,se,team_nikil,Gayathri T R,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+karthik.muthiah@freshworks.com,se,team_nikil,Karthik Muthiah,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Lead - Solution Engineer
+khader.hussain@freshworks.com,se,team_nikil,Khader Sha,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+kritika.saxena@freshworks.com,se,team_nikil,Kritika Saxena,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Solution Engineer
+nitish.radha@freshworks.com,se,team_nikil,Nitish Radha,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+mohamed.husaam@freshworks.com,se,team_nikil,Mohamed Husaam,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Solution Engineer
+nivedha.natarajan@freshworks.com,se,team_nikil,Nivedha Natarajan,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Lead - Solution Engineer
+sathish.kuttan@freshworks.com,se,team_nikil,Sathish kuttan,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+shamron.mariyas@freshworks.com,se,team_nikil,Shamron Mariya S,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Solution Engineer
+sowrav.sunil@freshworks.com,admin,team_nikil,Sowrav Sunil,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Lead - Solution Engineer
+swetha.suresh@freshworks.com,se,team_nikil,Swetha Suresh,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+thajudeen.shaheen@freshworks.com,se,team_nikil,Thajudeen Shaheen,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Solution Engineer
+vivehanandan.agoram@freshworks.com,se,team_nikil,Vivehanandan Agoram,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+pavithra.velkannan@freshworks.com,se,team_nikil,Pavithra Velkannan,org_freshworks_se,nikil.ravi@freshworks.com,seg_new_business,Senior Solution Engineer
+vijai.vijayakumar@freshworks.com,se,team_mary,Vijai Vijayakumar,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Solution Engineer
+cibby.kurian@freshworks.com,se,team_mary,Cibby Kurian,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Solution Engineer
+jessica.rodrigues@freshworks.com,se,team_mary,Jessica Rodrigues,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Senior Solution Engineer
+noel.fernandes@freshworks.com,se,team_mary,Noel Fernandes,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Solution Engineer
+pradeep.kumar@freshworks.com,se,team_mary,Pradeep Kumar,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Senior Solution Engineer
+ravikkumar.s@freshworks.com,se,team_mary,Ravikkumar S,org_freshworks_se,mary.sheeba@freshworks.com,seg_nurture,Solution Engineer
+sarwer.hussain@freshworks.com,se,team_varun,Sarwer Hussain,org_freshworks_se,varun.barathy@freshworks.com,seg_nurture,Solution Engineer
+stefy.john@freshworks.com,se,team_varun,Stefy John,org_freshworks_se,varun.barathy@freshworks.com,seg_nurture,Solution Engineer
+avinash.kumar@freshworks.com,se,team_akshita,Avinash Kumar,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Solution Engineer
+calvin.joseph@freshworks.com,se,team_akshita,Calvin Joseph,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Senior Solution Engineer
+dikshika.sharma@freshworks.com,se,team_akshita,Dikshika Sharma,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Solution Engineer
+gautham.r@freshworks.com,se,team_akshita,Gautham R,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Lead - Solution Engineer
+nafisa.khan@freshworks.com,se,team_akshita,Nafisa Khan,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Solution Engineer
+mrinalini.p@freshworks.com,se,team_akshita,Mrinalini P,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Senior Solution Engineer
+sacheeka.d@freshworks.com,se,team_akshita,Sacheeka D,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Solution Engineer
+swetha.j@freshworks.com,se,team_akshita,Swetha J,org_freshworks_se,preethi.sri@freshworks.com,seg_digital,Senior Solution Engineer
+se@freshworks.com,se,team_ajay,Alex SE,org_freshworks_se,ajay.raghavan@freshworks.com,seg_new_business,Solution Engineer

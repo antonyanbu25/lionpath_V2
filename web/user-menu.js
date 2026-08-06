@@ -5,6 +5,7 @@
 import { wireThemeMenu, syncThemeMenuState } from "./theme.js";
 
 let globalEventsBound = false;
+let menuScrollBound = false;
 let menuCallbacks = {
   onProfileSettings: null,
   onSignOut: null,
@@ -57,6 +58,23 @@ function restoreTeleportHome(el) {
   else el._teleportParent.appendChild(el);
 }
 
+/** Close the profile flyout (exported for sign-out and scroll dismiss). */
+export function closeUserMenu() {
+  const panel = document.getElementById("user-menu-panel");
+  const backdrop = document.getElementById("user-menu-backdrop");
+  const trigger = document.getElementById("sidebar-user") || document.getElementById("user-menu-trigger");
+  const themeSubmenu = document.getElementById("user-menu-theme-submenu");
+  const themeToggle = document.getElementById("user-menu-theme-toggle");
+  if (!panel) return;
+  panel.hidden = true;
+  if (backdrop) backdrop.hidden = true;
+  restoreTeleportHome(panel);
+  restoreTeleportHome(backdrop);
+  trigger?.setAttribute("aria-expanded", "false");
+  if (themeSubmenu) themeSubmenu.hidden = true;
+  if (themeToggle) themeToggle.setAttribute("aria-expanded", "false");
+}
+
 /**
  * @param {{ getSession: () => object|null, onProfileSettings: () => void, onSignOut: () => void }} opts
  */
@@ -79,6 +97,14 @@ export function initUserMenu(opts) {
   if (panel.dataset.userMenuWired !== "1") {
     panel.dataset.userMenuWired = "1";
 
+    const signOutEl = document.getElementById("user-menu-signout");
+    signOutEl?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      menuCallbacks.onSignOut?.();
+    });
+
     panel.addEventListener("click", (e) => {
       const signOutBtn = e.target.closest("#user-menu-signout");
       if (signOutBtn) {
@@ -86,26 +112,12 @@ export function initUserMenu(opts) {
         e.stopPropagation();
         closeMenu();
         menuCallbacks.onSignOut?.();
-        return;
-      }
-      const profileBtn = e.target.closest("#user-menu-profile");
-      if (profileBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeMenu();
-        menuCallbacks.onProfileSettings?.();
       }
     });
   }
 
   function closeMenu() {
-    panel.hidden = true;
-    if (backdrop) backdrop.hidden = true;
-    restoreTeleportHome(panel);
-    restoreTeleportHome(backdrop);
-    trigger.setAttribute("aria-expanded", "false");
-    if (themeSubmenu) themeSubmenu.hidden = true;
-    if (themeToggle) themeToggle.setAttribute("aria-expanded", "false");
+    closeUserMenu();
   }
 
   function openMenu() {
@@ -123,7 +135,8 @@ export function initUserMenu(opts) {
     else closeMenu();
   }
 
-  backdrop?.addEventListener("click", closeMenu);
+  backdrop?.addEventListener("wheel", closeMenu, { passive: true });
+  backdrop?.addEventListener("touchmove", closeMenu, { passive: true });
 
   if (trigger.dataset.userMenuTriggerWired !== "1") {
     trigger.dataset.userMenuTriggerWired = "1";
@@ -154,16 +167,40 @@ export function initUserMenu(opts) {
       if (panelEl.contains(e.target)) return;
       if (triggerEl?.contains(e.target)) return;
       if (backdropEl?.contains(e.target)) return;
-      panelEl.hidden = true;
-      if (backdropEl) backdropEl.hidden = true;
-      restoreTeleportHome(panelEl);
-      restoreTeleportHome(backdropEl);
-      triggerEl?.setAttribute("aria-expanded", "false");
+      closeUserMenu();
     });
 
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !panel.hidden) closeMenu();
+      const panelEl = document.getElementById("user-menu-panel");
+      if (e.key === "Escape" && panelEl && !panelEl.hidden) closeUserMenu();
     });
+
+    if (!menuScrollBound) {
+      menuScrollBound = true;
+      const scrollContainers = () => {
+        if (typeof document.querySelector !== "function") return [];
+        return [
+          document.querySelector(".sidebar-nav"),
+          document.querySelector(".sidebar-history"),
+          document.querySelector(".sidebar-recent-work"),
+          document.documentElement,
+        ].filter(Boolean);
+      };
+
+      const onScrollDismiss = (e) => {
+        const panelEl = document.getElementById("user-menu-panel");
+        if (!panelEl || panelEl.hidden) return;
+        if (panelEl.contains(e.target)) return;
+        closeUserMenu();
+      };
+      document.addEventListener("scroll", onScrollDismiss, { capture: true, passive: true });
+      window.addEventListener("scroll", onScrollDismiss, { capture: true, passive: true });
+      document.addEventListener("wheel", onScrollDismiss, { capture: true, passive: true });
+      document.addEventListener("touchmove", onScrollDismiss, { capture: true, passive: true });
+      for (const el of scrollContainers()) {
+        el.addEventListener("scroll", onScrollDismiss, { passive: true });
+      }
+    }
   }
 
   refreshUserMenu(menuCallbacks.getSession?.());
@@ -193,7 +230,9 @@ export function refreshUserMenu(session) {
   const sidebarAvatar = document.getElementById("sidebar-user-avatar");
   const sidebarName = document.getElementById("sidebar-user-name");
   const sidebarRole = document.getElementById("sidebar-user-role");
+  const headerAvatar = document.getElementById("user-menu-header-avatar");
   if (sidebarAvatar) sidebarAvatar.textContent = initials;
+  if (headerAvatar) headerAvatar.textContent = initials;
   if (sidebarName) sidebarName.textContent = name || email.split("@")[0] || "User";
   if (sidebarRole) {
     const title = session?.jobTitle || "Solution Engineer";

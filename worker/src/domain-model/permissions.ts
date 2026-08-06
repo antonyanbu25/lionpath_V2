@@ -16,22 +16,32 @@ export type ResourceType =
 export type Action =
   | "read"
   | "create"
+  | "create_on_behalf"
   | "update"
   | "delete"
   | "manage_team"
-  | "manage_users";
+  | "manage_users"
+  | "manage_org_structure";
 
 export interface ResourceContext {
   ownerId?: string;
   teamId?: string;
   orgId?: string;
+  targetRole?: string;
 }
 
 /**
  * User with optional org-wide scope flag (session/UI).
  * `isOrgDirector` is true for the org director and senior managers on org.seniorLeaderIds.
  */
-export type UserWithScope = User & { isOrgDirector?: boolean; isOrgLeader?: boolean };
+export type UserWithScope = User & {
+  isOrgDirector?: boolean;
+  isOrgLeader?: boolean;
+  isActualDirector?: boolean;
+  isSegmentLeader?: boolean;
+  segmentId?: string | null;
+  segmentTeamIds?: string[];
+};
 
 function hasOrgWideScope(user: UserWithScope): boolean {
   return user.isOrgDirector === true || user.isOrgLeader === true;
@@ -69,6 +79,16 @@ export function can(user: UserWithScope | null, action: Action, resource: Resour
       if (isManager(user.role) && sameTeam(user, resource)) return true;
       return false;
 
+    case "create_on_behalf":
+      if (!isManager(user.role) || !resource.ownerId || resource.ownerId === user.id) return false;
+      if (resource.targetRole !== "se") return false;
+      if (user.teamId && resource.teamId && user.teamId === resource.teamId) return true;
+      if (user.isSegmentLeader && resource.teamId && user.segmentTeamIds?.includes(resource.teamId)) {
+        return true;
+      }
+      if (hasOrgWideScope(user) && sameOrg(user, resource)) return true;
+      return false;
+
     case "create":
     case "update":
       if (user.role === "se" && isOwner(user, resource)) return true;
@@ -80,6 +100,24 @@ export function can(user: UserWithScope | null, action: Action, resource: Resour
     case "manage_team":
     case "manage_users":
       return isAdmin(user.role);
+
+    case "manage_org_structure":
+      if (isAdmin(user.role)) return true;
+      if (user.isActualDirector) return true;
+      if (user.isSegmentLeader) {
+        if (resource.segmentId && user.segmentId && resource.segmentId !== user.segmentId) {
+          return false;
+        }
+        if (
+          resource.teamId &&
+          user.segmentTeamIds?.length &&
+          !user.segmentTeamIds.includes(resource.teamId)
+        ) {
+          return false;
+        }
+        return true;
+      }
+      return false;
 
     default:
       return false;

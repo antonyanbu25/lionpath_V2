@@ -164,14 +164,19 @@ export async function fetchHistoryFromWorker(email) {
   return Array.isArray(data.entries) ? data.entries : [];
 }
 
-/** @param {string} email @param {object} entry */
-async function pushRemoteEntry(email, entry) {
+/** @param {string} email @param {object} entry @param {{ proxySeActing?: boolean }} [opts] */
+async function pushRemoteEntry(email, entry, opts = {}) {
   const normalized = normalizeUserEmail(email);
   if (!normalized || !entry?.id) return false;
   const res = await fetch(`${WORKER_BASE_URL}/api/history`, {
     method: "POST",
     headers: await historyHeaders(),
-    body: JSON.stringify({ email: normalized, entry }),
+    body: JSON.stringify({
+      email: normalized,
+      targetEmail: normalized,
+      proxySeActing: opts.proxySeActing === true,
+      entry,
+    }),
     signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) {
@@ -265,9 +270,10 @@ export async function syncHistoryOnLogin(email, opts = {}) {
  * @param {string} email
  * @param {{ recordingUrl?: string, recordingPassword?: string }} input
  * @param {object} result — full API response { analysis, transcriptMeta }
+ * @param {{ proxySeActing?: boolean, createdByUserId?: string }} [opts]
  * @returns {object} saved record
  */
-export async function savePostCallAnalysis(email, input, result) {
+export async function savePostCallAnalysis(email, input, result, opts = {}) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) {
     console.warn("[history] save skipped. missing email");
@@ -318,6 +324,7 @@ export async function savePostCallAnalysis(email, input, result) {
     /** Keep Pass 6 on the history blob so Product signal can render even if dual-write lags. */
     pass6: result?.pass6 || null,
     result: { ...result, confirmed },
+    createdByUserId: opts.createdByUserId || null,
   };
   const list = readAll(normalized);
   list.unshift(record);
@@ -331,7 +338,7 @@ export async function savePostCallAnalysis(email, input, result) {
 
   console.info(`[history] saved "${record.title}" → ${storageKey(normalized)} (${trimmed.length} total)`);
   try {
-    await pushRemoteEntry(normalized, record);
+    await pushRemoteEntry(normalized, record, { proxySeActing: opts.proxySeActing === true });
     console.info(`[history] synced "${record.title}" to server for ${normalized}`);
   } catch (err) {
     console.warn("[history] remote save failed (local copy kept):", err.message || err);

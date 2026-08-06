@@ -10,7 +10,7 @@
  *   node worker/scripts/seed-firestore-users.mjs --csv worker/scripts/seed-users.example.csv
  *   node worker/scripts/seed-firestore-users.mjs --bootstrap-team --csv worker/scripts/seed-users.example.csv
  *
- * CSV columns: email,role,teamId,displayName,orgId,managerEmail (displayName/orgId/managerEmail optional)
+ * CSV columns: email,role,teamId,displayName,orgId,managerEmail,segmentId,jobTitle
  * Roles: se | manager | admin
  *
  * Users must exist in Firebase Auth (sign in with Google once) before role assignment.
@@ -24,6 +24,8 @@ import {
   TEAM_AJAY_ID,
   TEAM_DISPLAY_NAMES,
   TEAM_NAME_INTERNATIONAL_NB,
+  ORG_SEGMENT_DEFS,
+  ORG_TEAM_IDS,
 } from "../../web/domain/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -112,7 +114,7 @@ function parseCsv(text) {
       console.warn(`Skipping invalid CSV line: ${line}`);
       continue;
     }
-    const [email, role, teamId, displayName, orgId, managerEmail] = parts;
+    const [email, role, teamId, displayName, orgId, managerEmail, segmentId, jobTitle] = parts;
     if (!email || !role || !teamId) continue;
     const normalizedRole = role.toLowerCase();
     if (!ALLOWED_ROLES.has(normalizedRole)) {
@@ -126,6 +128,8 @@ function parseCsv(text) {
       displayName: displayName || email.split("@")[0],
       orgId: orgId || DEMO_ORG_ID,
       managerEmail: managerEmail ? managerEmail.toLowerCase() : null,
+      segmentId: segmentId || null,
+      jobTitle: jobTitle || null,
     });
   }
   return rows;
@@ -207,6 +211,7 @@ async function assignUsers(admin, db, rows, dryRun) {
       teamId: row.teamId,
       orgId: row.orgId,
       managerId: existingData.managerId ?? null,
+      jobTitle: row.jobTitle ?? existingData.jobTitle ?? null,
       status: existingData.status ?? "active",
       createdAt: existingData.createdAt || ts,
       updatedAt: ts,
@@ -249,13 +254,21 @@ async function assignUsers(admin, db, rows, dryRun) {
   const seniorLeaderIds = SENIOR_LEADER_EMAILS
     .map((e) => emailToInternalId.get(e))
     .filter(Boolean);
+  const segments = ORG_SEGMENT_DEFS.map((def) => ({
+    id: def.id,
+    name: def.name,
+    leaderId: emailToInternalId.get(def.leaderEmail.toLowerCase()) || "",
+    teamIds: [...def.teamIds],
+  })).filter((s) => s.leaderId);
   const orgRef = db.collection("orgs").doc(DEMO_ORG_ID);
   const orgPatch = {
     name: "Freshworks CX Solution Engineering",
+    teamIds: ORG_TEAM_IDS,
     updatedAt: ts,
   };
   if (directorId) orgPatch.directorId = directorId;
   if (seniorLeaderIds.length) orgPatch.seniorLeaderIds = seniorLeaderIds;
+  if (segments.length) orgPatch.segments = segments;
 
   if (directorId || seniorLeaderIds.length) {
     if (dryRun) {

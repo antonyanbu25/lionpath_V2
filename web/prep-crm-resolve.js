@@ -487,14 +487,18 @@ async function showInstantAccountPreview() {
     hideAccountDealPreview();
     return;
   }
-  const domain = emails[0].split("@")[1]?.toLowerCase();
+  const ctx = await readCompanyLookupContext();
+  const domain =
+    ctx.companyDomain ||
+    emails[0]?.split("@")[1]?.toLowerCase() ||
+    null;
   if (!domain || isFreeMailDomain(domain)) {
     if (!prepResolvedAccount?.id) prepResolvedAccount = null;
     hideAccountDealPreview();
     return;
   }
   if (seq !== previewToken || prepResolvedAccount?.id) return;
-  const name = companyNameFromDomain(domain) || domain;
+  const name = ctx.companyName || companyNameFromDomain(domain) || domain;
   renderAccountDealPreview(domain, name);
 }
 

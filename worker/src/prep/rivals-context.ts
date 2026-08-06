@@ -4,8 +4,8 @@
  */
 
 import { extractJson } from "../json";
-import { getProviderForPass } from "../providers";
-import type { Env } from "./types";
+import { getProvider } from "../providers";
+import type { Env, ResearchFact } from "./types";
 
 export interface FishContextMetric {
   label: string;
@@ -107,17 +107,92 @@ function tokenOverlap(a: string, b: string): number {
   return n;
 }
 
+const UNKNOWN_VALUES = new Set(["unknown", "n/a", "na", "not found", "unclear", "—", "-"]);
+
+/** Map verified research facts to fish INPUT rows (no LLM). */
+const FISH_FACT_LABELS: Record<string, string> = {
+  "Company size": "Employees",
+  "Support team": "Support agents",
+  Ownership: "Ownership",
+  Industry: "Industry",
+};
+
+function isUsableFactValue(raw: string): boolean {
+  const v = String(raw || "").trim();
+  if (!v || v.length < 2) return false;
+  return !UNKNOWN_VALUES.has(v.toLowerCase());
+}
+
+/** Build fish sizing metrics directly from grounded research facts. */
+export function fishSizingFromResearchFacts(facts: ResearchFact[] | undefined): FishContextSizing | null {
+  const metrics: FishContextMetric[] = [];
+  const seen = new Set<string>();
+  for (const fact of facts || []) {
+    const label = FISH_FACT_LABELS[String(fact.key || "")];
+    if (!label) continue;
+    const value = trimWords(String(fact.value || ""), 12);
+    if (!isUsableFactValue(value)) continue;
+    const key = `${label.toLowerCase()}|${value.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    metrics.push({ label, value });
+    if (metrics.length >= 4) break;
+  }
+  if (!metrics.length) return null;
+  return { metrics, source: "context" };
+}
+
+/** Merge fish context metrics; first wins on duplicate labels. */
+export function mergeFishContextSizing(
+  ...groups: (FishContextSizing | null | undefined)[]
+): FishContextSizing | null {
+  const metrics: FishContextMetric[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const m of group?.metrics || []) {
+      const key = String(m.label || "").toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      metrics.push(m);
+    }
+  }
+  if (!metrics.length) return null;
+  return { metrics: metrics.slice(0, 4), source: "context" };
+}
+
+/** Compose LLM input from company, domain, emails, facts, and optional AE notes. */
+export function buildFishSizingPromptContext(input: {
+  companyName: string;
+  companyDomain?: string;
+  emails?: string[];
+  facts?: ResearchFact[];
+  aeContext?: string;
+}): string {
+  const lines: string[] = [];
+  if (input.companyName) lines.push(`Company: ${input.companyName}`);
+  if (input.companyDomain) lines.push(`Domain: ${input.companyDomain}`);
+  if (input.emails?.length) lines.push(`Prospect emails: ${input.emails.join(", ")}`);
+  for (const fact of input.facts || []) {
+    const label = FISH_FACT_LABELS[String(fact.key || "")] || String(fact.key || "").trim();
+    const value = String(fact.value || "").trim();
+    if (!label || !isUsableFactValue(value)) continue;
+    lines.push(`${label}: ${value}`);
+  }
+  const ae = String(input.aeContext || "").trim();
+  if (ae) lines.push("", "SE additional notes:", ae);
+  return lines.join("\n").trim();
+}
+
 /** Extract company sizing from merged AE context (runs in parallel with web rivals search). */
 export async function extractFishSizingFromContext(
   env: Env,
   additionalContext: string | undefined,
   companyName: string,
-  usage?: { userId?: string; callId?: string },
 ): Promise<FishContextSizing | null> {
   const text = String(additionalContext || "").trim();
-  if (text.length < 20 || !companyName) return null;
+  if (text.length < 12 || !companyName) return null;
 
-  const provider = getProviderForPass("rivals-context", env);
+  const provider = getProvider(env);
   let result;
   try {
     result = await provider.generate({
@@ -136,9 +211,6 @@ Values max 12 words. Labels max 4 words. No invention.`,
       effort: "low",
       jsonSchema: SIZING_SCHEMA as unknown as Record<string, unknown>,
       step: "prep/rivals-context",
-      passName: "rivals-context",
-      userId: usage?.userId,
-      callId: usage?.callId,
     });
   } catch (err) {
     console.warn("prep/rivals-context skipped:", (err as Error).message);
@@ -149,7 +221,7 @@ Values max 12 words. Labels max 4 words. No invention.`,
     const parsed = extractJson<{ metrics?: { label?: string; value?: string; aboutCompany?: boolean }[] }>(
       result.text,
     );
-    const metrics = filterFishContextMetrics(parsed.metrics ?? []);
+    const metrics = filterFishContextMetrics(parsed.metrics);
     if (!metrics.length) return null;
     return { metrics, source: "context" };
   } catch (err) {

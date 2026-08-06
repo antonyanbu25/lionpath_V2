@@ -3,7 +3,7 @@
  */
 
 import { extractJson } from "../json";
-import { getProviderForPass } from "../providers";
+import { getProvider } from "../providers";
 import type { Env } from "../prep/types";
 import { fetchKaiaSummary } from "../kaia/fetchShareContent";
 import { isKaiaEngageShareUrl } from "../kaia/shareLink";
@@ -30,8 +30,6 @@ export interface ContactEnrichRequest {
   companyName?: string;
   companyDomain?: string;
   sources: ContactEnrichSources;
-  userId?: string;
-  callId?: string;
 }
 
 export interface ContactEnrichProfile {
@@ -310,7 +308,7 @@ export async function enrichContact(env: Env, req: ContactEnrichRequest): Promis
   const linkedInOnly = discSource === "linkedin_pdf";
   const kaiaSpeakerScoped = !!req.sources.kaiaSummary?.includes("Speaker-specific segments:");
 
-  const provider = getProviderForPass("contact/enrich", env);
+  const provider = getProvider(env);
   const enrichPrompt = {
     system: `You extract a prospect profile and infer DISC from provided text ONLY. Do not invent employers, dates, or traits not supported by the text.
 
@@ -331,9 +329,6 @@ Output JSON only.`,
     research: false,
     effort: "low" as const,
     jsonSchema: ENRICH_SCHEMA as unknown as Record<string, unknown>,
-    passName: "contact/enrich",
-    userId: req.userId,
-    callId: req.callId,
   };
 
   let result = await provider.generate(enrichPrompt);

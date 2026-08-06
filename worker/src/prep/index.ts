@@ -23,10 +23,14 @@ import { canonicalizePrepSources } from "./canonicalize-sources";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
 import { generateRivalComparison } from "./rivals";
-import { extractFishSizingFromContext } from "./rivals-context";
+import {
+  extractFishSizingFromContext,
+  buildFishSizingPromptContext,
+  fishSizingFromResearchFacts,
+  mergeFishContextSizing,
+} from "./rivals-context";
 import { generateCompanyNews } from "./company-news";
 import { DEMO_ASSET_LABELS } from "../prep-assets";
-import { recordResearchCacheHit } from "./research-cache-usage";
 import { padSources } from "./source-table";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type {
@@ -44,6 +48,26 @@ export { resolveProspectEmails, deriveDomain, normalizePrepInput, computeInputHa
 export type { PrepInput, PrepResult, ResearchOnlyResult, Env } from "./types";
 
 const ALLOWED_EFFORT = ["low", "medium", "high", "xhigh", "max"];
+
+/** Fish sizing: research facts first, then LLM pass over company + facts + AE notes. */
+async function resolveFishContext(
+  env: Env,
+  input: NormalizedPrepInput,
+  emails: string[],
+  facts: ResearchFact[],
+  mergedContext: string | undefined,
+) {
+  const fromFacts = fishSizingFromResearchFacts(facts);
+  const promptContext = buildFishSizingPromptContext({
+    companyName: input.companyName,
+    companyDomain: input.companyDomain,
+    emails,
+    facts,
+    aeContext: mergedContext,
+  });
+  const fromContext = await extractFishSizingFromContext(env, promptContext, input.companyName);
+  return mergeFishContextSizing(fromFacts, fromContext);
+}
 
 function mergeFacts(...groups: ResearchFact[][]): ResearchFact[] {
   const seen = new Set<string>();
@@ -156,7 +180,6 @@ async function gatherResearch(
 
   const { cacheHit, bundle, softCacheHit } = resolveCachedResearch(input, emails);
   if (cacheHit && bundle) {
-    recordResearchCacheHit(env, { userId: input.userId, callId: input.callId ?? input.lifecycleId });
     const tCache = Date.now();
     const { text: mergedContext, kaiaFetched } = await resolveMergedAdditionalContext(input);
     const baseFacts = input.confirmedFacts?.length ? input.confirmedFacts : bundle.facts;
@@ -193,8 +216,6 @@ async function gatherResearch(
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     emails,
-    userId: input.userId,
-    callId: input.callId ?? input.lifecycleId,
   };
 
   const stepTimings: Record<string, number> = {};
@@ -252,13 +273,8 @@ async function gatherResearch(
       companyDomain: input.companyDomain,
       emails,
       additionalContext: mergedContext,
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
     }),
-    extractSeContextFacts(env, mergedContext, {
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
-    }),
+    extractSeContextFacts(env, mergedContext),
   ]);
   stepTimings.extract = Date.now() - tExtract;
   let facts = mergeFacts(apolloFacts, orchestratorFacts, extracted.facts, seExtracted.facts);
@@ -269,37 +285,40 @@ async function gatherResearch(
   facts = withSe.facts;
   sources = withSe.sources;
 
-  // Gap follow-up and news supplement both read the post-extract snapshot only — gap adds
-  // signal/prospect snippets, news reads playbook news snippets. Safe to run in parallel.
-  const gapNewsInput = {
-    companyName: input.companyName,
-    companyDomain: input.companyDomain,
-    emails,
-    additionalContext: mergedContext,
-    userId: input.userId,
-    callId: input.callId ?? input.lifecycleId,
-  };
-  const tGapNews = Date.now();
-  const [gapFilled, newsSupplemented] = await Promise.all([
-    fillResearchGaps(env, gapNewsInput, snippets, facts, sources),
-    supplementNewsFacts(env, snippets, facts, sources, gapNewsInput),
-  ]);
-  const gapNewsMs = Date.now() - tGapNews;
-  stepTimings.gap = gapNewsMs;
-  stepTimings.news = gapNewsMs;
-
-  const newsOnly = newsSupplemented.facts.filter(
-    (f) =>
-      f.category === "news" &&
-      !gapFilled.facts.some((g) => g.category === f.category && g.key === f.key && g.value === f.value),
+  const tGap = Date.now();
+  const gapFilled = await fillResearchGaps(
+    env,
+    {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+      additionalContext: mergedContext,
+    },
+    snippets,
+    facts,
+    sources,
   );
-  const mergedFacts = mergeFacts(gapFilled.facts, newsOnly);
-  const mergedSources = mergeSources(gapFilled.sources, newsSupplemented.sources);
+  stepTimings.gap = Date.now() - tGap;
+  const afterGap = applySeContextFacts(gapFilled.facts, gapFilled.sources, mergedContext);
+  const tNews = Date.now();
+  const supplemented = await supplementNewsFacts(
+    env,
+    gapFilled.snippets,
+    afterGap.facts,
+    afterGap.sources,
+    {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+      emails,
+      additionalContext: mergedContext,
+    },
+  );
+  stepTimings.news = Date.now() - tNews;
 
   return {
     snippets: gapFilled.snippets,
-    facts: mergedFacts,
-    sources: mergedSources,
+    facts: supplemented.facts,
+    sources: supplemented.sources,
     cacheHit: false,
     playbookSkipped: false,
     apolloCredits,
@@ -341,12 +360,6 @@ function applyConfirmedProfiles(
 /** Full pipeline: research → extract → synthesize → validate. */
 export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepResult> {
   const input = normalizePrepInput(rawInput);
-  const expansionEnabled =
-    (env.PREP_EXPANSION_ENABLED || process.env.PREP_EXPANSION_ENABLED || "false").toLowerCase() ===
-    "true";
-  if (input.prepType === "expansion" && !expansionEnabled) {
-    throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
-  }
 
   const emails = resolveProspectEmails(input);
   const inputHash = computeInputHash(input, emails);
@@ -369,7 +382,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 
   // Parallel — see the note in runPrepSynthesize.
   const mergedContext = research.mergedContext || input.additionalContext;
-  const hasAeContext = !!String(mergedContext || "").trim();
   const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
@@ -382,8 +394,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
         ae: input.ae,
         effort,
         confirmedProspectProfiles: input.confirmedProspectProfiles,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
       },
       facts,
       paddedSources,
@@ -398,8 +408,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
         industry: factsToIndustry(facts),
         signals: factsToSignals(facts),
         assetLabels: DEMO_ASSET_LABELS,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
       },
       input.confirmedProspectProfiles || [],
     ),
@@ -409,26 +417,13 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
     }),
     // Gemini + DDG in parallel inside generateCompanyNews.
-    generateCompanyNews(
-      env,
-      {
-        companyName: input.companyName,
-        companyDomain: input.companyDomain,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
-      },
-      { cachedSnippets: research.snippets },
-    ),
-    hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
-          userId: input.userId,
-          callId: input.callId ?? input.lifecycleId,
-        })
-      : Promise.resolve(null),
+    generateCompanyNews(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+    }),
+    resolveFishContext(env, input, emails, facts, mergedContext),
   ]);
   timings.synthesize = Date.now() - t1;
 
@@ -503,12 +498,6 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
 /** Research-only step for human-in-the-loop confirmation. */
 export async function runPrepResearch(env: Env, rawInput: PrepInput): Promise<ResearchOnlyResult> {
   const input = normalizePrepInput(rawInput);
-  const expansionEnabled =
-    (env.PREP_EXPANSION_ENABLED || process.env.PREP_EXPANSION_ENABLED || "false").toLowerCase() ===
-    "true";
-  if (input.prepType === "expansion" && !expansionEnabled) {
-    throw Object.assign(new Error("Expansion prep is not yet available."), { status: 501 });
-  }
 
   const emails = resolveProspectEmails(input);
   const inputHash = computeInputHash(input, emails);
@@ -572,7 +561,6 @@ export async function runPrepSynthesize(
   // Parallel, not sequential: demo guidance needs the prospects' DISC plus pains and
   // incumbent, never the finished demo script, so it stays off the critical path. It is
   // also the smaller call, so it finishes first and adds ~0s wall clock.
-  const hasAeContext = !!String(mergedContext || "").trim();
   const [prepRaw, guidance, rivals, companyNews, fishContext] = await Promise.all([
     synthesizePrep(
       env,
@@ -585,8 +573,6 @@ export async function runPrepSynthesize(
         ae: input.ae,
         effort,
         confirmedProspectProfiles: input.confirmedProspectProfiles,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
       },
       facts,
       sources,
@@ -601,8 +587,6 @@ export async function runPrepSynthesize(
         industry: factsToIndustry(facts),
         signals: factsToSignals(facts),
         assetLabels: DEMO_ASSET_LABELS,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
       },
       input.confirmedProspectProfiles || [],
     ),
@@ -612,27 +596,14 @@ export async function runPrepSynthesize(
       companyName: input.companyName,
       companyDomain: input.companyDomain,
       industry: factsToIndustry(facts),
-      userId: input.userId,
-      callId: input.callId ?? input.lifecycleId,
     }),
     // Its own grounded search. The research pass surfaces news only incidentally, and the three
     // paths that used to fill this panel let SE context through as "news" instead.
-    generateCompanyNews(
-      env,
-      {
-        companyName: input.companyName,
-        companyDomain: input.companyDomain,
-        userId: input.userId,
-        callId: input.callId ?? input.lifecycleId,
-      },
-      { cachedSnippets: rawInput.researchBundle?.snippets },
-    ),
-    hasAeContext
-      ? extractFishSizingFromContext(env, mergedContext, input.companyName, {
-          userId: input.userId,
-          callId: input.callId ?? input.lifecycleId,
-        })
-      : Promise.resolve(null),
+    generateCompanyNews(env, {
+      companyName: input.companyName,
+      companyDomain: input.companyDomain,
+    }),
+    resolveFishContext(env, input, emails, facts, mergedContext),
   ]);
 
   let { prep, lowConfidence } = validatePrep(stripProspectDiscHints(prepRaw));

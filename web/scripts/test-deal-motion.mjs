@@ -30,7 +30,7 @@ assert(NEW_BUSINESS_TEAM_IDS.has(TEAM_NIKIL_ID), "North America - NB team in NB 
 const ajaySe = { id: "usr_a", teamId: TEAM_AJAY_ID, role: "se" };
 const preethiSe = { id: "usr_p", teamId: "team_preethi", role: "se" };
 assert(isNewBusinessActor(ajaySe), "International - NB actor → NB");
-assert(!isNewBusinessActor(preethiSe), "Preethi squad → not NB actor by default");
+assert(!isNewBusinessActor(preethiSe), "Preethi team → not NB actor by default");
 
 const allowlist = { accountIds: new Set(["acc_nb"]), slugs: new Set(["nb-ic-co"]) };
 const nbAccount = { id: "acc_nb", slug: "nb-ic-co" };

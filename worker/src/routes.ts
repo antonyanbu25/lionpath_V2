@@ -1,5 +1,4 @@
-import { requireUser, resolveHistoryEmail, type VerifiedUser } from "./auth";
-import { resolveRequestContext } from "./data/scope";
+import { requireUser, resolveHistoryEmail, resolveHistoryEmailForWrite, assertManagerProxyOwnerEmail } from "./auth";
 import { isValidCompanyDomain, normalizeCompanyDomain } from "./domain";
 import {
   appendFeedback,
@@ -44,11 +43,6 @@ import {
   type PostCallArrComputeInput,
   type PostCallGapsInput,
 } from "./postcall/index";
-import {
-  preparePostCallTranscriptCaches,
-  releasePostCallTranscriptCaches,
-} from "./postcall/transcript-cache-context";
-import type { PostCallTranscriptCacheBundle } from "./providers/gemini-cache";
 import { runGapClustering, type RunClusteringInput } from "./product-signal/index";
 import {
   generatePrep,
@@ -71,23 +65,9 @@ import {
 import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
-import { firestoreAdminReady } from "./data/firestore-admin";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
-import { rerankWithEmbeddings, type RagEmbeddingCandidate } from "./search/rag-search";
-import { embedText } from "./embeddings";
-import { domainReadRoutes } from "./routes/domain-reads";
-import { handleReadModelsSchedulePost } from "./routes/read-models";
-import {
-  handleBatchEnqueuePost,
-  handleBatchFallbackPost,
-  handleBatchPollPost,
-  handleReadModelsNightlyRebuildPost,
-  handleDealGraceSweepPost,
-} from "./routes/internal-batch";
-import { handleDirectorAnalyticsGet } from "./routes/analytics";
-import { handleAdminLlmUsageGet } from "./routes/admin-llm-usage";
-import { healthRoutes } from "./routes/health";
-import { logInfo, logWarn } from "./logger";
+import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
+import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -96,15 +76,6 @@ export type RouteHandler = (
   url: URL,
   cors: Record<string, string>,
 ) => Promise<Response>;
-
-async function resolveUsageUserId(verified: VerifiedUser, env: Env): Promise<string | undefined> {
-  try {
-    const ctx = await resolveRequestContext(verified, env);
-    return ctx.userId;
-  } catch {
-    return undefined;
-  }
-}
 
 export async function handleZoomStatus(
   _request: Request,
@@ -204,18 +175,17 @@ export async function handleGeneratePrep(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput>;
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
     return json({ error: "A valid companyDomain is required (e.g. acme.com)." }, 400, cors);
   }
   if (input.lifecycleId) {
-    logInfo("generate-prep lifecycleId", { lifecycleId: input.lifecycleId });
+    console.log("generate-prep lifecycleId:", input.lifecycleId);
   }
   if (input.dealId) {
-    logInfo("generate-prep dealId", { dealId: input.dealId });
+    console.log("generate-prep dealId:", input.dealId);
   }
   const emails = resolveProspectEmails(input as PrepInput);
   if (!emails.length && !input.prospectEmail?.trim()) {
@@ -228,8 +198,6 @@ export async function handleGeneratePrep(
       prospectEmail: emails[0] || String(input.prospectEmail).trim(),
       prospectEmails: emails.length ? emails : undefined,
       prepType: input.prepType || "new_business",
-      userId,
-      callId: input.callId ?? input.lifecycleId,
     });
     return json(
       {
@@ -256,16 +224,14 @@ export async function handleContactEnrich(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const body = (await request.json()) as ContactEnrichRequest;
-  logInfo("[prep/enrich] request", {
-    email: body.email,
-    linkedinPdf: body.sources?.linkedinPdf?.fileName || "none",
-  });
+  console.warn(
+    `[prep/enrich] ${body.email} linkedinPdf=${body.sources?.linkedinPdf?.fileName || "none"}`,
+  );
   try {
-    const result = await enrichContact(env, { ...body, userId, callId: body.callId });
-    logInfo("[prep/enrich] ok", { email: result.email, name: result.profile?.name || "unknown" });
+    const result = await enrichContact(env, body);
+    console.warn(`[prep/enrich] ok ${result.email} name=${result.profile?.name || "unknown"}`);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -282,8 +248,7 @@ export async function handlePrepResearch(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput>;
   const companyDomain = normalizeCompanyDomain(String(input.companyDomain || ""));
   if (!companyDomain || !isValidCompanyDomain(companyDomain)) {
@@ -299,8 +264,6 @@ export async function handlePrepResearch(
     prospectEmail: emails[0],
     prospectEmails: emails,
     prepType: input.prepType || "new_business",
-    userId,
-    callId: input.callId ?? input.lifecycleId,
   });
   return json(result, 200, cors);
 }
@@ -311,8 +274,7 @@ export async function handlePrepSynthesize(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput> & {
     confirmedFacts?: unknown[];
     researchBundle?: unknown;
@@ -336,8 +298,6 @@ export async function handlePrepSynthesize(
     confirmedFacts: input.confirmedFacts as import("./prep/types").ResearchFact[],
     researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
     confirmedProspectProfiles: (input as PrepInput).confirmedProspectProfiles,
-    userId,
-    callId: input.callId ?? input.lifecycleId,
   });
   return json(
     {
@@ -379,8 +339,7 @@ export async function handleVideoPass(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   let body: Record<string, unknown> = {};
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -404,13 +363,11 @@ export async function handleVideoPass(
     callType: typeof body.callType === "string" ? body.callType : null,
     visualAnalysisConsent: body.visualAnalysisConsent !== false,
     skipVision: !!body.skipVision,
-    enableVideoPass: body.enableVideoPass !== false,
     seIdentity: typeof body.seIdentity === "string" ? body.seIdentity : null,
     aeIdentity: typeof body.aeIdentity === "string" ? body.aeIdentity : null,
     customerIdentities: Array.isArray(body.customerIdentities)
       ? body.customerIdentities.filter((x): x is string => typeof x === "string")
       : null,
-    userId,
   });
 
   return json(
@@ -501,48 +458,6 @@ export async function handleFetchKaiaSummary(
   );
 }
 
-/** Create Gemini cachedContents for post-call transcript variants (call once at confirm). */
-export async function handlePostCallCachePrepare(
-  request: Request,
-  env: Env,
-  _url: URL,
-  cors: Record<string, string>,
-): Promise<Response> {
-  await requireUser(request, env);
-  const input = (await request.json()) as { transcript?: string; callId?: string };
-  if (!input.transcript?.trim()) {
-    return json({ error: "transcript is required." }, 400, cors);
-  }
-  try {
-    const bundle = await preparePostCallTranscriptCaches(env, {
-      transcript: input.transcript,
-      callId: input.callId,
-    });
-    return json(bundle, 200, cors);
-  } catch (err) {
-    logWarn("[postcall/cache/prepare] failed", { error: (err as Error).message });
-    return json({ caches: {}, skipped: true }, 200, cors);
-  }
-}
-
-/** Delete post-call transcript caches — call after gaps hydration completes. */
-export async function handlePostCallCacheRelease(
-  request: Request,
-  env: Env,
-  _url: URL,
-  cors: Record<string, string>,
-): Promise<Response> {
-  await requireUser(request, env);
-  const input = (await request.json()) as { transcriptCaches?: PostCallTranscriptCacheBundle };
-  try {
-    await releasePostCallTranscriptCaches(env, input.transcriptCaches);
-    return new Response(null, { status: 204, headers: cors });
-  } catch (err) {
-    logWarn("[postcall/cache/release] failed", { error: (err as Error).message });
-    return new Response(null, { status: 204, headers: cors });
-  }
-}
-
 export async function handlePostCallResolve(
   request: Request,
   env: Env,
@@ -551,6 +466,7 @@ export async function handlePostCallResolve(
 ): Promise<Response> {
   await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallResolveInput>;
+  await assertManagerProxyOwnerEmail(request, env, input.ownerEmail);
   if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
     return json(
       { error: "Paste a transcript or a Zoom/Kaia recording link (with passcode if needed)." },
@@ -574,18 +490,13 @@ export async function handlePostCallClassify(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallClassifyInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallClassify(env, {
-      ...(input as PostCallClassifyInput),
-      userId,
-      callId: input.callId,
-    });
+    const result = await runPostCallClassify(env, input as PostCallClassifyInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -600,8 +511,7 @@ export async function handlePostCallGenerate(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<
     PostCallGenerateInput &
       PostCallResolveInput & {
@@ -620,16 +530,12 @@ export async function handlePostCallGenerate(
   if (!input.callType) {
     return json({ error: "callType is required after confirmation." }, 400, cors);
   }
-  if (input.lifecycleId) logInfo("postcall/generate lifecycleId", { lifecycleId: input.lifecycleId });
-  if (input.dealId) logInfo("postcall/generate dealId", { dealId: input.dealId });
+  if (input.lifecycleId) console.log("postcall/generate lifecycleId:", input.lifecycleId);
+  if (input.dealId) console.log("postcall/generate dealId:", input.dealId);
   try {
     const result = await runPostCallConfirmedPipeline(
       env,
-      {
-        ...(input as PostCallGenerateInput & PostCallResolveInput & { videoFacts?: import("./domain-model/video-facts").VideoFactsDraft }),
-        userId,
-        callId: input.callId ?? input.lifecycleId,
-      },
+      input as PostCallGenerateInput & PostCallResolveInput & { videoFacts?: import("./domain-model/video-facts").VideoFactsDraft },
     );
     return json(result, 200, cors);
   } catch (err) {
@@ -646,18 +552,13 @@ export async function handlePostCallSummarise(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallSummariseInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallSummarise(env, {
-      ...(input as PostCallSummariseInput),
-      userId,
-      callId: input.callId ?? undefined,
-    });
+    const result = await runPostCallSummarise(env, input as PostCallSummariseInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -673,17 +574,13 @@ export async function handlePostCallQualify(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallQualifyInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallQualify(env, {
-      ...(input as PostCallQualifyInput),
-      userId,
-    });
+    const result = await runPostCallQualify(env, input as PostCallQualifyInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -699,17 +596,13 @@ export async function handlePostCallCommit(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallCommitInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallCommit(env, {
-      ...(input as PostCallCommitInput),
-      userId,
-    });
+    const result = await runPostCallCommit(env, input as PostCallCommitInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -744,17 +637,13 @@ export async function handlePostCallArrInputs(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallArrInputsInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallArrInputs(env, {
-      ...(input as PostCallArrInputsInput),
-      userId,
-    });
+    const result = await runPostCallArrInputs(env, input as PostCallArrInputsInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -770,17 +659,13 @@ export async function handlePostCallGaps(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<PostCallGapsInput>;
   if (!input.transcript?.trim()) {
     return json({ error: "transcript is required." }, 400, cors);
   }
   try {
-    const result = await runPostCallGaps(env, {
-      ...(input as PostCallGapsInput),
-      userId,
-    });
+    const result = await runPostCallGaps(env, input as PostCallGapsInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -840,7 +725,6 @@ export async function handleProductSignalCluster(
       lastFullRunAt: input.lastFullRunAt,
       lastIncrementalAt: input.lastIncrementalAt,
       suggestLabels: input.suggestLabels,
-      labelMode: input.labelMode ?? "batch",
     });
     return json(result, 200, cors);
   } catch (err) {
@@ -872,108 +756,13 @@ export async function handlePostCallSummaries(
   }
 }
 
-/** Pass 9 — async batch enqueue (fire-and-forget from dual-write). */
-export async function handleBatchSummariesEnqueuePost(
-  request: Request,
-  env: Env,
-  _url: URL,
-  cors: Record<string, string>,
-): Promise<Response> {
-  const verified = await requireUser(request, env);
-  if (!verified) return json({ error: "Sign-in required." }, 401, cors);
-
-  let body: {
-    dealId?: string | null;
-    accountId?: string;
-    ownerId?: string;
-    teamId?: string;
-    orgId?: string;
-  } = {};
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return json({ error: "Invalid JSON body." }, 400, cors);
-  }
-
-  if (!body.accountId || !body.ownerId) {
-    return json({ error: "accountId and ownerId are required." }, 400, cors);
-  }
-
-  if (!isNodeRuntime() || !firestoreAdminReady(env)) {
-    return json({ error: "Batch enqueue requires Node runtime with Firestore admin." }, 503, cors);
-  }
-
-  const { enqueueSummariesBatch } = await import("./data/gemini-batch-orchestrator");
-  const { findOpenJobByKey } = await import("./data/gemini-batch-jobs");
-
-  const ctx = {
-    dealId: body.dealId || null,
-    accountId: body.accountId,
-    ownerId: body.ownerId,
-    teamId: body.teamId,
-    orgId: body.orgId,
-    userId: (await resolveUsageUserId(verified, env)) || body.ownerId,
-  };
-  const idempotencyKey = `summaries:${ctx.accountId}:${ctx.dealId || "none"}`;
-  const existing = await findOpenJobByKey("summaries", idempotencyKey, env);
-  if (existing) return json({ jobId: existing.id, duplicate: true }, 202, cors);
-
-  const job = await enqueueSummariesBatch(env, ctx);
-  return json({ jobId: job?.id || null, enqueued: !!job }, 202, cors);
-}
-
-/** Gap cluster label batch enqueue after clustering math completes. */
-export async function handleBatchClusterLabelsEnqueuePost(
-  request: Request,
-  env: Env,
-  _url: URL,
-  cors: Record<string, string>,
-): Promise<Response> {
-  await requireUser(request, env);
-
-  let body: {
-    orgId?: string;
-    pendingLabels?: Array<{ clusterId: string; verbatims: string[] }>;
-    userId?: string;
-  } = {};
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return json({ error: "Invalid JSON body." }, 400, cors);
-  }
-
-  if (!body.orgId?.trim() || !body.pendingLabels?.length) {
-    return json({ error: "orgId and pendingLabels are required." }, 400, cors);
-  }
-
-  if (!isNodeRuntime() || !firestoreAdminReady(env)) {
-    return json({ error: "Batch enqueue requires Node runtime with Firestore admin." }, 503, cors);
-  }
-
-  const { enqueueClusterLabelBatch } = await import("./data/gemini-batch-orchestrator");
-  const { findOpenJobByKey } = await import("./data/gemini-batch-jobs");
-
-  const idempotencyKey = `cluster-label:${body.orgId}:${body.pendingLabels.map((l) => l.clusterId).sort().join(",")}`;
-  const existing = await findOpenJobByKey("cluster-label", idempotencyKey, env);
-  if (existing) return json({ jobId: existing.id, duplicate: true }, 202, cors);
-
-  const job = await enqueueClusterLabelBatch(
-    env,
-    body.orgId.trim(),
-    body.pendingLabels,
-    body.userId,
-  );
-  return json({ jobId: job?.id || null, enqueued: !!job }, 202, cors);
-}
-
 export async function handleAnalyzeCall(
   request: Request,
   env: Env,
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
+  await requireUser(request, env);
   const input = (await request.json()) as Partial<
     PostCallGenerateInput & PostCallResolveInput & { confirmed?: boolean }
   >;
@@ -985,25 +774,17 @@ export async function handleAnalyzeCall(
     );
   }
   if (input.lifecycleId) {
-    logInfo("analyze-call lifecycleId", { lifecycleId: input.lifecycleId });
+    console.log("analyze-call lifecycleId:", input.lifecycleId);
   }
   if (input.dealId) {
-    logInfo("analyze-call dealId", { dealId: input.dealId });
+    console.log("analyze-call dealId:", input.dealId);
   }
   try {
     if (input.confirmed && input.callType) {
-      const result = await runPostCallConfirmedPipeline(env, {
-        ...(input as PostCallGenerateInput & PostCallResolveInput),
-        userId,
-        callId: input.callId ?? input.lifecycleId,
-      });
+      const result = await runPostCallConfirmedPipeline(env, input as PostCallGenerateInput & PostCallResolveInput);
       return json(result, 200, cors);
     }
-    const result = await runPostCallLegacyAnalyze(env, {
-      ...(input as PostCallGenerateInput & PostCallResolveInput),
-      userId,
-      callId: input.callId ?? input.lifecycleId,
-    });
+    const result = await runPostCallLegacyAnalyze(env, input as PostCallGenerateInput & PostCallResolveInput);
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -1145,11 +926,9 @@ export async function handleFeedbackPost(
     createdAt: nested.createdAt || body.createdAt || Date.now(),
   };
   const entries = await appendFeedback(env, email, entry);
-  logInfo("[feedback] submitted", {
-    category: entry.category,
-    email,
-    preview: entry.message.slice(0, 80),
-  });
+  console.info(
+    `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
+  );
   return json({ email, entry, count: entries.length }, 200, cors);
 }
 
@@ -1164,10 +943,12 @@ export async function handleHistoryPost(
   }
   const body = (await request.json()) as {
     email?: string;
+    targetEmail?: string;
+    proxySeActing?: boolean;
     entry?: HistoryEntry;
     entries?: HistoryEntry[];
   };
-  const email = await resolveHistoryEmail(request, env, body.email || "");
+  const email = await resolveHistoryEmailForWrite(request, env, body);
 
   if (Array.isArray(body.entries)) {
     const entries = await replaceHistory(env, email, body.entries);
@@ -1188,45 +969,17 @@ export async function handleSearchRag(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
-  const body = (await request.json()) as {
-    query?: string;
-    candidates?: RagEmbeddingCandidate[];
-  };
+  const body = (await request.json()) as { query?: string; candidates?: RagCandidate[] };
   const query = String(body.query || "").trim();
   const candidates = Array.isArray(body.candidates) ? body.candidates : [];
   if (!query) {
     return json({ error: "query is required." }, 400, cors);
   }
-  const ranked = await rerankWithEmbeddings(env, query, candidates, { userId });
+  const ranked = await rerankWithEmbeddings(env, query, candidates);
   return json({ query, ranked, rag: ranked.length > 0 }, 200, cors);
 }
 
-/** POST /api/embed — embed searchable document text (write-time RAG vectors). */
-export async function handleEmbed(
-  request: Request,
-  env: Env,
-  _url: URL,
-  cors: Record<string, string>,
-): Promise<Response> {
-  const verified = await requireUser(request, env);
-  const userId = verified ? await resolveUsageUserId(verified, env) : undefined;
-  const body = (await request.json()) as { text?: string };
-  const text = String(body.text || "").trim();
-  if (!text) {
-    return json({ error: "text is required." }, 400, cors);
-  }
-  const result = await embedText(env, text, { passName: "embeddings", userId });
-  if (!result) {
-    return json({ error: "Embedding unavailable (check GEMINI_API_KEY)." }, 503, cors);
-  }
-  return json(result, 200, cors);
-}
-
 export const routes: Record<string, Record<string, RouteHandler>> = {
-  ...healthRoutes,
-  ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
   "/api/zoom/auth": { GET: handleZoomAuth },
@@ -1239,8 +992,6 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/kaia/share-content": { POST: handleKaiaShareContent },
   "/api/fetch-kaia-summary": { POST: handleFetchKaiaSummary },
   "/api/postcall/resolve": { POST: handlePostCallResolve },
-  "/api/postcall/cache/prepare": { POST: handlePostCallCachePrepare },
-  "/api/postcall/cache/release": { POST: handlePostCallCacheRelease },
   "/api/postcall/classify": { POST: handlePostCallClassify },
   "/api/postcall/generate": { POST: handlePostCallGenerate },
   "/api/postcall/summarise": { POST: handlePostCallSummarise },
@@ -1252,20 +1003,10 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/postcall/timeline": { POST: handlePostCallTimeline },
   "/api/product-signal/cluster": { POST: handleProductSignalCluster },
   "/api/postcall/summaries": { POST: handlePostCallSummaries },
-  "/api/batch/summaries/enqueue": { POST: handleBatchSummariesEnqueuePost },
-  "/api/batch/cluster-labels/enqueue": { POST: handleBatchClusterLabelsEnqueuePost },
-  "/api/internal/batch/enqueue": { POST: handleBatchEnqueuePost },
-  "/api/internal/batch/poll": { POST: handleBatchPollPost },
-  "/api/internal/batch/fallback": { POST: handleBatchFallbackPost },
-  "/api/internal/read-models/nightly-rebuild": { POST: handleReadModelsNightlyRebuildPost },
-  "/api/internal/deal-grace-sweep": { POST: handleDealGraceSweepPost },
   "/api/video-pass": { POST: handleVideoPass },
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/search/rag": { POST: handleSearchRag },
-  "/api/embed": { POST: handleEmbed },
-  "/api/read-models/schedule": { POST: handleReadModelsSchedulePost },
-  "/api/analytics/director-summary": { GET: handleDirectorAnalyticsGet },
-  "/api/admin/llm-usage": { GET: handleAdminLlmUsageGet },
+  "/api/org/structure": { GET: handleOrgStructureGet, PATCH: handleOrgStructurePatch },
 };

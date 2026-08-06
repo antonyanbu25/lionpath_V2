@@ -70,10 +70,13 @@ async function main() {
 
     const tableText = await page.textContent(".manager-se-table");
     if (!tableText?.includes("Saketh Poruri") && !tableText?.includes("Vivehanandan Agoram")) {
-      throw new Error("Director dashboard missing Antony-branch squad SEs");
+      throw new Error("Director dashboard missing Antony-branch team SEs");
     }
-    if (!tableText?.includes("Meera Iyer") && !tableText?.includes("Vikram Singh")) {
-      throw new Error("Director dashboard missing Preethi Sri squad SE");
+    if (!tableText?.includes("Vijai Vijayakumar") && !tableText?.includes("Cibby Kurian")) {
+      throw new Error("Director dashboard missing Nurture team SE");
+    }
+    if (!tableText?.includes("Avinash Kumar") && !tableText?.includes("Calvin Joseph")) {
+      throw new Error("Director dashboard missing Digital team SE");
     }
     if (!tableText?.includes("Team")) {
       throw new Error("Director dashboard missing Team column header");

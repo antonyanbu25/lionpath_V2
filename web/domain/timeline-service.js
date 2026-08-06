@@ -57,19 +57,26 @@ export async function deriveCallTimeline(input) {
 
 /**
  * @param {object} draft — CallTimelineDraft from the worker
- * @param {{ callId: string, ownerId: string, teamId?: string, orgId?: string }} ctx
- * @returns {{ segments: object[], markers: object[] }|null}
+ * @param {{ callId: string, ownerId: string, teamId?: string, orgId?: string, dealId?: string|null }} ctx
  */
-export function buildCallTimelineDetail(draft, ctx) {
+export async function persistCallTimelineDraft(draft, ctx) {
   if (!draft || !ctx?.callId || !ctx?.ownerId) return null;
   if (!draft.hasTimestamps) return null;
 
+  const store = getStore();
   const ts = now();
+
+  // A re-run replaces the previous derivation rather than layering onto it.
+  if (store.deleteTranscriptTimelineByCall) {
+    await store.deleteTranscriptTimelineByCall(ctx.callId);
+  }
+
   const segments = [];
   for (const seg of draft.segments || []) {
-    segments.push({
+    const row = {
       id: newId("timelineSegment"),
       callId: ctx.callId,
+      dealId: ctx.dealId || null,
       videoFactsId: null,
       source: "transcript",
       startS: seg.startS,
@@ -79,14 +86,17 @@ export function buildCallTimelineDetail(draft, ctx) {
       ownerId: ctx.ownerId,
       teamId: ctx.teamId || "",
       orgId: ctx.orgId || "",
-    });
+    };
+    if (store.upsertTimelineSegment) await store.upsertTimelineSegment(row);
+    segments.push(row);
   }
 
   const markers = [];
   for (const marker of draft.markers || []) {
-    markers.push({
+    const row = {
       id: newId("timelineMarker"),
       callId: ctx.callId,
+      dealId: ctx.dealId || null,
       atS: marker.atS,
       kind: marker.kind,
       label: marker.label || "",
@@ -97,31 +107,10 @@ export function buildCallTimelineDetail(draft, ctx) {
       teamId: ctx.teamId || "",
       orgId: ctx.orgId || "",
       createdAt: ts,
-    });
+    };
+    if (store.upsertTimelineMarker) await store.upsertTimelineMarker(row);
+    markers.push(row);
   }
 
   return { segments, markers };
-}
-
-/**
- * @param {object} draft — CallTimelineDraft from the worker
- * @param {{ callId: string, ownerId: string, teamId?: string, orgId?: string }} ctx
- */
-export async function persistCallTimelineDraft(draft, ctx) {
-  const built = buildCallTimelineDetail(draft, ctx);
-  if (!built) return null;
-
-  const store = getStore();
-  if (store.deleteTranscriptTimelineByCall) {
-    await store.deleteTranscriptTimelineByCall(ctx.callId);
-  }
-
-  for (const row of built.segments) {
-    if (store.upsertTimelineSegment) await store.upsertTimelineSegment(row);
-  }
-  for (const row of built.markers) {
-    if (store.upsertTimelineMarker) await store.upsertTimelineMarker(row);
-  }
-
-  return built;
 }

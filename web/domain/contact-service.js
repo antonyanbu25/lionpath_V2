@@ -3,7 +3,6 @@
  */
 
 import { getStore } from "./store.js";
-import { contactScopeFromAccount } from "./account-se-team.js";
 import { newId, now } from "./types.js";
 
 export const MEDDPICC_FIELD_KEYS = [
@@ -133,11 +132,165 @@ export function computeMeddpiccScore(meddpicc) {
   return Math.round((filled / MEDDPICC_FIELD_KEYS.length) * 100);
 }
 
-function normalizeName(name) {
+export function normalizeContactName(name) {
   return String(name || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ");
+    .replace(/\./g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** @deprecated internal alias */
+function normalizeName(name) {
+  return normalizeContactName(name);
+}
+
+/**
+ * Find an existing contact on an account by normalized display name.
+ * @param {string} accountId
+ * @param {string} name
+ * @param {object[]|null} [cached]
+ */
+export async function findContactByAccountName(accountId, name, cached = null) {
+  const key = normalizeContactName(name);
+  if (!accountId || !key) return null;
+  const store = getStore();
+  const list =
+    cached ||
+    (store.listContactsByAccount ? await store.listContactsByAccount(accountId) : []);
+  const matches = list.filter((c) => normalizeContactName(c.name) === key);
+  if (matches.length === 1) return matches[0];
+  return null;
+}
+
+/**
+ * Record an alternate email on a contact when the same person appears with a new address.
+ * @param {object} contact
+ * @param {string} email
+ */
+async function attachAlternateEmail(contact, email) {
+  const store = getStore();
+  const key = String(email || "").trim().toLowerCase();
+  if (!contact?.id || !key.includes("@")) return contact;
+  if (String(contact.email || "").trim().toLowerCase() === key) return contact;
+  const meta = { ...(contact.metadata || {}) };
+  const alts = new Set([...(meta.alternateEmails || [])].map((e) => String(e).toLowerCase()));
+  if (alts.has(key)) return contact;
+  alts.add(key);
+  return store.updateContact(contact.id, {
+    metadata: { ...meta, alternateEmails: [...alts] },
+    updatedAt: now(),
+  });
+}
+
+/**
+ * Resolve or create a contact on an account — dedupe by email first, then by name.
+ * Prevents duplicate rows when prep uses one email and post-call discovers another for the same person.
+ * @param {string} accountId
+ * @param {{ name?: string, email?: string, title?: string, role?: string }} attendee
+ * @param {{ actorId?: string, source?: string, lifecycleId?: string, artifactId?: string }} [ctx]
+ */
+export async function resolveContactOnAccount(accountId, attendee, ctx = {}) {
+  const store = getStore();
+  const email = String(attendee.email || "").trim().toLowerCase();
+  const name = String(attendee.name || "").trim();
+  const accountContacts = store.listContactsByAccount
+    ? await store.listContactsByAccount(accountId)
+    : [];
+
+  let contact = null;
+  if (email && email.includes("@")) {
+    contact = await store.findContactByAccountEmail(accountId, email);
+    if (!contact) {
+      contact =
+        accountContacts.find((c) =>
+          (c.metadata?.alternateEmails || []).some(
+            (alt) => String(alt).toLowerCase() === email,
+          ),
+        ) || null;
+    }
+  }
+  if (!contact && name) {
+    contact = await findContactByAccountName(accountId, name, accountContacts);
+    if (contact && email && email.includes("@")) {
+      contact = await attachAlternateEmail(contact, email);
+    }
+  }
+  if (!contact && email && email.includes("@")) {
+    const inferred = email.split("@")[0];
+    contact = await findContactByAccountName(accountId, inferred, accountContacts);
+    if (contact) {
+      contact = await attachAlternateEmail(contact, email);
+    }
+  }
+  if (contact) return contact;
+  if (!email || !email.includes("@")) return null;
+
+  contact = await store.createContact({
+    id: newId("contact"),
+    accountId,
+    email,
+    name: name || email.split("@")[0],
+    title: attendee.title || null,
+    role: attendee.role || "Customer",
+    createdAt: now(),
+    updatedAt: now(),
+  });
+  await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
+    source: ctx.source || "resolve",
+    lifecycleId: ctx.lifecycleId,
+    artifactId: ctx.artifactId,
+  });
+  return contact;
+}
+
+/**
+ * Collapse duplicate contact rows for display (same person, multiple emails).
+ * @param {object[]} contacts
+ * @param {{ primaryContactId?: string|null, accountDomain?: string|null }} [opts]
+ */
+export function dedupeContactsForDisplay(contacts, opts = {}) {
+  const byId = new Map();
+  for (const c of contacts || []) {
+    if (c?.id && !byId.has(c.id)) byId.set(c.id, c);
+  }
+  const unique = [...byId.values()];
+  const { primaryContactId, accountDomain } = opts;
+  const domain = String(accountDomain || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
+  /** @type {Map<string, object>} */
+  const byName = new Map();
+
+  for (const c of unique) {
+    const nameKey = normalizeContactName(c.name);
+    const groupKey = nameKey || `email:${String(c.email || "").toLowerCase()}`;
+    const prev = byName.get(groupKey);
+    if (!prev) {
+      byName.set(groupKey, c);
+      continue;
+    }
+    const pick = (() => {
+      if (primaryContactId) {
+        if (c.id === primaryContactId) return c;
+        if (prev.id === primaryContactId) return prev;
+      }
+      if (domain) {
+        const cOn = String(c.email || "").toLowerCase().endsWith(`@${domain}`);
+        const pOn = String(prev.email || "").toLowerCase().endsWith(`@${domain}`);
+        if (cOn && !pOn) return c;
+        if (pOn && !cOn) return prev;
+      }
+      return (c.updatedAt || 0) >= (prev.updatedAt || 0) ? c : prev;
+    })();
+    byName.set(groupKey, pick);
+  }
+
+  return [...byName.values()].sort((a, b) =>
+    String(a.name || a.email).localeCompare(String(b.name || b.email)),
+  );
 }
 
 function mapDecisionPower(power) {
@@ -587,35 +740,19 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
 
   const contacts = await store.listContactsByAccount(accountId);
   const allChanges = [];
-  const account = store.getAccount ? await store.getAccount(accountId).catch(() => null) : null;
 
   for (const attendee of attendees) {
     let contact = null;
     const email = String(attendee.email || "").trim().toLowerCase();
     if (email && email.includes("@")) {
-      contact = await store.findContactByAccountEmail(accountId, email);
-      if (!contact) {
-        contact = await store.createContact(
-          contactScopeFromAccount(account || { id: accountId }, {
-            id: newId("contact"),
-            accountId,
-            email,
-            name: attendee.name || email.split("@")[0],
-            title: attendee.role || null,
-            role: attendee.role || null,
-            createdAt: now(),
-            updatedAt: now(),
-          }),
-        );
-        await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
-          source: "postcall",
-          lifecycleId: ctx.lifecycleId,
-          artifactId: ctx.postCallId,
-        });
-      }
-    } else {
-      const nameKey = normalizeName(attendee.name);
-      contact = contacts.find((c) => normalizeName(c.name) === nameKey) || null;
+      contact = await resolveContactOnAccount(accountId, attendee, {
+        actorId: ctx.actorId,
+        source: "postcall",
+        lifecycleId: ctx.lifecycleId,
+        artifactId: ctx.postCallId,
+      });
+    } else if (attendee.name) {
+      contact = await findContactByAccountName(accountId, attendee.name, contacts);
     }
     if (!contact) continue;
 
@@ -651,30 +788,12 @@ export async function applyPostCallContactFrameworks(accountId, analysis, ctx = 
  * @param {{ actorId?: string, source?: string }} [ctx]
  */
 export async function ensureCustomerContact(accountId, attendee, ctx = {}) {
-  const store = getStore();
   const email = String(attendee.email || "").trim().toLowerCase();
   if (!accountId || !email || !email.includes("@")) return null;
-
-  let contact = await store.findContactByAccountEmail(accountId, email);
-  if (contact) return contact;
-
-  const account = store.getAccount ? await store.getAccount(accountId).catch(() => null) : null;
-  contact = await store.createContact(
-    contactScopeFromAccount(account || { id: accountId }, {
-      id: newId("contact"),
-      accountId,
-      email,
-      name: attendee.name || email.split("@")[0],
-      title: attendee.title || null,
-      role: "Customer",
-      createdAt: now(),
-      updatedAt: now(),
-    }),
-  );
-  await recordContactEvent(contact.id, "contact_created", ctx.actorId || "system", {
+  return resolveContactOnAccount(accountId, attendee, {
+    actorId: ctx.actorId,
     source: ctx.source || "postcall_confirm",
   });
-  return contact;
 }
 
 export async function recordContactEvent(contactId, type, actorId, payload = {}) {

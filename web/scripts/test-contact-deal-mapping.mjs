@@ -646,6 +646,51 @@ await check("an unresolvable selected accountId falls back to slug resolution", 
   assert.equal(account.slug, "ghost.co", `expected slug resolution to take over, got ${account.slug}`);
 });
 
+/** Name-only post-call match must not attach to wrong duplicate (CONT-002). */
+await check("ambiguous name-only attendee skips framework merge", async () => {
+  await resetStore();
+  const accountId = "account_dup_names";
+  await store.createAccount({
+    id: accountId,
+    name: "Dup Names Co",
+    slug: "dup.co",
+    domain: "dup.co",
+    createdAt: TS,
+    updatedAt: TS,
+    seTeam: [{ seUserId: "usr_se", role: "primary", addedAt: TS }],
+    primarySeUserId: "usr_se",
+  });
+  await store.createContact({
+    id: "con_jordan_a",
+    accountId,
+    email: "jordan.a@dup.co",
+    name: "Jordan Lee",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+  await store.createContact({
+    id: "con_jordan_b",
+    accountId,
+    email: "jordan.b@dup.co",
+    name: "Jordan Lee",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+
+  const { findContactByAccountName, applyPostCallContactFrameworks } = await import(
+    "../domain/contact-service.js"
+  );
+  const contacts = await store.listContactsByAccount(accountId);
+  assert.equal(await findContactByAccountName(accountId, "Jordan Lee", contacts), null);
+
+  const result = await applyPostCallContactFrameworks(
+    accountId,
+    { callHeader: { attendees: [{ name: "Jordan Lee" }] } },
+    { actorId: "usr_se", postCallId: "pc_dup" },
+  );
+  assert.equal(result.contactChanges.length, 0, "ambiguous name-only must not merge frameworks");
+});
+
 const passed = results.filter(Boolean).length;
 if (passed !== results.length) {
   console.error(`\n${passed}/${results.length} contact-deal mapping checks passed.`);

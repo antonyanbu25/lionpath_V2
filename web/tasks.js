@@ -137,7 +137,12 @@ async function patchRemoteTask(email, id, patch) {
 
 /** @param {string} email */
 export function listTasks(email) {
-  return readLocal(email);
+  const raw = readLocal(email);
+  const stripped = stripPrepTasks(raw);
+  if (stripped.length !== raw.length) {
+    writeLocal(email, stripped);
+  }
+  return stripped;
 }
 
 /** @param {string} email @param {object[]} tasks */
@@ -151,7 +156,9 @@ export async function syncTasksOnLogin(email) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return [];
 
-  const local = readLocal(normalized);
+  let local = stripPrepTasks(readLocal(normalized));
+  writeLocal(normalized, local);
+
   let remote = [];
   try {
     remote = await fetchTasksFromWorker(normalized);
@@ -160,11 +167,16 @@ export async function syncTasksOnLogin(email) {
     return local;
   }
 
-  const merged = mergeTaskLists(remote, local);
+  const remoteStripped = stripPrepTasks(remote);
+  const merged = stripPrepTasks(mergeTaskLists(remoteStripped, local));
   writeLocal(normalized, merged);
 
+  const remoteHadPrep = remote.length !== remoteStripped.length;
   const remoteIds = new Set(remote.map((t) => t.id));
-  const needsPush = merged.some((t) => !remoteIds.has(t.id)) || merged.length !== remote.length;
+  const needsPush =
+    remoteHadPrep ||
+    merged.some((t) => !remoteIds.has(t.id)) ||
+    merged.length !== remote.length;
   if (needsPush) {
     try {
       await pushRemoteTasks(normalized, merged);
@@ -193,8 +205,35 @@ async function persistTasks(email, tasks) {
  * @param {string} email
  * @param {{ seName?: string, prepResult?: object, company?: string, lifecycleId?: string, session?: object }} [opts]
  */
+/** Drop legacy prep-sourced tasks — pre-call must not create dashboard recommendations. */
+export function isPrepSourcedTask(task) {
+  if (!task) return false;
+  if (task.source === "prep") return true;
+  if (String(task.sourceKey || "").startsWith("prep:")) return true;
+  // Legacy rows before source tagging — prep recs were "Configure {cap}. {pain}" with no callId
+  if (!task.callId && /^Configure .+\.\s/.test(String(task.title || ""))) return true;
+  return false;
+}
+
+export function stripPrepTasks(tasks) {
+  return (tasks || []).filter((t) => !isPrepSourcedTask(t));
+}
+
+/** @param {string} email @returns {number} count removed */
+export function purgePrepTasksForEmail(email) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) return 0;
+  const raw = readLocal(normalized);
+  const stripped = stripPrepTasks(raw);
+  const removed = raw.length - stripped.length;
+  if (removed > 0) writeLocal(normalized, stripped);
+  return removed;
+}
+
 export function importRecommendedTasks(email, opts = {}) {
-  const existing = readLocal(email);
+  const rawExisting = readLocal(email);
+  const prepPurged = rawExisting.length - stripPrepTasks(rawExisting).length;
+  const existing = stripPrepTasks(rawExisting);
   const existingKeys = new Set(
     existing.filter((t) => t.sourceKey).map((t) => t.sourceKey),
   );
@@ -222,22 +261,6 @@ export function importRecommendedTasks(email, opts = {}) {
     });
   }
 
-  if (opts.prepResult && opts.company) {
-    for (const rec of extractPrepRecommendations(opts.prepResult, opts.company)) {
-      if (existingKeys.has(rec.sourceKey)) continue;
-      existingKeys.add(rec.sourceKey);
-      newTasks.push({
-        id: newId("task"),
-        title: rec.title,
-        status: "recommended",
-        source: "prep",
-        sourceKey: rec.sourceKey,
-        company: rec.company,
-        createdAt: Date.now(),
-      });
-    }
-  }
-
   const mergedRecommended = [...newTasks, ...keptRecommended];
   const all = [...mergedRecommended, ...nonRecommended]
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -249,7 +272,7 @@ export function importRecommendedTasks(email, opts = {}) {
     void dualWriteTasks(opts, newTasks);
   }
 
-  return { added: newTasks.length, tasks: all };
+  return { added: newTasks.length, tasks: all, prepPurged };
 }
 
 async function dualWriteTasks(opts, newTasks) {
@@ -264,18 +287,9 @@ async function dualWriteTasks(opts, newTasks) {
   }
 }
 
-/** @param {object} prep @param {string} company */
-export function extractPrepRecommendations(prep, company) {
-  const rows = (prep?.painCapabilityValue || []).slice(0, 3);
-  return rows.map((row, i) => {
-    const capability = String(row.capability || row.demoFocus || "demo").trim();
-    const pain = String(row.pain || row.customerPain || "prep focus").trim();
-    return {
-      title: `Configure ${capability}. ${pain}`,
-      sourceKey: `prep:${company}:${capability}:${i}`,
-      company,
-    };
-  });
+/** @deprecated Pre-call no longer creates task recommendations. Always returns []. */
+export function extractPrepRecommendations(_prep, _company) {
+  return [];
 }
 
 function urgencyDot(task) {
@@ -474,7 +488,7 @@ function renderRecommendedSection(recommended, opts) {
   const visible = recommended.slice(0, MAX_RECOMMENDED_VISIBLE);
   const hidden = recommended.slice(MAX_RECOMMENDED_VISIBLE);
   const visibleHtml = visible.map((t) => renderTaskRow(t, opts)).join("");
-  const body = visibleHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations. Analyze a call or run prep.</span></div>`;
+  const body = visibleHtml || `<div class="task-empty dew-empty-copy muted"><fw-icon name="add-note" size="16" aria-hidden="true"></fw-icon><span>No recommendations. Analyze a call to surface SE follow-ups.</span></div>`;
   const more =
     hidden.length > 0
       ? `<details class="task-recommended-more">
@@ -539,7 +553,7 @@ function renderQuickAddRow(calls) {
 }
 
 function renderEmptyBoard() {
-  return `<div class="task-empty muted task-board-empty dew-empty-copy"><fw-icon name="add-note" size="18" aria-hidden="true"></fw-icon><span>No tasks yet. Add one above or analyze a call for recommendations.</span></div>`;
+  return `<div class="task-empty muted task-board-empty dew-empty-copy"><fw-icon name="add-note" size="18" aria-hidden="true"></fw-icon><span>No tasks yet. Add one above or analyze a call for SE follow-up recommendations.</span></div>`;
 }
 
 async function readSelectValue(el) {
@@ -773,8 +787,8 @@ export function renderTaskBoard(container, email, opts = {}) {
 
 /** @param {string} email @param {{ seName?: string, prepResult?: object, company?: string, lifecycleId?: string, session?: object, accountId?: string }} [opts] */
 export async function syncTasksAfterActivity(email, opts = {}) {
-  const { added, tasks } = importRecommendedTasks(email, opts);
-  if (added > 0) {
+  const { added, tasks, prepPurged } = importRecommendedTasks(email, opts);
+  if (added > 0 || prepPurged > 0) {
     try {
       await pushRemoteTasks(email, tasks);
     } catch (err) {

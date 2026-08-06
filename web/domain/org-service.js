@@ -1,8 +1,15 @@
 /**
- * Org hierarchy — scope resolution for director → manager → SE.
+ * Org hierarchy — scope resolution for director → segment leader → team manager → SE.
  */
 
 import { getStore } from "./store.js";
+import { segmentIdForTeamId } from "./constants.js";
+import { stableUserIdForEmail } from "./id.js";
+import { effectiveSessionUserId } from "./session.js";
+
+/**
+ * @typedef {{ id: string, name: string, leaderId: string, teamIds: string[] }} OrgSegment
+ */
 
 /**
  * @param {import("./types.js").Org|null|undefined} org
@@ -25,14 +32,51 @@ export function isOrgLeader(userId, org) {
 }
 
 /**
+ * @param {string} userId
+ * @param {import("./types.js").Org|null|undefined} org
+ * @returns {OrgSegment|null}
+ */
+export function getSegmentForLeader(userId, org) {
+  if (!org?.segments?.length || !userId) return null;
+  return org.segments.find((s) => s.leaderId === userId) || null;
+}
+
+/**
+ * @param {string} segmentId
+ * @param {import("./types.js").Org|null|undefined} org
+ * @returns {OrgSegment|null}
+ */
+export function getSegmentById(segmentId, org) {
+  if (!org?.segments?.length || !segmentId) return null;
+  return org.segments.find((s) => s.id === segmentId) || null;
+}
+
+/**
+ * @param {string} teamId
+ * @param {import("./types.js").Org|null|undefined} org
+ * @returns {OrgSegment|null}
+ */
+export function getSegmentForTeamId(teamId, org) {
+  if (!org?.segments?.length || !teamId) return null;
+  return org.segments.find((s) => s.teamIds?.includes(teamId)) || null;
+}
+
+/**
  * @param {import("./types.js").User|null|undefined} user
  * @param {import("./types.js").Org|null|undefined} org
  */
 export function userWithDirectorFlag(user, org) {
   if (!user) return null;
+  const segment = getSegmentForLeader(user.id, org);
+  const actualDirector = isOrgDirector(user.id, org);
   return {
     ...user,
     isOrgDirector: isOrgLeader(user.id, org),
+    isActualDirector: actualDirector,
+    isSegmentLeader: !!segment,
+    segmentId: segment?.id || null,
+    segmentName: segment?.name || null,
+    segmentTeamIds: segment?.teamIds || [],
   };
 }
 
@@ -50,16 +94,50 @@ export async function resolveOrgForUser(user) {
 }
 
 /**
+ * Resolve team ids for a scope query (org-wide leaders get all teams).
+ * @param {import("./types.js").Org|null|undefined} org
+ * @param {string} orgId
+ */
+async function resolveOrgTeamIds(org, orgId) {
+  const store = getStore();
+  if (store.listTeamsByOrg) {
+    try {
+      const teams = await store.listTeamsByOrg(orgId);
+      if (teams.length) return teams.map((t) => t.id);
+    } catch (err) {
+      console.warn("[org] listTeamsByOrg failed:", err?.message || err);
+    }
+  }
+  return org?.teamIds || [];
+}
+
+/**
  * Visible data scope for RBAC and dashboards.
- * @param {import("./types.js").User & { isOrgDirector?: boolean }|null|undefined} user
+ * @param {import("./types.js").User & { isOrgDirector?: boolean, isActualDirector?: boolean, isSegmentLeader?: boolean, segmentId?: string|null, segmentName?: string|null, segmentTeamIds?: string[] }|null|undefined} user
  */
 export async function getVisibleScope(user) {
   if (!user) {
-    return { type: "own", teamIds: [], orgId: null, isOrgDirector: false };
+    return {
+      type: "own",
+      teamIds: [],
+      orgId: null,
+      segmentId: null,
+      segmentName: null,
+      isOrgDirector: false,
+      isSegmentLeader: false,
+    };
   }
 
   if (user.role === "admin") {
-    return { type: "org", teamIds: [], orgId: user.orgId || null, isOrgDirector: true };
+    return {
+      type: "org",
+      teamIds: [],
+      orgId: user.orgId || null,
+      segmentId: null,
+      segmentName: null,
+      isOrgDirector: true,
+      isSegmentLeader: false,
+    };
   }
 
   if (user.role === "se") {
@@ -67,42 +145,38 @@ export async function getVisibleScope(user) {
       type: "own",
       teamIds: user.teamId ? [user.teamId] : [],
       orgId: user.orgId || null,
+      segmentId: user.teamId ? segmentIdForTeamId(user.teamId) : null,
+      segmentName: null,
       isOrgDirector: false,
+      isSegmentLeader: false,
     };
   }
 
   const org = await resolveOrgForUser(user);
-  const orgLeader = isOrgLeader(user.id, org);
 
-  if (orgLeader && user.orgId) {
-    const store = getStore();
-    let teams = [];
-    if (store.listTeamsByOrg) {
-      try {
-        teams = await store.listTeamsByOrg(user.orgId);
-      } catch (err) {
-        console.warn("[org] listTeamsByOrg failed:", err?.message || err);
-        teams = [];
-      }
-    }
-    const teamIds = teams.length
-      ? teams.map((t) => t.id)
-      : (org?.teamIds || []);
+  if (isOrgDirector(user.id, org) && user.orgId) {
+    const teamIds = await resolveOrgTeamIds(org, user.orgId);
     return {
       type: "org",
       teamIds,
       orgId: user.orgId,
+      segmentId: null,
+      segmentName: null,
       isOrgDirector: true,
+      isSegmentLeader: false,
     };
   }
 
-  if (user.role === "manager" && !user.teamId && !orgLeader) {
+  const segment = getSegmentForLeader(user.id, org);
+  if (segment && user.orgId) {
     return {
-      type: "none",
-      teamIds: [],
-      orgId: user.orgId || null,
+      type: "segment",
+      teamIds: [...(segment.teamIds || [])],
+      orgId: user.orgId,
+      segmentId: segment.id,
+      segmentName: segment.name,
       isOrgDirector: false,
-      reason: "manager_without_team",
+      isSegmentLeader: true,
     };
   }
 
@@ -110,8 +184,53 @@ export async function getVisibleScope(user) {
     type: "team",
     teamIds: user.teamId ? [user.teamId] : [],
     orgId: user.orgId || null,
+    segmentId: user.teamId ? segmentIdForTeamId(user.teamId) : null,
+    segmentName: null,
     isOrgDirector: false,
+    isSegmentLeader: false,
   };
+}
+
+/**
+ * Collect SE emails from team member lists.
+ * @param {string[]} teamIds
+ */
+export async function listSeEmailsForTeamIds(teamIds) {
+  const store = getStore();
+  const emails = [];
+  const seen = new Set();
+  for (const teamId of teamIds) {
+    const team = await store.getTeam(teamId);
+    if (!team?.memberIds?.length) continue;
+    for (const memberId of team.memberIds) {
+      const member = await store.getUser(memberId);
+      if (member?.email && member.role === "se" && !seen.has(member.email)) {
+        seen.add(member.email);
+        emails.push(member.email);
+      }
+    }
+  }
+  return emails;
+}
+
+/** @param {object|null|undefined} session */
+async function resolveSessionUser(session) {
+  if (!session) return null;
+  const store = getStore();
+  const lookupId = effectiveSessionUserId(session);
+  if (lookupId) {
+    const byId = await store.getUser(lookupId);
+    if (byId) return byId;
+  }
+  const email = String(session.email || "")
+    .trim()
+    .toLowerCase();
+  if (!email) return null;
+  return (
+    (await store.getUserByEmail?.(email)) ||
+    (await store.getUser(stableUserIdForEmail(email))) ||
+    null
+  );
 }
 
 /**
@@ -119,61 +238,17 @@ export async function getVisibleScope(user) {
  * @param {object} session
  */
 export async function listVisibleSeEmails(session) {
-  const store = getStore();
-  const user = session?.userId ? await store.getUser(session.userId) : null;
+  const user = await resolveSessionUser(session);
   const org = user?.orgId ? await getOrg(user.orgId) : null;
   const enriched = userWithDirectorFlag(user, org);
   const scope = await getVisibleScope(enriched);
 
-  if (scope.type === "org" && scope.orgId && store.listUsersByOrg) {
-    try {
-      const users = await store.listUsersByOrg(scope.orgId);
-      return users
-        .filter((u) => u.role === "se" && u.email)
-        .map((u) => u.email);
-    } catch (err) {
-      console.warn("[org] listUsersByOrg failed:", err?.message || err);
-    }
-  }
-
-  if (scope.type === "org" && scope.teamIds.length && store.listUsersByOrg && scope.orgId) {
-    const users = await store.listUsersByOrg(scope.orgId);
-    const teamSet = new Set(scope.teamIds);
-    return users
-      .filter((u) => u.role === "se" && u.email && u.teamId && teamSet.has(u.teamId))
-      .map((u) => u.email);
-  }
-
-  if (scope.type === "org" && scope.teamIds.length) {
-    const emails = [];
-    const seen = new Set();
-    for (const teamId of scope.teamIds) {
-      const team = await store.getTeam(teamId); // serial-ok: fallback when listUsersByOrg unavailable
-      if (!team?.memberIds?.length) continue;
-      const members = await Promise.all(team.memberIds.map((id) => store.getUser(id))); // serial-ok: batched per team fallback
-      for (const member of members) {
-        if (member?.email && member.role === "se" && !seen.has(member.email)) {
-          seen.add(member.email);
-          emails.push(member.email);
-        }
-      }
-    }
-    return emails;
+  if ((scope.type === "org" || scope.type === "segment") && scope.teamIds.length) {
+    return listSeEmailsForTeamIds(scope.teamIds);
   }
 
   if (scope.type === "team" && scope.teamIds[0]) {
-    const teamId = scope.teamIds[0];
-    if (scope.orgId && store.listUsersByOrg) {
-      const users = await store.listUsersByOrg(scope.orgId);
-      return users
-        .filter((u) => u.role === "se" && u.teamId === teamId && u.email)
-        .map((u) => u.email);
-    }
-    const team = await store.getTeam(teamId);
-    const memberIds = team?.memberIds || [];
-    if (!memberIds.length) return [];
-    const members = await Promise.all(memberIds.map((id) => store.getUser(id)));
-    return members.filter((m) => m?.email && m.role === "se").map((m) => m.email);
+    return listSeEmailsForTeamIds(scope.teamIds);
   }
 
   return [];
@@ -186,19 +261,12 @@ export async function listVisibleSeEmails(session) {
 export async function mapEmailToTeamName(emails) {
   const store = getStore();
   const map = new Map();
-  const unique = [...new Set(emails.filter(Boolean))];
-  if (!unique.length) return map;
-
-  const users = await Promise.all(unique.map((email) => store.getUserByEmail(email)));
-  const teamIds = [...new Set(users.map((u) => u?.teamId).filter(Boolean))];
-  const teams = await Promise.all(teamIds.map((id) => store.getTeam(id)));
-  const teamNameById = new Map(teams.filter(Boolean).map((t) => [t.id, t.name]));
-
-  unique.forEach((email, i) => {
-    const teamId = users[i]?.teamId;
-    const name = teamId ? teamNameById.get(teamId) : null;
-    if (name) map.set(email, name);
-  });
+  for (const email of emails) {
+    const user = await store.getUserByEmail(email);
+    if (!user?.teamId) continue;
+    const team = await store.getTeam(user.teamId);
+    if (team?.name) map.set(email, team.name);
+  }
   return map;
 }
 
@@ -214,5 +282,38 @@ export function validateHierarchy(user, usersById) {
     if (!mgr) break;
     current = mgr.managerId || null;
   }
+  return true;
+}
+
+/**
+ * Whether an actor may edit org structure for a target user/team.
+ * @param {import("./types.js").User & { isActualDirector?: boolean, isSegmentLeader?: boolean, segmentTeamIds?: string[] }} actor
+ * @param {import("./types.js").Org|null|undefined} org
+ * @param {{ userId?: string, teamId?: string, fromSegmentId?: string, toSegmentId?: string }} target
+ */
+export function canManageOrgStructure(actor, org, target = {}) {
+  if (!actor) return false;
+  if (actor.role === "admin") return true;
+  if (!org) return false;
+
+  const actualDirector = isOrgDirector(actor.id, org);
+  const segment = getSegmentForLeader(actor.id, org);
+
+  if (actualDirector) return true;
+
+  if (!segment) return false;
+
+  if (target.toSegmentId && target.toSegmentId !== segment.id) return false;
+  if (target.fromSegmentId && target.fromSegmentId !== segment.id) return false;
+
+  if (target.teamId) {
+    return segment.teamIds.includes(target.teamId);
+  }
+
+  if (target.userId) {
+    const teamIds = segment.teamIds || [];
+    return teamIds.some((tid) => tid === target.teamId);
+  }
+
   return true;
 }

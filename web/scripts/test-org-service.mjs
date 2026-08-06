@@ -12,12 +12,14 @@ import {
 import { can } from "../domain/types.js";
 import { seedDevDomainIfNeeded, enrichSessionFromStore } from "../domain/seed-dev.js";
 import { stableUserIdForEmail } from "../domain/id.js";
+import { listTeamSeOptions, canManagerActForSe } from "../domain/acting-owner.js";
 import {
   DEMO_ORG_ID,
-  SQUAD_TEAM_IDS,
+  ORG_TEAM_IDS,
   TEAM_AJAY_ID,
   TEAM_NIKIL_ID,
-  TEAM_PREETHI_SRI_ID,
+  TEAM_AKSHITA_ID,
+  SEG_NEW_BUSINESS_ID,
 } from "../domain/constants.js";
 
 const ls = new Map();
@@ -38,24 +40,24 @@ await seedDevDomainIfNeeded();
 
 const vipinId = stableUserIdForEmail("vipin.thomas@freshworks.com");
 const antonyId = stableUserIdForEmail("antony.sagayaraj@freshworks.com");
-const squadMgrId = stableUserIdForEmail("ajay.raghavan@freshworks.com");
+const teamMgrId = stableUserIdForEmail("ajay.raghavan@freshworks.com");
 const seAjayId = stableUserIdForEmail("saketh.poruri@freshworks.com");
-const sePreethiId = stableUserIdForEmail("se.preethi.sri.1@freshworks.com");
+const seDigitalId = stableUserIdForEmail("avinash.kumar@freshworks.com");
 
 const org = await store.getOrg(DEMO_ORG_ID);
 const vipin = await store.getUser(vipinId);
 const antony = await store.getUser(antonyId);
-const squadMgr = await store.getUser(squadMgrId);
+const teamMgr = await store.getUser(teamMgrId);
 const seAjay = await store.getUser(seAjayId);
-const sePreethi = await store.getUser(sePreethiId);
+const seDigital = await store.getUser(seDigitalId);
 
 const vipinEnriched = userWithDirectorFlag(vipin, org);
 const antonyEnriched = userWithDirectorFlag(antony, org);
-const squadMgrEnriched = userWithDirectorFlag(squadMgr, org);
+const teamMgrEnriched = userWithDirectorFlag(teamMgr, org);
 
 const vipinScope = await getVisibleScope(vipinEnriched);
 const antonyScope = await getVisibleScope(antonyEnriched);
-const squadMgrScope = await getVisibleScope(squadMgrEnriched);
+const teamMgrScope = await getVisibleScope(teamMgrEnriched);
 const seScope = await getVisibleScope(seAjay);
 
 const vipinSession = await enrichSessionFromStore({
@@ -70,11 +72,30 @@ const antonySession = await enrichSessionFromStore({
   userId: antonyId,
 });
 
-const visibleEmails = await listVisibleSeEmails(vipinSession);
+const preethiSession = await enrichSessionFromStore({
+  email: "preethi.sri@freshworks.com",
+  role: "manager",
+  userId: stableUserIdForEmail("preethi.sri@freshworks.com"),
+});
+
+const vipinVisibleEmails = await listVisibleSeEmails(vipinSession);
+const antonyVisibleEmails = await listVisibleSeEmails(antonySession);
+const preethiVisibleEmails = await listVisibleSeEmails(preethiSession);
+const preethiSeOptions = await listTeamSeOptions(preethiSession);
+const ajaySession = await enrichSessionFromStore({
+  email: "ajay.raghavan@freshworks.com",
+  role: "manager",
+  userId: teamMgrId,
+});
+const preethiCanActDigital = await canManagerActForSe(preethiSession, seDigitalId);
+const vipinCanActDigital = await canManagerActForSe(vipinSession, seDigitalId);
+const ajayCanActOwnSe = await canManagerActForSe(ajaySession, seAjayId);
+const preethiCannotActAjaySe = !(await canManagerActForSe(preethiSession, seAjayId));
+const digitalTeam = await store.getTeam(TEAM_AKSHITA_ID);
 
 const usersById = new Map([
   [seAjay.id, seAjay],
-  [squadMgr.id, squadMgr],
+  [teamMgr.id, teamMgr],
   [antony.id, antony],
   [vipin.id, vipin],
 ]);
@@ -85,42 +106,57 @@ const checks = [
     "seniorLeaderIds populated",
     org?.seniorLeaderIds?.length === 3 && org.seniorLeaderIds.includes(antonyId),
   ],
-  ["org has four squads", SQUAD_TEAM_IDS.every((id) => org?.teamIds?.includes(id))],
+  ["org has five teams", ORG_TEAM_IDS.length === 5 && ORG_TEAM_IDS.every((id) => org?.teamIds?.includes(id))],
+  ["org has three segments", org?.segments?.length === 3],
   ["vipin is director", isOrgDirector(vipinId, org)],
   ["vipin is org leader", isOrgLeader(vipinId, org)],
   ["antony is org leader", isOrgLeader(antonyId, org)],
   ["antony not director", !isOrgDirector(antonyId, org)],
-  ["squad mgr not org leader", !isOrgLeader(squadMgrId, org)],
+  ["team mgr not org leader", !isOrgLeader(teamMgrId, org)],
   ["vipin scope type org", vipinScope.type === "org"],
-  ["antony scope type org", antonyScope.type === "org"],
+  ["antony scope type segment", antonyScope.type === "segment"],
+  ["antony segment id NB", antonyScope.segmentId === SEG_NEW_BUSINESS_ID],
   [
-    "vipin sees all squads",
-    SQUAD_TEAM_IDS.every((id) => vipinScope.teamIds.includes(id)),
+    "vipin sees all teams",
+    ORG_TEAM_IDS.every((id) => vipinScope.teamIds.includes(id)),
   ],
   [
-    "squad mgr scope type team",
-    squadMgrScope.type === "team" && squadMgrScope.teamIds[0] === TEAM_AJAY_ID,
+    "antony sees NB teams only",
+    antonyScope.teamIds.length === 2 &&
+      antonyScope.teamIds.includes(TEAM_AJAY_ID) &&
+      antonyScope.teamIds.includes(TEAM_NIKIL_ID),
+  ],
+  [
+    "team mgr scope type team",
+    teamMgrScope.type === "team" && teamMgrScope.teamIds[0] === TEAM_AJAY_ID,
   ],
   ["se scope own", seScope.type === "own"],
   ["vipin session isOrgDirector", vipinSession.isOrgDirector === true],
   ["antony session isOrgDirector", antonySession.isOrgDirector === true],
+  ["antony session isSegmentLeader", antonySession.isSegmentLeader === true],
   ["vipin session orgId", vipinSession.orgId === DEMO_ORG_ID],
-  ["vipin sees ajay squad se", visibleEmails.includes("saketh.poruri@freshworks.com")],
-  ["vipin sees nikil squad se", visibleEmails.includes("vivehanandan.agoram@freshworks.com")],
-  ["vipin sees preethi squad se", visibleEmails.includes("se.preethi.sri.1@freshworks.com")],
+  ["vipin sees ajay team se", vipinVisibleEmails.includes("saketh.poruri@freshworks.com")],
+  ["vipin sees nikil team se", vipinVisibleEmails.includes("vivehanandan.agoram@freshworks.com")],
+  ["vipin sees digital team se", vipinVisibleEmails.includes("avinash.kumar@freshworks.com")],
   [
-    "squad mgr cannot read other team artifact",
-    !can(squadMgrEnriched, "read", {
-      ownerId: sePreethiId,
-      teamId: TEAM_PREETHI_SRI_ID,
+    "antony sees NB team se",
+    antonyVisibleEmails.includes("saketh.poruri@freshworks.com") &&
+      antonyVisibleEmails.includes("vivehanandan.agoram@freshworks.com"),
+  ],
+  ["antony does not see digital se", !antonyVisibleEmails.includes("avinash.kumar@freshworks.com")],
+  [
+    "team mgr cannot read digital team artifact",
+    !can(teamMgrEnriched, "read", {
+      ownerId: seDigitalId,
+      teamId: TEAM_AKSHITA_ID,
       orgId: DEMO_ORG_ID,
     }),
   ],
   [
-    "antony can read other team artifact",
+    "antony can read digital team artifact",
     can(antonyEnriched, "read", {
-      ownerId: sePreethiId,
-      teamId: TEAM_PREETHI_SRI_ID,
+      ownerId: seDigitalId,
+      teamId: TEAM_AKSHITA_ID,
       orgId: DEMO_ORG_ID,
     }),
   ],
@@ -133,16 +169,31 @@ const checks = [
     }),
   ],
   [
-    "squad mgr cannot read nikil team se",
-    !can(squadMgrEnriched, "read", {
+    "team mgr cannot read nikil team se",
+    !can(teamMgrEnriched, "read", {
       ownerId: stableUserIdForEmail("vivehanandan.agoram@freshworks.com"),
       teamId: TEAM_NIKIL_ID,
       orgId: DEMO_ORG_ID,
     }),
   ],
-  ["hierarchy no cycle", validateHierarchy(seAjay, usersById) && validateHierarchy(squadMgr, usersById)],
-  ["se reports to squad mgr", seAjay.managerId === squadMgrId],
-  ["squad mgr reports to antony", squadMgr.managerId === antonyId],
+  ["hierarchy no cycle", validateHierarchy(seAjay, usersById) && validateHierarchy(teamMgr, usersById)],
+  ["digital ICs report to preethi", seDigital.managerId === stableUserIdForEmail("preethi.sri@freshworks.com")],
+  ["se reports to team mgr", seAjay.managerId === teamMgrId],
+  ["preethi sees digital team se", preethiVisibleEmails.includes("avinash.kumar@freshworks.com")],
+  ["preethi proxy dropdown populated", preethiSeOptions.length === 8],
+  ["preethi can act for digital se", preethiCanActDigital],
+  ["vipin can act for digital se", vipinCanActDigital],
+  ["team mgr can act for own team se", ajayCanActOwnSe],
+  ["preethi cannot act for ajay team se", preethiCannotActAjaySe],
+  [
+    "digital team manager is segment leader",
+    digitalTeam?.managerId === stableUserIdForEmail("preethi.sri@freshworks.com"),
+  ],
+  [
+    "listVisibleSeEmails works with email only session",
+    (await listVisibleSeEmails({ email: "preethi.sri@freshworks.com", role: "manager" })).length === 8,
+  ],
+  ["team mgr reports to antony", teamMgr.managerId === antonyId],
   ["antony reports to vipin", antony.managerId === vipinId],
   ["vipin has job title", vipin.jobTitle?.includes("Senior Director")],
 ];

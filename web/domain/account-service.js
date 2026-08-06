@@ -23,15 +23,14 @@ import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import {
   loadContactEventsForAccount,
   recordContactEvent,
+  resolveContactOnAccount,
+  dedupeContactsForDisplay,
 } from "./contact-service.js";
 import {
   backfillAccountSeTeam,
-  contactScopeFromAccount,
   ensureSeTeamForPrepActor,
   resolveSeTeamDisplay,
   seTeamUserIds,
-  seTeamTeamIds,
-  syncAccountScopeDenorm,
   userDisplayFields,
 } from "./account-se-team.js";
 import { getOrg, getVisibleScope, resolveOrgForUser, userWithDirectorFlag } from "./org-service.js";
@@ -52,15 +51,7 @@ import {
   getCachedAccountListRows,
   setCachedAccountListRows,
   invalidateSessionListCache,
-  getAccountListInFlight,
-  trackAccountListInFlight,
 } from "./session-list-cache.js";
-import {
-  getAccountRollupReadModel,
-  getAccountRollupReadModels,
-  hydrateAccountRollupDetail,
-} from "./read-models-service.js";
-import { stripEmbeddingFields } from "./field-masks.js";
 
 export { invalidateSessionListCache };
 
@@ -117,27 +108,17 @@ export async function upsertAccountFromPrep(input) {
   if (metadataPatch && !Object.keys(metadataPatch).length) metadataPatch = undefined;
 
   if (!account) {
-    const actorId = input.actorId || null;
-    const orgId = input.orgId || null;
-    const seTeam = actorId
-      ? [{ seUserId: actorId, role: "primary", addedAt: ts, addedBy: actorId }]
-      : [];
     const createMetadata = metadataPatch ? { ...metadataPatch } : {};
     if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
-    const createPayload = {
+    account = await store.createAccount({
       id: newId("account"),
       name: companyName || slug,
       domain: resolvedDomain,
       slug,
-      orgId,
-      seTeam,
-      seTeamUserIds: actorId ? [actorId] : [],
-      primarySeUserId: actorId,
+      metadata: Object.keys(createMetadata).length ? createMetadata : undefined,
       createdAt: ts,
       updatedAt: ts,
-    };
-    if (Object.keys(createMetadata).length) createPayload.metadata = createMetadata;
-    account = await store.createAccount(createPayload);
+    });
   } else {
     const patch = { updatedAt: ts };
     const preserveName = explicitAccountId && account.id === explicitAccountId;
@@ -158,43 +139,32 @@ export async function upsertAccountFromPrep(input) {
     const email = emails[i];
     const prospectMeta = prospects[i] || prospects.find((p) => p?.email === email);
     const draft = contactDrafts.find((d) => String(d?.email || "").toLowerCase() === email);
-    let contact = await store.findContactByAccountEmail(account.id, email);
+    let contact = await resolveContactOnAccount(
+      account.id,
+      {
+        email,
+        name: prospectMeta?.name || draft?.name,
+        title: prospectMeta?.title || draft?.role,
+        role: prospectMeta?.role || draft?.role,
+      },
+      { actorId: input.actorId, source: "prep", lifecycleId: input.lifecycleId, artifactId: input.prepBriefId },
+    );
+    if (!contact) continue;
     const contactPatch = {
       name: prospectMeta?.name || draft?.name || contact?.name,
       title: prospectMeta?.title || draft?.role || contact?.title,
       role: prospectMeta?.role || draft?.role || contact?.role,
     };
-
     const researchMeta = draft?.metadata?.research || buildContactResearch(prospectMeta, ts);
-
-    if (!contact) {
-      const createPayload = {
-        id: newId("contact"),
-        accountId: account.id,
-        email,
-        ...contactPatch,
-        createdAt: ts,
-        updatedAt: ts,
+    const patch = { updatedAt: ts, ...contactPatch };
+    if (researchMeta) {
+      patch.metadata = {
+        ...(contact.metadata || {}),
+        research: { ...(contact.metadata?.research || {}), ...researchMeta },
       };
-      if (researchMeta) createPayload.metadata = { research: researchMeta };
-      contact = await store.createContact(contactScopeFromAccount(account, createPayload));
-      if (input.actorId) {
-        await recordContactEvent(contact.id, "contact_created", input.actorId, {
-          source: "prep",
-          lifecycleId: input.lifecycleId,
-        });
-      }
-    } else {
-      const patch = { updatedAt: ts, ...contactPatch };
-      if (researchMeta) {
-        patch.metadata = {
-          ...(contact.metadata || {}),
-          research: { ...(contact.metadata?.research || {}), ...researchMeta },
-        };
-      }
-      if (patch.name || patch.title || patch.role || patch.metadata) {
-        contact = await store.updateContact(contact.id, patch);
-      }
+    }
+    if (patch.name || patch.title || patch.role || patch.metadata) {
+      contact = await store.updateContact(contact.id, patch);
     }
 
     contactIds.push(contact.id);
@@ -673,16 +643,6 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
   };
 }
 
-/** Strip embedding vectors from cached account list rows (~6KB each). */
-function stripEmbeddingsFromAccountRow(row) {
-  if (!row) return row;
-  return {
-    ...row,
-    account: stripEmbeddingFields(row.account),
-    deals: (row.deals || []).map(stripEmbeddingFields),
-  };
-}
-
 /** Accounts visible to session (scoped list, deduped by accountId). */
 export async function listAccountsForSession(session, opts = {}) {
   if (!opts.skipCache) {
@@ -690,10 +650,7 @@ export async function listAccountsForSession(session, opts = {}) {
     if (cached) {
       return cached;
     }
-    const inFlight = getAccountListInFlight(session);
-    if (inFlight) return inFlight;
   }
-  const fetchRows = (async () => {
   try {
     const store = getStore();
     const { effectiveSessionUserId } = await import("./session.js");
@@ -713,46 +670,18 @@ export async function listAccountsForSession(session, opts = {}) {
       byAccount.set(lifecycle.accountId, list);
     }
 
-    const accountIds = [...byAccount.keys()];
-    const rollupDocs = store.getReadModels
-      ? await safeStoreOp(
-          "getAccountRollupReadModels",
-          () => getAccountRollupReadModels(store, accountIds),
-          [],
-        )
-      : [];
-    const rollupByAccountId = new Map(rollupDocs.map((doc) => [doc.accountId || doc.id, doc]));
-
     const rows = await Promise.all(
       [...byAccount.entries()].map(async ([accountId, lcs]) => {
         try {
-          const rollupDoc = rollupByAccountId.get(accountId);
           let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
           if (!account) return null;
-          if (!opts.forSearch) {
-            account = stripEmbeddingFields(account);
-          }
+          account = await safeStoreOp(
+            "backfillAccountSeTeam",
+            () => backfillAccountSeTeam(accountId),
+            account,
+          );
           const lifecycle = pickRowLifecycle(account, lcs);
           if (!lifecycle) return null;
-
-          if (rollupDoc?.listRow) {
-            const lr = rollupDoc.listRow;
-            return {
-              account,
-              lifecycle,
-              seTeamDisplay: lr.seTeamDisplay || [],
-              secondaryCount: lr.secondaryCount ?? 0,
-              lastActivityAt: lr.lastActivityAt ?? maxLastActivity(lcs),
-              dealType: lr.dealType || "new_business",
-              dealTypeLabel: lr.dealTypeLabel || DEAL_TYPE_LABELS[lr.dealType] || lr.dealType,
-              dealStage: lr.dealStage || lifecycle.stage,
-              deals: lr.deals || [],
-              canonicalDealId: lr.canonicalDealId || lifecycle.dealId || null,
-              _fromReadModel: true,
-            };
-          }
-
-          // READ-TIME AGGREGATION (fallback until accountRollup backfill — do not write on read)
           const seTeamDisplay = await safeStoreOp(
             "resolveSeTeamDisplay",
             () => resolveSeTeamDisplay(account),
@@ -762,7 +691,7 @@ export async function listAccountsForSession(session, opts = {}) {
           const deals = store.listDealsByAccount
             ? await safeStoreOp(
                 "listDealsByAccount",
-                () => store.listDealsByAccount(accountId, null, { forSearch: !!opts.forSearch }),
+                () => store.listDealsByAccount(accountId),
                 [],
               )
             : [];
@@ -793,17 +722,12 @@ export async function listAccountsForSession(session, opts = {}) {
     const sorted = rows.filter(Boolean).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
     const historyRows = listAccountRowsFromHistory(session);
     const merged = sorted.length ? mergeAccountListRows(sorted, historyRows) : historyRows;
-    if (merged.length) {
-      setCachedAccountListRows(session, merged.map(stripEmbeddingsFromAccountRow));
-    }
-    return opts.forSearch ? merged : merged.map(stripEmbeddingsFromAccountRow);
+    if (merged.length) setCachedAccountListRows(session, merged);
+    return merged;
   } catch (err) {
     console.warn("[account-service] listAccountsForSession failed:", err?.message || err);
     return listAccountRowsFromHistory(session);
   }
-  })();
-  if (!opts.skipCache) trackAccountListInFlight(session, fetchRows);
-  return fetchRows;
 }
 
 /**
@@ -884,48 +808,11 @@ export function deriveAccountHealth(worstTraction, daysSilent, lastActivityAt) {
 }
 
 /**
- * Batch-enrich account list rows (one Firestore round-trip for ARR/signals).
- * @param {ReturnType<import("./store.js").getStore>} store
- * @param {object[]} rows
- */
-export async function enrichAccountListRows(store, rows) {
-  const dealIds = [
-    ...new Set(rows.flatMap((r) => (r.deals || []).map((d) => d?.id).filter(Boolean))),
-  ];
-  /** @type {Map<string, object[]>} */
-  let arrByDeal = new Map();
-  /** @type {Map<string, object[]>} */
-  let signalsByDeal = new Map();
-  if (dealIds.length) {
-    [arrByDeal, signalsByDeal] = await Promise.all([
-      store.listArrLinesForDeals
-        ? safeStoreOp(
-            "listArrLinesForDeals",
-            () => store.listArrLinesForDeals(dealIds),
-            new Map(),
-          )
-        : Promise.resolve(new Map()),
-      store.listDealSignalsForDeals
-        ? safeStoreOp(
-            "listDealSignalsForDeals",
-            () => store.listDealSignalsForDeals(dealIds, 1),
-            new Map(),
-          )
-        : Promise.resolve(new Map()),
-    ]);
-  }
-  return Promise.all(
-    rows.map((row) => enrichAccountListRow(store, row, { arrByDeal, signalsByDeal })),
-  );
-}
-
-/**
  * List row metrics — spec §11.5 columns.
  * @param {ReturnType<import("./store.js").getStore>} store
  * @param {object} row
- * @param {{ arrByDeal?: Map<string, object[]>, signalsByDeal?: Map<string, object[]> }} [preloaded]
  */
-export async function enrichAccountListRow(store, row, preloaded = {}) {
+export async function enrichAccountListRow(store, row) {
   if (!row?.account?.id) return row;
 
   try {
@@ -953,11 +840,6 @@ export async function enrichAccountListRow(store, row, preloaded = {}) {
 
     const dealMetrics = await Promise.all(
       dealList.map(async (deal) => {
-        if (preloaded.arrByDeal || preloaded.signalsByDeal) {
-          const lines = preloaded.arrByDeal?.get(deal.id) || [];
-          const signals = preloaded.signalsByDeal?.get(deal.id) || [];
-          return { lines, signal: signals[0] || null };
-        }
         const [lines, signals] = await Promise.all([
           store.listArrLinesByDeal
             ? safeStoreOp("listArrLinesByDeal", () => store.listArrLinesByDeal(deal.id), [])
@@ -1022,27 +904,19 @@ export async function listAccountsForUser(session) {
  * @param {object} session
  * @returns {Promise<Array<{ deal: import("./types.js").Deal, account: import("./types.js").Account, seTeamDisplay: object[], primarySeName: string|null, lastActivityAt: number }>>}
  */
-export async function listDealsForSession(session, opts = {}) {
+export async function listDealsForSession(session) {
   /** @type {Map<string, object>} */
   const byDealId = new Map();
 
   try {
-    const accountRows = await listAccountsForSession(session, { forSearch: !!opts.forSearch });
+    const accountRows = await listAccountsForSession(session);
 
     for (const row of accountRows) {
       const { account, seTeamDisplay, deals } = row;
       if (!account?.id) continue;
       const dealList = deals?.length
         ? deals
-        : await safeStoreOp(
-            "listDealsForAccount",
-            () =>
-              listDealsForAccount(account.id, {
-                ownerId: sessionUserId(session) || undefined,
-                teamId: session?.teamId || undefined,
-              }),
-            [],
-          );
+        : await safeStoreOp("listDealsForAccount", () => listDealsForAccount(account.id), []);
       const primary = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
       const primarySeName = primary?.user?.displayName || null;
 
@@ -1132,14 +1006,9 @@ async function canReadAccountEngagement(user, account, lifecycles) {
   if (!user || !account) return false;
   const ids = seTeamUserIds(account);
   const orgId = lifecycles[0]?.orgId || user.orgId || null;
-  const teamIds = seTeamTeamIds(account);
-  const seTeamTeamIdsForRules = teamIds.length
-    ? teamIds
-    : [...new Set(lifecycles.map((l) => l.teamId).filter(Boolean))];
   return can(user, "read_account", {
     ownerId: account.primarySeUserId || lifecycles[0]?.ownerId,
     seTeamUserIds: ids,
-    seTeamTeamIds: seTeamTeamIdsForRules,
     accountOrgId: orgId,
     teamId: user.teamId || undefined,
     orgId: user.orgId || undefined,
@@ -1197,44 +1066,27 @@ export async function resolveSelectedDealForAccountView(accountId, actorId, deal
  * @param {{ lifecycleOwnerId?: string, dealId?: string|null, engagementPrepType?: import("./types.js").DealType }} [options]
  */
 export async function getAccountEngagementDetail(session, accountId, options = {}) {
-  if (!accountId) return null;
-
-  let user = null;
-  try {
-    user = await sessionUser(session);
-  } catch (err) {
-    console.warn("[account-service] sessionUser failed:", accountId, err?.message || err);
-    return null;
-  }
-  if (!user) return null;
+  const user = await sessionUser(session);
+  if (!user || !accountId) return null;
 
   const store = getStore();
   let account = await safeStoreOp("getAccount", () => store.getAccount(accountId), null);
   if (!account) {
     const histRow = findHistoryAccountRow(session, accountId);
     if (histRow) {
-      try {
-        return await buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
-      } catch (err) {
-        console.warn("[account-service] history detail failed:", accountId, err?.message || err);
-        return null;
-      }
+      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
     }
     return null;
   }
+  account = await safeStoreOp("backfillAccountSeTeam", () => backfillAccountSeTeam(accountId), account);
 
   try {
     return await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
   } catch (err) {
-    console.warn("[account-service] engagement detail failed, trying history:", accountId, err?.message || err);
+    console.warn("[account-service] engagement detail failed, trying history:", err?.message || err);
     const histRow = findHistoryAccountRow(session, accountId);
     if (histRow) {
-      try {
-        return await buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
-      } catch (histErr) {
-        console.warn("[account-service] history detail failed:", accountId, histErr?.message || histErr);
-        return null;
-      }
+      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
     }
     return null;
   }
@@ -1358,11 +1210,37 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
   }
   mergedEvents.sort((a, b) => b.timestamp - a.timestamp);
 
-  const contacts = await safeStoreOp(
-    "listContactsByAccount",
-    () => store.listContactsByAccount(accountId),
-    [],
-  );
+  const contactsRaw = selectedDealId && store.listContactsByDeal
+    ? await (async () => {
+        const links = await safeStoreOp(
+          "listContactsByDeal",
+          () => store.listContactsByDeal(selectedDealId),
+          [],
+        );
+        const allAccountContacts = await safeStoreOp(
+          "listContactsByAccount",
+          () => store.listContactsByAccount(accountId),
+          [],
+        );
+        const byId = new Map(allAccountContacts.map((c) => [c.id, c]));
+        const seen = new Set();
+        return links
+          .map((link) => byId.get(link.contactId))
+          .filter((c) => {
+            if (!c || seen.has(c.id)) return false;
+            seen.add(c.id);
+            return true;
+          });
+      })()
+    : await safeStoreOp(
+        "listContactsByAccount",
+        () => store.listContactsByAccount(accountId),
+        [],
+      );
+  const contacts = dedupeContactsForDisplay(contactsRaw, {
+    primaryContactId: lensLifecycle?.primaryContactId || null,
+    accountDomain: account.domain || null,
+  });
   const contactEventsByContactId = await safeStoreOp(
     "loadContactEventsForAccount",
     () => loadContactEventsForAccount(contacts, 10),
@@ -1397,37 +1275,27 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
     );
   }
 
-  const storedRollup = store.getReadModel
-    ? await safeStoreOp(
-        "getAccountRollupReadModel",
-        () => getAccountRollupReadModel(store, accountId),
-        null,
-      )
-    : null;
-
-  const accountRollup = storedRollup?.detail
-    ? hydrateAccountRollupDetail(storedRollup.detail)
-    : await safeStoreOp(
-        "loadAccountOverviewRollup",
-        () => loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts),
-        {
-          arrRollup: {
-            estimateBand: null,
-            linesByDealId: new Map(),
-            discussedUnquantified: [],
-            crossSellGaps: [],
-          },
-          dealRows: [],
-          accountCalls: [],
-          firmographics: {},
-          reasonForEvaluation: null,
-          whyAi: null,
-          hasEconomicBuyer: false,
-          health: deriveAccountHealth(null, null, account.updatedAt),
-          callCount: 0,
-          dealCount: (deals || []).length,
-        },
-      );
+  const accountRollup = await safeStoreOp(
+    "loadAccountOverviewRollup",
+    () => loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts),
+    {
+      arrRollup: {
+        estimateBand: null,
+        linesByDealId: new Map(),
+        discussedUnquantified: [],
+        crossSellGaps: [],
+      },
+      dealRows: [],
+      accountCalls: [],
+      firmographics: {},
+      reasonForEvaluation: null,
+      whyAi: null,
+      hasEconomicBuyer: false,
+      health: deriveAccountHealth(null, null, account.updatedAt),
+      callCount: 0,
+      dealCount: (deals || []).length,
+    },
+  );
 
   return {
     ...lensDetail,
@@ -1453,7 +1321,11 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
 
 /**
  * Account overview data: ARR roll-up, calls across deals, firmographics, deal rows.
- * @deprecated Prefer accountRollup/{accountId} read-model; kept as fallback until backfill parity.
+ * @param {ReturnType<import("./store.js").getStore>} store
+ * @param {import("./types.js").Account} account
+ * @param {import("./types.js").Deal[]} deals
+ * @param {object[]} seTeamDisplay
+ * @param {import("./types.js").Contact[]} contacts
  */
 async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, contacts) {
   const arrRollup = await buildAccountArrRollup(store, account.id, deals);
@@ -1483,33 +1355,27 @@ async function loadAccountOverviewRollup(store, account, deals, seTeamDisplay, c
     }),
   );
 
-  const callSummaries = store.listCallSummariesByAccount
-    ? await store.listCallSummariesByAccount(account.id, 100)
-    : [];
-  const accountCalls = (callSummaries || []).map((summary) => {
-    const deal = deals.find((d) => d.id === summary.dealId);
-    const med = deal ? resolveDealMeddpicc(deal, account) : null;
-    const ownerName =
-      summary.ownerName ||
-      seTeamDisplay.find((m) => m.seUserId === summary.ownerId)?.user?.displayName ||
-      seTeamDisplay[0]?.user?.displayName ||
-      "-";
-    const scorecard =
-      summary.qipOverall != null || summary.qipCategoryScores
-        ? {
-            overall: summary.qipOverall ?? summary.qualityScore ?? null,
-            categoryScores: summary.qipCategoryScores || {},
-          }
-        : null;
-    return {
-      postCall: summary,
-      deal,
-      dealLabel: summary.dealTitle || deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "-"),
-      meddpiccScore: med?.completionScore ?? null,
-      scorecard,
-      ownerName,
-    };
-  });
+  const postCalls = store.listPostCallsByAccount ? await store.listPostCallsByAccount(account.id, 100) : [];
+  const accountCalls = await Promise.all(
+    postCalls.map(async (postCall) => {
+      const deal = deals.find((d) => d.id === postCall.dealId);
+      const med = deal ? resolveDealMeddpicc(deal, account) : null;
+      const scorecards = store.listScorecardsByCall ? await store.listScorecardsByCall(postCall.id) : [];
+      const scorecard = scorecards[0] || null;
+      const ownerName =
+        seTeamDisplay.find((m) => m.seUserId === postCall.ownerId)?.user?.displayName ||
+        seTeamDisplay[0]?.user?.displayName ||
+        "-";
+      return {
+        postCall,
+        deal,
+        dealLabel: deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] : "-"),
+        meddpiccScore: med?.completionScore ?? null,
+        scorecard,
+        ownerName,
+      };
+    }),
+  );
 
   accountCalls.sort((a, b) => (b.postCall.createdAt || 0) - (a.postCall.createdAt || 0));
 
@@ -1672,7 +1538,6 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
     }
     seTeam.push({ seUserId: addId, role: "secondary", addedAt: ts, addedBy: actorId });
     account = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
-    account = (await syncAccountScopeDenorm(accountId)) || account;
 
     const targetUser = await store.getUser(addId);
     const lc = await getOrCreateLifecycle(addId, accountId, targetUser?.teamId || user.teamId || "", {

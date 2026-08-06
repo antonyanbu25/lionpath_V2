@@ -1,6 +1,5 @@
 /**
- * New business vs expansion routing for deal association.
- * Order documented in docs/adr/003-account-deal-engagement.md — keep in sync.
+ * New business vs expansion routing for deal association (ADR-003 + CRM plan).
  */
 
 import { getStore } from "./store.js";
@@ -8,43 +7,40 @@ import { TEAM_AJAY_ID, TEAM_NIKIL_ID } from "./constants.js";
 import { getAccountEngagementContext } from "./account-context.js";
 
 export const NEW_BUSINESS_TEAM_IDS = new Set([TEAM_AJAY_ID, TEAM_NIKIL_ID]);
-export const NB_GRACE_DAYS = 90;
-const ALLOWLIST_TTL_MS = 5 * 60 * 1000;
 
-/** @type {{ data: { accountIds: string[], slugs: string[] }, loadedAt: number } | null} */
+/** 90-day NB grace after closed_won — activities stay on won NB deal, then expansion routing. */
+export const NB_GRACE_PERIOD_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** @type {{ accountIds: string[], slugs: string[] } | null} */
 let allowlistCache = null;
 
 /**
- * @returns {Promise<{ accountIds: Set<string>, slugs: Set<string>, loaded: boolean }>}
+ * @returns {Promise<{ accountIds: Set<string>, slugs: Set<string> }>}
  */
 export async function loadNbAccountAllowlist() {
-  const now = Date.now();
-  if (allowlistCache && now - allowlistCache.loadedAt < ALLOWLIST_TTL_MS) {
-    const { accountIds, slugs } = allowlistCache.data;
+  if (allowlistCache) {
     return {
-      accountIds: new Set(accountIds || []),
-      slugs: new Set((slugs || []).map((s) => String(s).toLowerCase())),
-      loaded: true,
+      accountIds: new Set(allowlistCache.accountIds || []),
+      slugs: new Set((allowlistCache.slugs || []).map((s) => String(s).toLowerCase())),
     };
   }
   try {
     const res = await fetch(new URL("../config/nb-account-allowlist.json", import.meta.url));
     if (res.ok) {
-      const data = await res.json();
-      allowlistCache = { data, loadedAt: now };
-      return {
-        accountIds: new Set(data.accountIds || []),
-        slugs: new Set((data.slugs || []).map((s) => String(s).toLowerCase())),
-        loaded: true,
-      };
+      allowlistCache = await res.json();
+    } else {
+      allowlistCache = { accountIds: [], slugs: [] };
     }
   } catch {
-    // Do not cache failures — next call retries.
+    allowlistCache = { accountIds: [], slugs: [] };
   }
-  return { accountIds: new Set(), slugs: new Set(), loaded: false };
+  return {
+    accountIds: new Set(allowlistCache.accountIds || []),
+    slugs: new Set((allowlistCache.slugs || []).map((s) => String(s).toLowerCase())),
+  };
 }
 
-/** @param {import("./types.js").Account | null | undefined} account @param {{ accountIds: Set<string>, slugs: Set<string> }} allowlist */
+/** @param {import("./types.js").Account | null | undefined} account */
 export function isAccountOnNbAllowlistSync(account, allowlist) {
   if (!account || !allowlist) return false;
   if (allowlist.accountIds.has(account.id)) return true;
@@ -59,69 +55,96 @@ export function isNewBusinessActor(user) {
   return false;
 }
 
-/**
- * @typedef {'new_business' | 'expansion'} DealMotionType
- * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'grace' | 'actor' | 'default'} DealMotionSource
- */
+/** @param {import("./types.js").Deal | null | undefined} deal */
+export function getClosedWonAt(deal) {
+  if (!deal) return null;
+  const fromMeta = deal.metadata?.closedWonAt;
+  if (typeof fromMeta === "number" && fromMeta > 0) return fromMeta;
+  if (typeof deal.closedWonAt === "number" && deal.closedWonAt > 0) return deal.closedWonAt;
+  return null;
+}
+
+/** @param {import("./types.js").Deal | null | undefined} deal @param {number} [asOfMs] */
+export function isWithinNbGracePeriod(deal, asOfMs = Date.now()) {
+  const wonAt = getClosedWonAt(deal);
+  if (!wonAt || deal?.type !== "new_business" || deal?.stage !== "closed_won") return false;
+  return asOfMs <= wonAt + NB_GRACE_PERIOD_MS;
+}
 
 /**
- * @param {{ wonNbDeal?: import("./types.js").Deal|null, now?: number, graceDays?: number }}
- * @returns {{ useWonNb: boolean, dealId: string|null, daysSinceWon: number|null, reason: string }}
+ * After grace expires, route new activities to expansion motion (not the won NB deal).
+ * @param {import("./types.js").Deal | null | undefined} deal
+ * @param {number} [asOfMs]
+ * @returns {"new_business"|"expansion"|null}
  */
-export function shouldUseWonNbDeal({ wonNbDeal, now = Date.now(), graceDays = NB_GRACE_DAYS }) {
-  if (!wonNbDeal?.wonAt) {
-    return { useWonNb: false, dealId: null, daysSinceWon: null, reason: "no_won_at" };
-  }
-  const msPerDay = 86400000;
-  const daysSinceWon = Math.floor((now - wonNbDeal.wonAt) / msPerDay);
-  const useWonNb = daysSinceWon <= graceDays;
-  return {
-    useWonNb,
-    dealId: useWonNb ? wonNbDeal.id : null,
-    daysSinceWon,
-    reason: useWonNb ? "within_grace" : "grace_expired",
-  };
+export function shouldRouteWonNbToExpansion(deal, asOfMs = Date.now()) {
+  if (!deal || deal.type !== "new_business" || deal.stage !== "closed_won") return null;
+  const wonAt = getClosedWonAt(deal);
+  if (!wonAt) return null;
+  return asOfMs > wonAt + NB_GRACE_PERIOD_MS ? "expansion" : "new_business";
 }
+
+/**
+ * Prefer routing to archived won NB during grace (returns deal id).
+ * @param {import("./types.js").Account | null | undefined} account
+ * @param {import("./types.js").Deal | null | undefined} wonNbDeal
+ * @param {number} [asOfMs]
+ */
+export function shouldUseWonNbDeal(account, wonNbDeal, asOfMs = Date.now()) {
+  if (!wonNbDeal || !isWithinNbGracePeriod(wonNbDeal, asOfMs)) return null;
+  return wonNbDeal.id;
+}
+
+/**
+ * @typedef {'new_business' | 'expansion'} DealMotionType
+ * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'actor' | 'default' | 'won_grace'} DealMotionSource
+ */
 
 /**
  * Infer prep/deal type before creating deals.
  * @param {{
  *   account?: import("./types.js").Account | null,
  *   actor?: import("./types.js").User | null,
- *   explicitDeal?: import("./types.js").Deal | null,
  *   explicitDealId?: string | null,
  *   explicitPrepType?: string | null,
+ *   explicitDealType?: DealMotionType | null,
  *   sessionContext?: { dealId?: string, prepType?: string } | null,
- *   allowlist?: { accountIds: Set<string>, slugs: Set<string>, loaded?: boolean },
- *   wonNbDeal?: import("./types.js").Deal | null,
- *   now?: number,
+ *   allowlist?: { accountIds: Set<string>, slugs: Set<string> },
+ *   wonNbDealInGrace?: import("./types.js").Deal | null,
+ *   asOfMs?: number,
  * }} input
+ * @returns {{ prepType: DealMotionType, dealId: string | null, source: DealMotionSource }}
  */
 export function resolveEngagementDealInput(input) {
   const {
     account,
     actor,
-    explicitDeal,
     explicitDealId,
     explicitPrepType,
+    explicitDealType,
     sessionContext,
     allowlist,
-    wonNbDeal,
-    now,
+    wonNbDealInGrace,
+    asOfMs = Date.now(),
   } = input;
 
-  if (explicitDealId || explicitDeal) {
-    const deal = explicitDeal || null;
-    const prepType = deal?.type === "expansion" || deal?.type === "new_business"
-      ? deal.type
-      : explicitPrepType === "expansion"
-        ? "expansion"
-        : "new_business";
+  if (explicitDealId) {
+    let prepType = "new_business";
+    if (explicitPrepType === "expansion" || explicitDealType === "expansion") {
+      prepType = "expansion";
+    } else if (explicitPrepType === "new_business" || explicitDealType === "new_business") {
+      prepType = "new_business";
+    }
     return {
       prepType,
-      dealId: explicitDealId || deal?.id || null,
+      dealId: explicitDealId,
       source: "manual",
     };
+  }
+
+  const graceDealId = shouldUseWonNbDeal(account, wonNbDealInGrace, asOfMs);
+  if (graceDealId) {
+    return { prepType: "new_business", dealId: graceDealId, source: "won_grace" };
   }
 
   const accountOverride = account?.metadata?.engagementOverride;
@@ -148,23 +171,26 @@ export function resolveEngagementDealInput(input) {
     };
   }
   if (sessionContext?.prepType === "expansion" || sessionContext?.prepType === "new_business") {
-    return { prepType: sessionContext.prepType, dealId: null, source: "context" };
+    return {
+      prepType: sessionContext.prepType,
+      dealId: null,
+      source: "context",
+    };
   }
 
   if (explicitPrepType === "expansion" || explicitPrepType === "new_business") {
     return { prepType: explicitPrepType, dealId: null, source: "manual" };
   }
 
-  const grace = shouldUseWonNbDeal({ wonNbDeal, now });
-  if (grace.useWonNb && grace.dealId) {
-    return { prepType: "new_business", dealId: grace.dealId, source: "grace" };
+  if (wonNbDealInGrace && shouldRouteWonNbToExpansion(wonNbDealInGrace, asOfMs) === "expansion") {
+    return { prepType: "expansion", dealId: null, source: "won_grace" };
   }
 
   if (account?.programPhase === "expansion") {
     return { prepType: "expansion", dealId: null, source: "phase" };
   }
 
-  if (allowlist?.loaded !== false && allowlist && isAccountOnNbAllowlistSync(account, allowlist)) {
+  if (allowlist && isAccountOnNbAllowlistSync(account, allowlist)) {
     return { prepType: "new_business", dealId: null, source: "allowlist" };
   }
 
@@ -175,45 +201,44 @@ export function resolveEngagementDealInput(input) {
   return { prepType: "expansion", dealId: null, source: "default" };
 }
 
-/** @param {string} accountId @param {string} actorId @param {object} [opts] */
+/**
+ * Full async resolution for link flows.
+ * @param {string} accountId
+ * @param {string} actorId
+ * @param {{ explicitDealId?: string|null, explicitPrepType?: string|null, useSessionContext?: boolean, asOfMs?: number }} opts
+ */
 export async function resolveEngagementMotion(accountId, actorId, opts = {}) {
   const store = getStore();
   const account = accountId ? await store.getAccount(accountId) : null;
   const actor = actorId ? await store.getUser(actorId) : null;
   const allowlist = await loadNbAccountAllowlist();
-
-  let explicitDeal = null;
-  if (opts.explicitDealId && store.getDeal) {
-    explicitDeal = await store.getDeal(opts.explicitDealId);
-  }
-
-  let wonNbDeal = null;
-  if (store.findActiveDeal) {
-    wonNbDeal = await store.findActiveDeal(accountId, "new_business", {
-      ownerId: actorId,
-      teamId: actor?.teamId,
-      includeGrace: true,
-    });
-  }
-
   const sessionContext = opts.useSessionContext !== false ? getAccountEngagementContext() : null;
+  const wonNbDealInGrace = store.findWonNbDealInGrace
+    ? await store.findWonNbDealInGrace(accountId, opts.asOfMs)
+    : null;
+
+  let explicitDealType = null;
+  if (opts.explicitDealId && store.getDeal) {
+    const pinned = await store.getDeal(opts.explicitDealId);
+    if (pinned?.type === "expansion" || pinned?.type === "new_business") {
+      explicitDealType = pinned.type;
+    }
+  }
 
   return resolveEngagementDealInput({
     account,
     actor,
-    explicitDeal,
     explicitDealId: opts.explicitDealId,
     explicitPrepType: opts.explicitPrepType,
+    explicitDealType,
     sessionContext,
     allowlist,
-    wonNbDeal,
+    wonNbDealInGrace,
+    asOfMs: opts.asOfMs,
   });
 }
 
-/**
- * Deal document owner for shared account-level deals (BY-DESIGN: primary SE owns deal doc).
- * Coaching attribution uses lifecycle owner or lastActorId, not deal.ownerId alone.
- */
+/** Deal document owner for shared account-level deals. */
 export async function resolveDealOwnerId(accountId, actorId) {
   const store = getStore();
   const account = accountId ? await store.getAccount(accountId) : null;
