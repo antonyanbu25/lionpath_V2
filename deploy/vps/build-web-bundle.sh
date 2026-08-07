@@ -16,12 +16,12 @@ if ! grep -q 'dist/boot.js' "$INDEX" 2>/dev/null; then
   exit 0
 fi
 
-echo "=== Building web/dist (esbuild) ==="
+echo "=== Building web/dist (esbuild, PRODUCTION_BUILD=1) ==="
 if command -v npm >/dev/null 2>&1; then
-  (cd "$WEB" && npm ci && npm run build)
+  (cd "$WEB" && npm ci && PRODUCTION_BUILD=1 npm run build)
 else
   echo "npm not on PATH — using node:22-alpine container"
-  docker run --rm -v "$WEB:/web" -w /web node:22-alpine sh -c "npm ci && npm run build"
+  docker run --rm -v "$WEB:/web" -w /web node:22-alpine sh -c "npm ci && PRODUCTION_BUILD=1 npm run build"
 fi
 
 if [[ ! -f "$WEB/dist/boot.js" ]]; then
