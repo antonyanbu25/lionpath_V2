@@ -6,6 +6,12 @@ import { firebaseConfig } from "../firebase-config.js";
 import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
+import {
+  getOrg,
+  getSegmentForLeader,
+  isOrgDirector,
+  isOrgLeader,
+} from "./org-service.js";
 
 /** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
 async function safeStoreGet(label, fn) {
@@ -115,6 +121,18 @@ export async function enrichSessionFromStore(session) {
   const user = await lookupUserForSession(session, store);
   if (!user) return session;
 
+  const org = user.orgId ? await getOrg(user.orgId) : null;
+  const segment = getSegmentForLeader(user.id, org);
+  const actualDirector = isOrgDirector(user.id, org);
+
+  let managerName = null;
+  if (user.managerId) {
+    const mgr = await safeStoreGet("getUser manager", () => store.getUser(user.managerId));
+    if (mgr) {
+      managerName = mgr.displayName || mgr.email?.split("@")[0] || null;
+    }
+  }
+
   return {
     ...session,
     userId: user.id,
@@ -123,6 +141,16 @@ export async function enrichSessionFromStore(session) {
     role: user.role,
     teamId: user.teamId,
     orgId: user.orgId || null,
+    managerId: user.managerId || null,
+    managerName,
+    jobTitle: user.jobTitle || null,
+    avatarDataUrl: user.avatarDataUrl || null,
+    isOrgDirector: isOrgLeader(user.id, org),
+    isActualDirector: actualDirector,
+    isSegmentLeader: !!segment,
+    segmentId: segment?.id || null,
+    segmentName: segment?.name || null,
+    segmentTeamIds: segment?.teamIds || [],
     name: user.displayName || session.name,
     email: user.email || session.email,
   };

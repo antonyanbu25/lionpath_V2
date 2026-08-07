@@ -839,6 +839,7 @@ async function renderCoachingPanel(email, opts = {}) {
 function updateNavForRole() {
   const isManager = isManagerRole(currentSession);
   const isLeader = currentSession?.isOrgDirector === true;
+  const isTeamMgr = isManager && !isLeader;
   const isCurator = currentSession?.role === "admin" || currentSession?.role === "pm";
   const canStructure = canEditOrgStructure(currentSession);
   let rollupVisible = false;
@@ -849,7 +850,7 @@ function updateNavForRole() {
     else if (role === "leader") showBtn = isLeader;
     else if (role === "curator") showBtn = isCurator;
     else if (role === "structure") showBtn = canStructure;
-    else showBtn = !isManager;
+    else showBtn = !isTeamMgr;
     btn.hidden = !showBtn;
     if (showBtn && (role === "manager" || role === "leader" || role === "curator" || role === "structure")) {
       rollupVisible = true;
@@ -858,7 +859,7 @@ function updateNavForRole() {
   const rollupGrp = document.querySelector(".nav-grp--rollup");
   if (rollupGrp) rollupGrp.hidden = !rollupVisible;
   const globalSearch = $("global-search-input");
-  if (globalSearch) globalSearch.hidden = isManager;
+  if (globalSearch) globalSearch.hidden = isTeamMgr;
 }
 
 function refreshActiveDashboard() {
@@ -872,6 +873,12 @@ function refreshActiveDashboard() {
     }
     if (currentView === "se" && selectedSeEmail) {
       void renderSePanel();
+    }
+    if (currentView === "dashboard" && currentSession?.isOrgDirector) {
+      void renderDashboardPanels(currentSession.email, dashboardOpts());
+    }
+    if (currentView === "coaching" && currentSession?.isOrgDirector) {
+      void renderCoachingPanel(currentSession.email, dashboardOpts());
     }
     return;
   }
@@ -953,12 +960,12 @@ function switchView(name, opts = {}) {
     return;
   }
 
-  if (isManager) {
+  if (isManager && !currentSession?.isOrgDirector) {
     const allowDrill = opts.drillDown === true || MANAGER_DRILL_VIEWS.has(name);
     if (!allowDrill && (name === "dashboard" || name === "coaching" || name === "precall" || name === "postcall")) {
       name = "manager";
     }
-  } else if (name === "manager") {
+  } else if (!isManager && name === "manager") {
     name = "dashboard";
   } else if (name === "se" && !selectedSeEmail) {
     name = "dashboard";
@@ -971,9 +978,9 @@ function switchView(name, opts = {}) {
     btn.classList.toggle("active", btn.dataset.view === name);
   });
 
-  if (name === "dashboard" && !isManager) {
+  if (name === "dashboard" && (!isManager || currentSession?.isOrgDirector)) {
     void renderDashboardPanels(currentSession.email, dashboardOpts());
-  } else if (name === "coaching" && !isManager) {
+  } else if (name === "coaching" && (!isManager || currentSession?.isOrgDirector)) {
     void renderCoachingPanel(currentSession.email, dashboardOpts());
   } else if (name === "manager" && isManager) {
     void renderManagerDashboard($("view-manager"), currentSession, managerDashboardOpts());
@@ -1958,7 +1965,8 @@ function applySessionAuthGetters() {
 }
 
 async function applyInitialRouteFromHash(enriched) {
-  const defaultView = isManagerRole(enriched) ? "manager" : "dashboard";
+  const defaultView =
+    isManagerRole(enriched) && !enriched?.isOrgDirector ? "manager" : "dashboard";
   const { path: hashPath, params: hashParams } = parseLocationHash();
   const hash = hashPath;
   const hashAliases = {
@@ -2170,7 +2178,9 @@ async function showApp(session, opts = {}) {
       await applyInitialRouteFromHash(currentSession);
     } catch (err) {
       console.warn("[app] initial route failed:", err?.message || err);
-      switchView(isManagerRole(currentSession) ? "manager" : "dashboard");
+      switchView(
+        isManagerRole(currentSession) && !currentSession?.isOrgDirector ? "manager" : "dashboard",
+      );
     }
     await paintAuthenticatedShell();
 
@@ -2189,6 +2199,15 @@ async function showApp(session, opts = {}) {
           currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
           refreshUserMenuFromSession();
           updateNavForRole();
+          const hash = location.hash.replace(/^#/, "").trim();
+          if (
+            !hash &&
+            enriched.isOrgDirector &&
+            isManagerRole(enriched) &&
+            currentView === "manager"
+          ) {
+            switchView("dashboard");
+          }
         }
         applySessionAuthGetters();
         await loadPersistedHistory();
