@@ -18,6 +18,7 @@ import {
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
 import { fishBucketFromMetric } from "./fish-sizing-buckets.js";
+import { buildFishContextFromPrep } from "./fish-context-from-prep.js";
 
 const isUnknown = (v) => {
   const s = String(v || "").trim();
@@ -404,9 +405,18 @@ function benchmarkBarPos(value, min, max) {
  * Everything here comes from prep.rivals, where each figure is traceable to a citation and the
  * range and verdict are derived server-side rather than asked of the model.
  */
-function fishContextSupplement(metrics, axisLabels) {
+function fishContextSupplement(metrics, axes) {
   if (!metrics?.length) return [];
-  const axes = (axisLabels || []).map((l) => String(l || "").toLowerCase());
+  const covered = (axes || [])
+    .filter((axis) => {
+      const own = axis?.prospect;
+      if (!own) return false;
+      if (Number.isFinite(own.numeric)) return true;
+      const display = String(own.display || "").trim();
+      return !!display && !isUnknown(display);
+    })
+    .map((axis) => String(axis.label || "").toLowerCase())
+    .filter(Boolean);
   const tokenOverlap = (a, b) => {
     const ta = new Set(a.split(/\W+/).filter((w) => w.length > 2));
     const tb = new Set(b.split(/\W+/).filter((w) => w.length > 2));
@@ -417,7 +427,7 @@ function fishContextSupplement(metrics, axisLabels) {
   return metrics.filter((m) => {
     const label = String(m.label || "").toLowerCase();
     if (!label) return false;
-    return !axes.some(
+    return !covered.some(
       (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
     );
   });
@@ -478,10 +488,11 @@ function renderFishContextRows(metrics) {
 }
 
 function benchmarkRows(prep) {
-  const rivals = prep.rivals;
+  const enriched = { ...prep, fishContext: buildFishContextFromPrep(prep) };
+  const rivals = enriched.rivals;
   const axes = rivals?.axes || [];
-  const allCtx = prep.fishContext?.metrics || [];
-  const supplemental = fishContextSupplement(allCtx, axes.map((a) => a.label));
+  const allCtx = enriched.fishContext?.metrics || [];
+  const supplemental = fishContextSupplement(allCtx, axes);
 
   if (axes.length) {
     return renderFishBenchmarkCard(axes, rivals, supplemental);

@@ -79,18 +79,35 @@ export function filterFishContextMetrics(
   return out;
 }
 
-/** Labels already covered by a web-sourced rival axis (fuzzy). */
+type FishSupplementAxis = { label?: string; prospect?: { display?: string; numeric?: number } | null };
+
+function axisHasProspectValue(axis: FishSupplementAxis): boolean {
+  const prospect = axis.prospect;
+  if (!prospect) return false;
+  if (Number.isFinite(prospect.numeric)) return true;
+  const display = String(prospect.display || "").trim();
+  return !!display && !UNKNOWN_VALUES.has(display.toLowerCase());
+}
+
+/** Labels already covered by a web-sourced rival axis with a prospect value (fuzzy). */
 export function fishContextSupplementMetrics(
   metrics: FishContextMetric[] | undefined,
-  axisLabels: string[] | undefined,
+  axes: (string | FishSupplementAxis)[] | undefined,
 ): FishContextMetric[] {
   if (!metrics?.length) return [];
-  const axes = (axisLabels || []).map((l) => l.toLowerCase());
+  const covered = (axes || [])
+    .map((axis) => {
+      if (typeof axis === "string") return axis;
+      if (!axisHasProspectValue(axis)) return "";
+      return String(axis.label || "");
+    })
+    .map((l) => l.toLowerCase())
+    .filter(Boolean);
   const out: FishContextMetric[] = [];
   for (const m of metrics) {
     const label = String(m.label || "").toLowerCase();
     if (!label) continue;
-    const dup = axes.some(
+    const dup = covered.some(
       (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
     );
     if (dup) continue;
@@ -121,6 +138,64 @@ function isUsableFactValue(raw: string): boolean {
   const v = String(raw || "").trim();
   if (!v || v.length < 2) return false;
   return !UNKNOWN_VALUES.has(v.toLowerCase());
+}
+
+function looksLikeSupportTeam(value: string): boolean {
+  return /\b(support|agent|agents|users?)\b/i.test(String(value || ""));
+}
+
+/** Resolve company-size tile value — mirrors web About fallbacks. */
+function resolveCompanySizeFromPrep(prep: {
+  facts?: ResearchFact[];
+  businessContext?: { users?: string };
+}): string | undefined {
+  const fact = prep.facts?.find((f) => f.key === "Company size");
+  if (fact) {
+    const value = trimWords(String(fact.value || ""), 12);
+    if (isUsableFactValue(value) && !looksLikeSupportTeam(value)) return value;
+  }
+  const users = trimWords(String(prep.businessContext?.users || ""), 12);
+  if (isUsableFactValue(users) && !looksLikeSupportTeam(users)) return users;
+  return undefined;
+}
+
+/** Build fish sizing from final prep JSON (facts + businessContext + companySizeAgents). */
+export function fishSizingFromPrepResult(prep: {
+  facts?: ResearchFact[];
+  businessContext?: { users?: string; fundingParent?: string };
+  companySizeAgents?: { agents?: string };
+} | null | undefined): FishContextSizing | null {
+  if (!prep) return null;
+  const syntheticFacts: ResearchFact[] = [];
+  const companySize = resolveCompanySizeFromPrep(prep);
+  if (companySize) {
+    syntheticFacts.push({ key: "Company size", value: companySize, category: "signal", sourceLabel: "SE" });
+  }
+  const supportFact = prep.facts?.find((f) => f.key === "Support team");
+  const supportVal = trimWords(
+    String(prep.companySizeAgents?.agents || supportFact?.value || ""),
+    12,
+  );
+  if (isUsableFactValue(supportVal)) {
+    syntheticFacts.push({ key: "Support team", value: supportVal, category: "signal", sourceLabel: "SE" });
+  }
+  const ownership = trimWords(String(prep.businessContext?.fundingParent || ""), 12);
+  const ownershipFact = prep.facts?.find((f) => f.key === "Ownership");
+  const ownershipVal = isUsableFactValue(ownership)
+    ? ownership
+    : trimWords(String(ownershipFact?.value || ""), 12);
+  if (isUsableFactValue(ownershipVal)) {
+    syntheticFacts.push({ key: "Ownership", value: ownershipVal, category: "signal", sourceLabel: "SE" });
+  }
+  for (const fact of prep.facts || []) {
+    if (fact.key === "Company size" || fact.key === "Support team" || fact.key === "Ownership") continue;
+    const label = FISH_FACT_LABELS[String(fact.key || "")];
+    if (!label) continue;
+    const value = trimWords(String(fact.value || ""), 12);
+    if (!isUsableFactValue(value)) continue;
+    syntheticFacts.push({ ...fact, value });
+  }
+  return fishSizingFromResearchFacts(syntheticFacts);
 }
 
 /** Build fish sizing metrics directly from grounded research facts. */

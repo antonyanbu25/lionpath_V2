@@ -10,6 +10,7 @@ import {
   filterFishContextMetrics,
   fishContextSupplementMetrics,
   fishSizingFromResearchFacts,
+  fishSizingFromPrepResult,
   buildFishSizingPromptContext,
   mergeFishContextSizing,
 } from "../src/prep/rivals-context.ts";
@@ -66,10 +67,43 @@ const eq = (a: unknown, b: unknown, m: string) => {
       { label: "Support agents", value: "500" },
       { label: "Customer base", value: "2M users" },
     ],
-    ["Support agents"],
+    [{ label: "Support agents", prospect: { display: "120", numeric: 120 } }],
   );
-  eq(sup.length, 1, "drops axis already covered by web");
+  eq(sup.length, 1, "drops axis with web prospect value");
   eq(sup[0].label, "Customer base", "keeps non-overlapping context metric");
+}
+
+{
+  const sup = fishContextSupplementMetrics(
+    [{ label: "Employees", value: "50" }],
+    [{ label: "Employees", prospect: null }],
+  );
+  eq(sup.length, 1, "keeps INPUT when rival axis has no prospect value");
+}
+
+{
+  const fromPrep = fishSizingFromPrepResult({
+    facts: [
+      { key: "Company size", value: "50", category: "signal", sourceLabel: "SE" },
+      { key: "Support team", value: "unknown", category: "signal", sourceLabel: "SE" },
+    ],
+    companySizeAgents: { agents: "3 agents" },
+    businessContext: { users: "50" },
+  });
+  ok(fromPrep?.metrics.length === 2, "post-synthesis prep yields partial fish metrics");
+  eq(fromPrep?.metrics[0].label, "Employees", "company size from facts/context");
+  eq(fromPrep?.metrics[1].label, "Support agents", "support from companySizeAgents");
+}
+
+{
+  const merged = mergeFishContextSizing(
+    { metrics: [{ label: "Support agents", value: "120" }], source: "context" },
+    fishSizingFromPrepResult({
+      facts: [{ key: "Company size", value: "500", category: "signal", sourceLabel: "S1" }],
+      businessContext: { users: "500" },
+    }),
+  );
+  eq(merged?.metrics.length, 2, "merge parallel fish with post-synthesis prep");
 }
 
 {

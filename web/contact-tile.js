@@ -6,6 +6,12 @@
 
 import { esc } from "./shared.js";
 
+function formatContactDate(ts) {
+  const n = typeof ts === "number" ? ts : Date.parse(String(ts || ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(n).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 /** Two-letter initials for a contact avatar. */
 export function contactInitials(contact) {
   const n = String(contact?.name || contact?.email || "").trim();
@@ -55,6 +61,9 @@ export function renderContactTile(contact, opts = {}) {
     opts.showAccount && opts.accountName
       ? `<span class="contact-tile-account">${esc(opts.accountName)}</span>`
       : "";
+  const createdLine = contact?.createdAt
+    ? `<span class="contact-tile-created muted">Created ${esc(formatContactDate(contact.createdAt) || "-")}</span>`
+    : "";
   return `<button type="button" class="account-contact-row account-contact-row--selectable contact-tile"
       data-action="open-contact-account" data-account-id="${esc(accountId)}" data-contact-id="${esc(contact?.id || "")}">
       <span class="account-contact-avatar account-contact-row-avatar">${esc(contactInitials(contact))}</span>
@@ -62,6 +71,7 @@ export function renderContactTile(contact, opts = {}) {
         <span class="account-detail-contact-name">${esc(name)}</span>
         ${sub ? `<span class="account-contact-row-title">${esc(sub)}</span>` : ""}
         ${accountLine}
+        ${createdLine}
       </span>
       <span class="account-contact-row-badges">${badges}</span>
     </button>`;

@@ -197,6 +197,31 @@ const discoveryFishBuckets = renderKnowTab(
   },
   false,
 );
+const discoveryFishFromFacts = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: {
+      axes: [
+        {
+          label: "Employees",
+          min: { display: "10", numeric: 10 },
+          max: { display: "1000", numeric: 1000 },
+          prospect: null,
+        },
+      ],
+      rivals: [{ name: "Rival Co" }],
+      sources: [],
+    },
+    fishContext: undefined,
+    facts: [
+      { key: "Company size", value: "50", sourceLabel: "SE" },
+      { key: "Support team", value: "3 agents", sourceLabel: "SE" },
+    ],
+    companySizeAgents: { agents: "3 agents", estimated: false },
+    businessContext: { users: "50" },
+  },
+  false,
+);
 const discoveryFishContext = renderKnowTab(
   {
     ...sampleV8,
@@ -439,6 +464,16 @@ const checks = [
       !discoveryNewsHtmlGarbage.includes("&lt;a href"),
   ],
   ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
+  [
+    "know tab fish builds from prep facts when fishContext missing",
+    discoveryFishFromFacts.includes("How big is this fish?") &&
+      discoveryFishFromFacts.includes("3 agents") &&
+      discoveryFishFromFacts.includes("prep-v9-src-input"),
+  ],
+  [
+    "know tab fish keeps INPUT when rival axis lacks prospect",
+    discoveryFishFromFacts.includes("Employees") && discoveryFishFromFacts.includes("50"),
+  ],
   [
     "know tab fish bucket labels for recognized metrics",
     discoveryFishBuckets.includes("prep-v9-benchmark-buckets") &&

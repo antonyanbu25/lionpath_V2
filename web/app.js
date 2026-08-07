@@ -2670,7 +2670,7 @@ async function boot() {
     switchView,
     onGenerated: async (payload, prep, meta) => {
       let lifecycleId = null;
-      if (sessionUserId(currentSession) && currentSession?.teamId) {
+      if (sessionUserId(currentSession)) {
         try {
           const linked = await linkPrepToLifecycle(currentSession, payload, prep, meta);
           lifecycleId = linked?.lifecycle?.id || null;
@@ -2786,7 +2786,7 @@ async function boot() {
     } catch (err) {
       console.warn("[postcall] session sync before dual-write failed:", err?.message || err);
     }
-    if (sessionUserId(session) && session?.teamId) {
+    if (sessionUserId(session)) {
       try {
         linked = await linkPostCallToLifecycle(session, payload, data, record);
       } catch (err) {

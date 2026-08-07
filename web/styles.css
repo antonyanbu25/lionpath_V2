@@ -2086,6 +2086,33 @@ fw-button.sidebar-history-item.active {
   overflow: hidden;
 }
 
+.app-shell:has(#prep-result-view:not([hidden])) {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.main-content:has(#prep-result-view:not([hidden])) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0;
+}
+
+.main-content:has(#prep-result-view:not([hidden])) #view-precall.view-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main-content:has(#prep-result-view:not([hidden])) #prep-result-view {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .main-content:has(.account-list-view--compact) {
   max-width: min(1280px, calc(100% - 32px));
 }

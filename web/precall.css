@@ -138,6 +138,13 @@ body.prep-gen-lock {
   line-height: 1.55;
 }
 
+#view-precall:has(#prep-result-view:not([hidden])) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+}
+
 .prep-form-wrap {
   flex: 1;
   display: flex;
@@ -1076,15 +1083,28 @@ body.prep-gen-lock {
 }
 
 #prep-tabs {
-  flex: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 26px;
   background: var(--dew-surface);
 }
 
+#prep-tabs fw-tab-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .prep-tab-panel-wrap {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .prep-tab-body {

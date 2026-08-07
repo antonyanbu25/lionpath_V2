@@ -2392,7 +2392,7 @@
 }
 
 .account-list-view--compact {
-  --account-list-cols: minmax(160px, 2fr) 72px 52px 88px 88px minmax(72px, 1fr) 52px 88px 64px;
+  --account-list-cols: minmax(160px, 2fr) 72px 52px 88px 88px minmax(72px, 1fr) 52px 88px 72px 64px;
 }
 
 .account-list-view--compact .lifecycle-list {
@@ -2599,7 +2599,7 @@
   flex-direction: column;
   gap: 0;
   --deal-list-cols:
-    minmax(120px, 1.4fr) minmax(88px, 1fr) 88px 92px 72px 44px 72px 72px 64px 72px 56px;
+    minmax(120px, 1.4fr) minmax(88px, 1fr) 88px 92px 72px 44px 72px 72px 64px 72px 72px 56px;
 }
 
 .deal-list-footnote {

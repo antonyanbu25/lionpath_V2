@@ -208,7 +208,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     actorId: ownerId,
     orgId,
     dealId,
-    prepType: prepType || undefined,
+    prepType: prepType || payload.prepType,
     useSessionContext: true,
   });
 

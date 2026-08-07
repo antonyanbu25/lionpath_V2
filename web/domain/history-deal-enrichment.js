@@ -10,6 +10,24 @@ import {
   resolveDealMeddpicc,
 } from "./contact-service.js";
 import { computeDealTraction, daysSince, STAGE_MEDIAN_DAYS_DEFAULT } from "./deal-traction.js";
+import { normalizeAccountSlug } from "./types.js";
+
+/** Dedupe keys for reconciling store rows with history stubs. */
+function accountRowDedupeKeys(row) {
+  const account = row?.account || {};
+  const keys = new Set();
+  const slugWithDomain = normalizeAccountSlug(account.name, account.domain || null);
+  if (slugWithDomain) keys.add(slugWithDomain);
+  const slugNameOnly = normalizeAccountSlug(account.name, null);
+  if (slugNameOnly) keys.add(slugNameOnly);
+  if (account.domain) keys.add(normalizeAccountSlug("", account.domain));
+  const normName = String(account.name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+  if (normName) keys.add(normName);
+  return keys;
+}
 
 function historyResultBlob(rec) {
   return rec?.result || {};
@@ -212,13 +230,38 @@ export function buildDealExtrasFromHistory(deal, account, records) {
  */
 export function mergeAccountListRows(storeRows, historyRows) {
   const byId = new Map();
-  for (const row of historyRows || []) {
-    const id = row?.account?.id;
-    if (id) byId.set(id, row);
-  }
+  /** @type {Map<string, object>} */
+  const storeKeyIndex = new Map();
+
   for (const row of storeRows || []) {
     const id = row?.account?.id;
-    if (id) byId.set(id, row);
+    if (!id) continue;
+    byId.set(id, row);
+    for (const key of accountRowDedupeKeys(row)) storeKeyIndex.set(key, row);
   }
+
+  for (const hist of historyRows || []) {
+    const histId = hist?.account?.id;
+    let matched = histId && byId.get(histId);
+    if (!matched) {
+      for (const key of accountRowDedupeKeys(hist)) {
+        matched = storeKeyIndex.get(key);
+        if (matched) break;
+      }
+    }
+    if (matched) {
+      matched.historyCallCount = (matched.historyCallCount || 0) + (hist.historyCallCount || 0);
+      matched.lastActivityAt = Math.max(matched.lastActivityAt || 0, hist.lastActivityAt || 0);
+      if (matched.lifecycle && hist.lastActivityAt) {
+        matched.lifecycle.lastActivityAt = Math.max(
+          matched.lifecycle.lastActivityAt || 0,
+          hist.lastActivityAt,
+        );
+      }
+      continue;
+    }
+    if (histId && !byId.has(histId)) byId.set(histId, hist);
+  }
+
   return [...byId.values()].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
 }

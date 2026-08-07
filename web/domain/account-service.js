@@ -84,22 +84,18 @@ export async function upsertAccountFromPrep(input) {
   }
 
   if (!account && !forceNewAccount) {
-    account = await store.findAccountBySlug(slug);
+    account = await findAccountByCompanyName(companyName, resolvedDomain);
   }
 
   if (!account && !forceNewAccount && resolvedDomain && store.findAccountsByDomain) {
     try {
       const byDomain = await store.findAccountsByDomain(resolvedDomain);
-      if (byDomain?.length === 1) {
-        account = byDomain[0];
-      } else if (byDomain?.length > 1 && input.actorId) {
-        const onTeam = byDomain.find((a) =>
-          (a.seTeam || []).some((m) => m.seUserId === input.actorId),
-        );
-        if (onTeam) account = onTeam;
+      if (byDomain?.length > 1 && input.actorId) {
+        account =
+          byDomain.find((a) => (a.seTeam || []).some((m) => m.seUserId === input.actorId)) || null;
       }
     } catch {
-      /* best-effort domain lookup */
+      /* best-effort domain disambiguation */
     }
   }
   let metadataPatch = input.researchBundle
@@ -124,7 +120,19 @@ export async function upsertAccountFromPrep(input) {
     const preserveName = explicitAccountId && account.id === explicitAccountId;
     if (companyName && account.name !== companyName && !preserveName) patch.name = companyName;
     if (resolvedDomain && account.domain !== resolvedDomain) patch.domain = resolvedDomain;
-    if (metadataPatch) patch.metadata = metadataPatch;
+    if (account.slug !== slug) {
+      patch.slug = slug;
+      const priorSlug = String(account.slug || "").trim();
+      const aliases = new Set([...(account.metadata?.slugAliases || [])]);
+      if (priorSlug) aliases.add(priorSlug);
+      patch.metadata = {
+        ...(patch.metadata || account.metadata || {}),
+        slugAliases: [...aliases],
+      };
+    }
+    if (metadataPatch) {
+      patch.metadata = { ...(patch.metadata || account.metadata || {}), ...metadataPatch };
+    }
     if (Object.keys(patch).length > 1) {
       account = await store.updateAccount(account.id, patch);
     }
@@ -214,14 +222,18 @@ function buildContactResearch(prospectMeta, ts) {
 }
 
 function collectEmails(input) {
-  const set = new Set();
+  /** @type {string[]} */
+  const ordered = [];
+  const seen = new Set();
   const add = (e) => {
     const key = String(e || "").trim().toLowerCase();
-    if (key && key.includes("@")) set.add(key);
+    if (!key || !key.includes("@") || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(key);
   };
-  add(input.prospectEmail);
   for (const e of input.prospectEmails || []) add(e);
-  return [...set];
+  if (!ordered.length && input.prospectEmail) add(input.prospectEmail);
+  return ordered;
 }
 
 export { collectEmails as collectProspectEmails };
@@ -372,7 +384,7 @@ export function listAccountRowsFromHistory(session) {
     const name = accountNameFromHistoryRecord(rec);
     if (!name) continue;
     const key = name.toLowerCase();
-    const ts = rec.timestamp || 0;
+    const ts = normalizeHistoryTimestamp(rec.timestamp);
     const accountId = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
     const row = upsertHistoryFallbackRow(byKey, session, name, ts, accountId);
     row.historyCallCount = (row.historyCallCount || 0) + 1;
@@ -384,7 +396,7 @@ export function listAccountRowsFromHistory(session) {
     const key = name.toLowerCase();
     if (byKey.has(key)) continue;
     const slug = key.replace(/[^a-z0-9]+/g, "-").slice(0, 40);
-    const ts = brief.savedAt || brief.createdAt || brief.when || 0;
+    const ts = normalizeHistoryTimestamp(brief.savedAt || brief.createdAt || brief.when);
     upsertHistoryFallbackRow(byKey, session, name, ts, `hist_${slug}`);
   }
 
@@ -790,9 +802,19 @@ function tractionSortRank(traction) {
   return TRACTION_RANK[traction] ?? 2;
 }
 
+function normalizeHistoryTimestamp(ts) {
+  if (typeof ts === "number" && Number.isFinite(ts)) return ts;
+  if (typeof ts === "string") {
+    const parsed = Date.parse(ts);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
 function daysSince(ts) {
-  if (!ts) return null;
-  return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)));
+  const n = typeof ts === "number" ? ts : Date.parse(String(ts || ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.max(0, Math.floor((Date.now() - n) / (24 * 60 * 60 * 1000)));
 }
 
 /** @param {string|null|undefined} worstTraction @param {number|null} daysSilent @param {number|null} lastActivityAt */
@@ -1617,11 +1639,42 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
   return { success: false, error: "Unknown action" };
 }
 
-/** Find account by company name + domain. */
+/** Find account by company name + domain (slug → domain → normalized name). */
 export async function findAccountByCompanyName(companyName, domain) {
   const store = getStore();
-  const slug = normalizeAccountSlug(companyName, normalizeDomain(domain));
-  return store.findAccountBySlug(slug);
+  const normalizedDomain = normalizeDomain(domain);
+  const slug = normalizeAccountSlug(companyName, normalizedDomain);
+  let account = await store.findAccountBySlug(slug);
+  if (account) return account;
+
+  if (normalizedDomain && store.findAccountsByDomain) {
+    try {
+      const byDomain = await store.findAccountsByDomain(normalizedDomain);
+      if (byDomain?.length === 1) return byDomain[0];
+    } catch {
+      /* best-effort domain lookup */
+    }
+  }
+
+  const normName = String(companyName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (normName && store.listAccounts) {
+    const all = await store.listAccounts();
+    const matches = all.filter(
+      (a) =>
+        String(a.name || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .trim() === normName,
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
+  return null;
 }
 
 /** Load cached research bundle if still fresh for this input hash. */

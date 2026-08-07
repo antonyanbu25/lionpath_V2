@@ -1985,6 +1985,7 @@ function renderAccountListItem(row) {
     totalArrPoint != null ? displayMrrFromArr(totalArrPoint) : null,
   );
   const lastTouch = lastTouchDays != null ? `${lastTouchDays}d` : "-";
+  const created = account.createdAt ? formatDate(account.createdAt) : "-";
 
   return `
     <button type="button" class="lifecycle-list-item account-list-item account-list-row" data-account-id="${esc(account.id)}">
@@ -2001,6 +2002,7 @@ function renderAccountListItem(row) {
         <span class="account-list-col account-list-col--products muted">${esc(productsInPlay || "-")}</span>
         <span class="account-list-col account-list-col--calls account-list-num">${esc(String(callCount ?? 0))}</span>
         <span class="account-list-col account-list-col--health">${healthTag(health)}</span>
+        <span class="account-list-col account-list-col--created account-list-num muted">${esc(created)}</span>
         <span class="account-list-col account-list-col--touch account-list-num muted">${esc(lastTouch)}</span>
       </span>
     </button>`;
@@ -2051,6 +2053,7 @@ function renderAccountsListView(rows, opts) {
             <span class="account-list-col account-list-col--products">Products</span>
             <span class="account-list-col account-list-col--calls">Calls</span>
             <span class="account-list-col account-list-col--health">Health</span>
+            <span class="account-list-col account-list-col--created">Created</span>
             <span class="account-list-col account-list-col--touch">Last touch</span>
           </div>
           <div class="lifecycle-list account-list-compact">

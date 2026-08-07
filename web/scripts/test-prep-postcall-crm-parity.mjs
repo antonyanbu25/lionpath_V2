@@ -121,6 +121,37 @@ assert.deepEqual(emails, [...EMAILS].sort());
 const primary = contacts.find((c) => c.id === prepRes.primaryContactId);
 assert.equal(primary?.email, "lead@parity.co", "prep primary is first typed email when no confirm gate");
 
+// Confirm-gate order: confirmed identity email is primary
+await reset();
+const confirmPrep = await linkPrepToLifecycle(
+  session,
+  {
+    ...prepPayload,
+    confirmedIdentities: { customerIdentities: ["Peer Person <peer@parity.co>"] },
+  },
+  prep,
+  { company: COMPANY, companyDomain: DOMAIN },
+);
+const confirmPrimary = (await store.listContactsByAccount(confirmPrep.accountId)).find(
+  (c) => c.id === confirmPrep.primaryContactId,
+);
+assert.equal(confirmPrimary?.email, "peer@parity.co", "confirm gate email order wins primary contact");
+
+// Post-call prepType parity (expansion)
+await reset();
+const expPrep = await linkPrepToLifecycle(session, { ...prepPayload, prepType: "expansion" }, prep, {
+  company: COMPANY,
+  companyDomain: DOMAIN,
+});
+await linkPostCallToLifecycle(
+  session,
+  { ...postPayload, prepType: "expansion", accountId: expPrep.accountId, dealId: expPrep.dealId },
+  { analysis: { callHeader: { company: "Wrong Analysis Name" } } },
+  { id: "pc_exp", dealId: expPrep.dealId },
+);
+const expAccount = await store.getAccount(expPrep.accountId);
+assert.equal(expAccount?.name, COMPANY, "payload company name beats analysis header");
+
 // Reverse order: post-call first, then prep on same inputs
 await reset();
 

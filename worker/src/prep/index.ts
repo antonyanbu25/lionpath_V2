@@ -27,6 +27,7 @@ import {
   extractFishSizingFromContext,
   buildFishSizingPromptContext,
   fishSizingFromResearchFacts,
+  fishSizingFromPrepResult,
   mergeFishContextSizing,
 } from "./rivals-context";
 import { generateCompanyNews } from "./company-news";
@@ -445,7 +446,8 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
-  if (fishContext) prep.fishContext = fishContext;
+  prep.fishContext =
+    mergeFishContextSizing(fishContext, fishSizingFromPrepResult(prep)) || fishContext || undefined;
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -621,7 +623,8 @@ export async function runPrepSynthesize(
   // from their own grounded call and must not be renumbered into the prep source table — a
   // rival figure and a prep fact are traceable to different searches.
   if (rivals) prep.rivals = rivals;
-  if (fishContext) prep.fishContext = fishContext;
+  prep.fishContext =
+    mergeFishContextSizing(fishContext, fishSizingFromPrepResult(prep)) || fishContext || undefined;
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

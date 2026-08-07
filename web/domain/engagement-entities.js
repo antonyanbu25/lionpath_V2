@@ -94,7 +94,7 @@ export async function resolveEngagementEntities(session, payload, opts = {}) {
   if (!ownerId || !teamId) return null;
 
   const meta = opts.meta || {};
-  const company = String(opts.company || payload?.companyName || meta?.company || "").trim();
+  const company = String(payload?.companyName || opts.company || meta?.company || "").trim();
   const companyDomain =
     payload?.companyDomain || meta?.companyDomain || meta?.domain || null;
   const participantEmails = collectParticipantEmails(payload);

@@ -49,7 +49,20 @@ export function createFirestoreStore(fb) {
   const WHERE_IN_CHUNK = 30;
 
   function mapSnapDocs(snap) {
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return snap.docs.map((d) => normalizeTimestamps({ id: d.id, ...d.data() }));
+  }
+
+  function normalizeTimestamps(row) {
+    if (!row || typeof row !== "object") return row;
+    const out = { ...row };
+    for (const key of ["createdAt", "updatedAt", "lastActivityAt"]) {
+      const v = out[key];
+      if (v && typeof v === "object") {
+        if (typeof v.toMillis === "function") out[key] = v.toMillis();
+        else if (typeof v.seconds === "number") out[key] = v.seconds * 1000;
+      }
+    }
+    return out;
   }
 
   /** @param {readonly string[]} fields @param {boolean} [forSearch] */

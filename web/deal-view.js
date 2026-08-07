@@ -586,6 +586,7 @@ function renderDealListItem(row) {
   const accountTitle = account?.name || account?.domain || "Account";
   const dealTitle = deal.title || DEAL_TYPE_LABELS[deal.type] || "Deal";
   const tractionLabel = row.traction ? row.traction.charAt(0).toUpperCase() + row.traction.slice(1) : "-";
+  const created = deal.createdAt ? formatDate(deal.createdAt) : "-";
   const mobileMeta = [
     row.traction ? tractionLabel : null,
     row.arrPoint != null ? formatDealListMoneyBand(row.arrLow, row.arrHigh, row.arrPoint) : null,
@@ -610,6 +611,7 @@ function renderDealListItem(row) {
         <span class="deal-list-col deal-list-col--tc">${row._pending ? `<span class="muted">·</span>` : tcStatusTag(row.tcStatus)}</span>
         <span class="deal-list-col deal-list-col--ai">${aiAttachListTag(row.aiAttach)}</span>
         <span class="deal-list-col deal-list-col--traction">${row._pending ? `<span class="muted">·</span>` : row.traction ? tractionTag(row.traction) : `<span class="muted">-</span>`}</span>
+        <span class="deal-list-col deal-list-col--created muted">${esc(created)}</span>
         <span class="deal-list-col deal-list-col--silent">${row._pending ? `<span class="muted">·</span>` : daysSilentCell(row.daysSilent, row.traction)}</span>
       </span>
     </button>`;
@@ -632,6 +634,7 @@ function renderDealListSortHeader(sortKey) {
       <span class="deal-list-col deal-list-col--tc">TC</span>
       <span class="deal-list-col deal-list-col--ai">AI</span>
       <span class="deal-list-col deal-list-col--traction">Traction</span>
+      <span class="deal-list-col deal-list-col--created">Created</span>
       <span class="deal-list-col deal-list-col--silent">Silent</span>
     </div>`;
 }
