@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1-org-hierarchy`** — org hierarchy, pre/post-call CRM parity, contact dedupe (portal build **2.1.29**) |
-| **Portal build** | `2.1.29` (`web/index.html`, `app.js?v=2.1.29`) |
-| **Worker build** | `2.1.29` (`worker/src/build-id.ts`, `GET /api/config`) |
-| **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.29** (optional tag `v2.1-org-hierarchy`) |
+| **This branch** | **`2.1.1`** — branched from **`2.1`**; pre-call CRM hardening + unified account/deal UI (portal build **2.1.1**) |
+| **Portal build** | `2.1.1` (`web/index.html`, `app.js?v=2.1.1`) |
+| **Worker build** | `2.1.1` (`worker/src/build-id.ts`, `GET /api/config`) |
+| **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.1** |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
@@ -18,7 +18,7 @@
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights (2.1.29)](#release-highlights-2129)
+2. [Release highlights (2.1.1)](#release-highlights-211)
 3. [Architecture](#architecture)
 4. [Repository layout](#repository-layout)
 5. [Quick start (developers)](#quick-start-developers)
@@ -44,9 +44,32 @@ Both prep and post-call write to the **same domain model** — accounts, contact
 
 ---
 
-## Release highlights (2.1.29)
+## Release highlights (2.1.1)
 
-### Org hierarchy & RBAC
+Branch **`2.1.1`** is cut from production baseline **`2.1`** on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2). It adds pre-call CRM integrity fixes and a single canonical deal record UI for both prep and post-call.
+
+### Account / deal UI unification
+
+- **One deal record everywhere:** Account overview deal rows open **My deals** → wireframe v4 deal record (`deal-view.js`), not the legacy 3-column opportunity workspace
+- **Contextual back:** When drilled from an account, deal record back returns to that account overview (`← {Account name}`)
+- **Hash redirect:** `#accounts/{id}/deals/{dealId}` → `#deals/{dealId}` (preserves old links + account back context)
+- **Legacy UI removed:** `renderOpportunityRecord` / `account-record--opportunity` retired from `account-view.js`
+
+### Pre-call dual-write parity (prod)
+
+- **`onGenerated`:** `syncSessionWithDomainStore` before `linkPrepToLifecycle` (same as post-call)
+- **Brief write-back:** Linked `accountId` / `dealId` persisted on brief `meta` and `input` after dual-write
+- **`teamId` fallback:** `resolveActingWriteContext` uses session team when user doc has null `teamId`; console warnings on skip
+
+### Pre-call CRM & UX (from 2.1 → 2.1.1)
+
+- Know tab scroll chain; fish sizing parity with post-call rivals context
+- Account list dedupe (name/domain/slug); created dates on account/deal/contact tiles
+- `collectEmails` order fix; prep dual-write no longer gated on dummy `session.teamId`
+
+---
+
+### Org hierarchy & RBAC (inherited from 2.1)
 
 - **Structure:** Director (Vipin) → 3 segment leaders → team managers → ICs (~50-person roster in seed data)
 - **Segments:** Antony branch, Nurture, Digital (Digital is flat — ICs report to segment leader, no squad manager layer)
@@ -158,7 +181,7 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ```bash
 git clone https://github.com/skut264/lionpath.git
 cd lionpath
-git checkout 2.1-org-hierarchy
+git checkout 2.1.1
 
 cd worker
 cp .dev.vars.example .dev.vars
@@ -241,34 +264,36 @@ Key modules under test: `engagement-entities.js`, `dual-write.js`, `account-serv
 
 ### VPS production (Tony's fork → live site)
 
-Production VPS deploys from **`antonyanbu25/lionpath_V2`**, branch **`2.1`**:
+Production VPS deploys from **`antonyanbu25/lionpath_V2`**.
+
+**Release branch `2.1.1`** (sourced from **`2.1`**):
 
 ```bash
-# On VPS
+# Developer machine — push release branch
+git checkout 2.1.1
+git push origin 2.1.1
+
+# On VPS (after review)
 cd /opt/se-singha-paathai
-git fetch antony
-git checkout 2.1
-git pull antony 2.1
+git fetch origin
+git checkout 2.1.1
+git pull origin 2.1.1
 cd deploy/vps && bash upgrade-now.sh
 ```
 
-See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
+Stable production line remains **`2.1`** until **`2.1.1`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
 
 ### Push workflow summary
 
 | Remote | Repo | Branch | Purpose |
 |--------|------|--------|---------|
-| **`skut264`** | skut264/lionpath | `2.1-org-hierarchy` | Upstream / team development |
-| **`origin`** | antonyanbu25/lionpath_V2 | `2.1-org-hierarchy` | Side branch for review (this push) |
-
-To publish this release to skut264:
+| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.1`** | Release branch (from **`2.1`**) — Tony's fork / VPS |
+| **`skut264`** | skut264/lionpath | `2.1` / features | Upstream / team development |
 
 ```bash
-git checkout 2.1-org-hierarchy
-git push -u origin 2.1-org-hierarchy
+git checkout 2.1.1
+git push -u origin 2.1.1
 ```
-
-To deploy to production after review, merge/cherry-pick into `2.1` on the antony fork and push `antony 2.1`.
 
 ---
 
@@ -305,10 +330,10 @@ git remote add skut264 https://github.com/skut264/lionpath.git
 git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
 
 # Feature workflow
-git checkout -b feature/my-change 2.1-org-hierarchy
+git checkout -b feature/my-change 2.1.1
 # ... develop, npm test ...
 git push -u skut264 feature/my-change
-# Open PR to 2.1-org-hierarchy on skut264/lionpath
+# Open PR to 2.1.1 (or 2.1) on skut264/lionpath
 ```
 
 **Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, API keys, `.cursor/` debug logs.
