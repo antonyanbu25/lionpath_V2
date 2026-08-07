@@ -55,9 +55,17 @@ export async function lookupUserForSession(session, store) {
   if (!user && lookupId && !lookupId.startsWith("usr_dummy_") && lookupId !== session.authUid) {
     user = await safeStoreGet("getUser by session id", () => store.getUser(lookupId));
   }
-  if (!user && session.email && store.getUserByEmail) {
-    user = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(session.email));
+
+  // authIndex can still point at usr_dummy_* while the canonical profile is a UUID doc.
+  if (session.email && store.getUserByEmail) {
+    const byEmail = await safeStoreGet("getUserByEmail", () => store.getUserByEmail(session.email));
+    if (byEmail?.id && !String(byEmail.id).startsWith("usr_dummy_")) {
+      user = byEmail;
+    } else if (!user && byEmail) {
+      user = byEmail;
+    }
   }
+
   if (!user && session.email) {
     user = await safeStoreGet("getUser by stable id", () =>
       store.getUser(stableUserIdForEmail(session.email)),
@@ -151,7 +159,7 @@ export async function enrichSessionFromStore(session) {
     managerName,
     jobTitle: user.jobTitle || null,
     avatarDataUrl: user.avatarDataUrl || null,
-    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email || session.email),
+    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email || session.email, user.orgId),
     isActualDirector: actualDirector,
     isSegmentLeader: !!segment,
     segmentId: segment?.id || null,

@@ -64,8 +64,13 @@ export function isOrgLeaderByEmail(email, org) {
  * @param {import("./types.js").Org|null|undefined} org
  * @param {string|null|undefined} email
  */
-export function isOrgLeaderForUser(userId, org, email) {
-  return isOrgLeader(userId, org) || isOrgLeaderByEmail(email, org);
+export function isOrgLeaderForUser(userId, org, email, orgId) {
+  if (isOrgLeader(userId, org) || isOrgLeaderByEmail(email, org)) return true;
+  const oid = org?.id || orgId;
+  if (!org && oid === DEMO_ORG_ID && email && FRESHWORKS_ORG_LEADER_EMAILS.has(normalizeLeaderEmail(email))) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -108,7 +113,7 @@ export function userWithDirectorFlag(user, org) {
   const actualDirector = isOrgDirector(user.id, org);
   return {
     ...user,
-    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email),
+    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email, user.orgId),
     isActualDirector: actualDirector,
     isSegmentLeader: !!segment,
     segmentId: segment?.id || null,

@@ -2167,10 +2167,26 @@ async function showApp(session, opts = {}) {
       scheduleProspectEmailAutofillGuard();
     }
 
+    try {
+      /* DEV-ONLY-START */
+      if (!prodBundle && !isFirebaseAuthEnabled()) {
+        const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
+        await seedDevDomainIfNeeded();
+      }
+      /* DEV-ONLY-END */
+      const enriched = (await syncSessionWithDomainStore(currentSession)) || currentSession;
+      if (sessionStillValid() && enriched?.email) {
+        currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
+        refreshUserMenuFromSession();
+      }
+    } catch (err) {
+      console.warn("[app] session enrich before nav failed:", err?.message || err);
+    }
+
+    applySessionAuthGetters();
     updateNavForRole();
     refreshSidebarRecentWork();
 
-    applySessionAuthGetters();
     void loadPersistedHistory().catch((err) => {
       console.warn("[app] early history hydrate failed:", err?.message || err);
     });
@@ -2187,28 +2203,6 @@ async function showApp(session, opts = {}) {
     void (async () => {
       if (!sessionStillValid()) return;
       try {
-        /* DEV-ONLY-START */
-        if (!prodBundle && !isFirebaseAuthEnabled()) {
-          const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
-          await seedDevDomainIfNeeded();
-        }
-        /* DEV-ONLY-END */
-        const enriched = (await syncSessionWithDomainStore(session)) || session;
-        if (!sessionStillValid()) return;
-        if (enriched?.email) {
-          currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
-          refreshUserMenuFromSession();
-          updateNavForRole();
-          const hash = location.hash.replace(/^#/, "").trim();
-          if (
-            !hash &&
-            enriched.isOrgDirector &&
-            isManagerRole(enriched) &&
-            currentView === "manager"
-          ) {
-            switchView("dashboard");
-          }
-        }
         applySessionAuthGetters();
         await loadPersistedHistory();
         if (!sessionStillValid()) return;
@@ -2217,7 +2211,7 @@ async function showApp(session, opts = {}) {
           refreshDashboardFromStorage();
         }
       } catch (err) {
-        console.warn("[app] deferred session/history hydrate failed:", err?.message || err);
+        console.warn("[app] deferred history hydrate failed:", err?.message || err);
         refreshSidebarRecentWork();
       }
     })();
