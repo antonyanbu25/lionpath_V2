@@ -256,6 +256,16 @@ cd worker && npm run migrate:account-se-team && npm run backfill:read-models
 
 Optional single account: `npm run backfill:read-models -- --account=acct_xxx`.
 
+**Org hierarchy (senior managers / sidebar):** if a senior manager still has an empty sidebar after deploy, ensure `org.seniorLeaderIds` includes their user id. On the VPS (no host `npm` required):
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash migrate-org-hierarchy.sh --dry-run   # preview
+bash migrate-org-hierarchy.sh             # apply
+```
+
+Requires Firebase Admin in `.env` (`FIREBASE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS`). The script only backfills `seniorLeaderIds` when that array is empty; otherwise patch Firestore manually.
+
 ---
 
 ## Git authentication (private repo)
