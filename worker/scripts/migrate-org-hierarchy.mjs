@@ -105,7 +105,9 @@ async function main() {
     resolveUserIdsByEmail(db, SENIOR_LEADER_EMAILS),
   ]);
 
-  if (!directorId && directorIds[0]) directorId = directorIds[0];
+  if (directorIds[0] && (!directorId || String(directorId).startsWith("usr_dummy_"))) {
+    directorId = directorIds[0];
+  }
   if (!directorEmail) directorEmail = DIRECTOR_EMAIL;
   if (!seniorLeaderIds.length && seniorIds.length) {
     seniorLeaderIds = seniorIds;
