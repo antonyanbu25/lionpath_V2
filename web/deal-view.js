@@ -1083,16 +1083,22 @@ function renderDealStatusPills(detail) {
   return `<div class="deal-record-pills">${pills.join("")}</div>`;
 }
 
-function renderDealRecordHeader(detail) {
+function renderDealRecordHeader(detail, backOpts = {}) {
   const deal = detail.selectedDeal;
   const account = detail.account;
   const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "Deal";
   const accountLabel = account?.name || account?.domain || "Account";
   const sfId = deal?.sfOpportunityId;
+  const back = backOpts || {};
+  const useAccountBack = back.accountId && account?.id === back.accountId;
+  const backLabel = useAccountBack
+    ? `← ${account?.name || account?.domain || "Account"}`
+    : "← All deals";
+  const backAction = useAccountBack ? "back-to-account" : "back-to-deal-list";
 
   return `
     <header class="account-record-header deal-record-header deal-record-header--wireframe">
-      <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back-to-deal-list">← All deals</fw-button>
+      <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="${esc(backAction)}">${esc(backLabel)}</fw-button>
       <div class="deal-record-header-main">
         <div class="deal-record-title-row">
           <h2 class="deal-record-title">${esc(dealTitle)}</h2>
@@ -1108,16 +1114,17 @@ function renderDealRecordHeader(detail) {
     </header>`;
 }
 
-/** @param {object} detail */
-function renderDealRecord(detail) {
+/** @param {object} detail @param {object} [viewOpts] */
+function renderDealRecord(detail, viewOpts = {}) {
   const deal = detail.selectedDeal;
   const signal = detail.latestSignal;
   const daysSilent = signal?.daysSilent ?? null;
+  const backContext = viewOpts.backContext || null;
 
   return `
     <div class="lifecycle-detail deal-detail deal-record deal-record--wireframe">
       <div class="deal-record-top deal-record-top--wireframe">
-        ${renderDealRecordHeader(detail)}
+        ${renderDealRecordHeader(detail, backContext || {})}
         ${renderDealStatusPills(detail)}
       </div>
       <div class="deal-record-layout">
@@ -1222,14 +1229,20 @@ function resolveDealPreview(session, dealId) {
 }
 
 /** Immediate shell while engagement detail + store enrichments load. */
-function renderDealLoadingShell(preview) {
+function renderDealLoadingShell(preview, backOpts = {}) {
+  const back = backOpts || {};
   const dealTitle = preview?.dealTitle || "Deal";
   const accountLabel = preview?.accountLabel || "Account";
+  const useAccountBack = back.accountId && preview?.accountId === back.accountId;
+  const backLabel = useAccountBack
+    ? `← ${preview?.accountName || accountLabel || "Account"}`
+    : "← All deals";
+  const backAction = useAccountBack ? "back-to-account" : "back-to-deal-list";
   return `
     <div class="lifecycle-detail deal-detail deal-record deal-record--loading">
       <div class="deal-record-top deal-record-top--wireframe">
         <header class="account-record-header deal-record-header deal-record-header--wireframe">
-          <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back-to-deal-list">← All deals</fw-button>
+          <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="${esc(backAction)}">${esc(backLabel)}</fw-button>
           <div class="deal-record-header-main">
             <h2 class="deal-record-title">${esc(dealTitle)}</h2>
             <p class="muted deal-record-subtitle">${esc(accountLabel)}</p>
@@ -1574,6 +1587,9 @@ function wireDealRecordEvents(container, session, opts, detail) {
   container.querySelector('[data-action="back-to-deal-list"]')?.addEventListener("fwClick", () => {
     opts.onBackToDealList?.();
   });
+  container.querySelector('[data-action="back-to-account"]')?.addEventListener("fwClick", () => {
+    opts.onBackToAccount?.();
+  });
 
   const engage = (view) => {
     invalidateDealListCache();
@@ -1637,13 +1653,19 @@ export async function renderDealView(container, session, opts = {}) {
   }
 
   if (opts.dealId) {
-    applyDealViewHtml(container, opts, renderDealLoadingShell(resolveDealPreview(activeSession, opts.dealId)));
+    const backContext = opts.backContext || null;
+    const preview = resolveDealPreview(activeSession, opts.dealId);
+    if (backContext?.accountId && preview) {
+      preview.accountId = backContext.accountId;
+      preview.accountName = preview.accountLabel;
+    }
+    applyDealViewHtml(container, opts, renderDealLoadingShell(preview, backContext || {}));
     try {
       const detail = await loadDealRecordDetail(activeSession, opts.dealId, {
         ...opts,
         onPartialDetail: (partial) => {
           if (opts.shouldApply && !opts.shouldApply()) return;
-          applyDealViewHtml(container, opts, renderDealRecord(partial));
+          applyDealViewHtml(container, opts, renderDealRecord(partial, { backContext }));
         },
       });
       if (opts.shouldApply && !opts.shouldApply()) return;
@@ -1655,7 +1677,7 @@ export async function renderDealView(container, session, opts = {}) {
         applyDealViewHtml(container, opts, `<p class="muted">Deal not found.</p>`);
         return;
       }
-      if (!applyDealViewHtml(container, opts, renderDealRecord(detail))) return;
+      if (!applyDealViewHtml(container, opts, renderDealRecord(detail, { backContext }))) return;
       if (detail.resolvedDealId && detail.resolvedDealId !== opts.dealId) {
         opts.onResolvedDealId?.(detail.resolvedDealId);
       }

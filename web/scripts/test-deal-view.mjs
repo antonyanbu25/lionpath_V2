@@ -409,6 +409,14 @@ assert(!detailContainer.innerHTML.includes("latestQualityScore"), "no QIP on dea
 assert(!detailContainer.innerHTML.includes("QIP"), "no QIP label on deal screen");
 assert(!detailContainer.innerHTML.includes("account-command-deck"), "deal record replaces opportunity shell");
 
+const accountBackContainer = mockContainer();
+await renderDealView(accountBackContainer, session, {
+  dealId: "deal_globex_nb",
+  backContext: { accountId },
+});
+assert(accountBackContainer.innerHTML.includes("← Globex"), "account context back shows account name");
+assert(accountBackContainer.innerHTML.includes('data-action="back-to-account"'), "account context uses back-to-account action");
+
 assert(
   (await resolveDealNavId(session, "deal_globex_nb")) === "deal_globex_nb",
   "resolveDealNavId returns store deal id",

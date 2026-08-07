@@ -354,6 +354,7 @@ export function compactBriefForStorage(record) {
       prospectEmails: input.prospectEmails,
       prepType: input.prepType,
       dealId: input.dealId,
+      accountId: input.accountId,
       lifecycleId: input.lifecycleId,
       additionalContext: input.additionalContext,
       meetingZoomUrl: input.meetingZoomUrl,
@@ -746,17 +747,31 @@ function pushBriefRecord(record) {
   }
 }
 
-export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
+export function saveBriefToSidebar(input, prep, meta, linkedIds = null) {
   if (!isV8Prep(prep)) return;
-  const id = `${accountId(meta)}-${Date.now()}`;
+  const lifecycleId =
+    linkedIds && typeof linkedIds === "object"
+      ? linkedIds.lifecycleId || null
+      : linkedIds || null;
+  const linkedAccountId =
+    linkedIds && typeof linkedIds === "object" ? linkedIds.accountId || null : null;
+  const linkedDealId =
+    linkedIds && typeof linkedIds === "object" ? linkedIds.dealId || null : null;
+  const storedMeta = {
+    ...meta,
+    accountId: linkedAccountId || meta.accountId || null,
+    dealId: linkedDealId || meta.dealId || null,
+  };
+  const id = `${accountId(storedMeta)}-${Date.now()}`;
   const storedInput = {
     companyName: input.companyName,
     companyDomain: input.companyDomain,
     prospectEmail: input.prospectEmail,
     prospectEmails: input.prospectEmails,
     prepType: input.prepType,
-    dealId: input.dealId,
-    lifecycleId: input.lifecycleId,
+    dealId: linkedDealId || input.dealId || null,
+    accountId: linkedAccountId || input.accountId || null,
+    lifecycleId: lifecycleId || input.lifecycleId || null,
     additionalContext: input.additionalContext,
     meetingZoomUrl: input.meetingZoomUrl,
     kaiaMeetingUrl: input.kaiaMeetingUrl,
@@ -768,11 +783,11 @@ export function saveBriefToSidebar(input, prep, meta, lifecycleId) {
   };
   pushBriefRecord({
     id,
-    company: meta.company || input.companyName,
+    company: storedMeta.company || input.companyName,
     kind: "Discovery",
     when: new Date().toLocaleDateString(),
     prep,
-    meta,
+    meta: storedMeta,
     input: storedInput,
     lifecycleId: lifecycleId || null,
   });
@@ -1404,8 +1419,12 @@ async function runPrepEndToEnd(payload, meta, emails) {
       wirePrepV9ScrollAnimations($("prep-tab-discovery"));
       wirePrepV9ScrollAnimations($("prep-tab-demo"));
     });
-    const lifecycleId = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
-    saveBriefToSidebar(payload, data.prep, enrichedMeta, lifecycleId);
+    const linked = await deps.onGenerated?.(payload, data.prep, enrichedMeta);
+    const linkedIds =
+      linked && typeof linked === "object"
+        ? linked
+        : { lifecycleId: linked || null };
+    saveBriefToSidebar(payload, data.prep, enrichedMeta, linkedIds);
     state.pendingResearch = null;
     clearLinkedInAttachments();
     const listEl = $("prep-linkedin-file-list");

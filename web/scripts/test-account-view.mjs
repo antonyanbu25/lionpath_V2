@@ -119,10 +119,59 @@ await store.addLifecycleEvent({
 });
 
 function mockContainer() {
+  const state = { html: "", dealRows: [] };
+
+  function refreshDealRows() {
+    state.dealRows = [];
+    const re = /data-action="open-opportunity"[^>]*data-deal-id="([^"]+)"/g;
+    let match;
+    while ((match = re.exec(state.html))) {
+      state.dealRows.push(makeDealRow(match[1]));
+    }
+  }
+
+  function makeButton() {
+    return { addEventListener() {} };
+  }
+
+  function makeDealRow(dealId) {
+    const row = {
+      getAttribute(name) {
+        return name === "data-deal-id" ? dealId : null;
+      },
+      addEventListener(type, fn) {
+        row._handlers = row._handlers || {};
+        row._handlers[type] = fn;
+      },
+      dispatchEvent(type = "click") {
+        if (type === "click") row._handlers?.click?.();
+        else row._handlers?.[type]?.({ key: "Enter", preventDefault() {} });
+        return true;
+      },
+    };
+    return row;
+  }
+
   return {
-    innerHTML: "",
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
+    set innerHTML(value) {
+      state.html = value;
+      refreshDealRows();
+    },
+    get innerHTML() {
+      return state.html;
+    },
+    querySelector(sel) {
+      if (sel === '[data-action="back"]') return makeButton(sel);
+      if (sel === '[data-action="prep"]') return makeButton(sel);
+      if (sel === '[data-action="postcall"]') return makeButton(sel);
+      if (sel === '[data-action="open-opportunity"]') return state.dealRows[0] || null;
+      return null;
+    },
+    querySelectorAll(sel) {
+      if (sel === '[data-action="select-contact"]') return [];
+      if (sel === '[data-action="open-opportunity"]') return state.dealRows;
+      return [];
+    },
   };
 }
 
@@ -150,56 +199,36 @@ const detailContainer = mockContainer();
 await renderAccountView(detailContainer, session, { accountId, dealId: "deal_acme_nb" });
 const html = detailContainer.innerHTML;
 
-assert(html.includes("account-record--opportunity"), "deal route uses opportunity record");
-assert(html.includes("← Account"), "opportunity back goes to account overview");
+assert(html.includes("account-record--overview"), "account detail always uses overview shell");
+assert(!html.includes("account-record--opportunity"), "legacy opportunity shell removed");
 assert(html.includes("Acme Corp"), "detail renders account name");
 assert(html.includes("Alex Lee"), "detail renders contact");
 assert(html.includes("account-contact-row"), "detail uses compact contact rows");
 assert(html.includes('data-action="select-contact"'), "contact rows use inline selection");
-assert(html.includes("account-contact-selected-panel"), "detail shows selected contact panel");
 assert(html.includes("account-contacts-split"), "contacts use list plus detail layout");
-assert(html.includes('data-action="deal-type-select"'), "detail has deal type dropdown");
-assert(html.includes("account-meta-rail__cell--type"), "type control lives in meta rail");
-assert(!html.includes('data-action="engagement-menu"'), "engagement settings menu removed");
-assert(!html.includes("handoff-expansion"), "hand off to expansion removed");
-assert(!html.includes("Type drives stage and activity"), "deal sub-header row removed");
-assert(!html.includes('data-action="deal-select"'), "no switch deal select on detail");
-assert(!html.includes("Switch deal"), "switch deal control removed");
-assert(html.includes('label="Type"'), "type dropdown uses Type label");
-assert(!html.includes('label="Pursuit type"'), "legacy pursuit select removed");
-assert(html.includes("account-command-deck"), "detail uses 1b command deck");
-assert(html.includes("account-command-panel--contacts"), "contacts in left command panel");
-assert(html.includes("account-meddpicc-details--expanded"), "MEDDPICC expanded by default");
-assert(html.includes('title="DISC D"'), "DISC abbrev exposes full label in title");
-assert(!html.includes('text="High influence"'), "contacts avoid long influence fw-tag");
-assert(!html.includes("DISC not assessed"), "no grey DISC-not-assessed chip when DISC is set");
-assert(html.includes("fw-tag"), "detail uses Crayons tags");
-assert(html.includes("lifecycle-pipeline-stage"), "detail renders lifecycle pipeline stepper");
-assert(html.includes("lifecycle-terminal-stage"), "detail renders terminal outcome stages");
-assert(html.includes("lifecycle-pipeline-step-num"), "pipeline shows numbered open stages");
-assert(!html.includes("account-detail-grid"), "legacy two-column grid replaced");
-assert(html.includes("Deal qualification (MEDDPICC)"), "detail renders MEDDPICC card");
-assert(html.includes("Not captured"), "MEDDPICC uses designed empty-state copy");
-assert(html.includes("meddpicc-field-status"), "MEDDPICC status below field body");
-assert(html.includes("meddpicc-field--compact"), "MEDDPICC uses compact sidebar rows");
-assert(html.includes("lifecycle-category-pill"), "timeline uses category pills");
-assert(html.includes("lifecycle-timeline-day-label"), "activity feed uses day section headers");
-assert(!html.includes("account-contacts-table"), "detail no longer uses wide contacts table");
-assert(!html.includes("account-stage-select"), "detail no longer uses stage dropdown");
-assert(html.includes("← Account"), "opportunity uses back to account overview");
-assert(!html.includes("All accounts"), "opportunity does not use list back label");
-assert(html.includes("Deal team"), "detail renders deal team card");
-assert(html.includes("SE added to deal team") || html.includes("Stage updated"), "detail renders rich activity");
-assert(html.includes("account-record-top"), "detail groups header meta and pursuit");
-assert(html.includes("account-meta-rail"), "detail renders meta rail");
+assert(html.includes('data-action="open-opportunity"'), "deal rows open deal via My deals nav");
+assert(html.includes("account-deals-on-account"), "overview lists deals on account");
+assert(!html.includes("account-command-deck"), "overview omits legacy command deck");
+assert(!html.includes('data-action="deal-type-select"'), "overview omits pursuit type control");
+assert(!html.includes("Deal qualification (MEDDPICC)"), "overview omits MEDDPICC sidebar");
+assert(html.includes("All accounts"), "overview back goes to account list");
 assert(html.includes("account-command-header-domain"), "domain under account title");
-assert(!html.includes("account-meta-rail__label\">Domain"), "domain not duplicated in meta rail");
-assert(!html.includes("account-meta-rail__label\">Motion"), "meta rail omits duplicate motion label");
-assert(!html.includes("account-meta-rail__label\">Stage"), "meta rail omits stage (on pipeline)");
-assert(!html.includes("account-meta-rail__label\">ICP"), "meta rail omits ICP chip");
-assert(!html.includes('data-action="open-contact"'), "legacy open-contact drill-down removed");
-assert(html.includes("account-summary-primary-contact"), "meta rail shows primary contact");
-assert(!html.includes("account-deals-details"), "single-deal account hides deals section");
+
+let openedDealId = null;
+let openedAccountId = null;
+const openDealContainer = mockContainer();
+await renderAccountView(openDealContainer, session, {
+  accountId,
+  onOpenDeal: (dealId, meta = {}) => {
+    openedDealId = dealId;
+    openedAccountId = meta.accountId;
+  },
+});
+const dealRow = openDealContainer.querySelector('[data-action="open-opportunity"]');
+assert(dealRow, "overview renders clickable deal row");
+dealRow.dispatchEvent("click");
+assert(openedDealId === "deal_acme_nb", "deal row triggers onOpenDeal with deal id");
+assert(openedAccountId === accountId, "deal row triggers onOpenDeal with account id");
 
 const overviewContainer = mockContainer();
 await renderAccountView(overviewContainer, session, { accountId, dealId: null });
@@ -258,19 +287,6 @@ await store.upsertUser({
   updatedAt: Date.now(),
 });
 
-const mgrSession = {
-  uid: "usr_mgr_view",
-  teamId: session.teamId,
-  orgId,
-  email: "mgr-view@freshworks.com",
-  role: "manager",
-};
-const mgrContainer = mockContainer();
-await renderAccountView(mgrContainer, mgrSession, { accountId, dealId: "deal_acme_nb" });
-assert(mgrContainer.innerHTML.includes('data-action="add-se"'), "manager opportunity view shows Add SE button");
-assert(mgrContainer.innerHTML.includes('data-action="add-se-select"'), "manager opportunity view shows SE select");
-assert(mgrContainer.innerHTML.includes("Add Candidate SE"), "select lists assignable SE");
-
 const grouped = summarizeContactEvents([
   { type: "linked_from_prep", timestamp: Date.now(), payload: { source: "prep" } },
   { type: "linked_from_prep", timestamp: Date.now(), payload: { source: "prep" } },
@@ -278,26 +294,6 @@ const grouped = summarizeContactEvents([
 ]);
 assert(grouped.length === 2, "summarizeContactEvents groups same-day duplicates");
 assert(grouped[0].count === 2, "summarizeContactEvents counts grouped events");
-
-const capTs = Date.now();
-for (let i = 0; i < ACTIVITY_INITIAL_VISIBLE + 5; i++) {
-  await store.addLifecycleEvent({
-    id: `ev_cap_${i}`,
-    lifecycleId,
-    type: "postcall_analyzed",
-    actorId: session.uid,
-    timestamp: capTs - i * 1000,
-    payload: { qualityScore: 7 },
-  });
-}
-
-const capContainer = mockContainer();
-await renderAccountView(capContainer, session, { accountId, dealId: "deal_acme_nb" });
-assert(
-  capContainer.innerHTML.includes("account-activity-show-all"),
-  "activity feed shows show-all when more than initial visible count",
-);
-assert(capContainer.innerHTML.includes("Show all activities (6 more)"), "show-all label reflects hidden count");
 
 await store.upsertUser({
   id: "user_empty",
@@ -335,9 +331,8 @@ await store.createDeal({
 await store.updateLifecycle(lifecycleId, { dealId: "deal_acme_nb" });
 const twoDealContainer = mockContainer();
 await renderAccountView(twoDealContainer, session, { accountId, dealId: "deal_acme_nb" });
-assert(twoDealContainer.innerHTML.includes('data-action="deal-type-select"'), "multi-deal account uses type dropdown");
-assert(!twoDealContainer.innerHTML.includes('data-action="deal-select"'), "no redundant switch deal select");
-assert(!twoDealContainer.innerHTML.includes("account-deals-details"), "two active deals hide sidebar deals table");
+assert(twoDealContainer.innerHTML.includes("account-deals-on-account"), "multi-deal overview lists deals table");
+assert(!twoDealContainer.innerHTML.includes('data-action="deal-type-select"'), "overview omits type dropdown");
 
 await store.updateAccount(accountId, {
   metadata: {

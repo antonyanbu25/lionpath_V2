@@ -149,10 +149,17 @@ export async function resolveActingWriteContext(session, proxySeUserId) {
     teamId = await resolveTeamIdFromOrgMembership(store, ownerUser);
   }
   const isSelf = ownerId === effectiveSessionUserId(session);
-  if (!teamId && isSelf && session?.teamId) {
+  if (!teamId && session?.teamId) {
     teamId = session.teamId;
+    if (!isSelf) {
+      console.warn(
+        "[acting-owner] Using session teamId fallback for acting owner",
+        ownerId,
+      );
+    }
   }
   if (!teamId) {
+    console.warn("[acting-owner] Could not resolve teamId for acting owner", ownerId);
     throw new Error(
       "Could not resolve team for acting owner. Assign the SE to a team before continuing.",
     );

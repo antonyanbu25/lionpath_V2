@@ -187,9 +187,6 @@ function accountDetailHash() {
   if (selectedAccountContactId) {
     return `accounts/${selectedAccountId}/contacts/${selectedAccountContactId}`;
   }
-  if (selectedAccountDealId) {
-    return `accounts/${selectedAccountId}/deals/${selectedAccountDealId}`;
-  }
   return `accounts/${selectedAccountId}`;
 }
 /** Selected deal when Deals nav is active */
@@ -992,14 +989,10 @@ function switchView(name, opts = {}) {
   } else if (name === "accounts") {
     if (opts.accountId) {
       selectedAccountId = opts.accountId;
-      if (typeof opts.dealId === "string" && opts.dealId) {
-        selectedAccountDealId = opts.dealId;
-      } else if (opts.dealId === null || !opts.drillDown) {
-        selectedAccountDealId = null;
-      }
+      selectedAccountDealId = null;
       if (opts.contactId) selectedAccountContactId = opts.contactId;
       else if (!opts.drillDown) selectedAccountContactId = null;
-      if (opts.dealId === null) {
+      if (!opts.drillDown) {
         selectedAccountEngagementPrepType = undefined;
         accountDetailSearchQuery = "";
       }
@@ -1115,14 +1108,6 @@ async function renderAccountPanel() {
   }
   await renderAccountView(panel, session, {
     accountId: selectedAccountId || undefined,
-    ...(selectedAccountId
-      ? {
-          dealId:
-            typeof selectedAccountDealId === "string" && selectedAccountDealId
-              ? selectedAccountDealId
-              : null,
-        }
-      : {}),
     ...(selectedAccountEngagementPrepType ? { engagementPrepType: selectedAccountEngagementPrepType } : {}),
     contactId: selectedAccountContactId || undefined,
     lifecycleOwnerId: accountLifecycleOwnerId || undefined,
@@ -1138,26 +1123,11 @@ async function renderAccountPanel() {
     onLifecycleLensChange: (ownerId) => {
       accountLifecycleOwnerId = ownerId;
     },
-    onDealChange: (dealId, engagementPrepType) => {
-      selectedAccountDealId = dealId;
-      if (engagementPrepType === "expansion" || engagementPrepType === "new_business") {
-        selectedAccountEngagementPrepType = engagementPrepType;
-      } else if (dealId) {
-        selectedAccountEngagementPrepType = undefined;
-      }
-      selectedAccountContactId = null;
-      if (selectedAccountId) {
-        history.replaceState(null, "", `#${accountDetailHash()}`);
-      }
-    },
-    onBackToAccount: () => {
+    onOpenDeal: (dealId, meta = {}) => {
+      selectedDealNavId = dealId;
+      pendingDealFallbackAccountId = meta.accountId || selectedAccountId || null;
       selectedAccountDealId = null;
-      selectedAccountEngagementPrepType = undefined;
-      selectedAccountContactId = null;
-      accountDetailSearchQuery = "";
-      if (selectedAccountId) {
-        history.replaceState(null, "", `#${accountDetailHash()}`);
-      }
+      switchView("deals", { dealId, drillDown: true });
     },
     onContactChange: (contactId) => {
       selectedAccountContactId = contactId || null;
@@ -1222,6 +1192,7 @@ async function renderPipelinePanel() {
       void renderPipelinePanel();
     },
     onSelectDeal: (dealId) => {
+      pendingDealFallbackAccountId = null;
       selectedDealNavId = dealId;
       switchView("deals", { dealId, drillDown: true });
     },
@@ -1297,10 +1268,10 @@ async function renderDealPanel() {
     },
     onResolvedDealId: (dealId) => {
       if (gen !== dealPanelRenderGen) return;
-      pendingDealFallbackAccountId = null;
       selectedDealNavId = dealId;
       history.replaceState(null, "", `#${dealDetailHash()}`);
     },
+    backContext: pendingDealFallbackAccountId ? { accountId: pendingDealFallbackAccountId } : null,
     onListSearchQueryChange: (q) => {
       dealListSearchQuery = q;
     },
@@ -1314,11 +1285,22 @@ async function renderDealPanel() {
       accountLifecycleOwnerId = ownerId;
     },
     onSelectDeal: (dealId) => {
+      pendingDealFallbackAccountId = null;
       selectedDealNavId = dealId;
       history.replaceState(null, "", `#${dealDetailHash()}`);
       void renderDealPanel();
     },
+    onBackToAccount: () => {
+      const accountId = pendingDealFallbackAccountId;
+      pendingDealFallbackAccountId = null;
+      selectedDealNavId = null;
+      accountDetailSearchQuery = "";
+      if (accountId) {
+        switchView("accounts", { accountId, drillDown: true });
+      }
+    },
     onBackToDealList: () => {
+      pendingDealFallbackAccountId = null;
       selectedDealNavId = null;
       accountDetailSearchQuery = "";
       history.replaceState(null, "", `#${dealDetailHash()}`);
@@ -1999,8 +1981,14 @@ async function applyInitialRouteFromHash(enriched) {
     const lc = await store.getLifecycle(lifecycleMatch[1]);
     if (lc?.accountId) {
       selectedAccountId = lc.accountId;
-      selectedAccountDealId = lc.dealId || null;
-      switchView("accounts", { accountId: lc.accountId });
+      selectedAccountDealId = null;
+      if (lc.dealId) {
+        selectedDealNavId = lc.dealId;
+        pendingDealFallbackAccountId = lc.accountId;
+        switchView("deals", { dealId: lc.dealId, drillDown: true });
+      } else {
+        switchView("accounts", { accountId: lc.accountId, drillDown: true });
+      }
     } else {
       switchView("accounts");
     }
@@ -2076,9 +2064,11 @@ async function applyInitialRouteFromHash(enriched) {
   const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
   if (accountDealMatch) {
     selectedAccountId = accountDealMatch[1];
-    selectedAccountDealId = accountDealMatch[2];
+    selectedAccountDealId = null;
     selectedAccountContactId = null;
-    switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+    selectedDealNavId = accountDealMatch[2];
+    pendingDealFallbackAccountId = accountDealMatch[1];
+    switchView("deals", { dealId: accountDealMatch[2], drillDown: true });
     return;
   }
 
@@ -2669,15 +2659,29 @@ async function boot() {
     onBackToBriefsList: backToBriefsList,
     switchView,
     onGenerated: async (payload, prep, meta) => {
+      let linked = null;
       let lifecycleId = null;
-      if (sessionUserId(currentSession)) {
+      let session = currentSession;
+      try {
+        session = (await syncSessionWithDomainStore(currentSession)) || currentSession;
+        if (sessionUserId(session)) {
+          currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
+        }
+      } catch (err) {
+        console.warn("[prep] session sync before dual-write failed:", err?.message || err);
+      }
+      if (sessionUserId(session)) {
         try {
-          const linked = await linkPrepToLifecycle(currentSession, payload, prep, meta);
+          linked = await linkPrepToLifecycle(session, payload, prep, meta);
           lifecycleId = linked?.lifecycle?.id || null;
         } catch (err) {
-          console.warn("Lifecycle dual-write (prep) failed:", err);
+          console.warn("[prep] Lifecycle dual-write failed:", err?.message || err);
         }
+      } else {
+        console.warn("[prep] dual-write skipped: no session user id");
       }
+      const linkedAccountId = linked?.accountId || null;
+      const linkedDealId = linked?.dealId || linked?.lifecycle?.dealId || null;
       if (currentSession?.email) {
         void syncTasksAfterActivity(currentSession.email, {
           seName: currentSession.name,
@@ -2698,7 +2702,7 @@ async function boot() {
       invalidateSearchIndex();
       warmSearchIndex(() => currentSession);
       await refreshSidebarRecentWork();
-      return lifecycleId;
+      return { lifecycleId, accountId: linkedAccountId, dealId: linkedDealId };
     },
   });
   initPostcall();

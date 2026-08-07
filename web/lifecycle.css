@@ -1100,6 +1100,7 @@
   align-self: center;
 }
 
+/* @deprecated — legacy account opportunity workspace (account-record--opportunity); deal detail uses deal-record--wireframe */
 .account-command-deck {
   display: grid;
   grid-template-columns: minmax(240px, 0.95fr) minmax(360px, 1.65fr) minmax(260px, 1.05fr);

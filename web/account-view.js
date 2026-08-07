@@ -5,20 +5,17 @@
 import {
   listAccountsForSession,
   getAccountEngagementDetail,
-  updateAccountSeTeam,
   enrichAccountListRows,
   listAccountRowsFromHistory,
 } from "./domain/account-service.js?v=2.1.14";
 import { mergeAccountListRows } from "./domain/history-deal-enrichment.js";
-import { advanceStage } from "./domain/lifecycle-service.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getStore } from "./domain/store.js";
 import { safeStoreOp } from "./domain/safe-store.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
-import { STAGE_LABELS, EVENT_LABELS, CONTACT_EVENT_LABELS, MAX_SE_TEAM_SIZE } from "./domain/types.js";
-import { MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS, resolveDealMeddpicc } from "./domain/contact-service.js";
+import { STAGE_LABELS, CONTACT_EVENT_LABELS } from "./domain/types.js";
 import { filterAccountRows } from "./search-service.js?v=2.1.14";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { esc } from "./shared.js";
@@ -28,19 +25,7 @@ import { renderAccountArrModule } from "./account-arr-module.js";
 import { resolveCallType } from "./call-view.js";
 import { resolveQipDisplay } from "./calls-list-view.js";
 
-const OPEN_PIPELINE_STAGES = ["research", "discovery", "demo", "evaluation", "business_case"];
-const TERMINAL_STAGES = ["closed_won", "closed_lost", "nurture"];
-
-const MEDDPICC_LETTERS = {
-  metrics: "M",
-  economicBuyer: "E",
-  decisionCriteria: "D",
-  decisionProcess: "D",
-  paperProcess: "P",
-  identifyPain: "I",
-  champion: "C",
-  competition: "C",
-};
+export const ACTIVITY_INITIAL_VISIBLE = 10;
 
 function formatDate(ts) {
   if (!ts) return "-";
@@ -105,380 +90,9 @@ function renderGeneratedSummarySection(title, summaryDoc, emptyHint, metaOpts = 
     </section>`;
 }
 
-export const ACTIVITY_INITIAL_VISIBLE = 10;
-
 function stageBadge(stage) {
   const label = STAGE_LABELS[stage] || stage;
   return `<span class="lifecycle-stage-badge stage-${esc(stage)}">${esc(label)}</span>`;
-}
-
-function dealTypeTag(type) {
-  const label = DEAL_TYPE_LABELS[type] || type || "Deal";
-  const color = type === "expansion" ? "yellow" : "blue";
-  return `<fw-tag class="account-deal-type-tag" text="${esc(label)}" color="${color}"></fw-tag>`;
-}
-
-function listMotionBadge(type) {
-  const label = DEAL_TYPE_LABELS[type] || type || "-";
-  const mod = type === "expansion" ? "expansion" : "new-business";
-  return `<span class="account-list-motion-badge account-list-motion-badge--${mod}">${esc(label)}</span>`;
-}
-
-function isTerminalStage(stage) {
-  return TERMINAL_STAGES.includes(stage);
-}
-
-function openPipelineIndex(stage) {
-  return OPEN_PIPELINE_STAGES.indexOf(stage);
-}
-
-function pipelineOpenStepState(currentStage, stepStage) {
-  const curIdx = openPipelineIndex(currentStage);
-  const stepIdx = openPipelineIndex(stepStage);
-  if (isTerminalStage(currentStage)) return "completed";
-  if (curIdx < 0) return "upcoming";
-  if (stepIdx < curIdx) return "completed";
-  if (stepIdx === curIdx) return "current";
-  return "upcoming";
-}
-
-function renderOpenPipelineStep(stage, currentStage, stepNumber = null) {
-  const state = pipelineOpenStepState(currentStage, stage);
-  const label = STAGE_LABELS[stage] || stage;
-  const isCurrent = state === "current";
-  const isCompleted = state === "completed";
-  const stepMark =
-    stepNumber != null ?
-      `<span class="lifecycle-pipeline-step-num" aria-hidden="true">${stepNumber}</span>`
-    : "";
-  return `
-    <div class="lifecycle-pipeline-step lifecycle-pipeline-step--${esc(state)}" data-search-text="${esc(label.toLowerCase())}">
-      <fw-button
-        class="lifecycle-pipeline-stage"
-        data-lifecycle-stage="${esc(stage)}"
-        color="${isCurrent ? "primary" : "secondary"}"
-        fill="${isCurrent ? "solid" : "outline"}"
-        size="small"
-      >
-        ${isCompleted ? `<fw-icon slot="before-label" name="check" size="12"></fw-icon>` : ""}
-        ${stepMark}${esc(label)}
-      </fw-button>
-    </div>`;
-}
-
-function renderTerminalStep(stage, currentStage) {
-  const isCurrent = currentStage === stage;
-  const color =
-    stage === "closed_won" ? "success" : stage === "closed_lost" ? "danger" : "warning";
-  const label = STAGE_LABELS[stage] || stage;
-  return `
-    <fw-button
-      class="lifecycle-terminal-stage"
-      data-lifecycle-stage="${esc(stage)}"
-      color="${isCurrent ? color : "secondary"}"
-      fill="${isCurrent ? "solid" : "outline"}"
-      size="small"
-    >${esc(label)}</fw-button>`;
-}
-
-function renderLifecyclePipeline(currentStage, lensOptions, lensOwnerId, compact = false) {
-  const openSteps = OPEN_PIPELINE_STAGES.map((s, i) =>
-    renderOpenPipelineStep(s, currentStage, compact ? i + 1 : null),
-  ).join(`<span class="lifecycle-pipeline-connector" aria-hidden="true"></span>`);
-  const terminalSteps = TERMINAL_STAGES.map((s) => renderTerminalStep(s, currentStage)).join("");
-
-  const lensName = lensOptions.find((o) => o.value === lensOwnerId)?.label || "SE";
-  const lensSelect =
-    lensOptions.length > 1 && !compact
-      ? `<fw-select class="lifecycle-lens-select" label="Lifecycle lens" value="${esc(lensOwnerId)}" data-action="lifecycle-lens">
-          ${lensOptions.map((o) => `<fw-select-option value="${esc(o.value)}">${esc(o.label)}</fw-select-option>`).join("")}
-        </fw-select>`
-      : lensOptions.length > 1 && compact
-        ? `<fw-select class="lifecycle-lens-select lifecycle-lens-select--compact" label="Lens" value="${esc(lensOwnerId)}" data-action="lifecycle-lens">
-          ${lensOptions.map((o) => `<fw-select-option value="${esc(o.value)}">${esc(o.label)}</fw-select-option>`).join("")}
-        </fw-select>`
-        : "";
-
-  if (compact) {
-    return `
-      <div class="account-record-pipeline account-record-pipeline--compact account-record-pipeline--inline">
-        ${lensSelect}
-        <div class="lifecycle-pipeline-track lifecycle-pipeline-track--inline" role="list" aria-label="Pipeline stages">
-          <div class="lifecycle-pipeline-open lifecycle-pipeline-open--compact">${openSteps}</div>
-          <span class="lifecycle-pipeline-connector lifecycle-pipeline-connector--inline" aria-hidden="true"></span>
-          <div class="lifecycle-pipeline-terminal lifecycle-pipeline-terminal--compact">
-            <div class="lifecycle-pipeline-terminal-steps">${terminalSteps}</div>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  return `
-    <fw-card class="account-lifecycle-card account-detail-card">
-      <div class="account-card-header">
-        <div>
-          <h3 class="account-card-title">Lifecycle</h3>
-          ${lensOptions.length > 1 ? `<p class="muted lifecycle-lens-hint">Stage for <strong>${esc(lensName)}</strong></p>` : ""}
-        </div>
-        ${stageBadge(currentStage)}
-      </div>
-      ${lensSelect}
-      <div class="lifecycle-pipeline-open" role="list" aria-label="Open pipeline stages">
-        ${openSteps}
-      </div>
-      <div class="lifecycle-pipeline-terminal">
-        <span class="lifecycle-terminal-label muted">Outcome</span>
-        <div class="lifecycle-pipeline-terminal-steps">${terminalSteps}</div>
-      </div>
-    </fw-card>`;
-}
-
-function renderDealTeamCard(detail) {
-  const { seTeamDisplay, canManageTeam, assignableSeOptions } = detail;
-  const teamCount = seTeamDisplay?.length || 0;
-  const canAddSe =
-    canManageTeam && teamCount < MAX_SE_TEAM_SIZE && assignableSeOptions && assignableSeOptions.length > 0;
-
-  if (!seTeamDisplay?.length) {
-    return `
-      <section class="account-record-section account-deal-team-section">
-        <h3 class="account-record-section-title">Deal team</h3>
-        <p class="muted">No SEs assigned yet. Run prep to claim primary.</p>
-      </section>`;
-  }
-
-  const rows = seTeamDisplay
-    .map((m) => {
-      const initials = contactInitials({ name: m.user.displayName, email: m.user.displayName });
-      return `
-        <div class="account-deal-team-row" data-se-user-id="${esc(m.seUserId)}">
-          <span class="account-contact-avatar" aria-hidden="true">${esc(initials)}</span>
-          <div class="account-deal-team-info">
-            <span class="account-detail-contact-name">${esc(m.user.displayName)}</span>
-            ${m.user.jobTitle ? `<span class="muted account-contact-title">${esc(m.user.jobTitle)}</span>` : ""}
-          </div>
-          <div class="account-deal-team-trailing">
-            <span class="account-deal-team-tags">
-              ${m.role === "primary" ? `<fw-tag text="Primary" color="blue"></fw-tag>` : `<fw-tag text="Secondary" color="grey"></fw-tag>`}
-            </span>
-            ${canManageTeam ? `
-              <span class="account-deal-team-actions">
-                ${m.role !== "primary" ? `<fw-button color="secondary" fill="clear" size="small" data-action="set-primary" data-se-user-id="${esc(m.seUserId)}">Make primary</fw-button>` : ""}
-                ${m.role !== "primary" ? `<fw-button color="danger" fill="clear" size="small" data-action="remove-se" data-se-user-id="${esc(m.seUserId)}">Remove</fw-button>` : ""}
-              </span>` : ""}
-          </div>
-        </div>`;
-    })
-    .join("");
-
-  const addSeBlock = canAddSe
-    ? `<div class="account-deal-team-add">
-        <fw-select
-          class="account-deal-team-add-select"
-          label="Add SE"
-          placeholder="Select SE"
-          data-action="add-se-select">
-          <fw-select-option value="">Select SE</fw-select-option>
-          ${assignableSeOptions
-            .map(
-              (o) =>
-                `<fw-select-option value="${esc(o.seUserId)}">${esc(o.user.displayName)}</fw-select-option>`
-            )
-            .join("")}
-        </fw-select>
-        <fw-button color="primary" size="small" data-action="add-se">Add</fw-button>
-      </div>`
-    : "";
-
-  return `
-    <section class="account-record-section account-deal-team-section">
-      <div class="account-record-section-head">
-        <h3 class="account-record-section-title">Deal team</h3>
-        <fw-tag text="${seTeamDisplay.length}" color="grey"></fw-tag>
-      </div>
-      <div class="account-deal-team-list">${rows}</div>
-      ${addSeBlock}
-      ${canManageTeam && teamCount < MAX_SE_TEAM_SIZE ? `<p class="muted account-deal-team-hint">Add SEs from your org (max 4).</p>` : ""}
-    </section>`;
-}
-
-function eventIcon(type) {
-  switch (type) {
-    case "prep_generated":
-      return "add-note";
-    case "postcall_analyzed":
-      return "phone";
-    case "contact_updated":
-      return "agent";
-    case "task_created":
-    case "task_completed":
-      return "tasks";
-    case "stage_changed":
-      return "arrow-right";
-    case "se_added":
-    case "se_removed":
-    case "primary_se_changed":
-      return "agent";
-    default:
-      return "calendar-time";
-  }
-}
-
-function eventCategoryPill(type) {
-  const map = {
-    stage_changed: ["Stage", "stage"],
-    prep_generated: ["Engagement", "engagement"],
-    postcall_analyzed: ["Engagement", "engagement"],
-    se_added: ["Team", "team"],
-    se_removed: ["Team", "team"],
-    primary_se_changed: ["Team", "team"],
-    task_created: ["Tasks", "tasks"],
-    task_completed: ["Tasks", "tasks"],
-    contact_updated: ["Contact", "contact"],
-  };
-  const [label, mod] = map[type] || ["Activity", "activity"];
-  return `<span class="lifecycle-category-pill lifecycle-category-pill--${mod}">${esc(label)}</span>`;
-}
-
-function eventTitleSubtitle(ev, seNameById = {}) {
-  const p = ev.payload || {};
-  switch (ev.type) {
-    case "stage_changed":
-      return {
-        title: "Stage updated",
-        subtitle: `${STAGE_LABELS[p.fromStage] || p.fromStage || "-"} → ${STAGE_LABELS[p.toStage] || p.toStage || "-"}`,
-      };
-    case "prep_generated":
-      return { title: "Prep generated", subtitle: p.company ? String(p.company) : "Prep brief" };
-    case "postcall_analyzed":
-      return {
-        title: "Post-call analyzed",
-        subtitle: p.qualityScore != null ? `Quality ${p.qualityScore}/10` : "Call analysis",
-      };
-    case "task_created":
-      return { title: "Task created", subtitle: p.title ? String(p.title) : "New task" };
-    case "task_completed":
-      return { title: "Task completed", subtitle: p.title ? String(p.title) : "Task" };
-    case "se_added": {
-      const name = p.seUserId ? seNameById[p.seUserId] : "";
-      return {
-        title: "SE added to deal team",
-        subtitle: name || (p.seUserId ? "New team member" : "New team member"),
-      };
-    }
-    case "se_removed": {
-      const name = p.seUserId ? seNameById[p.seUserId] : "";
-      return { title: "SE removed from deal team", subtitle: name || "Removed" };
-    }
-    case "primary_se_changed":
-      return { title: "Primary SE changed", subtitle: "Deal team lead updated" };
-    case "contact_updated":
-      if (p.contactName) {
-        const fields = (p.fields || []).join(", ");
-        return {
-          title: "Contact updated",
-          subtitle: `${p.contactName}${fields ? `: ${fields}` : ""}`,
-        };
-      }
-      return { title: EVENT_LABELS.contact_updated || "Contact updated", subtitle: "" };
-    default:
-      return { title: EVENT_LABELS[ev.type] || ev.type, subtitle: "" };
-  }
-}
-
-function eventDayKey(ts) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function formatTimelineMeta(ev, seNameById = {}, options = {}) {
-  const actorName = ev.actorId && seNameById[ev.actorId] ? seNameById[ev.actorId] : "";
-  const ownerName = ev.lifecycleOwnerName ? String(ev.lifecycleOwnerName).trim() : "";
-  const ownerSuffix =
-    ownerName && actorName && ownerName.toLowerCase() !== actorName.toLowerCase() ? ownerName : "";
-  const parts = [actorName ? `by ${actorName}` : "", ownerSuffix];
-  if (!options.omitDate) parts.push(formatDate(ev.timestamp));
-  return parts.filter(Boolean).join(" · ");
-}
-
-function groupTimelineByDay(events) {
-  const sections = [];
-  const indexByDay = new Map();
-  for (const ev of events || []) {
-    const day = eventDayKey(ev.timestamp);
-    let section = indexByDay.get(day);
-    if (!section) {
-      section = { day, label: formatDate(ev.timestamp), events: [] };
-      indexByDay.set(day, section);
-      sections.push(section);
-    }
-    section.events.push(ev);
-  }
-  return sections;
-}
-
-function renderTimelineEventItem(ev, seNameById, options = {}) {
-  const { title, subtitle } = eventTitleSubtitle(ev, seNameById);
-  const meta = formatTimelineMeta(ev, seNameById, { omitDate: options.omitDate });
-  const actorName = ev.actorId && seNameById[ev.actorId] ? seNameById[ev.actorId] : "";
-  const ownerName = ev.lifecycleOwnerName ? String(ev.lifecycleOwnerName).trim() : "";
-  const showOwnerSpine =
-    ownerName && (!actorName || ownerName.toLowerCase() !== actorName.toLowerCase());
-  const searchText = `${title} ${subtitle} ${meta}`.toLowerCase();
-  const subtitleBlock =
-    subtitle ?
-      `<p class="lifecycle-timeline-sub muted">${esc(subtitle)}${showOwnerSpine ? ` <span class="lifecycle-timeline-spine">(${esc(ownerName)})</span>` : ""}</p>`
-    : "";
-  return `
-        <li class="lifecycle-timeline-item lifecycle-timeline-item-rich lifecycle-timeline-item-compact" data-search-text="${esc(searchText)}">
-          <fw-icon class="lifecycle-timeline-icon" name="${esc(eventIcon(ev.type))}" size="16" aria-hidden="true"></fw-icon>
-          <div class="lifecycle-timeline-body">
-            <div class="lifecycle-timeline-head">
-              <span class="lifecycle-timeline-type">${esc(title)}</span>
-              ${eventCategoryPill(ev.type)}
-              ${meta ? `<span class="lifecycle-timeline-when muted">${esc(meta)}</span>` : ""}
-            </div>
-            ${subtitleBlock}
-          </div>
-        </li>`;
-}
-
-function renderTimeline(events, seNameById = {}, options = {}) {
-  if (!events?.length) return `<p class="muted account-detail-empty-timeline">No activity yet.</p>`;
-  const showAll = options.activityShowAll === true;
-  const sorted = events || [];
-  const visible = showAll ? sorted : sorted.slice(0, ACTIVITY_INITIAL_VISIBLE);
-  const hiddenCount = showAll ? 0 : Math.max(0, sorted.length - visible.length);
-  const daySections = groupTimelineByDay(visible);
-
-  const body = daySections
-    .map(
-      (section) => `
-    <li class="lifecycle-timeline-day">
-      <div class="lifecycle-timeline-day-label">${esc(section.label)}</div>
-      <ul class="lifecycle-timeline lifecycle-timeline-rich lifecycle-timeline-day-items">
-        ${section.events.map((ev) => renderTimelineEventItem(ev, seNameById, { omitDate: true })).join("")}
-      </ul>
-    </li>`,
-    )
-    .join("");
-
-  const showAllBtn =
-    hiddenCount > 0 ?
-      `<div class="account-activity-show-more-wrap">
-        <fw-button id="account-activity-show-all" class="account-activity-show-all" color="secondary" fill="clear" size="small">
-          Show all activities (${hiddenCount} more)
-        </fw-button>
-      </div>`
-    : "";
-
-  return `<ul class="lifecycle-timeline-days">${body}</ul>${showAllBtn}`;
-}
-
-/** @deprecated use eventCategoryPill in timeline */
-function eventCategoryTag(type) {
-  return eventCategoryPill(type);
 }
 
 function contactInitials(contact) {
@@ -523,6 +137,12 @@ function formatContactEvent(ev) {
   const label = CONTACT_EVENT_LABELS[ev.type] || ev.type;
   const source = ev.payload?.source ? ` · ${ev.payload.source}` : "";
   return `${label}${source}`;
+}
+
+function eventDayKey(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Group contact events by type, source, and calendar day for display. */
@@ -1064,401 +684,13 @@ function renderContactsPanel(
     </section>`;
 }
 
-function renderDealTeamSection(detail) {
-  return renderDealTeamCard(detail);
-}
 
-function renderMeddpiccSection(detail) {
-  const { account, contacts, selectedDeal } = detail;
-  return renderMeddpiccCard(selectedDeal, account, contacts);
-}
-
-function primaryContactForDetail(detail) {
-  const { contacts, lifecycle } = detail;
-  const id = lifecycle?.primaryContactId;
-  if (!id || !contacts?.length) return null;
-  return contacts.find((c) => c.id === id) || null;
-}
-
-function metaRailCell(label, valueHtml, extraClass = "") {
-  if (!valueHtml) return "";
-  const cls = extraClass ? ` ${extraClass}` : "";
-  return `
-    <div class="account-meta-rail__cell${cls}">
-      <span class="account-meta-rail__label">${esc(label)}</span>
-      <span class="account-meta-rail__value">${valueHtml}</span>
-    </div>`;
-}
-
-function resolveDealTypeValue(detail) {
-  const { deals, selectedDealId, selectedDeal, selectedDealType, account } = detail;
-  const actives = activeDeals(deals);
-  const selected =
-    selectedDeal || deals?.find((d) => d.id === selectedDealId) || actives[0] || deals?.[0];
-  return (
-    selected?.type ||
-    selectedDealType ||
-    account?.metadata?.engagementOverride?.dealType ||
-    "new_business"
-  );
-}
-
-function renderDealTypeSelect(detail) {
-  const typeValue = resolveDealTypeValue(detail);
-  return `
-    <fw-select
-      class="account-deal-type-select account-meta-rail-type-select"
-      label="Type"
-      data-action="deal-type-select"
-      value="${esc(typeValue)}">
-      <fw-select-option value="new_business">${esc(DEAL_TYPE_LABELS.new_business)}</fw-select-option>
-      <fw-select-option value="expansion">${esc(DEAL_TYPE_LABELS.expansion)}</fw-select-option>
-    </fw-select>`;
-}
-
-function renderMetaRail(detail, railOpts = {}) {
-  const { lifecycle, seTeamDisplay, events } = detail;
-  const primary = primaryContactForDetail(detail);
-  const primarySe = (seTeamDisplay || []).find((m) => m.role === "primary") || seTeamDisplay?.[0];
-  const lastActivityTs =
-    lifecycle?.lastActivityAt ||
-    (events?.length ? events[0]?.timestamp : null);
-
-  const primaryContactHtml = primary
-    ? `<span class="account-summary-primary-contact"><strong>${esc(primary.name || primary.email)}</strong></span>`
-    : "";
-
-  const cells = [
-    metaRailCell("Primary contact", primaryContactHtml, "account-meta-rail__cell--contact"),
-    metaRailCell(
-      "Primary SE",
-      primarySe?.user?.displayName ? esc(primarySe.user.displayName) : "",
-    ),
-    metaRailCell("Last activity", lastActivityTs ? esc(formatDate(lastActivityTs)) : ""),
-  ].filter(Boolean);
-
-  if (railOpts.showDealType) {
-    cells.push(
-      metaRailCell(
-        "Type",
-        renderDealTypeSelect(detail),
-        "account-meta-rail__cell--type",
-      ),
-    );
-  }
-
-  if (!cells.length) return "";
-
-  return `
-    <div class="account-meta-rail" aria-label="Account summary">
-      ${cells.join("")}
-    </div>`;
-}
-
-function shouldShowDealsSection(deals) {
+function firstActiveDeal(deals) {
   const list = deals || [];
-  if (!list.length) return false;
-  const hasNonActive = list.some((d) => d.status === "archived" || d.status === "paused");
-  return list.length > 2 || hasNonActive;
+  return list.find((d) => d.status === "active") || list[0] || null;
 }
 
-function renderAccountOpportunitiesSection(detail) {
-  const { deals } = detail;
-  const sorted = [...(deals || [])].sort((a, b) => {
-    const aActive = a.status === "active" ? 0 : 1;
-    const bActive = b.status === "active" ? 0 : 1;
-    if (aActive !== bActive) return aActive - bActive;
-    return (b.updatedAt || 0) - (a.updatedAt || 0);
-  });
-
-  if (!sorted.length) {
-    return `
-      <section class="account-record-section account-opportunities-section">
-        <h3 class="account-record-section-title">Opportunities</h3>
-        <p class="muted">No deals yet. Start with New prep on an active pursuit.</p>
-      </section>`;
-  }
-
-  const rows = sorted
-    .map((d) => {
-      const typeLabel = DEAL_TYPE_LABELS[d.type] || d.type || "Deal";
-      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "-";
-      const statusLabel = d.status === "archived" ? "Archived" : d.status === "paused" ? "Paused" : "Active";
-      const title = d.title ? esc(d.title) : typeLabel;
-      const searchText = `${title} ${typeLabel} ${stageLabel} ${statusLabel}`.toLowerCase();
-      return `
-        <tr
-          class="account-deals-row account-opportunities-row"
-          data-action="open-opportunity"
-          data-deal-id="${esc(d.id)}"
-          data-search-text="${esc(searchText)}"
-          tabindex="0"
-          role="button"
-        >
-          <td><span class="account-opportunities-name">${title}</span></td>
-          <td>${dealTypeTag(d.type)}</td>
-          <td>${stageBadge(d.stage)}</td>
-          <td><span class="muted">${esc(statusLabel)}</span></td>
-          <td class="account-opportunities-open-col"><span class="account-opportunities-open muted">Open →</span></td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <section class="account-record-section account-opportunities-section">
-      <div class="account-record-section-head">
-        <h3 class="account-record-section-title">Opportunities</h3>
-        <fw-tag text="${sorted.length}" color="grey"></fw-tag>
-      </div>
-      <p class="muted account-opportunities-hint">Open an opportunity to run pipeline, qualification, and activity.</p>
-      <table class="account-deals-table account-opportunities-table">
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Motion</th>
-            <th scope="col">Stage</th>
-            <th scope="col">Status</th>
-            <th scope="col"><span class="visually-hidden">Action</span></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </section>`;
-}
-
-function renderDealsListSection(detail) {
-  const { deals, selectedDealId } = detail;
-  if (!shouldShowDealsSection(deals)) return "";
-
-  const sorted = [...(deals || [])].sort((a, b) => {
-    const aActive = a.status === "active" ? 0 : 1;
-    const bActive = b.status === "active" ? 0 : 1;
-    if (aActive !== bActive) return aActive - bActive;
-    return (b.updatedAt || 0) - (a.updatedAt || 0);
-  });
-
-  const rows = sorted
-    .map((d) => {
-      const typeLabel = DEAL_TYPE_LABELS[d.type] || d.type || "Deal";
-      const stageLabel = STAGE_LABELS[d.stage] || d.stage || "-";
-      const statusLabel = d.status === "archived" ? "Archived" : d.status === "paused" ? "Paused" : "Active";
-      const selected = d.id === selectedDealId;
-      const searchText = `${typeLabel} ${stageLabel} ${statusLabel}`.toLowerCase();
-      return `
-        <tr
-          class="account-deals-row${selected ? " account-deals-row--selected" : ""}"
-          data-action="select-deal"
-          data-deal-id="${esc(d.id)}"
-          data-search-text="${esc(searchText)}"
-          tabindex="0"
-          role="button"
-          aria-pressed="${selected ? "true" : "false"}"
-        >
-          <td>${dealTypeTag(d.type)}</td>
-          <td>${stageBadge(d.stage)}</td>
-          <td><span class="muted">${esc(statusLabel)}</span></td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <details class="account-deals-details account-record-section">
-      <summary class="account-deals-summary">
-        <span class="account-deals-summary-title">Deals</span>
-        <fw-tag text="${sorted.length}" color="grey"></fw-tag>
-      </summary>
-      <div class="account-deals-body">
-        <table class="account-deals-table">
-          <thead>
-            <tr>
-              <th scope="col">Type</th>
-              <th scope="col">Stage</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </details>`;
-}
-
-function meddpiccValueContainsName(value, name) {
-  if (!value || !name) return false;
-  return String(value).toLowerCase().includes(String(name).toLowerCase());
-}
-
-function meddpiccFilledCount(med) {
-  if (!med) return 0;
-  return MEDDPICC_FIELD_KEYS.filter((key) => {
-    const slot = med[key];
-    return slot?.value && slot.status !== "unknown";
-  }).length;
-}
-
-function renderMeddpiccCard(deal, account, contacts) {
-  if (!deal) {
-    return `
-      <section class="account-record-section account-meddpicc-empty">
-        <p class="muted">Select a deal type with an active opportunity to view qualification.</p>
-      </section>`;
-  }
-  const med = resolveDealMeddpicc(deal, account);
-  const typeLabel = DEAL_TYPE_LABELS[deal.type] || deal.type || "Deal";
-  const score = med?.completionScore ?? 0;
-  const filled = meddpiccFilledCount(med);
-  const total = MEDDPICC_FIELD_KEYS.length;
-  const contactById = new Map((contacts || []).map((c) => [c.id, c]));
-
-  const fields = MEDDPICC_FIELD_KEYS.map((key) => {
-    const slot = med?.[key];
-    const label = MEDDPICC_FIELD_LABELS[key] || key;
-    const letter = MEDDPICC_LETTERS[key] || label.charAt(0);
-    let tooltip = "";
-    if (slot?.value) {
-      let text = String(slot.value);
-      if (slot.contactId && contactById.has(slot.contactId)) {
-        const linked = contactById.get(slot.contactId);
-        const linkedName = linked.name || linked.email || "";
-        if (linkedName && !meddpiccValueContainsName(text, linkedName)) {
-          text = `${slot.value} (${linkedName})`;
-        }
-      }
-      tooltip = text;
-    }
-    return `
-      <div class="meddpicc-field meddpicc-field--compact" data-search-text="${esc(label.toLowerCase())} ${esc(String(slot?.value || "").toLowerCase())}"${tooltip ? ` title="${esc(tooltip)}"` : ""}>
-        <span class="meddpicc-letter" aria-hidden="true">${esc(letter)}</span>
-        <div class="meddpicc-field-body">
-          <span class="meddpicc-field-label">${esc(label)}</span>
-          <span class="meddpicc-field-status">${meddpiccStatusTag(slot?.status)}</span>
-        </div>
-      </div>`;
-  }).join("");
-
-  return `
-    <details class="account-meddpicc-details account-meddpicc-details--expanded account-record-section" open>
-      <summary class="account-meddpicc-summary">
-        <span class="account-meddpicc-summary-title">Deal qualification (MEDDPICC)</span>
-        <fw-tag text="${score}% · ${filled}/${total}" color="grey"></fw-tag>
-      </summary>
-      <div class="account-meddpicc-body">
-        <p class="muted account-meddpicc-deal-type">For: ${esc(typeLabel)}</p>
-        <div class="meddpicc-progress" role="progressbar" aria-valuenow="${score}" aria-valuemin="0" aria-valuemax="100">
-          <div class="meddpicc-progress-bar" style="width: ${Math.max(0, Math.min(100, score))}%"></div>
-        </div>
-        <div class="meddpicc-field-grid meddpicc-field-grid--sidebar">${fields}</div>
-        ${med?.lastUpdatedAt ? `<p class="muted meddpicc-updated">Last updated ${esc(formatDate(med.lastUpdatedAt))}</p>` : ""}
-      </div>
-    </details>`;
-}
-
-function artifactRow(label, display) {
-  const searchText = String(label || "").toLowerCase();
-  return `<li data-search-text="${esc(searchText)}">${display ?? esc(label)}</li>`;
-}
-
-function summarizePrepArtifactRows(preps) {
-  const groups = [];
-  const indexByKey = new Map();
-  for (const p of preps || []) {
-    const company = String(p.meta?.company || "Prep").trim();
-    const day = eventDayKey(p.createdAt);
-    const key = `${day}|${company.toLowerCase()}`;
-    let g = indexByKey.get(key);
-    if (!g) {
-      g = { company, createdAt: p.createdAt, count: 0 };
-      indexByKey.set(key, g);
-      groups.push(g);
-    }
-    g.count += 1;
-    g.createdAt = p.createdAt;
-  }
-  return groups;
-}
-
-function renderArtifactTabs(detail) {
-  const { preps, postCalls, tasks } = detail;
-  const prepGroups = summarizePrepArtifactRows(preps);
-  const prepExtra = prepGroups.length > 5 ? prepGroups.length - 5 : 0;
-  const prepRows =
-    prepGroups.length ?
-      prepGroups
-        .slice(0, 5)
-        .map((g) => {
-          const suffix = g.count > 1 ? ` (${g.count} preps)` : "";
-          const label = `${formatDate(g.createdAt)}. ${g.company}${suffix}`;
-          return artifactRow(label);
-        })
-        .join("") +
-        (prepExtra > 0 ?
-          `<li class="muted account-detail-artifact-more" data-search-text="">+${prepExtra} more prep days</li>`
-        : "")
-    : `<li class="muted account-detail-empty-artifacts" data-search-text="">No preps yet</li>`;
-
-  const callRows = (postCalls || []).map((c) => {
-    const score = c.qualityScore != null ? ` (${c.qualityScore}/10)` : "";
-    const label = `${formatDate(c.createdAt)}. ${c.title || "Call"}${score}`;
-    return artifactRow(label);
-  }).join("") || `<li class="muted account-detail-empty-artifacts" data-search-text="">No post-calls yet</li>`;
-
-  const taskRows = (tasks || []).map((t) => {
-    const label = `${t.status}. ${t.title}`;
-    return artifactRow(label);
-  }).join("") || `<li class="muted account-detail-empty-artifacts" data-search-text="">No tasks yet</li>`;
-
-  return { prepRows, callRows, taskRows, preps, postCalls, tasks };
-}
-
-/** @param {import("./types.js").Deal[] | undefined} deals */
-function activeDeals(deals) {
-  return (deals || []).filter((d) => d.status === "active");
-}
-
-function renderPursuitBar(detail, lensOptions, lifecycleOwnerId) {
-  const { deals, selectedDealId, selectedDeal, lifecycle } = detail;
-  const actives = activeDeals(deals);
-  const typeValue = resolveDealTypeValue(detail);
-  const activeForType = actives.find((d) => d.type === typeValue);
-  const selected =
-    selectedDeal || deals?.find((d) => d.id === selectedDealId) || actives[0] || deals?.[0];
-
-  const typeHint =
-    !activeForType ?
-      `<p class="muted account-deal-type-empty-hint">No active ${esc(DEAL_TYPE_LABELS[typeValue] || typeValue)} deal. Run New prep to create one.</p>`
-    : "";
-
-  const lensSelect =
-    lensOptions.length > 1
-      ? `<fw-select class="lifecycle-lens-select lifecycle-lens-select--compact" label="Lens" value="${esc(lifecycleOwnerId || lifecycle?.ownerId)}" data-action="lifecycle-lens">
-          ${lensOptions.map((o) => `<fw-select-option value="${esc(o.value)}">${esc(o.label)}</fw-select-option>`).join("")}
-        </fw-select>`
-      : "";
-
-  const pipelineHtml =
-    selected || activeForType ?
-      renderLifecyclePipeline(lifecycle?.stage, [], lifecycleOwnerId || lifecycle?.ownerId, true)
-    : `<p class="muted account-deal-type-empty-hint account-deal-type-empty-hint--pipeline">No active deal for this type. stage updates apply after a deal exists.</p>`;
-
-  return `
-    <div class="account-pursuit-band account-pursuit-bar account-pursuit-bar--pipeline-only" aria-label="Pipeline">
-      <div class="account-pursuit-command account-pursuit-command--pipeline-only">
-        ${typeHint}
-        <div class="account-pursuit-command__stage">
-          <div class="account-pursuit-command__stage-head">
-            <span class="account-pursuit-command__eyebrow">Sales stage</span>
-            ${lensSelect}
-          </div>
-          <div class="account-pursuit-command__pipeline">${pipelineHtml}</div>
-        </div>
-      </div>
-    </div>`;
-}
-
-function isOpportunityRecordView(opts = {}) {
-  return typeof opts.dealId === "string" && opts.dealId.length > 0;
-}
-
-function renderCommandChrome(detail, chromeOpts = {}) {
+function renderCommandChrome(detail) {
   const { account, lifecycle } = detail;
   const title = account?.name || lifecycle?.title || "Account";
   const firmo = detail.accountRollup?.firmographics;
@@ -1474,55 +706,22 @@ function renderCommandChrome(detail, chromeOpts = {}) {
     : account?.domain
       ? `<p class="account-command-header-domain muted">${esc(account.domain)}</p>`
       : "";
-  const backAction = chromeOpts.backAction || "back";
-  const backLabel = chromeOpts.backLabel || "← All accounts";
-  const headerArr = chromeOpts.showAccountArr ? renderAccountHeaderArr(detail) : "";
-  const overviewWireframe = chromeOpts.overviewWireframe === true;
-  const headerWireClass = overviewWireframe ? " account-command-header--overview-wire" : "";
 
   return `
     <div class="account-command-chrome">
-      <header class="account-record-header account-command-header account-command-header--with-arr${headerWireClass}">
-        <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="${esc(backAction)}">${esc(backLabel)}</fw-button>
+      <header class="account-record-header account-command-header account-command-header--with-arr account-command-header--overview-wire">
+        <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="back">← All accounts</fw-button>
         <div class="account-header-main account-command-header-title">
           <h2>${esc(title)}</h2>
           ${domainLine}
         </div>
-        ${headerArr}
+        ${renderAccountHeaderArr(detail)}
         <div class="account-detail-actions account-command-header-actions">
           <fw-button color="secondary" fill="outline" size="small" data-action="postcall">Post-call</fw-button>
           <fw-button color="primary" fill="solid" size="small" data-action="prep">New prep</fw-button>
         </div>
       </header>
-      ${overviewWireframe ? "" : renderMetaRail(detail, { showDealType: chromeOpts.showDealTypeInRail === true })}
     </div>`;
-}
-
-function renderRightTabs(detail, events, seNameById, viewOpts, detailSearchQuery = "") {
-  const { prepRows, callRows, taskRows, preps, postCalls, tasks } = renderArtifactTabs(detail);
-  const activityHtml = renderTimeline(events, seNameById, {
-    activityShowAll: viewOpts.activityShowAll === true,
-  });
-
-  return `
-    <section class="account-record-section account-record-tabs-section">
-      <div class="account-record-tabs-head">
-        <fw-input id="account-detail-search" class="account-detail-search" placeholder="Filter activity & artifacts…" value="${esc(detailSearchQuery)}" clear-input></fw-input>
-      </div>
-      <p id="account-detail-no-matches" class="muted account-detail-no-matches" hidden>No matches for this filter.</p>
-      <fw-tabs class="account-record-tabs lifecycle-artifact-tabs" active-tab-name="activity">
-        <fw-tab slot="tab" panel="activity">Activity (${events?.length || 0})</fw-tab>
-        <fw-tab slot="tab" panel="preps">Preps (${preps?.length || 0})</fw-tab>
-        <fw-tab slot="tab" panel="postcalls">Post-calls (${postCalls?.length || 0})</fw-tab>
-        <fw-tab slot="tab" panel="tasks">Tasks (${tasks?.length || 0})</fw-tab>
-        <fw-tab-panel name="activity">
-          <div class="account-activity-panel" data-search-text="activity timeline">${activityHtml}</div>
-        </fw-tab-panel>
-        <fw-tab-panel name="preps"><ul class="lifecycle-artifact-list">${prepRows}</ul></fw-tab-panel>
-        <fw-tab-panel name="postcalls"><ul class="lifecycle-artifact-list">${callRows}</ul></fw-tab-panel>
-        <fw-tab-panel name="tasks"><ul class="lifecycle-artifact-list">${taskRows}</ul></fw-tab-panel>
-      </fw-tabs>
-    </section>`;
 }
 
 function renderAccountOverview(detail, viewOpts = {}) {
@@ -1534,7 +733,7 @@ function renderAccountOverview(detail, viewOpts = {}) {
   return `
     <div class="lifecycle-detail account-detail account-record account-record--overview">
       <div class="account-record-top account-record-top--wireframe">
-        ${renderCommandChrome(detail, { showAccountArr: true, overviewWireframe: true })}
+        ${renderCommandChrome(detail)}
       </div>
       <div class="account-overview-layout">
         <div class="account-overview-main">
@@ -1572,117 +771,6 @@ function renderAccountOverview(detail, viewOpts = {}) {
     </div>`;
 }
 
-function opportunityChromeOpts(surface) {
-  if (surface === "deals") {
-    return {
-      backAction: "back-to-deal-list",
-      backLabel: "← All deals",
-      showDealTypeInRail: true,
-    };
-  }
-  return {
-    backAction: "back-to-account",
-    backLabel: "← Account",
-    showDealTypeInRail: true,
-  };
-}
-
-function renderOpportunityRecord(detail, detailSearchQuery = "", viewOpts = {}) {
-  const {
-    lifecycle,
-    account,
-    events,
-    contacts,
-    contactEventsByContactId,
-    seTeamDisplay,
-    lifecycleOwnerId,
-  } = detail;
-  const focusContactId = viewOpts.contactId || null;
-
-  const lensOptions = (seTeamDisplay || []).map((m) => ({
-    value: m.seUserId,
-    label: m.user?.displayName || m.seUserId || "SE",
-  }));
-  const seNameById = Object.fromEntries(
-    (seTeamDisplay || []).map((m) => [m.seUserId, m.user?.displayName || m.seUserId || "SE"])
-  );
-  const surface = viewOpts.surface === "deals" ? "deals" : "accounts";
-
-  return `
-    <div class="lifecycle-detail account-detail account-record account-record--opportunity">
-      <div class="account-record-top">
-        ${renderCommandChrome(detail, opportunityChromeOpts(surface))}
-        ${renderPursuitBar(detail, lensOptions, lifecycleOwnerId || lifecycle?.ownerId)}
-      </div>
-
-      <div class="account-command-deck">
-        <aside class="account-command-panel account-command-panel--contacts">
-          <div class="account-command-panel-scroll">
-            ${renderContactsPanel(
-              contacts,
-              lifecycle?.primaryContactId,
-              contactEventsByContactId || {},
-              account?.id,
-              focusContactId,
-              detail.accountRollup?.hasEconomicBuyer !== false,
-            )}
-          </div>
-        </aside>
-        <main class="account-command-panel account-command-panel--activity">
-          <div class="account-command-panel-scroll">
-            ${renderGeneratedSummarySection(
-              "Deal summary",
-              detail.dealSummary,
-              "Generated after the first post-call on this deal. rewritten after every call.",
-            )}
-            ${renderRightTabs(detail, events, seNameById, viewOpts, detailSearchQuery)}
-          </div>
-        </main>
-        <aside class="account-command-panel account-command-panel--reference">
-          <div class="account-command-panel-scroll">
-            ${renderDealTeamSection(detail)}
-            ${renderMeddpiccSection(detail)}
-            ${renderDealsListSection(detail)}
-          </div>
-        </aside>
-      </div>
-    </div>`;
-}
-
-function applyDetailFilter(container, query) {
-  const q = String(query || "").trim().toLowerCase();
-  const noMatches = container.querySelector("#account-detail-no-matches");
-  let visibleCount = 0;
-
-  container.querySelectorAll("[data-search-text]").forEach((el) => {
-    const text = el.getAttribute("data-search-text") || "";
-    const show = !q || text.includes(q);
-    el.hidden = !show;
-    if (show) visibleCount++;
-  });
-
-  if (noMatches) {
-    noMatches.hidden = !q || visibleCount > 0;
-  }
-}
-
-function wireDetailSearch(container, opts) {
-  const input = container.querySelector("#account-detail-search");
-  if (!input) return;
-
-  const run = () => {
-    void readFieldValueAsync(input).then((v) => {
-      opts.detailSearchQuery = v;
-      opts.onDetailSearchQueryChange?.(v);
-      applyDetailFilter(container, v);
-    });
-  };
-
-  input.addEventListener("fwInput", run);
-  input.addEventListener("input", run);
-  run();
-}
-
 function wireListFilter(container, allRows, opts) {
   const input = container.querySelector("#account-list-search");
   const listEl = container.querySelector(".lifecycle-list");
@@ -1713,40 +801,13 @@ function wireListFilter(container, allRows, opts) {
   }
 }
 
-function preservePanelScroll(container, selector, renderFn) {
-  const scrollEl = container.querySelector(selector);
-  const scrollTop = scrollEl?.scrollTop ?? 0;
-  return Promise.resolve(renderFn()).then(() => {
-    const next = container.querySelector(selector);
-    if (next) next.scrollTop = scrollTop;
-  });
-}
-
 function wireDetailEvents(container, session, opts) {
   container.querySelector('[data-action="back"]')?.addEventListener("fwClick", () => {
     opts.onBack?.();
   });
 
-  container.querySelector('[data-action="back-to-account"]')?.addEventListener("fwClick", async () => {
-    opts.dealId = null;
-    opts.onBackToAccount?.();
-    await renderAccountView(container, session, { ...opts, dealId: null });
-  });
-
-  container.querySelector('[data-action="back-to-deal-list"]')?.addEventListener("fwClick", () => {
-    opts.onBackToDealList?.();
-  });
-
-  container.querySelector("#account-activity-show-all")?.addEventListener("fwClick", async () => {
-    opts.activityShowAll = true;
-    opts.onActivityShowAllChange?.(true);
-    await preservePanelScroll(container, ".account-command-panel--activity .account-command-panel-scroll", () =>
-      renderAccountView(container, session, opts),
-    );
-  });
-
-  container.querySelector('[data-action="prep"]')?.addEventListener("fwClick", () => {
-    const deal = (opts.deals || []).find((d) => d.id === opts.dealId) || opts.selectedDeal;
+  const engage = (view) => {
+    const deal = firstActiveDeal(opts.deals || []);
     const prepType =
       deal?.type === "expansion" ? "expansion"
       : deal?.type === "new_business" ? "new_business"
@@ -1754,28 +815,16 @@ function wireDetailEvents(container, session, opts) {
       : "new_business";
     setAccountEngagementContext({
       accountId: opts.accountId,
-      dealId: opts.dealId || deal?.id || null,
+      dealId: deal?.id || null,
       prepType,
       lifecycleId: opts.lifecycleId || null,
     });
-    opts.onPrep?.();
-  });
+    if (view === "prep") opts.onPrep?.();
+    else opts.onPostcall?.();
+  };
 
-  container.querySelector('[data-action="postcall"]')?.addEventListener("fwClick", () => {
-    const deal = (opts.deals || []).find((d) => d.id === opts.dealId) || opts.selectedDeal;
-    const prepType =
-      deal?.type === "expansion" ? "expansion"
-      : deal?.type === "new_business" ? "new_business"
-      : opts.engagementPrepType === "expansion" ? "expansion"
-      : "new_business";
-    setAccountEngagementContext({
-      accountId: opts.accountId,
-      dealId: opts.dealId || deal?.id || null,
-      prepType,
-      lifecycleId: opts.lifecycleId || null,
-    });
-    opts.onPostcall?.();
-  });
+  container.querySelector('[data-action="prep"]')?.addEventListener("fwClick", () => engage("prep"));
+  container.querySelector('[data-action="postcall"]')?.addEventListener("fwClick", () => engage("postcall"));
 
   container.querySelectorAll('[data-action="select-contact"]').forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1783,115 +832,24 @@ function wireDetailEvents(container, session, opts) {
       if (!contactId) return;
       opts.contactId = contactId;
       opts.onContactChange?.(contactId);
-      void preservePanelScroll(container, ".account-command-panel--contacts .account-command-panel-scroll", () =>
-        renderAccountView(container, session, opts),
-      );
+      void renderAccountView(container, session, opts);
     });
   });
 
-  async function activateDeal(dealId) {
-    if (!dealId) return;
-    const deal = (opts.deals || []).find((d) => d.id === dealId);
-    opts.dealId = dealId;
-    opts.engagementPrepType = deal?.type || opts.engagementPrepType;
-    opts.contactId = null;
-    opts.onContactChange?.(null);
-    opts.onDealChange?.(dealId, deal?.type);
-    await renderAccountView(container, session, opts);
-  }
-
-  function wireDealRowActivation(row, useClick) {
-    const run = () => void activateDeal(row.getAttribute("data-deal-id"));
-    if (useClick) row.addEventListener("click", run);
-    else row.addEventListener("fwClick", run);
+  container.querySelectorAll('[data-action="open-opportunity"]').forEach((row) => {
+    const run = () => {
+      const dealId = row.getAttribute("data-deal-id");
+      if (!dealId) return;
+      opts.onOpenDeal?.(dealId, { accountId: opts.accountId });
+    };
+    row.addEventListener("click", run);
     row.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         run();
       }
     });
-  }
-
-  container.querySelectorAll('[data-action="select-deal"]').forEach((row) => wireDealRowActivation(row, false));
-  container.querySelectorAll('[data-action="open-opportunity"]').forEach((row) => wireDealRowActivation(row, true));
-
-  async function applyDealTypeFromUi(prepType) {
-    const deal = activeDeals(opts.deals || []).find((d) => d.type === prepType);
-    const dealId = deal?.id || null;
-    if (!opts.accountId) return;
-    opts.dealId = dealId;
-    opts.engagementPrepType = prepType;
-    opts.onDealChange?.(dealId, prepType);
-    setAccountEngagementContext({
-      accountId: opts.accountId,
-      dealId,
-      prepType,
-      lifecycleId: opts.lifecycleId || null,
-    });
-  }
-
-  const typeControl = container.querySelector('[data-action="deal-type-select"]');
-  if (typeControl) {
-    typeControl.addEventListener("fwChange", async () => {
-      const prepType = await readFieldValueAsync(typeControl);
-      await applyDealTypeFromUi(prepType);
-      await renderAccountView(container, session, opts);
-    });
-  }
-
-  container.querySelectorAll("[data-lifecycle-stage]").forEach((btn) => {
-    btn.addEventListener("fwClick", async () => {
-      const toStage = btn.getAttribute("data-lifecycle-stage");
-      const lifecycleId = opts.lifecycleId;
-      if (!lifecycleId || !toStage) return;
-      await advanceStage(lifecycleId, toStage, sessionUserId(session));
-      await renderAccountView(container, session, opts);
-    });
   });
-
-  const lensSelect = container.querySelector('[data-action="lifecycle-lens"]');
-  if (lensSelect) {
-    lensSelect.addEventListener("fwChange", async () => {
-      const val = await readFieldValueAsync(lensSelect);
-      opts.lifecycleOwnerId = val;
-      opts.onLifecycleLensChange?.(val);
-      await renderAccountView(container, session, opts);
-    });
-  }
-
-  container.querySelectorAll('[data-action="set-primary"]').forEach((btn) => {
-    btn.addEventListener("fwClick", async () => {
-      const seUserId = btn.getAttribute("data-se-user-id");
-      if (!seUserId || !opts.accountId) return;
-      await updateAccountSeTeam(session, opts.accountId, "set_primary", { seUserId });
-      opts.onSeTeamChange?.();
-      await renderAccountView(container, session, opts);
-    });
-  });
-
-  container.querySelectorAll('[data-action="remove-se"]').forEach((btn) => {
-    btn.addEventListener("fwClick", async () => {
-      const seUserId = btn.getAttribute("data-se-user-id");
-      if (!seUserId || !opts.accountId) return;
-      await updateAccountSeTeam(session, opts.accountId, "remove", { seUserId });
-      opts.onSeTeamChange?.();
-      await renderAccountView(container, session, opts);
-    });
-  });
-
-  const addSeBtn = container.querySelector('[data-action="add-se"]');
-  if (addSeBtn) {
-    addSeBtn.addEventListener("fwClick", async () => {
-      const select = container.querySelector('[data-action="add-se-select"]');
-      const seUserId = select ? await readFieldValueAsync(select) : "";
-      if (!seUserId || !opts.accountId) return;
-      await updateAccountSeTeam(session, opts.accountId, "add_secondary", { seUserId });
-      opts.onSeTeamChange?.();
-      await renderAccountView(container, session, opts);
-    });
-  }
-
-  wireDetailSearch(container, opts);
 }
 
 function wireAccountListItemClicks(container, opts) {
@@ -2140,16 +1098,11 @@ export async function renderAccountView(container, session, opts = {}) {
 
   try {
     if (opts.accountId) {
-      const opportunityView = isOpportunityRecordView(opts);
       const detailQuery = {
         lifecycleOwnerId: opts.lifecycleOwnerId,
+        dealId: null,
         ...(opts.engagementPrepType ? { engagementPrepType: opts.engagementPrepType } : {}),
       };
-      if (opportunityView) {
-        detailQuery.dealId = opts.dealId;
-      } else {
-        detailQuery.dealId = null;
-      }
 
       const detail = await getAccountEngagementDetail(activeSession, opts.accountId, detailQuery);
       if (!detail) {
@@ -2158,24 +1111,16 @@ export async function renderAccountView(container, session, opts = {}) {
       }
 
       const viewOpts = {
-        activityShowAll: opts.activityShowAll,
         contactId: opts.contactId || null,
       };
 
-      container.innerHTML = opportunityView
-        ? renderOpportunityRecord(detail, opts.detailSearchQuery || "", {
-            ...viewOpts,
-            surface: opts.surface === "deals" ? "deals" : "accounts",
-          })
-        : renderAccountOverview(detail, viewOpts);
+      container.innerHTML = renderAccountOverview(detail, viewOpts);
 
       wireDetailEvents(container, activeSession, {
         ...opts,
         accountId: opts.accountId,
         lifecycleId: detail.lifecycle?.id || null,
-        dealId: opportunityView ? detail.selectedDealId : null,
         engagementPrepType: detail.selectedDealType,
-        selectedDeal: detail.selectedDeal,
         deals: detail.deals,
       });
       return;
@@ -2255,19 +1200,3 @@ export async function renderAccountView(container, session, opts = {}) {
   }
 }
 
-/**
- * Opportunity workspace for a known account + deal (Accounts or Deals nav entry).
- * @param {HTMLElement} container
- * @param {object} session
- * @param {object} opts
- */
-export async function renderOpportunityForAccount(container, session, opts = {}) {
-  if (!opts.accountId || !opts.dealId) {
-    container.innerHTML = `<p class="muted">Deal not found.</p>`;
-    return;
-  }
-  await renderAccountView(container, session, {
-    ...opts,
-    surface: opts.surface === "deals" ? "deals" : "accounts",
-  });
-}

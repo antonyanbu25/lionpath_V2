@@ -92,6 +92,28 @@ assert.ok(prepRes?.accountId, "prep must create account");
 assert.ok(prepRes?.dealId, "prep must create deal");
 assert.equal(prepRes.contactIds.length, 2, "prep must create two contacts");
 
+const { saveBriefToSidebar, loadLocalBriefs } = await import("../precall.js");
+const v8Prep = {
+  about: `${COMPANY} overview`,
+  facts: ["Growing support team"],
+  signals: [{ title: "Expansion", detail: "Hiring support leads" }],
+  prospects: prep.prospects,
+};
+saveBriefToSidebar(
+  prepPayload,
+  v8Prep,
+  { company: COMPANY, companyDomain: DOMAIN },
+  {
+    lifecycleId: prepRes.lifecycle?.id,
+    accountId: prepRes.accountId,
+    dealId: prepRes.dealId,
+  },
+);
+const storedBrief = loadLocalBriefs()[0];
+assert.equal(storedBrief?.meta?.dealId, prepRes.dealId, "brief meta retains linked dealId");
+assert.equal(storedBrief?.input?.dealId, prepRes.dealId, "brief input retains linked dealId");
+assert.equal(storedBrief?.meta?.accountId, prepRes.accountId, "brief meta retains linked accountId");
+
 const postPayload = {
   companyName: COMPANY,
   companyDomain: DOMAIN,
