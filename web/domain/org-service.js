@@ -3,9 +3,21 @@
  */
 
 import { getStore } from "./store.js";
-import { segmentIdForTeamId } from "./constants.js";
+import { DEMO_ORG_ID, ORG_SEGMENT_DEFS, segmentIdForTeamId } from "./constants.js";
 import { stableUserIdForEmail } from "./id.js";
 import { effectiveSessionUserId } from "./session.js";
+
+const FRESHWORKS_DIRECTOR_EMAIL = "vipin.thomas@freshworks.com";
+/** Known org-wide leader emails for org_freshworks_se (covers usr_dummy_* vs UUID id drift). */
+const FRESHWORKS_ORG_LEADER_EMAILS = new Set([
+  FRESHWORKS_DIRECTOR_EMAIL,
+  ...ORG_SEGMENT_DEFS.map((s) => s.leaderEmail.toLowerCase()),
+  "preethi.sri@freshworks.com",
+]);
+
+function normalizeLeaderEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
 
 /**
  * @typedef {{ id: string, name: string, leaderId: string, teamIds: string[] }} OrgSegment
@@ -29,6 +41,31 @@ export function isOrgLeader(userId, org) {
   if (org.directorId === userId) return true;
   const leaders = org.seniorLeaderIds || [];
   return leaders.includes(userId);
+}
+
+/**
+ * Email fallback when authIndex resolves usr_dummy_* but org.seniorLeaderIds lists seeded UUIDs.
+ * @param {string|null|undefined} email
+ * @param {import("./types.js").Org|null|undefined} org
+ */
+export function isOrgLeaderByEmail(email, org) {
+  if (!org || !email) return false;
+  const norm = normalizeLeaderEmail(email);
+  if (org.directorEmail && normalizeLeaderEmail(org.directorEmail) === norm) return true;
+  const fromOrg = org.seniorLeaderEmails || [];
+  if (fromOrg.some((e) => normalizeLeaderEmail(e) === norm)) return true;
+  if (org.id === DEMO_ORG_ID && FRESHWORKS_ORG_LEADER_EMAILS.has(norm)) return true;
+  return false;
+}
+
+/**
+ * Org-wide leader check for session enrichment — id match first, then email fallback.
+ * @param {string} userId
+ * @param {import("./types.js").Org|null|undefined} org
+ * @param {string|null|undefined} email
+ */
+export function isOrgLeaderForUser(userId, org, email) {
+  return isOrgLeader(userId, org) || isOrgLeaderByEmail(email, org);
 }
 
 /**
@@ -71,7 +108,7 @@ export function userWithDirectorFlag(user, org) {
   const actualDirector = isOrgDirector(user.id, org);
   return {
     ...user,
-    isOrgDirector: isOrgLeader(user.id, org),
+    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email),
     isActualDirector: actualDirector,
     isSegmentLeader: !!segment,
     segmentId: segment?.id || null,

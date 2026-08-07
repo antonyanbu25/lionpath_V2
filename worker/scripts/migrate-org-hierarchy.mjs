@@ -97,6 +97,8 @@ async function main() {
 
   let directorId = existingOrg.directorId || null;
   let seniorLeaderIds = existingOrg.seniorLeaderIds || [];
+  let seniorLeaderEmails = existingOrg.seniorLeaderEmails || [];
+  let directorEmail = existingOrg.directorEmail || null;
 
   const [directorIds, seniorIds] = await Promise.all([
     resolveUserIdsByEmail(db, [DIRECTOR_EMAIL]),
@@ -104,8 +106,12 @@ async function main() {
   ]);
 
   if (!directorId && directorIds[0]) directorId = directorIds[0];
+  if (!directorEmail) directorEmail = DIRECTOR_EMAIL;
   if (!seniorLeaderIds.length && seniorIds.length) {
     seniorLeaderIds = seniorIds;
+  }
+  if (!seniorLeaderEmails.length) {
+    seniorLeaderEmails = SENIOR_LEADER_EMAILS.map((e) => e.trim().toLowerCase());
   }
 
   if (!directorId) {
@@ -122,7 +128,9 @@ async function main() {
     id: args.orgId,
     name: existingOrg.name || "Freshworks CX Solution Engineering",
     directorId: directorId || "",
+    directorEmail: directorEmail || "",
     seniorLeaderIds,
+    seniorLeaderEmails,
     teamIds: teamsSnap.docs.map((d) => d.id),
     updatedAt: ts,
   };

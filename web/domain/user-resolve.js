@@ -10,8 +10,17 @@ import {
   getOrg,
   getSegmentForLeader,
   isOrgDirector,
-  isOrgLeader,
+  isOrgLeaderForUser,
 } from "./org-service.js";
+
+/** Infer manager role for known Freshworks leader emails on first Firebase login. */
+function inferRoleFromEmail(email, roleHint) {
+  const e = String(email || "").trim().toLowerCase();
+  if (e.startsWith("manager@") || e.startsWith("director@") || e.includes("vipin.")) return "manager";
+  const local = e.split("@")[0] || "";
+  if (/^ajay\.|^antony\.|^vipin\./.test(local)) return "manager";
+  return roleHint || "se";
+}
 
 /** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
 async function safeStoreGet(label, fn) {
@@ -75,9 +84,6 @@ export async function resolveAuthIndexOwnerId(fb, session) {
     try {
       const snap = await fb.getDoc(fb.doc(fb.db, "authIndex", authUid));
       const userId = snap.exists() ? snap.data()?.userId : null;
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"user-resolve.js:resolveAuthIndexOwnerId",message:"authIndex direct read",data:{authUid:authUid?.slice?.(0,8),userId:userId?.slice?.(0,24),sessionRaw:raw?.slice?.(0,24),exists:snap.exists()},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (userId && !String(userId).startsWith("usr_dummy_")) return userId;
     } catch (err) {
       console.warn("[user-resolve] authIndex direct read failed:", err?.message || err);
@@ -145,7 +151,7 @@ export async function enrichSessionFromStore(session) {
     managerName,
     jobTitle: user.jobTitle || null,
     avatarDataUrl: user.avatarDataUrl || null,
-    isOrgDirector: isOrgLeader(user.id, org),
+    isOrgDirector: isOrgLeaderForUser(user.id, org, user.email || session.email),
     isActualDirector: actualDirector,
     isSegmentLeader: !!segment,
     segmentId: segment?.id || null,
@@ -202,9 +208,7 @@ export async function upsertFirebaseUser(fbUser, roleHint) {
     if (legacyByAuth?.email === email) user = legacyByAuth;
   }
 
-  const role =
-    user?.role ||
-    (email.includes("vipin.") || email.startsWith("director@") ? "manager" : roleHint || "se");
+  const role = user?.role || inferRoleFromEmail(email, roleHint);
 
   const profile = {
     id: user?.id || stableUserIdForEmail(email),

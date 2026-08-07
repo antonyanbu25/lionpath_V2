@@ -20,6 +20,7 @@
     "backfill:read-models": "tsx scripts/backfill-read-models.mjs",
     "migrate:account-se-team": "node scripts/migrate-account-se-team.mjs",
     "migrate:org-hierarchy": "node scripts/migrate-org-hierarchy.mjs",
+    "reconcile:auth-index": "node scripts/reconcile-auth-index.mjs",
     "test:api-store-parity": "tsx scripts/test-api-store-parity.ts",
     "test:batched-hydration": "tsx scripts/test-batched-hydration.ts",
     "build:icp": "node scripts/extract-icp.mjs && node scripts/extract-omni-personas.mjs && node scripts/generate-icp-kb.mjs",
