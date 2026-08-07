@@ -4,7 +4,7 @@
 #
 # Usage:
 #   bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com
-#   bash reconcile-auth-index.sh --email vipin.thomas@freshworks.com
+#   bash reconcile-auth-index.sh --email vipin.thomas@freshworks.com --promote
 #   bash reconcile-auth-index.sh --email user@freshworks.com --dry-run
 set -euo pipefail
 
@@ -27,6 +27,8 @@ EXTRA=()
 for arg in "$@"; do
   if [[ "$arg" == "--dry-run" ]]; then
     EXTRA+=(--dry-run)
+  elif [[ "$arg" == "--promote" ]]; then
+    EXTRA+=(--promote)
   elif [[ "$arg" == --email=* ]]; then
     EMAIL="${arg#--email=}"
   elif [[ "$arg" == "--email" ]]; then

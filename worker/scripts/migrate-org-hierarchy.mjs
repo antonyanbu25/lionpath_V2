@@ -78,7 +78,8 @@ async function patchCollection(db, name, predicate, patchFn, dryRun) {
 function pickCanonicalUserId(docs) {
   if (!docs?.length) return null;
   const canonical =
-    docs.find((d) => (d.orgId && d.role === "manager") || !String(d.id).startsWith("usr_dummy_")) ||
+    docs.find((d) => !String(d.id).startsWith("usr_dummy_")) ||
+    docs.find((d) => d.orgId && d.role === "manager") ||
     docs[0];
   return canonical.id;
 }
