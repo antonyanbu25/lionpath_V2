@@ -266,6 +266,17 @@ bash migrate-org-hierarchy.sh             # apply
 
 Requires Firebase Admin in `.env` (`FIREBASE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS`). The script only backfills `seniorLeaderIds` when that array is empty; otherwise patch Firestore manually.
 
+**authIndex drift (sidebar still empty after deploy):** if `authIndex/{firebaseUid}.userId` points at `usr_dummy_*` but `org.seniorLeaderIds` lists a UUID, reconcile the mapping:
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash update.sh   # need 2.1.32+ (1287fbb) for canonical user lookup + pre-nav enrich
+bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com --dry-run
+bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com
+```
+
+After deploy + reconcile, affected users sign out/in once (no DevTools required).
+
 ---
 
 ## Git authentication (private repo)
