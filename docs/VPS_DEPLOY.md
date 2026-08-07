@@ -264,9 +264,9 @@ bash migrate-org-hierarchy.sh --dry-run   # preview
 bash migrate-org-hierarchy.sh             # apply
 ```
 
-Requires Firebase Admin in `.env` (`FIREBASE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS`). The script only backfills `seniorLeaderIds` when that array is empty; otherwise patch Firestore manually.
+Requires Firebase Admin in `.env` (`FIREBASE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS`). The script only backfills `seniorLeaderIds` when that array is empty; otherwise patch Firestore manually. It also replaces `org.directorId` when it still points at `usr_dummy_*` (needed for org director full sidebar).
 
-**authIndex drift (sidebar still empty after deploy):** if `authIndex/{firebaseUid}.userId` points at `usr_dummy_*` but `org.seniorLeaderIds` lists a UUID, reconcile the mapping:
+**authIndex drift (sidebar still empty after deploy):** if `authIndex/{firebaseUid}.userId` points at `usr_dummy_*` but `org.seniorLeaderIds` or `org.directorId` lists a UUID, reconcile the mapping:
 
 ```bash
 cd /opt/se-singha-paathai/deploy/vps
@@ -275,7 +275,18 @@ bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com --dry-run
 bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com
 ```
 
-After deploy + reconcile, affected users sign out/in once (no DevTools required).
+**Org director (Vipin — full sidebar + org scope):** `isActualDirector` and org-wide `getVisibleScope` require `org.directorId ===` Vipin's canonical UUID (not `usr_dummy_vipin_thomas_freshworks_com`). Run reconcile first, then migrate so `directorId` is upgraded:
+
+```bash
+cd /opt/se-singha-paathai/deploy/vps
+bash update.sh
+bash reconcile-auth-index.sh --email vipin.thomas@freshworks.com --dry-run
+bash reconcile-auth-index.sh --email vipin.thomas@freshworks.com
+bash migrate-org-hierarchy.sh --dry-run   # confirm directorId is UUID, not usr_dummy_*
+bash migrate-org-hierarchy.sh
+```
+
+After deploy + reconcile + migrate, affected users sign out/in once (no DevTools required).
 
 ---
 

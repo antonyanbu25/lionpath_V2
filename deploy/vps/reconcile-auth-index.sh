@@ -4,7 +4,8 @@
 #
 # Usage:
 #   bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com
-#   bash reconcile-auth-index.sh --email antony.sagayaraj@freshworks.com --dry-run
+#   bash reconcile-auth-index.sh --email vipin.thomas@freshworks.com
+#   bash reconcile-auth-index.sh --email user@freshworks.com --dry-run
 set -euo pipefail
 
 cd "$(dirname "$0")"

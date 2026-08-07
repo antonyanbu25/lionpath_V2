@@ -74,14 +74,30 @@ async function patchCollection(db, name, predicate, patchFn, dryRun) {
   return count;
 }
 
+/** Prefer Firebase/canonical users over usr_dummy_* when duplicate emails exist. */
+function pickCanonicalUserId(docs) {
+  if (!docs?.length) return null;
+  const canonical =
+    docs.find((d) => (d.orgId && d.role === "manager") || !String(d.id).startsWith("usr_dummy_")) ||
+    docs[0];
+  return canonical.id;
+}
+
 async function resolveUserIdsByEmail(db, emails) {
   const snap = await db.collection("users").get();
-  const emailToId = new Map();
+  /** @type {Map<string, { id: string, orgId?: string, role?: string }[]>} */
+  const emailToDocs = new Map();
   for (const doc of snap.docs) {
     const email = String(doc.data()?.email || "").trim().toLowerCase();
-    if (email) emailToId.set(email, doc.id);
+    if (!email) continue;
+    const row = { id: doc.id, ...doc.data() };
+    const list = emailToDocs.get(email) || [];
+    list.push(row);
+    emailToDocs.set(email, list);
   }
-  return emails.map((e) => emailToId.get(e.trim().toLowerCase())).filter(Boolean);
+  return emails
+    .map((e) => pickCanonicalUserId(emailToDocs.get(e.trim().toLowerCase())))
+    .filter(Boolean);
 }
 
 async function main() {
