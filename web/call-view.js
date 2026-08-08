@@ -2985,27 +2985,30 @@ export async function renderCallView(container, session, opts = {}) {
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
-    const renderedCall = container.querySelector?.(".call-record[data-call-id]");
-    const isSameRenderedCall =
-      renderedCall?.getAttribute("data-call-id") === targetCallId;
-    if (!isSameRenderedCall) {
-      container.innerHTML = renderCallLoadingShell(resolvedRecord);
-      wireCallSpine(container);
-      wireCallViewAnimations(container);
-    }
+    if (!canApply()) return;
+
+    const localHydration = resolveRecordHydration(resolvedRecord);
+    const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);
+    paintCallRecord(container, activeSession, localBundle, coachAudience, localHydration, opts);
+    void hidePrepGenOverlay();
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-    const bundle = await loadCallBundle(activeSession, resolvedRecord);
-    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+    void loadCallBundle(activeSession, resolvedRecord)
+      .then(async (bundle) => {
+        if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-    const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
-    if (freshRecord.id !== targetCallId) return;
+        const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
+        if (freshRecord.id !== targetCallId) return;
 
-    const freshHydration = resolveRecordHydration(freshRecord);
-    await hidePrepGenOverlay();
-    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+        const freshHydration = resolveRecordHydration(freshRecord);
+        await hidePrepGenOverlay();
+        if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-    paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
+        paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
+      })
+      .catch((err) => {
+        console.warn("[call-view] call enrichment failed:", err);
+      });
   } catch (err) {
     if (!canApply()) return;
     console.error("[call-view] failed to render call:", err);
