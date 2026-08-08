@@ -11,6 +11,7 @@ import {
 } from "./domain/account-service.js?v=2.1.14";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { getStore } from "./domain/store.js";
+import { isHistoryStubId } from "./domain/api-store.js";
 import { effectiveSessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { loadLocalBriefs } from "./precall.js?v=2.1.14";
@@ -446,6 +447,7 @@ async function indexDomainSources(index, normalized, ownerId, seenItemKeys, seen
   await Promise.all(
     rows.map(async (row) => {
       if (!row?.account?.id) return;
+      if (isHistoryStubId(row.account.id)) return;
       try {
         const contacts = store.listContactsByAccount
           ? await store.listContactsByAccount(row.account.id)

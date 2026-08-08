@@ -7,6 +7,7 @@ import { getDoc, queryBy, type FirestoreDoc, type FirestoreEnv } from "../firest
 import { hydratePostCallDoc } from "../call-payload-storage";
 import { listScorecardsByCall } from "./scorecards";
 import { listArrLinesByCall } from "./signals";
+import { isHistoryStubId } from "../history-stub";
 
 const COL = "postCalls";
 
@@ -38,6 +39,7 @@ function hasEmbeddedDetail(postCall: FirestoreDoc): boolean {
 }
 
 export async function getPostCall(id: string, env?: FirestoreEnv): Promise<FirestoreDoc | null> {
+  if (isHistoryStubId(id)) return null;
   return cachedGetDoc(COL, id, () => getDoc(COL, id, env));
 }
 
@@ -67,6 +69,7 @@ async function listByField(
   limitCount: number,
   env?: FirestoreEnv,
 ): Promise<FirestoreDoc[]> {
+  if (isHistoryStubId(value)) return [];
   return cachedQuery(COL, { listBy: field, value, limitCount }, () =>
     queryBy(COL, [{ field, op: "==", value }], { field: "createdAt", direction: "desc" }, limitCount, env),
   );
@@ -136,6 +139,7 @@ export interface PostCallDetail {
 }
 
 async function listCallChildren(col: string, callId: string, env?: FirestoreEnv): Promise<FirestoreDoc[]> {
+  if (isHistoryStubId(callId)) return [];
   return cachedQuery(col, { callId }, () =>
     queryBy(col, [{ field: "callId", op: "==", value: callId }], undefined, undefined, env),
   );

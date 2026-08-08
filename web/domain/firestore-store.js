@@ -21,7 +21,7 @@ import {
   productGapsFromPostCalls,
   whatWorksFromPostCalls,
 } from "./post-call-detail.js";
-import { isFirestoreIndexError, stripUndefinedFields } from "./safe-store.js";
+import { isFirestoreIndexError, isHistoryStubId, stripUndefinedFields } from "./safe-store.js";
 
 /**
  * Drop the listAccountsForSession row cache after writing anything it aggregates —
@@ -89,7 +89,7 @@ export function createFirestoreStore(fb) {
 
   /** @param {string} col @param {string} field @param {string[]} values */
   async function queryWhereInChunks(col, field, values) {
-    const ids = [...new Set((values || []).filter(Boolean))];
+    const ids = [...new Set((values || []).filter(Boolean).filter((id) => !isHistoryStubId(id)))];
     if (!ids.length) return [];
     const chunks = [];
     for (let i = 0; i < ids.length; i += WHERE_IN_CHUNK) {
@@ -106,7 +106,7 @@ export function createFirestoreStore(fb) {
 
   /** @param {string} col @param {string[]} ids */
   async function getDocsByIdInChunks(col, ids) {
-    const unique = [...new Set((ids || []).filter(Boolean))];
+    const unique = [...new Set((ids || []).filter(Boolean).filter((id) => !isHistoryStubId(id)))];
     if (!unique.length || !documentId) return [];
     const chunks = [];
     for (let i = 0; i < unique.length; i += WHERE_IN_CHUNK) {
@@ -197,6 +197,10 @@ export function createFirestoreStore(fb) {
     if (!onSnapshot) return () => {};
     const key = String(value || "").trim();
     if (!key || typeof onRows !== "function") return () => {};
+    if (isHistoryStubId(key)) {
+      onRows([]);
+      return () => {};
+    }
     const q = query(collection(db, col), where(field, "==", key));
     return onSnapshot(
       q,
@@ -212,6 +216,10 @@ export function createFirestoreStore(fb) {
     if (!onSnapshot) return () => {};
     const key = String(id || "").trim();
     if (!key || typeof onRow !== "function") return () => {};
+    if (isHistoryStubId(key)) {
+      onRow(null);
+      return () => {};
+    }
     return onSnapshot(
       doc(db, col, key),
       (snap) => onRow(mapDocSnap(snap)),
@@ -278,6 +286,18 @@ export function createFirestoreStore(fb) {
     },
 
     subscribeDealDetail(dealId, cb) {
+      if (isHistoryStubId(dealId)) {
+        cb?.({
+          deal: null,
+          summary: null,
+          technicalCommit: null,
+          dealSignals: [],
+          arrLines: [],
+          productGaps: [],
+          whatWorks: [],
+        });
+        return () => {};
+      }
       const state = {
         deal: null,
         dealSummaries: [],
@@ -313,6 +333,23 @@ export function createFirestoreStore(fb) {
     },
 
     subscribeCallDetail(callId, cb) {
+      if (isHistoryStubId(callId)) {
+        cb?.({
+          postCall: null,
+          scorecards: [],
+          videoFacts: [],
+          timelineSegments: [],
+          timelineMarkers: [],
+          followUps: [],
+          objections: [],
+          momDrafts: [],
+          meddpiccDeltas: [],
+          tcDeltas: [],
+          arrLines: [],
+          dealSignals: [],
+        });
+        return () => {};
+      }
       const state = {
         postCall: null,
         scorecards: [],
@@ -858,6 +895,7 @@ export function createFirestoreStore(fb) {
     },
 
     async getDeal(id) {
+      if (isHistoryStubId(id)) return null;
       return getById("deals", id);
     },
 
@@ -869,6 +907,7 @@ export function createFirestoreStore(fb) {
      * attach"; without it SE-2 queries may permission-deny other owners' deals.
      */
     async listDealsByAccount(accountId, ownerId, opts = {}) {
+      if (isHistoryStubId(accountId)) return [];
       const fields = dealFields(!!opts.forSearch);
       const teamId = opts.teamId || null;
       // Coerce mistaken opts-as-ownerId objects from older call sites.
@@ -1079,6 +1118,7 @@ export function createFirestoreStore(fb) {
     },
 
     async getPostCall(id) {
+      if (isHistoryStubId(id)) return null;
       const snap = await getDoc(doc(db, "postCalls", id));
       if (!snap.exists()) return null;
       const row = { id: snap.id, ...snap.data() };
@@ -1092,6 +1132,7 @@ export function createFirestoreStore(fb) {
     },
 
     async _postCallForDetailLookup(callId) {
+      if (isHistoryStubId(callId)) return null;
       const snap = await getDoc(doc(db, "postCalls", callId));
       if (!snap.exists()) return null;
       const row = { id: snap.id, ...snap.data() };
@@ -1749,6 +1790,7 @@ export function createFirestoreStore(fb) {
     },
 
     async getTechnicalCommitByDeal(dealId) {
+      if (isHistoryStubId(dealId)) return null;
       const q = query(collection(db, "technicalCommits"), where("dealId", "==", dealId), limit(1));
       const snap = await getDocs(q);
       const row = snap.docs[0];

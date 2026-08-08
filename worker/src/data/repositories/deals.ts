@@ -5,10 +5,12 @@
 import { cachedQuery } from "../cache";
 import { getDoc, queryBy, type FirestoreDoc, type FirestoreEnv } from "../firestore-admin";
 import { DEAL_LIST_FIELDS } from "../field-masks";
+import { isHistoryStubId } from "../history-stub";
 
 const COL = "deals";
 
 export async function getDeal(id: string, env?: FirestoreEnv): Promise<FirestoreDoc | null> {
+  if (isHistoryStubId(id)) return null;
   return getDoc(COL, id, env);
 }
 
@@ -38,6 +40,7 @@ export async function listDealsByAccount(
   ownerId?: string,
   env?: FirestoreEnv,
 ): Promise<FirestoreDoc[]> {
+  if (isHistoryStubId(accountId)) return [];
   const filters = [{ field: "accountId", op: "==" as const, value: accountId }];
   if (ownerId) filters.push({ field: "ownerId", op: "==", value: ownerId });
   return cachedQuery(COL, { listByAccount: accountId, ownerId: ownerId || null }, () =>
@@ -114,6 +117,7 @@ export async function getTechnicalCommitByDeal(
   dealId: string,
   env?: FirestoreEnv,
 ): Promise<FirestoreDoc | null> {
+  if (isHistoryStubId(dealId)) return null;
   const rows = await cachedQuery("technicalCommits", { dealId }, () =>
     queryBy("technicalCommits", [{ field: "dealId", op: "==", value: dealId }], undefined, 1, env),
   );

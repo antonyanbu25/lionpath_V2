@@ -5,6 +5,8 @@
 import { createFirestoreStore } from "./firestore-store.js";
 import { isHistoryStubId } from "./safe-store.js";
 
+export { isHistoryStubId } from "./safe-store.js";
+
 const DETAIL_TTL_MS = 30_000;
 const DETAIL_MAX_ENTRIES = 64;
 const DEALS_LIST_TTL_MS = 30_000;
@@ -151,6 +153,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   async function loadCallDetail(id) {
     warnDeprecatedReadPath("getPostCallDetail");
     const key = String(id || "");
+    if (isHistoryStubId(key)) return { postCall: null };
     const cached = peekDetail(callDetailCache, key);
     if (cached) return cached;
     try {
@@ -249,6 +252,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async getPostCall(id) {
+      if (isHistoryStubId(id)) return null;
       const detail = await loadCallDetail(id);
       return detail?.postCall || null;
     },
@@ -357,6 +361,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listDealsByAccount(accountId, ownerId, opts = {}) {
+      if (isHistoryStubId(accountId)) return [];
       // Intake attach: account-scoped deals via client Firestore (global on account, not owner-only).
       if (firestoreDelegate.listDealsByAccount) {
         return firestoreDelegate.listDealsByAccount(accountId, ownerId, opts);
@@ -454,56 +459,67 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listScorecardsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.scorecards || [];
     },
 
     async listVideoFactsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.videoFacts || [];
     },
 
     async listTimelineSegmentsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.timelineSegments || [];
     },
 
     async listTimelineMarkersByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.timelineMarkers || [];
     },
 
     async listFollowUpsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.followUps || [];
     },
 
     async listObjectionsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.objections || [];
     },
 
     async listMomDraftsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.momDrafts || [];
     },
 
     async listMeddpiccDeltasByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.meddpiccDeltas || [];
     },
 
     async listTcDeltasByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.tcDeltas || [];
     },
 
     async listArrLinesByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.arrLines || [];
     },
 
     async listDealSignalsByCall(callId) {
+      if (isHistoryStubId(callId)) return [];
       const detail = await loadCallDetail(callId);
       return detail?.dealSignals || [];
     },
