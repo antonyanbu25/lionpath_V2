@@ -2993,22 +2993,28 @@ export async function renderCallView(container, session, opts = {}) {
     void hidePrepGenOverlay();
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-    void loadCallBundle(activeSession, resolvedRecord)
-      .then(async (bundle) => {
-        if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+    const sourceSnapshot = JSON.stringify(resolvedRecord);
+    try {
+      const bundle = await loadCallBundle(activeSession, resolvedRecord);
+      if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-        const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
-        if (freshRecord.id !== targetCallId) return;
+      const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
+      if (freshRecord.id !== targetCallId) return;
 
-        const freshHydration = resolveRecordHydration(freshRecord);
-        await hidePrepGenOverlay();
-        if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+      // Hydration may update local history while Firestore enrichment is in flight.
+      // Never replace that newer optimistic paint with a bundle computed from the
+      // older record. app.js keeps this promise in its in-flight coalescer and will
+      // immediately render the queued fresh record after this invocation settles.
+      if (JSON.stringify(freshRecord) !== sourceSnapshot) return;
 
-        paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
-      })
-      .catch((err) => {
-        console.warn("[call-view] call enrichment failed:", err);
-      });
+      const freshHydration = resolveRecordHydration(freshRecord);
+      await hidePrepGenOverlay();
+      if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+
+      paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
+    } catch (err) {
+      console.warn("[call-view] call enrichment failed:", err);
+    }
   } catch (err) {
     if (!canApply()) return;
     console.error("[call-view] failed to render call:", err);

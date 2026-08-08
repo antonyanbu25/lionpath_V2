@@ -14,16 +14,6 @@ function formatCount(value, decimals) {
   return String(Math.round(n * 10 ** decimals) / 10 ** decimals);
 }
 
-function randomScrambleDigits(target, decimals) {
-  const base = Math.max(10000, Math.floor(Math.abs(Number(target) || 0) * 1000) + 10000);
-  const jitter = Math.floor(Math.random() * 9000);
-  const raw = base + jitter;
-  if (decimals <= 0) return String(raw);
-  const whole = Math.floor(raw / 100);
-  const frac = raw % 100;
-  return `${whole}.${String(frac).padStart(2, "0").slice(0, decimals)}`;
-}
-
 function animateCountUp(el, duration = 720) {
   const target = parseFloat(el.dataset.countTo || "");
   if (!Number.isFinite(target)) return;
@@ -36,21 +26,11 @@ function animateCountUp(el, duration = 720) {
   }
 
   const start = performance.now();
-  const scrambleMs = Math.min(220, duration * 0.28);
-  el.textContent = randomScrambleDigits(target, decimals);
+  el.textContent = formatCount(0, decimals);
   el.classList.add("call-count-up--active");
 
   function tick(now) {
-    const elapsed = now - start;
-    if (elapsed < scrambleMs) {
-      if (Math.floor(elapsed / 45) % 2 === 0) {
-        el.textContent = randomScrambleDigits(target, decimals);
-      }
-      requestAnimationFrame(tick);
-      return;
-    }
-
-    const t = Math.min(1, (elapsed - scrambleMs) / (duration - scrambleMs));
+    const t = Math.min(1, (now - start) / duration);
     const eased = 1 - (1 - t) ** 3;
     const current = target * eased;
     el.textContent = formatCount(current, decimals);

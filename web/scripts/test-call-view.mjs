@@ -1,7 +1,7 @@
 /**
  * Smoke tests — call record view renders from local history without Firestore profile.
  */
-import { initDomainStore } from "../domain/store.js";
+import { getStore, initDomainStore } from "../domain/store.js";
 import { savePostCallAnalysis, getPostCallAnalysis } from "../history.js";
 import { renderCallView } from "../call-view.js";
 import {
@@ -168,6 +168,32 @@ assert(
   !container.innerHTML.includes("We could not load your profile"),
   "must not show profile gate error",
 );
+
+// The optimistic local paint must be immediate, but the returned promise must
+// stay pending until background enrichment finishes. app.js uses that promise
+// to coalesce hydration-triggered refreshes; resolving early permits concurrent
+// stale enrichments to replace newer call data and restart every animation.
+const domainStore = getStore();
+const originalGetCall = domainStore.getCall;
+let releaseGetCall;
+domainStore.getCall = () => new Promise((resolve) => {
+  releaseGetCall = () => resolve(null);
+});
+const trackedContainer = { innerHTML: "" };
+Object.defineProperty(trackedContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(trackedContainer, "querySelectorAll", { value: () => [], configurable: true });
+let trackedRenderSettled = false;
+const trackedRender = renderCallView(trackedContainer, firebaseSession, { callId })
+  .then(() => { trackedRenderSettled = true; });
+for (let i = 0; i < 20 && !releaseGetCall; i += 1) await Promise.resolve();
+await new Promise((resolve) => setTimeout(resolve, 0));
+const settledBeforeEnrichment = trackedRenderSettled;
+const paintedBeforeEnrichment = trackedContainer.innerHTML.includes("Acme · Demo");
+releaseGetCall?.();
+await trackedRender;
+domainStore.getCall = originalGetCall;
+assert(paintedBeforeEnrichment, "optimistic call content paints before enrichment finishes");
+assert(!settledBeforeEnrichment, "render promise tracks enrichment for refresh coalescing");
 
 const camSaved = await savePostCallAnalysis(
   email,
