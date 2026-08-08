@@ -3265,6 +3265,34 @@ export async function renderCallView(container, session, opts = {}) {
     void hidePrepGenOverlay();
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
+    // Deal-level TC lives in the store (Firestore). Fetch it immediately so the
+    // first paint is not stuck showing no technical commit when one exists.
+    const dealId = resolveDealId(resolvedRecord);
+    if (dealId) {
+      try {
+        const store = getStore();
+        const mergedTc = await resolveMergedTechnicalCommit(
+          activeSession.email,
+          dealId,
+          resolvedRecord,
+          store,
+          localBundle.technicalCommit,
+        );
+        if (canApply() && callRecordMatches(container, targetCallId) && mergedTc) {
+          paintCallRecord(
+            container,
+            activeSession,
+            { ...localBundle, technicalCommit: mergedTc },
+            coachAudience,
+            localHydration,
+            opts,
+          );
+        }
+      } catch (err) {
+        console.warn('[call-view] first-load TC enrich failed:', err);
+      }
+    }
+
     try {
       const bundle = await loadCallBundle(activeSession, resolvedRecord);
       if (!canApply() || !callRecordMatches(container, targetCallId)) return;
