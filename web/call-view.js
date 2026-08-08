@@ -484,10 +484,15 @@ function resolveCallNotes(record) {
 function resolveRecordHydration(record) {
   const h = record?.result?.hydration || {};
   const pending = Array.isArray(h.pending) ? h.pending : [];
+  const effectivePending = resolveEffectiveHydrationPending(record, pending);
+  let progressMessage = typeof h.progressMessage === "string" ? h.progressMessage : "";
+  if (progressMessage && effectivePending.length === 0) {
+    progressMessage = "";
+  }
   return {
-    pending: resolveEffectiveHydrationPending(record, pending),
+    pending: effectivePending,
     errors: h.errors && typeof h.errors === "object" ? h.errors : {},
-    progressMessage: typeof h.progressMessage === "string" ? h.progressMessage : "",
+    progressMessage,
   };
 }
 
