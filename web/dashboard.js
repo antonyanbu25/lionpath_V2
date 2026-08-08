@@ -1799,7 +1799,7 @@ function renderLaunchpadFallback(container, email, opts, err) {
   mountDashboardTasks(container, email, opts);
 }
 
-export async function renderSeLaunchpad(container, email, opts = {}) {
+async function renderSeLaunchpadOnce(container, email, opts = {}) {
   const cached = readKpiSnapshot(email);
   const cachedMetrics = metricsFromKpiSnapshot(cached);
   const hasLocalData =
@@ -1892,7 +1892,34 @@ export async function renderSeLaunchpad(container, email, opts = {}) {
     globalThis.clearTimeout(watchdog);
   }
 
-  void refreshLaunchpadRemote(container, email, opts);
+  await refreshLaunchpadRemote(container, email, opts);
+}
+
+const launchpadRenderStates = new WeakMap();
+
+export function renderSeLaunchpad(container, email, opts = {}) {
+  let state = launchpadRenderStates.get(container);
+  if (!state) {
+    state = { inFlight: null, latest: null, queued: false };
+    launchpadRenderStates.set(container, state);
+  }
+
+  state.latest = { email, opts };
+  if (state.inFlight) {
+    state.queued = true;
+    return state.inFlight;
+  }
+
+  state.inFlight = (async () => {
+    do {
+      state.queued = false;
+      const latest = state.latest;
+      await renderSeLaunchpadOnce(container, latest.email, latest.opts);
+    } while (state.queued);
+  })().finally(() => {
+    state.inFlight = null;
+  });
+  return state.inFlight;
 }
 
 async function resolveEmailToUidMap(store, session, seEmails, isOrgView) {

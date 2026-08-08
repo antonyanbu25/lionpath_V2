@@ -481,6 +481,21 @@ function resolveCallNotes(record) {
   return typeof fromSummarise === "string" ? fromSummarise.trim() : "";
 }
 
+function hasRealTechnicalCommit(technicalCommit) {
+  if (!technicalCommit || typeof technicalCommit !== "object") return false;
+  const status = String(technicalCommit.status || "").trim().toLowerCase();
+  if (status && status !== "pending") return true;
+  return [
+    "incumbent",
+    "competitor",
+    "identifiedRisk",
+    "timelineForClosure",
+    "reasonForEvaluation",
+    "aiAttach",
+    "justification",
+  ].some((key) => String(technicalCommit[key] ?? "").trim());
+}
+
 function resolveRecordHydration(record) {
   const h = record?.result?.hydration || {};
   const pending = Array.isArray(h.pending) ? h.pending : [];
@@ -508,15 +523,19 @@ export function resolveEffectiveHydrationPending(record, pendingKeys) {
     result.arrCompute?.arrPoint != null || result.arrCompute?.arrEstimatePoint != null;
   const hasGaps =
     (pass6?.productGaps?.length || 0) > 0 || (pass6?.whatWorks?.length || 0) > 0;
+  const completedLookups = new Set(record?.callViewHydrationCompleted || []);
 
   return pending.filter((key) => {
     switch (key) {
       case "qualify":
         return !result.qualification;
       case "summarise":
-        return !String(summarise.callNotes || analysis.callNotes || "").trim();
+        return (
+          !String(summarise.callNotes || analysis.callNotes || "").trim() &&
+          !completedLookups.has("summarise")
+        );
       case "commit":
-        return !result.technicalCommit;
+        return !hasRealTechnicalCommit(result.technicalCommit) && !completedLookups.has("commit");
       case "arr":
         return !hasArr;
       case "gaps":
@@ -2425,12 +2444,12 @@ async function loadCallBundle(session, record) {
   if (dealId) {
     const [loadedDeal, tcFromStore] = await Promise.all([
       safeEnrich("getDeal", () => getDeal(dealId), null),
-      !technicalCommit && store.getTechnicalCommitByDeal
+      !hasRealTechnicalCommit(technicalCommit) && store.getTechnicalCommitByDeal
         ? safeEnrich("getTechnicalCommitByDeal", () => store.getTechnicalCommitByDeal(dealId), null)
         : Promise.resolve(null),
     ]);
     deal = loadedDeal;
-    if (!technicalCommit) technicalCommit = tcFromStore;
+    if (hasRealTechnicalCommit(tcFromStore)) technicalCommit = tcFromStore;
     if (deal?.accountId && store.getAccount) {
       account = await safeEnrich("getAccount", () => store.getAccount(deal.accountId), null);
     }
@@ -2635,7 +2654,14 @@ async function loadCallBundle(session, record) {
     }),
     hasVideo: resolveVideoAvailable(record),
     kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
-    callNotes: resolveCallNotes(latestRecord),
+    callNotes:
+      resolveCallNotes(latestRecord) ||
+      String(
+        detail.callNotes ||
+          detail.analysis?.callNotes ||
+          domainCall?.analysis?.callNotes ||
+          "",
+      ).trim(),
     identities,
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
@@ -2649,6 +2675,7 @@ async function loadCallBundle(session, record) {
     momDraft,
     dealSignal,
     stakeholderRows,
+    hydrationCompleted: ["summarise", "commit"],
   };
 }
 
@@ -2935,6 +2962,26 @@ function paintCallRecord(container, session, bundle, coachAudience, hydration, o
   wireCallSpine(container);
 }
 
+function mergeEnrichedRecord(record, bundle) {
+  const result = record?.result || {};
+  const analysis = record?.analysis || result.analysis || {};
+  const mergedAnalysis = bundle.callNotes
+    ? { ...analysis, callNotes: bundle.callNotes }
+    : analysis;
+  return {
+    ...record,
+    analysis: mergedAnalysis,
+    result: {
+      ...result,
+      analysis: mergedAnalysis,
+      ...(hasRealTechnicalCommit(bundle.technicalCommit)
+        ? { technicalCommit: bundle.technicalCommit }
+        : {}),
+    },
+    callViewHydrationCompleted: bundle.hydrationCompleted || [],
+  };
+}
+
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallView(container, session, opts = {}) {
   const targetCallId = opts.callId;
@@ -2993,7 +3040,6 @@ export async function renderCallView(container, session, opts = {}) {
     void hidePrepGenOverlay();
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-    const sourceSnapshot = JSON.stringify(resolvedRecord);
     try {
       const bundle = await loadCallBundle(activeSession, resolvedRecord);
       if (!canApply() || !callRecordMatches(container, targetCallId)) return;
@@ -3001,17 +3047,13 @@ export async function renderCallView(container, session, opts = {}) {
       const freshRecord = getPostCallAnalysis(ownerEmail, targetCallId) || resolvedRecord;
       if (freshRecord.id !== targetCallId) return;
 
-      // Hydration may update local history while Firestore enrichment is in flight.
-      // Never replace that newer optimistic paint with a bundle computed from the
-      // older record. app.js keeps this promise in its in-flight coalescer and will
-      // immediately render the queued fresh record after this invocation settles.
-      if (JSON.stringify(freshRecord) !== sourceSnapshot) return;
-
-      const freshHydration = resolveRecordHydration(freshRecord);
+      const enrichedRecord = mergeEnrichedRecord(freshRecord, bundle);
+      const enrichedBundle = { ...bundle, record: enrichedRecord };
+      const freshHydration = resolveRecordHydration(enrichedRecord);
       await hidePrepGenOverlay();
       if (!canApply() || !callRecordMatches(container, targetCallId)) return;
 
-      paintCallRecord(container, activeSession, bundle, coachAudience, freshHydration, opts);
+      paintCallRecord(container, activeSession, enrichedBundle, coachAudience, freshHydration, opts);
     } catch (err) {
       console.warn("[call-view] call enrichment failed:", err);
     }

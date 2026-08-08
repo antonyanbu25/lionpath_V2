@@ -195,6 +195,50 @@ domainStore.getCall = originalGetCall;
 assert(paintedBeforeEnrichment, "optimistic call content paints before enrichment finishes");
 assert(!settledBeforeEnrichment, "render promise tracks enrichment for refresh coalescing");
 
+// BUG-A regression: local history mutating DURING Firestore enrichment (the postcall
+// pipeline writes summarise/technicalCommit) must NOT discard the enriched paint. The
+// enriched bundle's Firestore-only fields (technicalCommit, callNotes) must be merged
+// onto the freshest local record, not dropped by a content-snapshot staleness guard.
+const mergeSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/merge-test" },
+  {
+    analysis: {
+      callHeader: { title: "MergeCo · Demo", duration: "20 min" },
+    },
+    result: { hydration: { pending: ["commit", "summarise"], progressMessage: "Summarising next steps…" } },
+  },
+);
+// Firestore getCall returns an enriched detail (technicalCommit + callNotes) that the
+// local optimistic record does not yet have — the exact scenario that used to flicker.
+const mergeStore = getStore();
+const origMergeGetCall = mergeStore.getCall;
+mergeStore.getCall = async () => ({
+  id: mergeSaved.id,
+  detail: {
+    technicalCommit: {
+      status: "identified",
+      competitor: { value: "Legacy Inc" },
+      incumbent: { value: "In-house" },
+    },
+    callNotes: "- Firestore note A.\n- Firestore note B.",
+  },
+});
+const mergeContainer = { innerHTML: "" };
+Object.defineProperty(mergeContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(mergeContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(mergeContainer, firebaseSession, { callId: mergeSaved.id });
+mergeStore.getCall = origMergeGetCall;
+assert(
+  mergeContainer.innerHTML.includes("Firestore note A"),
+  "enriched Firestore callNotes merged onto local record despite concurrent local mutation",
+);
+assert(
+  mergeContainer.innerHTML.includes("Legacy Inc"),
+  "enriched Firestore technicalCommit (competitor) rendered after merge",
+);
+
+
 const camSaved = await savePostCallAnalysis(
   email,
   {
