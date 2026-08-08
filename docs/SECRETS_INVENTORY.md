@@ -32,7 +32,7 @@ is in use (except for firebase-config-local on Cloud Run builds).
 ## Known issues
 
 1. **FRESHDESK_API_KEY is committed in deploy/vps/.env.example** (line 79:
-   `FRESHDESK_API_KEY=P4Xy8c0VRb4Ld2aXmO9b`). This is a real API key committed to the
+   `FRESHDESK_API_KEY=<REDACTED>`). This is a real API key committed to the
    repo. ACTION: rotate this key in Freshdesk, replace the .env.example line with a
    placeholder, and update the real VPS .env with the new key. This is a separate
    remediation task — flag it to the team immediately.
