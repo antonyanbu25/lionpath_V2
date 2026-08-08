@@ -588,7 +588,7 @@ export function resolveEffectiveHydrationPending(record, pendingKeys) {
       case "arr":
         return !hasArr;
       case "gaps":
-        return !hasGaps;
+        return !hasGaps && !completedLookups.has("gaps");
       default:
         return true;
     }
@@ -2907,7 +2907,7 @@ async function loadCallBundle(session, record) {
     momDraft,
     dealSignal,
     stakeholderRows,
-    hydrationCompleted: ["summarise", "commit"],
+    hydrationCompleted: ["summarise", "commit", "gaps"],
   };
 }
 
