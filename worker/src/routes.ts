@@ -1270,23 +1270,6 @@ export async function handleTicketsPost(
       attachment,
     });
 
-    // Best-effort: mirror feedback into HISTORY_KV / file store when available.
-    if (kind === "feedback" && feedbackStorageAvailable(env)) {
-      try {
-        const entry: FeedbackEntry = {
-          id: crypto.randomUUID(),
-          category: normalizeFeedbackCategory(String(category || "Idea")),
-          message: descriptionText.slice(0, 4000),
-          page: fields.page || undefined,
-          email,
-          createdAt: Date.now(),
-        };
-        await appendFeedback(env, email, entry);
-      } catch (err) {
-        console.warn("[tickets] local feedback mirror failed:", (err as Error).message || err);
-      }
-    }
-
     return json(
       {
         ok: true,

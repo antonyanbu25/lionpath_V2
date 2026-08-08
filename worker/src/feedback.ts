@@ -181,13 +181,6 @@ export async function appendFeedback(
   const merged = [withEmail, ...list.filter((e) => e.id !== withEmail.id)].slice(0, MAX_FEEDBACK);
   await backend.put(feedbackKey(email), JSON.stringify(merged));
   await appendGlobal(env, withEmail);
-  const ticket = await createJanusTicket(env, withEmail);
-  withEmail.ticketId = ticket.ticketId;
-  withEmail.ticketError = ticket.error;
-  entry.ticketId = ticket.ticketId;
-  entry.ticketError = ticket.error;
-  await backend.put(feedbackKey(email), JSON.stringify(merged));
-  await appendGlobal(env, withEmail);
   return merged;
 }
 

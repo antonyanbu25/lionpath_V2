@@ -88,9 +88,10 @@ function updateQueuedEntry(id, patch) {
 }
 
 function markSynced(id, data) {
+  const ticketId = data?.ticketId ?? data?.freshdeskTicketId;
   updateQueuedEntry(id, {
     synced: true,
-    ticketId: data?.ticketId ?? data?.freshdeskTicketId ?? null,
+    ...(ticketId ? { ticketId } : {}),
   });
 }
 
