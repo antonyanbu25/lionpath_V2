@@ -2075,12 +2075,45 @@ function renderTimelineSpine(segments, markers) {
   </ol>`;
 }
 
+function deriveTimelineSegmentsFromVideoFacts(videoFacts) {
+  const facts = Array.isArray(videoFacts) ? videoFacts[0] : videoFacts;
+  if (!facts || typeof facts !== "object") return [];
+  const candidates = [
+    facts.segments,
+    facts.timelineSegments,
+    facts.chapters,
+    facts.topics,
+    facts.scenes,
+  ].find((rows) => Array.isArray(rows) && rows.length);
+  if (!candidates) return [];
+  return candidates
+    .map((row, index) => {
+      const startS = Number(row.startS ?? row.startSec ?? row.start ?? row.start_time ?? row.startTime ?? 0);
+      const endRaw = row.endS ?? row.endSec ?? row.end ?? row.end_time ?? row.endTime;
+      const endS = Number(endRaw);
+      const label = row.topic || row.title || row.label || row.name || row.summary || `Segment ${index + 1}`;
+      if (!Number.isFinite(startS) || !Number.isFinite(endS) || endS <= startS) return null;
+      return {
+        id: row.id || `video-facts-${index}`,
+        startS,
+        endS,
+        label,
+        segmentType: row.segmentType || row.type || "product",
+        source: "video",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.startS - b.startS);
+}
+
 /**
  * Two possible spines, never mixed: Pass 2 screen-share segments, or conversation phases
  * derived from transcript timestamps. The transcript spine is display evidence only.
  */
 export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = {}) {
-  const all = timeline?.segments || [];
+  const all = timeline?.segments?.length
+    ? timeline.segments
+    : deriveTimelineSegmentsFromVideoFacts(timeline?.facts);
   const allMarkers = normalizeTimelineMarkers(timeline?.markers).sort((a, b) => a.atS - b.atS);
   const markers = timelineDisplayMarkers(allMarkers);
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
