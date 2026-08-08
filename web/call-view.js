@@ -2980,10 +2980,15 @@ export async function renderCallView(container, session, opts = {}) {
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
-    container.innerHTML = renderCallLoadingShell(resolvedRecord);
+    const renderedCall = container.querySelector?.(".call-record[data-call-id]");
+    const isSameRenderedCall =
+      renderedCall?.getAttribute("data-call-id") === targetCallId;
+    if (!isSameRenderedCall) {
+      container.innerHTML = renderCallLoadingShell(resolvedRecord);
+      wireCallSpine(container);
+      wireCallViewAnimations(container);
+    }
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
-    wireCallSpine(container);
-    wireCallViewAnimations(container);
 
     const bundle = await loadCallBundle(activeSession, resolvedRecord);
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
