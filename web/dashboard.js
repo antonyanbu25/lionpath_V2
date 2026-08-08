@@ -67,6 +67,22 @@ const DIMENSION_ORDER = [
   "talkbalance",
 ];
 
+let __recentActivityRenderScheduled = false;
+let __recentActivityRenderArgs = null;
+
+function scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts = {}) {
+  __recentActivityRenderArgs = { container, callRecords, usesLegacyCoach, opts };
+  if (__recentActivityRenderScheduled) return;
+  __recentActivityRenderScheduled = true;
+  queueMicrotask(() => {
+    __recentActivityRenderScheduled = false;
+    const args = __recentActivityRenderArgs;
+    __recentActivityRenderArgs = null;
+    if (!args?.container?.isConnected) return;
+    void updateRecentActivitySection(args.container, args.callRecords, args.usesLegacyCoach, args.opts);
+  });
+}
+
 function sortDimensions(dimensions) {
   return [...dimensions].sort((a, b) => {
     const ia = DIMENSION_ORDER.indexOf(normalizeDimensionKey(a.name));
@@ -1337,12 +1353,17 @@ function patchLaunchKpiValue(container, stat, value) {
   if (!el) return false;
   const next = String(value);
   const syncing = el.querySelector(".launch-kpi-syncing");
+  const setValue = () => {
+    const syncingClone = syncing?.cloneNode(true) || null;
+    el.textContent = next;
+    if (syncingClone) el.appendChild(syncingClone);
+  };
   if (el.classList.contains("launch-kpi-value--pending")) {
     el.classList.remove("launch-kpi-value--pending");
     el.removeAttribute("aria-busy");
-    el.innerHTML = syncing ? `${next}${syncing.outerHTML}` : next;
+    setValue();
   } else if (el.textContent.replace(/\s*↻\s*/g, "").trim() !== next) {
-    el.innerHTML = syncing ? `${next}${syncing.outerHTML}` : next;
+    setValue();
   } else {
     return false;
   }
@@ -1372,7 +1393,7 @@ async function applyRemoteBriefsToLaunchpad(container, email, opts, remoteBriefs
   patchLaunchKpiValue(container, "preps", prepsCount);
   const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
-  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, {
+  scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, {
     ...opts,
     fetchAllRemotePreps: async () => remoteBriefs || [],
   });
@@ -1405,7 +1426,7 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
     patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount);
   }
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
-  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
+  scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts);
   if (!container.isConnected) return;
   writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
 }
@@ -1515,8 +1536,6 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
       };
     }
 
-    const refreshedActivity = await buildRecentActivity(remoteRecords, remoteMetrics.usesLegacyCoach, opts);
-    if (!container.isConnected) return;
     const taskMetrics = aggregateTaskMetrics(listTasks(email));
     const prepsCount =
       remotePreps ??
@@ -1525,21 +1544,9 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
           .querySelector('.launch-kpi-value[data-stat="preps"]')
           ?.textContent?.replace(/\s*↻\s*/g, "")
           .trim() || 0,
-      );
+    );
     patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
-    const section = container.querySelector(".dash-side-recent");
-    if (section) {
-      const signature = recentActivitySignature(refreshedActivity);
-      if (section.dataset.activitySignature !== signature) {
-        section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
-        const newSection = container.querySelector(".dash-side-recent");
-        if (newSection) {
-          wireRecentActivitySection(newSection, opts);
-          wireCallLinks(newSection, opts.onOpenCall);
-        }
-      }
-    }
-    wireCallLinks(container, opts.onOpenCall);
+    scheduleRecentActivityRender(container, remoteRecords, remoteMetrics.usesLegacyCoach, opts);
     writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, prepsCount));
   } catch (err) {
     console.warn("[dashboard] remote refresh failed:", err?.message || err);
@@ -1682,12 +1689,14 @@ function buildRecentActivityLocal(callRecords, usesLegacyCoach = false, briefs =
     .slice(0, 12)
     .map((rec) => ({
       kind: "call",
+      id: rec.id,
       ts: rec.timestamp || 0,
       html: renderRecentActivityRow(recentCallForActivity(rec), usesLegacyCoach),
     }));
 
   const briefItems = briefs.slice(0, 12).map((b) => ({
     kind: "brief",
+    id: b.id,
     ts: briefTimestamp(b),
     html: renderRecentBriefRow(b),
   }));
@@ -1713,6 +1722,25 @@ async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = 
   return buildRecentActivityLocal(callRecords, usesLegacyCoach, briefs);
 }
 
+function recentActivityRowId(item) {
+  return `${item.kind}:${item.id || item.ts || ""}`;
+}
+
+function recentActivityRowSignature(item) {
+  let hash = 2166136261;
+  const value = `${item.kind}:${item.id || ""}:${item.ts || 0}:${item.html}`;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${hash >>> 0}`;
+}
+
+function renderRecentActivityItem(item) {
+  const attrs = ` data-row-id="${esc(recentActivityRowId(item))}" data-sig="${esc(recentActivityRowSignature(item))}"`;
+  return item.html.replace('<button type="button"', `<button type="button"${attrs}`);
+}
+
 function renderRecentCallsSideWithItems(items, opts = {}) {
   const signature = recentActivitySignature(items);
   if (!items.length) {
@@ -1727,7 +1755,7 @@ function renderRecentCallsSideWithItems(items, opts = {}) {
       </section>`;
   }
 
-  const rows = items.map((i) => i.html).join("");
+  const rows = items.map((i) => renderRecentActivityItem(i)).join("");
 
   return `
     <section class="dash-section launch-side dash-side-recent" data-activity-signature="${signature}" aria-labelledby="recent-heading">
@@ -1769,14 +1797,26 @@ function mountDashboardTasks(container, email, opts = {}) {
 }
 
 function wireRecentActivitySection(container, opts = {}) {
-  container.querySelectorAll(".dash-brief-link").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.briefId;
-      if (id) opts.onOpenBrief?.(id);
-    });
-  });
-  container.querySelector('[data-action="view-all-activity"]')?.addEventListener("click", () => {
-    opts.onOpenCalls?.();
+  container._recentActivityOpts = opts;
+  if (typeof container.addEventListener !== "function") return;
+  if (container.dataset.recentActivityWired === "true") return;
+  container.dataset.recentActivityWired = "true";
+  container.addEventListener("click", (event) => {
+    const activeOpts = container._recentActivityOpts || {};
+    const viewAll = event.target.closest?.('[data-action="view-all-activity"]');
+    if (viewAll) {
+      activeOpts.onOpenCalls?.();
+      return;
+    }
+    const brief = event.target.closest?.(".dash-brief-link");
+    if (brief?.dataset.briefId) {
+      activeOpts.onOpenBrief?.(brief.dataset.briefId);
+      return;
+    }
+    const call = event.target.closest?.(".dash-call-link");
+    if (call?.dataset.callId) {
+      activeOpts.onOpenCall?.(call.dataset.callId);
+    }
   });
 }
 
@@ -1784,11 +1824,81 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   const section = container.querySelector(".dash-side-recent");
   if (!section) return;
   const items = await buildRecentActivity(callRecords, usesLegacyCoach, opts);
-  section.outerHTML = renderRecentCallsSideWithItems(items, { onViewAll: true });
-  const newSection = container.querySelector(".dash-side-recent");
-  if (!newSection) return;
-  wireRecentActivitySection(newSection, opts);
-  wireCallLinks(newSection, opts.onOpenCall);
+  if (!section.isConnected) return;
+  wireRecentActivitySection(section, opts);
+  const signature = recentActivitySignature(items);
+  section.dataset.activitySignature = signature;
+
+  const card = section.querySelector(".launch-activity-card");
+  const head = section.querySelector(".launch-activity-head");
+  if (!card || !head) return;
+
+  let viewAll = head.querySelector('[data-action="view-all-activity"]');
+  if (items.length && !viewAll) {
+    viewAll = document.createElement("button");
+    viewAll.type = "button";
+    viewAll.className = "launch-activity-viewall";
+    viewAll.dataset.action = "view-all-activity";
+    viewAll.textContent = "View all";
+    head.appendChild(viewAll);
+  } else if (!items.length && viewAll) {
+    viewAll.remove();
+  }
+
+  let empty = card.querySelector(".dash-side-empty");
+  if (!items.length) {
+    card.querySelectorAll(".launch-activity-row[data-row-id]").forEach((row) => row.remove());
+    if (!empty) {
+      empty = document.createElement("p");
+      empty.className = "muted dash-side-empty";
+      empty.style.padding = "20px 22px";
+      card.appendChild(empty);
+    }
+    empty.textContent = "Generate a brief or analyze a recording to see activity here.";
+    empty.hidden = false;
+    return;
+  }
+  if (empty) empty.hidden = true;
+
+  const existing = new Map();
+  card.querySelectorAll(".launch-activity-row[data-row-id]").forEach((row) => {
+    existing.set(row.dataset.rowId, row);
+  });
+
+  let cursor = head.nextElementSibling;
+  for (const item of items) {
+    const rowId = recentActivityRowId(item);
+    const sig = recentActivityRowSignature(item);
+    const current = existing.get(rowId);
+    let row = current;
+    if (!row || row.dataset.sig !== sig) {
+      const template = document.createElement("template");
+      template.innerHTML = renderRecentActivityItem(item).trim();
+      const nextRow = template.content.firstElementChild;
+      if (!nextRow) continue;
+      if (row) {
+        const wasCursor = row === cursor;
+        row.replaceWith(nextRow);
+        row = nextRow;
+        if (wasCursor) cursor = row.nextElementSibling;
+      } else {
+        card.insertBefore(nextRow, cursor);
+        row = nextRow;
+        existing.delete(rowId);
+        cursor = row.nextElementSibling;
+        continue;
+      }
+    }
+    existing.delete(rowId);
+    if (row !== cursor) {
+      card.insertBefore(row, cursor);
+    }
+    cursor = row.nextElementSibling;
+  }
+
+  for (const row of existing.values()) {
+    row.remove();
+  }
 }
 
 async function updateLaunchKpis(container, email, opts = {}) {
@@ -1802,12 +1912,15 @@ async function updateLaunchKpis(container, email, opts = {}) {
     if (typeof opts.subscribeRemotePreps === "function") {
       patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount);
     } else {
-      grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
+      const template = document.createElement("template");
+      template.innerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount).trim();
+      const nextGrid = template.content.firstElementChild;
+      if (nextGrid) grid.replaceWith(nextGrid);
       wireLaunchKpiNav(container, email, opts);
     }
   }
   writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
-  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
+  scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts);
 }
 
 function wireLaunchKpiNav(container, email, opts = {}) {
