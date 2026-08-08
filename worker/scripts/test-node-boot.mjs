@@ -9,7 +9,7 @@ const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 const child = spawn(npx, ["tsx", "src/node-server.ts"], {
   cwd: workerRoot,
   shell: process.platform === "win32",
-  env: { ...process.env, GEMINI_API_KEY: "test-key", HOST: "127.0.0.1", PORT: "18788" },
+  env: { ...process.env, GEMINI_API_KEY: "test-key", HOST: "127.0.0.1", PORT: "18788", FIREBASE_PROJECT_ID: "", NODE_ENV: "development" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 

@@ -69,7 +69,17 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<Ve
 }
 
 export async function requireUser(request: Request, env: Env): Promise<VerifiedUser | null> {
-  if (!env.FIREBASE_PROJECT_ID) return null;
+  if (!env.FIREBASE_PROJECT_ID) {
+    // P0 SECURITY: dummy auth mode — client-claimed identity is trusted without
+    // Firebase token verification. This is only acceptable for local development.
+    // The boot guard in node-server.ts hard-fails if NODE_ENV=production.
+    console.warn(
+      "[auth] DUMMY MODE ACTIVE: FIREBASE_PROJECT_ID is not set. " +
+        "Client-claimed identity is trusted without verification. " +
+        "Do NOT use in production.",
+    );
+    return null;
+  }
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) throw Object.assign(new Error("Sign-in required."), { status: 401 });
@@ -105,6 +115,12 @@ export async function resolveHistoryEmail(
   return assertAllowedEmail(fallbackEmail || "", env);
 }
 
+/**
+ * Demo-mode-only manager check. Only reachable when FIREBASE_PROJECT_ID is unset
+ * (dummy auth mode). The boot guard in node-server.ts (buildEnv) hard-fails if
+ * NODE_ENV=production and FIREBASE_PROJECT_ID is empty, so this code path is
+ * unreachable in production. Kept for local dev convenience.
+ */
 function isDemoManagerEmail(email: string): boolean {
   const e = normalizeHistoryEmail(email);
   return e.startsWith("manager@") || /^ajay\.|^antony\.|^vipin\./.test(e.split("@")[0] || "");

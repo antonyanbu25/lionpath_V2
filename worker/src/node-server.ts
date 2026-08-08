@@ -71,6 +71,23 @@ function buildEnv(): NodeEnv {
     COST_ALERT_WEBHOOK_URL: process.env.COST_ALERT_WEBHOOK_URL || "",
   };
 
+  // --- P0 SECURITY: hard-fail boot if Firebase auth is not configured in production.
+  // When FIREBASE_PROJECT_ID is empty, requireUser() returns null (not an error),
+  // silently trusting client-claimed identity. This is acceptable ONLY for local dev.
+  {
+    const isProduction = (process.env.NODE_ENV || "").toLowerCase() === "production";
+    const firebaseProjectId = (env.FIREBASE_PROJECT_ID || "").trim();
+    if (isProduction && !firebaseProjectId) {
+      const msg =
+        "[worker] FATAL: FIREBASE_PROJECT_ID is not set in a production environment (NODE_ENV=production). " +
+        "Set FIREBASE_PROJECT_ID=se-singha-paathi in deploy/vps/.env or Cloud Run --set-env-vars, " +
+        "or run with NODE_ENV unset for local dev. Refusing to boot — dummy auth is a " +
+        "security hole in production (client-claimed identity is trusted without verification).";
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
   if (historyDir) {
     env.HISTORY_BACKEND = createFileHistoryBackend(historyDir);

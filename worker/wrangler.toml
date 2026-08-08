@@ -26,7 +26,7 @@ ALLOWED_ORIGINS = "http://localhost:8788,http://127.0.0.1:8788,https://portal.be
 ALLOWED_EMAIL_DOMAIN = "freshworks.com"
 # Firebase project id — used to verify ID tokens (audience/issuer check).
 # Must match web/firebase-config.local.js projectId. See docs/FIREBASE_SETUP.md.
-FIREBASE_PROJECT_ID = ""
+FIREBASE_PROJECT_ID = "se-singha-paathi"
 
 # Post-call history per SE email (survives incognito — reload on sign-in).
 # Create on deploy: wrangler kv namespace create HISTORY_KV
