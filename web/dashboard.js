@@ -1875,6 +1875,23 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     let taskMetrics = aggregateTaskMetrics(listTasks(email));
     let prepsCount = loadAllLocalBriefs().length;
 
+    // Force-reconcile Worker KV into local on first render so records that only
+    // exist in the Worker (not yet in Firestore postCalls) appear in the count,
+    // and deep fields (technicalCommit, summarise, arrCompute, pass6, etc.)
+    // that were stripped by the old merge bug are restored.
+    if (typeof opts.fetchRemoteHistory === "function" && callRecords.length > 0) {
+      try {
+        const synced = await opts.fetchRemoteHistory();
+        if (Array.isArray(synced) && synced.length) {
+          callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+          metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
+          launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+        }
+      } catch (err) {
+        console.warn("[dashboard] remote history sync failed:", err?.message || err);
+      }
+    }
+
     if (cachedMetrics) {
       if (!callRecords.length && cachedMetrics.launchCallMetrics.totalCalls > 0) {
         launchCallMetrics = { ...cachedMetrics.launchCallMetrics, records: callRecords };
