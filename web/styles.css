@@ -432,7 +432,7 @@ fw-inline-message .dew-orbit-spinner {
   justify-content: center;
   padding-left: 48px;
   background: var(--dew-text);
-  color: #fff;
+  color: var(--color-text-inverse);
   border: none;
   border-radius: 999px;
   font-weight: 600;
@@ -653,7 +653,7 @@ fw-inline-message .dew-orbit-spinner {
   height: 38px;
   border-radius: 10px;
   background: var(--dew-brand);
-  color: #fff;
+  color: var(--color-text-inverse);
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
@@ -1447,7 +1447,7 @@ fw-button.sidebar-history-item.active {
 .topbar-action--primary {
   border: none;
   background: var(--dew-brand);
-  color: #fff;
+  color: var(--color-text-inverse);
   box-shadow: 0 1px 2px rgba(43, 41, 38, 0.06);
 }
 .topbar-action--primary:hover {
@@ -1455,7 +1455,7 @@ fw-button.sidebar-history-item.active {
 }
 .topbar-action--secondary {
   border: 1px solid #cfe3de;
-  background: #fff;
+  background: var(--dew-surface);
   color: #2e897b;
 }
 .topbar-action--secondary:hover {
@@ -1466,7 +1466,7 @@ fw-button.sidebar-history-item.active {
   padding: 0;
   justify-content: center;
   border: 1px solid var(--dew-border);
-  background: #fff;
+  background: var(--dew-surface);
   color: var(--dew-text-secondary);
   position: relative;
 }
@@ -1512,7 +1512,7 @@ fw-button.sidebar-history-item.active {
   height: 40px;
   border-radius: 11px;
   background: var(--dew-brand);
-  color: #fff;
+  color: var(--color-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1919,7 +1919,7 @@ fw-button.sidebar-history-item.active {
 .omni-filter-chip.is-active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--color-text-inverse);
 }
 [data-theme="dark"] .omni-filter-chip.is-active {
   color: var(--dew-bg, #1a1a1a);
@@ -5769,7 +5769,7 @@ fw-card.about-section {
   align-items: start;
 }
 .org-structure-column {
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
   border: 1px solid var(--dew-input-border, #e2e8f0);
   border-radius: 10px;
   padding: 16px;
