@@ -21,7 +21,11 @@ const exec = spawnSync(
     "lionpath-rules-test",
     inner,
   ],
-  { cwd: rulesDir, shell: true, stdio: "inherit" },
+  // No shell: the inner command must reach `firebase emulators:exec` as ONE
+  // verbatim argument. With shell:true the args array is joined with spaces and
+  // the quotes around `inner` are lost, so the `&&` chain splits into separate
+  // args and firebase errors with "Too many arguments."
+  { cwd: rulesDir, stdio: "inherit" },
 );
 
 process.exit(exec.status ?? 1);
