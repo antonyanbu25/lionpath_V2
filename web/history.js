@@ -385,12 +385,37 @@ export function mergePostCallRecordsIntoLocal(email, remoteCalls) {
     const prevUpdated = prev?.updatedAt ? toEpochMs(prev.updatedAt) : 0;
     const newUpdated = call.updatedAt ? toEpochMs(call.updatedAt) : 0;
     if (prev && newUpdated <= prevUpdated && (prev.timestamp || 0) >= ts) continue;
+    const result = call.result == null
+      ? prev?.result
+      : {
+          ...call.result,
+          technicalCommit: call.result.technicalCommit ?? prev?.result?.technicalCommit,
+          tcDeltas: call.result.tcDeltas ?? prev?.result?.tcDeltas,
+          qualification: call.result.qualification ?? prev?.result?.qualification,
+          arrCompute: call.result.arrCompute ?? prev?.result?.arrCompute,
+          pass6: call.result.pass6 ?? prev?.result?.pass6,
+          videoFacts: call.result.videoFacts ?? prev?.result?.videoFacts,
+          timeline: call.result.timeline ?? prev?.result?.timeline,
+          summarise: call.result.summarise ?? prev?.result?.summarise,
+          meddpiccDeltas: call.result.meddpiccDeltas ?? prev?.result?.meddpiccDeltas,
+          scorecard: call.result.scorecard ?? prev?.result?.scorecard,
+        };
     byId.set(call.id, {
       ...(prev || {}),
       ...call,
       id: call.id,
       timestamp: ts,
       updatedAt: call.updatedAt || prev?.updatedAt || null,
+      ...(result != null ? { result } : {}),
+      transcriptMeta: call.transcriptMeta ?? prev?.transcriptMeta,
+      zoomLink: call.zoomLink ?? prev?.zoomLink,
+      dealId: call.dealId ?? prev?.dealId,
+      accountId: call.accountId ?? prev?.accountId,
+      createNewDeal: call.createNewDeal ?? prev?.createNewDeal,
+      newDealTitle: call.newDealTitle ?? prev?.newDealTitle,
+      newDealType: call.newDealType ?? prev?.newDealType,
+      confirmedIdentities: call.confirmedIdentities ?? prev?.confirmedIdentities,
+      createdByUserId: call.createdByUserId ?? prev?.createdByUserId,
     });
   }
   const merged = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));

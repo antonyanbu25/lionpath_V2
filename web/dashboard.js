@@ -1402,6 +1402,9 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   if (!container.isConnected) return;
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = loadAllLocalBriefs().length;
+  // Update tasks and briefs KPIs from the refreshed data
+  patchLaunchKpiValue(container, "open", taskMetrics.openTotal);
+  patchLaunchKpiValue(container, "preps", prepsCount);
   writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
 }
 
