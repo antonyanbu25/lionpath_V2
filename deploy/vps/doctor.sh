@@ -26,7 +26,7 @@ else
     echo "WARN: FRESHDESK_API_KEY missing or placeholder — Dispute/Feedback tickets will 503"
   fi
   if ! grep -qE '^FRESHDESK_DOMAIN=.+' .env 2>/dev/null; then
-    echo "WARN: FRESHDESK_DOMAIN missing — default is janus-assist.freshdesk.com if unset in code"
+    echo "WARN: FRESHDESK_DOMAIN missing — default is janus.freshdesk.com if unset in code"
   fi
 fi
 

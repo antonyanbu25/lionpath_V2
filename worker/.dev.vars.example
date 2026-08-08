@@ -2,16 +2,16 @@
 # Required for pre-call prep and post-call analysis locally.
 GEMINI_API_KEY=your-gemini-api-key-from-aistudio
 
-# Firebase auth — enable ONLY when web/firebase-config.local.js is present (Google SSO).
-# Omit or comment out for dummy-auth local dev so prep/post-call work without Bearer tokens.
-# Firestore scripts: FIREBASE_PROJECT_ID=your-project node worker/scripts/seed-firestore-users.mjs ...
+# Firebase project — Firestore admin + token verification (when auth enforced).
 # FIREBASE_PROJECT_ID=your-firebase-project-id
+# Dummy-auth local dev (no web/firebase-config.local.js): keep project id, disable Bearer checks:
+# FIREBASE_AUTH_ENFORCED=0
 
 # Optional — Apollo enrichment (Phase 2). Never commit real keys.
 # APOLLO_API_KEY=your-apollo-api-key
 
 # Freshdesk tickets (dispute score + product feedback). Never commit real keys.
-# FRESHDESK_DOMAIN=janus-assist.freshdesk.com
+# FRESHDESK_DOMAIN=janus.freshdesk.com
 # FRESHDESK_API_KEY=your-freshdesk-api-key
 
 # wrangler secret put APOLLO_API_KEY

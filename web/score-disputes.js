@@ -15,12 +15,13 @@ import { createSupportTicket } from "./support-tickets.js";
 
 export const STORAGE_KEY = "se-score-disputes";
 
+/** Labels match Janus Freshdesk `cf_issue_type` choices exactly. */
 const DISPUTE_CATEGORIES = [
   { value: "score_too_low", label: "Score too low" },
   { value: "score_too_high", label: "Score too high" },
   { value: "wrong_evidence", label: "Wrong evidence cited" },
-  { value: "missing_context", label: "Missing context" },
-  { value: "other", label: "Other" },
+  { value: "missing_context", label: "Missing Context" },
+  { value: "other", label: "Others" },
 ];
 
 /** Pick a sensible default issue type from the disputed grade/score. */
@@ -200,7 +201,7 @@ export function openScoreDisputeModal(ctx = {}) {
     ctx.grade != null ? ` · theme ${ctx.grade}/10` : ctx.score != null ? ` · scored ${ctx.score}/100` : "";
   const company = ctx.company ? `${ctx.company} · ` : "";
   if (intro) {
-    intro.textContent = `${company}${theme}${gradeBit}. This opens a Freshdesk ticket (Dispute of Score) for review.`;
+    intro.textContent = `${company}${theme}${gradeBit}. This opens a Freshdesk ticket (Dispute of score) for review.`;
   }
   if (note) note.value = "";
   if (cat) cat.value = defaultDisputeCategory(ctx);

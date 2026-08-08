@@ -22,6 +22,7 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
+  FIREBASE_AUTH_ENFORCED?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   INTERNAL_CRON_SECRET?: string;
   VIDEO_PASS_ENABLED?: string;
@@ -53,6 +54,7 @@ function buildEnv(): NodeEnv {
       "http://localhost:8788,http://127.0.0.1:8788,https://portal.benjaminsquare.com",
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
+    FIREBASE_AUTH_ENFORCED: process.env.FIREBASE_AUTH_ENFORCED || "",
     FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
     INTERNAL_CRON_SECRET: process.env.INTERNAL_CRON_SECRET || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
@@ -74,7 +76,7 @@ function buildEnv(): NodeEnv {
     EMAIL_PROVIDER_API_KEY: process.env.EMAIL_PROVIDER_API_KEY || "",
     DISPUTE_NOTIFY_FROM: process.env.DISPUTE_NOTIFY_FROM || "",
     FRESHDESK_API_KEY: process.env.FRESHDESK_API_KEY || "",
-    FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus-assist.freshdesk.com",
+    FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus.freshdesk.com",
   };
 
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();

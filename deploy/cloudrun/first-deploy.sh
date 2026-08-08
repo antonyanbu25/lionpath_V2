@@ -44,7 +44,7 @@ ALLOWED_EMAIL_DOMAIN=freshworks.com,\
 FIREBASE_PROJECT_ID=${PROJECT},\
 HISTORY_FILE_DIR=/data/history,\
 FFMPEG_MAX_CONCURRENT=2,\
-FRESHDESK_DOMAIN=janus-assist.freshdesk.com" \
+FRESHDESK_DOMAIN=janus.freshdesk.com" \
   --add-volume="name=history,type=cloud-storage,bucket=se-singha-paathi-prep-history" \
   --add-volume-mount="volume=history,mount-path=/data/history"
 

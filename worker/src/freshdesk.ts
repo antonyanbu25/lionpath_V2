@@ -2,9 +2,14 @@
  *
  * Env (server-side only — never expose to the browser):
  *   FRESHDESK_API_KEY   — API key (Basic auth username; password is "X")
- *   FRESHDESK_DOMAIN    — e.g. "janus-assist.freshdesk.com" or "janus-assist"
+ *   FRESHDESK_DOMAIN    — e.g. "janus.freshdesk.com" or "janus"
  *
  * Docs: https://developer.freshdesk.com/api/#create_ticket
+ *
+ * Janus ticket fields (verified via /api/v2/ticket_fields):
+ *   type → "Dispute of score" | "Feature Request" | …
+ *   custom_fields.cf_issue_type → Score too low | Score too high | …
+ *   custom_fields.cf_call_id, cf_page_context_hash, cf_area_of_the_product, …
  */
 
 export interface FreshdeskEnv {
@@ -12,17 +17,27 @@ export interface FreshdeskEnv {
   FRESHDESK_DOMAIN?: string;
 }
 
-/** Ticket Type choices configured on janus-assist.freshdesk.com */
+/** Ticket Type choices configured on janus.freshdesk.com */
 export const FRESHDESK_TICKET_TYPE = {
-  disputeScore: "Dispute of Score",
-  feedback: "Feedback",
+  disputeScore: "Dispute of score",
+  /** Janus has no "Feedback" type — Feature Request is the closest portal type. */
+  feedback: "Feature Request",
+} as const;
+
+/** Exact dropdown labels for custom field `cf_issue_type` on janus.freshdesk.com */
+export const FRESHDESK_ISSUE_TYPE = {
+  scoreTooLow: "Score too low",
+  scoreTooHigh: "Score too high",
+  wrongEvidence: "Wrong evidence cited",
+  missingContext: "Missing Context",
+  others: "Others",
 } as const;
 
 export type FreshdeskTicketKind = "dispute_score" | "feedback";
 
 export const DISPUTE_SCORE_SUBJECT = "Dispute of Call Quality Score";
 
-const DEFAULT_DOMAIN = "janus-assist.freshdesk.com";
+const DEFAULT_DOMAIN = "janus.freshdesk.com";
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8MB (Freshdesk hard cap is 20MB)
 
 export interface FreshdeskAttachment {
@@ -30,6 +45,8 @@ export interface FreshdeskAttachment {
   contentType: string;
   bytes: ArrayBuffer | Uint8Array;
 }
+
+export type FreshdeskCustomFields = Record<string, string | number | boolean | null>;
 
 export interface CreateFreshdeskTicketInput {
   email: string;
@@ -42,6 +59,8 @@ export interface CreateFreshdeskTicketInput {
   /** Freshdesk source: 2 = Portal */
   source?: number;
   tags?: string[];
+  /** Janus custom fields (cf_issue_type, cf_call_id, …) */
+  customFields?: FreshdeskCustomFields | null;
   attachment?: FreshdeskAttachment | null;
 }
 
@@ -52,6 +71,7 @@ export interface FreshdeskTicketResult {
   requesterId: number | null;
   status: number | null;
   priority: number | null;
+  customFields?: Record<string, unknown> | null;
 }
 
 export function freshdeskConfigured(env: FreshdeskEnv): boolean {
@@ -103,6 +123,79 @@ export function defaultSubjectForKind(kind: FreshdeskTicketKind, category?: stri
 }
 
 /**
+ * Map dispute form category (value or label) → Janus `cf_issue_type` choice.
+ * Accepts slug values from the UI and display labels from the ticket payload.
+ */
+export function mapDisputeIssueType(raw: string): string | null {
+  const key = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (!key) return null;
+  if (key === "score_too_low" || key === "scoretoolow") return FRESHDESK_ISSUE_TYPE.scoreTooLow;
+  if (key === "score_too_high" || key === "scoretoohigh") return FRESHDESK_ISSUE_TYPE.scoreTooHigh;
+  if (key === "wrong_evidence" || key === "wrong_evidence_cited" || key === "wrongevidencecited") {
+    return FRESHDESK_ISSUE_TYPE.wrongEvidence;
+  }
+  if (key === "missing_context" || key === "missingcontext") return FRESHDESK_ISSUE_TYPE.missingContext;
+  if (key === "other" || key === "others") return FRESHDESK_ISSUE_TYPE.others;
+  // Already an exact Freshdesk label
+  const labels = Object.values(FRESHDESK_ISSUE_TYPE);
+  const exact = labels.find((l) => l.toLowerCase() === String(raw || "").trim().toLowerCase());
+  return exact || null;
+}
+
+/** Build Janus custom_fields for a ticket kind from form fields. */
+export function buildTicketCustomFields(
+  kind: FreshdeskTicketKind,
+  fields: {
+    category?: string;
+    callId?: string;
+    page?: string;
+    dealId?: string;
+    accountId?: string;
+  },
+): FreshdeskCustomFields {
+  const out: FreshdeskCustomFields = {};
+  const callId = String(fields.callId || "").trim();
+  const page = String(fields.page || "").trim();
+  const dealId = String(fields.dealId || "").trim();
+  const accountId = String(fields.accountId || "").trim();
+
+  if (callId) out.cf_call_id = callId.slice(0, 255);
+  if (page) out.cf_page_context_hash = page.slice(0, 2000);
+  if (dealId) out.cf_deal_id = dealId.slice(0, 255);
+  if (accountId) out.cf_account_id = accountId.slice(0, 255);
+
+  if (kind === "dispute_score") {
+    const issueType = mapDisputeIssueType(fields.category || "");
+    if (issueType) out.cf_issue_type = issueType;
+    out.cf_area_of_the_product = "Coaching / scorecards";
+  }
+
+  return out;
+}
+
+function sanitizeCustomFields(
+  fields: FreshdeskCustomFields | null | undefined,
+): FreshdeskCustomFields {
+  const out: FreshdeskCustomFields = {};
+  if (!fields) return out;
+  for (const [key, value] of Object.entries(fields)) {
+    const name = String(key || "").trim();
+    if (!name || value == null) continue;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      out[name] = trimmed;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      out[name] = value;
+    }
+  }
+  return out;
+}
+
+/**
  * Create a Freshdesk ticket. Uses multipart when an attachment is present;
  * otherwise JSON (simpler + faster).
  */
@@ -132,6 +225,8 @@ export async function createFreshdeskTicket(
   const source = input.source ?? 2; // Portal
   const type = String(input.type || "").trim() || undefined;
   const tags = (input.tags || []).map((t) => String(t).trim()).filter(Boolean);
+  const customFields = sanitizeCustomFields(input.customFields);
+  const hasCustomFields = Object.keys(customFields).length > 0;
 
   const attachment = input.attachment;
   if (attachment) {
@@ -162,6 +257,9 @@ export async function createFreshdeskTicket(
       form.append("source", String(source));
       if (type) form.append("type", type);
       for (const tag of tags) form.append("tags[]", tag);
+      for (const [key, value] of Object.entries(customFields)) {
+        form.append(`custom_fields[${key}]`, String(value));
+      }
       const bytes =
         attachment.bytes instanceof ArrayBuffer
           ? new Uint8Array(attachment.bytes)
@@ -193,6 +291,7 @@ export async function createFreshdeskTicket(
           source,
           ...(type ? { type } : {}),
           ...(tags.length ? { tags } : {}),
+          ...(hasCustomFields ? { custom_fields: customFields } : {}),
         }),
       });
     }
@@ -238,7 +337,14 @@ export async function createFreshdeskTicket(
     throw Object.assign(new Error("Freshdesk returned no ticket id."), { status: 502 });
   }
 
-  console.info(`[freshdesk] ticket #${id} type=${type || "—"} requester=${email}`);
+  const returnedCustom =
+    data.custom_fields && typeof data.custom_fields === "object"
+      ? (data.custom_fields as Record<string, unknown>)
+      : null;
+
+  console.info(
+    `[freshdesk] ticket #${id} type=${type || "—"} issue=${customFields.cf_issue_type || "—"} requester=${email}`,
+  );
   return {
     id,
     subject: String(data.subject || subject),
@@ -246,6 +352,7 @@ export async function createFreshdeskTicket(
     requesterId: data.requester_id != null ? Number(data.requester_id) : null,
     status: data.status != null ? Number(data.status) : status,
     priority: data.priority != null ? Number(data.priority) : priority,
+    customFields: returnedCustom,
   };
 }
 

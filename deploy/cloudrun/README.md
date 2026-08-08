@@ -154,7 +154,7 @@ Optional env vars (add to `--set-env-vars` or Secret Manager):
 | `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` / `ZOOM_REDIRECT_URI` | Zoom OAuth (phase 2) |
 | `ZOOMINFO_API_KEY` | ZoomInfo research |
 | `FRESHDESK_API_KEY` | Freshdesk API key for dispute/feedback tickets (Secret Manager) |
-| `FRESHDESK_DOMAIN` | Freshdesk domain, e.g. `janus-assist.freshdesk.com` (env var OK) |
+| `FRESHDESK_DOMAIN` | Freshdesk domain, e.g. `janus.freshdesk.com` (env var OK) |
 
 One-time Cloud Run attach (same key as local):
 

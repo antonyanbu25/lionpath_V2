@@ -14,7 +14,7 @@ PROJECT="${PROJECT:-se-singha-paathi}"
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-prep-portal-api}"
 SECRET_NAME="${SECRET_NAME:-freshdesk-api-key}"
-DOMAIN="${FRESHDESK_DOMAIN:-janus-assist.freshdesk.com}"
+DOMAIN="${FRESHDESK_DOMAIN:-janus.freshdesk.com}"
 ATTACH="${ATTACH:-1}"
 
 TMP="$(mktemp)"

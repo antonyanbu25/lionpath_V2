@@ -10,10 +10,12 @@ import {
 } from "./feedback";
 import { emailNotifyAvailable, sendManagerDisputeEmail } from "./notify-email";
 import {
+  buildTicketCustomFields,
   buildTicketDescriptionHtml,
   createFreshdeskTicket,
   defaultSubjectForKind,
   freshdeskConfigured,
+  mapDisputeIssueType,
   MAX_ATTACHMENT_BYTES,
   ticketTypeForKind,
   type FreshdeskTicketKind,
@@ -1168,13 +1170,17 @@ export async function handleTicketsPost(
       ? normalizeFeedbackCategory(fields.category || "Idea")
       : String(fields.category || "").trim();
 
+  const issueType =
+    kind === "dispute_score" ? mapDisputeIssueType(category) || category || null : null;
+
   const subject =
     fields.subject ||
     defaultSubjectForKind(kind, kind === "feedback" ? String(category) : undefined);
 
+  const ticketTypeLabel = ticketTypeForKind(kind);
   const meta: Array<string | null> = [
-    kind === "dispute_score" ? `Ticket type: Dispute of Score` : `Ticket type: Feedback`,
-    category ? `Category: ${category}` : null,
+    `Ticket type: ${ticketTypeLabel}`,
+    issueType ? `Issue type: ${issueType}` : category ? `Category: ${category}` : null,
     fields.company ? `Company: ${fields.company}` : null,
     fields.callId ? `Call ID: ${fields.callId}` : null,
     fields.themeKey ? `Theme: ${fields.themeKey.replace(/_/g, " ")}` : null,
@@ -1184,6 +1190,12 @@ export async function handleTicketsPost(
     fields.link ? `Link: ${fields.link}` : null,
     `Submitted by: ${email}`,
   ];
+
+  const customFields = buildTicketCustomFields(kind, {
+    category: kind === "dispute_score" ? category : undefined,
+    callId: fields.callId,
+    page: fields.page || fields.link,
+  });
 
   let attachment: { filename: string; contentType: string; bytes: ArrayBuffer | Uint8Array } | null =
     null;
@@ -1236,8 +1248,9 @@ export async function handleTicketsPost(
       name: fields.name || undefined,
       subject,
       description: buildTicketDescriptionHtml(descriptionText, meta),
-      type: ticketTypeForKind(kind),
+      type: ticketTypeLabel,
       tags: ["lionpath", kind === "dispute_score" ? "dispute-score" : "feedback"],
+      customFields,
       attachment,
     });
 
@@ -1264,6 +1277,7 @@ export async function handleTicketsPost(
         ticketId: ticket.id,
         subject: ticket.subject,
         type: ticket.type,
+        issueType: issueType || null,
         email,
         kind,
       },

@@ -50,5 +50,5 @@ preview_id = "00000000000000000000000000000002"
 # DISPUTE_NOTIFY_FROM = "LionPath <noreply@example.com>"
 # EMAIL_PROVIDER_API_KEY — use `wrangler secret put EMAIL_PROVIDER_API_KEY` (never commit a real key)
 # Freshdesk tickets (dispute score + feedback):
-# FRESHDESK_DOMAIN = "janus-assist.freshdesk.com"
+# FRESHDESK_DOMAIN = "janus.freshdesk.com"
 # FRESHDESK_API_KEY — use `wrangler secret put FRESHDESK_API_KEY` (never commit a real key)
