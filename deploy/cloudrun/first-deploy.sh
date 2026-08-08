@@ -43,9 +43,13 @@ ALLOWED_ORIGINS=https://portal.benjaminsquare.com,\
 ALLOWED_EMAIL_DOMAIN=freshworks.com,\
 FIREBASE_PROJECT_ID=${PROJECT},\
 HISTORY_FILE_DIR=/data/history,\
-FFMPEG_MAX_CONCURRENT=2" \
+FFMPEG_MAX_CONCURRENT=2,\
+FRESHDESK_DOMAIN=janus.freshdesk.com" \
   --add-volume="name=history,type=cloud-storage,bucket=se-singha-paathi-prep-history" \
   --add-volume-mount="volume=history,mount-path=/data/history"
+
+echo "==> Tip: attach Freshdesk API key (one-time):"
+echo "    FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-freshdesk-secret.sh"
 
 echo "==> Deploying prep-portal-web"
 gcloud run deploy prep-portal-web \

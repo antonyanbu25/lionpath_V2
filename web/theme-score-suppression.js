@@ -30,7 +30,7 @@ applyManifest(bundledManifest);
 export function assertThemeScoreSuppressionReady() {
   if (!activeManifest?.runId) {
     throw new Error(
-      "QIP theme score suppression is not configured. no consistency run bundled. " +
+      "Call Quality Score theme suppression is not configured. no consistency run bundled. " +
         "Run: npx tsx web/scripts/generate-theme-suppression.mjs",
     );
   }

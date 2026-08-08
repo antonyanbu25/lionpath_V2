@@ -179,7 +179,7 @@ for (const [name, data] of cases) {
     if (data.analysis?.momentum?.status) {
       const coachHeading =
         data.scorecard?.lines?.length || data.analysis?.analysisVersion === 2
-          ? "QIP scorecard"
+          ? "Call Quality Score"
           : "Quality coach";
       assertOrder(html, [
         'class="header-strip"',
@@ -215,7 +215,7 @@ for (const [name, data] of cases) {
       if (!html.includes("Customer-facing")) throw new Error("missing MoM customer-facing hint");
     }
     if (name === "v2 QIP scorecard render") {
-      if (!html.includes("QIP scorecard")) throw new Error("missing QIP scorecard heading");
+      if (!html.includes("Call Quality Score")) throw new Error("missing Call Quality Score heading");
       if (!html.includes("7.8 / 10")) throw new Error("missing overall /10 label");
       if (!html.includes("What worked")) throw new Error("missing what worked tile");
       if (!html.includes("What didn")) throw new Error("missing what didn't tile");
@@ -242,6 +242,9 @@ for (const [name, data] of cases) {
         context: "call-record",
       });
       if (!wireframeHtml.includes("qip-scorecard--wireframe")) throw new Error("missing wireframe class");
+      if (!wireframeHtml.includes("qip-weight-key")) throw new Error("missing weight key near score");
+      if (wireframeHtml.includes("How to read this")) throw new Error("verbose scorecard legend still rendered");
+      if (wireframeHtml.includes("carries the call ·")) throw new Error("verbose weight prose still rendered");
       if (!wireframeHtml.includes("Override a score")) throw new Error("missing override action");
       if (!wireframeHtml.includes("Compare to my average")) throw new Error("missing compare action");
       if (!wireframeHtml.includes("qip-subparam-list")) throw new Error("missing sub-parameter drill-down");

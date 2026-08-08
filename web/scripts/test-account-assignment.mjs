@@ -101,6 +101,9 @@ assert(lcs.length === 2, "two active lifecycles same account");
 const swap = await updateAccountSeTeam(sessionMgr, accountId, "set_primary", { seUserId: seB });
 assert(swap.success && swap.account.primarySeUserId === seB, "primary swap to B");
 
+const lcBAfterPrimary = await store.findActiveLifecycle(seB, accountId);
+assert(lcBAfterPrimary, "set_primary ensures lifecycle for new primary");
+
 const rowsMgr = await listAccountsForSession(sessionMgr);
 assert(rowsMgr.some((r) => r.account.id === accountId), "manager sees report account");
 

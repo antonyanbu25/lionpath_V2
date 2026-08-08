@@ -22,6 +22,7 @@ import {
   isResolvedAccountValidForResult,
   filterSessionEmailFromProspects,
   isSessionProspectEmail,
+  pickPreferredIntakeAccount,
 } from "../postcall.js";
 
 function assert(cond, msg) {
@@ -82,7 +83,7 @@ function testNewDealOptionWhenMatched() {
     createNewDeal: false,
   });
   assert(html.includes('data-action="pick-new-deal"'), "new deal visible with existing deal");
-  assert(html.includes("Existing account"), "matched account badge");
+  assert(html.includes("Account matched · existing"), "matched account badge");
 
   const newDealHtml = renderAccountDealPreviewHtml({
     accountName: "Northwind",
@@ -170,6 +171,7 @@ function testStaleEuphoticNotReusedForLifeEmail() {
   assert(html.includes("Life"), "company derived from domain");
   assert(!html.includes("Euphotic"), "must not show euphotic");
   assert(!html.includes("Existing account"), "must not show matched badge");
+  assert(!html.includes("Account matched · existing"), "must not show existing matched badge");
 }
 
 function testExistingDealSelectedByDefault() {
@@ -188,6 +190,40 @@ function testExistingDealSelectedByDefault() {
   assert(html.includes('data-deal-id="deal_recent"'), "existing deal tile shown");
   assert(html.includes("is-selected") && html.includes("deal_recent"), "first deal auto-selected");
   assert(!html.includes("pc-new-deal-title-input"), "new deal input hidden until + New deal");
+}
+
+function testHistoryDealShownBeforeAccountResolved() {
+  const html = renderAccountDealPreviewHtml({
+    accountName: "Gamersheek",
+    accountMatched: false,
+    deals: [{ id: "deal_hist_gamersheek", title: "Gamersheek - New Business - 2026-08-01", stage: "discovery" }],
+    selectedDealId: "deal_hist_gamersheek",
+    createNewDeal: false,
+  });
+  assert(html.includes('data-deal-id="deal_hist_gamersheek"'), "history deal tile when account not yet resolved");
+  assert(html.includes("Deal 1 · existing"), "existing deal label");
+  assert(!html.includes("pc-deal-tile--static"), "no static create-on-confirm card");
+  assert(html.includes("Account matched · existing"), "matched badge when deals surfaced");
+}
+
+function testPickPreferredIntakeAccount() {
+  const dupes = [
+    { id: "hist_gamersheek", name: "Gamersheek" },
+    { id: "acc_b85d74fb", name: "Gamersheek" },
+  ];
+  assert(pickPreferredIntakeAccount(dupes)?.id === "acc_b85d74fb", "prefer Firestore over hist stub");
+  const different = [
+    { id: "acc_a", name: "Acme", domain: "acme.com" },
+    { id: "acc_b", name: "Beta", domain: "beta.com" },
+  ];
+  assert(pickPreferredIntakeAccount(different) === null, "no auto-pick for different companies");
+
+  const result = {
+    accounts: dupes,
+    deals: [{ id: "deal_hist_gamersheek", accountId: "hist_gamersheek" }],
+    byEmail: [],
+  };
+  assert(resolveIntakeAccount(result, "", null)?.id === "acc_b85d74fb", "resolve picks Firestore dupe");
 }
 
 function testReconcileClearsStaleResolvedAccount() {
@@ -292,6 +328,8 @@ function main() {
   testSyncDealSelection();
   testStaleEuphoticNotReusedForLifeEmail();
   testExistingDealSelectedByDefault();
+  testHistoryDealShownBeforeAccountResolved();
+  testPickPreferredIntakeAccount();
   testReconcileClearsStaleResolvedAccount();
   testProspectEmailFieldNotPrefilledInHtml();
   testSessionEmailRejectedFromProspects();

@@ -17,13 +17,19 @@ import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
 import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
 import { assembleMomEmailDraft, greetingNameFromDraft } from "./shared/mom-email-draft.js";
 import { renderQipRadar } from "./qip-radar.js";
-import { CHART_PALETTE, SPINE_SEGMENT_PALETTE, TIMELINE_MARKER_COLORS } from "./chart-shared.js";
+import {
+  CALL_QUALITY_SCORE_LABEL,
+  ACTIVITIES_NAV_LABEL,
+} from "./user-facing-copy.js";
+import { CHART_PALETTE, SPINE_SEGMENT_PALETTE } from "./chart-shared.js";
 import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
 import {
   enrichDealFromHistoryRecords,
   rollupMeddpiccFromHistoryRecords,
-  technicalCommitFromHistoryRecords,
+  rollupTechnicalCommitFromHistoryRecords,
 } from "./domain/history-deal-enrichment.js";
+import { mergeTechnicalCommit } from "./domain/technical-commit-service.js";
+import { resolveDealProductSignals } from "./domain/product-signal-service.js";
 import { getStore } from "./domain/store.js";
 import { computeMeddpiccScore, resolveDealMeddpicc, MEDDPICC_FIELD_KEYS, MEDDPICC_FIELD_LABELS } from "./domain/contact-service.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
@@ -35,11 +41,12 @@ import { themeLabel } from "./theme-library.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
 import { hidePrepGenOverlay } from "./prep-generation-overlay.js";
 import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
-import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType } from "./call-type-labels.js";
+import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType, formatProductAreaLabel } from "./call-type-labels.js";
 import { mergeCallIdentities } from "./identity-merge.js";
 import { renderCallProductSignalTab } from "./call-product-signal.js";
 import { wireScoreDisputes } from "./score-disputes.js";
 import { wireCallViewAnimations } from "./call-view-animate.js";
+import { renderLoadingPanel } from "./crayons-ui.js";
 
 const CALL_TYPE_LABELS = {
   demo: "Demo",
@@ -146,14 +153,12 @@ const MARKER_LABELS = {
   weak_cta: "weak CTA",
 };
 
-const MARKER_COLORS = TIMELINE_MARKER_COLORS;
+/** Marker kinds hidden from the visual timeline (shown elsewhere, e.g. TC tab). */
+const TIMELINE_HIDDEN_MARKER_KINDS = new Set(["win"]);
 
-const MARKER_LEGEND = [
-  ["gap", "Product gap"],
-  ["objection", "Objection handled"],
-  ["win", "What worked"],
-  ["weak_cta", "Weak CTA"],
-];
+function timelineDisplayMarkers(markers) {
+  return normalizeTimelineMarkers(markers).filter((m) => !TIMELINE_HIDDEN_MARKER_KINDS.has(m.kind));
+}
 
 const OBJECTION_ANSWER_SPLIT =
   /\s+(?:(?:SE|AE)(?:\/(?:SE|AE))?|the SE|Solution Engineer)(?:\s+and\s+(?:SE|AE|the AE))?\s+(?:emphasized|responded|explained|noted|said|addressed|handled|countered|walked through|showed|demonstrated)/i;
@@ -183,34 +188,89 @@ export function humanizeMarkerLabel(raw, kind) {
   const lower = s.toLowerCase();
   if (MARKER_KIND_WORDS.has(lower)) return MARKER_LABELS[kind] || MARKER_LABELS[lower.replace(/\s+/g, "_")] || s;
 
+  if (s.includes(" · ")) {
+    const parts = s.split(" · ").map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 2 && parts.every((p) => /^[a-z][a-z0-9_]*$/i.test(p))) {
+      return formatProductAreaLabel(parts[0], parts[1]);
+    }
+    return parts.map((part) => humanizeMarkerLabel(part, kind)).join(" · ");
+  }
+
   if (/^[a-z][a-z0-9_]*$/i.test(s) && s.includes("_")) {
     const themed = themeLabel(s);
     if (themed && themed !== s) return themed;
-    return s
-      .split("_")
-      .filter(Boolean)
-      .map((word) => {
-        const w = word.toLowerCase();
-        if (w === "ai") return "AI";
-        if (w === "cde") return "CDE";
-        if (w === "sso") return "SSO";
-        if (w === "api") return "API";
-        if (w === "ui") return "UI";
-        if (w === "se") return "SE";
-        if (w === "ae") return "AE";
-        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-      })
-      .join(" ");
+    return formatProductAreaLabel(s);
   }
 
-  if (s.includes(" · ")) {
-    return s
-      .split(" · ")
-      .map((part) => humanizeMarkerLabel(part, kind))
-      .join(" · ");
+  if (/_/.test(s) && !/\s/.test(s)) {
+    return formatProductAreaLabel(s);
   }
 
   return s;
+}
+
+/** Fill in markers from pass 6 / objections when timeline derivation missed them. */
+export function mergeSupplementalTimelineMarkers(markers, sources = {}) {
+  const out = normalizeTimelineMarkers(markers).slice();
+  const seen = new Set(out.map((m) => `${m.kind}:${Math.round(Number(m.atS) / 5)}`));
+
+  const push = (draft) => {
+    const atS = Number(draft.atS);
+    if (!Number.isFinite(atS) || atS < 0) return;
+    const key = `${draft.kind}:${Math.round(atS / 5)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...draft, atS });
+  };
+
+  for (const gap of sources.productGaps || []) {
+    if (gap.atS == null) continue;
+    push({
+      atS: gap.atS,
+      kind: "gap",
+      label:
+        gap.headline?.trim() ||
+        gap.title?.trim() ||
+        formatProductAreaLabel(gap.productArea, gap.subArea) ||
+        "Product gap",
+      quote: gap.verbatim || null,
+      source: "transcript",
+    });
+  }
+
+  for (const objection of sources.objections || []) {
+    if (objection.atS == null) continue;
+    const theme = objection.theme ? humanizeMarkerLabel(objection.theme, "objection") : "";
+    push({
+      atS: objection.atS,
+      kind: "objection",
+      label: theme || stripObjectionFraming(objection.objectionText || "") || "Objection",
+      quote: objection.objectionText || null,
+      source: "transcript",
+    });
+  }
+
+  for (const line of sources.scorecardLines || []) {
+    if (line.themeKey !== "cta" || !line.applicable || !line.maxScore) continue;
+    if (line.score / line.maxScore >= 0.5) continue;
+    const evidence = (line.evidence || []).find((e) => e?.atS != null);
+    if (!evidence?.atS) continue;
+    push({
+      atS: evidence.atS,
+      kind: "weak_cta",
+      label: evidence.quote ? truncateMarkerLabel(evidence.quote) : "Weak close",
+      quote: evidence.quote || null,
+      themeKey: "cta",
+      source: "transcript",
+    });
+  }
+
+  return out.sort((a, b) => a.atS - b.atS);
+}
+
+function truncateMarkerLabel(text, max = 48) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
 function markerDisplayLabel(marker) {
@@ -218,23 +278,12 @@ function markerDisplayLabel(marker) {
   return humanizeMarkerLabel(String(raw).trim(), marker?.kind);
 }
 
-function renderSpineLegend() {
-  return `<div class="call-spine-legend" aria-hidden="true">${SPINE_LEGEND.map(
+function renderSpineLegend({ inHead = false } = {}) {
+  const headCls = inHead ? " call-spine-legend--head" : "";
+  return `<div class="call-spine-legend${headCls}" aria-hidden="true">${SPINE_LEGEND.map(
     ([, label, bg, fg]) =>
       `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
   ).join("")}</div>`;
-}
-
-function renderMarkerLegend(markers) {
-  const kinds = [...new Set((markers || []).map((m) => m.kind).filter(Boolean))];
-  if (!kinds.length) return "";
-  const items = MARKER_LEGEND.filter(([kind]) => kinds.includes(kind))
-    .map(([kind, label]) => {
-      const color = MARKER_COLORS[kind] || "#5a6b82";
-      return `<span class="call-spine-legend-item"><span class="call-spine-marker-swatch call-spine-marker-swatch--${esc(kind)}" style="background:${color}"></span>${esc(label)}</span>`;
-    })
-    .join("");
-  return `<div class="call-spine-legend call-spine-marker-legend" aria-hidden="true">${items}</div>`;
 }
 
 function stripObjectionFraming(text) {
@@ -575,6 +624,38 @@ function listHistoryRecordsForDeal(email, dealId) {
   return listPostCallAnalyses(email).filter((r) => resolveDealId(r) === dealId);
 }
 
+/** Deal-level TC merged with this call's snapshot (store + history + current call). */
+async function resolveMergedTechnicalCommit(email, dealId, record, store, callTcHint = null) {
+  const resultBlob = record?.result || {};
+  const callTc = callTcHint || resultBlob.technicalCommit || null;
+  if (!dealId) return callTc;
+
+  const dealRecords = listHistoryRecordsForDeal(email, dealId);
+  const recordsForRollup = dealRecords.some((r) => r.id === record?.id)
+    ? dealRecords
+    : record?.id
+      ? [...dealRecords, record]
+      : dealRecords;
+
+  let merged = rollupTechnicalCommitFromHistoryRecords(recordsForRollup);
+  if (store.getTechnicalCommitByDeal) {
+    const fromStore = await safeEnrich(
+      "getTechnicalCommitByDeal",
+      () => store.getTechnicalCommitByDeal(dealId),
+      null,
+    );
+    if (fromStore) merged = mergeTechnicalCommit(merged, fromStore);
+  }
+  if (callTc) merged = mergeTechnicalCommit(merged, callTc);
+  return merged;
+}
+
+function historyRecordsForDealRollup(email, dealId, record) {
+  const dealRecords = listHistoryRecordsForDeal(email, dealId);
+  if (!record?.id) return dealRecords;
+  return dealRecords.some((r) => r.id === record.id) ? dealRecords : [...dealRecords, record];
+}
+
 function buildLocalCallBundle(session, record) {
   const email = session.email;
   const resultBlob = record.result || {};
@@ -595,7 +676,7 @@ function buildLocalCallBundle(session, record) {
   const confRaw = scorecard?.confidence ?? analysisMeta.analysisConfidence;
   const confidencePct = confRaw != null ? Math.round(confRaw * 100) : null;
   const dealId = resolveDealId(record);
-  const dealRecords = listHistoryRecordsForDeal(email, dealId);
+  const dealRecords = historyRecordsForDealRollup(email, dealId, record);
   let deal = dealId ? { id: dealId } : null;
   if (deal && dealRecords.length) {
     deal = enrichDealFromHistoryRecords(deal, dealRecords);
@@ -623,9 +704,10 @@ function buildLocalCallBundle(session, record) {
   const deltaInfo = qipScore != null ? qipDeltaForType(email, callType, qipScore, record.id) : null;
   const callNotes = resolveCallNotes(record);
 
-  const technicalCommit =
-    resultBlob.technicalCommit ||
-    (dealRecords.length ? technicalCommitFromHistoryRecords(dealRecords) : null);
+  let technicalCommit = rollupTechnicalCommitFromHistoryRecords(dealRecords);
+  if (resultBlob.technicalCommit) {
+    technicalCommit = mergeTechnicalCommit(technicalCommit, resultBlob.technicalCommit);
+  }
 
   return {
     record,
@@ -655,13 +737,6 @@ function buildLocalCallBundle(session, record) {
     sentiment,
     confidencePct,
     arrLabel,
-    tensionLine: buildVerdictTension({
-      qipScore,
-      qipDelta: deltaInfo?.delta,
-      meddpiccScore,
-      momentumStatus,
-      confidencePct,
-    }),
     hasVideo: resolveVideoAvailable(record),
     kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
     callNotes,
@@ -985,57 +1060,6 @@ function countMeddpiccFilled(meddpicc) {
   return filled;
 }
 
-function renderTensionBand(line) {
-  const text = String(line || "").trim();
-  if (!text) return "";
-  const split = text.split(". ");
-  if (split.length >= 2) {
-    return `<b class="call-verdict-tension-lead">${esc(split[0])}.</b> ${esc(split.slice(1).join(". "))}`;
-  }
-  return esc(text);
-}
-
-function buildVerdictTension({ qipScore, qipDelta, meddpiccScore, momentumStatus, confidencePct }) {
-  const parts = [];
-  if (qipScore != null && qipDelta != null) {
-    if (qipDelta >= 0.8) parts.push("strong call execution");
-    else if (qipDelta <= -0.8) parts.push("execution below your usual bar");
-    else if (qipDelta >= 0.3) parts.push("solid execution");
-    else if (qipDelta <= -0.3) parts.push("execution lagging your norm");
-  }
-
-  if (meddpiccScore != null) {
-    if (meddpiccScore >= 70 && qipScore != null && qipScore >= 7.5) {
-      parts.push("deal qualification keeps pace with delivery");
-    } else if (meddpiccScore < 45 && qipScore != null && qipScore >= 7.5) {
-      parts.push("the gap is qualification, not delivery");
-    } else if (meddpiccScore >= 60 && qipScore != null && qipScore < 5.5) {
-      parts.push("the deal looks real but this call did not land");
-    } else if (meddpiccScore < 40) {
-      parts.push("qualification is thin");
-    }
-  }
-
-  if (momentumStatus === "Advancing") parts.push("momentum is advancing");
-  else if (momentumStatus === "At risk") parts.push("momentum is at risk");
-  else if (momentumStatus === "Stalled") parts.push("momentum has stalled");
-
-  if (!parts.length) {
-    return "Scores tell different stories. Use the scorecard evidence before coaching or forecasting.";
-  }
-
-  const lead =
-    qipScore != null && meddpiccScore != null && qipScore >= 7.5 && meddpiccScore < 45
-      ? "Flawless call on a thin deal. "
-      : qipScore != null && meddpiccScore != null && qipScore < 5.5 && meddpiccScore >= 60
-        ? "Qualified deal, weak call. "
-        : "";
-
-  return `${lead}${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${
-    parts.length > 1 ? `; ${parts.slice(1).join("; ")}.` : "."
-  }`;
-}
-
 function tractionPillClass(status) {
   if (status === "Advancing") return "green";
   if (status === "At risk") return "red";
@@ -1135,6 +1159,11 @@ const SPINE_TRACK_STYLE =
 const SPINE_SEG_STYLE =
   "position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box;";
 
+const SPINE_LABEL_CLUSTER_PCT = 3.5;
+const SPINE_LABEL_MAX_ROWS = 3;
+const SPINE_LABEL_ROW_PX = 15;
+const SPINE_LABEL_BAR_PX = 640;
+
 function markerAtSeconds(marker) {
   if (!marker || typeof marker !== "object") return null;
   for (const key of ["atS", "atSec", "at_sec", "seconds"]) {
@@ -1156,25 +1185,177 @@ function normalizeTimelineMarkers(markers) {
     .filter(Boolean);
 }
 
-/** Prefer segment + marker coverage when stored duration is missing or wildly off (unit mismatch). */
+/**
+ * Spine clock from call/segment duration. Late markers clamp to the end —
+ * they must not stretch the bar past the call (e.g. 33m call + 37:00 gap).
+ */
 export function resolveSpineDuration(durationSec, segments, markers) {
   const segmentEnd = Math.max(
     ...segments.map((s) => Math.max(Number(s.startS) || 0, Number(s.endS) || 0)),
     1,
   );
   const markerEnd = Math.max(0, ...normalizeTimelineMarkers(markers).map((m) => m.atS));
-  const evidenceEnd = Math.max(segmentEnd, markerEnd, 1);
   const raw = Number(durationSec);
-  if (!Number.isFinite(raw) || raw <= 0) return evidenceEnd;
-  if (evidenceEnd > 0 && raw > evidenceEnd * 4) return evidenceEnd;
-  return Math.max(raw, evidenceEnd);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return segments.length ? segmentEnd : Math.max(segmentEnd, markerEnd, 1);
+  }
+  // Unit mismatch (e.g. microseconds stored as seconds).
+  if (segmentEnd > 60 && raw > segmentEnd * 4) return segmentEnd;
+  return Math.max(raw, segmentEnd);
+}
+
+function clampPct(pct) {
+  return Math.min(100, Math.max(0, pct));
+}
+
+/** Rough half-width of a spine marker label as % of the bar (for collision checks). */
+function estimateLabelHalfWidthPct(text) {
+  const t = String(text || "");
+  const px = Math.min(Math.max(t.length * 6.2 + 12, 28), 140) / 2;
+  return (px / SPINE_LABEL_BAR_PX) * 100;
+}
+
+function spineLabelInterval(leftPct, halfWidthPct, anchor) {
+  if (anchor === "end") return [leftPct - halfWidthPct * 2, leftPct];
+  if (anchor === "start") return [leftPct, leftPct + halfWidthPct * 2];
+  return [leftPct - halfWidthPct, leftPct + halfWidthPct];
+}
+
+function spineLabelFitsRow(rowSlots, row, leftPct, halfWidthPct, anchor) {
+  const [left, right] = spineLabelInterval(leftPct, halfWidthPct, anchor);
+  const slots = rowSlots[row] || [];
+  return !slots.some(([a, b]) => right > a && left < b);
+}
+
+function occupySpineLabelRow(rowSlots, row, leftPct, halfWidthPct, anchor) {
+  if (!rowSlots[row]) rowSlots[row] = [];
+  rowSlots[row].push(spineLabelInterval(leftPct, halfWidthPct, anchor));
+}
+
+function clusterSpineMarkers(markers, totalSec) {
+  const sorted = (markers || [])
+    .map((m, i) => ({ m, i, at: Number(m.atS) }))
+    .filter((x) => Number.isFinite(x.at))
+    .sort((a, b) => a.at - b.at || a.i - b.i);
+
+  const clusters = [];
+  for (const item of sorted) {
+    const pct = clampPct((item.at / totalSec) * 100);
+    const last = clusters.at(-1);
+    if (last && pct - last.endPct <= SPINE_LABEL_CLUSTER_PCT) {
+      last.items.push(item);
+      last.endPct = pct;
+      last.centerPct = (last.startPct + pct) / 2;
+    } else {
+      clusters.push({ items: [item], startPct: pct, endPct: pct, centerPct: pct });
+    }
+  }
+  return clusters;
+}
+
+function clusterLabelText(cluster) {
+  const count = cluster.items.length;
+  const rep = cluster.items[0];
+  const label = markerDisplayLabel(rep.m);
+  if (count <= 1) return { text: label, clusterExtra: 0 };
+  const kinds = new Set(cluster.items.map((x) => x.m.kind || "gap"));
+  if (kinds.size === 1) {
+    const kind = [...kinds][0];
+    if (kind === "gap") return { text: `${count} product gaps`, clusterExtra: 0 };
+    if (kind === "objection") return { text: `${count} objections`, clusterExtra: 0 };
+    if (kind === "weak_cta") return { text: `${count} weak CTAs`, clusterExtra: 0 };
+  }
+  return { text: label, clusterExtra: count - 1 };
+}
+
+/**
+ * Place marker labels on staggered rows; cluster dense end ticks; extras live in the tooltip.
+ * @returns {{ placements: Array, hidden: Array, labelRows: number, clusters: Array }}
+ */
+export function layoutSpineMarkerLabels(markers, totalSec) {
+  const clusters = clusterSpineMarkers(markers, totalSec);
+  const rowSlots = [];
+  const placements = [];
+  const hidden = [];
+  let maxRow = 0;
+
+  for (const cluster of clusters) {
+    const rep = cluster.items[0];
+    const { text: label, clusterExtra } = clusterLabelText(cluster);
+    const layoutText = clusterExtra ? `${label} +${clusterExtra} more` : label;
+    const halfW = estimateLabelHalfWidthPct(layoutText);
+    const rawPct = clampPct(cluster.centerPct);
+    const anchor = rawPct >= 86 ? "end" : rawPct <= 14 ? "start" : "center";
+    const leftPct =
+      anchor === "end"
+        ? Math.min(100, Math.max(rawPct, halfW * 2))
+        : anchor === "start"
+          ? Math.max(0, Math.min(rawPct, 100 - halfW * 2))
+          : Math.min(Math.max(rawPct, halfW), 100 - halfW);
+
+    let row = 0;
+    for (; row < SPINE_LABEL_MAX_ROWS; row++) {
+      if (spineLabelFitsRow(rowSlots, row, leftPct, halfW, anchor)) break;
+    }
+    const showLabel = row < SPINE_LABEL_MAX_ROWS;
+    if (showLabel) {
+      occupySpineLabelRow(rowSlots, row, leftPct, halfW, anchor);
+      maxRow = Math.max(maxRow, row + 1);
+    } else {
+      hidden.push(...cluster.items.map((x) => x.m));
+    }
+
+    const clusterTip = cluster.items
+      .map((x) => `${formatSegmentTime(x.at)} · ${markerDisplayLabel(x.m)}`)
+      .join("\n");
+
+    for (const item of cluster.items) {
+      placements.push({
+        marker: item.m,
+        tickLeftPct: clampPct((item.at / totalSec) * 100),
+        tip: clusterTip,
+        label:
+          item === rep && showLabel
+            ? { leftPct, row, text: label, clusterExtra, tip: clusterTip, anchor }
+            : null,
+      });
+    }
+  }
+
+  return { placements, hidden, labelRows: maxRow, clusters };
+}
+
+function renderSpineMarkerOverflow(markers) {
+  if (!markers.length) return "";
+  const items = markers
+    .slice()
+    .sort((a, b) => (a.atS || 0) - (b.atS || 0))
+    .map((m) => {
+      const kind = m.kind || "gap";
+      const label = markerDisplayLabel(m);
+      return `<li class="call-spine-marker-overflow-item call-spine-marker-overflow-item--${esc(kind)}">
+        <span class="call-spine-marker-overflow-time num">${esc(formatSegmentTime(m.atS))}</span>
+        <span class="call-spine-marker-overflow-label">${esc(label)}</span>
+      </li>`;
+    })
+    .join("");
+  return `<ul class="call-spine-marker-overflow" aria-label="Additional timeline events">${items}</ul>`;
+}
+
+function spineMarkerTip(marker, atS) {
+  return `${formatSegmentTime(atS)} · ${markerDisplayLabel(marker)}`;
 }
 
 function renderVisualSpine(segments, markers, durationSec) {
-  const normalizedMarkers = normalizeTimelineMarkers(markers).sort((a, b) => a.atS - b.atS);
+  const normalizedMarkers = timelineDisplayMarkers(markers).sort((a, b) => a.atS - b.atS);
   const total = resolveSpineDuration(durationSec, segments, normalizedMarkers);
-  let html = '<div class="call-spine-wrap">';
-  html += `<div class="call-spine spine" style="${SPINE_TRACK_STYLE}" role="img" aria-label="Call scene timeline">`;
+  const { placements, hidden, labelRows } = layoutSpineMarkerLabels(normalizedMarkers, total);
+  const labelPad = Math.max(labelRows, normalizedMarkers.length ? 1 : 0) * SPINE_LABEL_ROW_PX;
+  const spineStyle = `${SPINE_TRACK_STYLE}${labelPad ? `padding-bottom:${labelPad}px;` : ""}`;
+  const markedCls = normalizedMarkers.length ? " call-spine-wrap--marked" : "";
+
+  let html = `<div class="call-spine-wrap${markedCls}">`;
+  html += `<div class="call-spine spine" style="${spineStyle}" role="img" aria-label="Call scene timeline">`;
   segments.forEach((seg, i) => {
     const start = Number(seg.startS) || 0;
     const end = Number(seg.endS) || start;
@@ -1187,17 +1368,25 @@ function renderVisualSpine(segments, markers, durationSec) {
       i === 0 ? "border-radius:6px 0 0 6px;" : i === segments.length - 1 ? "border-radius:0 6px 6px 0;" : "";
     html += `<div class="seg" style="${SPINE_SEG_STYLE}left:${left}%;width:${width}%;background:${bg};color:${fg};${radius}">${width > 11 ? esc(label) : ""}</div>`;
   });
-  for (const m of normalizedMarkers) {
-    const at = Number(m.atS);
-    if (!Number.isFinite(at)) continue;
-    const left = (at / total) * 100;
+  for (const p of placements) {
+    const m = p.marker;
     const kind = m.kind || "gap";
-    const label = markerDisplayLabel(m);
-    const tip = `${formatSegmentTime(at)} · ${label}`;
-    html += `<div class="mk mk--${esc(kind)}" style="left:${left}%" title="${esc(tip)}"></div>`;
-    html += `<div class="mkl mkl--${esc(kind)}" style="left:${left}%" title="${esc(tip)}">${esc(label)}</div>`;
+    const at = Number(m.atS);
+    const tip = p.tip || spineMarkerTip(m, at);
+    html += `<div class="mk mk--${esc(kind)}" style="left:${p.tickLeftPct}%" title="${esc(tip)}"></div>`;
+    if (p.label) {
+      const rowCls = `mkl--row-${p.label.row}`;
+      const anchorCls = p.label.anchor && p.label.anchor !== "center" ? ` mkl--anchor-${p.label.anchor}` : "";
+      const clusterBadge = p.label.clusterExtra
+        ? `<span class="mkl-more">+${p.label.clusterExtra} more</span>`
+        : "";
+      html += `<div class="mkl mkl--${esc(kind)} ${rowCls}${anchorCls}" style="left:${p.label.leftPct}%" title="${esc(p.label.tip || tip)}">${esc(p.label.text)}${clusterBadge}</div>`;
+    }
   }
-  html += "</div></div>";
+  html += "</div>";
+  // Only list markers that could not fit any label row. Cluster extras stay in the tick tooltip.
+  if (hidden.length) html += renderSpineMarkerOverflow(hidden);
+  html += "</div>";
   return html;
 }
 
@@ -1592,7 +1781,7 @@ function renderPostcallKpiStack(ctx, pending = null) {
 
   return `<div class="metrics" aria-label="Call KPIs">
     <div class="mcard" style="--accent:${CHART_PALETTE.green}">
-      <span class="lab">QIP score</span>
+      <span class="lab">${esc(CALL_QUALITY_SCORE_LABEL)}</span>
       <span class="big" style="--val:${CHART_PALETTE.green}">${qipCountHtml}<span class="u"> / 10</span></span>
       <div class="meter"><span class="call-meter-fill" data-meter-target="${esc(String(qipPct))}" style="width:0%;background:${CHART_PALETTE.green}"></span></div>
     </div>
@@ -1626,23 +1815,20 @@ function scorecardHasRadarInput(scorecard, categoryScores, qipScore) {
 function renderPostcallSummaryRow(bundle, stakeholderRows, pending = null) {
   const categoryScores = resolveCategoryScores(bundle.scorecard, bundle.callType);
   const hasRadarData = scorecardHasRadarInput(bundle.scorecard, categoryScores, bundle.qipScore);
+  const pendingSet = pending instanceof Set ? pending : new Set(Array.isArray(pending) ? pending : []);
   const radarHtml = hasRadarData
     ? renderQipRadar(categoryScores, {
         overallScore: bundle.qipScore,
         title: "Evaluation signal",
-        animate: true,
+        animate: pendingSet.size === 0,
       })
-    : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">QIP category scores appear here once analysis completes.</p></div>`;
-  const tensionHtml = bundle.tensionLine
-    ? `<div class="call-verdict-tension-band">${renderTensionBand(bundle.tensionLine)}</div>`
-    : "";
+    : `<div class="star-card star-card--empty"><div class="star-head"><span class="eyebrow">Evaluation signal</span></div><p class="muted call-radar-empty">${esc(CALL_QUALITY_SCORE_LABEL)} category scores appear here once analysis completes.</p></div>`;
   return `
     <section class="toprow call-postcall-summary-row">
       ${renderPostcallKpiStack({ ...bundle, analysisMeta: bundle.analysisMeta }, pending)}
       ${radarHtml}
       ${renderStakeholderSection(bundle.identities, bundle.attendees, bundle.hasVideo, bundle.videoFacts, stakeholderRows, bundle.analysisMeta)}
-    </section>
-    ${tensionHtml}`;
+    </section>`;
 }
 
 function renderVideoEmptySection(title, detail) {
@@ -1839,13 +2025,14 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
 
 /** Markers belonging to a segment, so each phase carries the moments inside it. */
 function markersWithin(markers, seg) {
-  return (markers || []).filter((m) => m.atS >= seg.startS && m.atS < seg.endS);
+  return timelineDisplayMarkers(markers).filter((m) => m.atS >= seg.startS && m.atS < seg.endS);
 }
 
 function renderTimelineMarkers(markers) {
-  if (!markers.length) return "";
+  const visible = timelineDisplayMarkers(markers);
+  if (!visible.length) return "";
   return `<ul class="call-timeline-markers">
-    ${markers
+    ${visible
       .map(
         (m) => `<li class="call-timeline-marker call-timeline-marker--${esc(m.kind)}">
           <span class="call-timeline-time num">${esc(formatSegmentTime(m.atS))}</span>
@@ -1881,7 +2068,8 @@ function renderTimelineSpine(segments, markers) {
  */
 export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = {}) {
   const all = timeline?.segments || [];
-  const markers = normalizeTimelineMarkers(timeline?.markers).sort((a, b) => a.atS - b.atS);
+  const allMarkers = normalizeTimelineMarkers(timeline?.markers).sort((a, b) => a.atS - b.atS);
+  const markers = timelineDisplayMarkers(allMarkers);
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
   const transcriptSegments = all.filter((s) => s.source === "transcript");
   const usingTranscript = !videoSegments.length && transcriptSegments.length > 0;
@@ -1891,15 +2079,13 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
         timeline?.facts?.durationSec ??
           (segments.length ? Math.max(...segments.map((s) => Number(s.endS) || 0)) : null),
         segments,
-        markers,
+        allMarkers,
       )
     : null;
 
   let body = "";
   if (segments.length) {
     body += renderVisualSpine(segments, markers, durationSec);
-    body += renderSpineLegend();
-    if (markers.length) body += renderMarkerLegend(markers);
     body += renderSpineTimeAxis(durationSec);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
@@ -1935,14 +2121,16 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   const subtitle = usingTranscript
     ? "Conversation phases from the transcript clock (evidence only, not scored)"
     : "";
+  const headLegend = segments.length ? renderSpineLegend({ inHead: true }) : "";
 
   return `
     <section class="call-section call-timeline-section card-wire">
       <div class="call-section-body call-section-body--flat">
         <div class="call-timeline-head">
           <h2 class="call-timeline-title">${esc(title)}</h2>
-          ${subtitle ? `<span class="muted call-timeline-sub">${esc(subtitle)}</span>` : ""}
+          ${headLegend || (subtitle ? `<span class="muted call-timeline-sub">${esc(subtitle)}</span>` : "")}
         </div>
+        ${headLegend && subtitle ? `<p class="muted call-timeline-sub call-timeline-sub--block">${esc(subtitle)}</p>` : ""}
         ${body}
       </div>
     </section>`;
@@ -2253,14 +2441,14 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
             coachAudience,
             company: tabs.company || "",
           })
-        : `<div class="call-tab-empty"><h4>No QIP scorecard</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
+        : `<div class="call-tab-empty"><h4>No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())}</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
   } catch (err) {
-    console.error("[call-view] QIP scorecard render failed:", err);
-    qipHtml = `<div class="call-tab-empty"><h4>QIP scorecard unavailable</h4><p class="muted">Could not render the scorecard for this call. Try refreshing; if it persists, re-run post-call analysis.</p></div>`;
+    console.error("[call-view] Call Quality Score render failed:", err);
+    qipHtml = `<div class="call-tab-empty"><h4>${esc(CALL_QUALITY_SCORE_LABEL)} unavailable</h4><p class="muted">Could not render the scorecard for this call. Try refreshing; if it persists, re-run post-call analysis.</p></div>`;
   }
 
   const tabDefs = [
-    { id: "qip", label: "QIP scorecard", body: `<div class="call-tab-panel-inner call-tab-qip">${qipHtml}</div>` },
+    { id: "qip", label: CALL_QUALITY_SCORE_LABEL, body: `<div class="call-tab-panel-inner call-tab-qip">${qipHtml}</div>` },
     {
       id: "technical",
       label: "Technical commit",
@@ -2290,6 +2478,7 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
                 clusterLabels: tabs.clusterLabels || {},
                 objections: tabs.objections,
                 timelineMarkers: tabs.timelineMarkers,
+                dealRollup: tabs.dealRollup,
               })
       }</div>`,
     },
@@ -2339,16 +2528,31 @@ async function safeEnrich(label, fn, fallback) {
   }
 }
 
-/** Immediate full-layout shell while enrichments load. */
-function renderCallLoadingShell(record) {
-  const hydration = resolveRecordHydration(record);
-  return renderCallRecordSkeleton(record, {
-    pending: hydration.pending.length
-      ? hydration.pending
-      : ["qualify", "summarise", "commit", "arr", "gaps"],
-    errors: hydration.errors,
-    progressMessage: hydration.progressMessage || "Loading deal context…",
-  });
+/** Immediate orbit loading shell while call enrichments load (matches deal record). */
+export function renderCallRecordLoadingPanel(record, opts = {}) {
+  const callId = record?.id || opts.callId || "";
+  const title = record
+    ? resolveCallTitleFromRecord(record, {
+        accountName: record?.result?.confirmed?.accountName || record?.companyName,
+      })
+    : "Activity record";
+  return `
+    <div class="lifecycle-detail call-record call-record--loading" data-call-id="${esc(callId)}">
+      <div class="call-record-page">
+        <div class="call-record-title-block">
+          <button type="button" class="call-record-back" data-action="back">
+            <span class="call-record-back-chevron" aria-hidden="true">←</span>
+            All ${esc(ACTIVITIES_NAV_LABEL.toLowerCase())}
+          </button>
+          <div class="call-record-title-row">
+            <div class="call-record-title-main">
+              <h1 class="call-record-title">${esc(title)}</h1>
+            </div>
+          </div>
+        </div>
+        ${renderLoadingPanel(opts.message || "Loading activity record…")}
+      </div>
+    </div>`;
 }
 
 async function loadCallBundle(session, record) {
@@ -2442,18 +2646,16 @@ async function loadCallBundle(session, record) {
 
   let deal = null;
   let account = null;
-  let technicalCommit =
-    resultBlob.technicalCommit || parallel.embeddedTechnicalCommit || null;
+  let technicalCommit = resultBlob.technicalCommit || parallel.embeddedTechnicalCommit || null;
+  const recordsForRollup = dealId ? historyRecordsForDealRollup(email, dealId, record) : [];
 
   if (dealId) {
-    const [loadedDeal, tcFromStore] = await Promise.all([
+    const [loadedDeal, mergedTc] = await Promise.all([
       safeEnrich("getDeal", () => getDeal(dealId), null),
-      !hasRealTechnicalCommit(technicalCommit) && store.getTechnicalCommitByDeal
-        ? safeEnrich("getTechnicalCommitByDeal", () => store.getTechnicalCommitByDeal(dealId), null)
-        : Promise.resolve(null),
+      resolveMergedTechnicalCommit(email, dealId, record, store, technicalCommit),
     ]);
     deal = loadedDeal;
-    if (hasRealTechnicalCommit(tcFromStore)) technicalCommit = tcFromStore;
+    technicalCommit = mergedTc;
     if (deal?.accountId && store.getAccount) {
       account = await safeEnrich("getAccount", () => store.getAccount(deal.accountId), null);
     }
@@ -2480,17 +2682,15 @@ async function loadCallBundle(session, record) {
 
   // Same enrichment the deal record uses — Firestore metadata.meddpicc lags behind
   // the Pass 4 qualification blobs sitting in local history.
-  if (deal) {
-    const dealRecords = listHistoryRecordsForDeal(email, dealId);
-    if (dealRecords.length) deal = enrichDealFromHistoryRecords(deal, dealRecords);
+  if (deal && recordsForRollup.length) {
+    deal = enrichDealFromHistoryRecords(deal, recordsForRollup);
   }
 
   let med = resolveDealMeddpicc(deal, account);
-  if (!med) {
-    const own = record?.result?.qualification
-      ? rollupMeddpiccFromHistoryRecords([record])
-      : null;
-    med = own || null;
+  if (!med && recordsForRollup.length) {
+    med = rollupMeddpiccFromHistoryRecords(recordsForRollup);
+  } else if (!med && record?.result?.qualification) {
+    med = rollupMeddpiccFromHistoryRecords([record]);
   }
   const meddpiccScore = med ? computeMeddpiccScore(med) : null;
   const meddpiccFilled = countMeddpiccFilled(med);
@@ -2533,6 +2733,22 @@ async function loadCallBundle(session, record) {
   let whatWorks = (pass6?.whatWorks?.length ? pass6.whatWorks : parallel.whatWorks)
     .map(normalizeProductSignalRow)
     .filter(Boolean);
+
+  if (dealId) {
+    const mergedSignals = await safeEnrich(
+      "resolveDealProductSignals",
+      () =>
+        resolveDealProductSignals(store, dealId, {
+          currentCallId: record.id,
+          callGaps: productGaps,
+          callWorks: whatWorks,
+          historyRecords: recordsForRollup,
+        }),
+      { productGaps, whatWorks, dealRollup: false },
+    );
+    productGaps = mergedSignals.productGaps.map(normalizeProductSignalRow).filter(Boolean);
+    whatWorks = mergedSignals.whatWorks.map(normalizeProductSignalRow).filter(Boolean);
+  }
 
   /** @type {Record<string, string>} */
   const clusterLabels = {};
@@ -2590,6 +2806,12 @@ async function loadCallBundle(session, record) {
   let meddpiccDeltas = parallel.meddpiccDeltas;
   let objections = summarise.objections?.length ? summarise.objections : parallel.objections;
   let followUps = summarise.followUps?.length ? summarise.followUps : parallel.followUps;
+
+  timelineMarkers = mergeSupplementalTimelineMarkers(timelineMarkers, {
+    productGaps,
+    objections,
+    scorecardLines: scorecard?.lines || [],
+  });
 
   let momDraft = summarise.momDraft || resultBlob.momDraft || null;
   if (!momDraft) momDraft = parallel.momDrafts?.[0] || null;
@@ -2649,13 +2871,6 @@ async function loadCallBundle(session, record) {
     sentiment,
     confidencePct,
     arrLabel,
-    tensionLine: buildVerdictTension({
-      qipScore,
-      qipDelta: deltaInfo?.delta,
-      meddpiccScore,
-      momentumStatus,
-      confidencePct,
-    }),
     hasVideo: resolveVideoAvailable(record),
     kaiaSource: isKaiaRecordingUrl(record?.zoomLink),
     callNotes:
@@ -2670,7 +2885,7 @@ async function loadCallBundle(session, record) {
     attendees,
     timeline: { facts: timelineFacts, segments: timelineSegments, markers: timelineMarkers },
     videoFacts,
-    productSignal: { productGaps, whatWorks, clusterLabels },
+    productSignal: { productGaps, whatWorks, clusterLabels, dealRollup: !!dealId },
     technicalCommit,
     tcDeltas,
     meddpiccDeltas,
@@ -2699,12 +2914,6 @@ function parseDurationMinutesLabel(record, timeline) {
     return `${Math.round(Number(sec) / 60)} minutes`;
   }
   return null;
-}
-
-/** Full layout skeleton — same structure as the final call record. */
-function renderCallRecordSkeleton(record, opts = {}) {
-  const bundle = buildLocalCallBundle({ email: "" }, record);
-  return renderCallRecord(bundle, opts);
 }
 
 function renderCallRecord(bundle, opts = {}) {
@@ -2739,6 +2948,10 @@ function renderCallRecord(bundle, opts = {}) {
       <div class="call-record-page">
         ${renderCallInlineProgress(progressMessage)}
         <div class="call-record-title-block">
+          <button type="button" class="call-record-back" data-action="back">
+            <span class="call-record-back-chevron" aria-hidden="true">←</span>
+            All ${esc(ACTIVITIES_NAV_LABEL.toLowerCase())}
+          </button>
           <div class="call-record-title-row">
             <div class="call-record-title-main">
               <h1 class="call-record-title">${esc(title)}</h1>
@@ -2759,6 +2972,8 @@ function renderCallRecord(bundle, opts = {}) {
         })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
+          dealRollup: !!(bundle.dealId || bundle.deal?.id),
+          currentCallId: record.id,
           technicalCommit: bundle.technicalCommit,
           tcDeltas: bundle.tcDeltas,
           meddpiccDeltas: bundle.meddpiccDeltas,
@@ -2790,16 +3005,20 @@ function flashSaveStatus(el, message, isError = false) {
   }, 2500);
 }
 
+function wireCallRecordBack(container, opts) {
+  const back = container.querySelector('[data-action="back"]');
+  if (!back || back.dataset.wiredBack === "1") return;
+  back.dataset.wiredBack = "1";
+  const go = () => opts.onBack?.();
+  back.addEventListener("fwClick", go);
+  back.addEventListener("click", go);
+}
+
 function wireCallRecord(container, session, bundle, opts) {
   const recordId = bundle.record.id;
   const email = session.email;
 
-  container.querySelector('[data-action="back"]')?.addEventListener("fwClick", () => {
-    opts.onBack?.();
-  });
-  container.querySelector('[data-action="back"]')?.addEventListener("click", () => {
-    opts.onBack?.();
-  });
+  wireCallRecordBack(container, opts);
 
   const openDeal = () => {
     const id = bundle.deal?.id || bundle.dealId;
@@ -2907,19 +3126,6 @@ function wireCallRecord(container, session, bundle, opts) {
     btn.addEventListener("click", () => { void retry(); });
   });
 
-  container.querySelectorAll(".score-override-trigger").forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const firstCat = container.querySelector("details.qip-category-row, details.cat");
-      if (!firstCat) return;
-      firstCat.open = true;
-      const firstTheme = firstCat.querySelector("details.thm");
-      if (firstTheme) firstTheme.open = true;
-      firstCat.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
-  });
-
   if (opts.expandThemeKey) {
     const themeKey = opts.expandThemeKey;
     window.requestAnimationFrame(() => {
@@ -2991,6 +3197,24 @@ export async function renderCallView(container, session, opts = {}) {
   const targetCallId = opts.callId;
   const canApply = () => !opts.shouldApply || opts.shouldApply();
 
+  if (!targetCallId) {
+    if (!session?.email) {
+      container.innerHTML = `<p class="muted">Sign in to view call records.</p>`;
+      return;
+    }
+    container.innerHTML = renderCallEmptyState(
+      "Open a call from your dashboard, coaching view, or after post-call analysis.",
+    );
+    return;
+  }
+
+  const ownerEmailHint = opts.ownerEmail || session?.email || "";
+  const previewRecord =
+    ownerEmailHint && targetCallId ? getPostCallAnalysis(ownerEmailHint, targetCallId) : null;
+  container.innerHTML = renderCallRecordLoadingPanel(previewRecord || { id: targetCallId });
+  wireCallRecordBack(container, opts);
+  if (!canApply()) return;
+
   let activeSession = session;
   if (!sessionUserId(activeSession)) {
     try {
@@ -3005,13 +3229,6 @@ export async function renderCallView(container, session, opts = {}) {
 
   if (!activeSession?.email) {
     container.innerHTML = `<p class="muted">Sign in to view call records.</p>`;
-    return;
-  }
-
-  if (!targetCallId) {
-    container.innerHTML = renderCallEmptyState(
-      "Open a call from your dashboard, coaching view, or after post-call analysis.",
-    );
     return;
   }
 
@@ -3036,7 +3253,11 @@ export async function renderCallView(container, session, opts = {}) {
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
-    if (!canApply()) return;
+    container.innerHTML = renderCallRecordLoadingPanel(resolvedRecord);
+    wireCallRecordBack(container, opts);
+    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+    wireCallSpine(container);
+    wireCallViewAnimations(container);
 
     const localHydration = resolveRecordHydration(resolvedRecord);
     const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);
@@ -3070,4 +3291,4 @@ export async function renderCallView(container, session, opts = {}) {
   }
 }
 
-export { resolveDealId, resolveCallType, qipDeltaForType, buildVerdictTension };
+export { resolveDealId, resolveCallType, qipDeltaForType };

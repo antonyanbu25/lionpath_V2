@@ -68,8 +68,18 @@ async function verifyFirebaseToken(token: string, projectId: string): Promise<Ve
   return { email: String(payload.email).toLowerCase(), uid: String(payload.sub) };
 }
 
+/** True when API routes must verify Firebase ID tokens (production / Firebase SSO). */
+export function firebaseAuthEnforced(env: Env): boolean {
+  const projectId = (env.FIREBASE_PROJECT_ID || "").trim();
+  if (!projectId) return false;
+  const flag = String(env.FIREBASE_AUTH_ENFORCED ?? "1")
+    .trim()
+    .toLowerCase();
+  return flag !== "0" && flag !== "false" && flag !== "no";
+}
+
 export async function requireUser(request: Request, env: Env): Promise<VerifiedUser | null> {
-  if (!env.FIREBASE_PROJECT_ID) {
+  if (!firebaseAuthEnforced(env)) {
     // P0 SECURITY: dummy auth mode — client-claimed identity is trusted without
     // Firebase token verification. This is only acceptable for local development.
     // The boot guard in node-server.ts hard-fails if NODE_ENV=production.
@@ -109,7 +119,7 @@ export async function resolveHistoryEmail(
 ): Promise<string> {
   const user = await requireUser(request, env);
   if (user) return user.email;
-  if (env.FIREBASE_PROJECT_ID) {
+  if (firebaseAuthEnforced(env)) {
     throw Object.assign(new Error("Sign-in required."), { status: 401 });
   }
   return assertAllowedEmail(fallbackEmail || "", env);
@@ -147,7 +157,7 @@ export async function resolveHistoryEmailForWrite(
     }
   }
 
-  if (env.FIREBASE_PROJECT_ID) {
+  if (firebaseAuthEnforced(env)) {
     return target;
   }
 
@@ -169,7 +179,7 @@ export async function assertManagerProxyOwnerEmail(
   if (!normalized) return;
   const callerEmail = await resolveHistoryEmail(request, env, "");
   if (normalized === callerEmail) return;
-  if (env.FIREBASE_PROJECT_ID) return;
+  if (firebaseAuthEnforced(env)) return;
   if (!isDemoManagerEmail(callerEmail)) {
     throw Object.assign(new Error("Only managers may act on behalf of another SE."), {
       status: 403,

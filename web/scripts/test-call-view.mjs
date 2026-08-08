@@ -109,7 +109,7 @@ assert(!container.innerHTML.includes("call-record--loading"), "finished render r
 assert(container.innerHTML.includes("Acme · Demo"), "shows call title");
 assert(container.innerHTML.includes("call-postcall-summary-row"), "shows KPI+star+room row");
 assert(container.innerHTML.includes('class="metrics"'), "shows metrics column");
-assert(container.innerHTML.includes("QIP score"), "shows QIP KPI");
+assert(container.innerHTML.includes("Call Quality Score"), "shows Call Quality Score KPI");
 assert(container.innerHTML.includes("Qualification · MEDDPICC"), "shows MEDDPICC KPI");
 assert(container.innerHTML.includes("How the 48 minutes went"), "timeline title from duration");
 assert(!container.innerHTML.includes("call-spine-metrics"), "metrics strip removed from timeline");
@@ -119,38 +119,44 @@ assert(!container.innerHTML.includes("← All calls"), "no All calls back button
 assert(!container.innerHTML.includes("Transcript-only call"), "no transcript-only dev copy");
 const starCount = (container.innerHTML.match(/class="[^"]*\bqip-star-svg\b[^"]*"/g) || []).length;
 assert(starCount === 1, "QIP radar shown once at top");
-assert(container.innerHTML.includes('viewBox="0 0 700 600"'), "radar uses 700x600 viewBox");
+assert(container.innerHTML.includes('viewBox="0 0 600 500"'), "radar uses labs 600x500 viewBox");
 assert(container.innerHTML.includes("qip-radar-ring"), "radar has pentagon grid rings");
 assert(!container.innerHTML.match(/<circle class="ring r\d"/), "radar grid uses pentagons not circles");
 const dataMatch = container.innerHTML.match(/class="qip-radar-data" points="([^"]+)"/);
 const radarVerts = dataMatch ? dataMatch[1].trim().split(/\s+/).length : 0;
 assert(radarVerts === 5, "radar data polygon is 5-vertex pentagon not 10-vertex star");
 assert(container.innerHTML.includes("qip-radar-ring-outer"), "radar has outer pentagon boundary at score 10");
-assert(container.innerHTML.includes("qip-star-core"), "star has glowing core group");
-assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in star core");
+assert(container.innerHTML.includes("star-overall-pill"), "overall score in header pill");
+assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in header pill");
 assert(container.innerHTML.includes("qip-star-animated"), "star has entrance animations");
-assert(container.innerHTML.includes('class="legend"'), "scorecard has legend");
-assert(container.innerHTML.includes('class="chip done"'), "scorecard has done chip");
-assert(container.innerHTML.includes('class="chip part"'), "scorecard has partial chip");
-assert(container.innerHTML.includes('class="chip miss"'), "scorecard has missed chip");
+assert(container.innerHTML.includes("qip-radar-wash"), "radar has multi-colour wash");
+assert(!container.innerHTML.includes("qip-star-core"), "no center score core");
+assert(!container.innerHTML.includes('viewBox="0 0 700 600"'), "old 700x600 radar removed");
+assert(container.innerHTML.includes("qip-weight-key"), "scorecard has weight key near score");
+assert(container.innerHTML.includes('class="wt"'), "scorecard has weight bars");
+assert(!container.innerHTML.includes('class="legend"'), "verbose scorecard legend removed");
+assert(!container.innerHTML.includes("How to read this"), "how-to-read copy removed");
 assert(container.innerHTML.includes('class="pill high"') || container.innerHTML.includes('class="pill med"'), "scorecard uses wireframe confidence pills");
 assert(container.innerHTML.includes("qip-radar-data"), "radar has filled score polygon");
 assert(!container.innerHTML.includes("-dataClip"), "radar no longer uses wedge clipPath fill");
 assert(!container.innerHTML.includes("Demo profile"), "no profile version subline on KPI");
 assert(!container.innerHTML.includes('viewBox="0 0 400 400"'), "old 400x400 radar removed");
 assert(container.innerHTML.includes("Who was in the room"), "shows room panel");
-assert(container.innerHTML.includes("QIP scorecard"), "shows QIP tab");
+assert(container.innerHTML.includes("Call Quality Score"), "shows Call Quality Score tab");
+assert(!container.innerHTML.includes("Call Quality Scorecard"), "no Scorecard suffix on tab");
 assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
 assert(container.innerHTML.includes("What worked"), "shows what worked tile");
 assert(container.innerHTML.includes("What didn"), "shows what didn't tile");
 assert(container.innerHTML.includes("/ 10"), "shows /10 scores");
 assert(
-  !/QIP Score[\s\S]{0,120}\/ 100/.test(container.innerHTML),
-  "QIP KPI uses /10 not /100",
+  !/Call Quality Score[\s\S]{0,120}\/ 100/.test(container.innerHTML),
+  "Call Quality Score KPI uses /10 not /100",
 );
 assert(container.innerHTML.includes("Positive"), "shows positive sentiment for advancing call");
 assert(container.innerHTML.includes("Overall call sentiment"), "sentiment KPI on side column");
-assert(container.innerHTML.includes("Evaluation signal"), "QIP star radar in center column");
+assert(container.innerHTML.includes("Evaluation signal"), "Call Quality star radar in center column");
+assert(container.innerHTML.includes("qip-star-card"), "star sits on white tile card");
+assert(!container.innerHTML.includes("background:transparent"), "star card not forced transparent");
 assert(!container.innerHTML.includes("from call momentum"), "sentiment not momentum placeholder");
 assert(!container.innerHTML.includes("Provisional"), "no provisional badge");
 assert(!container.innerHTML.includes("Weighted"), "no weighted column");

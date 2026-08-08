@@ -220,9 +220,26 @@ export function locateQuoteAtS(quote: string, cues: TranscriptCue[]): number | n
 }
 
 export interface TimelineMarkerSources {
-  gaps?: Array<{ verbatim?: string | null; productArea?: string | null; subArea?: string | null }>;
-  whatWorks?: Array<{ verbatim?: string | null; productArea?: string | null }>;
-  objections?: Array<{ objectionText?: string | null; theme?: string | null; landed?: boolean }>;
+  gaps?: Array<{
+    verbatim?: string | null;
+    productArea?: string | null;
+    subArea?: string | null;
+    headline?: string | null;
+    atS?: number | null;
+  }>;
+  whatWorks?: Array<{
+    verbatim?: string | null;
+    productArea?: string | null;
+    subArea?: string | null;
+    headline?: string | null;
+    atS?: number | null;
+  }>;
+  objections?: Array<{
+    objectionText?: string | null;
+    theme?: string | null;
+    landed?: boolean;
+    atS?: number | null;
+  }>;
   scorecardLines?: Array<{
     themeKey: string;
     score: number;
@@ -235,6 +252,61 @@ export interface TimelineMarkerSources {
 function truncateLabel(text: string, max = 90): string {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** Snake_case taxonomy keys → Title Case UI labels. */
+export function formatTaxonomyLabel(raw: string | null | undefined): string {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  return s
+    .split("_")
+    .filter(Boolean)
+    .map((word) => {
+      const w = word.toLowerCase();
+      if (w === "ai") return "AI";
+      if (w === "cde") return "CDE";
+      if (w === "sso") return "SSO";
+      if (w === "api") return "API";
+      if (w === "ui") return "UI";
+      if (w === "ux") return "UX";
+      if (w === "itsm") return "ITSM";
+      if (w === "crm") return "CRM";
+      if (w === "ppm") return "PPM";
+      if (w === "tco") return "TCO";
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+export function formatProductAreaLabel(
+  productArea: string | null | undefined,
+  subArea?: string | null,
+): string {
+  const area = formatTaxonomyLabel(productArea || "other");
+  const sub = String(subArea || "").trim();
+  if (!sub || sub === "other") return area;
+  return `${area} · ${formatTaxonomyLabel(sub)}`;
+}
+
+function resolveMarkerAtS(
+  explicit: number | null | undefined,
+  quote: string | null | undefined,
+  cues: TranscriptCue[],
+): number | null {
+  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit >= 0) {
+    return Math.round(explicit);
+  }
+  if (quote) return locateQuoteAtS(quote, cues);
+  return null;
+}
+
+function stripObjectionFraming(text: string): string {
+  return String(text || "")
+    .replace(
+      /^(?:Customer|Prospect|The customer|The prospect)\s+(?:expressed(?:\s+concern(?:\s+that)?|\s+that|\s+a concern about)?|raised|asked|noted|said|mentioned|was concerned(?:\s+that)?|pushed back(?:\s+on)?|questioned)\s+/i,
+      "",
+    )
+    .trim();
 }
 
 /** A CTA line scoring under half its ceiling is the "weak close" moment. */
@@ -275,41 +347,54 @@ export function deriveMarkers(
   const markers: TimelineMarkerDraft[] = [];
 
   for (const gap of sources.gaps || []) {
-    if (!gap.verbatim) continue;
-    const atS = locateQuoteAtS(gap.verbatim, cues);
+    if (!gap.verbatim && gap.atS == null) continue;
+    const atS = resolveMarkerAtS(gap.atS, gap.verbatim, cues);
     if (atS == null) continue;
-    const area = [gap.productArea, gap.subArea].filter(Boolean).join(" · ");
+    const headline = gap.headline?.trim();
+    const label = headline
+      ? truncateLabel(headline, 48)
+      : formatProductAreaLabel(gap.productArea, gap.subArea) ||
+        truncateLabel(gap.verbatim || "Product gap", 48);
     markers.push({
       atS,
       kind: "gap",
-      label: area ? truncateLabel(area) : truncateLabel(gap.verbatim),
-      quote: gap.verbatim,
+      label,
+      quote: gap.verbatim ?? null,
       source: "transcript",
     });
   }
 
   for (const win of sources.whatWorks || []) {
-    if (!win.verbatim) continue;
-    const atS = locateQuoteAtS(win.verbatim, cues);
+    if (!win.verbatim && win.atS == null) continue;
+    const atS = resolveMarkerAtS(win.atS, win.verbatim, cues);
     if (atS == null) continue;
+    const headline = win.headline?.trim();
+    const label = headline
+      ? truncateLabel(headline, 48)
+      : formatProductAreaLabel(win.productArea, win.subArea) ||
+        truncateLabel(win.verbatim || "What landed", 48);
     markers.push({
       atS,
       kind: "win",
-      label: win.productArea ? truncateLabel(win.productArea) : truncateLabel(win.verbatim),
-      quote: win.verbatim,
+      label,
+      quote: win.verbatim ?? null,
       source: "transcript",
     });
   }
 
   for (const objection of sources.objections || []) {
-    if (!objection.objectionText) continue;
-    const atS = locateQuoteAtS(objection.objectionText, cues);
+    if (!objection.objectionText && objection.atS == null) continue;
+    const atS = resolveMarkerAtS(objection.atS, objection.objectionText, cues);
     if (atS == null) continue;
+    const themeLabel = objection.theme ? formatTaxonomyLabel(objection.theme) : "";
+    const label = themeLabel
+      ? truncateLabel(themeLabel, 48)
+      : truncateLabel(stripObjectionFraming(objection.objectionText || ""), 48);
     markers.push({
       atS,
       kind: "objection",
-      label: truncateLabel(objection.theme || objection.objectionText),
-      quote: objection.objectionText,
+      label: label || "Objection",
+      quote: objection.objectionText ?? null,
       source: "transcript",
     });
   }

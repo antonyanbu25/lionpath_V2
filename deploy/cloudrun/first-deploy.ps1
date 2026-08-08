@@ -27,9 +27,11 @@ gcloud run deploy prep-portal-api `
   --max-instances 10 `
   --concurrency 15 `
   --timeout 300 `
-  --set-env-vars "LLM_PROVIDER=gemini,MODEL=gemini-3.1-flash-lite,EFFORT=medium,POSTCALL_LLM_PROVIDER=gemini,POSTCALL_MODEL=gemini-3.1-flash-lite,POSTCALL_EFFORT=low,GOOGLE_CLOUD_PROJECT=$Project,VERTEX_LOCATION=$Region,ALLOWED_ORIGINS=https://portal.benjaminsquare.com,ALLOWED_EMAIL_DOMAIN=freshworks.com,FIREBASE_PROJECT_ID=$Project,HISTORY_FILE_DIR=/data/history,FFMPEG_MAX_CONCURRENT=2" `
+  --set-env-vars "LLM_PROVIDER=gemini,MODEL=gemini-3.1-flash-lite,EFFORT=medium,POSTCALL_LLM_PROVIDER=gemini,POSTCALL_MODEL=gemini-3.1-flash-lite,POSTCALL_EFFORT=low,GOOGLE_CLOUD_PROJECT=$Project,VERTEX_LOCATION=$Region,ALLOWED_ORIGINS=https://portal.benjaminsquare.com,ALLOWED_EMAIL_DOMAIN=freshworks.com,FIREBASE_PROJECT_ID=$Project,HISTORY_FILE_DIR=/data/history,FFMPEG_MAX_CONCURRENT=2,FRESHDESK_DOMAIN=janus.freshdesk.com" `
   --add-volume="name=history,type=cloud-storage,bucket=se-singha-paathi-prep-history" `
   --add-volume-mount="volume=history,mount-path=/data/history"
+
+Write-Host "==> Tip: attach Freshdesk API key (one-time): FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-freshdesk-secret.sh"
 
 Write-Host "==> Deploying prep-portal-web"
 gcloud run deploy prep-portal-web `

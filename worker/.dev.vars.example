@@ -2,11 +2,17 @@
 # Required for pre-call prep and post-call analysis locally.
 GEMINI_API_KEY=your-gemini-api-key-from-aistudio
 
-# Required for Firestore scripts (backfill-embeddings, backfill-call-summaries, seed-firestore-users).
-# Must match web/firebase-config.local.js projectId (typically se-singha-paathi).
-FIREBASE_PROJECT_ID=your-firebase-project-id
+# Firebase project — Firestore admin + token verification (when auth enforced).
+# FIREBASE_PROJECT_ID=your-firebase-project-id
+# Dummy-auth local dev (no web/firebase-config.local.js): keep project id, disable Bearer checks:
+# FIREBASE_AUTH_ENFORCED=0
 
 # Optional — Apollo enrichment (Phase 2). Never commit real keys.
 # APOLLO_API_KEY=your-apollo-api-key
 
+# Freshdesk tickets (dispute score + product feedback). Never commit real keys.
+# FRESHDESK_DOMAIN=janus.freshdesk.com
+# FRESHDESK_API_KEY=your-freshdesk-api-key
+
 # wrangler secret put APOLLO_API_KEY
+# wrangler secret put FRESHDESK_API_KEY

@@ -50,6 +50,31 @@
   background: var(--dew-surface-subtle);
 }
 
+/* Activities feed — distinct brief vs call kind chips (not lifecycle stage badges). */
+.activity-kind-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  vertical-align: middle;
+}
+
+.activity-kind-chip--brief {
+  color: #5a4a2e;
+  background: #f3ead6;
+  border: 1px solid #e0d2b4;
+}
+
+.activity-kind-chip--call {
+  color: #1a5c52;
+  background: #e4f3ef;
+  border: 1px solid #b8ddd4;
+}
+
 .lifecycle-detail-head {
   display: flex;
   align-items: flex-start;
@@ -4566,5 +4591,773 @@
   .pipeline-view--wireframe .pipeline-metric-card,
   .product-signal-view--wireframe .product-signal-metric-card {
     transition: none;
+  }
+}
+
+
+/* ── SE Labs deals list + record ─────────────────────────────── */
+.deal-list-view--labs,
+.account-list-view--labs {
+  font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+#view-deals .deal-list-view--labs .deal-list-toolbar,
+#view-accounts .account-list-view--labs .account-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 0;
+}
+
+#view-deals .deal-list-view--labs .deal-list-heading,
+#view-accounts .account-list-view--labs .account-list-heading {
+  margin: 0;
+  font-size: 1.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.032em;
+  color: var(--dew-text);
+}
+
+#view-deals .deal-list-view--labs .deal-list-subtitle,
+#view-accounts .account-list-view--labs .account-list-subtitle {
+  margin: 4px 0 0;
+  font-size: 0.90625rem;
+  color: var(--dew-text-secondary);
+}
+
+#view-deals .deal-list-view--labs .deal-list-search,
+#view-accounts .account-list-view--labs .account-list-search {
+  flex: 0 1 320px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.deal-kpis,
+.account-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.account-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.deal-kpi,
+.account-kpi {
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: var(--dew-shadow-island);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 104px;
+}
+
+.deal-kpi-label,
+.account-kpi-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dew-text-secondary);
+}
+
+.deal-kpi-val,
+.account-kpi-val {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--dew-text);
+}
+
+.deal-kpi-note,
+.account-kpi-note {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.71875rem;
+  color: var(--dew-text-muted);
+  letter-spacing: 0.01em;
+}
+
+.deal-list-table-card,
+.account-list-table-card.account-list-table-card--labs {
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: var(--dew-shadow-island);
+  overflow: hidden;
+  padding: 0;
+}
+
+.deal-list-table-wrap,
+.account-list-table-wrap {
+  overflow-x: auto;
+}
+
+.deal-list-table,
+.account-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.deal-list-table thead th,
+.account-list-table thead th {
+  text-align: left;
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dew-text-faint);
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--dew-border);
+  white-space: nowrap;
+}
+
+.deal-list-table thead th.deal-th-r,
+.account-list-table thead th.account-th-r {
+  text-align: right;
+}
+
+.deal-list-table tbody td,
+.account-list-table tbody td {
+  padding: 15px 22px;
+  border-bottom: 1px solid var(--dew-hairline);
+  vertical-align: middle;
+}
+
+.deal-list-table tbody tr:last-child td,
+.account-list-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.deal-list-row,
+.account-list-row--labs {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.deal-list-row:hover,
+.account-list-row--labs:hover {
+  background: var(--dew-surface-subtle);
+}
+
+.deal-list-row:focus-visible,
+.account-list-row--labs:focus-visible {
+  outline: 2px solid var(--dew-brand);
+  outline-offset: -2px;
+}
+
+.deal-cell,
+.account-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 190px;
+}
+
+.deal-av,
+.account-av {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78125rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: #e7ded1;
+  color: #6f6759;
+}
+
+.deal-nm,
+.account-nm {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.deal-nm b,
+.account-nm b {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--dew-text);
+}
+
+.deal-nm span,
+.account-nm span {
+  font-size: 0.78125rem;
+  color: var(--dew-text-secondary);
+}
+
+.deal-num,
+.account-num {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.8125rem;
+  color: var(--dew-text-secondary);
+}
+
+.deal-num--r,
+.account-num--r {
+  text-align: right;
+}
+
+.deal-dash {
+  color: var(--dew-text-faint);
+}
+
+.deal-scorecell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 120px;
+}
+
+.deal-scorecell-n {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.deal-scorecell-n s {
+  color: var(--dew-text-faint);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.deal-minibar {
+  flex: 1;
+  min-width: 46px;
+  height: 7px;
+  border-radius: 5px;
+  background: var(--dew-hairline);
+  overflow: hidden;
+}
+
+.deal-minibar > i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.deal-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.71875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 7px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.deal-pill--neutral {
+  color: #877b63;
+  background: #f1ece3;
+}
+
+.deal-pill--won {
+  color: var(--dew-green);
+  background: var(--dew-green-tint);
+}
+
+.deal-pill--lost {
+  color: var(--dew-red);
+  background: var(--dew-red-tint);
+}
+
+.deal-pill--hot {
+  color: var(--dew-green);
+  background: var(--dew-green-tint);
+}
+
+.deal-pill--warm {
+  color: var(--dew-amber);
+  background: var(--dew-amber-tint);
+}
+
+.deal-pill--cold {
+  color: var(--dew-red);
+  background: var(--dew-red-tint);
+}
+
+.deal-chev {
+  color: var(--dew-text-faint);
+  font-size: 1.25rem;
+  transition: color 0.12s, transform 0.12s;
+}
+
+.deal-list-row:hover .deal-chev,
+.account-list-row--labs:hover .deal-chev {
+  color: var(--dew-brand);
+  transform: translateX(2px);
+}
+
+.deal-list-footnote {
+  margin: 0;
+  padding: 2px;
+  font-size: 0.84375rem;
+  color: var(--dew-text-secondary);
+}
+
+.deal-list-sort-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.deal-list-sort-btn--active {
+  color: var(--dew-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.deal-list-money {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deal-list-money--low-confidence {
+  color: var(--dew-text-muted);
+  font-style: italic;
+}
+
+.deal-list-money-mark {
+  margin-left: 2px;
+  color: var(--dew-amber);
+  font-weight: 700;
+  font-style: normal;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Deal record labs */
+.deal-record--labs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.deal-record--labs .deal-record-header--labs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.deal-crumb {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: var(--dew-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.deal-crumb:hover {
+  color: var(--dew-brand);
+}
+
+.deal-dhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.deal-dhead-lft {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.deal-logo {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  background: linear-gradient(140deg, #f7a81b, #e8542a);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.deal-titlerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deal-record--labs .deal-record-title {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.deal-dom {
+  margin-top: 5px;
+  font-size: 0.8125rem;
+  color: var(--dew-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deal-dhead-acts {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.deal-record--labs .deal-dhead-acts.account-detail-actions {
+  margin-top: 0;
+}
+
+.deal-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 13px 16px;
+  background: var(--dew-brand-tint);
+  border: 1px solid #cfe3de;
+}
+
+.deal-callout--warn {
+  background: var(--dew-amber-tint);
+  border-color: #ecd9b0;
+}
+
+.deal-callout-k {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  margin-bottom: 2px;
+  color: var(--dew-amber);
+}
+
+.deal-callout p {
+  margin: 0;
+  font-size: 0.84375rem;
+  line-height: 1.5;
+  color: #7c5a1e;
+}
+
+.deal-score-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.deal-scard {
+  position: relative;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  border-radius: var(--dew-radius-lg);
+  box-shadow: var(--dew-shadow-island);
+  padding: 16px 18px 16px 20px;
+  overflow: hidden;
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deal-scard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--_a, var(--dew-brand));
+}
+
+.deal-scard-sl {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dew-text-muted);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+}
+
+.deal-scard-sv {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--_c, var(--dew-text));
+}
+
+.deal-scard-sv u {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dew-text-faint);
+  font-style: normal;
+  text-decoration: none;
+  margin-left: 2px;
+}
+
+.deal-scard-sv--word {
+  font-size: 1.4375rem;
+  letter-spacing: -0.02em;
+}
+
+.deal-scard-note {
+  font-size: 0.75rem;
+  color: var(--dew-text-secondary);
+  margin-top: auto;
+}
+
+.deal-scard-bar,
+.deal-scard-segbar {
+  display: flex;
+  gap: 4px;
+  height: 6px;
+}
+
+.deal-scard-bar {
+  border-radius: 5px;
+  background: var(--dew-hairline);
+  overflow: hidden;
+}
+
+.deal-scard-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.deal-scard-segbar > i {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dew-hairline);
+}
+
+.deal-scard-segbar > i.on {
+  background: #a5883f;
+}
+
+.deal-gapline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fbf7ef;
+  border: 1px solid #efe2c9;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 0.84375rem;
+  color: #6f5a2f;
+}
+
+.deal-gapline b {
+  color: #8a6a24;
+}
+
+.deal-summary-bullets {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.deal-summary-bullets li {
+  display: flex;
+  gap: 11px;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--dew-text-secondary);
+}
+
+.deal-summary-bullets li::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dew-brand);
+  margin-top: 8px;
+}
+
+.deal-dothead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.deal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.deal-record-rec {
+  background: linear-gradient(180deg, #f2f8f6, #fff);
+  border-color: #cfe3de !important;
+}
+
+.deal-rec-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dew-text);
+  margin-bottom: 6px;
+}
+
+.deal-rec-body {
+  margin: 0;
+  font-size: 0.84375rem;
+  line-height: 1.55;
+  color: var(--dew-text-secondary);
+}
+
+.deal-voicegrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 6px;
+}
+
+.deal-vh {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.deal-voice-q {
+  font-size: 0.84375rem;
+  line-height: 1.55;
+  color: var(--dew-text-secondary);
+  padding: 2px 0 2px 12px;
+  margin: 0 0 12px;
+  border-left: 2px solid var(--dew-hairline);
+}
+
+.deal-voice-q.pos {
+  border-color: #bcd9c6;
+}
+
+.deal-voice-q.neg {
+  border-color: #e7cdbf;
+}
+
+.deal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.deal-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 4px 11px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.deal-chip.good {
+  color: var(--dew-green);
+  background: var(--dew-green-tint);
+  border-color: #d3e6d8;
+}
+
+.deal-chip.bad {
+  color: #b0785b;
+  background: #f4e7df;
+  border-color: #ecd7c9;
+}
+
+.deal-record--labs .deal-record-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .deal-record--labs .deal-record-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1080px) {
+  .deal-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .account-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .deal-score-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .deal-kpis,
+  .account-kpis,
+  .deal-score-strip {
+    grid-template-columns: 1fr;
+  }
+  .deal-voicegrid {
+    grid-template-columns: 1fr;
   }
 }

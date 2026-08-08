@@ -15,12 +15,22 @@ function useFirestore(fb) {
   return !!firebaseConfig.projectId && !!fb?.db;
 }
 
+function isLocalDevHost() {
+  if (typeof location === "undefined") return false;
+  const host = location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
 /** @returns {"local"|"firestore"|"api"} */
 function resolveStoreMode(fb) {
   if (!useFirestore(fb)) return "local";
-  if (typeof localStorage !== "undefined" && localStorage.getItem("lionpath.readVia") === "firestore") {
-    return "firestore";
+  if (typeof localStorage !== "undefined") {
+    const override = localStorage.getItem("lionpath.readVia");
+    if (override === "firestore") return "firestore";
+    if (override === "api") return "api";
   }
+  // Localhost: use browser Firestore SDK directly (worker Admin often lacks GCP creds).
+  if (isLocalDevHost()) return "firestore";
   return "api";
 }
 

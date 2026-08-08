@@ -77,12 +77,57 @@ export interface PostCallScorecardInput {
   userId?: string;
   callId?: string;
   transcriptCaches?: PostCallTranscriptCacheBundle;
+  /** Skip memoized scorecard for this transcript + call type (explicit re-score). */
+  forceRescore?: boolean;
 }
 
 export interface PostCallScorecardResult {
   scorecard: ScorecardDraft;
   analysisConfidence: number;
   provisional: boolean;
+}
+
+/** Memoize scorecards — Gemini 3.x is not reliably deterministic even with temperature 0 + seed. */
+const scorecardResultCache = new Map<string, PostCallScorecardResult>();
+
+function cloneScorecardResult(result: PostCallScorecardResult): PostCallScorecardResult {
+  return JSON.parse(JSON.stringify(result)) as PostCallScorecardResult;
+}
+
+function scorecardCacheFingerprint(input: PostCallScorecardInput, profile: QipProfile): string {
+  const vf = input.videoFacts;
+  const vfParts = vf
+    ? [
+        vf.status ?? "",
+        vf.cameraOnPct ?? "",
+        vf.shareOnPct ?? "",
+        vf.cdeCustomized ?? "",
+        vf.cdeEvidence ?? "",
+        String(slideTimeOnDeckSec(vf)),
+        JSON.stringify(slideSegmentsFromFacts(vf).slice(0, 8)),
+      ].join("|")
+    : "";
+  const basis = [
+    profile.key,
+    String(input.videoAvailable),
+    input.deckLink?.trim() ?? "",
+    input.briefContext?.trim() ?? "",
+    input.companyName ?? "",
+    input.meetingTitle ?? "",
+    vfParts,
+    input.transcript.trim(),
+  ].join("\0");
+  let h = 2166136261;
+  for (let i = 0; i < basis.length; i++) {
+    h ^= basis.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return String(h >>> 0);
+}
+
+/** Test hook — clear memoized scorecards between runs. */
+export function clearScorecardResultCache(): void {
+  scorecardResultCache.clear();
 }
 
 function isVideoTheme(theme: QipTheme): boolean {
@@ -579,6 +624,14 @@ export async function runPostCallScorecard(
   if (!transcript) throw new Error("transcript is required for scorecard.");
 
   const profile = profileFor(input.callType);
+  const cacheKey = scorecardCacheFingerprint(input, profile);
+  if (!input.forceRescore) {
+    const cached = scorecardResultCache.get(cacheKey);
+    if (cached) {
+      return cloneScorecardResult(cached);
+    }
+  }
+
   const themeKeys = profile.themes.map((t) => t.key);
   const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
 
@@ -600,6 +653,7 @@ export async function runPostCallScorecard(
     effort: env.POSTCALL_EFFORT || env.EFFORT || "medium",
     research: false,
     thinkingBudget: 0,
+    temperature: 0,
     jsonSchema: scorecardJsonSchema(themeKeys),
     step: "postcall-scorecard",
     passName: "scorecard",
@@ -625,11 +679,15 @@ export async function runPostCallScorecard(
   });
 
   const scorecard = buildScorecardDraft(profile, lines, analysisConfidence, dealRiskFlags);
-  return {
+  const output: PostCallScorecardResult = {
     scorecard,
     analysisConfidence,
     provisional: scorecard.provisional,
   };
+  if (!input.forceRescore) {
+    scorecardResultCache.set(cacheKey, cloneScorecardResult(output));
+  }
+  return output;
 }
 
 /** @deprecated use QIP_PROFILES */

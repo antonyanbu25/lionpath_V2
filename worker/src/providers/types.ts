@@ -53,6 +53,8 @@ export interface LlmRequest {
   thinkingBudget?: number;
   /** Override generation temperature (0 = deterministic). */
   temperature?: number;
+  /** Fixed RNG seed for reproducible sampling (Gemini generationConfig.seed). */
+  seed?: number;
   /** Prep pipeline step label — included in Gemini error messages for debugging. */
   step?: string;
   /** Firestore usage attribution — set by route handlers when available. */

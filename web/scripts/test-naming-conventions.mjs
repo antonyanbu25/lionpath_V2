@@ -26,6 +26,8 @@ import {
   productDiscussedFromContext,
   aiShortFormFromAnalysis,
   companyFromCallTitle,
+  callTypeLabel,
+  activityTypeLabel,
 } from "../call-type-labels.js";
 
 function assert(cond, msg) {
@@ -119,6 +121,9 @@ function testCallNaming() {
   assert(resolved.includes("Ticketing workflow"), `legacy upgrade product: ${resolved}`);
 
   assert(companyFromCallTitle("Acme · Discovery - Freshdesk") === "Acme", "company parse");
+
+  assert(callTypeLabel("") === "Activity", "empty type label is Activity");
+  assert(activityTypeLabel("demo") === "Demo", "activityTypeLabel alias");
 }
 
 async function main() {

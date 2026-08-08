@@ -38,6 +38,7 @@ import {
 import { loadScoreOverridesForSession } from "./domain/score-override-service.js";
 import { applyScoreOverridesToScorecard } from "./shared/qip-scorecard-normalize.js";
 import { getSessionGreeting } from "./greeting.js";
+import { CALL_QUALITY_SCORE_LABEL } from "./user-facing-copy.js";
 import {
   getOrgMetricsReadModel,
   getSeLaunchpadReadModel,
@@ -1040,7 +1041,7 @@ export function renderCoachingCharts(metrics) {
       ${renderCoachingThemeStat("Weakest theme", metrics.worstDimension, false, "weak")}
     </div>
     <div class="coaching-two-averages-note">
-      <strong>Why two averages.</strong> Each call type uses its own weight profile, so a single blended QIP would be meaningless. Theme scores compare across every type; composites only compare within one.
+      <strong>Why two averages.</strong> Each call type uses its own weight profile, so a single blended ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())} would be meaningless. Theme scores compare across every type; composites only compare within one.
       <span class="coaching-spine-note">Shared themes (core four) compare call_flow, engagement, objections, and camera_on across every type, not your overall grade.</span>
     </div>
     <div class="coaching-charts-grid">
@@ -1551,8 +1552,20 @@ function analysesWithQualityFromRecords(records) {
   );
 }
 
-/** Sync remote history at query time when auth is ready (mirrors briefs KPI lazy fetch). */
+/** Sync remote history + Firestore callSummaries at query time when auth is ready. */
 async function resolveCallRecords(email, opts = {}) {
+  if (opts.session?.email) {
+    try {
+      const { loadCallAnalysesForSession } = await import("./domain/se-access-service.js");
+      return await loadCallAnalysesForSession(opts.session, {
+        fetchRemoteHistory: opts.fetchRemoteHistory,
+        syncRemoteHistory: opts.skipRemoteHistory !== true,
+        resolveOwnerFb: opts.resolveOwnerFb,
+      });
+    } catch (err) {
+      console.warn("[dashboard] loadCallAnalysesForSession failed:", err?.message || err);
+    }
+  }
   if (opts.skipRemoteHistory !== true && typeof opts.fetchRemoteHistory === "function") {
     try {
       const synced = await opts.fetchRemoteHistory();

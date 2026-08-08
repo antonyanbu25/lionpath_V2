@@ -125,12 +125,18 @@ export async function resolveEffectiveOwnerId(session, storeOverride, fb) {
 }
 
 /** Load user profile from store and merge into session (production path). */
-export async function enrichSessionFromStore(session) {
+export async function enrichSessionFromStore(session, fb) {
   const lookupId = session?.userId || session?.uid;
   if (!lookupId && !session?.email && !session?.authUid) return session;
 
   const store = getStore();
-  const user = await lookupUserForSession(session, store);
+  let user = await lookupUserForSession(session, store);
+  if (!user) {
+    const ownerId = await resolveAuthIndexOwnerId(fb, session);
+    if (ownerId) {
+      user = await safeStoreGet("getUser by authIndex id", () => store.getUser(ownerId));
+    }
+  }
   if (!user) return session;
 
   const org = user.orgId ? await getOrg(user.orgId) : null;
@@ -151,8 +157,8 @@ export async function enrichSessionFromStore(session) {
     uid: user.id,
     authUid: user.authUid ?? session.authUid ?? null,
     role: user.role,
-    teamId: user.teamId,
-    orgId: user.orgId || null,
+    teamId: user.teamId || session.teamId || null,
+    orgId: user.orgId || session.orgId || null,
     managerId: user.managerId || null,
     managerName,
     jobTitle: user.jobTitle || null,

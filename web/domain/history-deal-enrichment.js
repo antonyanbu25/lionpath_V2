@@ -11,9 +11,11 @@ import {
 } from "./contact-service.js";
 import { computeDealTraction, daysSince, STAGE_MEDIAN_DAYS_DEFAULT } from "./deal-traction.js";
 import { normalizeAccountSlug } from "./types.js";
+import { mergeTechnicalCommit } from "./technical-commit-service.js";
+import { productSignalsFromHistoryRecords, rollupProductSignalRows } from "./product-signal-service.js";
 
 /** Dedupe keys for reconciling store rows with history stubs. */
-function accountRowDedupeKeys(row) {
+export function accountRowDedupeKeys(row) {
   const account = row?.account || {};
   const keys = new Set();
   const slugWithDomain = normalizeAccountSlug(account.name, account.domain || null);
@@ -101,15 +103,24 @@ export function dealSummaryFromHistoryRecords(records) {
   return null;
 }
 
-/** @param {object[]} records */
-export function technicalCommitFromHistoryRecords(records) {
-  for (const rec of sortedRecords(records, true)) {
+/** Merge technical commit snapshots across all calls on a deal (oldest → newest). */
+export function rollupTechnicalCommitFromHistoryRecords(records) {
+  let merged = null;
+  for (const rec of sortedRecords(records)) {
     const tc = historyResultBlob(rec).technicalCommit;
     if (tc && typeof tc === "object") {
-      return { ...tc, updatedAt: tc.updatedAt || rec.timestamp || Date.now() };
+      merged = mergeTechnicalCommit(merged, tc);
     }
   }
-  return null;
+  return merged;
+}
+
+/** @param {object[]} records */
+export function technicalCommitFromHistoryRecords(records) {
+  const merged = rollupTechnicalCommitFromHistoryRecords(records);
+  if (!merged) return null;
+  const latest = sortedRecords(records, true)[0];
+  return { ...merged, updatedAt: merged.updatedAt || latest?.timestamp || Date.now() };
 }
 
 function formatQualificationMovement(qualification) {
@@ -210,10 +221,14 @@ export function buildDealExtrasFromHistory(deal, account, records) {
     movement: historyCallMovement(rec),
   }));
 
+  const historySignals = productSignalsFromHistoryRecords(records);
+
   return {
     selectedDeal: enrichedDeal,
     dealSummary: dealSummaryFromHistoryRecords(records),
     technicalCommit: technicalCommitFromHistoryRecords(records),
+    productGaps: rollupProductSignalRows(historySignals.productGaps),
+    whatWorks: rollupProductSignalRows(historySignals.whatWorks),
     latestSignal: signal,
     daysInStage: signal?.daysInStage ?? daysSince(enrichedDeal?.updatedAt || enrichedDeal?.lastActivityAt),
     stageMedianDays: signal?.stageMedianDays ?? STAGE_MEDIAN_DAYS_DEFAULT[enrichedDeal?.stage] ?? 34,

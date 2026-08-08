@@ -10,7 +10,7 @@ function briefDedupeKey(b) {
   return `${b.company || ""}|${b.when || ""}|${b.id || ""}`;
 }
 
-function parseBriefTimestamp(b) {
+export function parseBriefTimestamp(b) {
   const when = String(b.when || "").trim();
   if (when) {
     const parsed = Date.parse(when);
@@ -19,6 +19,23 @@ function parseBriefTimestamp(b) {
   const idMatch = /-(\d{10,})$/.exec(String(b.id || ""));
   if (idMatch) return Number(idMatch[1]);
   return 0;
+}
+
+/**
+ * Load local + remote briefs for the Activities feed (and #precall/briefs).
+ * @param {{ fetchAllRemotePreps?: () => Promise<object[]> }} [opts]
+ */
+export async function loadMergedBriefs(opts = {}) {
+  const local = loadAllLocalBriefs();
+  let remote = [];
+  if (typeof opts.fetchAllRemotePreps === "function") {
+    try {
+      remote = await opts.fetchAllRemotePreps();
+    } catch (err) {
+      console.warn("[briefs-list] remote preps failed:", err?.message || err);
+    }
+  }
+  return mergeAllBriefs(local, remote);
 }
 
 /** Normalize Firestore prep doc into local brief shape. */
@@ -170,16 +187,7 @@ export async function renderBriefsListView(container, session, opts = {}) {
   }
 
   try {
-    const local = loadAllLocalBriefs();
-    let remote = [];
-    if (typeof opts.fetchAllRemotePreps === "function") {
-      try {
-        remote = await opts.fetchAllRemotePreps();
-      } catch (err) {
-        console.warn("[briefs-list] remote preps failed:", err?.message || err);
-      }
-    }
-    const allBriefs = mergeAllBriefs(local, remote);
+    const allBriefs = await loadMergedBriefs(opts);
     if (!allBriefs.length) {
       container.innerHTML = renderBriefsEmptyState(
         "No briefs yet. Generate one from Pre-call to populate this list.",

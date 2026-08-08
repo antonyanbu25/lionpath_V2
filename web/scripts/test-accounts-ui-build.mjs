@@ -51,7 +51,7 @@ assert(stylesCss.includes(".global-search-input"), "styles.css: global search st
 
 // App routing
 assert(appJs.includes('accounts: "Accounts"'), "app.js: VIEW_TITLES accounts missing");
-assert(appJs.includes('calls: "All calls"'), "app.js: VIEW_TITLES calls missing");
+assert(appJs.includes('calls: "Activities"'), "app.js: VIEW_TITLES calls missing");
 assert(appJs.includes("renderCallsListView"), "app.js: renderCallsListView missing");
 assert(appJs.includes("initGlobalSearch"), "app.js: initGlobalSearch missing");
 assert(appJs.includes("invalidateSearchIndex"), "app.js: invalidateSearchIndex missing");
@@ -78,7 +78,7 @@ const accountView = await readWeb("account-view.js");
 assert(accountView.includes("All accounts"), "account-view: account-centric copy missing");
 assert(!accountView.includes("All lifecycles"), "account-view: lifecycle copy still present");
 assert(accountView.includes("account-list-search"), "account-view: list search missing");
-assert(accountView.includes("Deal team"), "account-view: deal team card missing");
+assert(accountView.includes("primarySeName"), "account-view: primary SE display missing");
 
 assert(await fileExists("search-service.js"), "search-service.js missing");
 assert(await fileExists("global-search.js"), "global-search.js missing");

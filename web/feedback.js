@@ -1,7 +1,8 @@
-/** Sidebar feedback. Optimistic local queue + worker POST /api/feedback. */
+/** Sidebar feedback. Optimistic local queue + worker/Freshdesk ticket sync. */
 
 import { readFieldValueAsync, setButtonLoading, setFieldError, showInlineStatus } from "./crayons-ui.js";
 import { newId } from "./domain/types.js";
+import { createSupportTicket } from "./support-tickets.js";
 
 const STORAGE_KEY = "lionpath_feedback";
 export const PULSE_COUNT_KEY = "lionpath_feedback_pulse_count";
@@ -77,14 +78,20 @@ async function postEntry(entry) {
   return data;
 }
 
-function markSynced(id, data) {
+function updateQueuedEntry(id, patch) {
   const queue = loadQueue();
   const saved = queue.find((item) => item.id === id);
   if (saved) {
-    saved.synced = true;
-    saved.ticketId = data?.ticketId ?? null;
+    Object.assign(saved, patch);
     saveQueue(queue);
   }
+}
+
+function markSynced(id, data) {
+  updateQueuedEntry(id, {
+    synced: true,
+    ticketId: data?.ticketId ?? data?.freshdeskTicketId ?? null,
+  });
 }
 
 export async function syncPendingFeedback() {
@@ -95,6 +102,63 @@ export async function syncPendingFeedback() {
     } catch (err) {
       console.warn("[feedback] pending sync failed:", err?.message || err);
     }
+  }
+}
+
+/**
+ * Fire-and-forget manager dispute email via worker.
+ * Soft-fails: returns { sent: false } on any error; never throws.
+ *
+ * @param {{
+ *   workerUrl?: string,
+ *   getToken?: () => Promise<string|null|undefined>,
+ *   email?: string,
+ *   to: string,
+ *   toName?: string,
+ *   seName?: string,
+ *   callTitle?: string,
+ *   category?: string,
+ *   note?: string,
+ *   link?: string,
+ *   via?: string|null,
+ * }} opts
+ * @returns {Promise<{ sent: boolean, via: string|null }>}
+ */
+export async function notifyManagerOfDispute(opts = {}) {
+  const workerUrl = String(opts.workerUrl || "").replace(/\/$/, "");
+  if (!workerUrl || !opts.to) {
+    return { sent: false, via: null };
+  }
+
+  try {
+    const headers = { "Content-Type": "application/json" };
+    const token = typeof opts.getToken === "function" ? await opts.getToken() : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${workerUrl}/api/disputes/notify`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        email: opts.email || "",
+        to: opts.to,
+        toName: opts.toName || "",
+        seName: opts.seName || "",
+        callTitle: opts.callTitle || "",
+        category: opts.category || "",
+        note: opts.note || "",
+        link: opts.link || "",
+        via: opts.via || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn("[dispute-notify] worker error:", data.error || res.status);
+      return { sent: false, via: opts.via || null };
+    }
+    return { sent: !!data.sent, via: data.via ?? opts.via ?? null };
+  } catch (err) {
+    console.warn("[dispute-notify] failed:", err?.message || err);
+    return { sent: false, via: opts.via || null };
   }
 }
 
@@ -112,14 +176,20 @@ export function initFeedback(deps = {}) {
   const submitBtn = document.getElementById("feedback-submit");
   if (!btn || !modal || !form) return;
 
-  const showMsg = (text, ok = true) => showInlineStatus(msg, {
-    type: ok ? "success" : "error", message: text, open: !!text,
-  });
+  const showMsg = (text, ok = true) => {
+    showInlineStatus(msg, {
+      type: ok ? "success" : "error",
+      message: text,
+      open: !!text,
+    });
+  };
+
   const close = () => {
     modal.classList.remove("feedback-open");
     modal.isOpen = false;
     showMsg("");
   };
+
   const open = () => {
     lastPageContext = capturePageContext();
     localStorage.setItem(PULSE_COUNT_KEY, "0");
@@ -129,6 +199,8 @@ export function initFeedback(deps = {}) {
     form.classList.remove("feedback-submit-success");
     showMsg("");
     const textarea = document.getElementById("feedback-text");
+    const shot = document.getElementById("feedback-screenshot");
+    if (shot) shot.value = "";
     if (textarea) {
       textarea.value = "";
       if (typeof textarea.setFocus === "function") textarea.setFocus();
@@ -139,14 +211,18 @@ export function initFeedback(deps = {}) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     const textEl = document.getElementById("feedback-text");
-    const [categoryKey, severityKey, areaKey, priority, rawMessage] = await Promise.all([
+    const [categoryKeyRaw, severityKey, areaKey, priorityRaw, rawMessage] = await Promise.all([
       readFieldValueAsync(document.getElementById("feedback-category")),
       readFieldValueAsync(document.getElementById("feedback-severity")),
       readFieldValueAsync(document.getElementById("feedback-area")),
       readFieldValueAsync(document.getElementById("feedback-priority")),
       readFieldValueAsync(textEl),
     ]);
-    const message = rawMessage.trim();
+    const categoryKey = categoryKeyRaw || "idea";
+    const priority = String(priorityRaw || "");
+    const message = String(rawMessage || "").trim();
+    const shotEl = document.getElementById("feedback-screenshot");
+    const file = shotEl?.files?.[0] || null;
     if (!message) {
       setFieldError(textEl, "Please enter your feedback.");
       showMsg("Please enter your feedback.", false);
@@ -156,9 +232,10 @@ export function initFeedback(deps = {}) {
     setButtonLoading(submitBtn, true);
     const email = feedbackDeps.getEmail() || "anonymous";
     const context = lastPageContext || capturePageContext();
+    const category = CATEGORY_MAP[categoryKey] || "Idea";
     const entry = {
       id: newId("event"),
-      category: CATEGORY_MAP[categoryKey] || "Idea",
+      category,
       severity: SEVERITY_MAP[severityKey] || SEVERITY_MAP.general,
       area: AREA_MAP[areaKey] || AREA_MAP.other,
       priority: ["1", "2", "3", "4"].includes(priority) ? priority : "2",
@@ -169,14 +246,45 @@ export function initFeedback(deps = {}) {
       createdAt: Date.now(),
       synced: false,
     };
+
     saveQueue([entry, ...loadQueue().filter((item) => item.id !== entry.id)]);
-    showMsg("Thanks. Your feedback was saved.");
     form.classList.add("feedback-submit-success");
-    setButtonLoading(submitBtn, false);
-    setTimeout(close, 1200);
-    void postEntry(entry).then((data) => markSynced(entry.id, data)).catch((err) => {
-      console.warn("[feedback] server sync failed:", err?.message || err);
-    });
+
+    try {
+      let ticket = null;
+      if (feedbackDeps.workerUrl && email && email.includes("@")) {
+        ticket = await createSupportTicket({
+          workerUrl: feedbackDeps.workerUrl,
+          getToken: feedbackDeps.getToken,
+          email,
+          kind: "feedback",
+          description: message,
+          category,
+          page: entry.page,
+          link: location.href,
+          callId: context.callId,
+          dealId: context.dealId,
+          accountId: context.accountId,
+          attachment: file,
+        });
+        updateQueuedEntry(entry.id, {
+          freshdeskTicketId: ticket.ticketId,
+          ticketId: ticket.ticketId,
+        });
+      }
+      void postEntry(entry).then((data) => markSynced(entry.id, data)).catch((err) => {
+        console.warn("[feedback] server sync failed:", err?.message || err);
+      });
+      showMsg(ticket?.ticketId ? `Thanks. Ticket #${ticket.ticketId} was created.` : "Thanks. Your feedback was saved.");
+      setButtonLoading(submitBtn, false);
+      setTimeout(close, ticket?.ticketId ? 1400 : 1200);
+    } catch (err) {
+      void postEntry(entry).then((data) => markSynced(entry.id, data)).catch((syncErr) => {
+        console.warn("[feedback] server sync failed:", syncErr?.message || syncErr);
+      });
+      showMsg(err?.message || "Could not create ticket. Saved locally.", false);
+      setButtonLoading(submitBtn, false);
+    }
   };
 
   btn.addEventListener("fwClick", open);

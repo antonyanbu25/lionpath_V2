@@ -183,10 +183,10 @@ export async function persistFirebaseSession(user, opts = {}) {
 }
 
 /** Enrich session with role/teamId from domain store (dummy or Firestore). */
-export async function syncSessionWithDomainStore(session) {
+export async function syncSessionWithDomainStore(session, fb) {
   if (!session) return null;
   try {
-    const enriched = await enrichSessionFromStore(session);
+    const enriched = await enrichSessionFromStore(session, fb);
     setSession(enriched, { notify: false });
     return enriched;
   } catch (err) {

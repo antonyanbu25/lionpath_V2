@@ -376,11 +376,30 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
   });
 }
 
-/** @param {string} accountId @param {string} [ownerId] */
-export async function listDealsForAccount(accountId, ownerId) {
+/**
+ * Account-scoped deal list (default: all deals on the account, not caller ownership).
+ * Second arg may be an ownerId string OR an opts object `{ ownerId?, teamId? }`
+ * (postcall-resolve-context passes `{ teamId }` — must not be treated as ownerId).
+ * @param {string} accountId
+ * @param {string|{ ownerId?: string, teamId?: string }|null} [ownerIdOrOpts]
+ * @param {{ teamId?: string }} [maybeOpts]
+ */
+export async function listDealsForAccount(accountId, ownerIdOrOpts, maybeOpts) {
   const store = getStore();
   if (!accountId || !store.listDealsByAccount) return [];
-  const deals = await store.listDealsByAccount(accountId, ownerId);
+
+  let ownerId = null;
+  /** @type {{ teamId?: string }} */
+  let opts = {};
+  if (ownerIdOrOpts && typeof ownerIdOrOpts === "object") {
+    opts = { ...ownerIdOrOpts, ...(maybeOpts || {}) };
+    ownerId = typeof opts.ownerId === "string" ? opts.ownerId : null;
+  } else {
+    ownerId = ownerIdOrOpts || null;
+    opts = maybeOpts || {};
+  }
+
+  const deals = await store.listDealsByAccount(accountId, ownerId, opts);
   return Promise.all(deals.map((d) => ensureDealTitle(d)));
 }
 

@@ -4,119 +4,182 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.1`** — branched from **`2.1`**; pre-call CRM hardening + unified account/deal UI (portal build **2.1.1**) |
-| **Portal build** | `2.1.1` (`web/index.html`, `app.js?v=2.1.1`) |
-| **Worker build** | `2.1.1` (`worker/src/build-id.ts`, `GET /api/config`) |
-| **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.1** |
+| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score** → **janus.freshdesk.com**, Activities feed, account/deal/call fixes |
+| **Portal build** | `2.1.43` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
+| **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
+| **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
 | **Production deploy fork** | [github.com/antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2) (VPS pulls from here) |
+| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/2.1.2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2) |
 
 ---
 
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights (2.1.1)](#release-highlights-211)
-3. [Architecture](#architecture)
-4. [Repository layout](#repository-layout)
-5. [Quick start (developers)](#quick-start-developers)
-6. [Demo logins](#demo-logins)
-7. [Testing](#testing)
-8. [Deploy](#deploy)
-9. [Documentation index](#documentation-index)
-10. [Contributing & remotes](#contributing--remotes)
+2. [Release highlights (2.1.2)](#release-highlights-212)
+3. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
+4. [Architecture](#architecture)
+5. [Repository layout](#repository-layout)
+6. [Quick start (developers)](#quick-start-developers)
+7. [Demo logins](#demo-logins)
+8. [Testing](#testing)
+9. [Deploy](#deploy)
+10. [Documentation index](#documentation-index)
+11. [Contributing & remotes](#contributing--remotes)
 
 ---
 
 ## What it does
 
-Lionpath is an internal SE coaching portal with two core workflows plus CRM-style account management:
+Lionpath is an internal SE coaching portal with two core workflows plus CRM-style account management and a unified activity history:
 
 | Workflow | When | Output |
 |----------|------|--------|
 | **Pre-call prep** | Before discovery/demo — company, emails, LinkedIn PDFs, AE context | Printable one-pager: company vs industry, discovery kit, fish sizing, DISC dos/donts |
 | **Post-call analysis** | After a recorded call — Zoom link + confirm identities | Summary, next steps, Quality Coach scorecard, MEDDPICC, timeline |
-| **Accounts & deals** | Ongoing pursuit | Global account/contact/deal records, lifecycle pipeline, team visibility |
+| **Activities** | Ongoing review | Unified feed of analyzed calls + pre-call briefs (`#calls` / `#activities`) with type/window filters and KPIs |
+| **Accounts & deals** | Ongoing pursuit | Global account/contact/deal records, lifecycle pipeline, product-signal rollups, team visibility |
+| **Support & disputes** | When scores or product feedback need follow-up | Freshdesk tickets + optional manager email on score disputes |
 
 Both prep and post-call write to the **same domain model** — accounts, contacts, and deals are global entities; prep briefs and post-call artifacts attach to shared lifecycles.
 
 ---
 
-## Release highlights (2.1.1)
+## Release highlights (2.1.2)
 
-Branch **`2.1.1`** is cut from production baseline **`2.1`** on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2). It adds pre-call CRM integrity fixes and a single canonical deal record UI for both prep and post-call.
+Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2). Build stamps: portal **`2.1.43`**, worker / `VERSION` **`2.1.30`**.
 
-### Account / deal UI unification
+### What’s new at a glance
 
-- **One deal record everywhere:** Account overview deal rows open **My deals** → wireframe v4 deal record (`deal-view.js`), not the legacy 3-column opportunity workspace
-- **Contextual back:** When drilled from an account, deal record back returns to that account overview (`← {Account name}`)
-- **Hash redirect:** `#accounts/{id}/deals/{dealId}` → `#deals/{dealId}` (preserves old links + account back context)
-- **Legacy UI removed:** `renderOpportunityRecord` / `account-record--opportunity` retired from `account-view.js`
+| Area | What shipped in 2.1.2 |
+|------|------------------------|
+| **Dispute a score** | New end-to-end flow: SE disputes a Quality Coach score → Freshdesk ticket on **janus.freshdesk.com** (type **Dispute of score** + **Issue Type**) → manager email notify (soft-fail) |
+| **Accounts** | Contact/email account resolve, history enrichment, contact dedupe, list/view fixes |
+| **Deals** | Deal record polish, product-signal rollup from scored calls, deal/account linking fixes |
+| **Calls / Activities** | “All calls” → **Activities**; unified briefs+calls feed; call view, timeline, TC merge, QIP radar fixes |
+| **Everything else** | Post-call contact resolve, lifecycle UI, feedback screenshots → Freshdesk, Firebase local docs, deploy secrets |
 
-### Pre-call dual-write parity (prod)
+### Dispute a score (new)
 
-- **`onGenerated`:** `syncSessionWithDomainStore` before `linkPrepToLifecycle` (same as post-call)
-- **Brief write-back:** Linked `accountId` / `dealId` persisted on brief `meta` and `input` after dual-write
-- **`teamId` fallback:** `resolveActingWriteContext` uses session team when user doc has null `teamId`; console warnings on skip
+- **In-product dispute** from the scorecard / prep-dispute modal (**Issue type** dropdown + note + optional screenshot)
+- **Freshdesk (janus.freshdesk.com)** via `POST /api/tickets` (`kind: dispute_score`) — `web/support-tickets.js` + `worker/src/freshdesk.ts`
+  - Ticket **Type:** `Dispute of score`
+  - Custom field **Issue Type** (`cf_issue_type`): Score too low / Score too high / Wrong evidence cited / Missing Context / Others (mapped from the form)
+  - Also sets `cf_call_id`, `cf_page_context_hash`, `cf_area_of_the_product` = Coaching / scorecards; full context in the HTML description
+- **Manager notify** after a dispute is logged — `POST /api/disputes/notify` + `worker/src/notify-email.ts` (never blocks the dispute itself)
+- **Org routing** resolves the SE’s manager as recipient (`configureScoreDisputeNotify` in `web/score-disputes.js`)
+- **Modal reliability** — dispute overlay CSS fixed (pointer-events / class-based backdrop)
 
-### Pre-call CRM & UX (from 2.1 → 2.1.1)
+### Account, deal, call & Activities fixes
 
-- Know tab scroll chain; fish sizing parity with post-call rivals context
-- Account list dedupe (name/domain/slug); created dates on account/deal/contact tiles
-- `collectEmails` order fix; prep dual-write no longer gated on dummy `session.teamId`
+- **Accounts fixed/improved:** `findAccountByContactEmails`, history rows per account, lifecycle ensure-on-account, contact dedupe, account list/view enrichment
+- **Deals fixed/improved:** canonical deal record UX, soft **product-signal rollup** on the deal (`product-signal-service.js`), deal↔call linking/display
+- **Calls / Activities fixed/improved:** rename + unified feed (calls + pre-call briefs), type/window filters, KPIs, call-view layout/timeline/QIP, progressive animate, TC merge, hydration refresh
+- **CRM resolve:** post-call contact resolve and prep CRM preview hardening so account/deal matching is more reliable end-to-end
+
+### Activities feed (nav rename + unified list)
+
+- **Nav:** “All calls” → **Activities** (`ACTIVITIES_NAV_LABEL`; `#calls` and `#activities` both route to the feed)
+- **Unified feed:** Time-sorted **analyzed calls + pre-call briefs** (`mergeActivityFeed` in `web/calls-list-view.js`)
+- **Filters:** Type (all types / pre-call briefs / call types) and When window; empty-state copy for no matches
+- **KPIs:** Rollup metrics aligned with SE Labs (`aggregateActivityFeedMetrics`)
+- **Row enrichment:** Account/deal resolve, TC tags, QIP numeric score, activity icons/title cells
+- **Dedupe:** Activities feed identity dedupe (covered by `test-activities-feed-dedupe.mjs`)
+- **SE Labs prototypes:** `se-labs-activities.html`, `se-labs-deals.html`, `se-labs-evaluation-radar.html`, `qip-star (1).html`
+
+### Freshdesk support tickets (product feedback + disputes)
+
+- **Instance:** [janus.freshdesk.com](https://janus.freshdesk.com) (default `FRESHDESK_DOMAIN=janus.freshdesk.com`)
+- **`POST /api/tickets`** — create Freshdesk ticket (`dispute_score` or `feedback`) with optional screenshot (max 8MB)
+- **`worker/src/freshdesk.ts`** — type **Dispute of score** (+ `cf_issue_type` / call / page custom fields) or **Feature Request** for feedback; HTML description builder; domain + API key config
+- **`web/support-tickets.js`** — client helper `createSupportTicket` (Bearer / demo email auth parity)
+- **Feedback UI** — optional screenshot attachment; creates Freshdesk ticket and mirrors to local queue; soft fallback if Freshdesk is down
+- **Config surface:** `GET /api/config` exposes `freshdesk.configured` and `disputeNotify.available`
+- **Secrets / deploy:**
+  - Env: `FRESHDESK_API_KEY`, `FRESHDESK_DOMAIN=janus.freshdesk.com` (also in `deploy/vps/.env.example`, `worker/.dev.vars.example`, Wrangler)
+  - Cloud Run: `deploy/cloudrun/setup-freshdesk-secret.sh` + docs in `deploy/cloudrun/README.md`
+  - Local secrets hygiene: `worker/secrets/` (`.gitignore` + README; do not commit keys)
+
+### Call view, timeline, and QIP radar
+
+- **Call view CSS/JS overhaul** — denser record layout, progressive animate, spine timeline with overflow markers
+- **Timeline polish** — hide marker kinds shown elsewhere (e.g. TC tab); merge supplemental markers from pass 6 / objections; empty-state for unavailable QIP
+- **Call record refresh** — scheduled refresh while hydration pending (`test-call-record-refresh-schedule.mjs`)
+- **TC merge** — call TC merge helpers + tests (`test-call-tc-merge.mjs`)
+- **QIP radar** — redraw / axis color handling in `web/qip-radar.js` + `test-qip-radar.mjs`
+
+### Deals, accounts, product signals (detail)
+
+- **Deal record product-signal rollup** — soft rollup from scored calls via `rollupProductSignalRows` / `resolveDealProductSignals` (`web/domain/product-signal-service.js`); deal tab render path
+- **Account service** — history rows for account, `listDealsForSession`, `findAccountByContactEmails`, lifecycle ensure-on-account helpers; contact dedupe tests
+- **Account / deal / briefs list views** — enrichment and list UX updates tied to Activities and CRM resolve
+- **SE access** — `loadCallAnalysesForSession` / `listAnalysesForSession`; manager recipient helper for dispute notify
+
+### Post-call pipeline (worker)
+
+- **Scorecard** — memoized results (Gemini non-determinism even at temperature 0); taxonomy / product-area label formatters
+- **Timeline** — server-side timeline improvements alongside web spine
+- **Providers** — Gemini / provider typing tweaks for post-call passes
+- **Live temperature check script:** `worker/scripts/test-postcall-temperature-live.mjs`
+
+### Post-call / pre-call web UX
+
+- Contact resolve improvements (`postcall-contact-resolve.js`) + CRM preview tests
+- Intake / postcall CSS and form copy cleanup (intake heading support text trimmed)
+- Lifecycle UI stylesheet expansion (`web/lifecycle.css`)
+- Theme score suppression + user-facing copy updates (`ACTIVITIES_NAV_LABEL`, etc.)
+
+### Docs, local Firebase, and ops
+
+- **`docs/FIREBASE_SETUP.md`** — production-like local (Firebase + Firestore + service account) checklist
+- **`worker/scripts/check-local-firebase.mjs`** — local Firebase readiness helper
+- **Cloud Run / VPS** — Freshdesk env docs; `deploy/vps/doctor.sh` / `SECURITY.md` touch-ups for new secrets
+- **`package-lock.json`** at repo root (workspace tooling)
+
+### Tests added or updated (2.1.2)
+
+| Area | Scripts |
+|------|---------|
+| Activities / calls | `test-activities-feed-dedupe.mjs`, `test-calls-list-view.mjs`, `test-load-call-analyses.mjs` |
+| Call view | `test-call-view.mjs`, `test-call-view-animate-progressive.mjs`, `test-call-record-refresh-schedule.mjs`, `test-call-tc-merge.mjs`, `test-call-timeline-render.mjs` |
+| QIP / product signal | `test-qip-radar.mjs`, `test-deal-product-signal-rollup.mjs` |
+| Accounts / org | `test-account-contact-dedupe.mjs`, `test-account-view.mjs`, `test-org-service.mjs` |
+| Post-call / prep | `test-postcall-contact-resolve.mjs`, `test-postcall-intake-preview.mjs`, `test-prep-crm-preview.mjs` |
+| Worker | `test-dispute-notify.ts`, `test-postcall-temperature-live.mjs`, `check-local-firebase.mjs` |
+
+Removed obsolete: `web/scripts/test-verdict-tension.mjs` (dropped from `web/package.json` test script).
 
 ---
 
-### Org hierarchy & RBAC (inherited from 2.1)
+## Inherited from 2.1.1 / 2.1
 
-- **Structure:** Director (Vipin) → 3 segment leaders → team managers → ICs (~50-person roster in seed data)
-- **Segments:** Antony branch, Nurture, Digital (Digital is flat — ICs report to segment leader, no squad manager layer)
-- **Scoped visibility:** Segment leaders see their segment; managers see their team; director sees org
-- **Org structure editor:** Settings UI for Vipin + senior managers (`web/org-structure-view.js`)
-- **Manager proxy SE:** Leaders can run prep/post-call on behalf of ICs with correct `teamId` / acting owner
-- **Terminology:** "Squad" renamed to **team** across UI and docs
+Still true on this branch (shipped in **`2.1.1`** off production **`2.1`**):
 
-See [docs/RBAC.md](./docs/RBAC.md), [docs/ORG_HIERARCHY_VISUAL.md](./docs/ORG_HIERARCHY_VISUAL.md).
+### Account / deal UI unification (2.1.1)
 
-### Pre-call ↔ post-call CRM parity
+- **One deal record everywhere:** Account overview deal rows open **My deals** → wireframe v4 deal record (`deal-view.js`)
+- **Contextual back** from account drill-in; hash redirect `#accounts/{id}/deals/{dealId}` → `#deals/{dealId}`
+- Legacy opportunity workspace removed from `account-view.js`
 
-Account, contact, and deal creation now share one code path:
+### Pre-call CRM & dual-write (2.1.1)
 
-- **`web/domain/engagement-entities.js`** — `resolveEngagementEntities`, `collectParticipantEmails`, `collectContactDraftsFromPayload`
-- Both `linkPrepToLifecycle` and `linkPostCallToLifecycle` delegate to the shared helper
-- Same account resolution: explicit id → slug/domain → create
-- Same contact upsert via `resolveContactOnAccount`
-- Same deal routing and `linkContactsToDeal` join
+- `syncSessionWithDomainStore` before `linkPrepToLifecycle`; brief `accountId` / `dealId` write-back
+- `teamId` fallback when user doc is null; account list dedupe; Know tab / fish sizing parity
 
-**Contact dedupe fix:** Post-call confirm identities (`Howard Ehrenberg <email>`) now parse display names; name normalization treats dots as spaces so prep email (`howard@duckdiverllc.com`) and post-call email (`howard.ehrenberg@vivid-pix.com`) merge to one global contact.
+### Org hierarchy & RBAC (from 2.1)
 
-See [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARITY.md), [docs/PRECALL_FIX_REPORT.md](./docs/PRECALL_FIX_REPORT.md).
+- Director → segment leaders → team managers → ICs; scoped visibility; org structure editor; manager proxy SE
+- See [docs/RBAC.md](./docs/RBAC.md), [docs/ORG_HIERARCHY_VISUAL.md](./docs/ORG_HIERARCHY_VISUAL.md)
 
-### Pre-call fixes
+### Shared CRM path & search (from 2.1 / 2.1.1)
 
-- Dual-write no longer skipped when `session.teamId` is missing
-- CRM resolve uses company domain for personal-email prospects
-- Fish sizing uses full AE context (not only `additionalContext` string)
-- LinkedIn PDF required per prospect email before generate
-- DISC dos/donts: 3+3 from enrich API; web merge no longer drops `donts`
+- `engagement-entities.js` shared prep/post-call resolve; contact name/email merge
+- RAG omni-search (⌘K); all-briefs list; portal `portal-build` cache-bust
 
-### Account / deal / contact hardening
-
-- Firestore rules for org structure, account team, cross-team proxy
-- 90-day new-business grace, expansion prep unblocked
-- Deal-scoped contacts on call view; acting-owner audit fields
-- Round-2 P0 fixes from dual review pipeline
-
-See [docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md](./docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md), [docs/REVIEW_ROUND2_FIX_REPORT.md](./docs/REVIEW_ROUND2_FIX_REPORT.md).
-
-### Search, briefs, UI
-
-- RAG omni-search (⌘K): accounts, deals, contacts, briefs, calls, tasks
-- All-briefs list from dashboard KPI
-- Centered login with video background; profile popup aligned to design system
-- Portal build cache-bust via `portal-build` meta
+See also: [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARITY.md), [docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md](./docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md), [docs/REVIEW_ROUND2_FIX_REPORT.md](./docs/REVIEW_ROUND2_FIX_REPORT.md).
 
 ---
 
@@ -132,9 +195,9 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (+
 
 | Layer | Role |
 |-------|------|
-| **`web/`** | Static portal — prep, post-call, dashboard, accounts, deals, org settings, Crayons (Dew) UI |
-| **`web/domain/`** | Client-side domain store — accounts, contacts, deals, lifecycles, dual-write, RBAC |
-| **`worker/`** | API — prep synthesize, post-call passes, contact enrich, search RAG, org structure API |
+| **`web/`** | Static portal — prep, post-call, Activities feed, dashboard, accounts, deals, org settings, Crayons (Dew) UI |
+| **`web/domain/`** | Client-side domain store — accounts, contacts, deals, lifecycles, dual-write, product signals, RBAC |
+| **`worker/`** | API — prep synthesize, post-call passes, contact enrich, search RAG, org structure, Freshdesk tickets, dispute notify |
 | **Production** | Docker Compose + Caddy on VPS — see [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) |
 
 **Domain model (Salesforce-shaped):**
@@ -153,16 +216,23 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 
 ```
 ├── web/                 # Portal UI + client domain layer
-│   ├── domain/          # account-service, deal-service, dual-write, engagement-entities, org-service
+│   ├── domain/          # account-service, deal-service, dual-write, engagement-entities,
+│   │                    # org-service, product-signal-service, se-access-service
+│   ├── calls-list-view.js / qip-radar.js / score-disputes.js / support-tickets.js
 │   ├── scripts/         # Regression tests (npm test)
 │   └── dev-server.mjs   # Local static server :8788
 ├── worker/              # Node API :8787
 │   ├── src/prep/        # Research, synthesize, fish sizing, recent news
 │   ├── src/postcall/    # Multi-pass post-call pipeline
+│   ├── src/freshdesk.ts # Freshdesk ticket create (disputes + feedback)
+│   ├── src/notify-email.ts  # Manager dispute email notify
+│   ├── secrets/         # Local secret files (gitignored except README)
 │   └── scripts/         # Seed Firestore users, worker tests
-├── docs/                # ADRs, RBAC, fix reports, architecture
+├── docs/                # ADRs, RBAC, fix reports, architecture, Firebase setup
 ├── firestore.rules      # Security rules (org structure, account team, artifacts)
 ├── deploy/vps/          # Production Docker + Caddy
+├── deploy/cloudrun/     # Cloud Run deploy + Freshdesk secret setup
+├── se-labs-*.html       # SE Labs UI prototypes (Activities / deals / radar)
 └── README.md            # This file
 ```
 
@@ -179,13 +249,14 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ### One-time setup
 
 ```bash
-git clone https://github.com/skut264/lionpath.git
-cd lionpath
-git checkout 2.1.1
+git clone https://github.com/antonyanbu25/lionpath_V2.git
+cd lionpath_V2
+git checkout 2.1.2
 
 cd worker
 cp .dev.vars.example .dev.vars
 # Edit .dev.vars — set GEMINI_API_KEY=...
+# Optional: FRESHDESK_* and DISPUTE_NOTIFY_* / EMAIL_PROVIDER_API_KEY for tickets + dispute email
 npm install
 
 cd ../web
@@ -209,6 +280,7 @@ Open **http://localhost:8788** and sign in with demo credentials (see below).
 
 - Leave `web/firebase-config.local.js` unset for **dummy login** on localhost
 - Worker requires `GEMINI_API_KEY` in `worker/.dev.vars` for prep/post-call
+- For production-like local (Google SSO + Firestore CRM), see [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md)
 - Hard-refresh (Cmd+Shift+R) after pulling to pick up new `portal-build`
 
 ### Stop dev servers
@@ -248,15 +320,26 @@ node web/scripts/test-prep-postcall-crm-parity.mjs
 node web/scripts/test-precall-dual-write-e2e.mjs
 node web/scripts/test-contact-deal-mapping.mjs
 
+# 2.1.2 — Activities / call view / QIP / product signal
+node web/scripts/test-activities-feed-dedupe.mjs
+node web/scripts/test-calls-list-view.mjs
+node web/scripts/test-qip-radar.mjs
+node web/scripts/test-deal-product-signal-rollup.mjs
+node web/scripts/test-call-view-animate-progressive.mjs
+node web/scripts/test-account-contact-dedupe.mjs
+
 # Org hierarchy
 node web/scripts/test-org-service.mjs
 node web/scripts/test-org-structure.mjs
 
-# Worker unit tests
-cd worker && npx tsx scripts/test-rivals-context.ts
+# Worker — disputes / Freshdesk / post-call
+cd worker
+npx tsx scripts/test-dispute-notify.ts
+npx tsx scripts/test-rivals-context.ts
+node scripts/check-local-firebase.mjs
 ```
 
-Key modules under test: `engagement-entities.js`, `dual-write.js`, `account-service.js`, `contact-service.js`, `org-service.js`.
+Key modules under test: `calls-list-view.js`, `score-disputes.js`, `support-tickets.js`, `product-signal-service.js`, `engagement-entities.js`, `dual-write.js`, `account-service.js`, `org-service.js`, `freshdesk.ts`, `notify-email.ts`.
 
 ---
 
@@ -266,33 +349,35 @@ Key modules under test: `engagement-entities.js`, `dual-write.js`, `account-serv
 
 Production VPS deploys from **`antonyanbu25/lionpath_V2`**.
 
-**Release branch `2.1.1`** (sourced from **`2.1`**):
+**Release branch `2.1.2`** (sourced from **`2.1.1`** ← **`2.1`**):
 
 ```bash
 # Developer machine — push release branch
-git checkout 2.1.1
-git push origin 2.1.1
+git checkout 2.1.2
+git push origin 2.1.2
 
 # On VPS (after review)
 cd /opt/se-singha-paathai
 git fetch origin
-git checkout 2.1.1
-git pull origin 2.1.1
+git checkout 2.1.2
+git pull origin 2.1.2
 cd deploy/vps && bash upgrade-now.sh
 ```
 
-Stable production line remains **`2.1`** until **`2.1.1`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
+Stable production line remains **`2.1`** / **`2.1.1`** until **`2.1.2`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
+
+For Freshdesk on Cloud Run: `FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-freshdesk-secret.sh` then confirm `GET /api/config` → `"freshdesk": { "configured": true }`.
 
 ### Push workflow summary
 
 | Remote | Repo | Branch | Purpose |
 |--------|------|--------|---------|
-| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.1`** | Release branch (from **`2.1`**) — Tony's fork / VPS |
+| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.2`** | Current release branch (from **`2.1.1`**) — Tony's fork / VPS |
 | **`skut264`** | skut264/lionpath | `2.1` / features | Upstream / team development |
 
 ```bash
-git checkout 2.1.1
-git push -u origin 2.1.1
+git checkout 2.1.2
+git push -u origin 2.1.2
 ```
 
 ---
@@ -308,10 +393,12 @@ git push -u origin 2.1.1
 | [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARITY.md) | Prep/post-call shared CRM path |
 | [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | DISC / enrich API |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | Production deploy |
+| [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
+| [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) | Cloud Run + Freshdesk secret |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Onboarding & tunnels |
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo |
 
-**Fix / review reports (2.1 pass):**
+**Fix / review reports (2.1 / 2.1.1 pass):**
 
 - [docs/PRECALL_FIX_REPORT.md](./docs/PRECALL_FIX_REPORT.md)
 - [docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md](./docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md)
@@ -330,13 +417,13 @@ git remote add skut264 https://github.com/skut264/lionpath.git
 git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
 
 # Feature workflow
-git checkout -b feature/my-change 2.1.1
+git checkout -b feature/my-change 2.1.2
 # ... develop, npm test ...
 git push -u skut264 feature/my-change
-# Open PR to 2.1.1 (or 2.1) on skut264/lionpath
+# Open PR to 2.1.2 (or 2.1.1 / 2.1) on skut264/lionpath
 ```
 
-**Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, API keys, `.cursor/` debug logs.
+**Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, `worker/secrets/*` (except README), API keys, `.cursor/` debug logs.
 
 ---
 

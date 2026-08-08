@@ -7,7 +7,7 @@ import {
   getAccountEngagementDetail,
   enrichAccountListRows,
   listAccountRowsFromHistory,
-} from "./domain/account-service.js?v=2.1.14";
+} from "./domain/account-service.js?v=2.1.43";
 import { mergeAccountListRows } from "./domain/history-deal-enrichment.js";
 import { DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
@@ -19,6 +19,7 @@ import { STAGE_LABELS, CONTACT_EVENT_LABELS } from "./domain/types.js";
 import { filterAccountRows } from "./search-service.js?v=2.1.14";
 import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { esc } from "./shared.js";
+import { CALL_QUALITY_SCORE_LABEL } from "./user-facing-copy.js";
 import { formatCompactUsd, formatDealListMoneyBand } from "./deal-view.js";
 import { displayMrrFromArr } from "./deal-arr-module.js";
 import { renderAccountArrModule } from "./account-arr-module.js";
@@ -481,7 +482,7 @@ function renderAccountCallsTable(accountCalls, tableOpts = {}) {
               <th scope="col">Date</th>
               <th scope="col">Deal</th>
               <th scope="col">SE</th>
-              <th scope="col">QIP</th>
+              <th scope="col">${esc(CALL_QUALITY_SCORE_LABEL)}</th>
               <th scope="col">MEDPICC</th>
             </tr>
           </thead>
@@ -773,14 +774,19 @@ function renderAccountOverview(detail, viewOpts = {}) {
 
 function wireListFilter(container, allRows, opts) {
   const input = container.querySelector("#account-list-search");
-  const listEl = container.querySelector(".lifecycle-list");
+  const listEl =
+    container.querySelector(".account-list-tbody") || container.querySelector(".lifecycle-list");
   if (!input || !listEl) return;
 
   const renderFiltered = (query) => {
     const filtered = filterAccountRows(allRows, query);
+    const empty =
+      listEl.tagName === "TBODY"
+        ? `<tr><td colspan="10" class="muted account-list-no-matches">No accounts match “${esc(query)}”</td></tr>`
+        : `<p class="muted account-list-no-matches">No accounts match “${esc(query)}”</p>`;
     listEl.innerHTML = filtered.length
       ? filtered.map((row) => renderAccountListItem(row)).join("")
-      : `<p class="muted account-list-no-matches">No accounts match “${esc(query)}”</p>`;
+      : empty;
 
     wireAccountListItemClicks(listEl, opts);
   };
@@ -853,7 +859,7 @@ function wireDetailEvents(container, session, opts) {
 }
 
 function wireAccountListItemClicks(container, opts) {
-  container.querySelectorAll(".account-list-item").forEach((row) => {
+  container.querySelectorAll(".account-list-row[data-account-id], .account-list-item").forEach((row) => {
     const activate = () => {
       const id = row.getAttribute("data-account-id");
       if (id) opts.onSelectAccount?.(id);
@@ -901,69 +907,74 @@ function summarizeAccountListMetrics(rows) {
   };
 }
 
-function renderAccountListMetricCard(label, value, sub = "", valueClass = "") {
+function renderAccountListMetricCard(label, value, note = "") {
   return `
-    <div class="dash-stat prep-action-block account-list-stat">
-      <span class="dash-stat-label">${esc(label)}</span>
-      <span class="dash-stat-value${valueClass ? ` ${valueClass}` : ""}">${esc(String(value))}</span>
-      ${sub ? `<span class="dash-stat-sub muted">${esc(sub)}</span>` : ""}
+    <div class="account-kpi">
+      <span class="account-kpi-label">${esc(label)}</span>
+      <span class="account-kpi-val">${value}</span>
+      ${note ? `<span class="account-kpi-note">${esc(note)}</span>` : ""}
     </div>`;
 }
 
 /** @param {ReturnType<typeof summarizeAccountListMetrics>} metrics */
 function renderAccountListMetrics(metrics) {
-  const arrVal = metrics.totalArr != null ? formatCompactUsd(metrics.totalArr) : "-";
-  const atRiskArr = metrics.atRiskArr != null ? formatCompactUsd(metrics.atRiskArr) : "-";
+  const arrVal = metrics.totalArr != null ? formatCompactUsd(metrics.totalArr) : "—";
+  const atRiskArr = metrics.atRiskArr != null ? formatCompactUsd(metrics.atRiskArr) : "—";
   const openHint =
     metrics.withOpenDeals === 1 ? "1 with open deals" : `${metrics.withOpenDeals} with open deals`;
 
   return `
-    <div class="account-list-metrics dash-stats prep-action-grid" aria-label="Account metrics">
-      ${renderAccountListMetricCard("Accounts", metrics.accountCount, openHint)}
-      ${renderAccountListMetricCard("Total ARR", arrVal, "closed + pipeline")}
-      ${renderAccountListMetricCard("Multi-deal accounts", metrics.multiDeal, "cross-sell live")}
-      ${renderAccountListMetricCard(
-        "At risk",
-        metrics.atRiskCount,
-        atRiskArr,
-        metrics.atRiskCount ? "weak" : "",
-      )}
+    <div class="account-kpis" aria-label="Account metrics">
+      ${renderAccountListMetricCard("Accounts", esc(String(metrics.accountCount)), openHint)}
+      ${renderAccountListMetricCard("Total ARR", esc(arrVal), "closed + pipeline")}
+      ${renderAccountListMetricCard("Multi-deal accounts", esc(String(metrics.multiDeal)), "cross-sell live")}
+      ${renderAccountListMetricCard("At risk", esc(String(metrics.atRiskCount)), atRiskArr === "—" ? "health watch" : atRiskArr)}
     </div>`;
+}
+
+function accountInitials(name) {
+  const parts = String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 function renderAccountListItem(row) {
   const { account, lifecycle, region, dealCount, totalArrLow, totalArrHigh, totalArrPoint, productsInPlay, callCount, health, lastTouchDays } = row;
   const title = account.name || lifecycle.title || account.domain || "Account";
   const domain =
-    account.domain && account.domain !== account.name ? esc(account.domain) : "";
+    account.domain && account.domain !== account.name ? account.domain : "";
   const arrBand = formatDealListMoneyBand(totalArrLow, totalArrHigh, totalArrPoint);
-  const mrrBand = formatDealListMoneyBand(
-    totalArrLow != null ? displayMrrFromArr(totalArrLow) : null,
-    totalArrHigh != null ? displayMrrFromArr(totalArrHigh) : null,
-    totalArrPoint != null ? displayMrrFromArr(totalArrPoint) : null,
-  );
-  const lastTouch = lastTouchDays != null ? `${lastTouchDays}d` : "-";
-  const created = account.createdAt ? formatDate(account.createdAt) : "-";
+  const lastTouch = lastTouchDays != null ? `${lastTouchDays}d` : "—";
+  const created = account.createdAt ? formatDate(account.createdAt) : "—";
 
   return `
-    <button type="button" class="lifecycle-list-item account-list-item account-list-row" data-account-id="${esc(account.id)}">
-      <span class="account-list-row-grid">
-        <span class="account-list-col account-list-col--company">
-          <span class="lifecycle-list-title account-list-row-title">${esc(title)}</span>
-          ${domain ? `<span class="account-list-domain muted">${domain}</span>` : ""}
-          <span class="account-list-row-mobile-meta muted">${esc(lastTouch)} · ${esc(String(dealCount ?? 0))} deals</span>
-        </span>
-        <span class="account-list-col account-list-col--region muted">${esc(region || "-")}</span>
-        <span class="account-list-col account-list-col--deals account-list-num">${esc(String(dealCount ?? 0))}</span>
-        <span class="account-list-col account-list-col--arr account-list-num">${esc(arrBand)}</span>
-        <span class="account-list-col account-list-col--mrr account-list-num">${esc(mrrBand)}</span>
-        <span class="account-list-col account-list-col--products muted">${esc(productsInPlay || "-")}</span>
-        <span class="account-list-col account-list-col--calls account-list-num">${esc(String(callCount ?? 0))}</span>
-        <span class="account-list-col account-list-col--health">${healthTag(health)}</span>
-        <span class="account-list-col account-list-col--created account-list-num muted">${esc(created)}</span>
-        <span class="account-list-col account-list-col--touch account-list-num muted">${esc(lastTouch)}</span>
-      </span>
-    </button>`;
+    <tr class="account-list-row account-list-row--labs" data-account-id="${esc(account.id)}" tabindex="0" role="button">
+      <td>
+        <div class="account-cell">
+          <span class="account-av" aria-hidden="true">${esc(accountInitials(title))}</span>
+          <span class="account-nm">
+            <b>${esc(title)}</b>
+            ${domain ? `<span>${esc(domain)}</span>` : ""}
+          </span>
+        </div>
+      </td>
+      <td class="account-num">${esc(region || "—")}</td>
+      <td class="account-num account-num--r">${esc(String(dealCount ?? 0))}</td>
+      <td class="account-num">${esc(arrBand)}</td>
+      <td class="muted">${esc(productsInPlay || "—")}</td>
+      <td class="account-num account-num--r">${esc(String(callCount ?? 0))}</td>
+      <td>${healthTag(health)}</td>
+      <td class="account-num muted">${esc(created)}</td>
+      <td class="account-num muted">${esc(lastTouch)}</td>
+      <td class="deal-chev-cell"><span class="deal-chev" aria-hidden="true">›</span></td>
+    </tr>`;
 }
 
 /** @param {HTMLElement} container @param {object} opts @param {string} html @returns {boolean} */
@@ -975,7 +986,7 @@ function applyAccountViewHtml(container, opts, html) {
 
 function renderAccountsListLoadingShell() {
   return `
-    <div class="lifecycle-list-view account-list-view account-list-view--compact account-list-view--loading">
+    <div class="lifecycle-list-view account-list-view account-list-view--labs account-list-view--loading">
       <div class="account-list-toolbar account-list-toolbar--compact">
         <div class="account-list-title-group">
           <h1 class="account-list-heading">Accounts</h1>
@@ -992,45 +1003,51 @@ function renderAccountsListView(rows, opts) {
   const metrics = summarizeAccountListMetrics(rows);
 
   return `
-      <div class="lifecycle-list-view account-list-view account-list-view--compact">
-        <div class="account-list-toolbar account-list-toolbar--compact">
+      <div class="lifecycle-list-view account-list-view account-list-view--labs">
+        <div class="account-list-toolbar">
           <div class="account-list-title-group">
             <h1 class="account-list-heading">Accounts</h1>
-            <p class="account-list-subtitle muted">Every account in the org. Deals roll up here, not the other way round.</p>
+            <p class="account-list-subtitle">Every account in the org. Deals roll up here, not the other way round.</p>
           </div>
           <fw-input id="account-list-search" class="account-list-search" placeholder="Search accounts" value="${esc(listQuery)}" clear-input></fw-input>
         </div>
         ${renderAccountListMetrics(metrics)}
-        <div class="account-list-table-card card-wire">
-          <div class="account-list-grid-header" aria-hidden="true">
-            <span class="account-list-col account-list-col--company">Account</span>
-            <span class="account-list-col account-list-col--region">Region</span>
-            <span class="account-list-col account-list-col--deals">Deals</span>
-            <span class="account-list-col account-list-col--arr">Total ARR</span>
-            <span class="account-list-col account-list-col--mrr">Total MRR</span>
-            <span class="account-list-col account-list-col--products">Products</span>
-            <span class="account-list-col account-list-col--calls">Calls</span>
-            <span class="account-list-col account-list-col--health">Health</span>
-            <span class="account-list-col account-list-col--created">Created</span>
-            <span class="account-list-col account-list-col--touch">Last touch</span>
-          </div>
-          <div class="lifecycle-list account-list-compact">
-            ${filtered.length
-              ? filtered.map((row) => renderAccountListItem(row)).join("")
-              : `<p class="muted account-list-no-matches">No accounts match “${esc(listQuery)}”</p>`}
+        <div class="account-list-table-card account-list-table-card--labs">
+          <div class="account-list-table-wrap">
+            <table class="account-list-table">
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  <th scope="col">Region</th>
+                  <th scope="col" class="account-th-r">Deals</th>
+                  <th scope="col">Total ARR</th>
+                  <th scope="col">Products</th>
+                  <th scope="col" class="account-th-r">Calls</th>
+                  <th scope="col">Health</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last touch</th>
+                  <th scope="col"><span class="visually-hidden">Open</span></th>
+                </tr>
+              </thead>
+              <tbody class="account-list-tbody">
+                ${filtered.length
+                  ? filtered.map((row) => renderAccountListItem(row)).join("")
+                  : `<tr><td colspan="10" class="muted account-list-no-matches">No accounts match “${esc(listQuery)}”</td></tr>`}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>`;
 }
 
-async function loadAccountListRows(session, onPreview) {
+async function loadAccountListRows(session, onPreview, loadOpts = {}) {
   try {
     const historyRows = listAccountRowsFromHistory(session);
     const store = getStore();
 
     const storePromise = safeStoreOp(
       "listAccountsForSession",
-      () => listAccountsForSession(session),
+      () => listAccountsForSession(session, { resolveOwnerFb: loadOpts.resolveOwnerFb }),
       [],
     );
 
@@ -1078,7 +1095,7 @@ export async function renderAccountView(container, session, opts = {}) {
   let activeSession = session;
   if (!sessionUserId(activeSession)) {
     try {
-      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+      activeSession = (await syncSessionWithDomainStore(activeSession, opts.resolveOwnerFb)) || activeSession;
     } catch (err) {
       console.warn("[account-view] session sync failed:", err);
     }
@@ -1106,24 +1123,26 @@ export async function renderAccountView(container, session, opts = {}) {
 
       const detail = await getAccountEngagementDetail(activeSession, opts.accountId, detailQuery);
       if (!detail) {
-        container.innerHTML = `<p class="muted">Account not found.</p>`;
+        // Clear stale hash/selection, then fall through to the accounts list.
+        console.warn("[account-view] account not found, falling back to list:", opts.accountId);
+        opts.onInvalidAccountId?.(opts.accountId);
+        opts = { ...opts, accountId: null, contactId: null };
+      } else {
+        const viewOpts = {
+          contactId: opts.contactId || null,
+        };
+
+        container.innerHTML = renderAccountOverview(detail, viewOpts);
+
+        wireDetailEvents(container, activeSession, {
+          ...opts,
+          accountId: opts.accountId,
+          lifecycleId: detail.lifecycle?.id || null,
+          engagementPrepType: detail.selectedDealType,
+          deals: detail.deals,
+        });
         return;
       }
-
-      const viewOpts = {
-        contactId: opts.contactId || null,
-      };
-
-      container.innerHTML = renderAccountOverview(detail, viewOpts);
-
-      wireDetailEvents(container, activeSession, {
-        ...opts,
-        accountId: opts.accountId,
-        lifecycleId: detail.lifecycle?.id || null,
-        engagementPrepType: detail.selectedDealType,
-        deals: detail.deals,
-      });
-      return;
     }
 
     const hasList = container.querySelector(".account-list-view:not(.account-list-view--loading)");
@@ -1141,7 +1160,7 @@ export async function renderAccountView(container, session, opts = {}) {
       } catch (err) {
         console.warn("[account-view] account list preview render failed:", err?.message || err);
       }
-    });
+    }, opts);
     if (opts.shouldApply && !opts.shouldApply()) return;
 
     if (!rows.length) {

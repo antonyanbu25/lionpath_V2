@@ -8,6 +8,7 @@ import {
   listVisibleSeEmails,
   validateHierarchy,
   userWithDirectorFlag,
+  resolveManagerRecipientForOwner,
 } from "../domain/org-service.js";
 import { can } from "../domain/types.js";
 import { seedDevDomainIfNeeded, enrichSessionFromStore } from "../domain/seed-dev.js";
@@ -99,6 +100,55 @@ const usersById = new Map([
   [antony.id, antony],
   [vipin.id, vipin],
 ]);
+
+const teamAjay = await store.getTeam(TEAM_AJAY_ID);
+const teamsById = new Map(teamAjay ? [[teamAjay.id, teamAjay]] : []);
+
+// Synthetic owners for fallback chain (do not mutate seeded users).
+const seLineMgr = resolveManagerRecipientForOwner(seAjayId, org, usersById, teamsById);
+const seNoLineMgr = {
+  ...seAjay,
+  id: "user_test_no_line_mgr",
+  managerId: null,
+  teamId: TEAM_AJAY_ID,
+  email: "se.noline@freshworks.com",
+};
+const usersTeamFallback = new Map([...usersById, [seNoLineMgr.id, seNoLineMgr]]);
+const teamMgrRecipient = resolveManagerRecipientForOwner(
+  seNoLineMgr.id,
+  org,
+  usersTeamFallback,
+  teamsById,
+);
+
+const seNoTeamMgr = {
+  ...seAjay,
+  id: "user_test_no_team_mgr",
+  managerId: null,
+  teamId: TEAM_AJAY_ID,
+  email: "se.noteam@freshworks.com",
+};
+const teamNoMgr = { ...teamAjay, managerId: "" };
+const usersSegFallback = new Map([...usersById, [seNoTeamMgr.id, seNoTeamMgr]]);
+const teamsSegFallback = new Map([[TEAM_AJAY_ID, teamNoMgr]]);
+const segLeaderRecipient = resolveManagerRecipientForOwner(
+  seNoTeamMgr.id,
+  org,
+  usersSegFallback,
+  teamsSegFallback,
+);
+
+const seOrphan = {
+  ...seAjay,
+  id: "user_test_orphan",
+  managerId: null,
+  teamId: "team_unknown_xyz",
+  email: "se.orphan@freshworks.com",
+};
+const usersDirFallback = new Map([...usersById, [seOrphan.id, seOrphan]]);
+const directorRecipient = resolveManagerRecipientForOwner(seOrphan.id, org, usersDirFallback, new Map());
+
+const nullRecipient = resolveManagerRecipientForOwner("missing_user", org, usersById, teamsById);
 
 const checks = [
   ["org seeded", !!org && org.directorId === vipinId],
@@ -196,6 +246,23 @@ const checks = [
   ["team mgr reports to antony", teamMgr.managerId === antonyId],
   ["antony reports to vipin", antony.managerId === vipinId],
   ["vipin has job title", vipin.jobTitle?.includes("Senior Director")],
+  [
+    "resolve line manager",
+    seLineMgr?.via === "line_manager" && seLineMgr.email === teamMgr.email,
+  ],
+  [
+    "resolve team manager fallback",
+    teamMgrRecipient?.via === "team_manager" && teamMgrRecipient.email === teamMgr.email,
+  ],
+  [
+    "resolve segment leader fallback",
+    segLeaderRecipient?.via === "segment_leader" && segLeaderRecipient.email === antony.email,
+  ],
+  [
+    "resolve director fallback",
+    directorRecipient?.via === "director" && directorRecipient.email === vipin.email,
+  ],
+  ["resolve returns null when unresolved", nullRecipient === null],
 ];
 
 let failed = 0;

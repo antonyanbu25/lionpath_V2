@@ -168,6 +168,7 @@ export async function buildPostCallResolveContext(ownerId, opts = {}) {
     }
 
     // Global deals per account — every SE's opportunity on the account, not just ownerId's.
+    // listDealsForAccount accepts opts as 2nd arg (teamId only — never filters by caller owner).
     const deals = [];
     const seenDealIds = new Set();
     const dealLists = await Promise.all(

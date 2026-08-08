@@ -246,6 +246,12 @@ fw-inline-message .dew-orbit-spinner {
   border-radius: var(--dew-radius-lg);
   background: var(--dew-surface);
 }
+.call-record--loading .call-record-page {
+  min-height: 48vh;
+}
+.call-record--loading .dew-loading-panel {
+  margin-top: 8px;
+}
 .dew-skeleton-card {
   display: grid;
   gap: 14px;
@@ -2117,10 +2123,16 @@ fw-button.sidebar-history-item.active {
   max-width: min(1280px, calc(100% - 32px));
 }
 
-.main-content:has(.deal-list-view--compact) {
-  max-width: min(1600px, calc(100% - 32px));
+.main-content:has(.deal-list-view--compact),
+.main-content:has(.deal-list-view--labs) {
+  max-width: min(1400px, calc(100% - 32px));
 }
 
+.main-content:has(.account-list-view--labs) {
+  max-width: min(1400px, calc(100% - 32px));
+}
+
+.main-content:has(.call-list-view--labs),
 .main-content:has(.call-list-view--compact) {
   max-width: min(1400px, calc(100% - 32px));
 }
@@ -2131,6 +2143,14 @@ fw-button.sidebar-history-item.active {
 }
 
 .main-content:has(.call-record) .main-topbar {
+  display: none;
+}
+
+.main-content:has(.deal-record) {
+  padding-top: 28px;
+}
+
+.main-content:has(.deal-record) .main-topbar {
   display: none;
 }
 
@@ -2176,6 +2196,8 @@ fw-button.sidebar-history-item.active {
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .main-content:has(.account-record) .account-command-deck {
@@ -4269,6 +4291,12 @@ a { color: var(--accent); }
   margin-top: 18px;
   min-height: 72px;
 }
+.call-list-view--loading .dew-loading-panel,
+.deal-list-view--loading .dew-loading-panel,
+.account-list-view--loading .dew-loading-panel {
+  margin-top: 18px;
+  min-height: 160px;
+}
 .launch-skeleton {
   border-radius: 14px;
   background: linear-gradient(
@@ -5665,6 +5693,15 @@ fw-card.about-section {
 .feedback-form fw-select,
 .feedback-form fw-textarea {
   width: 100%;
+}
+.feedback-file-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.feedback-file-label {
+  font-size: 13px;
+  font-weight: 600;
 }
 .feedback-form .dew-status-host {
   margin: 4px 0 0;

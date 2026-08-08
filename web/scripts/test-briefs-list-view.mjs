@@ -6,6 +6,8 @@ import {
   filterBriefRecords,
   buildBriefListRow,
   normalizeRemoteBrief,
+  loadMergedBriefs,
+  parseBriefTimestamp,
 } from "../briefs-list-view.js";
 import { countPrepsGenerated, loadAllLocalBriefs } from "../precall.js";
 
@@ -78,5 +80,10 @@ async function mockFetchAllRemote() {
 
 const kpiCount = await countPrepsGenerated(mockFetchAllRemote);
 assert(kpiCount === merged.length, "KPI count matches merged list length");
+
+const viaLoader = await loadMergedBriefs({ fetchAllRemotePreps: mockFetchAllRemote });
+assert(viaLoader.length === merged.length, "loadMergedBriefs matches mergeAllBriefs");
+assert(typeof parseBriefTimestamp === "function", "parseBriefTimestamp exported");
+assert(Number.isFinite(parseBriefTimestamp(localBriefs[0])), "parseBriefTimestamp returns number");
 
 console.log("test-briefs-list-view: ok");

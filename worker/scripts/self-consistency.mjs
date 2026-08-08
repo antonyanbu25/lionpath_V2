@@ -124,7 +124,7 @@ async function main() {
   console.log(`Self-consistency run → ${outDir}`);
   console.log(`Transcripts: ${fixtures.length} · Runs each: ${runsPerCall}`);
   console.log(
-    `Model: ${env.POSTCALL_MODEL} · Effort: ${env.POSTCALL_EFFORT} · Temperature: production default (0.2)\n`,
+    `Model: ${env.POSTCALL_MODEL} · Effort: ${env.POSTCALL_EFFORT} · Temperature: 0 (post-call provider default)\n`,
   );
 
   const allRuns = [];
@@ -137,7 +137,7 @@ async function main() {
 
   for (const fx of fixtures) {
     process.stdout.write(`  ${fx.id} (${fx.callType})… `);
-    const profile = RUBRIC_PROFILES.find((p) => p.callType === fx.callType);
+    const profile = RUBRIC_PROFILES.find((p) => p.key === fx.callType || p.callType === fx.callType);
     if (!profile) {
       console.log("SKIP unknown call type");
       continue;
@@ -197,7 +197,7 @@ async function main() {
   const generatedAt = new Date().toISOString();
   const profileNote = `Profiles: ${[...new Set(fixtures.map((f) => f.callType))].join(", ")} (confirmed call type per fixture)`;
   const temperatureNote =
-    "Temperature: production default **0.2** (gemini provider — not forced to 0)";
+    "Temperature: **0** (post-call provider default — deterministic scoring and extraction)";
 
   const callIds = [...new Set(allRuns.map((r) => r.callId))];
   const themeMetrics = aggregateThemeMetrics(allRuns, callIds);
@@ -233,7 +233,7 @@ async function main() {
       model: env.POSTCALL_MODEL,
       provider: env.POSTCALL_LLM_PROVIDER,
       postcallEffort: env.POSTCALL_EFFORT,
-      temperature: "production default 0.2",
+      temperature: "0 (post-call provider default)",
     },
     thresholds: {
       themeScoreSd: { acceptable: 8, needsAnchor: 15 },

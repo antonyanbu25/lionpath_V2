@@ -128,7 +128,7 @@ export function resolveCallProductSignal(record, opts = {}) {
     if (!isIntegrationGap(g)) continue;
     const label = integrationLabel(g);
     if (!label || integrationsNeeded.some((p) => signalKey(p.label) === signalKey(label))) continue;
-    integrationsNeeded.push({ id: `int_${signalKey(label)}`, label, gap: g });
+    integrationsNeeded.push({ id: `int_${signalKey(label)}`, label, gap: g, surfacedOnThisCall: !!g.surfacedOnThisCall });
   }
 
   /** @type {object[]} */
@@ -167,6 +167,8 @@ export function resolveCallProductSignal(record, opts = {}) {
 
   const winPills = wins.slice(0, 6).map((w) => pillLabel(w));
   const lossPills = nonIntegrationGaps.slice(0, 6).map((g) => pillLabel(g));
+  const surfacedOnThisCall =
+    gaps.filter((g) => g.surfacedOnThisCall).length + wins.filter((w) => w.surfacedOnThisCall).length;
 
   const pass6Pending = !pass6 && !gaps.length && !wins.length;
   const hasPass6 = !!pass6 || gaps.length > 0 || wins.length > 0;
@@ -192,6 +194,8 @@ export function resolveCallProductSignal(record, opts = {}) {
     winPills,
     lossPills,
     clusterLabels: opts.clusterLabels || {},
+    dealRollup: !!opts.dealRollup,
+    surfacedOnThisCall,
     pass6Pending,
     hasPass6,
     hasAny,
@@ -318,11 +322,21 @@ function renderAsksPanel(asks) {
   </div>`;
 }
 
+function renderSurfacedPill(onThisCall) {
+  if (!onThisCall) return "";
+  return `<span class="ps-chip tag"><span class="ps-cdot"></span>Surfaced in this conversation</span>`;
+}
+
 function renderPainGrid(items, emptyHint) {
   if (!items.length) {
     return `<p class="muted ps-panel-empty">${esc(emptyHint)}</p>`;
   }
-  return `<div class="ps-pains">${items.map((p) => `<div class="ps-pain"><span class="ps-pdot"></span>${esc(p.label)}</div>`).join("")}</div>`;
+  return `<div class="ps-pains">${items
+    .map(
+      (p) =>
+        `<div class="ps-pain"><span class="ps-pdot"></span><span>${esc(p.label)}</span>${renderSurfacedPill(p.surfacedOnThisCall)}</div>`,
+    )
+    .join("")}</div>`;
 }
 
 function renderBottomPanel(title, count, subtitle, items, emptyHint) {
@@ -360,10 +374,22 @@ function renderSignalCardBody(bundle) {
     </div>`;
 }
 
+function renderDealRollupBanner(bundle) {
+  if (!bundle.dealRollup) return "";
+  const n = bundle.surfacedOnThisCall || 0;
+  const tail = n
+    ? `${n} signal${n === 1 ? "" : "s"} first surfaced on this call.`
+    : "Signals from prior calls on this deal are included below.";
+  return `<p class="ps-deal-banner muted">${esc(tail)}</p>`;
+}
+
 /** @param {object} record @param {object} [opts] */
 export function renderCallProductSignalTab(record, opts = {}) {
   const bundle = resolveCallProductSignal(record, opts);
   const statusHtml = renderStatusBadge(bundle);
+  const subtitle = bundle.dealRollup
+    ? "Product signals across this deal — gaps, wins, and objections accumulated from every call."
+    : "What the customer asked for, pushed back on, and measured us against on this call.";
 
   if (!bundle.hasAny) {
     const pending = bundle.pass6Pending
@@ -373,7 +399,7 @@ export function renderCallProductSignalTab(record, opts = {}) {
       <div class="ps-head">
         <div>
           <h2>Product signal</h2>
-          <p class="sub">What the customer asked for, pushed back on, and measured us against on this call.</p>
+          <p class="sub">${esc(subtitle)}</p>
         </div>
         ${statusHtml}
       </div>
@@ -388,7 +414,8 @@ export function renderCallProductSignalTab(record, opts = {}) {
     <div class="ps-head">
       <div>
         <h2>Product signal</h2>
-        <p class="sub">What the customer asked for, pushed back on, and measured us against on this call.</p>
+        <p class="sub">${esc(subtitle)}</p>
+        ${renderDealRollupBanner(bundle)}
       </div>
       ${statusHtml}
     </div>

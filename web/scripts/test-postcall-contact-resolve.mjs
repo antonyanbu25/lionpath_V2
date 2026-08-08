@@ -10,9 +10,13 @@ globalThis.localStorage = {
   setItem: (k, v) => mem.set(k, v),
   removeItem: (k) => mem.delete(k),
 };
+globalThis.sessionStorage = globalThis.localStorage;
 
 import { initDomainStore, getStore } from "../domain/store.js";
-import { resolveContactsForEmails } from "../postcall-contact-resolve.js";
+import {
+  resolveContactsForEmails,
+  resolveHistoryMatchesForIntake,
+} from "../postcall-contact-resolve.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -108,11 +112,40 @@ async function testFreeMailSkipsDomainLookup() {
   assert(entry.accounts.length === 0, "no accounts for consumer email");
 }
 
+async function testHistoryDealSurfacedForIntake() {
+  const session = {
+    email: "se@test.com",
+    userId: "usr_test",
+    teamId: "team_test",
+    orgId: "org_test",
+  };
+  mem.set(
+    "se-singha-history:se@test.com",
+    JSON.stringify([
+      {
+        id: "call_gamersheek",
+        timestamp: Date.now(),
+        title: "Gamersheek - Discovery",
+        prospectEmails: ["sean@gamersheek.co.uk"],
+      },
+    ]),
+  );
+
+  const hist = resolveHistoryMatchesForIntake(
+    session,
+    ["sean@gamersheek.co.uk"],
+    "Gamersheek",
+  );
+  assert(hist.deals.some((d) => d.id === "deal_hist_gamersheek"), "history deal surfaced");
+  assert(hist.accounts.some((a) => a.id === "hist_gamersheek"), "history account surfaced");
+}
+
 async function main() {
   await seedStores();
   await testContactFirstSkipsExtraDomainAccounts();
   await testDomainFallbackWhenNoContact();
   await testFreeMailSkipsDomainLookup();
+  await testHistoryDealSurfacedForIntake();
   console.log("test-postcall-contact-resolve.mjs: all assertions passed");
 }
 

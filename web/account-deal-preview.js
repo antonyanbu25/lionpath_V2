@@ -8,13 +8,23 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { formatDealTitlePreview } from "./domain/deal-service.js";
 import { companyMono } from "./precall-render.js?v=2.1.14";
 
-export function renderDealTile(d, selected) {
+/**
+ * @param {object} d
+ * @param {boolean} selected
+ * @param {number} [index] 0-based deal index for "Deal N · existing"
+ */
+export function renderDealTile(d, selected, index = 0) {
   const stage = STAGE_LABELS[d.stage] || d.stage || d.status || "Active";
+  const owner = d.ownerName || d.ownerDisplayName || null;
+  const existingLine = owner
+    ? `Deal ${index + 1} · existing (owner: ${owner})`
+    : `Deal ${index + 1} · existing`;
+  const meta = d.id ? existingLine : stage;
   return `<button type="button" class="nb-deal-card pc-deal-tile${selected ? " is-selected" : ""}" data-action="pick-deal" data-deal-id="${esc(d.id)}">
       <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
       <div class="nb-deal-card-body">
         <span class="nb-deal-card-title">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>
-        <span class="nb-deal-card-stage">${esc(stage)}</span>
+        <span class="nb-deal-card-stage">${esc(meta)}</span>
       </div>
     </button>`;
 }
@@ -64,15 +74,17 @@ export function renderAccountDealPreviewHtml(opts) {
   } = opts;
 
   const displayName = titleCaseDisplayName(accountName) || "Account";
-  const accountBadge = accountMatched ? "Existing account" : "New account · on confirm";
-  const showNewDealLink = accountMatched || deals.length > 0;
+  const hasExistingDeals = deals.length > 0;
+  const accountBadge =
+    accountMatched || hasExistingDeals ? "Account matched · existing" : "New account · on confirm";
+  const showNewDealLink = accountMatched || hasExistingDeals;
   const dealHead = `<div class="nb-deal-head">
       <span class="nb-label">Deal</span>
       ${showNewDealLink ? `<button type="button" class="nb-deal-new-link${createNewDeal ? " is-active" : ""}" data-action="pick-new-deal">＋ New deal</button>` : ""}
     </div>`;
 
   let dealTilesHtml = "";
-  if (!accountMatched) {
+  if (!accountMatched && !hasExistingDeals) {
     const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
     dealTilesHtml = renderStaticDealCard(title, "Create on confirm");
   } else if (!deals.length) {
@@ -81,14 +93,14 @@ export function renderAccountDealPreviewHtml(opts) {
       ? renderNewDealEditor(displayName, newDealType, defaultTitle)
       : renderStaticDealCard(defaultTitle, "Create on confirm");
   } else if (createNewDeal) {
-    dealTilesHtml = deals.map((d) => renderDealTile(d, false)).join("");
+    dealTilesHtml = deals.map((d, i) => renderDealTile(d, false, i)).join("");
     dealTilesHtml += renderNewDealEditor(
       displayName,
       newDealType,
       newDealTitle || formatDealTitlePreview(displayName, newDealType),
     );
   } else {
-    dealTilesHtml = deals.map((d) => renderDealTile(d, selectedDealId === d.id)).join("");
+    dealTilesHtml = deals.map((d, i) => renderDealTile(d, selectedDealId === d.id, i)).join("");
   }
 
   const accountBody = editableAccount

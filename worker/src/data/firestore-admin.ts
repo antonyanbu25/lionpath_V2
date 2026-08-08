@@ -200,7 +200,9 @@ export async function firestoreAdminBootStatus(env?: FirestoreEnv): Promise<stri
       ? "GOOGLE_APPLICATION_CREDENTIALS"
       : "Application Default Credentials";
   try {
-    await getDb(env);
+    const db = await getDb(env);
+    // Init alone does not validate credentials — probe a cheap read.
+    await db.collection("_health").limit(1).get();
     return `Firestore admin: ready (project=${projectIdFrom(env)}, creds=${creds})`;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
