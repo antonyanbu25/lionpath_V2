@@ -646,6 +646,15 @@ export function displayPrepResult(prep, meta = {}, opts = {}) {
   showResultView(canonicalizePrepSources(withContext).prep, meta, opts);
 }
 
+function resetPrepResultScroll() {
+  const scrollRegion = document.querySelector(
+    "#prep-result-view fw-tab-panel:not([hidden]) .prep-tab-panel-wrap, #prep-tabs .prep-tab-panel-wrap",
+  );
+  if (scrollRegion) {
+    scrollRegion.scrollTop = 0;
+  }
+}
+
 function openSourcePopover(label, ev) {
   const prep = state.currentPrep;
   if (!prep?.sources) return;
@@ -1424,6 +1433,7 @@ async function runPrepEndToEnd(payload, meta, emails) {
       show($("prep-result-view"), true);
       show($("prep-result-back"), state.fromBriefList);
       revealPrepResultView();
+      resetPrepResultScroll();
       wirePrepV9ScrollAnimations($("prep-tab-discovery"));
       wirePrepV9ScrollAnimations($("prep-tab-demo"));
     });
