@@ -3,7 +3,7 @@
  * Coaching charts exported for coaching.js.
  */
 
-import { listAnalysesWithQuality, listPostCallAnalyses } from "./history.js";
+import { listAnalysesWithQuality, listPostCallAnalyses, mergePostCallRecordsIntoLocal } from "./history.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import {
   normalizeQualityCoach,
@@ -1390,7 +1390,11 @@ function wireRemotePrepsSubscribe(container, email, opts = {}) {
 
 async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) {
   if (!container?.isConnected) return;
-  const callRecords = Array.isArray(remoteCalls) ? remoteCalls : [];
+  // Persist Firestore calls to local history so the dashboard renders the value
+  // instantly on return — otherwise the tile shows shimmer until the snapshot
+  // network round-trip fires on every navigation back.
+  mergePostCallRecordsIntoLocal(email, Array.isArray(remoteCalls) ? remoteCalls : []);
+  const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
   const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
   patchLaunchKpiValue(container, "calls", callRecords.length);
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;

@@ -362,6 +362,56 @@ export function getPostCallAnalysis(email, id) {
 }
 
 /**
+ * Merge Firestore postCall docs into the local history cache so the dashboard
+ * renders the value instantly on return (no shimmer-until-network). Firestore
+ * docs carry `createdAt`/`updatedAt`; local records use `timestamp`. We keep the
+ * local field so sort + recent-activity keep working, and only add docs we don't
+ * already have (or refresh ones whose updatedAt is newer).
+ * @param {string} email
+ * @param {Array<object>} remoteCalls  Firestore postCall docs ({ id, title, analysis, ownerId, ... })
+ * @returns {number} local count after merge
+ */
+export function mergePostCallRecordsIntoLocal(email, remoteCalls) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized || !Array.isArray(remoteCalls)) {
+    return listPostCallAnalyses(normalized).length;
+  }
+  const existing = readAll(normalized);
+  const byId = new Map(existing.map((r) => [r.id, r]));
+  for (const call of remoteCalls) {
+    if (!call?.id) continue;
+    const prev = byId.get(call.id);
+    const ts = toEpochMs(call.timestamp) || toEpochMs(call.createdAt) || prev?.timestamp || 0;
+    const prevUpdated = prev?.updatedAt ? toEpochMs(prev.updatedAt) : 0;
+    const newUpdated = call.updatedAt ? toEpochMs(call.updatedAt) : 0;
+    if (prev && newUpdated <= prevUpdated && (prev.timestamp || 0) >= ts) continue;
+    byId.set(call.id, {
+      ...(prev || {}),
+      ...call,
+      id: call.id,
+      timestamp: ts,
+      updatedAt: call.updatedAt || prev?.updatedAt || null,
+    });
+  }
+  const merged = [...byId.values()].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  writeAll(normalized, merged);
+  return merged.length;
+}
+
+/** Firestore Timestamp ({ seconds, nanoseconds }), Date, number, or ISO string -> epoch ms. */
+function toEpochMs(v) {
+  if (v == null) return 0;
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "object" && typeof v.seconds === "number") {
+    return Math.round(v.seconds * 1000 + (typeof v.nanoseconds === "number" ? v.nanoseconds / 1e6 : 0));
+  }
+  const n = Number(new Date(v));
+  return Number.isFinite(n) ? n : 0;
+}
+
+
+/**
  * Patch one history record (local + best-effort remote sync).
  * @param {string} email
  * @param {string} id
