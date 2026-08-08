@@ -7,8 +7,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const rulesDir = join(root, "rules-tests");
 
 const inner = process.platform === "win32"
-  ? "node accounts.test.mjs && node dealContacts.test.mjs"
-  : "node accounts.test.mjs && node dealContacts.test.mjs";
+  ? "node accounts.test.mjs && node dealContacts.test.mjs && node users.test.mjs"
+  : "node accounts.test.mjs && node dealContacts.test.mjs && node users.test.mjs";
 
 const exec = spawnSync(
   "npx",

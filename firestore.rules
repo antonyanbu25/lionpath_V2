@@ -85,6 +85,15 @@ service cloud.firestore {
         || (isManager() && leadsSegmentContainingTeam(targetTeamId));
     }
 
+    /** Self-update limited to non-privileged profile fields only. */
+    function isSelfProfileUpdate(docUserId) {
+      return isSignedIn()
+        && currentUserId() == docUserId
+        && request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['displayName', 'avatarDataUrl', 'email', 'updatedAt']);
+    }
+
     function isPm() {
       return isSignedIn() && (userRole() == 'pm' || userRole() == 'admin');
     }
@@ -215,7 +224,7 @@ service cloud.firestore {
         && request.resource.data.authUid == request.auth.uid
         && request.resource.data.id == userId;
       allow update: if isSignedIn() && (
-        currentUserId() == userId
+        isSelfProfileUpdate(userId)
         || isAdmin()
         || canManageOrgStructureUser(request.resource.data.teamId)
       );
