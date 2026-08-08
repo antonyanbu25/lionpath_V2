@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score**, Activities feed, account/deal/call fixes, Freshdesk tickets |
+| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score** → **janus.freshdesk.com**, Activities feed, account/deal/call fixes |
 | **Portal build** | `2.1.43` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
 | **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
 | **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
@@ -56,7 +56,7 @@ Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https:/
 
 | Area | What shipped in 2.1.2 |
 |------|------------------------|
-| **Dispute a score** | New end-to-end flow: SE disputes a Quality Coach score → optional Freshdesk ticket (**Dispute of Score**) → manager email notify (soft-fail) |
+| **Dispute a score** | New end-to-end flow: SE disputes a Quality Coach score → Freshdesk ticket on **janus.freshdesk.com** (type **Dispute of score** + **Issue Type**) → manager email notify (soft-fail) |
 | **Accounts** | Contact/email account resolve, history enrichment, contact dedupe, list/view fixes |
 | **Deals** | Deal record polish, product-signal rollup from scored calls, deal/account linking fixes |
 | **Calls / Activities** | “All calls” → **Activities**; unified briefs+calls feed; call view, timeline, TC merge, QIP radar fixes |
@@ -64,8 +64,11 @@ Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https:/
 
 ### Dispute a score (new)
 
-- **In-product dispute** from the scorecard / prep-dispute modal (category + note)
-- **Freshdesk ticket** type **Dispute of Score** via `POST /api/tickets` (`kind: dispute_score`) — `web/support-tickets.js` + `worker/src/freshdesk.ts`
+- **In-product dispute** from the scorecard / prep-dispute modal (**Issue type** dropdown + note + optional screenshot)
+- **Freshdesk (janus.freshdesk.com)** via `POST /api/tickets` (`kind: dispute_score`) — `web/support-tickets.js` + `worker/src/freshdesk.ts`
+  - Ticket **Type:** `Dispute of score`
+  - Custom field **Issue Type** (`cf_issue_type`): Score too low / Score too high / Wrong evidence cited / Missing Context / Others (mapped from the form)
+  - Also sets `cf_call_id`, `cf_page_context_hash`, `cf_area_of_the_product` = Coaching / scorecards; full context in the HTML description
 - **Manager notify** after a dispute is logged — `POST /api/disputes/notify` + `worker/src/notify-email.ts` (never blocks the dispute itself)
 - **Org routing** resolves the SE’s manager as recipient (`configureScoreDisputeNotify` in `web/score-disputes.js`)
 - **Modal reliability** — dispute overlay CSS fixed (pointer-events / class-based backdrop)
@@ -89,13 +92,14 @@ Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https:/
 
 ### Freshdesk support tickets (product feedback + disputes)
 
+- **Instance:** [janus.freshdesk.com](https://janus.freshdesk.com) (default `FRESHDESK_DOMAIN=janus.freshdesk.com`)
 - **`POST /api/tickets`** — create Freshdesk ticket (`dispute_score` or `feedback`) with optional screenshot (max 8MB)
-- **`worker/src/freshdesk.ts`** — ticket types “Dispute of Score” / “Feedback”; HTML description builder; domain + API key config
+- **`worker/src/freshdesk.ts`** — type **Dispute of score** (+ `cf_issue_type` / call / page custom fields) or **Feature Request** for feedback; HTML description builder; domain + API key config
 - **`web/support-tickets.js`** — client helper `createSupportTicket` (Bearer / demo email auth parity)
 - **Feedback UI** — optional screenshot attachment; creates Freshdesk ticket and mirrors to local queue; soft fallback if Freshdesk is down
 - **Config surface:** `GET /api/config` exposes `freshdesk.configured` and `disputeNotify.available`
 - **Secrets / deploy:**
-  - Env: `FRESHDESK_API_KEY`, `FRESHDESK_DOMAIN` (also in `deploy/vps/.env.example`, `worker/.dev.vars.example`, Wrangler)
+  - Env: `FRESHDESK_API_KEY`, `FRESHDESK_DOMAIN=janus.freshdesk.com` (also in `deploy/vps/.env.example`, `worker/.dev.vars.example`, Wrangler)
   - Cloud Run: `deploy/cloudrun/setup-freshdesk-secret.sh` + docs in `deploy/cloudrun/README.md`
   - Local secrets hygiene: `worker/secrets/` (`.gitignore` + README; do not commit keys)
 
