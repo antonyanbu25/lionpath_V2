@@ -1,6 +1,7 @@
 /**
  * Firestore collection CRUD helpers for simple top-level documents.
  */
+import { stripUndefinedFields } from './safe-store.js';
 
 /**
  * @param {string} colName Firestore collection name
@@ -27,21 +28,21 @@ export function collectionCRUD(colName, deps) {
     },
 
     async upsert(docData) {
-      await setDoc(doc(db, colName, docData.id), docData, { merge: true });
+      await setDoc(doc(db, colName, docData.id), stripUndefinedFields(docData), { merge: true });
       invalidateReadCache(colName, docData.id);
       return docData;
     },
 
     async create(docData) {
       const ref = docData.id ? doc(db, colName, docData.id) : doc(collection(db, colName));
-      const data = { ...docData, id: ref.id };
+      const data = stripUndefinedFields({ ...docData, id: ref.id });
       await setDoc(ref, data);
       invalidateReadCache(colName, data.id);
       return data;
     },
 
     async update(id, patch) {
-      await updateDoc(doc(db, colName, id), { ...patch, updatedAt: now() });
+      await updateDoc(doc(db, colName, id), stripUndefinedFields({ ...patch, updatedAt: now() }));
       invalidateReadCache(colName, id);
       return getCachedById(colName, id);
     },
