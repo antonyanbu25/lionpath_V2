@@ -26,6 +26,8 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   INTERNAL_CRON_SECRET?: string;
   VIDEO_PASS_ENABLED?: string;
   VIDEO_DATA_DIR?: string;
+  FRESHDESK_API_KEY?: string;
+  FRESHDESK_DOMAIN?: string;
 }
 
 const PORT = Number(process.env.PORT || 8787);
@@ -49,6 +51,8 @@ function buildEnv(): NodeEnv {
     ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || "freshworks.com",
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || "",
     FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
+    FRESHDESK_API_KEY: process.env.FRESHDESK_API_KEY,
+    FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus.freshdesk.com",
     INTERNAL_CRON_SECRET: process.env.INTERNAL_CRON_SECRET || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,

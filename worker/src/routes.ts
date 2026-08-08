@@ -910,6 +910,10 @@ export async function handleFeedbackPost(
     id?: string;
     page?: string;
     createdAt?: number;
+    severity?: string;
+    area?: string;
+    priority?: string;
+    context?: FeedbackEntry["context"];
   };
   const email = await resolveHistoryEmail(request, env, body.email || body.entry?.email || "");
   const nested = body.entry || {};
@@ -924,12 +928,22 @@ export async function handleFeedbackPost(
     page: nested.page || body.page,
     email,
     createdAt: nested.createdAt || body.createdAt || Date.now(),
+    severity: nested.severity || body.severity,
+    area: nested.area || body.area,
+    priority: nested.priority || body.priority,
+    context: nested.context || body.context,
   };
   const entries = await appendFeedback(env, email, entry);
   console.info(
     `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
   );
-  return json({ email, entry, count: entries.length }, 200, cors);
+  return json({
+    email,
+    entry,
+    count: entries.length,
+    ticketId: entry.ticketId ?? null,
+    ticketError: entry.ticketError ?? null,
+  }, 200, cors);
 }
 
 export async function handleHistoryPost(

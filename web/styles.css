@@ -5753,3 +5753,39 @@ fw-card.about-section {
   gap: 8px;
   padding-top: 8px;
 }
+
+.sidebar-feedback-pulse {
+  animation: lionpath-fb-pulse 1.6s ease-out infinite;
+}
+
+@keyframes lionpath-fb-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(42, 123, 108, 0.48); }
+  70% { box-shadow: 0 0 0 10px rgba(42, 123, 108, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(42, 123, 108, 0); }
+}
+
+#feedback-modal.feedback-open #feedback-form {
+  animation: lionpath-fb-modal-in 0.3s ease-out both;
+}
+
+@keyframes lionpath-fb-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.feedback-submit-success {
+  animation: lionpath-fb-success 0.5s ease-out;
+}
+
+@keyframes lionpath-fb-success {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-feedback-pulse,
+  #feedback-modal.feedback-open #feedback-form,
+  .feedback-submit-success {
+    animation: none;
+  }
+}

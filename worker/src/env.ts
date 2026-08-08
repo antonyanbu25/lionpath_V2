@@ -9,6 +9,8 @@ export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   APOLLO_API_KEY?: string;
+  FRESHDESK_API_KEY?: string;
+  FRESHDESK_DOMAIN?: string;
   VIDEO_PASS_ENABLED?: string;
   CALL_PAYLOAD_BUCKET?: string;
   /** Shared secret for Cloud Scheduler / VPS cron internal endpoints. */

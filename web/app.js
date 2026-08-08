@@ -11,7 +11,7 @@ import {
 import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initSidebarIdleAnimation } from "./sidebar-idle.js";
-import { initFeedback } from "./feedback.js";
+import { bumpFeedbackPulse, initFeedback, syncPendingFeedback } from "./feedback.js";
 import { initPrepDisputes } from "./prep-disputes.js";
 import {
   authMode,
@@ -2714,6 +2714,7 @@ async function boot() {
     getEmail: () => currentSession?.email || "",
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
   });
+  void syncPendingFeedback();
   initPrepDisputes({
     workerUrl: WORKER_BASE_URL,
     getEmail: () => currentSession?.email || "",
@@ -2921,6 +2922,7 @@ async function boot() {
       console.warn("[app] post-call history refresh failed:", err?.message || err);
       refreshSidebarRecentWork();
     }
+    bumpFeedbackPulse();
   });
 
   if (authMode() === "firebase") {

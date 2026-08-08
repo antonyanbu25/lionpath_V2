@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.39" />
+    <meta name="portal-build" content="2.1.40-feedback" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -24,7 +24,7 @@
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
     <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.17" />
-    <link rel="stylesheet" href="./styles.css?v=2.1.39" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.40-feedback" />
     <link rel="stylesheet" href="./precall.css?v=2.1.39" />
     <link rel="stylesheet" href="./postcall.css?v=2.1.39" />
     <link rel="stylesheet" href="./call-view.css?v=2.1.39" />
@@ -279,7 +279,7 @@
               </button>
             </div>
           </div>
-          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback" hidden>
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
             <span class="nav-label">Feedback</span>
           </fw-button>
@@ -707,6 +707,30 @@
             <fw-select-option value="bug">Bug</fw-select-option>
             <fw-select-option value="idea">Idea</fw-select-option>
             <fw-select-option value="data">Data quality</fw-select-option>
+            <fw-select-option value="other">Other</fw-select-option>
+          </fw-select>
+          <fw-select id="feedback-severity" label="Type / Severity" value="general">
+            <fw-select-option value="critical">Critical — blocking work</fw-select-option>
+            <fw-select-option value="high">High — workable but painful</fw-select-option>
+            <fw-select-option value="general">General — improvement</fw-select-option>
+            <fw-select-option value="minor">Minor — nice to have</fw-select-option>
+          </fw-select>
+          <fw-select id="feedback-area" label="Area of the product" value="other">
+            <fw-select-option value="pre-call-prep">Pre-call prep</fw-select-option>
+            <fw-select-option value="post-call-analysis">Post-call analysis</fw-select-option>
+            <fw-select-option value="dashboard">Dashboard</fw-select-option>
+            <fw-select-option value="accounts-deals">Accounts &amp; deals</fw-select-option>
+            <fw-select-option value="coaching-scorecards">Coaching / scorecards</fw-select-option>
+            <fw-select-option value="search">Search</fw-select-option>
+            <fw-select-option value="ui-visual">UI / visual</fw-select-option>
+            <fw-select-option value="performance-speed">Performance / speed</fw-select-option>
+            <fw-select-option value="other">Other</fw-select-option>
+          </fw-select>
+          <fw-select id="feedback-priority" label="Priority" value="2">
+            <fw-select-option value="1">Low</fw-select-option>
+            <fw-select-option value="2">Medium</fw-select-option>
+            <fw-select-option value="3">High</fw-select-option>
+            <fw-select-option value="4">Urgent</fw-select-option>
           </fw-select>
           <fw-textarea
             id="feedback-text"
