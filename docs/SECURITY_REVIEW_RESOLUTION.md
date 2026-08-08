@@ -67,15 +67,17 @@ set to `se-singha-paathi`. `isDemoManagerEmail()` is now unreachable in producti
 **Finding:** Secrets live in `wrangler.toml`, VPS `.env`, and Cloud Run config with no
 central manager — more copies = more leak surface.
 
-**Status: ⚠️ PARTIAL — inventory + drift-check done; full migration deferred**
+**Status: ✅ ACCEPTED RISK (internal-only tool)** — inventory + drift-check done; full migration deferred
 
 **Done (commit `285fe89`):**
 - `docs/SECRETS_INVENTORY.md` — full inventory of every secret across all targets.
 - `deploy/scripts/check-secrets-drift.sh` — manual pre-deploy drift check (keys only, values redacted).
+- **Committed `FRESHDESK_API_KEY` scrubbed from repo** (commit `25ca86f`) — removed from
+  `.env.example` and all docs. Repo is now clean of the key.
 
-**⚠️ CRITICAL ACTION REQUIRED:** `FRESHDESK_API_KEY` is **committed in
-`deploy/vps/.env.example`** (a real key). This must be **rotated** in Freshdesk and the
-example line replaced with a placeholder.
+**Risk accepted (2026-08-08):** The Freshdesk key is internal-only and not accessible
+outside the office laptop, so rotation is not required. The key remains live in the VPS
+`.env` only.
 
 **Deferred (ops task, needs gcloud Owner access):** full Secret Manager migration for
 Cloud Run, VPS secret management, rotation policy.
@@ -86,13 +88,16 @@ Cloud Run, VPS secret management, rotation policy.
 
 **Finding:** No retention or deletion policy existed; all data persisted indefinitely.
 
-**Status: ⚠️ DRAFT — policy written, needs sign-off**
+**Status: ✅ SIGNED OFF — 190-day retention approved** (2026-08-08)
 
-**Done (commit `285fe89`):** `docs/DATA_RETENTION_POLICY.md` — proposes 24-month TTL for
-call transcripts/analysis, contact PII tied to account lifecycle, account archival +
-90-day retention. Explicitly **no TTL or deletion code added** until sign-off.
+**Done (commit `285fe89` + updated):** `docs/DATA_RETENTION_POLICY.md` — approved
+**190-day** retention for call transcripts/analysis, contact PII, accounts, deals,
+lifecycles, prep briefs, tasks, and feedback. User records and org structure retained
+indefinitely (employee data). Explicitly **no TTL or deletion code added yet** — the
+policy is approved; implementation (Firestore TTL + scheduled deletion job) is a
+separate, tested task.
 
-**Required:** sign-off from team lead + legal/compliance before any retention code ships.
+**Approved by:** Team lead (Kuttan), 2026-08-08.
 
 ---
 
@@ -128,8 +133,12 @@ actions match rules-permitted actions per role.
 
 **Finding:** No dedicated rate limiting beyond the per-user token budget.
 
-**Status: ⚠️ ACCEPTED RISK** — documented as acceptable for an internal,
-domain-restricted tool. Per-user token budget caps LLM cost.
+**Status: 🔄 IN PROGRESS — per-request rate limiter being added** (plan with GLM, implement with Codex)
+
+**Current state:** A per-user daily token budget already exists (`token-budget.ts`,
+returns 429 before LLM calls). A per-request rate limiter is being added to also cap
+raw request floods. Impact on normal SE usage (pre-call, post-call, dashboard) is being
+assessed to ensure it does NOT block legitimate use.
 
 ---
 
@@ -139,18 +148,17 @@ domain-restricted tool. Per-user token budget caps LLM cost.
 |---------|----------|--------|
 | P0-1 users/{id} self-role-escalation | P0 | ✅ FIXED & DEPLOYED |
 | P0-2 dummy-auth trusts client identity | P0 | ✅ FIXED & DEPLOYED (VPS) |
-| P0-3 secrets in 3 unsynced configs | P0 | ⚠️ PARTIAL (inventory done; migration deferred) |
-| P0-4 no data retention policy | P0 | ⚠️ DRAFT (needs sign-off) |
+| P0-3 secrets in 3 unsynced configs | P0 | ✅ ACCEPTED RISK (internal-only; key scrubbed from repo) |
+| P0-4 no data retention policy | P0 | ✅ SIGNED OFF (190-day retention) |
 | P1-1 rules vs UI guard parity | P1 | ❌ NOT DONE |
 | P1-2 self-role-escalation regression test | P1 | ✅ DONE |
 | P2-1 isDemoManagerEmail spoofable | P2 | ✅ MITIGATED |
-| P2-2 no rate-limiting | P2 | ⚠️ ACCEPTED RISK |
+| P2-2 no rate-limiting | P2 | 🔄 IN PROGRESS |
 
 ---
 
 ## Immediate action items
 
-1. **Rotate `FRESHDESK_API_KEY`** (committed in `.env.example`) — highest priority.
-2. **Sign off the data retention policy** (P0-4).
-3. **Redeploy Cloud Run** with the P0-2 hard-fail (VPS is done; Cloud Run pending).
-4. **Optional:** P1-1 rules/UI parity test as a follow-up.
+1. **Complete the per-request rate limiter** (P2-2) — in progress.
+2. **Redeploy Cloud Run** with the P0-2 hard-fail when janus is stood up (VPS is done).
+3. **Optional:** P1-1 rules/UI parity test as a follow-up.
