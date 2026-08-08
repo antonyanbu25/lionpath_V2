@@ -151,6 +151,46 @@ function resolveCallTitle(record) {
   return resolveCallTitleFromRecord(record);
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text && text !== "-") return text;
+  }
+  return "";
+}
+
+function ownAccountNameFromRecord(record) {
+  const confirmed = record?.result?.confirmed || {};
+  const resolve = record?.result?.resolve || {};
+  return firstText(
+    record?.accountName,
+    record?.account?.name,
+    confirmed.accountName,
+    confirmed.account?.name,
+    resolve.accountName,
+    resolve.account?.name,
+  );
+}
+
+function ownDealTitleFromRecord(record) {
+  const confirmed = record?.result?.confirmed || {};
+  const resolve = record?.result?.resolve || {};
+  return firstText(
+    record?.dealTitle,
+    record?.dealName,
+    record?.deal?.title,
+    record?.deal?.name,
+    confirmed.dealTitle,
+    confirmed.dealName,
+    confirmed.deal?.title,
+    confirmed.deal?.name,
+    resolve.dealTitle,
+    resolve.dealName,
+    resolve.deal?.title,
+    resolve.deal?.name,
+  );
+}
+
 function companyFromRecord(record) {
   const title = resolveCallTitle(record);
   return companyFromCallTitle(title) || title || ACTIVITY_NOUN;
@@ -441,7 +481,7 @@ export function aggregateActivityFeedMetrics(feed) {
  * @param {Map<string, object>} deals
  * @param {Map<string, object>} accounts
  */
-export function buildCallListRow(record, deals, accounts, dealsByAccount = new Map()) {
+export function buildCallListRow(record, deals, accounts, dealsByAccount = new Map(), opts = {}) {
   const dealId = resolveDealId(record);
   let deal = dealId ? deals.get(dealId) : null;
   let accountId = resolveAccountId(record);
@@ -471,8 +511,9 @@ export function buildCallListRow(record, deals, accounts, dealsByAccount = new M
   const dealTitle =
     deal?.title ||
     DEAL_TYPE_LABELS[deal?.type] ||
-    (dealId && String(dealId).startsWith("deal_hist_")
-      ? account?.name || companyFromRecord(record) || "-"
+    ownDealTitleFromRecord(record) ||
+    (!opts.recordOnly && dealId && String(dealId).startsWith("deal_hist_")
+      ? account?.name || ownAccountNameFromRecord(record) || "-"
       : "-");
 
   return {
@@ -481,7 +522,11 @@ export function buildCallListRow(record, deals, accounts, dealsByAccount = new M
     callType,
     callTypeLabel: CALL_TYPE_LABELS[callType] || callType,
     callTitle: resolveCallTitle(record),
-    accountName: account?.name || account?.domain || companyFromRecord(record),
+    accountName:
+      account?.name ||
+      account?.domain ||
+      ownAccountNameFromRecord(record) ||
+      (opts.recordOnly ? "-" : companyFromRecord(record)),
     dealTitle,
     dateLabel: formatDate(record.timestamp),
     dateShortLabel: formatShortDate(record.timestamp),
@@ -597,17 +642,25 @@ function renderActivityTitleCell(kind, title, callTypeLabel) {
   </div>`;
 }
 
+function renderAccountCell(name) {
+  return name && name !== "-"
+    ? `<span class="act-cell-strong">${esc(name)}</span>`
+    : `<span class="act-dash">—</span>`;
+}
+
+function renderDealCell(title) {
+  return title && title !== "-"
+    ? `<span class="act-cell-strong">${esc(title)}</span>`
+    : `<span class="act-dash">—</span>`;
+}
+
 function renderCallTableRow(row) {
-  const deal =
-    row.dealTitle && row.dealTitle !== "-"
-      ? `<span class="act-cell-strong">${esc(row.dealTitle)}</span>`
-      : `<span class="act-dash">—</span>`;
   return `
-    <tr class="act-feed-row" data-call-id="${esc(row.id)}" data-activity-kind="call" tabindex="0" role="button">
+    <tr class="act-feed-row" data-row-id="call:${esc(row.id)}" data-call-id="${esc(row.id)}" data-activity-kind="call" tabindex="0" role="button">
       <td>${renderActivityTitleCell("call", row.callTitle, row.callTypeLabel)}</td>
       <td class="act-cell-type">${esc(row.callTypeLabel)}</td>
-      <td class="act-cell-strong">${esc(row.accountName)}</td>
-      <td>${deal}</td>
+      <td data-enrich-cell="account">${renderAccountCell(row.accountName)}</td>
+      <td data-enrich-cell="deal">${renderDealCell(row.dealTitle)}</td>
       <td class="act-cell-date">${esc(row.dateShortLabel)}</td>
       <td class="act-cell-mono">${esc(row.lengthLabel)}</td>
       <td>${renderQualityCell(row)}</td>
@@ -619,6 +672,22 @@ function renderBriefTableRow(brief, deals = new Map(), accounts = new Map(), dea
   const row = buildBriefListRow(brief);
   const ts = parseBriefTimestamp(brief);
   const dateShort = ts ? formatShortDate(ts) : row.whenLabel || "-";
+  const cells = buildBriefEnrichmentCells(brief, deals, accounts, dealsByAccount);
+  return `
+    <tr class="act-feed-row" data-row-id="brief:${esc(row.id)}" data-brief-id="${esc(row.id)}" data-activity-kind="brief" tabindex="0" role="button">
+      <td>${renderActivityTitleCell("brief", row.company, row.kind)}</td>
+      <td class="act-cell-type">${esc(row.kind)}</td>
+      <td data-enrich-cell="account">${renderAccountCell(cells.accountName)}</td>
+      <td data-enrich-cell="deal">${renderDealCell(cells.dealTitle)}</td>
+      <td class="act-cell-date">${esc(dateShort)}</td>
+      <td class="act-cell-mono">${BRIEF_MINUTES}m</td>
+      <td><span class="act-dash">—</span></td>
+      <td><span class="act-dash">—</span></td>
+    </tr>`;
+}
+
+function buildBriefEnrichmentCells(brief, deals = new Map(), accounts = new Map(), dealsByAccount = new Map()) {
+  const row = buildBriefListRow(brief);
   const dealId = brief?.meta?.dealId || brief?.input?.dealId || null;
   let deal = dealId ? deals.get(dealId) : null;
   let accountId = brief?.meta?.accountId || brief?.input?.accountId || null;
@@ -646,26 +715,42 @@ function renderBriefTableRow(brief, deals = new Map(), accounts = new Map(), dea
           const d = pickDealForAccount(dealsByAccount, matched.id);
           return d?.title || DEAL_TYPE_LABELS[d?.type] || matched.name || "-";
         })();
-  const dealCell =
-    resolvedDealTitle && resolvedDealTitle !== "-"
-      ? `<span class="act-cell-strong">${esc(resolvedDealTitle)}</span>`
-      : `<span class="act-dash">—</span>`;
-  return `
-    <tr class="act-feed-row" data-brief-id="${esc(row.id)}" data-activity-kind="brief" tabindex="0" role="button">
-      <td>${renderActivityTitleCell("brief", row.company, row.kind)}</td>
-      <td class="act-cell-type">${esc(row.kind)}</td>
-      <td class="act-cell-strong">${esc(row.company)}</td>
-      <td>${dealCell}</td>
-      <td class="act-cell-date">${esc(dateShort)}</td>
-      <td class="act-cell-mono">${BRIEF_MINUTES}m</td>
-      <td><span class="act-dash">—</span></td>
-      <td><span class="act-dash">—</span></td>
-    </tr>`;
+  return {
+    accountName: row.company || account?.name || "-",
+    dealTitle: resolvedDealTitle,
+  };
 }
 
-function renderActivityFeedRow(item, deals, accounts, dealsByAccount = new Map()) {
+function renderActivityFeedRow(item, deals, accounts, dealsByAccount = new Map(), opts = {}) {
   if (item.kind === "brief") return renderBriefTableRow(item.brief, deals, accounts, dealsByAccount);
-  return renderCallTableRow(buildCallListRow(item.record, deals, accounts, dealsByAccount));
+  return renderCallTableRow(buildCallListRow(item.record, deals, accounts, dealsByAccount, opts));
+}
+
+function patchActivityEnrichmentCells(container, feed, deals, accounts, dealsByAccount = new Map()) {
+  const rows = new Map();
+  container.querySelectorAll("[data-row-id]").forEach((row) => {
+    rows.set(row.getAttribute("data-row-id"), row);
+  });
+
+  for (const item of feed || []) {
+    const id = item.kind === "brief" ? item.brief?.id : item.record?.id;
+    if (!id) continue;
+    const row = rows.get(`${item.kind}:${id}`);
+    if (!row) continue;
+
+    const cells =
+      item.kind === "brief"
+        ? buildBriefEnrichmentCells(item.brief, deals, accounts, dealsByAccount)
+        : (() => {
+            const callRow = buildCallListRow(item.record, deals, accounts, dealsByAccount);
+            return { accountName: callRow.accountName, dealTitle: callRow.dealTitle };
+          })();
+
+    const accountCell = row.querySelector('[data-enrich-cell="account"]');
+    const dealCell = row.querySelector('[data-enrich-cell="deal"]');
+    if (accountCell) accountCell.innerHTML = renderAccountCell(cells.accountName);
+    if (dealCell) dealCell.innerHTML = renderDealCell(cells.dealTitle);
+  }
 }
 
 function renderCallsEmptyState(message) {
@@ -1035,6 +1120,9 @@ export async function renderCallsListView(container, session, opts = {}) {
       const metricsEl = container.querySelector(".call-list-metrics-host");
       const feedSubEl = container.querySelector(".act-feed-sub");
       const tbody = container.querySelector(".act-feed-body");
+      const renderOpts = {
+        recordOnly: !(dealMap?.size || accountMap?.size || dealsByAccount?.size),
+      };
       if (metricsEl) {
         metricsEl.innerHTML =
           activeFilters.callType === ACTIVITY_FILTER_PRECALL_BRIEFS
@@ -1047,7 +1135,7 @@ export async function renderCallsListView(container, session, opts = {}) {
       if (tbody) {
         tbody.innerHTML = feed.length
           ? feed
-              .map((item) => renderActivityFeedRow(item, dealMap, accountMap, dealsByAccount))
+              .map((item) => renderActivityFeedRow(item, dealMap, accountMap, dealsByAccount, renderOpts))
               .join("")
           : `<tr><td colspan="8" class="act-feed-empty muted">No activities match these filters.</td></tr>`;
         wireCallListClicks(tbody.closest(".call-list-view") || container, opts);
@@ -1098,7 +1186,9 @@ export async function renderCallsListView(container, session, opts = {}) {
               <tbody class="act-feed-body">
                 ${initialFeed
                   .map((item) =>
-                    renderActivityFeedRow(item, emptyMaps.deals, emptyMaps.accounts, emptyMaps.dealsByAccount),
+                    renderActivityFeedRow(item, emptyMaps.deals, emptyMaps.accounts, emptyMaps.dealsByAccount, {
+                      recordOnly: true,
+                    }),
                   )
                   .join("")}
               </tbody>
@@ -1108,16 +1198,20 @@ export async function renderCallsListView(container, session, opts = {}) {
       </div>`;
 
     wireCallListFilters(container, listFiltered, enrichState.deals, enrichState.accounts, { ...opts, liveFilters }, paint);
-    paint(filters);
 
     void enrichState.promise?.then(() => {
-      paint(
-        {
-          callType: liveFilters.callType || "",
-          window: liveFilters.window || "30d",
-        },
+      const activeFilters = {
+        callType: liveFilters.callType || "",
+        window: liveFilters.window || "30d",
+        includeBriefs,
+      };
+      const activeFeed = mergeActivityFeed(listFiltered, allBriefs, activeFilters);
+      patchActivityEnrichmentCells(
+        container,
+        activeFeed,
         enrichState.deals,
         enrichState.accounts,
+        enrichState.dealsByAccount || emptyMaps.dealsByAccount,
       );
     });
   } catch (err) {
