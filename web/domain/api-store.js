@@ -8,6 +8,7 @@ import { isHistoryStubId } from "./safe-store.js";
 const DETAIL_TTL_MS = 30_000;
 const DETAIL_MAX_ENTRIES = 64;
 const DEALS_LIST_TTL_MS = 30_000;
+let apiStoreUnavailable = false;
 
 /** @typedef {{ value: object, expiresAt: number }} DetailCacheEntry */
 
@@ -121,11 +122,18 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   let dealsListCache = null;
 
   async function apiFetch(path) {
+    if (apiStoreUnavailable) {
+      throw new Error("Not found.");
+    }
     const headers = { Accept: "application/json" };
     const token = getToken ? await getToken() : undefined;
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
     if (!res.ok) {
+      if (res.status === 404) {
+        apiStoreUnavailable = true;
+        throw new Error("Not found.");
+      }
       const body = await res.json().catch(() => ({}));
       throw new Error(body?.error || `API ${res.status}: ${path}`);
     }

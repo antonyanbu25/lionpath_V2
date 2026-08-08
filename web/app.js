@@ -510,7 +510,7 @@ async function resolveRemoteBriefsOwnerIds(session = currentSession) {
     (id) => !String(id).startsWith("usr_dummy_"),
   );
   // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{syncId:syncId?.slice?.(0,28),resolvedId:resolvedId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
+  if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{syncId:syncId?.slice?.(0,28),resolvedId:resolvedId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   return ownerIds;
 }
@@ -624,7 +624,7 @@ function buildSubscribeRemotePreps() {
       }
       const briefs = docsToRemoteBriefs([...prepDocsByUid.values()], prepBriefDocs);
       // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:subscribeRemotePreps.emit",message:"briefs snapshot emit",data:{prepsLegacy:prepDocsByUid.size,prepBriefs:prepBriefDocs.length,merged:briefs.length,owners:[...prepBriefDocsByOwner.keys()].map((id)=>id?.slice?.(0,24))},timestamp:Date.now()})}).catch(()=>{});
+      if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:subscribeRemotePreps.emit",message:"briefs snapshot emit",data:{prepsLegacy:prepDocsByUid.size,prepBriefs:prepBriefDocs.length,merged:briefs.length,owners:[...prepBriefDocsByOwner.keys()].map((id)=>id?.slice?.(0,24))},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       onChange(briefs);
     };
@@ -714,7 +714,8 @@ function buildSubscribeRemoteCalls() {
         const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         onChange(calls);
       },
-      (err) => console.warn("[app] calls snapshot failed:", err?.message || err),
+      // silent — Firestore postCalls may not exist for this user
+      (err) => {},
     );
     return () => unsub();
   };
@@ -2443,7 +2444,7 @@ function wireFirebaseSignIn(runSignIn) {
   setSignInButtonReady(false);
   const attach = () => bindActionOnce(btn, () => {
     // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H5",location:"app.js:wireFirebaseSignIn",message:"SSO button activated",data:{disabled:!!btn?.disabled,ssoInFlight},timestamp:Date.now()})}).catch(()=>{});
+    if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H5",location:"app.js:wireFirebaseSignIn",message:"SSO button activated",data:{disabled:!!btn?.disabled,ssoInFlight},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     void runSignIn();
   });

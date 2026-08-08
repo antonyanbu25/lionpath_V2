@@ -6,6 +6,7 @@ import { firebaseConfig } from "../firebase-config.js";
 import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
+import { safeStoreOp } from "./safe-store.js";
 import {
   getOrg,
   getSegmentForLeader,
@@ -24,12 +25,7 @@ function inferRoleFromEmail(email, roleHint) {
 
 /** Firestore rules deny reads when session.userId != authIndex userId; swallow and continue. */
 async function safeStoreGet(label, fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    console.warn(`[user-resolve] ${label} failed:`, err?.message || err);
-    return null;
-  }
+  return safeStoreOp(label, fn, null);
 }
 
 /**
@@ -89,12 +85,14 @@ export async function resolveAuthIndexOwnerId(fb, session) {
 
   const authUid = session?.authUid || fb?.auth?.currentUser?.uid;
   if (authUid && fb?.db && fb?.getDoc && fb?.doc) {
-    try {
-      const snap = await fb.getDoc(fb.doc(fb.db, "authIndex", authUid));
+    const snap = await safeStoreOp(
+      "authIndex direct read",
+      () => fb.getDoc(fb.doc(fb.db, "authIndex", authUid)),
+      null,
+    );
+    if (snap) {
       const userId = snap.exists() ? snap.data()?.userId : null;
       if (userId && !String(userId).startsWith("usr_dummy_")) return userId;
-    } catch (err) {
-      console.warn("[user-resolve] authIndex direct read failed:", err?.message || err);
     }
   }
   return null;

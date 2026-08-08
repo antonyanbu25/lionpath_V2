@@ -55,8 +55,8 @@ export async function safeStoreOp(label, fn, fallback) {
     return await fn();
   } catch (err) {
     if (isFirebasePermissionError(err)) {
-      console.warn(`[store] ${label} skipped (permissions)`);
-    } else {
+      // silent — Firestore not available
+    } else if (String(err?.message || err) !== "Not found.") {
       console.warn(`[store] ${label} failed:`, err?.message || err);
     }
     return fallback;
