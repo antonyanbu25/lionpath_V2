@@ -628,23 +628,36 @@ function listHistoryRecordsForDeal(email, dealId) {
 async function resolveMergedTechnicalCommit(email, dealId, record, store, callTcHint = null) {
   const resultBlob = record?.result || {};
   const callTc = callTcHint || resultBlob.technicalCommit || null;
-  if (!dealId) return callTc;
 
-  const dealRecords = listHistoryRecordsForDeal(email, dealId);
-  const recordsForRollup = dealRecords.some((r) => r.id === record?.id)
-    ? dealRecords
-    : record?.id
-      ? [...dealRecords, record]
-      : dealRecords;
+  let recordsForRollup = [];
+  if (dealId) {
+    const dealRecords = listHistoryRecordsForDeal(email, dealId);
+    recordsForRollup = dealRecords.some((r) => r.id === record?.id)
+      ? dealRecords
+      : record?.id
+        ? [...dealRecords, record]
+        : dealRecords;
+  }
 
   let merged = rollupTechnicalCommitFromHistoryRecords(recordsForRollup);
-  if (store.getTechnicalCommitByDeal) {
+  if (dealId && store.getTechnicalCommitByDeal) {
     const fromStore = await safeEnrich(
       "getTechnicalCommitByDeal",
       () => store.getTechnicalCommitByDeal(dealId),
       null,
     );
     if (fromStore) merged = mergeTechnicalCommit(merged, fromStore);
+  } else if (!dealId) {
+    const accountId =
+      record?.result?.confirmed?.accountId || record?.result?.resolve?.account?.accountId || record?.accountId || null;
+    if (accountId && store.getTechnicalCommitByAccount) {
+      const fromStore = await safeEnrich(
+        "getTechnicalCommitByAccount",
+        () => store.getTechnicalCommitByAccount(accountId),
+        null,
+      );
+      if (fromStore) merged = mergeTechnicalCommit(merged, fromStore);
+    }
   }
   if (callTc) merged = mergeTechnicalCommit(merged, callTc);
   return merged;

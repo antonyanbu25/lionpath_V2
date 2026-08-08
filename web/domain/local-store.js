@@ -942,6 +942,10 @@ export function createLocalStore() {
       return findMany("technicalCommits", (s) => s.dealId === dealId)[0] || null;
     },
 
+    async getTechnicalCommitByAccount(accountId) {
+      return findMany("technicalCommits", (s) => s.accountId === accountId)[0] || null;
+    },
+
     async upsertTcDelta(docData) {
       return upsertById("tcDeltas", docData);
     },

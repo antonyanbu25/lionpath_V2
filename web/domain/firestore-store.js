@@ -1580,6 +1580,13 @@ export function createFirestoreStore(fb) {
       return row ? { id: row.id, ...row.data() } : null;
     },
 
+    async getTechnicalCommitByAccount(accountId) {
+      const q = query(collection(db, "technicalCommits"), where("accountId", "==", accountId), limit(1));
+      const snap = await getDocs(q);
+      const row = snap.docs[0];
+      return row ? { id: row.id, ...row.data() } : null;
+    },
+
     async upsertTcDelta(docData) {
       const ref = docData.id ? doc(db, "tcDeltas", docData.id) : doc(collection(db, "tcDeltas"));
       const data = { ...docData, id: ref.id };
