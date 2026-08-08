@@ -827,9 +827,16 @@ async function renderSePanel() {
   });
 }
 
+let dashboardRenderInFlight = false;
+
 async function renderDashboardPanels(email, opts = {}) {
   const panel = $("dash-panel");
-  await renderDashboard(panel, email, opts);
+  dashboardRenderInFlight = true;
+  try {
+    await renderDashboard(panel, email, opts);
+  } finally {
+    dashboardRenderInFlight = false;
+  }
 }
 
 async function renderCoachingPanel(email, opts = {}) {
@@ -2233,7 +2240,10 @@ async function showApp(session, opts = {}) {
         await loadPersistedHistory();
         if (!sessionStillValid()) return;
         refreshSidebarRecentWork();
-        if (currentView === "dashboard" || currentView === "manager" || currentView === "coaching") {
+        if (
+          !dashboardRenderInFlight &&
+          (currentView === "dashboard" || currentView === "manager" || currentView === "coaching")
+        ) {
           refreshDashboardFromStorage();
         }
       } catch (err) {

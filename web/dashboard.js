@@ -1136,8 +1136,8 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
   const syncing = kpiOpts.syncing || {};
   const kpiValue = (value, stat) => {
     const pending =
-      !value &&
-      ((stat === "calls" && remotePending.calls) || (stat === "preps" && remotePending.preps));
+      (stat === "calls" && remotePending.calls) ||
+      (!value && stat === "preps" && remotePending.preps);
     if (pending) {
       return `<span class="launch-kpi-value launch-kpi-value--pending" data-stat="${stat}" aria-busy="true"><span class="launch-kpi-shimmer" aria-hidden="true"></span></span>`;
     }
@@ -1401,7 +1401,10 @@ function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = nul
   const cachedCalls = cached?.totalCalls;
   const cachedPreps = cached?.prepsCount;
   return {
-    calls: hasRemoteHistory && !(callRecords?.length) && cachedCalls == null,
+    calls:
+      hasRemoteHistory &&
+      ((!(callRecords?.length) && cachedCalls == null) ||
+        (cachedCalls != null && (callRecords?.length ?? 0) < cachedCalls)),
     preps: hasRemotePreps && !prepsCount && cachedPreps == null,
   };
 }
