@@ -1345,6 +1345,230 @@ function nullableStringField(value: unknown): string | null {
   return s || null;
 }
 
+function stripUndefined(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(stripUndefined).filter((v) => v !== undefined);
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const cleaned = stripUndefined(child);
+    if (cleaned !== undefined) out[key] = cleaned;
+  }
+  return out;
+}
+
+function dealContactId(dealId: unknown, contactId: unknown): string {
+  return `${String(dealId || "").trim()}_${String(contactId || "").trim()}`;
+}
+
+async function setDomainDoc(
+  env: Env,
+  col: string,
+  docData: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const db = await getDb(env);
+  const ref = docData.id ? db.collection(col).doc(String(docData.id)) : db.collection(col).doc();
+  const data = stripUndefined({ ...docData, id: ref.id }) as Record<string, unknown>;
+  await ref.set(data, { merge: true });
+  return data;
+}
+
+async function updateDomainDoc(
+  env: Env,
+  col: string,
+  id: unknown,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const db = await getDb(env);
+  const key = String(id || "").trim();
+  if (!key) return null;
+  const ref = db.collection(col).doc(key);
+  await ref.set(stripUndefined({ ...patch, updatedAt: patch.updatedAt || Date.now() }) as Record<string, unknown>, {
+    merge: true,
+  });
+  const snap = await ref.get();
+  return snap.exists ? ({ id: snap.id, ...snap.data() } as Record<string, unknown>) : null;
+}
+
+async function deleteDomainDoc(env: Env, col: string, id: unknown): Promise<boolean> {
+  const key = String(id || "").trim();
+  if (!key) return false;
+  const db = await getDb(env);
+  await db.collection(col).doc(key).delete();
+  return true;
+}
+
+async function deleteWhere(env: Env, col: string, field: string, value: unknown): Promise<number> {
+  const key = String(value || "").trim();
+  if (!key) return 0;
+  const db = await getDb(env);
+  const snap = await db.collection(col).where(field, "==", key).get();
+  const batch = db.batch();
+  snap.docs.forEach((docSnap: any) => batch.delete(docSnap.ref));
+  if (!snap.empty) await batch.commit();
+  return snap.size;
+}
+
+const UPSERT_COLLECTIONS: Record<string, string> = {
+  upsertPostCall: "postCalls",
+  upsertCallSummary: "callSummaries",
+  upsertScorecard: "scorecards",
+  upsertScorecardLine: "scorecardLines",
+  upsertVideoFacts: "videoFacts",
+  upsertTimelineSegment: "timelineSegments",
+  upsertTimelineMarker: "timelineMarkers",
+  upsertFollowUp: "followUps",
+  upsertObjection: "objections",
+  upsertMomDraft: "momDrafts",
+  upsertMeddpiccDelta: "meddpiccDeltas",
+  upsertDealSignal: "dealSignals",
+  upsertArrLine: "arrLines",
+  upsertTcDelta: "tcDeltas",
+  upsertTechnicalCommit: "technicalCommits",
+  upsertArrOverride: "arrOverrides",
+  upsertProductGap: "productGaps",
+  upsertWhatWorks: "whatWorks",
+  upsertGapCluster: "gapClusters",
+  upsertClusteringState: "clusteringStates",
+};
+
+const DELETE_COLLECTIONS: Record<string, string> = {
+  deleteTask: "tasks",
+  deleteScorecard: "scorecards",
+  deleteVideoFacts: "videoFacts",
+  deleteFollowUp: "followUps",
+  deleteObjection: "objections",
+  deleteMomDraft: "momDrafts",
+  deleteMeddpiccDelta: "meddpiccDeltas",
+  deleteDealSignal: "dealSignals",
+  deleteArrLine: "arrLines",
+  deleteTcDelta: "tcDeltas",
+};
+
+async function applyDomainWrite(
+  env: Env,
+  method: string,
+  args: unknown[],
+): Promise<unknown> {
+  if (UPSERT_COLLECTIONS[method]) {
+    return setDomainDoc(env, UPSERT_COLLECTIONS[method], (args[0] || {}) as Record<string, unknown>);
+  }
+  if (DELETE_COLLECTIONS[method]) {
+    return deleteDomainDoc(env, DELETE_COLLECTIONS[method], args[0]);
+  }
+
+  switch (method) {
+    case "createAccount":
+      return setDomainDoc(env, "accounts", (args[0] || {}) as Record<string, unknown>);
+    case "updateAccount":
+      return updateDomainDoc(env, "accounts", args[0], (args[1] || {}) as Record<string, unknown>);
+    case "createContact":
+      return setDomainDoc(env, "contacts", (args[0] || {}) as Record<string, unknown>);
+    case "updateContact":
+      return updateDomainDoc(env, "contacts", args[0], (args[1] || {}) as Record<string, unknown>);
+    case "createDeal":
+      return setDomainDoc(env, "deals", (args[0] || {}) as Record<string, unknown>);
+    case "updateDeal":
+      return updateDomainDoc(env, "deals", args[0], (args[1] || {}) as Record<string, unknown>);
+    case "createLifecycle":
+      return setDomainDoc(env, "lifecycles", (args[0] || {}) as Record<string, unknown>);
+    case "updateLifecycle":
+      return updateDomainDoc(env, "lifecycles", args[0], (args[1] || {}) as Record<string, unknown>);
+    case "addLifecycleEvent":
+      return setDomainDoc(env, "lifecycleEvents", (args[0] || {}) as Record<string, unknown>);
+    case "createPrepBrief":
+      return setDomainDoc(env, "prepBriefs", (args[0] || {}) as Record<string, unknown>);
+    case "createTask":
+      return setDomainDoc(env, "tasks", (args[0] || {}) as Record<string, unknown>);
+    case "updateTask":
+      return updateDomainDoc(env, "tasks", args[0], (args[1] || {}) as Record<string, unknown>);
+    case "addContactEvent": {
+      const event = (args[0] || {}) as Record<string, unknown>;
+      const contactId = stringField(event.contactId);
+      if (!contactId) return null;
+      const db = await getDb(env);
+      const ref = event.id
+        ? db.collection("contacts").doc(contactId).collection("events").doc(String(event.id))
+        : db.collection("contacts").doc(contactId).collection("events").doc();
+      const data = stripUndefined({ ...event, id: ref.id }) as Record<string, unknown>;
+      await ref.set(data, { merge: true });
+      return data;
+    }
+    case "createDealContact": {
+      const link = (args[0] || {}) as Record<string, unknown>;
+      const id = dealContactId(link.dealId, link.contactId);
+      return setDomainDoc(env, "dealContacts", { ...link, id });
+    }
+    case "setPrimaryDealContact": {
+      const dealId = stringField(args[0]);
+      const contactId = stringField(args[1]);
+      if (!dealId || !contactId) return null;
+      const db = await getDb(env);
+      const snap = await db.collection("dealContacts").where("dealId", "==", dealId).get();
+      const batch = db.batch();
+      let promoted: Record<string, unknown> | null = null;
+      snap.docs.forEach((docSnap: any) => {
+        const row = { id: docSnap.id, ...docSnap.data() };
+        const isPrimary = row.contactId === contactId;
+        if (isPrimary) promoted = { ...row, isPrimary: true };
+        batch.set(docSnap.ref, { isPrimary, updatedAt: Date.now() }, { merge: true });
+      });
+      if (!snap.empty) await batch.commit();
+      return promoted;
+    }
+    case "removeDealContact":
+      return deleteDomainDoc(env, "dealContacts", dealContactId(args[0], args[1]));
+    case "upsertPostCallWithSummary": {
+      const postCall = (args[0] || {}) as Record<string, unknown>;
+      const callSummary = args[1] as Record<string, unknown> | null;
+      const db = await getDb(env);
+      const postRef = postCall.id
+        ? db.collection("postCalls").doc(String(postCall.id))
+        : db.collection("postCalls").doc();
+      const postData = stripUndefined({ ...postCall, id: postRef.id }) as Record<string, unknown>;
+      const batch = db.batch();
+      batch.set(postRef, postData, { merge: true });
+      if (callSummary) {
+        const sumRef = db.collection("callSummaries").doc(String(callSummary.id || postRef.id));
+        batch.set(sumRef, stripUndefined({ ...callSummary, id: sumRef.id }) as Record<string, unknown>, {
+          merge: true,
+        });
+      }
+      await batch.commit();
+      return postData;
+    }
+    case "deleteScorecardLinesByScorecardId":
+      return deleteWhere(env, "scorecardLines", "scorecardId", args[0]);
+    case "deleteTimelineSegmentsByVideoFactsId":
+      return deleteWhere(env, "timelineSegments", "videoFactsId", args[0]);
+    case "deleteTranscriptTimelineByCall": {
+      const segments = await deleteWhere(env, "timelineSegments", "callId", args[0]);
+      const markers = await deleteWhere(env, "timelineMarkers", "callId", args[0]);
+      return segments + markers;
+    }
+    default:
+      throw Object.assign(new Error(`Unsupported domain write method: ${method}`), { status: 400 });
+  }
+}
+
+/** POST /api/domain-write — authenticated Admin SDK write transport for browser domain store. */
+export async function handleDomainWrite(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  if (!firestoreAdminReady(env)) {
+    return json({ error: "Firestore admin is not configured for domain writes." }, 503, cors);
+  }
+  await requireUser(request, env);
+  const body = (await request.json()) as { method?: string; args?: unknown[] };
+  const method = stringField(body.method);
+  if (!method) return json({ error: "method is required." }, 400, cors);
+  const result = await applyDomainWrite(env, method, Array.isArray(body.args) ? body.args : []);
+  return json({ result }, 200, cors);
+}
+
 function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {
   const seTeam = Array.isArray(account.seTeam) ? account.seTeam : [];
   for (const member of seTeam) {
@@ -1448,6 +1672,7 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/deals": { POST: handleDealsCreate },
+  "/api/domain-write": { POST: handleDomainWrite },
   "/api/tickets": { POST: handleTicketsPost },
   "/api/disputes/notify": { POST: handleDisputeNotifyPost },
   "/api/search/rag": { POST: handleSearchRag },

@@ -86,6 +86,59 @@ const DEAL_DETAIL_WRITE_METHODS = new Set([
   "upsertArrOverride",
 ]);
 
+const ADMIN_WRITE_METHODS = new Set([
+  "createAccount",
+  "updateAccount",
+  "createContact",
+  "updateContact",
+  "createDeal",
+  "updateDeal",
+  "createDealContact",
+  "setPrimaryDealContact",
+  "removeDealContact",
+  "addContactEvent",
+  "createLifecycle",
+  "updateLifecycle",
+  "addLifecycleEvent",
+  "createPrepBrief",
+  "createTask",
+  "updateTask",
+  "deleteTask",
+  "upsertPostCall",
+  "upsertCallSummary",
+  "upsertPostCallWithSummary",
+  "upsertScorecard",
+  "upsertScorecardLine",
+  "deleteScorecard",
+  "deleteScorecardLinesByScorecardId",
+  "upsertVideoFacts",
+  "deleteVideoFacts",
+  "deleteTimelineSegmentsByVideoFactsId",
+  "deleteTranscriptTimelineByCall",
+  "upsertTimelineSegment",
+  "upsertTimelineMarker",
+  "upsertFollowUp",
+  "deleteFollowUp",
+  "upsertObjection",
+  "deleteObjection",
+  "upsertMomDraft",
+  "deleteMomDraft",
+  "upsertMeddpiccDelta",
+  "deleteMeddpiccDelta",
+  "upsertDealSignal",
+  "deleteDealSignal",
+  "upsertArrLine",
+  "deleteArrLine",
+  "upsertTcDelta",
+  "deleteTcDelta",
+  "upsertTechnicalCommit",
+  "upsertArrOverride",
+  "upsertProductGap",
+  "upsertWhatWorks",
+  "upsertGapCluster",
+  "upsertClusteringState",
+]);
+
 /** @param {string} method @param {unknown[]} args */
 function invalidateAfterWrite(method, args, callDetailCache, dealDetailCache) {
   if (method === "upsertPostCallWithSummary") {
@@ -148,6 +201,14 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       throw new Error(body?.error || `API ${res.status}: ${path}`);
     }
     return res.json();
+  }
+
+  async function adminWrite(method, args) {
+    const data = await apiFetch("/api/domain-write", {
+      method: "POST",
+      body: JSON.stringify({ method, args }),
+    });
+    return data?.result ?? null;
   }
 
   async function loadCallDetail(id) {
@@ -532,6 +593,19 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       return listWhatWorksByDealApi(dealId, limitCount);
     },
   };
+
+  for (const method of ADMIN_WRITE_METHODS) {
+    if (!(method in apiReads)) {
+      apiReads[method] = async (...args) => {
+        const result = await adminWrite(method, args);
+        invalidateAfterWrite(method, args, callDetailCache, dealDetailCache);
+        if (method.startsWith("create") || method.startsWith("update") || method.startsWith("upsert")) {
+          dealsListCache = null;
+        }
+        return result;
+      };
+    }
+  }
 
   return new Proxy(firestoreDelegate, {
     get(target, prop, receiver) {
