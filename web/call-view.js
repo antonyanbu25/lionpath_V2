@@ -2367,14 +2367,18 @@ async function loadCallBundle(session, record) {
       ? await safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
       : null;
 
+  const storeRejected = domainCall === null && (
+    typeof store.getCall === 'function' || typeof store.getPostCall === 'function'
+  );
+
   const detail = domainCall?.detail || {};
   const needsProductGaps =
-    !pass6?.productGaps?.length && !detail.productGaps?.length && store.listProductGapsByPostCall;
+    !storeRejected && !pass6?.productGaps?.length && !detail.productGaps?.length && store.listProductGapsByPostCall;
   const needsWhatWorks =
-    !pass6?.whatWorks?.length && !detail.whatWorks?.length && store.listWhatWorksByPostCall;
+    !storeRejected && !pass6?.whatWorks?.length && !detail.whatWorks?.length && store.listWhatWorksByPostCall;
   const needsTcDeltas =
-    !resultBlob.tcDeltas?.length && !detail.tcDeltas?.length && store.listTcDeltasByCall;
-  const needsMeddpiccDeltas = !detail.meddpiccDeltas?.length && store.listMeddpiccDeltasByCall;
+    !storeRejected && !resultBlob.tcDeltas?.length && !detail.tcDeltas?.length && store.listTcDeltasByCall;
+  const needsMeddpiccDeltas = !storeRejected && !detail.meddpiccDeltas?.length && store.listMeddpiccDeltasByCall;
 
   const [
     fetchedProductGaps,
@@ -2417,7 +2421,7 @@ async function loadCallBundle(session, record) {
   // Tier 3 — the record never got a dealId stamped (dual-write skipped, or confirm
   // had no deals on the account). Recover it from the account's deal list.
   const pendingNewDeal = recordPendingNewDeal(record);
-  if (!dealId && !pendingNewDeal) {
+  if (!dealId && !pendingNewDeal && !storeRejected) {
     const accountId =
       record?.result?.confirmed?.accountId ||
       record?.result?.resolve?.account?.accountId ||
