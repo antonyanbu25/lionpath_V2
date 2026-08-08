@@ -17,8 +17,9 @@ import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
 
 import type { CostControlEnv } from "./cost-control-config";
+import type { RateLimitEnv } from "./rate-limit";
 
-interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
+interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimitEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -69,6 +70,9 @@ function buildEnv(): NodeEnv {
     SUMMARISE_ANOMALY_MULTIPLIER: process.env.SUMMARISE_ANOMALY_MULTIPLIER || "",
     SUMMARISE_ANOMALY_BASELINE_DAYS: process.env.SUMMARISE_ANOMALY_BASELINE_DAYS || "",
     COST_ALERT_WEBHOOK_URL: process.env.COST_ALERT_WEBHOOK_URL || "",
+    RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED || "1",
+    RATE_LIMIT_PER_MINUTE: process.env.RATE_LIMIT_PER_MINUTE || "120",
+    RATE_LIMIT_BURST: process.env.RATE_LIMIT_BURST || "600",
   };
 
   // --- P0 SECURITY: hard-fail boot if Firebase auth is not configured in production.
@@ -154,6 +158,32 @@ createServer(async (req, res) => {
       }
       const authReq = new Request(url.toString(), { method: "POST", headers });
       await requireUser(authReq, env);
+      // --- P2-2: Per-request rate limiter for Node-intercepted routes ---
+      const { checkRateLimit, clientIpFromRequest, extractUidForRateLimit } = await import(
+        "./rate-limit"
+      );
+      const rateLimitResult = checkRateLimit(
+        extractUidForRateLimit(authReq),
+        clientIpFromRequest(authReq),
+        env,
+      );
+      if (rateLimitResult) {
+        res.statusCode = 429;
+        for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
+        res.setHeader("Retry-After", String(rateLimitResult.retryAfter));
+        res.setHeader("X-RateLimit-Limit", String(rateLimitResult.limit));
+        res.setHeader("X-RateLimit-Remaining", "0");
+        res.setHeader("X-RateLimit-Reset", String(rateLimitResult.resetAt));
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            error: "Rate limit exceeded. Too many requests. Please slow down and retry shortly.",
+            code: "RATE_LIMIT_EXCEEDED",
+            retryAfter: rateLimitResult.retryAfter,
+          }),
+        );
+        return;
+      }
       const parsed = raw?.length ? JSON.parse(Buffer.from(raw).toString("utf8")) : {};
       const { status, payload } = await handleVideoPassNode(parsed, env);
       const bodyOut = JSON.stringify(payload);

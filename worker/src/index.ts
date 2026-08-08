@@ -21,6 +21,12 @@ import { json } from "./http";
 import { logError } from "./logger";
 import { correlationIdFromRequest, runWithRequestContext } from "./request-context";
 import {
+  checkRateLimit,
+  clientIpFromRequest,
+  extractUidForRateLimit,
+  isRateLimitExempt,
+} from "./rate-limit";
+import {
   handleTaskDelete,
   handleTaskPatch,
   routes,
@@ -69,6 +75,35 @@ export default {
 
       const url = new URL(request.url);
       const path = url.pathname;
+
+      // --- P2-2: Per-request rate limiter (defense-in-depth) ---
+      if (!isRateLimitExempt(path)) {
+        const rateLimitResult = checkRateLimit(
+          extractUidForRateLimit(request),
+          clientIpFromRequest(request),
+          env,
+        );
+        if (rateLimitResult) {
+          return withCorrelationHeader(
+            json(
+              {
+                error: "Rate limit exceeded. Too many requests. Please slow down and retry shortly.",
+                code: "RATE_LIMIT_EXCEEDED",
+                retryAfter: rateLimitResult.retryAfter,
+              },
+              429,
+              {
+                ...cors,
+                "Retry-After": String(rateLimitResult.retryAfter),
+                "X-RateLimit-Limit": String(rateLimitResult.limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": String(rateLimitResult.resetAt),
+              },
+            ),
+            correlationId,
+          );
+        }
+      }
 
       try {
         const methodRoutes = routes[path];

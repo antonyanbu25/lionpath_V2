@@ -116,6 +116,34 @@ DAILY_TOKEN_BUDGET_RESERVE=120000
 
 Disable locally: `DAILY_TOKEN_BUDGET_ENABLED=0`
 
+## Layer 2.5 — Per-request rate limiter (burst abuse guard)
+
+Defense-in-depth request-level guard (security review P2-2). Catches HTTP
+request floods that bypass the LLM token budget — e.g., GET storms, resolve-loop
+attacks, retry storms from broken clients.
+
+### Behaviour
+
+- In-memory fixed 60s window counter per user (Firebase UID from JWT payload)
+- **120 requests/minute per user** with **600 burst allowance**
+- Exempts: `/api/config`, `/api/health/*`, `/api/zoom/status` (polled by frontend/Docker)
+- On breach: HTTP **429** with `Retry-After`, `X-RateLimit-*` headers
+- Resets on process restart (acceptable — daily token budget handles long-term caps)
+
+### Env vars (VPS `.env` / docker-compose)
+
+```bash
+RATE_LIMIT_ENABLED=1
+RATE_LIMIT_PER_MINUTE=120
+RATE_LIMIT_BURST=600
+```
+
+### Impact on normal usage
+
+A single SE generates ~115 HTTP requests/day (~0.08 req/s average). Worst-case
+burst: 15 requests in one minute (all post-call passes + page load). 15 << 120.
+**Normal SE usage will never trip the limiter.**
+
 ### Firestore schema
 
 **Collection:** `userDailyTokenUsage`
