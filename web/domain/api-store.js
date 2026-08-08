@@ -9,6 +9,7 @@ const DETAIL_TTL_MS = 30_000;
 const DETAIL_MAX_ENTRIES = 64;
 const DEALS_LIST_TTL_MS = 30_000;
 let apiStoreUnavailable = false;
+const deprecatedReadWarnings = new Set();
 
 /** @typedef {{ value: object, expiresAt: number }} DetailCacheEntry */
 
@@ -35,6 +36,12 @@ function putDetail(cache, key, value) {
 /** @param {Map<string, DetailCacheEntry>} cache @param {string} key */
 function invalidateDetail(cache, key) {
   cache.delete(String(key || ""));
+}
+
+function warnDeprecatedReadPath(name) {
+  if (deprecatedReadWarnings.has(name)) return;
+  deprecatedReadWarnings.add(name);
+  console.warn(`[api-store] ${name} is deprecated for read views; use Firestore realtime reads.`);
 }
 
 const CALL_DETAIL_WRITE_METHODS = new Set([
@@ -142,6 +149,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   }
 
   async function loadCallDetail(id) {
+    warnDeprecatedReadPath("getPostCallDetail");
     const key = String(id || "");
     const cached = peekDetail(callDetailCache, key);
     if (cached) return cached;
@@ -161,6 +169,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   }
 
   async function loadDealDetail(id) {
+    warnDeprecatedReadPath("getDealDetail");
     const key = String(id || "");
     const cached = peekDetail(dealDetailCache, key);
     if (cached) return cached;
@@ -170,6 +179,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   }
 
   async function loadDealsList(limit = 300) {
+    warnDeprecatedReadPath("listDeals");
     if (dealsListCache && Date.now() - dealsListCache.at < DEALS_LIST_TTL_MS) {
       return dealsListCache.deals;
     }
@@ -190,6 +200,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   }
 
   async function listArrLinesByDealApi(dealId, limitCount = 200) {
+    warnDeprecatedReadPath("listArrLinesByDeal");
     if (isHistoryStubId(dealId)) return [];
     try {
       const detail = await loadDealDetail(dealId);
@@ -362,6 +373,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listDealsByOwner(_ownerId, limit = 300) {
+      warnDeprecatedReadPath("listDeals");
       const data = await apiFetch(`/api/deals?scope=own&limit=${encodeURIComponent(String(limit))}`);
       return data.deals || [];
     },
