@@ -755,17 +755,13 @@ export function renderTaskBoard(container, email, opts = {}) {
   const hasAnyTasks = recommended.length + active.length + completedAll.length > 0;
 
   container.innerHTML = `
-    <section class="dash-section task-board-section" aria-labelledby="tasks-heading">
+    <section class="dash-section task-board-section" aria-label="Task board">
       <fw-card class="task-board-card">
-        <div class="task-board-head">
-          <h2 id="tasks-heading" class="task-board-title">What should I do now?</h2>
-          ${renderQuickAddRow(calls)}
-        </div>
         <div class="task-board-sections">
           ${
             hasAnyTasks
               ? `${renderRecommendedSection(recommended, opts)}
-                 ${renderSection("Active", active.length, activeRows, "No active tasks yet. Accept a recommendation above or add one with the form above.")}
+                 ${renderSection("Active", active.length, activeRows, "No active tasks yet. Accept a recommendation above to move it here.")}
                  ${
                    completedAll.length
                      ? `<details class="task-completed-accordion">
