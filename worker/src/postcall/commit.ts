@@ -326,7 +326,7 @@ export async function runPostCallCommit(
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
   const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
-  const result = await provider.generate({
+  let result = await provider.generate({
     maxTokens: 4000,
     system: systemPrompt(),
     user: userPrompt(input, parsed, !!transcriptCache),
@@ -340,7 +340,29 @@ export async function runPostCallCommit(
     cachedContent: transcriptCache,
   });
 
-  const technicalCommit = normalizeCommitOutput(extractJson<Partial<RawCommit>>(result.text));
+  let raw: Partial<RawCommit>;
+  try {
+    raw = extractJson<Partial<RawCommit>>(result.text);
+  } catch (firstErr) {
+    // Model output was truncated/malformed at 4000 tokens. Retry once with a
+    // larger budget so the JSON can complete.
+    result = await provider.generate({
+      maxTokens: 6000,
+      system: systemPrompt(),
+      user: userPrompt(input, parsed, !!transcriptCache),
+      effort,
+      research: false,
+      thinkingBudget: 0,
+      jsonSchema: COMMIT_SCHEMA as unknown as Record<string, unknown>,
+      passName: "commit",
+      userId: input.userId,
+      callId: input.callId ?? undefined,
+      cachedContent: transcriptCache,
+    });
+    raw = extractJson<Partial<RawCommit>>(result.text);
+  }
+
+  const technicalCommit = normalizeCommitOutput(raw);
 
   return {
     technicalCommit,
