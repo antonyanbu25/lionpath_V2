@@ -88,6 +88,14 @@ async function resolveNewDealTitle(accountId, title, createdAt, dealType = "new_
   return nextDealTitle(accountId, { account, createdAt, dealType });
 }
 
+async function createDealRecord(deal, opts = {}) {
+  const store = getStore();
+  if (opts.viaWorker && typeof store.createDealViaWorker === "function") {
+    return store.createDealViaWorker(deal);
+  }
+  return store.createDeal(deal);
+}
+
 /**
  * Lazily upgrade legacy deal titles on read, persisting the rename once.
  * @param {object} deal
@@ -281,7 +289,7 @@ export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, org
 
   const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
   const ts = now();
-  return store.createDeal({
+  return createDealRecord({
     id: newId("deal"),
     accountId,
     type: opts.type || "new_business",
@@ -299,7 +307,7 @@ export async function getOrCreateNewBusinessDeal(accountId, ownerId, teamId, org
     createdAt: ts,
     updatedAt: ts,
     lastActivityAt: ts,
-  });
+  }, opts);
 }
 
 /**
@@ -316,7 +324,7 @@ export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opt
 
   const dealOwnerId = opts.dealOwnerId || (await resolveDealOwnerId(accountId, ownerId));
   const ts = now();
-  return store.createDeal({
+  return createDealRecord({
     id: newId("deal"),
     accountId,
     type: "expansion",
@@ -334,7 +342,7 @@ export async function createExpansionDeal(accountId, ownerId, teamId, orgId, opt
     createdAt: ts,
     updatedAt: ts,
     lastActivityAt: ts,
-  });
+  }, opts);
 }
 
 /** Infer deal type from user-authored title segments. */
@@ -354,8 +362,7 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
   const dealType = opts.type || inferDealTypeFromTitle(opts.title) || "new_business";
   const explicit = String(opts.title || "").trim();
   const title = explicit || (await resolveNewDealTitle(accountId, opts.accountName, ts, dealType));
-  const store = getStore();
-  return store.createDeal({
+  return createDealRecord({
     id: newId("deal"),
     accountId,
     type: dealType,
@@ -373,7 +380,7 @@ export async function createDealWithExplicitTitle(accountId, ownerId, teamId, or
     createdAt: ts,
     updatedAt: ts,
     lastActivityAt: ts,
-  });
+  }, opts);
 }
 
 /**
@@ -615,7 +622,7 @@ export async function ensureDealForLifecycle(lifecycle) {
  * @param {string} ownerId
  * @param {string} teamId
  * @param {string|null} orgId
- * @param {{ prepType?: string, dealId?: string|null, title?: string, primaryContactId?: string|null }} opts
+ * @param {{ prepType?: string, dealId?: string|null, title?: string, primaryContactId?: string|null, useSessionContext?: boolean, viaWorkerDealCreate?: boolean }} opts
  */
 export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId, opts = {}) {
   const store = getStore();
@@ -641,6 +648,7 @@ export async function resolveDealForEngagement(accountId, ownerId, teamId, orgId
     title: opts.title,
     primaryContactId: opts.primaryContactId,
     dealOwnerId,
+    viaWorker: opts.viaWorkerDealCreate === true,
   };
 
   if (prepType === "expansion") {

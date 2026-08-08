@@ -211,6 +211,7 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     dealId,
     prepType: prepType || payload.prepType,
     useSessionContext: true,
+    viaWorkerDealCreate: true,
   });
 
   const identityKey = callIdentityKey(record || { zoomLink: payload?.recordingUrl, analysis, id: record?.id });

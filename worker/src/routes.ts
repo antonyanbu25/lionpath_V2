@@ -78,6 +78,8 @@ import { fetchRecordingFromShareLink } from "./zoomShare";
 import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
+import { firestoreAdminReady, getDb, getDoc } from "./data/firestore-admin";
+import { resolveRequestContext } from "./data/scope";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import type { Env } from "./env";
@@ -1351,6 +1353,89 @@ export async function handleSearchRag(
   return json({ query, ranked, rag: ranked.length > 0 }, 200, cors);
 }
 
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function nullableStringField(value: unknown): string | null {
+  const s = stringField(value);
+  return s || null;
+}
+
+function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {
+  const seTeam = Array.isArray(account.seTeam) ? account.seTeam : [];
+  for (const member of seTeam) {
+    if (!member || typeof member !== "object") continue;
+    const row = member as Record<string, unknown>;
+    if (stringField(row.seUserId) === ownerId) {
+      return stringField(row.teamId);
+    }
+  }
+  return stringField(account.teamId);
+}
+
+/** POST /api/deals — server-side deal creation for post-call dual-write. */
+export async function handleDealsCreate(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  if (!firestoreAdminReady(env)) {
+    return json({ error: "Firestore admin is not configured for server-side deal creation." }, 503, cors);
+  }
+
+  const verified = await requireUser(request, env);
+  if (!verified) {
+    return json({ error: "Sign-in required." }, 401, cors);
+  }
+
+  const ctx = await resolveRequestContext(verified, env);
+  const body = (await request.json()) as Record<string, unknown>;
+  const accountId = stringField(body.accountId);
+  if (!accountId) {
+    return json({ error: "accountId is required." }, 400, cors);
+  }
+
+  const account = await getDoc("accounts", accountId, env);
+  if (!account) {
+    return json({ error: "Account not found." }, 404, cors);
+  }
+
+  const actorId = ctx.userId;
+  const ownerId = stringField(account.primarySeUserId) || actorId;
+  const teamId = primaryTeamIdFromAccount(account, ownerId) || stringField(body.teamId);
+  const orgId = nullableStringField(account.orgId) || nullableStringField(body.orgId);
+  const type = stringField(body.type) === "expansion" ? "expansion" : "new_business";
+  const title = stringField(body.title) || "Account";
+  const primaryContactId = nullableStringField(body.primaryContactId);
+  const ts = Date.now();
+
+  const db = await getDb(env);
+  const ref = await db.collection("deals").add({
+    accountId,
+    ownerId,
+    teamId,
+    orgId,
+    type,
+    stage: "research",
+    status: "active",
+    title,
+    primaryContactId,
+    prepCount: 0,
+    postCallCount: 0,
+    openTaskCount: 0,
+    latestQualityScore: null,
+    createdAt: ts,
+    updatedAt: ts,
+    lastActivityAt: ts,
+    createdBy: actorId,
+    createdVia: "postcall-dualwrite",
+  });
+
+  return json({ dealId: ref.id, ownerId }, 200, cors);
+}
+
 export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
@@ -1379,6 +1464,7 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
+  "/api/deals": { POST: handleDealsCreate },
   "/api/tickets": { POST: handleTicketsPost },
   "/api/disputes/notify": { POST: handleDisputeNotifyPost },
   "/api/search/rag": { POST: handleSearchRag },

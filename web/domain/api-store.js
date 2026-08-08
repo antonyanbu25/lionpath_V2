@@ -121,14 +121,15 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   /** @type {{ at: number, deals: object[] } | null} */
   let dealsListCache = null;
 
-  async function apiFetch(path) {
+  async function apiFetch(path, init = {}) {
     if (apiStoreUnavailable) {
       throw new Error("Not found.");
     }
     const headers = { Accept: "application/json" };
+    if (init.body) headers["Content-Type"] = "application/json";
     const token = getToken ? await getToken() : undefined;
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
+    const res = await fetch(`${base}${path}`, { ...init, headers, credentials: "include" });
     if (!res.ok) {
       if (res.status === 404) {
         apiStoreUnavailable = true;
@@ -363,6 +364,19 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     async listDealsByOwner(_ownerId, limit = 300) {
       const data = await apiFetch(`/api/deals?scope=own&limit=${encodeURIComponent(String(limit))}`);
       return data.deals || [];
+    },
+
+    async createDealViaWorker(deal) {
+      const data = await apiFetch("/api/deals", {
+        method: "POST",
+        body: JSON.stringify(deal || {}),
+      });
+      dealsListCache = null;
+      return {
+        ...deal,
+        id: data.dealId,
+        ownerId: data.ownerId || deal?.ownerId,
+      };
     },
 
     async getReadModel(collection, id) {

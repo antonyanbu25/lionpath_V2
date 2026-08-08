@@ -20,7 +20,7 @@ import {
  * @param {string} ownerId
  * @param {string} accountId
  * @param {string} teamId
- * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean, dealTitle?: string|null, dealType?: string|null, useSessionContext?: boolean }} [opts]
+ * @param {{ title?: string, primaryContactId?: string|null, actorId?: string, orgId?: string|null, dealId?: string|null, prepType?: string, createNewDeal?: boolean, dealTitle?: string|null, dealType?: string|null, useSessionContext?: boolean, viaWorkerDealCreate?: boolean }} [opts]
  */
 export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}) {
   const store = getStore();
@@ -37,6 +37,7 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
       type: dealType,
       primaryContactId: opts.primaryContactId,
       accountName: opts.title,
+      viaWorker: opts.viaWorkerDealCreate === true,
     });
     const ts = now();
     const lifecycle = await store.createLifecycle({
@@ -100,6 +101,7 @@ export async function getOrCreateLifecycle(ownerId, accountId, teamId, opts = {}
     title: opts.title,
     primaryContactId: opts.primaryContactId,
     useSessionContext: opts.useSessionContext !== false && !opts.dealId,
+    viaWorkerDealCreate: opts.viaWorkerDealCreate === true,
   });
 
   const ts = now();
