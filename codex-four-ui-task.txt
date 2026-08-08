@@ -1,0 +1,23 @@
+You are implementing a FAILPROOF fix for 4 UI regressions on the Lionpath SE portal (branch 2.1, repo /root/lionpath_V2).
+
+Read the authoritative plan FIRST and follow it EXACTLY:
+  /root/lionpath_V2/docs/plans/2026-08-08-four-UI-regressions-plan.md
+Read the analysis for context:
+  /root/lionpath_V2/docs/plans/2026-08-08-four-UI-regressions-analysis.md
+
+The plan (authored by GLM-5.2) covers 4 fixes:
+- FIX A: web/calls-list-view.js — call wireCallListClicks after the INITIAL container.innerHTML + wireCallListFilters (currently only in paint()). 
+- FIX B: web/dashboard.js — make wireCallLinks idempotent (skip [data-call-wired="1"]), set container._recentActivityOpts on EVERY wireRecentActivitySection call, and re-call wireCallLinks(container, opts.onOpenCall) after the in-place row diff in updateRecentActivitySection.
+- FIX C: web/dashboard.js — single-source KPI reconciliation. Add module state (_remoteSyncPending, _lastReconciledKpis), create computeReconciledKpis(), writeReconciledKpiSnapshot() (the ONLY writer of the kpi snapshot, gated on _remoteSyncPending), getKpisForRender(), replace all 5 writeKpiSnapshot call sites, gate remote sync with _remoteSyncPending, and use getKpisForRender in renderSeLaunchpadOnce. After this, grep for writeKpiSnapshot must show exactly 1 hit (inside writeReconciledKpiSnapshot).
+- FIX D: web/precall.css + web/precall.js — fix the flex chain so the generated brief content scrolls. Remove max-height:none on #view-precall :has rule; ensure #prep-result-view and #prep-tabs are flex-column parents; make the innermost tab-panel content region overflow-y:auto with min-height:0 through the whole chain; and reset scrollTop=0 on reveal in revealPrepResultView.
+
+CRITICAL NOTES (do not skip):
+1. In FIX C, computeReconciledKpis references reconcileCallRecords(localCalls, remoteCalls). If that named function does not exist in dashboard.js, EXTRACT the existing inline merge/dedup-by-callId reconciliation logic (used ad-hoc in the remote sync callback) into a function named reconcileCallRecords and use it. Do NOT write a brand-new incompatible merge.
+2. FIX B: wireCallLinks in dashboard.js is defined in web/crayons-ui.js (exported) and imported. Make the idempotency change there OR in a local wrapper — the plan says "in web/dashboard.js" but the actual function lives in crayons-ui.js. Apply the data-call-wired idempotency to the real wireCallLinks in web/crayons-ui.js so ALL callers benefit, and re-wire after the diff in dashboard.js. Use your judgment and note what you did.
+3. Do not change behavior beyond the fixes. Light mode, dark mode, and existing functionality must stay intact.
+4. Commit one commit per file per the plan's commit strategy (Fix A separate; Fix B+C in dashboard.js; Fix D css; Fix D js). Use the exact commit messages from the plan.
+5. When done: cd /root/lionpath_V2 && npm run build — must pass, exit 0.
+6. Push to origin/2.1 when all commits done and build passes.
+7. Run the grep guards from the plan's verification section and report each result.
+
+When finished, report: the commit SHAs, each grep guard result, the build result, and the push result. If any plan step is ambiguous or a function/class referenced does not exist, use your judgment, make the minimal correct change, and note it in the final report.
