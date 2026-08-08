@@ -158,7 +158,7 @@ button.pc-deal-tile {
   font-size: 13.5px;
   font-weight: 500;
   color: var(--dew-text);
-  background: #fff;
+  background: var(--dew-surface);
   box-sizing: border-box;
 }
 
@@ -186,7 +186,7 @@ button.pc-deal-tile {
 .pc-account-name-input {
   border: 1px solid var(--dew-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--dew-surface);
   font: inherit;
   font-size: 13.5px;
   font-weight: 600;
@@ -411,7 +411,7 @@ button.pc-deal-tile {
 }
 
 .postcall-confirm-top-card {
-  background: var(--dew-surface-subtle, #faf8f4);
+  background: var(--dew-surface-subtle);
   border: 1px solid var(--dew-border);
   border-radius: 12px;
   padding: 14px;
@@ -490,7 +490,7 @@ button.pc-deal-tile {
   align-items: center;
   gap: 4px;
   font-weight: 600;
-  color: #8a8072;
+  color: var(--dew-text-muted);
   font-size: 10.5px;
   background: #f3ecda;
   border-radius: 6px;
@@ -519,7 +519,7 @@ button.pc-deal-tile {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--dew-border);
-  background: #fff;
+  background: var(--dew-surface);
   color: var(--dew-text-muted);
   font-family: inherit;
 }
@@ -548,7 +548,7 @@ button.pc-deal-tile {
   border: 1px solid var(--dew-border);
   border-radius: 11px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--dew-surface);
 }
 
 .postcall-attendee-row--manual {
@@ -610,7 +610,7 @@ button.pc-deal-tile {
   padding: 0 10px;
   border-radius: 9px;
   border: 1px solid var(--dew-border);
-  background: #fff;
+  background: var(--dew-surface);
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
@@ -906,7 +906,7 @@ button.pc-deal-tile {
 
 .postcall-pipeline-bar {
   height: 5px;
-  background: #eef0f4;
+  background: var(--dew-surface-faint);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 14px;
@@ -937,13 +937,13 @@ button.pc-deal-tile {
   padding: 5px 10px;
   border-radius: 8px;
   border: 1px solid var(--dew-border);
-  background: #fff;
+  background: var(--dew-surface);
   color: var(--dew-text);
 }
 
 .postcall-change-btn.btn-wire:hover,
 .btn-wire:hover {
-  background: #f6f7f9;
+  background: var(--surface-hover);
 }
 
 .postcall-step-list {
@@ -1725,8 +1725,8 @@ button.pc-deal-tile {
 #postcall-result .qip-star-card {
   position: relative;
   overflow: hidden;
-  background: var(--dew-surface, #fff);
-  border: 1px solid var(--dew-border, #ece7de);
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
   border-radius: 18px;
   box-shadow:
     0 12px 34px -18px rgba(58, 38, 24, 0.32),
@@ -1772,22 +1772,22 @@ button.pc-deal-tile {
   font-weight: 700;
   letter-spacing: -0.02em;
   text-transform: none;
-  color: var(--ink, #2b2926);
+  color: var(--ink, var(--dew-text));
   line-height: 1.2;
 }
 
 #postcall-result .star-head .hint {
   margin-top: 0;
   font-size: 12.5px;
-  color: var(--muted2, #7c7466);
+  color: var(--muted2, var(--dew-text-secondary));
 }
 
 #postcall-result .star-overall-pill {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  background: #f7f2ea;
-  border: 1px solid var(--dew-border, #ece7de);
+  background: var(--dew-surface-faint);
+  border: 1px solid var(--dew-border);
   border-radius: 999px;
   padding: 6px 13px;
   flex-shrink: 0;
@@ -1797,13 +1797,13 @@ button.pc-deal-tile {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-weight: 600;
   font-size: 16px;
-  color: var(--ink, #2b2926);
+  color: var(--ink, var(--dew-text));
 }
 
 #postcall-result .star-overall-pill span {
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted2, #7c7466);
+  color: var(--muted2, var(--dew-text-secondary));
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1884,19 +1884,19 @@ button.pc-deal-tile {
 /* Labs radar polish */
 #postcall-result .qip-radar-ring {
   fill: none;
-  stroke: #ece7de;
+  stroke: var(--dew-border);
   stroke-width: 1;
 }
 
 #postcall-result .qip-radar-ring-outer {
   fill: none;
-  stroke: #ddccb6;
+  stroke: var(--dew-border);
   stroke-width: 1;
   stroke-dasharray: none;
 }
 
 #postcall-result .qip-radar-spoke {
-  stroke: #ece7de;
+  stroke: var(--dew-border);
   stroke-width: 1;
 }
 
@@ -1904,7 +1904,7 @@ button.pc-deal-tile {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 9px;
   font-weight: 500;
-  fill: #c2b7a6;
+  fill: var(--dew-text-muted);
 }
 
 #postcall-result .qip-star-card .qip-radar-data {
@@ -1926,7 +1926,7 @@ button.pc-deal-tile {
 #postcall-result .qip-star-card .qip-radar-axis-label {
   font-size: 12.5px;
   font-weight: 600;
-  fill: #6f6759;
+  fill: var(--dew-text-secondary);
 }
 
 @keyframes qip-star-fade {
@@ -2008,7 +2008,7 @@ button.pc-deal-tile {
 #postcall-result .qip-theme-bar {
   height: 6px;
   border-radius: 3px;
-  background: #efe9dd;
+  background: var(--dew-surface-faint);
 }
 
 #postcall-result .qip-subparam-list {
