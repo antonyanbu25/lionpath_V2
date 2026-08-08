@@ -1396,15 +1396,20 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   mergePostCallRecordsIntoLocal(email, Array.isArray(remoteCalls) ? remoteCalls : []);
   const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
   const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
-  patchLaunchKpiValue(container, "calls", callRecords.length);
-  const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
-  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
   if (!container.isConnected) return;
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = loadAllLocalBriefs().length;
-  // Update tasks and briefs KPIs from the refreshed data
-  patchLaunchKpiValue(container, "open", taskMetrics.openTotal);
-  patchLaunchKpiValue(container, "preps", prepsCount);
+  // Replace the entire KPI grid in one DOM operation (not 3 individual
+  // patches) so all three cards update simultaneously — otherwise the
+  // user sees "calls" → pause → "tasks" → "briefs" sequentially.
+  const grid = container.querySelector(".launch-kpi-grid");
+  if (grid) {
+    grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
+    wireLaunchKpiNav(container, email, opts);
+  }
+  const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
+  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
+  if (!container.isConnected) return;
   writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
 }
 
@@ -1936,7 +1941,11 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     globalThis.clearTimeout(watchdog);
   }
 
-  await refreshLaunchpadRemote(container, email, opts);
+  // If realtime snapshot listener is active it already fired and handled
+  // the full KPI grid + activity refresh. No need for another server fetch.
+  if (typeof opts.subscribeRemoteCalls !== "function") {
+    await refreshLaunchpadRemote(container, email, opts);
+  }
 }
 
 const launchpadRenderStates = new WeakMap();
