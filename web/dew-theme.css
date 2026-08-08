@@ -115,6 +115,9 @@
   --dew-surface: #1f1c18;
   --dew-surface-subtle: #252219;
   --dew-surface-faint: #1a1815;
+  --surface-hover: #2d2a24;
+  --surface-active: #343029;
+  --surface-elevated-2: #28251f;
   --dew-hairline: rgba(236, 231, 222, 0.08);
   --dew-border: rgba(236, 231, 222, 0.14);
   --dew-input-border: rgba(236, 231, 222, 0.22);
@@ -186,7 +189,7 @@
   --shadow-xs: none;
   --shadow-clicked-button: none;
   --fw-button-active-box-shadow: none;
-  --fw-button-hover-background-color: var(--dew-primary-hover);
+  --fw-button-hover-background-color: var(--surface-hover);
   --fw-button--lg-focus-border: var(--dew-brand);
 }
 

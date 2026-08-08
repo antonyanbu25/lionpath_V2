@@ -5331,6 +5331,60 @@
   border-color: #ecd7c9;
 }
 
+[data-theme="dark"] .account-record--overview .account-deals-on-account-row:hover,
+[data-theme="dark"] .account-record--overview .account-calls-on-account-row:hover,
+[data-theme="dark"] .account-deals-on-account-row:hover,
+[data-theme="dark"] .account-calls-on-account-row:hover,
+[data-theme="dark"] .account-contact-row--selectable:hover,
+[data-theme="dark"] .account-deals-row:hover,
+[data-theme="dark"] #view-accounts .account-list-metrics .account-list-stat:hover,
+[data-theme="dark"] .account-list-view--compact .account-list-item.account-list-row:hover,
+[data-theme="dark"] #view-deals .deal-list-metrics .deal-list-stat:hover,
+[data-theme="dark"] #view-deals .deal-list-view--compact .deal-list-item.deal-list-row:hover,
+[data-theme="dark"] .deal-calls-row:hover,
+[data-theme="dark"] .pipeline-list-item.pipeline-row:hover,
+[data-theme="dark"] .coaching-view--wireframe .coaching-metric-card:hover,
+[data-theme="dark"] .wireframe-metric-card:hover,
+[data-theme="dark"] .manager-view--wireframe .manager-metric-card:hover,
+[data-theme="dark"] .se-detail-view--wireframe .se-metric-card:hover,
+[data-theme="dark"] .pipeline-view--wireframe .pipeline-metric-card:hover,
+[data-theme="dark"] .product-signal-view--wireframe .product-signal-metric-card:hover,
+[data-theme="dark"] .manager-view--wireframe .manager-metric-link:hover,
+[data-theme="dark"] .pipeline-view--wireframe .pipeline-list-item.pipeline-row:hover,
+[data-theme="dark"] .deal-list-row:hover,
+[data-theme="dark"] .account-list-row--labs:hover {
+  background: var(--surface-hover);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+
+[data-theme="dark"] .account-contact-row--selectable,
+[data-theme="dark"] .deal-calls-card,
+[data-theme="dark"] .deal-list-view--labs,
+[data-theme="dark"] .account-list-view--labs,
+[data-theme="dark"] .pipeline-list-item.pipeline-row,
+[data-theme="dark"] .deal-list-row,
+[data-theme="dark"] .account-list-row--labs {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+
+[data-theme="dark"] .deal-list-sort-btn:hover,
+[data-theme="dark"] .pipeline-sort-btn:hover,
+[data-theme="dark"] .deal-crumb:hover {
+  color: var(--dew-text);
+}
+
+[data-theme="dark"] .deal-health-pill,
+[data-theme="dark"] .health-pill,
+[data-theme="dark"] .health-card-badge,
+[data-theme="dark"] .deal-chip {
+  background: var(--surface-active);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+
 .deal-record--labs .deal-record-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;

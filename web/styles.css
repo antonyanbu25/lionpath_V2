@@ -909,7 +909,8 @@ fw-button.nav-item.active .nav-icon-text {
   border-color: transparent;
 }
 [data-theme="dark"] .nav-item:hover {
-  background: var(--dew-surface-subtle);
+  background: var(--surface-hover);
+  color: var(--dew-text);
 }
 .nav-item.active {
   background: #e5ded1;
@@ -918,7 +919,8 @@ fw-button.nav-item.active .nav-icon-text {
   font-weight: 600;
 }
 [data-theme="dark"] .nav-item.active {
-  background: color-mix(in srgb, var(--dew-brand) 16%, var(--dew-surface-subtle));
+  background: var(--surface-active);
+  color: var(--dew-text);
 }
 
 /* Sidebar idle — nudge driven by sidebar-idle.js (WAAPI); class marks active cycle */
@@ -5516,6 +5518,34 @@ fw-button.task-call-chip:hover { text-decoration: underline; }
   margin-top: 8px;
 }
 
+[data-theme="dark"] .task-board-card,
+[data-theme="dark"] .task-row {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .task-row:hover {
+  background: var(--surface-hover);
+}
+[data-theme="dark"] .task-row-done,
+[data-theme="dark"] .task-row-title-done {
+  color: var(--dew-text-muted);
+}
+[data-theme="dark"] .task-row-title,
+[data-theme="dark"] .task-board-title {
+  color: var(--dew-text);
+}
+[data-theme="dark"] .task-row-actions fw-button[color="secondary"],
+[data-theme="dark"] fw-button.task-call-chip {
+  --color-fill-surface: var(--dew-surface);
+  --color-text-primary: var(--dew-text);
+  --color-boundary-border-mildest: var(--dew-border);
+  --fw-button-hover-background-color: var(--surface-hover);
+}
+[data-theme="dark"] .dew-empty-state {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text-muted);
+}
+
 /* Dashboard split layout */
 .dash-split {
   display: grid;
@@ -5817,6 +5847,203 @@ fw-card.about-section {
 @keyframes lionpath-fb-success {
   0%, 100% { transform: scale(1); }
   45% { transform: scale(1.02); }
+}
+
+[data-theme="dark"] a:hover {
+  color: var(--dew-text);
+}
+[data-theme="dark"] .theme-toggle:hover,
+[data-theme="dark"] .login-theme-toggle:hover,
+[data-theme="dark"] .sidebar-toggle:hover,
+[data-theme="dark"] .sidebar-user:hover,
+[data-theme="dark"] .sidebar-history-item:hover,
+[data-theme="dark"] .sidebar-recent-work .sidebar-history-item:hover,
+[data-theme="dark"] .user-menu-panel--sidebar .user-menu-item:hover,
+[data-theme="dark"] .btn-secondary:hover,
+[data-theme="dark"] .btn-ghost:hover,
+[data-theme="dark"] .ghost:hover,
+[data-theme="dark"] .app-tab:hover,
+[data-theme="dark"] .launch-action-btn:hover,
+[data-theme="dark"] .launch-followup-row:hover,
+[data-theme="dark"] .launch-recent-row:hover,
+[data-theme="dark"] .manager-se-table tbody tr:hover,
+[data-theme="dark"] table tr:hover td,
+[data-theme="dark"] .result tr:hover td {
+  background: var(--surface-hover);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] fw-button:hover,
+[data-theme="dark"] fw-button.nav-item:hover,
+[data-theme="dark"] fw-button.sidebar-logout:hover,
+[data-theme="dark"] fw-button.sidebar-collapse:hover {
+  --fw-button-background-color: var(--surface-hover);
+  --fw-button-hover-background-color: var(--surface-hover);
+  --fw-button-color: var(--dew-text);
+  --color-fill-surface: var(--surface-hover);
+  --color-text-primary: var(--dew-text);
+  --color-boundary-border-mildest: var(--dew-border);
+}
+[data-theme="dark"] fw-button.nav-item.active {
+  --fw-button-background-color: var(--surface-active);
+  --fw-button-hover-background-color: var(--surface-active);
+  --fw-button-color: var(--dew-text);
+  --color-text-primary: var(--dew-text);
+}
+[data-theme="dark"] .sidebar-history-item {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .sidebar-user-role,
+[data-theme="dark"] .sidebar-user-chevron,
+[data-theme="dark"] .nav-icon,
+[data-theme="dark"] .nav-icon svg,
+[data-theme="dark"] .nav-icon-text {
+  color: var(--dew-text-muted);
+}
+[data-theme="dark"] .nav-item,
+[data-theme="dark"] fw-button.nav-item {
+  color: var(--dew-text);
+}
+[data-theme="dark"] .nav-item.active .nav-icon,
+[data-theme="dark"] .nav-item.active .nav-icon svg,
+[data-theme="dark"] .nav-item.active .nav-icon-text,
+[data-theme="dark"] fw-button.nav-item.active .nav-icon,
+[data-theme="dark"] fw-button.nav-item.active .nav-icon svg,
+[data-theme="dark"] fw-button.nav-item.active .nav-icon-text {
+  color: var(--dew-text);
+  --fw-icon-color: currentColor;
+}
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .launch-action-primary:hover {
+  background: var(--surface-active);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .btn:disabled,
+[data-theme="dark"] button:disabled {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text-muted);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .card:hover,
+[data-theme="dark"] fw-card:hover,
+[data-theme="dark"] .kpi-tile:hover,
+[data-theme="dark"] .dash-card:hover,
+[data-theme="dark"] .launch-kpi-card:hover,
+[data-theme="dark"] .prep-action-block:hover {
+  background: var(--surface-hover);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .kpi-tile,
+[data-theme="dark"] .launch-kpi-card {
+  background: var(--dew-surface);
+}
+[data-theme="dark"] .kpi-tile .kpi-value,
+[data-theme="dark"] .launch-kpi-value {
+  color: var(--dew-text);
+}
+[data-theme="dark"] input:hover,
+[data-theme="dark"] textarea:hover,
+[data-theme="dark"] select:hover,
+[data-theme="dark"] .form-control:hover,
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] .form-control:focus {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: var(--dew-text-muted);
+}
+[data-theme="dark"] input:disabled,
+[data-theme="dark"] textarea:disabled,
+[data-theme="dark"] select:disabled {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text-muted);
+}
+[data-theme="dark"] select option {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .dropdown-menu {
+  background: var(--dew-surface);
+  border-color: var(--dew-border);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .dropdown-item:hover {
+  background: var(--surface-hover);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .dropdown-item--active {
+  background: var(--surface-active);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .tooltip,
+[data-theme="dark"] [data-tooltip]:hover::before {
+  background: var(--surface-active);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] [data-tooltip]:hover::after {
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .modal-backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+[data-theme="dark"] .modal-content {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .modal-header {
+  background: var(--dew-surface-subtle);
+}
+[data-theme="dark"] .modal-close:hover {
+  background: var(--surface-hover);
+  color: var(--dew-text);
+}
+[data-theme="dark"] table th,
+[data-theme="dark"] .result th {
+  background: var(--dew-surface-subtle);
+  color: var(--dew-text);
+}
+[data-theme="dark"] table td,
+[data-theme="dark"] .result td {
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] table tr:nth-child(even) td {
+  background: var(--dew-surface-subtle);
+}
+[data-theme="dark"] .badge,
+[data-theme="dark"] .pill {
+  background: var(--surface-active);
+  color: var(--dew-text);
+}
+[data-theme="dark"] .divider,
+[data-theme="dark"] hr {
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .toast {
+  background: var(--dew-surface);
+  color: var(--dew-text);
+  border-color: var(--dew-border);
+}
+[data-theme="dark"] .empty-state,
+[data-theme="dark"] .dash-empty,
+[data-theme="dark"] .task-empty,
+[data-theme="dark"] .task-board-empty {
+  color: var(--dew-text-muted);
+}
+[data-theme="dark"] fw-button[color="secondary"]:not([fill="clear"]),
+[data-theme="dark"] fw-button[color="secondary"][fill="clear"] {
+  --fw-button-hover-background-color: var(--surface-hover);
+  --color-text-primary: var(--dew-text);
+  --color-boundary-border-mildest: var(--dew-border);
 }
 
 @media (prefers-reduced-motion: reduce) {
