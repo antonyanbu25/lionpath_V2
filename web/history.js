@@ -14,6 +14,8 @@ export const STORAGE_PREFIX = "se-singha-history:";
 const LEGACY_PREFIX = "se-sp-postcalls:";
 const EMERGENCY_PREFIX = "lionpath:emergency-call:";
 const MAX_ENTRIES = 100;
+// localStorage is ~5MB; keep history under ~4MB so writes never hit the quota.
+const MAX_HISTORY_BYTES = 4 * 1024 * 1024;
 
 function emergencyKey(email, id) {
   return `${EMERGENCY_PREFIX}${normalizeUserEmail(email)}:${id}`;
@@ -94,17 +96,37 @@ function writeAll(email, list) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return false;
   const key = storageKey(normalized);
-  try {
-    const payload = JSON.stringify(list);
-    localStorage.setItem(key, payload);
-    if (localStorage.getItem(key) !== payload) {
-      console.warn("[history] write verification failed for", key);
+  let working = Array.isArray(list) ? list : [];
+  for (;;) {
+    let payload;
+    try {
+      payload = JSON.stringify(working);
+    } catch {
       return false;
     }
-    return true;
-  } catch (err) {
-    console.warn("Could not persist post-call history:", err);
-    return false;
+    if (payload.length <= MAX_HISTORY_BYTES) {
+      try {
+        localStorage.setItem(key, payload);
+        if (localStorage.getItem(key) !== payload) {
+          console.warn("[history] write verification failed for", key);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        // Quota exceeded — drop oldest and retry.
+      }
+    }
+    if (working.length <= 1) {
+      // Even a single record is too large — keep it best-effort.
+      try {
+        localStorage.setItem(key, payload);
+        return true;
+      } catch (err) {
+        console.warn("Could not persist post-call history:", err);
+        return false;
+      }
+    }
+    working = working.slice(0, working.length - 1);
   }
 }
 
