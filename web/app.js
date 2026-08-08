@@ -696,6 +696,30 @@ function buildSubscribeRemotePreps() {
   };
 }
 
+/** Realtime Firestore listener for dashboard call count + recent activity. */
+function buildSubscribeRemoteCalls() {
+  return (onChange) => {
+    if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db || typeof onChange !== "function") {
+      return () => {};
+    }
+    const user = fb.auth.currentUser;
+    const q = fb.query(
+      fb.collection(fb.db, "postCalls"),
+      fb.where("ownerId", "==", user.uid),
+      fb.limit(200),
+    );
+    const unsub = fb.onSnapshot(
+      q,
+      (snap) => {
+        const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        onChange(calls);
+      },
+      (err) => console.warn("[app] calls snapshot failed:", err?.message || err),
+    );
+    return () => unsub();
+  };
+}
+
 function buildFetchRemotePreps() {
   const fetchAll = buildFetchAllRemotePreps();
   return async () => {
@@ -730,6 +754,7 @@ function dashboardOpts(extra = {}) {
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
     subscribeRemotePreps: buildSubscribeRemotePreps(),
+    subscribeRemoteCalls: buildSubscribeRemoteCalls(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
     skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),

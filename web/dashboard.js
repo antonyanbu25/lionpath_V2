@@ -1324,6 +1324,13 @@ function stopRemotePrepsSubscribe(container) {
   }
 }
 
+function stopRemoteCallsSubscribe(container) {
+  if (typeof container?._callsUnsub === "function") {
+    container._callsUnsub();
+    container._callsUnsub = null;
+  }
+}
+
 function patchLaunchKpiValue(container, stat, value) {
   const el = container.querySelector(`.launch-kpi-value[data-stat="${stat}"]`);
   if (!el) return false;
@@ -1381,6 +1388,27 @@ function wireRemotePrepsSubscribe(container, email, opts = {}) {
   });
 }
 
+async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) {
+  if (!container?.isConnected) return;
+  const callRecords = Array.isArray(remoteCalls) ? remoteCalls : [];
+  const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
+  patchLaunchKpiValue(container, "calls", callRecords.length);
+  const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
+  await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
+  if (!container.isConnected) return;
+  const taskMetrics = aggregateTaskMetrics(listTasks(email));
+  const prepsCount = loadAllLocalBriefs().length;
+  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
+}
+
+function wireRemoteCallsSubscribe(container, email, opts = {}) {
+  stopRemoteCallsSubscribe(container);
+  if (typeof opts.subscribeRemoteCalls !== "function") return;
+  container._callsUnsub = opts.subscribeRemoteCalls((remoteCalls) => {
+    void applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls);
+  });
+}
+
 function withDashboardTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
@@ -1389,10 +1417,6 @@ function withDashboardTimeout(promise, ms, label) {
       timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     }),
   ]).finally(() => clearTimeout(timer));
-}
-
-function localOnlyDashboardOpts(opts = {}) {
-  return { ...opts, fetchAllRemotePreps: undefined, fetchRemotePreps: undefined, skipRemoteHistory: true };
 }
 
 function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = null) {
@@ -1425,7 +1449,12 @@ function launchpadSyncingFlags(callRecords, prepsCount, cached, opts = {}) {
 
 async function refreshLaunchpadRemote(container, email, opts = {}) {
   if (!container?.isConnected) return;
-  if (typeof opts.fetchRemoteHistory !== "function" && typeof briefsCountFetcher(opts) !== "function") {
+  if (
+    typeof opts.fetchRemoteHistory !== "function" &&
+    typeof briefsCountFetcher(opts) !== "function" &&
+    typeof opts.subscribeRemoteCalls !== "function" &&
+    typeof opts.subscribeRemotePreps !== "function"
+  ) {
     return;
   }
   try {
@@ -1453,9 +1482,12 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
           })()
         : Promise.resolve(null);
 
+    const realtimeCalls = typeof opts.subscribeRemoteCalls === "function";
     const realtimePreps = typeof opts.subscribeRemotePreps === "function";
     const [remoteRecords, remotePreps, launchpadDoc] = await Promise.all([
-      resolveCallRecords(email, { ...opts, skipRemoteHistory: false }),
+      realtimeCalls
+        ? Promise.resolve(dedupeAnalysesByCallIdentity(listPostCallAnalyses(email)))
+        : resolveCallRecords(email, { ...opts, skipRemoteHistory: false }),
       realtimePreps || typeof prepsFetcher !== "function"
         ? Promise.resolve(null)
         : countPrepsGenerated(prepsFetcher),
@@ -1619,7 +1651,7 @@ function renderRecentBriefRow(brief) {
     </button>`;
 }
 
-async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = {}) {
+function buildRecentActivityLocal(callRecords, usesLegacyCoach = false, briefs = loadAllLocalBriefs()) {
   const callItems = [...(callRecords || [])]
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     .slice(0, 12)
@@ -1629,6 +1661,18 @@ async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = 
       html: renderRecentActivityRow(recentCallForActivity(rec), usesLegacyCoach),
     }));
 
+  const briefItems = briefs.slice(0, 12).map((b) => ({
+    kind: "brief",
+    ts: briefTimestamp(b),
+    html: renderRecentBriefRow(b),
+  }));
+
+  return [...callItems, ...briefItems]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 6);
+}
+
+async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = {}) {
   let briefs = loadAllLocalBriefs();
   const fetchBriefs = briefsCountFetcher(opts);
   if (typeof fetchBriefs === "function") {
@@ -1641,15 +1685,7 @@ async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = 
     }
   }
 
-  const briefItems = briefs.slice(0, 12).map((b) => ({
-    kind: "brief",
-    ts: briefTimestamp(b),
-    html: renderRecentBriefRow(b),
-  }));
-
-  return [...callItems, ...briefItems]
-    .sort((a, b) => b.ts - a.ts)
-    .slice(0, 6);
+  return buildRecentActivityLocal(callRecords, usesLegacyCoach, briefs);
 }
 
 function renderRecentCallsSideWithItems(items, opts = {}) {
@@ -1773,6 +1809,8 @@ function wireLaunchKpiNav(container, email, opts = {}) {
  * @param {{ seName?: string, onOpenCall?: (id: string) => void, onPrep?: () => void, onAnalyze?: () => void, onCoaching?: () => void }} opts
  */
 function renderLaunchpadFallback(container, email, opts, err) {
+  stopRemotePrepsSubscribe(container);
+  stopRemoteCallsSubscribe(container);
   const seName = opts.seName || displayNameForEmail(email) || "there";
   const { greeting } = getSessionGreeting();
   const firstName = firstNameFromDisplay(seName);
@@ -1811,8 +1849,6 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     renderDashboardLoadingShell(container);
   }
 
-  const fastOpts = localOnlyDashboardOpts(opts);
-
   const watchdog = globalThis.setTimeout(() => {
     if (!container?.isConnected) return;
     if (!container.querySelector(".launchpad--loading")) return;
@@ -1838,7 +1874,7 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
 
     const remotePending = launchpadRemotePending(callRecords, prepsCount, opts, cached);
     const syncing = launchpadSyncingFlags(callRecords, prepsCount, cached, opts);
-    const activityItems = await buildRecentActivity(callRecords, metrics.usesLegacyCoach, fastOpts);
+    const activityItems = buildRecentActivityLocal(callRecords, metrics.usesLegacyCoach);
 
     const seName = opts.seName || displayNameForEmail(email) || "there";
     const { greeting } = getSessionGreeting();
@@ -1885,6 +1921,7 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     }
 
     wireRemotePrepsSubscribe(container, email, opts);
+    wireRemoteCallsSubscribe(container, email, opts);
   } catch (err) {
     console.warn("[dashboard] renderSeLaunchpad failed:", err?.message || err);
     renderLaunchpadFallback(container, email, opts, err);
