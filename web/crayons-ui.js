@@ -176,8 +176,13 @@ export function setFieldError(field, message = "") {
  * @param {(id: string) => void} onOpen
  * @param {string} [selector]
  */
-export function wireCallLinks(root, onOpen, selector = ".dash-call-link, [data-open-call]") {
+export function wireCallLinks(
+  root,
+  onOpen,
+  selector = '.dash-call-link:not([data-call-wired="1"]), [data-open-call]:not([data-call-wired="1"])',
+) {
   root.querySelectorAll(selector).forEach((btn) => {
+    if (btn.getAttribute("data-call-wired") === "1") return;
     const id = btn.dataset.callId || btn.dataset.openCall || btn.dataset.id;
     if (!id) return;
     const handler = () => {
@@ -189,6 +194,7 @@ export function wireCallLinks(root, onOpen, selector = ".dash-call-link, [data-o
     };
     btn.addEventListener("click", handler);
     btn.addEventListener("fwClick", handler);
+    btn.setAttribute("data-call-wired", "1");
   });
 }
 

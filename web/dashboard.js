@@ -26,7 +26,7 @@ import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } fr
 import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js?v=2.1.14";
 import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
-import { renderLoadingPanel, wireCallLinks } from "./crayons-ui.js";
+import { renderLoadingPanel, wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import {
@@ -67,8 +67,18 @@ const DIMENSION_ORDER = [
   "talkbalance",
 ];
 
+const CALL_LINK_WIRED_ATTR = "data-call-wired";
+const CALL_LINK_UNWIRED_SELECTOR = `.dash-call-link:not([${CALL_LINK_WIRED_ATTR}="1"]), [data-open-call]:not([${CALL_LINK_WIRED_ATTR}="1"])`;
+
 let __recentActivityRenderScheduled = false;
 let __recentActivityRenderArgs = null;
+let _remoteSyncPending = false;
+let _lastReconciledKpis = null;
+let _lastReconciledKpiEmail = "";
+
+function wireCallLinks(container, onOpenCall) {
+  wireCrayonCallLinks(container, onOpenCall, CALL_LINK_UNWIRED_SELECTOR);
+}
 
 function scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts = {}) {
   __recentActivityRenderArgs = { container, callRecords, usesLegacyCoach, opts };
@@ -1105,18 +1115,6 @@ function readKpiSnapshot(email) {
   }
 }
 
-function writeKpiSnapshot(email, data) {
-  const key = String(email || "").trim().toLowerCase();
-  if (!key || !data) return;
-  try {
-    const json = JSON.stringify({ ...data, savedAt: Date.now() });
-    sessionStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
-    localStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
-  } catch {
-    // ignore quota / private-mode errors
-  }
-}
-
 function metricsFromKpiSnapshot(snap) {
   if (!snap) return null;
   return {
@@ -1142,6 +1140,55 @@ function kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount) {
     callsThisWeek: launchCallMetrics?.callsThisWeek ?? 0,
     prepsCount: prepsCount ?? 0,
   };
+}
+
+function reconcileCallRecords(localCalls = [], remoteCalls = [], email = null) {
+  const local = Array.isArray(localCalls) ? localCalls : [];
+  const remote = Array.isArray(remoteCalls) ? remoteCalls : [];
+  if (email && remote.length) {
+    mergePostCallRecordsIntoLocal(email, remote);
+    return dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
+  }
+  return dedupeAnalysesByCallIdentity([...local, ...remote]);
+}
+
+function computeReconciledKpis(email, sources = {}) {
+  const tasks = sources.localTasks ?? listTasks(email);
+  const taskMetrics = aggregateTaskMetrics(tasks);
+  const localCalls = sources.localCalls ?? listPostCallAnalyses(email);
+  const remoteCalls = sources.remoteCalls ?? [];
+  const reconciledCallRecords = reconcileCallRecords(localCalls, remoteCalls, email);
+  const callMetrics = buildLaunchpadCallMetricsFromRecords(reconciledCallRecords);
+  const briefs = sources.localBriefs ?? loadAllLocalBriefs();
+  const prepsCount = Array.isArray(briefs) ? briefs.length : Number(briefs || 0);
+  return kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount);
+}
+
+function writeReconciledKpiSnapshot(email, kpis) {
+  if (_remoteSyncPending) return;
+  _lastReconciledKpiEmail = String(email || "").trim().toLowerCase();
+  _lastReconciledKpis = kpis;
+  (function writeKpiSnapshot(targetEmail, data) {
+    const key = String(targetEmail || "").trim().toLowerCase();
+    if (!key || !data) return;
+    try {
+      const json = JSON.stringify({ ...data, savedAt: Date.now() });
+      sessionStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
+      localStorage.setItem(`${KPI_SNAPSHOT_PREFIX}${key}`, json);
+    } catch {
+      // ignore quota / private-mode errors
+    }
+  })(email, kpis);
+}
+
+function getKpisForRender(email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (_lastReconciledKpis && _lastReconciledKpiEmail === key) return _lastReconciledKpis;
+  if (!_remoteSyncPending) {
+    const cached = readKpiSnapshot(email);
+    if (cached && cached.openTotal != null && cached.totalCalls != null) return cached;
+  }
+  return null;
 }
 
 function callsThisWeekCount(callMetrics) {
@@ -1397,9 +1444,7 @@ async function applyRemoteBriefsToLaunchpad(container, email, opts, remoteBriefs
     ...opts,
     fetchAllRemotePreps: async () => remoteBriefs || [],
   });
-  const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
-  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
+  writeReconciledKpiSnapshot(email, computeReconciledKpis(email, { localCalls: callRecords, localBriefs: prepsCount }));
 }
 
 function wireRemotePrepsSubscribe(container, email, opts = {}) {
@@ -1428,7 +1473,10 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
   scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts);
   if (!container.isConnected) return;
-  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
+  writeReconciledKpiSnapshot(
+    email,
+    computeReconciledKpis(email, { localCalls: callRecords, remoteCalls, localBriefs: prepsCount }),
+  );
 }
 
 function wireRemoteCallsSubscribe(container, email, opts = {}) {
@@ -1487,6 +1535,7 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
   ) {
     return;
   }
+  _remoteSyncPending = true;
   try {
     const store = getStore();
     const prepsFetcher = briefsCountFetcher(opts);
@@ -1547,9 +1596,20 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     );
     patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
     scheduleRecentActivityRender(container, remoteRecords, remoteMetrics.usesLegacyCoach, opts);
-    writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, prepsCount));
+    _remoteSyncPending = false;
+    writeReconciledKpiSnapshot(
+      email,
+      computeReconciledKpis(email, {
+        localTasks: listTasks(email),
+        localCalls: listPostCallAnalyses(email),
+        remoteCalls: remoteRecords,
+        localBriefs: prepsCount,
+      }),
+    );
   } catch (err) {
     console.warn("[dashboard] remote refresh failed:", err?.message || err);
+  } finally {
+    _remoteSyncPending = false;
   }
 }
 
@@ -1899,6 +1959,11 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   for (const row of existing.values()) {
     row.remove();
   }
+
+  const currentOpts = section._recentActivityOpts;
+  if (currentOpts && typeof currentOpts.onOpenCall === "function") {
+    wireCallLinks(section, currentOpts.onOpenCall);
+  }
 }
 
 async function updateLaunchKpis(container, email, opts = {}) {
@@ -1919,7 +1984,10 @@ async function updateLaunchKpis(container, email, opts = {}) {
       wireLaunchKpiNav(container, email, opts);
     }
   }
-  writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, callMetrics, prepsCount));
+  writeReconciledKpiSnapshot(
+    email,
+    computeReconciledKpis(email, { localCalls: callRecords, localBriefs: prepsCount }),
+  );
   scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts);
 }
 
@@ -1979,7 +2047,7 @@ function renderLaunchpadFallback(container, email, opts, err) {
 }
 
 async function renderSeLaunchpadOnce(container, email, opts = {}) {
-  const cached = readKpiSnapshot(email);
+  const cached = getKpisForRender(email);
   const cachedMetrics = metricsFromKpiSnapshot(cached);
   const hasLocalData =
     dedupeAnalysesByCallIdentity(listPostCallAnalyses(email)).length > 0 ||
@@ -1999,36 +2067,17 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
   try {
     let callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
     let metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
-    let launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
-
-    let taskMetrics = aggregateTaskMetrics(listTasks(email));
-    let prepsCount = loadAllLocalBriefs().length;
-
-    // Force-reconcile Worker KV into local on first render so records that only
-    // exist in the Worker (not yet in Firestore postCalls) appear in the count,
-    // and deep fields (technicalCommit, summarise, arrCompute, pass6, etc.)
-    // that were stripped by the old merge bug are restored.
-    if (typeof opts.fetchRemoteHistory === "function" && callRecords.length > 0) {
-      try {
-        const synced = await opts.fetchRemoteHistory();
-        if (Array.isArray(synced) && synced.length) {
-          callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
-          metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
-          launchCallMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
-        }
-      } catch (err) {
-        console.warn("[dashboard] remote history sync failed:", err?.message || err);
-      }
-    }
-
-    if (cachedMetrics) {
-      if (!callRecords.length && cachedMetrics.launchCallMetrics.totalCalls > 0) {
-        launchCallMetrics = { ...cachedMetrics.launchCallMetrics, records: callRecords };
-      }
-      if (!prepsCount && cachedMetrics.prepsCount > 0) {
-        prepsCount = cachedMetrics.prepsCount;
-      }
-    }
+    const localKpis = computeReconciledKpis(email, {
+      localCalls: callRecords,
+      remoteCalls: [],
+      localBriefs: loadAllLocalBriefs(),
+    });
+    const renderKpis = cached ?? localKpis;
+    const renderMetrics = metricsFromKpiSnapshot(renderKpis);
+    const taskMetrics = renderMetrics?.taskMetrics || aggregateTaskMetrics(listTasks(email));
+    let launchCallMetrics = renderMetrics?.launchCallMetrics || buildLaunchpadCallMetricsFromRecords(callRecords);
+    if (renderMetrics) launchCallMetrics = { ...launchCallMetrics, records: callRecords };
+    const prepsCount = renderMetrics?.prepsCount ?? loadAllLocalBriefs().length;
 
     const remotePending = launchpadRemotePending(callRecords, prepsCount, opts, cached);
     const syncing = launchpadSyncingFlags(callRecords, prepsCount, cached, opts);
@@ -2075,7 +2124,10 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     });
 
     if (!remotePending.calls && !remotePending.preps) {
-      writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, launchCallMetrics, prepsCount));
+      writeReconciledKpiSnapshot(
+        email,
+        computeReconciledKpis(email, { localCalls: callRecords, localBriefs: prepsCount }),
+      );
     }
 
     wireRemotePrepsSubscribe(container, email, opts);
