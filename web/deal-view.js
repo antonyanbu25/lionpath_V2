@@ -796,7 +796,7 @@ function renderDealScoreStrip(detail) {
   const segs = Array.from({ length: total }, (_, i) => `<i class="${i < segOn ? "on" : ""}"></i>`).join("");
 
   return `
-    <section class="deal-score-strip" aria-label="Deal score strip">
+    <section id="deal-score-strip" class="deal-score-strip" aria-label="Deal score strip">
       <div class="deal-scard" style="--_a:${cqsColor};--_c:${cqsColor}">
         <span class="deal-scard-sl">${esc(CALL_QUALITY_SCORE_LABEL)}</span>
         <span class="deal-scard-sv">${cqs != null ? `${cqs.toFixed(1)}<u>/10</u>` : "—"}</span>
@@ -843,14 +843,16 @@ function renderDealGapLine(detail) {
 
 function renderAiAttachCallout(tc) {
   const summary = formatTcValue(tc?.aiAttach);
-  if (!summary) return "";
+  if (!summary) return `<div id="deal-ai-callout" class="deal-callout-mount" hidden></div>`;
   const watch = /skeptic|unproven|not sure|not using|non-standard/i.test(summary);
   return `
+    <div id="deal-ai-callout" class="deal-callout-mount">
     <div class="deal-callout${watch ? " deal-callout--warn" : ""}">
       <div>
         <div class="deal-callout-k">AI attach${watch ? " · watch" : ""}</div>
         <p>${esc(summary)}</p>
       </div>
+    </div>
     </div>`;
 }
 
@@ -1695,19 +1697,11 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
     console.warn("[deal-view] store deal detail failed:", err?.message || err);
   }
 
-  if (engagementDetail && opts.onPartialDetail) {
-    opts.onPartialDetail({
-      ...engagementDetail,
-      resolvedDealId,
-      technicalCommit: null,
-      latestSignal: null,
-      daysInStage: null,
-      stageMedianDays: null,
-      callRows: [],
-      arrLines: engagementDetail.arrLines || [],
-      dealSummary: null,
-    });
-  }
+  // NOTE: no onPartialDetail emit here. Rendering a partial record with
+  // technicalCommit/latestSignal/callRows empty produced a "TC Pending / Traction — /
+  // no ARR" tile that then flickered to the real values. Keep the loading shell until
+  // the full detail (with score strip data) is ready, then render ONCE. The realtime
+  // subscription patches tiles in place afterward.
 
   const extras = await extrasPromise;
   if (engagementDetail) {
@@ -1953,13 +1947,7 @@ export async function renderDealView(container, session, opts = {}) {
     }
     applyDealViewHtml(container, opts, renderDealLoadingShell(preview, backContext || {}));
     try {
-      const detail = await loadDealRecordDetail(activeSession, opts.dealId, {
-        ...opts,
-        onPartialDetail: (partial) => {
-          if (opts.shouldApply && !opts.shouldApply()) return;
-          applyDealViewHtml(container, opts, renderDealRecord(partial, { backContext }));
-        },
-      });
+      const detail = await loadDealRecordDetail(activeSession, opts.dealId, opts);
       if (opts.shouldApply && !opts.shouldApply()) return;
       if (!detail) {
         if (opts.onInvalidDealId) {
@@ -2008,13 +1996,25 @@ export async function renderDealView(container, session, opts = {}) {
             resolvedDealId: snap.deal.id,
           };
           latestDetail = next;
-          const scrollHost =
-            typeof container.closest === "function"
-              ? container.closest(".view-panel") || container
-              : container;
-          const y = scrollHost.scrollTop || 0;
-          if (!applyDealViewHtml(container, opts, renderDealRecord(next, { backContext }))) return;
-          wireDealRecordEvents(container, activeSession, opts, next);
+          // Patch the score tiles + AI callout + ARR in place instead of replacing the
+          // whole page — avoids the "old tile then new tile" flicker from full innerHTML
+          // swaps on every realtime snapshot.
+          const strip = container.querySelector("#deal-score-strip");
+          if (strip) {
+            const fresh = document.createElement("template");
+            fresh.innerHTML = renderDealScoreStrip(next).trim();
+            const nextStrip = fresh.content.firstElementChild;
+            if (nextStrip) {
+              strip.replaceWith(nextStrip);
+            }
+          }
+          const callout = container.querySelector("#deal-ai-callout");
+          if (callout) {
+            const freshCallout = document.createElement("template");
+            freshCallout.innerHTML = renderAiAttachCallout(next.technicalCommit).trim();
+            const nextCallout = freshCallout.content.firstElementChild;
+            if (nextCallout) callout.replaceWith(nextCallout);
+          }
           const nextArrMount = container.querySelector("#deal-arr-module-mount");
           if (nextArrMount) {
             mountDealArrModule(nextArrMount, next.selectedDeal, next.arrLines || [], {
@@ -2022,7 +2022,6 @@ export async function renderDealView(container, session, opts = {}) {
               getAuthHeaders: getWorkerAuthHeaders,
             });
           }
-          if (typeof scrollHost.scrollTop === "number") scrollHost.scrollTop = y;
         });
       }
       if (typeof opts.subscribeArrLinesByDeal === "function") {
