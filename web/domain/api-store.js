@@ -318,6 +318,11 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       return detail?.postCall || null;
     },
 
+    async getPostCallDetail(id) {
+      if (isHistoryStubId(id)) return null;
+      return loadCallDetail(id);
+    },
+
     async getCall(id) {
       return this.getPostCall(id);
     },
@@ -419,6 +424,11 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       if (isHistoryStubId(id)) return null;
       const detail = await loadDealDetail(id);
       return detail?.deal || null;
+    },
+
+    async getDealDetail(id) {
+      if (isHistoryStubId(id)) return null;
+      return loadDealDetail(id);
     },
 
     async listDealsByAccount(accountId, ownerId, opts = {}) {

@@ -6,6 +6,7 @@ import { firebaseConfig, WORKER_BASE_URL } from "../firebase-config.js";
 import { createLocalStore } from "./local-store.js";
 import { createFirestoreStore } from "./firestore-store.js";
 import { createApiStore } from "./api-store.js";
+import { isFirebasePermissionError } from "./safe-store.js";
 import { runMeddpiccDealMigrationIfNeeded } from "./migrate-meddpicc-to-deals.js";
 
 /** @type {ReturnType<createLocalStore>|null} */
@@ -61,11 +62,7 @@ export function resolveStoreMode(fb) {
 
 function createStoreForMode(mode, fb) {
   if (mode === "api") {
-    return createApiStore({
-      workerBaseUrl: WORKER_BASE_URL,
-      getToken: () => fb?.auth?.currentUser?.getIdToken(),
-      fb,
-    });
+    return createApiFallbackStore(fb);
   }
   if (mode === "firestore") return createFirestoreStore(fb);
   return createLocalStore();
@@ -81,6 +78,62 @@ function isWriteMethod(prop) {
     name.startsWith("delete") ||
     name.startsWith("remove")
   );
+}
+
+function createApiFallbackStore(fb) {
+  return createApiStore({
+    workerBaseUrl: WORKER_BASE_URL,
+    getToken: () => fb?.auth?.currentUser?.getIdToken(),
+    fb,
+  });
+}
+
+function createReadFallbackStore(primary, fallback) {
+  if (!fallback || primary === fallback) return primary;
+  return new Proxy(primary, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function" || isWriteMethod(prop)) return value;
+      const fallbackValue = Reflect.get(fallback, prop, fallback);
+      if (typeof fallbackValue !== "function") return value.bind(target);
+
+      if (prop === "subscribeDealDetail") {
+        return (dealId, cb) => {
+          void fallback.getDealDetail?.(dealId)
+            ?.then((detail) => detail && cb?.(detail))
+            ?.catch((err) => {
+              if (!isFirebasePermissionError(err)) {
+                console.warn("[domain] deal detail API fallback failed:", err?.message || err);
+              }
+            });
+          return value.call(target, dealId, cb);
+        };
+      }
+
+      if (prop === "subscribeCallDetail") {
+        return (callId, cb) => {
+          void fallback.getPostCallDetail?.(callId)
+            ?.then((detail) => detail && cb?.(detail))
+            ?.catch((err) => {
+              if (!isFirebasePermissionError(err)) {
+                console.warn("[domain] call detail API fallback failed:", err?.message || err);
+              }
+            });
+          return value.call(target, callId, cb);
+        };
+      }
+
+      return async (...args) => {
+        try {
+          return await value.apply(target, args);
+        } catch (err) {
+          if (!isFirebasePermissionError(err)) throw err;
+          console.warn(`[domain] ${String(prop)} permission denied; using worker API fallback`);
+          return fallbackValue.apply(fallback, args);
+        }
+      };
+    },
+  });
 }
 
 function createSplitStore(readStore, writeStore, readMode, writeMode) {
@@ -112,6 +165,9 @@ export function initDomainStore(fb) {
   const readMode = resolveReadMode(fb);
   const writeMode = resolveWriteMode(fb);
   readStoreInstance = createStoreForMode(readMode, fb);
+  if (readMode === "firestore" && writeMode === "api") {
+    readStoreInstance = createReadFallbackStore(readStoreInstance, createApiFallbackStore(fb));
+  }
   writeStoreInstance =
     writeMode === readMode ? readStoreInstance : createStoreForMode(writeMode, fb);
   storeInstance = createSplitStore(readStoreInstance, writeStoreInstance, readMode, writeMode);
