@@ -722,6 +722,43 @@ function buildSubscribeRemoteCalls() {
   };
 }
 
+function buildSubscribeRemoteDeals() {
+  return (onChange) => {
+    if (typeof onChange !== "function") return () => {};
+    const store = getStore();
+    const ownerId = effectiveSessionUserId(currentSession);
+    if (!ownerId || typeof store.subscribeDealsByOwner !== "function") return () => {};
+    return store.subscribeDealsByOwner(ownerId, onChange);
+  };
+}
+
+function buildSubscribeRemoteDealDetail(dealId) {
+  return (onChange) => {
+    if (!dealId || typeof onChange !== "function") return () => {};
+    const store = getStore();
+    if (typeof store.subscribeDealDetail !== "function") return () => {};
+    return store.subscribeDealDetail(dealId, onChange);
+  };
+}
+
+function buildSubscribeRemoteCallDetail(callId) {
+  return (onChange) => {
+    if (!callId || typeof onChange !== "function") return () => {};
+    const store = getStore();
+    if (typeof store.subscribeCallDetail !== "function") return () => {};
+    return store.subscribeCallDetail(callId, onChange);
+  };
+}
+
+function buildSubscribeRemoteArrLinesByDeal(dealId) {
+  return (onChange) => {
+    if (!dealId || typeof onChange !== "function") return () => {};
+    const store = getStore();
+    if (typeof store.subscribeArrLinesByDeal !== "function") return () => {};
+    return store.subscribeArrLinesByDeal(dealId, onChange);
+  };
+}
+
 function buildFetchRemotePreps() {
   const fetchAll = buildFetchAllRemotePreps();
   return async () => {
@@ -757,6 +794,7 @@ function dashboardOpts(extra = {}) {
     fetchRemotePreps: buildFetchRemotePreps(),
     subscribeRemotePreps: buildSubscribeRemotePreps(),
     subscribeRemoteCalls: buildSubscribeRemoteCalls(),
+    subscribeRemoteDeals: buildSubscribeRemoteDeals(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
     skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,
     onOpenCall: (id, callOpts = {}) => openCallRecord(id, callOpts),
@@ -784,6 +822,28 @@ function dashboardOpts(extra = {}) {
       switchView("coaching");
     },
   };
+}
+
+function cleanupPanelSubscriptions(name) {
+  const panel =
+    name === "dashboard" ? $("dash-panel")
+      : name === "deals" ? $("deal-panel")
+        : name === "calls" ? $("call-panel")
+          : null;
+  if (!panel) return;
+  for (const key of [
+    "_prepsUnsub",
+    "_callsUnsub",
+    "_dealsUnsub",
+    "_dealDetailUnsub",
+    "_dealArrUnsub",
+    "_callDetailUnsub",
+  ]) {
+    if (typeof panel[key] === "function") {
+      panel[key]();
+      panel[key] = null;
+    }
+  }
 }
 
 const MANAGER_DRILL_VIEWS = new Set(["accounts", "deals", "calls", "se"]);
@@ -941,6 +1001,7 @@ function switchView(name, opts = {}) {
   }
   name = normalizeViewName(name);
   const prevView = currentView;
+  if (prevView && prevView !== name) cleanupPanelSubscriptions(prevView);
   currentView = name;
   const isManager = isManagerRole(currentSession);
   const panels = {
@@ -1306,6 +1367,9 @@ async function renderDealPanel() {
     listSortKey: dealListSortKey,
     listTractionFilter: dealListTractionFilter,
     detailSearchQuery: accountDetailSearchQuery,
+    subscribeRemoteDeals: buildSubscribeRemoteDeals(),
+    subscribeDealDetail: selectedDealNavId ? buildSubscribeRemoteDealDetail(selectedDealNavId) : undefined,
+    subscribeArrLinesByDeal: selectedDealNavId ? buildSubscribeRemoteArrLinesByDeal(selectedDealNavId) : undefined,
     shouldApply: () => gen === dealPanelRenderGen,
     onInvalidDealId: () => {
       if (gen !== dealPanelRenderGen) return;
@@ -1558,6 +1622,7 @@ async function renderCallPanelOnce() {
       ownerEmail,
       initialTab,
       expandThemeKey: expandTheme,
+      subscribeCallDetail: buildSubscribeRemoteCallDetail(selectedCallId),
       shouldApply: () => gen === callPanelRenderGen,
       onBack: () => {
         selectedCallId = null;

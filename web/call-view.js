@@ -2568,7 +2568,7 @@ export function renderCallRecordLoadingPanel(record, opts = {}) {
     </div>`;
 }
 
-async function loadCallBundle(session, record) {
+async function loadCallBundle(session, record, detailOverride = null) {
   const email = session.email;
   const store = getStore();
   let dealId = resolveDealId(record);
@@ -2578,17 +2578,19 @@ async function loadCallBundle(session, record) {
   const draftTimeline = resultBlob.timeline;
   const summarise = resultBlob.summarise || {};
 
-  const domainCall = store.getCall
-    ? await safeEnrich("getCall", () => store.getCall(record.id), null)
-    : store.getPostCall
-      ? await safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
-      : null;
+  const domainCall = detailOverride?.postCall
+    ? detailOverride.postCall
+    : store.getCall
+      ? await safeEnrich("getCall", () => store.getCall(record.id), null)
+      : store.getPostCall
+        ? await safeEnrich("getPostCall", () => store.getPostCall(record.id), null)
+        : null;
 
   const storeRejected = domainCall === null && (
     typeof store.getCall === 'function' || typeof store.getPostCall === 'function'
   );
 
-  const detail = domainCall?.detail || {};
+  const detail = detailOverride || domainCall?.detail || {};
   const needsProductGaps =
     !storeRejected && !pass6?.productGaps?.length && !detail.productGaps?.length && store.listProductGapsByPostCall;
   const needsWhatWorks =
@@ -3207,6 +3209,10 @@ function mergeEnrichedRecord(record, bundle) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderCallView(container, session, opts = {}) {
+  if (typeof container?._callDetailUnsub === "function") {
+    container._callDetailUnsub();
+    container._callDetailUnsub = null;
+  }
   const targetCallId = opts.callId;
   const canApply = () => !opts.shouldApply || opts.shouldApply();
 
@@ -3277,6 +3283,36 @@ export async function renderCallView(container, session, opts = {}) {
     paintCallRecord(container, activeSession, localBundle, coachAudience, localHydration, opts);
     void hidePrepGenOverlay();
     if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+
+    if (typeof opts.subscribeCallDetail === "function") {
+      container._callDetailUnsub = opts.subscribeCallDetail(async (detailSnap) => {
+        if (!detailSnap?.postCall || !canApply() || !callRecordMatches(container, targetCallId)) return;
+        try {
+          const freshRecord = {
+            ...resolvedRecord,
+            ...detailSnap.postCall,
+            result: {
+              ...(resolvedRecord.result || {}),
+              ...(detailSnap.postCall.result || {}),
+            },
+          };
+          const realtimeBundle = await loadCallBundle(activeSession, freshRecord, detailSnap);
+          if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+          const enrichedRecord = mergeEnrichedRecord(freshRecord, realtimeBundle);
+          const enrichedBundle = { ...realtimeBundle, record: enrichedRecord };
+          paintCallRecord(
+            container,
+            activeSession,
+            enrichedBundle,
+            coachAudience,
+            resolveRecordHydration(enrichedRecord),
+            opts,
+          );
+        } catch (err) {
+          console.warn("[call-view] realtime detail render failed:", err?.message || err);
+        }
+      });
+    }
 
     // Deal-level TC lives in the store (Firestore). Fetch it immediately so the
     // first paint is not stuck showing no technical commit when one exists.

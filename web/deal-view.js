@@ -1447,6 +1447,15 @@ function applyDealViewHtml(container, opts, html) {
   return true;
 }
 
+function stopDealViewSubscriptions(container) {
+  for (const key of ["_dealsUnsub", "_dealDetailUnsub", "_dealArrUnsub"]) {
+    if (typeof container?.[key] === "function") {
+      container[key]();
+      container[key] = null;
+    }
+  }
+}
+
 /** Instant preview from local history before Firestore resolves. */
 function resolveDealPreview(session, dealId) {
   if (!dealId) return null;
@@ -1912,6 +1921,7 @@ function wireDealRecordEvents(container, session, opts, detail) {
 
 /** @param {HTMLElement} container @param {object} session @param {object} opts */
 export async function renderDealView(container, session, opts = {}) {
+  stopDealViewSubscriptions(container);
   let activeSession = session;
   if (!sessionUserId(activeSession)) {
     try {
@@ -1974,6 +1984,58 @@ export async function renderDealView(container, session, opts = {}) {
         } catch (err) {
           console.warn("[deal-view] ARR module mount failed:", err?.message || err);
         }
+      }
+      if (typeof opts.subscribeDealDetail === "function") {
+        let latestDetail = detail;
+        container._dealDetailUnsub = opts.subscribeDealDetail(async (snap) => {
+          if (!snap?.deal || (opts.shouldApply && !opts.shouldApply())) return;
+          const nextExtras = {
+            technicalCommit: snap.technicalCommit,
+            latestSignal: snap.dealSignals?.[0] || null,
+            arrLines: snap.arrLines || latestDetail.arrLines || [],
+            dealSummary: snap.summary,
+            productGaps: rollupProductSignalRows(snap.productGaps || []),
+            whatWorks: rollupProductSignalRows(snap.whatWorks || []),
+            daysInStage: latestDetail.daysInStage,
+            stageMedianDays: latestDetail.stageMedianDays,
+            callRows: latestDetail.callRows || [],
+          };
+          const next = {
+            ...latestDetail,
+            ...nextExtras,
+            selectedDeal: snap.deal,
+            selectedDealId: snap.deal.id,
+            resolvedDealId: snap.deal.id,
+          };
+          latestDetail = next;
+          const scrollHost =
+            typeof container.closest === "function"
+              ? container.closest(".view-panel") || container
+              : container;
+          const y = scrollHost.scrollTop || 0;
+          if (!applyDealViewHtml(container, opts, renderDealRecord(next, { backContext }))) return;
+          wireDealRecordEvents(container, activeSession, opts, next);
+          const nextArrMount = container.querySelector("#deal-arr-module-mount");
+          if (nextArrMount) {
+            mountDealArrModule(nextArrMount, next.selectedDeal, next.arrLines || [], {
+              session: activeSession,
+              getAuthHeaders: getWorkerAuthHeaders,
+            });
+          }
+          if (typeof scrollHost.scrollTop === "number") scrollHost.scrollTop = y;
+        });
+      }
+      if (typeof opts.subscribeArrLinesByDeal === "function") {
+        container._dealArrUnsub = opts.subscribeArrLinesByDeal((arrLines) => {
+          if (opts.shouldApply && !opts.shouldApply()) return;
+          const arrMount = container.querySelector("#deal-arr-module-mount");
+          const currentDeal = container.querySelector(".deal-record") ? detail.selectedDeal : null;
+          if (!arrMount || !currentDeal) return;
+          mountDealArrModule(arrMount, currentDeal, arrLines || [], {
+            session: activeSession,
+            getAuthHeaders: getWorkerAuthHeaders,
+          });
+        });
       }
     } catch (err) {
       console.error("[deal-view] failed to render deal record:", err);
@@ -2068,6 +2130,29 @@ export async function renderDealView(container, session, opts = {}) {
     const y = scrollHost.scrollTop || 0;
     paintDealList(container, opts, enrichedRows);
     if (typeof scrollHost.scrollTop === "number") scrollHost.scrollTop = y;
+
+    if (typeof opts.subscribeRemoteDeals === "function") {
+      container._dealsUnsub = opts.subscribeRemoteDeals(async (deals) => {
+        if (opts.shouldApply && !opts.shouldApply()) return;
+        const rows = await Promise.all(
+          (deals || []).map(async (deal) => {
+            const account = deal.accountId && store.getAccount
+              ? await safeStoreOp("getAccount", () => store.getAccount(deal.accountId), null)
+              : null;
+            return { deal, account: account || { id: deal.accountId, name: deal.accountName || "Account" } };
+          }),
+        );
+        const realtimeRows = await enrichDealListRows(store, rows, { orgId: activeSession?.orgId });
+        dealListCache = { key: cacheKey, at: Date.now(), rows: realtimeRows };
+        const realtimeScrollHost =
+          typeof container.closest === "function"
+            ? container.closest(".view-panel") || container
+            : container;
+        const realtimeY = realtimeScrollHost.scrollTop || 0;
+        paintDealList(container, opts, realtimeRows);
+        if (typeof realtimeScrollHost.scrollTop === "number") realtimeScrollHost.scrollTop = realtimeY;
+      });
+    }
   } catch (err) {
     console.error("[deal-view] failed to render deals list:", err);
     if (opts.shouldApply && !opts.shouldApply()) return;
