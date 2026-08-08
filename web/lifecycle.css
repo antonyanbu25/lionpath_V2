@@ -136,7 +136,7 @@
 .account-record-top {
   position: static;
   z-index: auto;
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
   margin: 0 0 16px;
   padding-bottom: 0;
   flex: 0 0 auto;
@@ -862,7 +862,7 @@
   text-align: left;
   appearance: none;
   border: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
 }
 
 .account-contact-row--selectable:hover {
@@ -1142,7 +1142,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
   border: 1px solid var(--dew-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   overflow: hidden;
@@ -1163,7 +1163,7 @@
 }
 
 .account-command-panel--activity {
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
 }
 
 .account-record .account-command-header-title h2 {
@@ -1185,7 +1185,7 @@
   padding: 8px 8px;
   border-radius: 8px;
   border: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
-  background: var(--dew-surface, #fff);
+  background: var(--dew-surface);
 }
 
 /* Shared contact-tile list (deal view, My contacts). */
@@ -1464,7 +1464,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--fw-color-bg-primary, #fff);
+  background: var(--fw-color-bg-primary, var(--dew-surface));
   border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.12));
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
@@ -1530,7 +1530,7 @@
   border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
   border-top: none;
   border-radius: 0 0 8px 8px;
-  background: var(--fw-color-bg-primary, #fff);
+  background: var(--fw-color-bg-primary, var(--dew-surface));
 }
 
 .account-contacts-table-wrap--scroll {
@@ -3239,7 +3239,7 @@
   border: 1px solid var(--fw-color-border-secondary, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   padding: 12px 14px;
-  background: var(--fw-color-bg-primary, #fff);
+  background: var(--fw-color-bg-primary, var(--dew-surface));
   min-height: 260px;
 }
 
@@ -3510,7 +3510,7 @@
   padding: 0.15rem 0.35rem;
   border: 1px solid var(--fw-color-border, #c8cdd3);
   border-radius: 4px;
-  background: var(--fw-color-bg, #fff);
+  background: var(--fw-color-bg, var(--dew-surface));
   max-width: 7rem;
 }
 
@@ -3560,7 +3560,7 @@
 
 .deal-arr-unit-btn--active {
   background: var(--fw-color-primary, #1a6fb0);
-  color: #fff;
+  color: var(--color-text-inverse);
 }
 
 .deal-arr-chain-actions {
@@ -3574,7 +3574,7 @@
   padding: 0.25rem 0.65rem;
   border: 1px solid var(--fw-color-border, #c8cdd3);
   border-radius: 4px;
-  background: var(--fw-color-bg, #fff);
+  background: var(--fw-color-bg, var(--dew-surface));
   cursor: pointer;
 }
 
@@ -3678,7 +3678,7 @@
   border-radius: 8px;
   padding: 8px 11px;
   min-width: 148px;
-  background: #fff;
+  background: var(--dew-surface);
 }
 
 .pipeline-stats {
@@ -5019,7 +5019,7 @@
   height: 54px;
   border-radius: 14px;
   background: linear-gradient(140deg, #f7a81b, #e8542a);
-  color: #fff;
+  color: var(--color-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5252,7 +5252,7 @@
 }
 
 .deal-record-rec {
-  background: linear-gradient(180deg, #f2f8f6, #fff);
+  background: linear-gradient(180deg, var(--dew-surface-subtle), var(--dew-surface));
   border-color: #cfe3de !important;
 }
 
