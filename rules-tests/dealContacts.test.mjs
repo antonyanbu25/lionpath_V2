@@ -31,6 +31,25 @@ export async function run() {
   await seedPersona(env, { ...SE_OTHER });
 
   await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("deals").doc("deal_a").set({
+      id: "deal_a",
+      accountId: "acc_a",
+      ownerId: SE_OWNER.userId,
+      teamId: TEAM_A,
+      orgId: ORG,
+      type: "new_business",
+      stage: "research",
+      status: "active",
+      title: "Deal A",
+      primaryContactId: "con_a",
+      prepCount: 0,
+      postCallCount: 0,
+      openTaskCount: 0,
+      latestQualityScore: null,
+      createdAt: 1,
+      updatedAt: 1,
+      lastActivityAt: 1,
+    });
     await ctx.firestore().collection("dealContacts").doc("deal_a_con_a").set({
       id: "deal_a_con_a",
       dealId: "deal_a",

@@ -54,6 +54,7 @@ export async function run() {
       name: "Scoped Co",
       slug: "scoped",
       orgId: ORG,
+      seTeam: [{ seUserId: SE_OWNER.userId, role: "primary" }],
       seTeamUserIds: [SE_OWNER.userId],
       seTeamTeamIds: [TEAM_A],
       primarySeUserId: SE_OWNER.userId,
