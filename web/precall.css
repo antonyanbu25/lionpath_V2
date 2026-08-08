@@ -1087,6 +1087,8 @@ body.prep-gen-lock {
 #prep-tabs {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;            /* NEW — computed height becomes 100% (not auto), so shadow .tabs height:inherit resolves to a definite value */
+  --fw-tabs-height: 100%;  /* NEW — directly sets shadow .tabs height via Crayons custom property, bypassing inherit as a backup path */
   display: flex;
   flex-direction: column;
   overflow: hidden;
