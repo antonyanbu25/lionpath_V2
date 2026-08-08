@@ -1198,6 +1198,7 @@ export async function renderCallsListView(container, session, opts = {}) {
       </div>`;
 
     wireCallListFilters(container, listFiltered, enrichState.deals, enrichState.accounts, { ...opts, liveFilters }, paint);
+    wireCallListClicks(container, opts);
 
     void enrichState.promise?.then(() => {
       const activeFilters = {
