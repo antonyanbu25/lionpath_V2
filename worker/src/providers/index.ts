@@ -129,13 +129,27 @@ export function getPostCallProvider(env: ProviderEnv & FirestoreEnv): LlmProvide
       : wrapWithUsageRecording(resolveProvider(provider, env), env);
   return {
     async generate(req: LlmRequest): Promise<LlmResult> {
-      const temperature = req.temperature ?? 0;
-      const seed = req.seed ?? postcallSeedFromPrompt(req.passName, req.user);
-      return inner.generate({
+      const retryAttempt = req.retryAttempt ?? 0;
+      const baseSeed = req.seed ?? postcallSeedFromPrompt(req.passName, req.user);
+      const seed = retryAttempt > 0 ? baseSeed + retryAttempt * 7919 : baseSeed;
+      const temperature = retryAttempt > 0 ? Math.max(0.15, req.temperature ?? 0) : req.temperature ?? 0;
+      const result = await inner.generate({
         ...req,
+        retryAttempt,
         temperature,
         seed,
       });
+      if (retryAttempt > 0) {
+        logInfo("[postcall-llm] retry complete", {
+          passName: req.passName,
+          retryAttempt,
+          seed,
+          temperature,
+          finishReason: result.finishReason ?? "unknown",
+          outputTokens: result.usage?.outputTokens ?? 0,
+        });
+      }
+      return result;
     },
   };
 }

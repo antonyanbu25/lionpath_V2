@@ -10,8 +10,10 @@
 
 import { extractJson } from "../json";
 import { getPostCallProvider } from "../providers";
-import type { ProviderEnv } from "../providers/types";
+import type { LlmProvider, LlmResult, ProviderEnv } from "../providers/types";
+import { logInfo } from "../logger";
 import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
+import { jsonrepair } from "jsonrepair";
 import {
   TC_SLOT_KEYS,
   TC_STATUSES,
@@ -104,6 +106,52 @@ interface RawCommit {
     optedInAfterDemo?: boolean | null;
   };
   [key: string]: unknown;
+}
+
+function safeParseJson<T>(text: string): T {
+  const parse = (raw: string): T => {
+    const parsed = extractJson<T>(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Model JSON was not an object.");
+    }
+    return parsed;
+  };
+  try {
+    return parse(text);
+  } catch (firstErr) {
+    try {
+      return parse(jsonrepair(text));
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+
+function retryPrompt(input: PostCallCommitInput, parsed: ReturnType<typeof parseTranscript>, omitTranscript: boolean): string {
+  return [
+    userPrompt(input, parsed, omitTranscript),
+    "",
+    "Your previous response was truncated. Produce the COMPLETE JSON in a single response. Keep the justification field under 150 words. Do not include any text outside the JSON object.",
+  ].join("\n");
+}
+
+function continuationPrompt(partialJson: string): string {
+  return [
+    "The previous response ended before the JSON object was complete.",
+    "Continue from the exact final character of the partial JSON below.",
+    "Return only the missing JSON suffix needed to complete the object. Do not repeat any prefix.",
+    "",
+    "PARTIAL JSON:",
+    partialJson,
+  ].join("\n");
+}
+
+function logCommitRetry(label: string, result: LlmResult): void {
+  logInfo("[postcall-commit] retry result", {
+    label,
+    finishReason: result.finishReason ?? "unknown",
+    outputTokens: result.usage?.outputTokens ?? 0,
+  });
 }
 
 /** A slot without evidence is not a slot — it collapses to null rather than an empty claim. */
@@ -316,13 +364,20 @@ export async function runPostCallCommit(
   env: Env,
   input: PostCallCommitInput,
 ): Promise<PostCallCommitResult> {
+  return runPostCallCommitWithProvider(env, input, getPostCallProvider(env));
+}
+
+export async function runPostCallCommitWithProvider(
+  env: Env,
+  input: PostCallCommitInput,
+  provider: LlmProvider,
+): Promise<PostCallCommitResult> {
   const transcript = input.transcript?.trim();
   if (!transcript) {
     throw Object.assign(new Error("transcript is required."), { status: 400 });
   }
 
   const parsed = parseTranscript(transcript);
-  const provider = getPostCallProvider(env);
   const effort = env.POSTCALL_EFFORT || env.EFFORT || "low";
   const transcriptCache = transcriptCacheHandle(input.transcriptCaches, "tail6000");
 
@@ -342,14 +397,13 @@ export async function runPostCallCommit(
 
   let raw: Partial<RawCommit>;
   try {
-    raw = extractJson<Partial<RawCommit>>(result.text);
+    raw = safeParseJson<Partial<RawCommit>>(result.text);
   } catch (firstErr) {
-    // Model output was truncated/malformed at 4000 tokens. Retry once with a
-    // larger budget so the JSON can complete.
+    const partialJson = result.text;
     result = await provider.generate({
       maxTokens: 6000,
       system: systemPrompt(),
-      user: userPrompt(input, parsed, !!transcriptCache),
+      user: retryPrompt(input, parsed, !!transcriptCache),
       effort,
       research: false,
       thinkingBudget: 0,
@@ -358,8 +412,35 @@ export async function runPostCallCommit(
       userId: input.userId,
       callId: input.callId ?? undefined,
       cachedContent: transcriptCache,
+      retryAttempt: 1,
     });
-    raw = extractJson<Partial<RawCommit>>(result.text);
+    logCommitRetry("complete-json", result);
+    try {
+      raw = safeParseJson<Partial<RawCommit>>(result.text);
+    } catch (secondErr) {
+      const continuation = await provider.generate({
+        maxTokens: 8000,
+        system: systemPrompt(),
+        user: continuationPrompt(partialJson),
+        effort,
+        research: false,
+        thinkingBudget: 0,
+        passName: "commit",
+        userId: input.userId,
+        callId: input.callId ?? undefined,
+        retryAttempt: 2,
+        temperature: 0.2,
+      });
+      logCommitRetry("continuation", continuation);
+      try {
+        raw = safeParseJson<Partial<RawCommit>>(`${partialJson}${continuation.text}`);
+      } catch {
+        const err = new Error(
+          `Technical commit JSON parse failed after 3 attempts. Initial: ${(firstErr as Error).message}. Retry: ${(secondErr as Error).message}. Raw output: ${result.text}`,
+        );
+        throw Object.assign(err, { rawOutput: result.text, partialJson });
+      }
+    }
   }
 
   const technicalCommit = normalizeCommitOutput(raw);

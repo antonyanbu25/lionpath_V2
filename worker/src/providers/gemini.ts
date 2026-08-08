@@ -287,7 +287,7 @@ function parseGeminiResponse(
   // LlmResult.citations / .searchQueries are declared but were never populated, so every
   // consumer of grounded provenance read undefined — the source table, the citation
   // numbering and the confidence gates all degraded silently rather than failing.
-  const out: LlmResult = { text };
+  const out: LlmResult = { text, finishReason: cand.finishReason };
   const meta = cand.groundingMetadata;
   const citations = extractCitations(meta);
   if (citations.length) out.citations = citations;

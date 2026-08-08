@@ -55,6 +55,8 @@ export interface LlmRequest {
   temperature?: number;
   /** Fixed RNG seed for reproducible sampling (Gemini generationConfig.seed). */
   seed?: number;
+  /** Post-call retry attempt. Attempt 0 preserves deterministic first-attempt behavior. */
+  retryAttempt?: number;
   /** Prep pipeline step label — included in Gemini error messages for debugging. */
   step?: string;
   /** Firestore usage attribution — set by route handlers when available. */
@@ -91,6 +93,8 @@ export interface LlmResult {
   searchEntryPointHtml?: string;
   /** Present when the provider returned token usage metadata. */
   usage?: LlmUsage;
+  /** Provider finish reason, when available. */
+  finishReason?: string;
 }
 
 export interface LlmProvider {

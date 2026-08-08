@@ -1,8 +1,9 @@
 /**
  * Unit tests for Pass 5 technical commit normalize + delta helpers (no LLM).
  */
-import { normalizeCommitOutput, buildTcDeltaDrafts } from "../src/postcall/commit.ts";
+import { normalizeCommitOutput, buildTcDeltaDrafts, runPostCallCommitWithProvider } from "../src/postcall/commit.ts";
 import { TC_SLOT_KEYS } from "../src/domain-model/technical-commit.ts";
+import type { LlmProvider, LlmRequest } from "../src/providers/types.ts";
 
 const checks: [string, boolean][] = [];
 
@@ -85,6 +86,78 @@ const noMovement = buildTcDeltaDrafts(
 checks.push(
   ["case-insensitive slot compare", noMovement.find((d) => d.field === "incumbent")?.changeType === "confirmed"],
   ["unchanged status emits no delta", !noMovement.some((d) => d.field === "status")],
+);
+
+const validRetryCommit = JSON.stringify({
+  status: "yes",
+  justification: "The buyer confirmed the technical path after reviewing the integration and data flow.",
+  ...Object.fromEntries(
+    TC_SLOT_KEYS.map((key) => [
+      key,
+      key === "incumbent"
+        ? {
+            value: "Zendesk",
+            evidence: "We are moving off Zendesk if this integration works",
+            surfaced: true,
+          }
+        : { value: "", evidence: "not surfaced", surfaced: false },
+    ]),
+  ),
+  aiAttach: { surfaced: false },
+});
+
+const retryRequests: LlmRequest[] = [];
+const retryProvider: LlmProvider = {
+  async generate(req) {
+    retryRequests.push(req);
+    if (retryRequests.length === 1) {
+      return {
+        text: "not valid json",
+        finishReason: "STOP",
+        usage: {
+          model: "mock",
+          promptTokens: 100,
+          outputTokens: 40,
+          cachedTokens: 0,
+          groundingQueries: 0,
+          latencyMs: 1,
+        },
+      };
+    }
+    return {
+      text: validRetryCommit,
+      finishReason: "STOP",
+      usage: {
+        model: "mock",
+        promptTokens: 100,
+        outputTokens: 220,
+        cachedTokens: 0,
+        groundingQueries: 0,
+        latencyMs: 1,
+      },
+    };
+  },
+};
+
+const retryResult = await runPostCallCommitWithProvider(
+  {},
+  {
+    transcript:
+      "[00:01] SE: The integration uses the standard connector.\n[00:08] Customer: We are moving off Zendesk if this integration works.",
+  },
+  retryProvider,
+);
+
+checks.push(
+  ["truncated first commit retries once", retryRequests.length === 2],
+  ["retry uses larger token budget", retryRequests[1]?.maxTokens === 6000],
+  ["retry carries attempt marker", retryRequests[1]?.retryAttempt === 1],
+  [
+    "retry prompt asks for complete concise JSON",
+    retryRequests[1]?.user.includes("Produce the COMPLETE JSON") &&
+      retryRequests[1]?.user.includes("justification field under 150 words"),
+  ],
+  ["retry result normalized", retryResult.technicalCommit.status === "yes"],
 );
 
 let failed = 0;
