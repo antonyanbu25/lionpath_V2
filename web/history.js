@@ -238,7 +238,9 @@ export async function syncHistoryOnLogin(email, opts = {}) {
       return local;
     }
 
-    const merged = mergeHistoryLists(remote, local);
+    // Worker is authoritative (has full result blobs). Local overrides would
+    // corrupt records already stripped by the old mergePostCallRecordsIntoLocal bug.
+    const merged = mergeHistoryLists(local, remote);
     writeAll(normalized, merged);
 
     const remoteIds = new Set(remote.map((r) => r.id));
