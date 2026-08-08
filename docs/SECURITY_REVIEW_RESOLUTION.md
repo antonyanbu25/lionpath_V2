@@ -133,12 +133,18 @@ actions match rules-permitted actions per role.
 
 **Finding:** No dedicated rate limiting beyond the per-user token budget.
 
-**Status: 🔄 IN PROGRESS — per-request rate limiter being added** (plan with GLM, implement with Codex)
+**Status: ✅ FIXED & DEPLOYED** (commit `0b4b4b0`)
 
-**Current state:** A per-user daily token budget already exists (`token-budget.ts`,
-returns 429 before LLM calls). A per-request rate limiter is being added to also cap
-raw request floods. Impact on normal SE usage (pre-call, post-call, dashboard) is being
-assessed to ensure it does NOT block legitimate use.
+**Fix:** Added a per-request rate limiter (`worker/src/rate-limit.ts`) — in-memory fixed
+60s window counter per user, **120 req/min with 600 burst allowance**. Exempts
+`/api/config`, `/api/health/*`, `/api/zoom/status` so polling and Docker healthchecks
+are unaffected. Wired into both the CF Worker entry and the Node server's Video Pass 2
+intercept. Configurable via `RATE_LIMIT_*` env vars (kill-switch `RATE_LIMIT_ENABLED=0`).
+
+**Impact on normal SE usage:** A single SE generates ~115 HTTP requests/day (~0.08
+req/s average); worst-case burst is 15 requests in one minute (all post-call passes +
+page load). **15 << 120 — normal pre-call, post-call, and dashboard usage never trips
+the limiter.** It only catches script/loop abuse, retry storms, or brute-force floods.
 
 ---
 
@@ -153,12 +159,11 @@ assessed to ensure it does NOT block legitimate use.
 | P1-1 rules vs UI guard parity | P1 | ❌ NOT DONE |
 | P1-2 self-role-escalation regression test | P1 | ✅ DONE |
 | P2-1 isDemoManagerEmail spoofable | P2 | ✅ MITIGATED |
-| P2-2 no rate-limiting | P2 | 🔄 IN PROGRESS |
+| P2-2 no rate-limiting | P2 | ✅ FIXED & DEPLOYED |
 
 ---
 
 ## Immediate action items
 
-1. **Complete the per-request rate limiter** (P2-2) — in progress.
-2. **Redeploy Cloud Run** with the P0-2 hard-fail when janus is stood up (VPS is done).
-3. **Optional:** P1-1 rules/UI parity test as a follow-up.
+1. **Redeploy Cloud Run** with the P0-2 hard-fail + P2-2 rate limiter when janus is stood up (VPS is done).
+2. **Optional:** P1-1 rules/UI parity test as a follow-up.
