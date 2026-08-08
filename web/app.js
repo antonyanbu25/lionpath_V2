@@ -197,6 +197,8 @@ let pendingDealFallbackAccountId = null;
 let dealPanelRenderGen = 0;
 /** Bumps on each call panel render. stale async renders must not overwrite the DOM. */
 let callPanelRenderGen = 0;
+const callPanelRendersInFlight = new Map();
+const dirtyCallPanelRenders = new Set();
 /** Bumps on each account panel render. stale async renders must not overwrite the DOM. */
 let accountPanelRenderGen = 0;
 /** Bumps on each contacts panel render. stale async renders must not overwrite the DOM. */
@@ -1425,6 +1427,7 @@ function scheduleCallRecordPanelRefresh(id, { immediate = false, sections = [] }
   }
   callRecordRefreshTargetId = id;
   window.clearTimeout(callRecordRefreshTimer);
+  callRecordRefreshTimer = null;
   if (immediate) {
     callRecordRefreshTargetId = null;
     void renderCallPanel();
@@ -1439,7 +1442,28 @@ function scheduleCallRecordPanelRefresh(id, { immediate = false, sections = [] }
   }, 900);
 }
 
-async function renderCallPanel() {
+function renderCallPanel() {
+  const renderKey = selectedCallId || "__calls-list__";
+  const inFlight = callPanelRendersInFlight.get(renderKey);
+  if (inFlight) {
+    dirtyCallPanelRenders.add(renderKey);
+    return inFlight;
+  }
+
+  const render = renderCallPanelOnce().finally(() => {
+    if (callPanelRendersInFlight.get(renderKey) !== render) return;
+    callPanelRendersInFlight.delete(renderKey);
+    const needsRefresh = dirtyCallPanelRenders.delete(renderKey);
+    const currentKey = selectedCallId || "__calls-list__";
+    if (needsRefresh && currentView === "calls" && currentKey === renderKey) {
+      void renderCallPanel();
+    }
+  });
+  callPanelRendersInFlight.set(renderKey, render);
+  return render;
+}
+
+async function renderCallPanelOnce() {
   const panel = $("call-panel");
   if (!panel || !currentSession?.email) return;
   const gen = ++callPanelRenderGen;
@@ -2167,21 +2191,23 @@ async function showApp(session, opts = {}) {
       scheduleProspectEmailAutofillGuard();
     }
 
-    try {
-      /* DEV-ONLY-START */
-      if (!prodBundle && !isFirebaseAuthEnabled()) {
-        const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
-        await seedDevDomainIfNeeded();
-      }
-      /* DEV-ONLY-END */
-      const enriched = (await syncSessionWithDomainStore(currentSession)) || currentSession;
-      if (sessionStillValid() && enriched?.email) {
-        currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
-        refreshUserMenuFromSession();
-      }
-    } catch (err) {
-      console.warn("[app] session enrich before nav failed:", err?.message || err);
+    /* DEV-ONLY-START */
+    if (!prodBundle && !isFirebaseAuthEnabled()) {
+      const { seedDevDomainIfNeeded } = await import("./domain/seed-dev.js");
+      await seedDevDomainIfNeeded();
     }
+    /* DEV-ONLY-END */
+
+    void syncSessionWithDomainStore(currentSession)
+      .then((enriched) => {
+        if (sessionStillValid() && enriched?.email) {
+          currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
+          refreshUserMenuFromSession();
+        }
+      })
+      .catch((err) => {
+        console.warn("[app] deferred session enrich failed:", err?.message || err);
+      });
 
     applySessionAuthGetters();
     updateNavForRole();

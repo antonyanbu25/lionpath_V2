@@ -1474,7 +1474,6 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     const refreshedActivity = await buildRecentActivity(remoteRecords, remoteMetrics.usesLegacyCoach, opts);
     if (!container.isConnected) return;
     const taskMetrics = aggregateTaskMetrics(listTasks(email));
-    const grid = container.querySelector(".launch-kpi-grid");
     const prepsCount =
       remotePreps ??
       Number(
@@ -1483,18 +1482,14 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
           ?.textContent?.replace(/\s*↻\s*/g, "")
           .trim() || 0,
       );
-    if (grid) {
-      if (realtimePreps) {
-        patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
-      } else {
-        grid.outerHTML = renderLaunchKpis(taskMetrics, remoteLaunchMetrics, prepsCount);
-        wireLaunchKpiNav(container, email, opts);
-      }
-    }
+    patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
     const section = container.querySelector(".dash-side-recent");
     if (section) {
-      section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
-      wireRecentActivitySection(container, opts);
+      const signature = recentActivitySignature(refreshedActivity);
+      if (section.dataset.activitySignature !== signature) {
+        section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
+        wireRecentActivitySection(container, opts);
+      }
     }
     wireCallLinks(container, opts.onOpenCall);
     writeKpiSnapshot(email, kpiSnapshotFromMetrics(taskMetrics, remoteLaunchMetrics, prepsCount));
@@ -1655,9 +1650,10 @@ async function buildRecentActivity(callRecords, usesLegacyCoach = false, opts = 
 }
 
 function renderRecentCallsSideWithItems(items, opts = {}) {
+  const signature = recentActivitySignature(items);
   if (!items.length) {
     return `
-      <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
+      <section class="dash-section launch-side dash-side-recent" data-activity-signature="${signature}" aria-labelledby="recent-heading">
         <fw-card class="launch-activity-card">
           <div class="launch-activity-head">
             <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
@@ -1670,7 +1666,7 @@ function renderRecentCallsSideWithItems(items, opts = {}) {
   const rows = items.map((i) => i.html).join("");
 
   return `
-    <section class="dash-section launch-side dash-side-recent" aria-labelledby="recent-heading">
+    <section class="dash-section launch-side dash-side-recent" data-activity-signature="${signature}" aria-labelledby="recent-heading">
       <fw-card class="launch-activity-card">
         <div class="launch-activity-head">
           <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
@@ -1679,6 +1675,18 @@ function renderRecentCallsSideWithItems(items, opts = {}) {
         ${rows}
       </fw-card>
     </section>`;
+}
+
+function recentActivitySignature(items) {
+  let hash = 2166136261;
+  for (const item of items) {
+    const value = `${item.kind}:${item.ts}:${item.html}`;
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${items.length}:${hash >>> 0}`;
 }
 
 function mountDashboardTasks(container, email, opts = {}) {
