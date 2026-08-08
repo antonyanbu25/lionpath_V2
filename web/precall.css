@@ -140,8 +140,11 @@ body.prep-gen-lock {
 #view-precall:has(#prep-result-view:not([hidden])) {
   flex: 1 1 auto;
   min-height: 0;
-  height: auto;
-  max-height: none;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .prep-form-wrap {
@@ -1101,8 +1104,9 @@ body.prep-gen-lock {
 
 .prep-tab-panel-wrap {
   flex: 1 1 auto;
-  overflow-y: auto;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
