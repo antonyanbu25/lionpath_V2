@@ -6,7 +6,7 @@ import { listAnalysesForSession, filterCallRecordsForList } from "./domain/se-ac
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
 import { resolveDealId, resolveCallType } from "./call-view.js";
 import { formatTypeComposite, typeComposite, isEligibleForAggregate } from "./quality-score.js";
-import { getDeal, DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
+import { DEAL_TYPE_LABELS, listDealsForAccount } from "./domain/deal-service.js";
 import { listDealsFromHistory } from "./domain/account-service.js";
 import { getStore } from "./domain/store.js";
 import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
@@ -729,6 +729,28 @@ async function enrichDealsAndAccounts(records, session = null, briefs = []) {
   const accountIds = new Set();
   const store = getStore();
 
+  const batchGetByIds = async (collection, ids, fallbackGet, label) => {
+    const unique = [...new Set([...ids].filter(Boolean))];
+    if (!unique.length) return [];
+    if (typeof store.getReadModels === "function") {
+      try {
+        return await store.getReadModels(collection, unique);
+      } catch (err) {
+        console.warn(`[calls-list] batch ${label} load skipped:`, err?.message || err);
+      }
+    }
+    return Promise.all(
+      unique.map(async (id) => {
+        try {
+          return fallbackGet ? await fallbackGet(id) : null;
+        } catch (err) {
+          console.warn(`[calls-list] ${label} skipped:`, id, err?.message || err);
+          return null;
+        }
+      }),
+    );
+  };
+
   for (const rec of records) {
     const did = resolveDealId(rec);
     if (did) dealIds.add(did);
@@ -743,19 +765,17 @@ async function enrichDealsAndAccounts(records, session = null, briefs = []) {
     if (aid) accountIds.add(aid);
   }
 
-  await Promise.all(
-    [...dealIds].map(async (id) => {
-      try {
-        const deal = await getDeal(id);
-        if (deal) {
-          deals.set(id, deal);
-          if (deal.accountId) accountIds.add(deal.accountId);
-        }
-      } catch (err) {
-        console.warn("[calls-list] getDeal skipped:", id, err?.message || err);
-      }
-    }),
+  const fetchedDeals = await batchGetByIds(
+    "deals",
+    dealIds,
+    (id) => (store.getDeal ? store.getDeal(id) : null),
+    "getDeal",
   );
+  for (const deal of fetchedDeals || []) {
+    if (!deal?.id) continue;
+    deals.set(deal.id, deal);
+    if (deal.accountId) accountIds.add(deal.accountId);
+  }
 
   // History-synthesized deal_hist_* ids are not in Firestore — fill from local history.
   const missingDealIds = [...dealIds].filter((id) => !deals.has(id));
@@ -881,17 +901,16 @@ async function enrichDealsAndAccounts(records, session = null, briefs = []) {
     }
   }
 
-  await Promise.all(
-    [...accountIds].map(async (id) => {
-      if (accounts.has(id)) return;
-      try {
-        const account = store.getAccount ? await store.getAccount(id) : null;
-        if (account) accounts.set(id, account);
-      } catch (err) {
-        console.warn("[calls-list] getAccount skipped:", id, err?.message || err);
-      }
-    }),
+  const missingAccountIds = new Set([...accountIds].filter((id) => !accounts.has(id)));
+  const fetchedAccounts = await batchGetByIds(
+    "accounts",
+    missingAccountIds,
+    (id) => (store.getAccount ? store.getAccount(id) : null),
+    "getAccount",
   );
+  for (const account of fetchedAccounts || []) {
+    if (account?.id && !accounts.has(account.id)) accounts.set(account.id, account);
+  }
 
   await Promise.all(
     [...accountIds].map(async (accountId) => {

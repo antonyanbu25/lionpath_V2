@@ -635,6 +635,14 @@ export function renderDealArrModule(deal, allLines, opts = {}) {
  */
 export function mountDealArrModule(container, deal, lines, opts = {}) {
   if (!container || !deal) return;
+  const existing = container._dealArrController;
+  if (existing?.dealId === deal.id && typeof existing.update === "function") {
+    existing.update(deal, lines || []);
+    return existing;
+  }
+  if (existing && typeof existing.dispose === "function") {
+    existing.dispose();
+  }
 
   const session = opts.session || null;
   const getAuthHeaders = opts.getAuthHeaders || (async () => ({}));
@@ -870,5 +878,26 @@ export function mountDealArrModule(container, deal, lines, opts = {}) {
     });
   };
 
+  const controller = {
+    dealId: deal.id,
+    update(nextDeal, nextLines = []) {
+      if (!nextDeal || nextDeal.id !== controller.dealId) return;
+      clearTimeout(recomputeTimer);
+      clearTimeout(persistTimer);
+      currentDeal = nextDeal;
+      currentLines = nextLines || [];
+      fieldState = buildArrFieldState(currentDeal, currentLines);
+      render();
+    },
+    dispose() {
+      clearTimeout(recomputeTimer);
+      clearTimeout(persistTimer);
+      if (container._dealArrController === controller) {
+        container._dealArrController = null;
+      }
+    },
+  };
+  container._dealArrController = controller;
   render();
+  return controller;
 }

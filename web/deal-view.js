@@ -1456,6 +1456,17 @@ function stopDealViewSubscriptions(container) {
       container[key] = null;
     }
   }
+  container.querySelector("#deal-arr-module-mount")?._dealArrController?.dispose?.();
+}
+
+function updateDealArrModule(mount, deal, lines, opts = {}) {
+  if (!mount || !deal) return null;
+  const existing = mount._dealArrController;
+  if (existing?.dealId === deal.id && typeof existing.update === "function") {
+    existing.update(deal, lines || []);
+    return existing;
+  }
+  return mountDealArrModule(mount, deal, lines || [], opts);
 }
 
 /** Instant preview from local history before Firestore resolves. */
@@ -1973,8 +1984,8 @@ export async function renderDealView(container, session, opts = {}) {
           console.warn("[deal-view] ARR module mount failed:", err?.message || err);
         }
       }
+      let latestDetail = detail;
       if (typeof opts.subscribeDealDetail === "function") {
-        let latestDetail = detail;
         container._dealDetailUnsub = opts.subscribeDealDetail(async (snap) => {
           if (!snap?.deal || (opts.shouldApply && !opts.shouldApply())) return;
           const nextExtras = {
@@ -2017,7 +2028,7 @@ export async function renderDealView(container, session, opts = {}) {
           }
           const nextArrMount = container.querySelector("#deal-arr-module-mount");
           if (nextArrMount) {
-            mountDealArrModule(nextArrMount, next.selectedDeal, next.arrLines || [], {
+            updateDealArrModule(nextArrMount, next.selectedDeal, next.arrLines || [], {
               session: activeSession,
               getAuthHeaders: getWorkerAuthHeaders,
             });
@@ -2028,9 +2039,10 @@ export async function renderDealView(container, session, opts = {}) {
         container._dealArrUnsub = opts.subscribeArrLinesByDeal((arrLines) => {
           if (opts.shouldApply && !opts.shouldApply()) return;
           const arrMount = container.querySelector("#deal-arr-module-mount");
-          const currentDeal = container.querySelector(".deal-record") ? detail.selectedDeal : null;
+          const currentDeal = container.querySelector(".deal-record") ? latestDetail.selectedDeal : null;
           if (!arrMount || !currentDeal) return;
-          mountDealArrModule(arrMount, currentDeal, arrLines || [], {
+          latestDetail = { ...latestDetail, arrLines: arrLines || [] };
+          updateDealArrModule(arrMount, currentDeal, arrLines || [], {
             session: activeSession,
             getAuthHeaders: getWorkerAuthHeaders,
           });

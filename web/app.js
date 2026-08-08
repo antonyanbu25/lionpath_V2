@@ -494,8 +494,16 @@ function docsToRemoteBriefs(prepDocs, prepBriefDocs) {
   return briefs;
 }
 
-/** Domain owner ids for prepBriefs — authIndex wins over usr_dummy_* placeholders. */
-async function resolveRemoteBriefsOwnerIds(session = currentSession) {
+function warnIfOwnerResolvedToAuthUid(ownerId) {
+  if (ownerId && fb?.auth?.currentUser?.uid && ownerId === fb.auth.currentUser.uid) {
+    /* DEV-ONLY-START */
+    console.warn("[owner-id] resolved to firebase uid — write path mismatch");
+    /* DEV-ONLY-END */
+  }
+}
+
+/** Domain owner id for owner-scoped Firestore collections — authIndex wins over placeholders. */
+async function resolveRemoteOwnerId(session = currentSession) {
   const syncId = effectiveSessionUserId(session);
   let resolvedId = syncId;
   try {
@@ -505,13 +513,19 @@ async function resolveRemoteBriefsOwnerIds(session = currentSession) {
       (await resolveEffectiveOwnerId(session, undefined, fb)) ||
       syncId;
   } catch (err) {
-    console.warn("[app] resolveRemoteBriefsOwnerIds failed:", err?.message || err);
+    console.warn("[app] resolveRemoteOwnerId failed:", err?.message || err);
   }
-  const ownerIds = [...new Set([resolvedId, syncId].filter(Boolean))].filter(
-    (id) => !String(id).startsWith("usr_dummy_"),
-  );
+  const ownerId = resolvedId && !String(resolvedId).startsWith("usr_dummy_") ? resolvedId : null;
+  warnIfOwnerResolvedToAuthUid(ownerId);
+  return ownerId;
+}
+
+/** Domain owner ids for prepBriefs — authIndex wins over usr_dummy_* placeholders. */
+async function resolveRemoteBriefsOwnerIds(session = currentSession) {
+  const ownerId = await resolveRemoteOwnerId(session);
+  const ownerIds = ownerId ? [ownerId] : [];
   // #region agent log
-  if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{syncId:syncId?.slice?.(0,28),resolvedId:resolvedId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
+  if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{ownerId:ownerId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   return ownerIds;
 }
@@ -703,22 +717,30 @@ function buildSubscribeRemoteCalls() {
     if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db || typeof onChange !== "function") {
       return () => {};
     }
-    const user = fb.auth.currentUser;
-    const q = fb.query(
-      fb.collection(fb.db, "postCalls"),
-      fb.where("ownerId", "==", user.uid),
-      fb.limit(200),
-    );
-    const unsub = fb.onSnapshot(
-      q,
-      (snap) => {
-        const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        onChange(calls);
-      },
-      // silent — Firestore postCalls may not exist for this user
-      (err) => {},
-    );
-    return () => unsub();
+    let cancelled = false;
+    let unsub = null;
+    void resolveRemoteOwnerId(currentSession).then((ownerId) => {
+      if (cancelled || !ownerId) return;
+      const q = fb.query(
+        fb.collection(fb.db, "postCalls"),
+        fb.where("ownerId", "==", ownerId),
+        fb.limit(200),
+      );
+      unsub = fb.onSnapshot(
+        q,
+        (snap) => {
+          const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          onChange(calls);
+        },
+        // silent — Firestore postCalls may not exist for this user
+        (err) => {},
+      );
+      if (cancelled && typeof unsub === "function") unsub();
+    });
+    return () => {
+      cancelled = true;
+      if (typeof unsub === "function") unsub();
+    };
   };
 }
 

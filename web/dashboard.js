@@ -1400,13 +1400,9 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   if (!container.isConnected) return;
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const prepsCount = loadAllLocalBriefs().length;
-  // Replace the entire KPI grid in one DOM operation (not 3 individual
-  // patches) so all three cards update simultaneously — otherwise the
-  // user sees "calls" → pause → "tasks" → "briefs" sequentially.
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
-    grid.outerHTML = renderLaunchKpis(taskMetrics, callMetrics, prepsCount);
-    wireLaunchKpiNav(container, email, opts);
+    patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount);
   }
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
   await updateRecentActivitySection(container, callRecords, usesLegacyCoach, opts);
@@ -1536,7 +1532,11 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
       const signature = recentActivitySignature(refreshedActivity);
       if (section.dataset.activitySignature !== signature) {
         section.outerHTML = renderRecentCallsSideWithItems(refreshedActivity, { onViewAll: true });
-        wireRecentActivitySection(container, opts);
+        const newSection = container.querySelector(".dash-side-recent");
+        if (newSection) {
+          wireRecentActivitySection(newSection, opts);
+          wireCallLinks(newSection, opts.onOpenCall);
+        }
       }
     }
     wireCallLinks(container, opts.onOpenCall);
@@ -1785,7 +1785,10 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   if (!section) return;
   const items = await buildRecentActivity(callRecords, usesLegacyCoach, opts);
   section.outerHTML = renderRecentCallsSideWithItems(items, { onViewAll: true });
-  wireRecentActivitySection(container, opts);
+  const newSection = container.querySelector(".dash-side-recent");
+  if (!newSection) return;
+  wireRecentActivitySection(newSection, opts);
+  wireCallLinks(newSection, opts.onOpenCall);
 }
 
 async function updateLaunchKpis(container, email, opts = {}) {

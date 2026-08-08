@@ -3240,6 +3240,11 @@
   border-radius: 8px;
   padding: 12px 14px;
   background: var(--fw-color-bg-primary, #fff);
+  min-height: 260px;
+}
+
+.deal-arr-module-mount {
+  min-height: 260px;
 }
 
 .deal-arr-header {
