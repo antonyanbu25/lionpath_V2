@@ -15,6 +15,7 @@ import {
 } from "./field-masks.js";
 import {
   detailArray,
+  detailFromPostCall,
   dealSignalsFromPostCalls,
   tcDeltasFromPostCalls,
   productGapsFromPostCalls,
@@ -45,13 +46,17 @@ export function createFirestoreStore(fb) {
 
   const {
     db, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-    query, where, orderBy, limit, documentId, writeBatch, select,
+    query, where, orderBy, limit, documentId, writeBatch, select, onSnapshot,
   } = fb;
 
   const WHERE_IN_CHUNK = 30;
 
   function mapSnapDocs(snap) {
     return snap.docs.map((d) => normalizeTimestamps({ id: d.id, ...d.data() }));
+  }
+
+  function mapDocSnap(snap) {
+    return snap?.exists?.() ? normalizeTimestamps({ id: snap.id, ...snap.data() }) : null;
   }
 
   function normalizeTimestamps(row) {
@@ -178,6 +183,73 @@ export function createFirestoreStore(fb) {
     return fetchById(col, id);
   }
 
+  function sortRows(rows, sortKey = "createdAt", dir = "desc") {
+    const sign = dir === "asc" ? 1 : -1;
+    return [...(rows || [])].sort((a, b) => {
+      const av = a?.[sortKey] || 0;
+      const bv = b?.[sortKey] || 0;
+      if (av === bv) return String(a?.id || "").localeCompare(String(b?.id || ""));
+      return av > bv ? sign : -sign;
+    });
+  }
+
+  function subscribeQueryRows(col, field, value, onRows, opts = {}) {
+    if (!onSnapshot) return () => {};
+    const key = String(value || "").trim();
+    if (!key || typeof onRows !== "function") return () => {};
+    const q = query(collection(db, col), where(field, "==", key));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const rows = mapSnapDocs(snap);
+        onRows(opts.sortKey ? sortRows(rows, opts.sortKey, opts.dir) : rows);
+      },
+      (err) => console.warn(`[firestore] ${col} snapshot failed:`, err?.message || err),
+    );
+  }
+
+  function subscribeDocRow(col, id, onRow) {
+    if (!onSnapshot) return () => {};
+    const key = String(id || "").trim();
+    if (!key || typeof onRow !== "function") return () => {};
+    return onSnapshot(
+      doc(db, col, key),
+      (snap) => onRow(mapDocSnap(snap)),
+      (err) => console.warn(`[firestore] ${col}/${key} snapshot failed:`, err?.message || err),
+    );
+  }
+
+  function subscribeMany(specs, emit) {
+    let cancelled = false;
+    const unsubs = [];
+    const safeEmit = () => {
+      if (!cancelled) emit();
+    };
+    for (const spec of specs) {
+      const unsub =
+        spec.kind === "doc"
+          ? subscribeDocRow(spec.col, spec.id, (row) => {
+              spec.assign(row);
+              safeEmit();
+            })
+          : subscribeQueryRows(
+              spec.col,
+              spec.field,
+              spec.value,
+              (rows) => {
+                spec.assign(rows);
+                safeEmit();
+              },
+              { sortKey: spec.sortKey, dir: spec.dir },
+            );
+      unsubs.push(unsub);
+    }
+    return () => {
+      cancelled = true;
+      for (const unsub of unsubs) unsub?.();
+    };
+  }
+
   const crudDeps = {
     db,
     collection,
@@ -197,6 +269,109 @@ export function createFirestoreStore(fb) {
 
   const storeApi = {
     mode: "firestore",
+
+    subscribeDealsByOwner(ownerId, cb) {
+      return subscribeQueryRows("deals", "ownerId", ownerId, (rows) => {
+        const sorted = sortRows(rows, "lastActivityAt", "desc").map(omitEmbeddingFields);
+        cb?.(sorted);
+      });
+    },
+
+    subscribeDealDetail(dealId, cb) {
+      const state = {
+        deal: null,
+        dealSummaries: [],
+        technicalCommits: [],
+        dealSignals: [],
+        arrLines: [],
+        productGaps: [],
+        whatWorks: [],
+      };
+      const emit = () => {
+        cb?.({
+          deal: state.deal,
+          summary: sortRows(state.dealSummaries, "generatedAt", "desc")[0] || null,
+          technicalCommit: sortRows(state.technicalCommits, "updatedAt", "desc")[0] || null,
+          dealSignals: sortRows(state.dealSignals, "createdAt", "desc").slice(0, 50),
+          arrLines: sortRows(state.arrLines, "computedAt", "desc").slice(0, 200),
+          productGaps: sortRows(state.productGaps, "createdAt", "desc").slice(0, 500),
+          whatWorks: sortRows(state.whatWorks, "createdAt", "desc").slice(0, 500),
+        });
+      };
+      return subscribeMany(
+        [
+          { kind: "doc", col: "deals", id: dealId, assign: (row) => { state.deal = row; } },
+          { col: "dealSummaries", field: "dealId", value: dealId, assign: (rows) => { state.dealSummaries = rows; } },
+          { col: "technicalCommits", field: "dealId", value: dealId, assign: (rows) => { state.technicalCommits = rows; } },
+          { col: "dealSignals", field: "dealId", value: dealId, assign: (rows) => { state.dealSignals = rows; } },
+          { col: "arrLines", field: "dealId", value: dealId, assign: (rows) => { state.arrLines = rows; } },
+          { col: "productGaps", field: "dealId", value: dealId, assign: (rows) => { state.productGaps = rows; } },
+          { col: "whatWorks", field: "dealId", value: dealId, assign: (rows) => { state.whatWorks = rows; } },
+        ],
+        emit,
+      );
+    },
+
+    subscribeCallDetail(callId, cb) {
+      const state = {
+        postCall: null,
+        scorecards: [],
+        arrLines: [],
+        videoFacts: [],
+        timelineSegments: [],
+        timelineMarkers: [],
+        followUps: [],
+        objections: [],
+        momDrafts: [],
+        meddpiccDeltas: [],
+        tcDeltas: [],
+        dealSignals: [],
+      };
+      const emit = () => {
+        const embedded = detailFromPostCall(state.postCall);
+        cb?.({
+          postCall: state.postCall,
+          scorecards: state.scorecards,
+          videoFacts: embedded.videoFacts.length ? embedded.videoFacts : state.videoFacts,
+          timelineSegments: embedded.timelineSegments.length
+            ? sortRows(embedded.timelineSegments, "startS", "asc")
+            : sortRows(state.timelineSegments, "startS", "asc"),
+          timelineMarkers: embedded.timelineMarkers.length
+            ? sortRows(embedded.timelineMarkers, "atS", "asc")
+            : sortRows(state.timelineMarkers, "atS", "asc"),
+          followUps: embedded.followUps.length ? embedded.followUps : state.followUps,
+          objections: embedded.objections.length ? embedded.objections : state.objections,
+          momDrafts: embedded.momDrafts.length ? embedded.momDrafts : state.momDrafts,
+          meddpiccDeltas: embedded.meddpiccDeltas.length ? embedded.meddpiccDeltas : state.meddpiccDeltas,
+          tcDeltas: embedded.tcDeltas.length ? embedded.tcDeltas : state.tcDeltas,
+          arrLines: sortRows(state.arrLines, "computedAt", "desc"),
+          dealSignals: embedded.dealSignals.length ? embedded.dealSignals : state.dealSignals,
+        });
+      };
+      return subscribeMany(
+        [
+          { kind: "doc", col: "postCalls", id: callId, assign: (row) => { state.postCall = row; } },
+          { col: "scorecards", field: "callId", value: callId, assign: (rows) => { state.scorecards = rows; } },
+          { col: "arrLines", field: "callId", value: callId, assign: (rows) => { state.arrLines = rows; } },
+          { col: "videoFacts", field: "callId", value: callId, assign: (rows) => { state.videoFacts = rows; } },
+          { col: "timelineSegments", field: "callId", value: callId, assign: (rows) => { state.timelineSegments = rows; } },
+          { col: "timelineMarkers", field: "callId", value: callId, assign: (rows) => { state.timelineMarkers = rows; } },
+          { col: "followUps", field: "callId", value: callId, assign: (rows) => { state.followUps = rows; } },
+          { col: "objections", field: "callId", value: callId, assign: (rows) => { state.objections = rows; } },
+          { col: "momDrafts", field: "callId", value: callId, assign: (rows) => { state.momDrafts = rows; } },
+          { col: "meddpiccDeltas", field: "callId", value: callId, assign: (rows) => { state.meddpiccDeltas = rows; } },
+          { col: "tcDeltas", field: "callId", value: callId, assign: (rows) => { state.tcDeltas = rows; } },
+          { col: "dealSignals", field: "callId", value: callId, assign: (rows) => { state.dealSignals = rows; } },
+        ],
+        emit,
+      );
+    },
+
+    subscribeArrLinesByDeal(dealId, cb) {
+      return subscribeQueryRows("arrLines", "dealId", dealId, (rows) => {
+        cb?.(sortRows(rows, "computedAt", "desc").slice(0, 200));
+      });
+    },
 
     get readCacheEnabled() {
       return readCacheConfig.enabled;
