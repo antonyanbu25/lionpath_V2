@@ -143,8 +143,26 @@ function testMarkers() {
   );
   // Unlocatable gap dropped rather than pinned at a guessed time.
   assert.equal(markers.filter((m) => m.kind === "gap").length, 1);
-  assert.equal(markers[2].label, "integrations · migration");
+  assert.equal(markers[2].label, "Integrations · Migration");
   assert.ok(markers.every((m) => m.source === "transcript"));
+}
+
+function testGapHeadlineAndAtS() {
+  const cues = parseTranscriptCues(VTT);
+  const markers = deriveMarkers(cues, {
+    gaps: [
+      {
+        productArea: "ai_customer_facing",
+        subArea: "deflection",
+        headline: "AI value unproven",
+        atS: 520,
+        verbatim: "We need proof AI works",
+      },
+    ],
+  });
+  assert.equal(markers.length, 1);
+  assert.equal(markers[0].label, "AI value unproven");
+  assert.equal(markers[0].atS, 520);
 }
 
 function testWeakCtaOnlyWhenWeak() {
@@ -202,6 +220,7 @@ testAgendaTalkStaysIntro();
 testShortRunsCollapse();
 testQuoteLocation();
 testMarkers();
+testGapHeadlineAndAtS();
 testWeakCtaOnlyWhenWeak();
 testDedupe();
 testNoTimestampsIsHonest();

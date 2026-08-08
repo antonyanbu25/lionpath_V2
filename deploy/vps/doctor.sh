@@ -12,12 +12,21 @@ echo "=== .env checks ==="
 if [[ ! -f .env ]]; then
   echo "MISSING .env — copy .env.example and set GEMINI_API_KEY"
 else
-  grep -E '^(GEMINI_API_KEY|ALLOWED_ORIGINS)=' .env | sed 's/GEMINI_API_KEY=.*/GEMINI_API_KEY=***redacted***/'
+  grep -E '^(GEMINI_API_KEY|ALLOWED_ORIGINS|FRESHDESK_DOMAIN|FRESHDESK_API_KEY)=' .env \
+    | sed 's/GEMINI_API_KEY=.*/GEMINI_API_KEY=***redacted***/' \
+    | sed 's/FRESHDESK_API_KEY=.*/FRESHDESK_API_KEY=***redacted***/'
   if grep -qE 'ALLOWED_ORIGINS=.*lionpath' .env 2>/dev/null; then
     echo "WARN: ALLOWED_ORIGINS still references lionpath — update to https://portal.benjaminsquare.com"
   fi
   if grep -qE 'GEMINI_API_KEY=(your-gemini-api-key-here)?$' .env 2>/dev/null || ! grep -q '^GEMINI_API_KEY=.\+' .env; then
     echo "WARN: GEMINI_API_KEY missing or placeholder — worker will not start"
+  fi
+  if ! grep -qE '^FRESHDESK_API_KEY=.+' .env 2>/dev/null \
+    || grep -qE '^FRESHDESK_API_KEY=(your-freshdesk-api-key)?$' .env 2>/dev/null; then
+    echo "WARN: FRESHDESK_API_KEY missing or placeholder — Dispute/Feedback tickets will 503"
+  fi
+  if ! grep -qE '^FRESHDESK_DOMAIN=.+' .env 2>/dev/null; then
+    echo "WARN: FRESHDESK_DOMAIN missing — default is janus-assist.freshdesk.com if unset in code"
   fi
 fi
 

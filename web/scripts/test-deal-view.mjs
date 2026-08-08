@@ -369,20 +369,20 @@ function mockContainer() {
 
 const listContainer = mockContainer();
 await renderDealView(listContainer, session);
-assert(listContainer.innerHTML.includes("deal-list-item"), "deal list renders row");
-assert(listContainer.innerHTML.includes("deal-list-view--compact"), "deal list uses compact layout");
+assert(listContainer.innerHTML.includes("deal-list-row"), "deal list renders row");
+assert(listContainer.innerHTML.includes("deal-list-view--labs"), "deal list uses labs layout");
 assert(listContainer.innerHTML.includes("Globex"), "deal list shows account name");
 assert(listContainer.innerHTML.includes("Sorted by traction"), "deal list subtitle mentions traction sort");
-assert(listContainer.innerHTML.includes("deal-list-col--meddpicc"), "deal list has MEDPICC column");
-assert(listContainer.innerHTML.includes("deal-list-col--traction"), "deal list has traction column");
+assert(listContainer.innerHTML.includes("MEDPICC"), "deal list has MEDPICC column");
+assert(listContainer.innerHTML.includes("Traction"), "deal list has traction column");
+assert(listContainer.innerHTML.includes("Call quality"), "deal list has call quality column");
 assert(listContainer.innerHTML.includes("data-deal-sort=\"arr\""), "ARR column is sortable");
-assert(listContainer.innerHTML.includes("data-deal-sort=\"mrr\""), "MRR column is sortable");
 assert(listContainer.innerHTML.includes("deal-list-money--low-confidence"), "low-confidence ARR marked");
-assert(listContainer.innerHTML.includes("60d"), "days silent shown");
 assert(listContainer.innerHTML.includes("Cold"), "traction tag shown");
 assert(!listContainer.innerHTML.includes("deal-list-col--se"), "no primary SE column");
 assert(!listContainer.innerHTML.includes("deal-list-col--qip"), "no QIP column on deal list");
-assert(listContainer.innerHTML.includes("QIP grades you"), "footnote explains QIP vs MEDPICC");
+assert(listContainer.innerHTML.includes("Call Quality Score grades"), "footnote explains Call Quality Score vs MEDPICC");
+assert(listContainer.innerHTML.includes("MEDPICC grades"), "footnote mentions MEDPICC grading");
 assert(
   listContainer.innerHTML.indexOf("Globex expansion") < listContainer.innerHTML.indexOf("Globex NB"),
   "hot deal listed before cold deal when sorted by traction",
@@ -394,7 +394,7 @@ assert(detailContainer.innerHTML.includes("deal-record"), "deal drill uses deal 
 assert(detailContainer.innerHTML.includes("← All deals"), "deals surface uses All deals back");
 assert(detailContainer.innerHTML.includes("Deal summary"), "section 1 deal summary");
 assert(detailContainer.innerHTML.includes("MEDDPICC"), "section 2 MEDDPICC");
-assert(detailContainer.innerHTML.includes("Deal velocity"), "section 3 velocity");
+assert(detailContainer.innerHTML.includes("deal-score-strip"), "labs score strip");
 assert(detailContainer.innerHTML.includes("Traction"), "section 4 traction");
 assert(detailContainer.innerHTML.includes("Recommended action"), "traction recommended action");
 assert(detailContainer.innerHTML.includes("Fitment"), "section 5 fitment");

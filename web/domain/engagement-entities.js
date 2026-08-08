@@ -6,6 +6,7 @@
 import {
   upsertAccountFromPrep,
   findAccountByCompanyName,
+  findAccountByContactEmails,
   ensureSeTeamForPrepActor,
 } from "./account-service.js?v=2.1";
 import { createDealWithExplicitTitle } from "./deal-service.js";
@@ -74,7 +75,7 @@ export function collectContactDraftsFromPayload(payload) {
 /**
  * Resolve account, contacts, and deal routing for an engagement write.
  *
- * Account resolution order: explicit id (payload/meta) → slug/domain lookup → create.
+ * Account resolution order: explicit id → contact email (global) → slug/domain/name → create.
  * Contacts are upserted via `upsertAccountFromPrep` / `resolveContactOnAccount`.
  * Deal id comes from payload/meta/record, engagement session context, or "+ New deal".
  *
@@ -119,7 +120,22 @@ export async function resolveEngagementEntities(session, payload, opts = {}) {
     : payload?.accountId || meta?.accountId || null;
 
   if (!payload?.createNewAccount && explicitAccountId) {
-    knownAccount = await store.getAccount(explicitAccountId);
+    try {
+      knownAccount = await store.getAccount(explicitAccountId);
+    } catch (err) {
+      console.warn(
+        "[engagement-entities] getAccount skipped:",
+        explicitAccountId,
+        err?.message || err,
+      );
+      knownAccount = null;
+    }
+  }
+  if (!knownAccount && !payload?.createNewAccount && participantEmails.length) {
+    knownAccount = await findAccountByContactEmails(participantEmails, {
+      actorId: ownerId,
+      domain: companyDomain,
+    });
   }
   if (!knownAccount && !payload?.createNewAccount && company) {
     knownAccount = await findAccountByCompanyName(company, companyDomain);

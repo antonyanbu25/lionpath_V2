@@ -12,6 +12,7 @@ import { triggerSignInPulse } from "./lion-roar.js";
 import { initSidebar } from "./sidebar.js";
 import { initSidebarIdleAnimation } from "./sidebar-idle.js";
 import { initFeedback } from "./feedback.js";
+import { configureScoreDisputeNotify } from "./score-disputes.js";
 import { initPrepDisputes } from "./prep-disputes.js";
 import {
   authMode,
@@ -37,11 +38,11 @@ import {
 import { initDomainStore, getStore } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
-import { renderAccountView } from "./account-view.js?v=2.1.14";
-import { renderDealView, isDealListCacheFresh } from "./deal-view.js";
+import { renderAccountView } from "./account-view.js?v=2.1.43";
+import { renderDealView, isDealListCacheFresh } from "./deal-view.js?v=2.1.43";
 import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1.14";
-import { renderCallView, resolveEffectiveHydrationPending } from "./call-view.js";
+import { renderCallView, renderCallRecordLoadingPanel, resolveEffectiveHydrationPending } from "./call-view.js";
 import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
@@ -165,7 +166,7 @@ const VIEW_TITLES = {
   accounts: "Accounts",
   deals: "My deals",
   contacts: "My contacts",
-  calls: "All calls",
+  calls: "Activities",
   coaching: "My coaching",
   manager: "Team",
   se: "SE detail",
@@ -507,9 +508,6 @@ async function resolveRemoteBriefsOwnerIds(session = currentSession) {
   const ownerIds = [...new Set([resolvedId, syncId].filter(Boolean))].filter(
     (id) => !String(id).startsWith("usr_dummy_"),
   );
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:resolveRemoteBriefsOwnerIds",message:"briefs owner ids resolved",data:{syncId:syncId?.slice?.(0,28),resolvedId:resolvedId?.slice?.(0,28),ownerIds:ownerIds.map((id)=>id?.slice?.(0,28)),hasAuth:!!fb?.auth?.currentUser},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return ownerIds;
 }
 
@@ -621,9 +619,6 @@ function buildSubscribeRemotePreps() {
         prepBriefDocs.push(...bucket.values());
       }
       const briefs = docsToRemoteBriefs([...prepDocsByUid.values()], prepBriefDocs);
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"app.js:subscribeRemotePreps.emit",message:"briefs snapshot emit",data:{prepsLegacy:prepDocsByUid.size,prepBriefs:prepBriefDocs.length,merged:briefs.length,owners:[...prepBriefDocsByOwner.keys()].map((id)=>id?.slice?.(0,24))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       onChange(briefs);
     };
 
@@ -1017,7 +1012,7 @@ function switchView(name, opts = {}) {
     if (opts.expandTheme) callExpandThemeKey = opts.expandTheme;
     if (opts.ownerEmail) callRecordOwnerEmail = opts.ownerEmail;
     if (opts.listFilter) callsListFilter = opts.listFilter;
-    $("main-view-title").textContent = selectedCallId ? "Call record" : VIEW_TITLES.calls;
+    $("main-view-title").textContent = selectedCallId ? "Activity record" : VIEW_TITLES.calls;
     void renderCallPanel();
   } else if (name === "precall") {
     if (opts.briefId) {
@@ -1093,7 +1088,7 @@ async function renderAccountPanel() {
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
       if (sessionUserId(session)) {
         currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
       }
@@ -1107,6 +1102,7 @@ async function renderAccountPanel() {
     session = currentSession;
   }
   await renderAccountView(panel, session, {
+    resolveOwnerFb: fb,
     accountId: selectedAccountId || undefined,
     ...(selectedAccountEngagementPrepType ? { engagementPrepType: selectedAccountEngagementPrepType } : {}),
     contactId: selectedAccountContactId || undefined,
@@ -1114,6 +1110,17 @@ async function renderAccountPanel() {
     listSearchQuery: accountListSearchQuery,
     detailSearchQuery: accountDetailSearchQuery,
     shouldApply: () => gen === accountPanelRenderGen,
+    onInvalidAccountId: () => {
+      if (gen !== accountPanelRenderGen) return;
+      console.warn("[app] account id not navigable, falling back to accounts list:", selectedAccountId);
+      selectedAccountId = null;
+      selectedAccountDealId = null;
+      selectedAccountContactId = null;
+      selectedAccountEngagementPrepType = undefined;
+      accountLifecycleOwnerId = null;
+      history.replaceState(null, "", "#accounts");
+      // List is rendered by the same renderAccountView call (fall-through) — do not re-enter.
+    },
     onListSearchQueryChange: (q) => {
       accountListSearchQuery = q;
     },
@@ -1168,7 +1175,7 @@ async function renderPipelinePanel() {
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
       if (sessionUserId(session)) {
         currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
       }
@@ -1205,7 +1212,7 @@ async function renderProductSignalPanel() {
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
       if (sessionUserId(session)) {
         currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
       }
@@ -1230,7 +1237,7 @@ async function renderDealPanel() {
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
       if (sessionUserId(session)) {
         currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
       }
@@ -1244,6 +1251,7 @@ async function renderDealPanel() {
     session = currentSession;
   }
   await renderDealView(panel, session, {
+    resolveOwnerFb: fb,
     dealId: selectedDealNavId || undefined,
     lifecycleOwnerId: accountLifecycleOwnerId || undefined,
     listSearchQuery: dealListSearchQuery,
@@ -1334,7 +1342,7 @@ async function renderContactsPanel() {
   let session = withEffectiveUserId(currentSession);
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
     } catch (err) {
       console.warn("[app] contacts panel session sync failed:", err);
     }
@@ -1411,7 +1419,12 @@ function scheduleCallRecordPanelRefresh(id, { immediate = false, sections = [] }
       callRecordRefreshTargetId = id;
       return;
     }
-    immediate = true;
+    /* Wait for full hydration — partial section updates (e.g. summarise) should
+       not trigger a mid-pipeline repaint that re-animates KPIs one-by-one. */
+    if (pending.length > 0) {
+      callRecordRefreshTargetId = id;
+      return;
+    }
   } else if (!immediate && pending.length > 0) {
     callRecordRefreshTargetId = id;
     return;
@@ -1436,10 +1449,27 @@ async function renderCallPanel() {
   const panel = $("call-panel");
   if (!panel || !currentSession?.email) return;
   const gen = ++callPanelRenderGen;
+  if (selectedCallId) {
+    const ownerEmail = callRecordOwnerEmail || currentSession.email;
+    let preview = null;
+    try {
+      preview = getPostCallAnalysis(ownerEmail, selectedCallId);
+    } catch {
+      /* local history optional */
+    }
+    panel.innerHTML = renderCallRecordLoadingPanel(preview || { id: selectedCallId });
+  } else if (!panel.querySelector(".call-list-view:not(.call-list-view--loading)")) {
+    panel.innerHTML = `<div class="lifecycle-list-view call-list-view call-list-view--labs call-list-view--loading" role="status" aria-live="polite" aria-busy="true">
+      <div class="act-header">
+        <h1 class="call-list-heading">${VIEW_TITLES.calls || "Activities"}</h1>
+      </div>
+      ${renderLoadingPanel("Loading activities…")}
+    </div>`;
+  }
   let session = currentSession;
   if (!sessionUserId(session)) {
     try {
-      session = (await syncSessionWithDomainStore(session)) || session;
+      session = (await syncSessionWithDomainStore(session, fb)) || session;
     } catch (err) {
       console.warn("[app] call panel session sync failed:", err);
     }
@@ -1503,7 +1533,11 @@ async function renderCallPanel() {
     callType: callsFilterType,
     window: callsFilterWindow,
     listFilter: callsListFilter,
+    liveFilters: { callType: callsFilterType || "", window: callsFilterWindow || "30d" },
     teamScope: isManagerRole(currentSession),
+    resolveOwnerFb: fb,
+    fetchRemoteHistory: buildFetchRemoteHistory(),
+    fetchAllRemotePreps: buildFetchAllRemotePreps(),
     onFiltersChange: ({ callType, window }) => {
       callsFilterType = callType || "";
       callsFilterWindow = window || "30d";
@@ -1513,6 +1547,7 @@ async function renderCallPanel() {
       if (rowOpts.ownerEmail) callRecordOwnerEmail = rowOpts.ownerEmail;
       switchView("calls", { callId: id, drillDown: true, ownerEmail: rowOpts.ownerEmail });
     },
+    onSelectBrief: (id) => openPrepBriefFromList(id),
   });
 }
 
@@ -1600,7 +1635,7 @@ function applyRouteFromHash() {
     }
     return;
   }
-  if (hash === "calls") {
+  if (hash === "calls" || hash === "activities") {
     selectedCallId = null;
     callsListFilter = hashParams.get("filter") || "";
     if (currentView !== "calls") {
@@ -1633,12 +1668,62 @@ function applyRouteFromHash() {
     return;
   }
 
+  const accountDealMatch = /^accounts\/([^/]+)\/deals\/([^/]+)$/.exec(hash);
+  if (accountDealMatch) {
+    selectedAccountId = accountDealMatch[1];
+    selectedAccountDealId = null;
+    selectedAccountContactId = null;
+    selectedDealNavId = accountDealMatch[2];
+    pendingDealFallbackAccountId = accountDealMatch[1];
+    switchView("deals", { dealId: accountDealMatch[2], drillDown: true });
+    return;
+  }
+
+  const accountContactMatch = /^accounts\/([^/]+)\/contacts\/([^/]+)$/.exec(hash);
+  if (accountContactMatch) {
+    selectedAccountId = accountContactMatch[1];
+    selectedAccountContactId = accountContactMatch[2];
+    selectedAccountDealId = null;
+    if (currentView !== "accounts") {
+      switchView("accounts", { accountId: selectedAccountId, contactId: selectedAccountContactId, drillDown: true });
+    } else {
+      void renderAccountPanel();
+    }
+    return;
+  }
+
+  const accountMatch = /^accounts\/([^/]+)$/.exec(hash);
+  if (accountMatch) {
+    selectedAccountId = accountMatch[1];
+    selectedAccountDealId = null;
+    selectedAccountContactId = null;
+    if (currentView !== "accounts") {
+      switchView("accounts", { accountId: selectedAccountId, drillDown: true });
+    } else {
+      void renderAccountPanel();
+    }
+    return;
+  }
+
+  if (hash === "accounts") {
+    selectedAccountId = null;
+    selectedAccountDealId = null;
+    selectedAccountContactId = null;
+    selectedAccountEngagementPrepType = undefined;
+    accountLifecycleOwnerId = null;
+    if (currentView !== "accounts") {
+      switchView("accounts");
+    } else {
+      void renderAccountPanel();
+    }
+    return;
+  }
+
   const topLevelViews = new Set([
     "dashboard",
     "coaching",
     "precall",
     "postcall",
-    "accounts",
     "deals",
     "contacts",
     "manager",
@@ -2040,7 +2125,7 @@ async function applyInitialRouteFromHash(enriched) {
     switchView("calls", { drillDown: true });
     return;
   }
-  if (hash === "calls") {
+  if (hash === "calls" || hash === "activities") {
     selectedCallId = null;
     callsListFilter = hashParams.get("filter") || "";
     switchView("calls", { drillDown: !!callsListFilter });
@@ -2183,7 +2268,7 @@ async function showApp(session, opts = {}) {
           await seedDevDomainIfNeeded();
         }
         /* DEV-ONLY-END */
-        const enriched = (await syncSessionWithDomainStore(session)) || session;
+        const enriched = (await syncSessionWithDomainStore(session, fb)) || session;
         if (!sessionStillValid()) return;
         if (enriched?.email) {
           currentSession = { ...enriched, email: String(enriched.email).trim().toLowerCase() };
@@ -2268,7 +2353,7 @@ async function submitLogin(e) {
 
     setSession(result.session, { freshLogin: true });
 
-    void syncSessionWithDomainStore(result.session)
+    void syncSessionWithDomainStore(result.session, fb)
       .then((enriched) => {
         if (enriched) setSession(enriched, { notify: false });
       })
@@ -2344,7 +2429,7 @@ async function completeFirebaseLogin(user, opts = {}) {
 
       try {
         const session = await persistFirebaseSession(user, { persist: false });
-        const enriched = await syncSessionWithDomainStore(session || quickSession);
+        const enriched = await syncSessionWithDomainStore(session || quickSession, fb);
         setSession(enriched || session || quickSession, { notify: false });
         return enriched || session || quickSession;
       } catch (err) {
@@ -2371,9 +2456,6 @@ function wireFirebaseSignIn(runSignIn) {
   const btn = $("signin-google");
   setSignInButtonReady(false);
   const attach = () => bindActionOnce(btn, () => {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H5",location:"app.js:wireFirebaseSignIn",message:"SSO button activated",data:{disabled:!!btn?.disabled,ssoInFlight},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     void runSignIn();
   });
   if (customElements.get("fw-button")) attach();
@@ -2642,6 +2724,15 @@ async function boot() {
     getEmail: () => currentSession?.email || "",
     getToken: async () => fb?.auth?.currentUser?.getIdToken(),
   });
+  configureScoreDisputeNotify({
+    workerUrl: WORKER_BASE_URL,
+    getEmail: () => currentSession?.email || "",
+    getToken: async () => fb?.auth?.currentUser?.getIdToken(),
+    getOwnerId: () =>
+      sessionUserId(currentSession || getSession()) ||
+      effectiveSessionUserId(currentSession || getSession()) ||
+      null,
+  });
   initPrepDisputes({
     workerUrl: WORKER_BASE_URL,
     getEmail: () => currentSession?.email || "",
@@ -2661,10 +2752,12 @@ async function boot() {
     onGenerated: async (payload, prep, meta) => {
       let linked = null;
       let lifecycleId = null;
-      let session = currentSession;
+      let session = withEffectiveUserId(currentSession);
       try {
-        session = (await syncSessionWithDomainStore(currentSession)) || currentSession;
-        if (sessionUserId(session)) {
+        session = withEffectiveUserId(
+          (await syncSessionWithDomainStore(session, fb)) || session,
+        );
+        if (session?.email) {
           currentSession = { ...session, email: String(session.email).trim().toLowerCase() };
         }
       } catch (err) {
@@ -2708,7 +2801,12 @@ async function boot() {
   initPostcall();
   setOnCallRecordReady((id) => openCallRecord(id));
   setOnCallRecordHydrated((id) => {
-    scheduleCallRecordPanelRefresh(id, { immediate: true });
+    const record = currentSession?.email ? getPostCallAnalysis(currentSession.email, id) : null;
+    const stillPending = resolveEffectiveHydrationPending(
+      record,
+      record?.result?.hydration?.pending || [],
+    );
+    scheduleCallRecordPanelRefresh(id, { immediate: stillPending.length === 0 });
   });
   window.addEventListener("lionpath:call-record-updated", (ev) => {
     const id = ev.detail?.id;
@@ -2719,15 +2817,13 @@ async function boot() {
     const id = ev.detail?.id;
     const message = ev.detail?.message;
     if (selectedCallId !== id || currentView !== "calls") return;
-    const label = document.querySelector(
-      "#call-panel .call-record-inline-progress .postcall-inline-progress-label",
-    );
+    const progressEl = document.querySelector("#call-panel .call-record-inline-progress");
+    const label = progressEl?.querySelector(".postcall-inline-progress-label");
     if (label && message != null) {
       label.textContent = message;
-      label.closest(".call-record-inline-progress")?.toggleAttribute("hidden", !message);
-    } else if (message) {
-      void renderCallPanel();
+      progressEl.toggleAttribute("hidden", !message);
     }
+    /* Do not full re-render — progress text is applied on the next paint via hydration.progressMessage. */
   });
 
   document.querySelectorAll("#prep-form fw-input, #prep-form fw-textarea, #postcall-form fw-input, #postcall-form fw-textarea").forEach((el) => fillShadowField(el));
@@ -2751,7 +2847,32 @@ async function boot() {
   $("companyDomain")?.addEventListener("fwInput", onCompanyDomainInput);
 
   document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
-    btn.addEventListener("fwClick", () => switchView(btn.dataset.view));
+    btn.addEventListener("fwClick", () => {
+      const view = btn.dataset.view;
+      // Top-level Activities nav must leave call detail even when already on #calls/:id
+      if (view === "calls") {
+        selectedCallId = null;
+        callRecordTab = undefined;
+        callExpandThemeKey = undefined;
+        callRecordOwnerEmail = undefined;
+        callsListFilter = "";
+      }
+      // Top-level Accounts nav must leave a stale/missing #accounts/:id detail
+      if (view === "accounts") {
+        selectedAccountId = null;
+        selectedAccountDealId = null;
+        selectedAccountContactId = null;
+        selectedAccountEngagementPrepType = undefined;
+        accountLifecycleOwnerId = null;
+        accountDetailSearchQuery = "";
+      }
+      // Top-level Deals nav must leave deal detail
+      if (view === "deals") {
+        selectedDealNavId = null;
+        pendingDealFallbackAccountId = null;
+      }
+      switchView(view);
+    });
   });
 
   window.addEventListener("hashchange", () => applyRouteFromHash());
@@ -2786,7 +2907,7 @@ async function boot() {
     let linked = null;
     let session = currentSession;
     try {
-      session = (await syncSessionWithDomainStore(currentSession)) || currentSession;
+      session = (await syncSessionWithDomainStore(currentSession, fb)) || currentSession;
     } catch (err) {
       console.warn("[postcall] session sync before dual-write failed:", err?.message || err);
     }

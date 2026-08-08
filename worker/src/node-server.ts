@@ -26,6 +26,11 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   INTERNAL_CRON_SECRET?: string;
   VIDEO_PASS_ENABLED?: string;
   VIDEO_DATA_DIR?: string;
+  DISPUTE_NOTIFY_ENABLED?: string;
+  EMAIL_PROVIDER_API_KEY?: string;
+  DISPUTE_NOTIFY_FROM?: string;
+  FRESHDESK_API_KEY?: string;
+  FRESHDESK_DOMAIN?: string;
 }
 
 const PORT = Number(process.env.PORT || 8787);
@@ -65,6 +70,11 @@ function buildEnv(): NodeEnv {
     SUMMARISE_ANOMALY_MULTIPLIER: process.env.SUMMARISE_ANOMALY_MULTIPLIER || "",
     SUMMARISE_ANOMALY_BASELINE_DAYS: process.env.SUMMARISE_ANOMALY_BASELINE_DAYS || "",
     COST_ALERT_WEBHOOK_URL: process.env.COST_ALERT_WEBHOOK_URL || "",
+    DISPUTE_NOTIFY_ENABLED: process.env.DISPUTE_NOTIFY_ENABLED || "",
+    EMAIL_PROVIDER_API_KEY: process.env.EMAIL_PROVIDER_API_KEY || "",
+    DISPUTE_NOTIFY_FROM: process.env.DISPUTE_NOTIFY_FROM || "",
+    FRESHDESK_API_KEY: process.env.FRESHDESK_API_KEY || "",
+    FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus-assist.freshdesk.com",
   };
 
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();

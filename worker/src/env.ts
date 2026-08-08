@@ -13,4 +13,14 @@ export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv {
   CALL_PAYLOAD_BUCKET?: string;
   /** Shared secret for Cloud Scheduler / VPS cron internal endpoints. */
   INTERNAL_CRON_SECRET?: string;
+  /** Score-dispute manager email — off unless "1"/"true". */
+  DISPUTE_NOTIFY_ENABLED?: string;
+  /** Resend (or compatible) API key — server-side only; never expose to browser. */
+  EMAIL_PROVIDER_API_KEY?: string;
+  /** From address for dispute notify, e.g. "LionPath <noreply@example.com>". */
+  DISPUTE_NOTIFY_FROM?: string;
+  /** Freshdesk API key (Basic auth username). Server-side only. */
+  FRESHDESK_API_KEY?: string;
+  /** Freshdesk domain, e.g. "janus-assist.freshdesk.com" or "janus-assist". */
+  FRESHDESK_DOMAIN?: string;
 }

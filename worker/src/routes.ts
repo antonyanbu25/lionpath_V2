@@ -8,6 +8,16 @@ import {
   normalizeFeedbackCategory,
   type FeedbackEntry,
 } from "./feedback";
+import { emailNotifyAvailable, sendManagerDisputeEmail } from "./notify-email";
+import {
+  buildTicketDescriptionHtml,
+  createFreshdeskTicket,
+  defaultSubjectForKind,
+  freshdeskConfigured,
+  MAX_ATTACHMENT_BYTES,
+  ticketTypeForKind,
+  type FreshdeskTicketKind,
+} from "./freshdesk";
 import {
   historyStorageAvailable,
   historyStorageKind,
@@ -131,6 +141,12 @@ export async function handleConfig(
       feedback: {
         available: feedbackStorageAvailable(env),
         storage: historyStorageKind(env),
+      },
+      freshdesk: {
+        configured: freshdeskConfigured(env),
+      },
+      disputeNotify: {
+        available: emailNotifyAvailable(env),
       },
       videoPass: {
         enabled: videoPassEnvEnabled(env),
@@ -932,6 +948,334 @@ export async function handleFeedbackPost(
   return json({ email, entry, count: entries.length }, 200, cors);
 }
 
+/**
+ * POST /api/disputes/notify — soft-fail manager email after a score dispute is logged.
+ * Returns { sent, via } even when notify is disabled (never blocks dispute logging).
+ */
+export async function handleDisputeNotifyPost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  let body: {
+    email?: string;
+    to?: string;
+    toName?: string;
+    seName?: string;
+    callTitle?: string;
+    category?: string;
+    note?: string;
+    link?: string;
+    via?: string;
+  };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return json({ error: "Invalid JSON body." }, 400, cors);
+  }
+
+  // Auth shape mirrors feedback: Firebase token when configured; else demo email in body.
+  await resolveHistoryEmail(request, env, body.email || "");
+
+  const to = String(body.to || "")
+    .trim()
+    .toLowerCase();
+  if (!to || !to.includes("@")) {
+    return json({ error: "to (manager email) is required." }, 400, cors);
+  }
+
+  const result = await sendManagerDisputeEmail(env, {
+    to,
+    toName: body.toName,
+    seName: body.seName,
+    callTitle: body.callTitle,
+    category: body.category,
+    note: body.note,
+    link: body.link,
+  });
+
+  return json(
+    {
+      sent: result.sent,
+      // Prefer client org-resolution via (line_manager|…) for audit; fall back to provider id.
+      via: body.via || result.via || null,
+      ...(result.error ? { error: result.error } : {}),
+    },
+    200,
+    cors,
+  );
+}
+
+type TicketFormFields = {
+  kindRaw: string;
+  description: string;
+  subject: string;
+  category: string;
+  emailFallback: string;
+  name: string;
+  callId: string;
+  company: string;
+  themeKey: string;
+  score: string;
+  grade: string;
+  page: string;
+  link: string;
+  attachment: File | null;
+  attachmentBase64: string;
+  attachmentFilename: string;
+  attachmentContentType: string;
+};
+
+function parseTicketKind(raw: string): FreshdeskTicketKind | null {
+  const k = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (k === "dispute_score" || k === "dispute_of_score" || k === "dispute") return "dispute_score";
+  if (k === "feedback") return "feedback";
+  return null;
+}
+
+async function readTicketPayload(request: Request): Promise<TicketFormFields> {
+  const emptyAttach = {
+    attachment: null as File | null,
+    attachmentBase64: "",
+    attachmentFilename: "",
+    attachmentContentType: "",
+  };
+  const contentType = request.headers.get("content-type") || "";
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const get = (key: string) => String(form.get(key) ?? "").trim();
+    const file = form.get("attachment");
+    const upload =
+      file && typeof file !== "string" && typeof (file as Blob).arrayBuffer === "function" && (file as Blob).size > 0
+        ? (file as File)
+        : null;
+    return {
+      kindRaw: get("kind"),
+      description: get("description") || get("note") || get("message"),
+      subject: get("subject"),
+      category: get("category"),
+      emailFallback: get("email"),
+      name: get("name"),
+      callId: get("callId") || get("call_id"),
+      company: get("company"),
+      themeKey: get("themeKey") || get("theme_key"),
+      score: get("score"),
+      grade: get("grade"),
+      page: get("page"),
+      link: get("link"),
+      attachment: upload,
+      attachmentBase64: get("attachmentBase64"),
+      attachmentFilename: get("attachmentFilename"),
+      attachmentContentType: get("attachmentContentType"),
+    };
+  }
+
+  const body = (await request.json()) as Record<string, unknown>;
+  const str = (key: string) => String(body[key] ?? "").trim();
+  return {
+    kindRaw: str("kind"),
+    description: str("description") || str("note") || str("message"),
+    subject: str("subject"),
+    category: str("category"),
+    emailFallback: str("email"),
+    name: str("name"),
+    callId: str("callId") || str("call_id"),
+    company: str("company"),
+    themeKey: str("themeKey") || str("theme_key"),
+    score: str("score"),
+    grade: str("grade"),
+    page: str("page"),
+    link: str("link"),
+    ...emptyAttach,
+    attachmentBase64: str("attachmentBase64"),
+    attachmentFilename: str("attachmentFilename") || "screenshot.png",
+    attachmentContentType: str("attachmentContentType") || "application/octet-stream",
+  };
+}
+
+function attachmentFromBase64(
+  base64: string,
+  filename: string,
+  contentType: string,
+): { filename: string; contentType: string; bytes: Uint8Array } | null {
+  const raw = String(base64 || "").trim();
+  if (!raw) return null;
+  try {
+    const bin = atob(raw.replace(/^data:[^;]+;base64,/, ""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (!bytes.byteLength) return null;
+    return {
+      filename: filename || "screenshot.png",
+      contentType: contentType || "application/octet-stream",
+      bytes,
+    };
+  } catch {
+    throw Object.assign(new Error("Invalid attachment encoding."), { status: 400 });
+  }
+}
+
+/**
+ * POST /api/tickets — create a Freshdesk ticket (dispute score or product feedback).
+ * Accepts JSON or multipart/form-data (optional screenshot as `attachment`).
+ * Requester email = verified Firebase user when auth is on; else body.email (demo).
+ */
+export async function handleTicketsPost(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  if (!freshdeskConfigured(env)) {
+    return json(
+      { error: "Freshdesk is not configured (missing FRESHDESK_API_KEY)." },
+      503,
+      cors,
+    );
+  }
+
+  let fields: TicketFormFields;
+  try {
+    fields = await readTicketPayload(request);
+  } catch {
+    return json({ error: "Invalid request body." }, 400, cors);
+  }
+
+  const kind = parseTicketKind(fields.kindRaw);
+  if (!kind) {
+    return json({ error: 'kind must be "dispute_score" or "feedback".' }, 400, cors);
+  }
+
+  const descriptionText = String(fields.description || "").trim();
+  if (!descriptionText) {
+    return json({ error: "description is required." }, 400, cors);
+  }
+
+  let email: string;
+  try {
+    email = await resolveHistoryEmail(request, env, fields.emailFallback || "");
+  } catch (err) {
+    const status = (err as { status?: number }).status || 401;
+    return json({ error: (err as Error).message || "Sign-in required." }, status, cors);
+  }
+
+  const category =
+    kind === "feedback"
+      ? normalizeFeedbackCategory(fields.category || "Idea")
+      : String(fields.category || "").trim();
+
+  const subject =
+    fields.subject ||
+    defaultSubjectForKind(kind, kind === "feedback" ? String(category) : undefined);
+
+  const meta: Array<string | null> = [
+    kind === "dispute_score" ? `Ticket type: Dispute of Score` : `Ticket type: Feedback`,
+    category ? `Category: ${category}` : null,
+    fields.company ? `Company: ${fields.company}` : null,
+    fields.callId ? `Call ID: ${fields.callId}` : null,
+    fields.themeKey ? `Theme: ${fields.themeKey.replace(/_/g, " ")}` : null,
+    fields.grade ? `Theme grade: ${fields.grade}/10` : null,
+    fields.score ? `Score: ${fields.score}` : null,
+    fields.page ? `Page: ${fields.page}` : null,
+    fields.link ? `Link: ${fields.link}` : null,
+    `Submitted by: ${email}`,
+  ];
+
+  let attachment: { filename: string; contentType: string; bytes: ArrayBuffer | Uint8Array } | null =
+    null;
+  if (fields.attachment) {
+    if (fields.attachment.size > MAX_ATTACHMENT_BYTES) {
+      return json(
+        {
+          error: `Attachment too large (max ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB).`,
+        },
+        400,
+        cors,
+      );
+    }
+    const bytes = await fields.attachment.arrayBuffer();
+    const filename = fields.attachment.name || "screenshot.png";
+    const contentType = fields.attachment.type || "application/octet-stream";
+    attachment = { filename, contentType, bytes };
+  } else if (fields.attachmentBase64) {
+    try {
+      const decoded = attachmentFromBase64(
+        fields.attachmentBase64,
+        fields.attachmentFilename,
+        fields.attachmentContentType,
+      );
+      if (decoded) {
+        if (decoded.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+          return json(
+            {
+              error: `Attachment too large (max ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB).`,
+            },
+            400,
+            cors,
+          );
+        }
+        attachment = decoded;
+      }
+    } catch (err) {
+      const status = (err as { status?: number }).status || 400;
+      return json({ error: (err as Error).message || "Invalid attachment." }, status, cors);
+    }
+  }
+
+  console.info(
+    `[tickets] creating ${kind} for ${email}${attachment ? ` (+attachment ${attachment.filename})` : ""}`,
+  );
+
+  try {
+    const ticket = await createFreshdeskTicket(env, {
+      email,
+      name: fields.name || undefined,
+      subject,
+      description: buildTicketDescriptionHtml(descriptionText, meta),
+      type: ticketTypeForKind(kind),
+      tags: ["lionpath", kind === "dispute_score" ? "dispute-score" : "feedback"],
+      attachment,
+    });
+
+    // Best-effort: mirror feedback into HISTORY_KV / file store when available.
+    if (kind === "feedback" && feedbackStorageAvailable(env)) {
+      try {
+        const entry: FeedbackEntry = {
+          id: crypto.randomUUID(),
+          category: normalizeFeedbackCategory(String(category || "Idea")),
+          message: descriptionText.slice(0, 4000),
+          page: fields.page || undefined,
+          email,
+          createdAt: Date.now(),
+        };
+        await appendFeedback(env, email, entry);
+      } catch (err) {
+        console.warn("[tickets] local feedback mirror failed:", (err as Error).message || err);
+      }
+    }
+
+    return json(
+      {
+        ok: true,
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        type: ticket.type,
+        email,
+        kind,
+      },
+      201,
+      cors,
+    );
+  } catch (err) {
+    const status = (err as { status?: number }).status || 502;
+    return json({ error: (err as Error).message || "Failed to create ticket." }, status, cors);
+  }
+}
+
 export async function handleHistoryPost(
   request: Request,
   env: Env,
@@ -1007,6 +1351,8 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
+  "/api/tickets": { POST: handleTicketsPost },
+  "/api/disputes/notify": { POST: handleDisputeNotifyPost },
   "/api/search/rag": { POST: handleSearchRag },
   "/api/org/structure": { GET: handleOrgStructureGet, PATCH: handleOrgStructurePatch },
 };

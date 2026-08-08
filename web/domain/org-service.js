@@ -286,6 +286,77 @@ export function validateHierarchy(user, usersById) {
 }
 
 /**
+ * Resolve the manager email recipient for an SE score dispute (audit-friendly).
+ * Never throws — returns null when nothing resolves.
+ *
+ * Order: User.managerId (line manager) → Team.managerId → segment leader → director.
+ *
+ * @param {string} ownerId
+ * @param {import("./types.js").Org|null|undefined} org
+ * @param {Map<string, import("./types.js").User>|Record<string, import("./types.js").User>} usersById
+ * @param {Map<string, import("./types.js").Team>|Record<string, import("./types.js").Team>|null|undefined} [teamsById]
+ * @returns {{ email: string, name: string, via: 'line_manager'|'team_manager'|'segment_leader'|'director' }|null}
+ */
+export function resolveManagerRecipientForOwner(ownerId, org, usersById, teamsById) {
+  try {
+    if (!ownerId || !usersById) return null;
+    const getUser = (id) => {
+      if (!id) return null;
+      if (typeof usersById.get === "function") return usersById.get(id) || null;
+      return usersById[id] || null;
+    };
+    const getTeam = (id) => {
+      if (!id || !teamsById) return null;
+      if (typeof teamsById.get === "function") return teamsById.get(id) || null;
+      return teamsById[id] || null;
+    };
+    const recipientFrom = (user, via) => {
+      const email = String(user?.email || "")
+        .trim()
+        .toLowerCase();
+      if (!email) return null;
+      const name = String(user.displayName || user.name || email).trim() || email;
+      return { email, name, via };
+    };
+
+    const owner = getUser(ownerId);
+    if (!owner) return null;
+
+    if (owner.managerId) {
+      const lineMgr = getUser(owner.managerId);
+      const hit = recipientFrom(lineMgr, "line_manager");
+      if (hit) return hit;
+    }
+
+    if (owner.teamId) {
+      const team = getTeam(owner.teamId);
+      if (team?.managerId) {
+        const teamMgr = getUser(team.managerId);
+        const hit = recipientFrom(teamMgr, "team_manager");
+        if (hit) return hit;
+      }
+
+      const segment = getSegmentForTeamId(owner.teamId, org);
+      if (segment?.leaderId) {
+        const leader = getUser(segment.leaderId);
+        const hit = recipientFrom(leader, "segment_leader");
+        if (hit) return hit;
+      }
+    }
+
+    if (org?.directorId) {
+      const director = getUser(org.directorId);
+      const hit = recipientFrom(director, "director");
+      if (hit) return hit;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether an actor may edit org structure for a target user/team.
  * @param {import("./types.js").User & { isActualDirector?: boolean, isSegmentLeader?: boolean, segmentTeamIds?: string[] }} actor
  * @param {import("./types.js").Org|null|undefined} org

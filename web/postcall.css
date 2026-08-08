@@ -1723,20 +1723,35 @@ button.pc-deal-tile {
 
 #postcall-result .star-card,
 #postcall-result .qip-star-card {
-  background: var(--dew-surface);
-  border: 1px solid var(--dew-border);
-  border-radius: 14px;
-  padding: 16px 18px 12px;
+  position: relative;
+  overflow: hidden;
+  background: var(--dew-surface, #fff);
+  border: 1px solid var(--dew-border, #ece7de);
+  border-radius: 18px;
+  box-shadow:
+    0 12px 34px -18px rgba(58, 38, 24, 0.32),
+    0 1px 2px rgba(43, 41, 38, 0.04);
+  padding: 26px 30px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   align-self: stretch;
+  width: 100%;
+}
+
+#postcall-result .qip-star-card::before {
+  display: none;
+}
+
+#postcall-result .qip-star-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 #postcall-result .star-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -1744,17 +1759,53 @@ button.pc-deal-tile {
   margin-bottom: 4px;
 }
 
-#postcall-result .star-head .eyebrow {
-  font-size: 11px;
+#postcall-result .star-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+#postcall-result .star-head .star-title,
+#postcall-result .star-head .eyebrow.star-title {
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #a49a88;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--ink, #2b2926);
+  line-height: 1.2;
 }
 
 #postcall-result .star-head .hint {
-  font-size: 11.5px;
-  color: var(--dew-text-secondary);
+  margin-top: 0;
+  font-size: 12.5px;
+  color: var(--muted2, #7c7466);
+}
+
+#postcall-result .star-overall-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: #f7f2ea;
+  border: 1px solid var(--dew-border, #ece7de);
+  border-radius: 999px;
+  padding: 6px 13px;
+  flex-shrink: 0;
+}
+
+#postcall-result .star-overall-pill b {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink, #2b2926);
+}
+
+#postcall-result .star-overall-pill span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted2, #7c7466);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 #postcall-result .qip-star-stage {
@@ -1763,6 +1814,7 @@ button.pc-deal-tile {
   align-items: center;
   justify-content: center;
   width: 100%;
+  margin-top: 4px;
   line-height: 0;
 }
 
@@ -1778,123 +1830,133 @@ button.pc-deal-tile {
 
 #postcall-result .qip-star-animated .ring {
   opacity: 0;
-  animation: qip-star-fade 0.6s ease forwards;
+  animation: qip-star-fade 0.55s ease forwards;
 }
 
-#postcall-result .qip-star-animated .ring.r1 { animation-delay: 0.05s; }
-#postcall-result .qip-star-animated .ring.r2 { animation-delay: 0.12s; }
-#postcall-result .qip-star-animated .ring.r3 { animation-delay: 0.19s; }
-#postcall-result .qip-star-animated .ring.r4 { animation-delay: 0.26s; }
-#postcall-result .qip-star-animated .ring.r5 { animation-delay: 0.33s; }
+#postcall-result .qip-star-animated .ring.r1 { animation-delay: 0.04s; }
+#postcall-result .qip-star-animated .ring.r2 { animation-delay: 0.1s; }
+#postcall-result .qip-star-animated .ring.r3 { animation-delay: 0.16s; }
+#postcall-result .qip-star-animated .ring.r4 { animation-delay: 0.22s; }
+#postcall-result .qip-star-animated .ring.r5 { animation-delay: 0.28s; }
 
 #postcall-result .qip-star-animated .spoke {
   opacity: 0;
-  animation: qip-star-fade 0.6s ease forwards;
-  animation-delay: 0.24s;
+  animation: qip-star-fade 0.55s ease forwards;
+  animation-delay: 0.2s;
 }
 
 #postcall-result .qip-star-animated .qip-star-data {
   opacity: 0;
-  transform: scale(0.55);
+  transform: scale(0.9);
   transform-box: view-box;
-  transform-origin: 350px 300px;
-  animation: qip-star-pop 0.9s cubic-bezier(0.2, 0.8, 0.24, 1.14) forwards;
-  animation-delay: 0.36s;
+  transform-origin: 300px 250px;
+  animation: qip-star-pop 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: 0.12s;
 }
 
-#postcall-result .qip-star-animated .gem,
-#postcall-result .qip-star-animated .halo {
+#postcall-result .qip-star-animated .gem {
   opacity: 0;
   transform-box: view-box;
   transform-origin: center;
-  animation: qip-star-gem 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.45) forwards;
+  animation: qip-star-gem 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
 }
 
-#postcall-result .qip-star-animated .g0 { animation-delay: 0.9s; }
-#postcall-result .qip-star-animated .g1 { animation-delay: 0.99s; }
-#postcall-result .qip-star-animated .g2 { animation-delay: 1.08s; }
-#postcall-result .qip-star-animated .g3 { animation-delay: 1.17s; }
-#postcall-result .qip-star-animated .g4 { animation-delay: 1.26s; }
-
-#postcall-result .qip-star-animated .qip-star-core {
-  opacity: 0;
-  transform: scale(0.7);
-  transform-box: view-box;
-  transform-origin: 350px 300px;
-  animation:
-    qip-star-pop 0.6s cubic-bezier(0.2, 0.85, 0.25, 1.1) forwards 0.62s,
-    qip-star-core-pulse 4s ease-in-out infinite 1.5s;
-}
+#postcall-result .qip-star-animated .g0 { animation-delay: 0.55s; }
+#postcall-result .qip-star-animated .g1 { animation-delay: 0.62s; }
+#postcall-result .qip-star-animated .g2 { animation-delay: 0.69s; }
+#postcall-result .qip-star-animated .g3 { animation-delay: 0.76s; }
+#postcall-result .qip-star-animated .g4 { animation-delay: 0.83s; }
 
 #postcall-result .qip-star-animated .lab {
   opacity: 0;
-  animation: qip-star-fade 0.7s ease forwards 1s;
-}
-
-#postcall-result .qip-star-animated .aura {
-  animation: qip-star-breathe 5s ease-in-out infinite 1.4s;
+  animation: qip-star-fade 0.55s ease forwards 0.7s;
 }
 
 #postcall-result .qip-star-static .ring,
 #postcall-result .qip-star-static .spoke,
 #postcall-result .qip-star-static .lab,
 #postcall-result .qip-star-static .gem,
-#postcall-result .qip-star-static .halo,
-#postcall-result .qip-star-static .qip-star-data,
-#postcall-result .qip-star-static .qip-star-core {
+#postcall-result .qip-star-static .qip-star-data {
   opacity: 1;
   transform: none;
 }
 
+/* Labs radar polish */
 #postcall-result .qip-radar-ring {
   fill: none;
-  stroke: #efe8da;
+  stroke: #ece7de;
   stroke-width: 1;
 }
 
 #postcall-result .qip-radar-ring-outer {
-  fill: #fdfbf7;
-  stroke: #e4dccd;
-  stroke-width: 1.3;
+  fill: none;
+  stroke: #ddccb6;
+  stroke-width: 1;
+  stroke-dasharray: none;
 }
 
 #postcall-result .qip-radar-spoke {
-  stroke: #e4dccd;
+  stroke: #ece7de;
   stroke-width: 1;
 }
 
 #postcall-result .qip-radar-scale {
-  font-size: 8.5px;
-  font-weight: 600;
-  fill: #b7ad9b;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  fill: #c2b7a6;
 }
 
-#postcall-result .qip-radar-data {
-  stroke: #17a086;
-  stroke-width: 2.6;
+#postcall-result .qip-star-card .qip-radar-data {
+  fill: none;
+  stroke-width: 2.5;
   stroke-linejoin: round;
 }
 
-#postcall-result .qip-radar-dot {
-  fill: #fff;
-  stroke: #17a086;
-  stroke-width: 2.2;
+#postcall-result .qip-star-card .qip-radar-dot {
+  stroke-width: 2.5;
 }
 
-#postcall-result .qip-radar-value {
-  font-size: 14.5px;
-  font-weight: 800;
+#postcall-result .qip-star-card .qip-radar-value {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 600;
 }
 
-#postcall-result .qip-radar-axis-label {
-  font-size: 12px;
-  font-weight: 700;
-  fill: #3d3a34;
+#postcall-result .qip-star-card .qip-radar-axis-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: #6f6759;
 }
 
-#postcall-result .qip-radar-center-label {
-  font-weight: 800;
-  letter-spacing: -0.04em;
+@keyframes qip-star-fade {
+  to { opacity: 1; }
+}
+
+@keyframes qip-star-pop {
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes qip-star-gem {
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #postcall-result .qip-star-card * {
+    animation: none !important;
+  }
+
+  #postcall-result .qip-star-card .qip-star-data {
+    opacity: 1;
+    transform: none;
+  }
+
+  #postcall-result .qip-star-card .ring,
+  #postcall-result .qip-star-card .spoke,
+  #postcall-result .qip-star-card .gem,
+  #postcall-result .qip-star-card .lab {
+    opacity: 1;
+  }
 }
 
 #postcall-result .qip-category-row {

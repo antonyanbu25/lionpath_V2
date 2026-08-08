@@ -380,13 +380,13 @@ export async function logSeTeamEvent(lifecycleId, type, actorId, payload) {
  * Lifecycles visible to the signed-in user (own / team / org scope).
  * @param {object} session
  */
-export async function listLifecyclesForSession(session) {
-  const { effectiveSessionUserId } = await import("./session.js");
-  const ownerId = effectiveSessionUserId(session);
+export async function listLifecyclesForSession(session, fb) {
+  const { resolveEffectiveOwnerId } = await import("./user-resolve.js");
+  const store = getStore();
+  const ownerId = await resolveEffectiveOwnerId(session, store, fb);
   if (!ownerId) return [];
 
   const { safeStoreOp } = await import("./safe-store.js");
-  const store = getStore();
 
   try {
     const { getVisibleScope, userWithDirectorFlag, getOrg } = await import("./org-service.js");

@@ -137,3 +137,33 @@ export function tcDeltasFromPostCalls(postCalls, limitCount = 200) {
   }
   return rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limitCount);
 }
+
+/**
+ * Flatten productGaps from postCalls for a deal (embedded detail first).
+ * @param {object[]} postCalls
+ * @param {number} [limitCount]
+ */
+export function productGapsFromPostCalls(postCalls, limitCount = 500) {
+  const rows = [];
+  for (const pc of postCalls || []) {
+    for (const row of detailArray(pc, "productGaps")) {
+      rows.push(row);
+    }
+  }
+  return rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limitCount);
+}
+
+/**
+ * Flatten whatWorks from postCalls for a deal (embedded detail first).
+ * @param {object[]} postCalls
+ * @param {number} [limitCount]
+ */
+export function whatWorksFromPostCalls(postCalls, limitCount = 500) {
+  const rows = [];
+  for (const pc of postCalls || []) {
+    for (const row of detailArray(pc, "whatWorks")) {
+      rows.push(row);
+    }
+  }
+  return rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limitCount);
+}

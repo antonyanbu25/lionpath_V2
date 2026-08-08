@@ -137,17 +137,26 @@ export interface DealDetail {
   technicalCommit: FirestoreDoc | null;
   dealSignals: FirestoreDoc[];
   arrLines: FirestoreDoc[];
+  productGaps: FirestoreDoc[];
+  whatWorks: FirestoreDoc[];
 }
 
 export async function getDealDetail(id: string, env?: FirestoreEnv): Promise<DealDetail | null> {
   const deal = await getDeal(id, env);
   if (!deal) return null;
-  const { listDealSignalsByDeal, listArrLinesByDeal } = await import("./signals");
-  const [summary, technicalCommit, dealSignals, arrLines] = await Promise.all([
+  const {
+    listDealSignalsByDeal,
+    listArrLinesByDeal,
+    listProductGapsByDeal,
+    listWhatWorksByDeal,
+  } = await import("./signals");
+  const [summary, technicalCommit, dealSignals, arrLines, productGaps, whatWorks] = await Promise.all([
     getDealSummaryByDeal(id, env),
     getTechnicalCommitByDeal(id, env),
     listDealSignalsByDeal(id, 50, env),
     listArrLinesByDeal(id, 200, env),
+    listProductGapsByDeal(id, 500, env),
+    listWhatWorksByDeal(id, 500, env),
   ]);
-  return { deal, summary, technicalCommit, dealSignals, arrLines };
+  return { deal, summary, technicalCommit, dealSignals, arrLines, productGaps, whatWorks };
 }

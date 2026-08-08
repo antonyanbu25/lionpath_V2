@@ -178,21 +178,14 @@ function mockContainer() {
 const listContainer = mockContainer();
 await renderAccountView(listContainer, session);
 assert(listContainer.innerHTML.includes("Acme Corp"), "list renders account name");
-assert(listContainer.innerHTML.includes("account-list-item"), "list renders account row");
-assert(listContainer.innerHTML.includes("account-list-view--compact"), "list uses compact command layout");
-assert(listContainer.innerHTML.includes("account-list-col--region"), "list shows region column");
+assert(listContainer.innerHTML.includes("account-list-row"), "list renders account row");
+assert(listContainer.innerHTML.includes("account-list-view--labs"), "list uses labs layout");
+assert(listContainer.innerHTML.includes("Region"), "list shows region column");
 assert(listContainer.innerHTML.includes("Total ARR"), "list shows ARR column");
 assert(listContainer.innerHTML.includes("Last touch"), "list shows last touch column");
-assert(listContainer.innerHTML.includes("account-list-row-grid"), "list row uses grid");
-assert(
-  listContainer.innerHTML.includes('<button type="button" class="lifecycle-list-item account-list-item'),
-  "list row uses native button (full-width grid)",
-);
-assert(
-  !listContainer.innerHTML.includes("fw-button class=\"lifecycle-list-item account-list-item"),
-  "list row must not use fw-button wrapper",
-);
-assert(listContainer.innerHTML.includes("account-list-toolbar--compact"), "list uses compact toolbar");
+assert(listContainer.innerHTML.includes("account-list-table"), "list uses table layout");
+assert(listContainer.innerHTML.includes('data-account-id='), "list row has account id");
+assert(listContainer.innerHTML.includes("account-kpis"), "list shows KPI tiles");
 assert(!listContainer.innerHTML.includes("scan stage, motion"), "list drops verbose subtitle");
 
 const detailContainer = mockContainer();

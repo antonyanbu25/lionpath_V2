@@ -3,8 +3,15 @@
  * Contacts are grouped by corporate email domain — one account per domain, not per contact.
  */
 
-import { resolveContactsForEmails, resolveAccountsForCompany } from "./postcall-contact-resolve.js";
-import { setAccountEngagementContext } from "./domain/account-context.js";
+import {
+  resolveContactsForEmails,
+  resolveAccountsForCompany,
+  enrichDealOwnerNames,
+} from "./postcall-contact-resolve.js";
+import {
+  setAccountEngagementContext,
+  clearAccountEngagementContext,
+} from "./domain/account-context.js";
 import { isFreeMailDomain } from "./domain/constants.js";
 import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domain.js";
 import { formatDealTitlePreview, inferDealTypeFromTitle } from "./domain/deal-service.js";
@@ -176,9 +183,11 @@ async function applyAccount(account, deals = []) {
   }
   if (account?.id) {
     const { listDealsForAccount } = await import("./domain/deal-service.js");
-    lastDeals = await listDealsForAccount(account.id);
+    lastDeals = await enrichDealOwnerNames(await listDealsForAccount(account.id));
   } else {
-    lastDeals = deals.filter((d) => !account || d.accountId === account.id);
+    lastDeals = await enrichDealOwnerNames(
+      deals.filter((d) => !account || d.accountId === account.id),
+    );
   }
   if (prevAccountId !== (account?.id || null)) {
     prepDraftNewDealTitle = "";
@@ -220,6 +229,7 @@ function syncEngagementContext() {
   if (prepResolvedAccount?.id) ctx.accountId = prepResolvedAccount.id;
   if (prepSelectedDealId && !prepCreateNewDeal) ctx.dealId = prepSelectedDealId;
   if (Object.keys(ctx).length) setAccountEngagementContext(ctx);
+  else clearAccountEngagementContext();
 }
 
 export function getPrepCrmSelection() {
@@ -250,6 +260,7 @@ export function resetPrepCrmSelection() {
 /** Clear CRM UI after starting a fresh brief. */
 export function resetPrepCrmUi() {
   resetPrepCrmSelection();
+  clearAccountEngagementContext();
   previewToken = ++lookupToken;
   const panel = $("prep-crm-matches");
   if (panel) {

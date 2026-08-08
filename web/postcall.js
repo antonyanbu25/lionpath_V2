@@ -13,7 +13,7 @@ export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
 import { normalizeQualityCoach } from "./quality-score.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
-import { resolveContactsForEmails } from "./postcall-contact-resolve.js";
+import { resolveContactsForEmails, enrichDealOwnerNames, resolveHistoryMatchesForIntake } from "./postcall-contact-resolve.js";
 import { invalidateDealListCache } from "./deal-view.js";
 import { sessionUserId } from "./domain/session.js";
 import { domainFromEmail } from "./domain/types.js";
@@ -56,6 +56,9 @@ import {
   showInlineStageProgress,
 } from "./pipeline-progress.js";
 import { esc, $, show, EMPTY_DISPLAY, namesEqual, titleCaseDisplayName } from "./shared.js";
+import {
+  CALL_QUALITY_SCORE_LABEL,
+} from "./user-facing-copy.js";
 import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 export { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 import { companyNameFromEmail } from "./prep-domain.js";
@@ -606,6 +609,19 @@ export function reconcileIntakeStateWithCrmResult(result) {
   return prevAccountId;
 }
 
+/** When CRM returns multiple accounts (e.g. Firestore + hist stub), pick the canonical one. */
+export function pickPreferredIntakeAccount(accounts) {
+  const list = (accounts || []).filter((a) => a?.id);
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  const names = new Set(list.map((a) => String(a.name || "").trim().toLowerCase()).filter(Boolean));
+  const domains = new Set(list.map((a) => String(a.domain || "").trim().toLowerCase()).filter(Boolean));
+  const sameCompany = names.size <= 1 || domains.size <= 1;
+  if (!sameCompany) return null;
+  const firestore = list.filter((a) => !String(a.id).startsWith("hist_"));
+  return firestore[0] || list[0];
+}
+
 /** Resolve which account the intake preview should reflect. */
 export function resolveIntakeAccount(result, typedCompany, resolvedAccount = pcResolvedAccount) {
   if (resolvedAccount?.id && isResolvedAccountValidForResult(resolvedAccount, result)) {
@@ -619,14 +635,23 @@ export function resolveIntakeAccount(result, typedCompany, resolvedAccount = pcR
   if (byName) {
     return { id: byName.id, name: byName.name, domain: byName.domain || null };
   }
+  const preferred = pickPreferredIntakeAccount(result.accounts);
+  if (preferred) {
+    return { id: preferred.id, name: preferred.name, domain: preferred.domain || null };
+  }
   return null;
 }
 
 /** Keep deal pick state aligned with deals on the active account. */
 export function syncIntakeDealSelection(deals, state = {}) {
-  const createNewDeal = state.createNewDeal ?? pcCreateNewDeal;
+  let createNewDeal = state.createNewDeal ?? pcCreateNewDeal;
   const selectedDealId = state.selectedDealId ?? pcSelectedDealId;
   pcLastAccountDeals = deals;
+
+  // Prefer an existing deal when history/CRM surfaced matches unless the SE explicitly chose "+ New deal".
+  if (createNewDeal && deals.length && !pcFocusNewDealInput && !newDealTitleTouched) {
+    createNewDeal = false;
+  }
 
   if (createNewDeal) {
     pcCreateNewDeal = true;
@@ -664,6 +689,44 @@ export function syncIntakeDealSelection(deals, state = {}) {
 function dealsForAccount(result, accountId) {
   if (!accountId) return [];
   return (result.deals || []).filter((d) => d.accountId === accountId);
+}
+
+/** Deals for intake preview — CRM resolve result plus direct account fetch when empty. */
+async function resolveIntakeDealsForAccount(result, accountId, opts = {}) {
+  let deals = dealsForAccount(result, accountId);
+  const companyName =
+    opts.companyName ||
+    result?.accounts?.find((a) => a.id === accountId)?.name ||
+    "";
+
+  if (accountId && !deals.length) {
+    try {
+      const { listDealsForAccount } = await import("./domain/deal-service.js");
+      const fetched = await listDealsForAccount(accountId);
+      if (fetched.length) deals = await enrichDealOwnerNames(fetched);
+    } catch (err) {
+      console.warn("[postcall] intake deal fetch failed:", accountId, err?.message || err);
+    }
+  }
+
+  // Domain/name dupes: surface deals from any account in the same match cluster.
+  if (!deals.length && result?.deals?.length && result?.accounts?.length > 1) {
+    const clusterIds = new Set((result.accounts || []).map((a) => a.id).filter(Boolean));
+    deals = result.deals.filter((d) => clusterIds.has(d.accountId));
+    if (deals.length) deals = await enrichDealOwnerNames(deals);
+  }
+
+  // History fallback (deal_hist_*) — matches My deals when Firestore list is empty.
+  const hist = resolveHistoryMatchesForIntake(getSession(), opts.emails || [], companyName);
+  if (hist.deals.length) {
+    const byId = new Map(deals.map((d) => [d.id, d]));
+    for (const d of hist.deals) {
+      if (d?.id && !byId.has(d.id)) byId.set(d.id, d);
+    }
+    deals = await enrichDealOwnerNames([...byId.values()]);
+  }
+
+  return deals;
 }
 
 /**
@@ -857,7 +920,10 @@ async function renderCrmMatchesPanel() {
     newDealTitleTouched = false;
   }
 
-  const accountDeals = dealsForAccount(result, activeAccount?.id);
+  const accountDeals = await resolveIntakeDealsForAccount(result, activeAccount?.id, {
+    emails,
+    companyName: activeAccount?.name || typedCompany || derivedFromEmail,
+  });
   syncIntakeDealSelection(accountDeals, {
     createNewDeal: pcCreateNewDeal,
     selectedDealId: pcSelectedDealId,
@@ -2171,13 +2237,13 @@ function renderQipCategoryRow(categoryKey, score, lines, profile, callType, fall
 /** v2.1 QIP scorecard — /10 categories, radar, insight tiles, theme → sub-parameter drill-down. */
 export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   if (!scorecard) {
-    return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
+    return `<fw-inline-message type="warning" open closable="false">No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())} lines returned.</fw-inline-message>`;
   }
 
   const wireframe = opts.context === "call-record";
   const normalized = normalizeQipScorecard(scorecard, analysisMeta);
   if (!normalized.lines?.length && normalized.overall == null) {
-    return '<fw-inline-message type="warning" open closable="false">No QIP scorecard lines returned.</fw-inline-message>';
+    return `<fw-inline-message type="warning" open closable="false">No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())} lines returned.</fw-inline-message>`;
   }
   const { callType, overall, categoryScores, lines, provisional, confidence } = normalized;
   const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
@@ -2218,7 +2284,6 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   const actionsHtml = wireframe
     ? ""
     : `<div class="qip-scorecard-actions">
-        <button type="button" class="btn-wire sm" disabled title="Score override (coming soon)">Override a score</button>
         <button type="button" class="btn-wire sm" disabled title="Compare to my average (coming soon)">Compare to my average</button>
       </div>`;
 
@@ -2232,28 +2297,23 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
         : "";
     const wireActionsHtml = `<div class="qip-wire-actions" aria-label="Score actions">
           <button type="button" class="btn-wire sm score-dispute-trigger"${callIdAttr}${companyAttr}${scoreAttr}>Dispute a score</button>
-          <button type="button" class="btn-wire sm score-override-trigger"${callIdAttr}>Override a score</button>
           <button type="button" class="btn-wire sm" disabled title="Compare to my average (coming soon)">Compare to my average</button>
         </div>`;
     return `
       <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
         <div class="qip-head">
           <div>
-            <h2>QIP scorecard ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
           </div>
-          <span class="qip-total"><b>${overallDisplay}</b> / 10 · overall</span>
-        </div>
-        <div class="legend" aria-label="How to read this scorecard">
-          <span class="lk">How to read this</span>
-          <span class="item">Each theme is scored <b style="color:#2b2926;font-weight:800">/10</b> from five checks —</span>
-          <span class="item"><span class="chip done">✓ Done <span class="frac">2</span></span></span>
-          <span class="item"><span class="chip part">◐ Partial <span class="frac">1</span></span></span>
-          <span class="item"><span class="chip miss">○ Missed <span class="frac">0</span></span></span>
-          <span class="item" style="margin-left:4px">Weight
-            <span class="wt" title="carries the call"><i class="on"></i><i class="on"></i><i class="on"></i></span>carries the call ·
-            <span class="wt" title="matters"><i class="on"></i><i class="on"></i><i></i></span>matters ·
-            <span class="wt" title="polish"><i class="on"></i><i></i><i></i></span>polish
-          </span>
+          <div class="qip-head-meta">
+            <span class="qip-weight-key" aria-label="Theme weight">
+              <span class="qip-weight-label">Weight</span>
+              <span class="wt" title="Carries the call"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+              <span class="wt" title="Matters"><i class="on"></i><i class="on"></i><i></i></span>
+              <span class="wt" title="Polish"><i class="on"></i><i></i><i></i></span>
+            </span>
+            <span class="qip-total"><b>${overallDisplay}</b> / 10 · overall</span>
+          </div>
         </div>
         <div class="wd">
           ${renderQipInsightTile(good, "What worked", "good")}
@@ -2269,7 +2329,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <div class="qip-scorecard-card qip-scorecard-head-card">
         <div class="qip-scorecard-head">
           <div>
-            <h2 class="qip-scorecard-title">QIP · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
             ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
           </div>
           <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
@@ -2554,7 +2614,7 @@ export function renderPostCall(data, meta = {}) {
     ${callNotes}
     ${momBlock}
     <section class="qip-section-wrap">
-      <h2>${useQip ? "QIP scorecard" : "Quality coach"}</h2>
+      <h2>${useQip ? esc(CALL_QUALITY_SCORE_LABEL) : "Quality coach"}</h2>
       ${
         useQip
           ? renderQipScorecard(scorecard || { lines: [] }, data.analysisMeta || {})
@@ -2587,7 +2647,7 @@ function navigateToCallRecord(recordId) {
     onCallRecordReady(recordId);
   }
   if (!location.hash.includes(recordId)) {
-    location.hash = `#calls/${recordId}`;
+    history.replaceState(null, "", `#calls/${recordId}`);
   }
 }
 
@@ -3801,7 +3861,7 @@ async function confirmAndGenerate(e) {
         hydration: {
           pending,
           errors: {},
-          progressMessage: POSTCALL_STAGE.scoring,
+          progressMessage: POSTCALL_STAGE.qualifying,
         },
         videoFacts: data.videoFacts || pipelineState.videoFacts || undefined,
         analysisMeta: {
@@ -3825,7 +3885,7 @@ async function confirmAndGenerate(e) {
         show($("postcall-confirm-view"), false);
         showInlineStatus(status, { open: false });
         navigateToCallRecord(record.id);
-        setCallRecordProgress(record.id, POSTCALL_STAGE.scoring);
+        setCallRecordProgress(record.id, POSTCALL_STAGE.qualifying);
       }
     }
 

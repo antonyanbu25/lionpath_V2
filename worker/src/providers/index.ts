@@ -106,12 +106,38 @@ export function getResearchProvider(env: ProviderEnv & FirestoreEnv): LlmProvide
   return getProviderForPass("research", env);
 }
 
+/** Stable seed from pass + prompt so identical inputs get identical Gemini sampling. */
+function postcallSeedFromPrompt(passName: string, user: string): number {
+  const basis = `${passName}\0${user}`;
+  let h = 2166136261;
+  for (let i = 0; i < basis.length; i++) {
+    h ^= basis.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // Gemini generationConfig.seed must be signed INT32.
+  const unsigned = h >>> 0;
+  return (unsigned % 2_147_483_647) || 1;
+}
+
 /** Post-call uses its own provider/model so it can differ from pre-call (e.g. faster model, no web search). */
 export function getPostCallProvider(env: ProviderEnv & FirestoreEnv): LlmProvider {
   const provider = (env.POSTCALL_LLM_PROVIDER || env.LLM_PROVIDER || "gemini").toLowerCase();
   const model = resolvePostCallModel(env);
-  if (provider === "gemini") return wrapWithUsageRecording(geminiProvider(env, model), env);
-  return wrapWithUsageRecording(resolveProvider(provider, env), env);
+  const inner =
+    provider === "gemini"
+      ? wrapWithUsageRecording(geminiProvider(env, model), env)
+      : wrapWithUsageRecording(resolveProvider(provider, env), env);
+  return {
+    async generate(req: LlmRequest): Promise<LlmResult> {
+      const temperature = req.temperature ?? 0;
+      const seed = req.seed ?? postcallSeedFromPrompt(req.passName, req.user);
+      return inner.generate({
+        ...req,
+        temperature,
+        seed,
+      });
+    },
+  };
 }
 
 function resolveProvider(provider: string, env: ProviderEnv): LlmProvider {

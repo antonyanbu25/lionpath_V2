@@ -17,6 +17,8 @@ import {
   detailArray,
   dealSignalsFromPostCalls,
   tcDeltasFromPostCalls,
+  productGapsFromPostCalls,
+  whatWorksFromPostCalls,
 } from "./post-call-detail.js";
 import { isFirestoreIndexError, stripUndefinedFields } from "./safe-store.js";
 
@@ -306,6 +308,37 @@ export function createFirestoreStore(fb) {
       return snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    },
+
+    /**
+     * Global name match (no teamId filter) — mirrors findAccountsByDomain for intake attach.
+     * Accounts have no nameNormalized index; scan listAccounts and filter client-side.
+     * FOLLOW-UP (DEAL-011): firestore.rules may later need explicit "read account/deal for
+     * attach" so SE-2 can resolve SE-1's account/deal without a full list dump.
+     */
+    async findAccountsByName(nameQuery) {
+      const key = String(nameQuery || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      if (!key) return [];
+      try {
+        const all = await this.listAccounts();
+        return all
+          .filter(
+            (a) =>
+              String(a.name || "")
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, " ")
+                .trim() === key,
+          )
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      } catch (err) {
+        console.warn("[firestore] findAccountsByName failed:", err?.message || err);
+        return [];
+      }
     },
 
     async createAccount(account) {
@@ -653,11 +686,42 @@ export function createFirestoreStore(fb) {
       return getById("deals", id);
     },
 
+    /**
+     * Deals for an account. Default (no ownerId) is account-scoped — every deal on the
+     * account, not caller ownership — so intake attach surfaces other SEs' opportunities.
+     * Optional ownerId/teamId remain for callers that need a narrow slice.
+     * FOLLOW-UP (DEAL-011): firestore.rules may later need explicit "read account/deal for
+     * attach"; without it SE-2 queries may permission-deny other owners' deals.
+     */
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       const fields = dealFields(!!opts.forSearch);
       const teamId = opts.teamId || null;
+      // Coerce mistaken opts-as-ownerId objects from older call sites.
+      const ownerFilter =
+        typeof ownerId === "string" && ownerId ? ownerId : null;
 
-      async function runQuery(filters) {
+      const filterAndSort = (rows) => {
+        const filtered = rows.filter((d) => {
+          if (ownerFilter && d.ownerId !== ownerFilter) return false;
+          if (teamId && d.teamId !== teamId) return false;
+          return true;
+        });
+        filtered.sort(
+          (a, b) =>
+            (b.lastActivityAt || b.updatedAt || 0) - (a.lastActivityAt || a.updatedAt || 0),
+        );
+        return opts.forSearch ? filtered : filtered.map(omitEmbeddingFields);
+      };
+
+      async function runQueryPlain(filters) {
+        const q = select
+          ? query(collection(db, "deals"), ...filters, select(...fields))
+          : query(collection(db, "deals"), ...filters);
+        const snap = await getDocs(q);
+        return mapSnapDocs(snap);
+      }
+
+      async function runQueryOrdered(filters) {
         const q = select
           ? query(
               collection(db, "deals"),
@@ -667,41 +731,51 @@ export function createFirestoreStore(fb) {
             )
           : query(collection(db, "deals"), ...filters, orderBy("lastActivityAt", "desc"));
         const snap = await getDocs(q);
-        const rows = mapSnapDocs(snap);
-        return opts.forSearch ? rows : rows.map(omitEmbeddingFields);
+        return mapSnapDocs(snap);
       }
 
       const fullFilters = [
         where("accountId", "==", accountId),
-        ...(ownerId ? [where("ownerId", "==", ownerId)] : []),
+        ...(ownerFilter ? [where("ownerId", "==", ownerFilter)] : []),
         ...(teamId ? [where("teamId", "==", teamId)] : []),
       ];
 
       try {
-        return await runQuery(fullFilters);
+        const rows = await runQueryOrdered(fullFilters);
+        if (rows.length) return filterAndSort(rows);
       } catch (err) {
-        if (!isFirestoreIndexError(err)) throw err;
-        console.warn("[firestore] listDealsByAccount index fallback:", accountId);
-      }
-
-      if (ownerId) {
-        try {
-          const rows = await runQuery([
-            where("accountId", "==", accountId),
-            where("ownerId", "==", ownerId),
-          ]);
-          return teamId ? rows.filter((d) => d.teamId === teamId) : rows;
-        } catch (err) {
-          if (!isFirestoreIndexError(err)) throw err;
+        if (!isFirestoreIndexError(err)) {
+          console.warn(
+            "[firestore] listDealsByAccount ordered query failed:",
+            accountId,
+            err?.message || err,
+          );
+        } else {
+          console.warn("[firestore] listDealsByAccount index fallback:", accountId);
         }
       }
 
-      const rows = await runQuery([where("accountId", "==", accountId)]);
-      return rows.filter((d) => {
-        if (ownerId && d.ownerId !== ownerId) return false;
-        if (teamId && d.teamId !== teamId) return false;
-        return true;
-      });
+      if (ownerFilter) {
+        try {
+          const rows = await runQueryOrdered([
+            where("accountId", "==", accountId),
+            where("ownerId", "==", ownerFilter),
+          ]);
+          if (rows.length) return filterAndSort(rows);
+        } catch (err) {
+          if (!isFirestoreIndexError(err)) {
+            console.warn(
+              "[firestore] listDealsByAccount owner ordered query failed:",
+              accountId,
+              err?.message || err,
+            );
+          }
+        }
+      }
+
+      // Plain query — ordered queries omit deals missing lastActivityAt.
+      const plain = await runQueryPlain([where("accountId", "==", accountId)]);
+      return filterAndSort(plain);
     },
 
     async listDealsByOwner(ownerId, limitCount = 300, opts = {}) {
@@ -1604,6 +1678,20 @@ export function createFirestoreStore(fb) {
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     },
 
+    async listProductGapsByDeal(dealId, limitCount = 500) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = productGapsFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
+      const q = query(
+        collection(db, "productGaps"),
+        where("dealId", "==", dealId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
     async upsertWhatWorks(docData) {
       const ref = docData.id ? doc(db, "whatWorks", docData.id) : doc(collection(db, "whatWorks"));
       const data = { ...docData, id: ref.id };
@@ -1624,6 +1712,20 @@ export function createFirestoreStore(fb) {
       const q = query(
         collection(db, "whatWorks"),
         where("orgId", "==", orgId),
+        orderBy("createdAt", "desc"),
+        limit(limitCount),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async listWhatWorksByDeal(dealId, limitCount = 500) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = whatWorksFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
+      const q = query(
+        collection(db, "whatWorks"),
+        where("dealId", "==", dealId),
         orderBy("createdAt", "desc"),
         limit(limitCount),
       );

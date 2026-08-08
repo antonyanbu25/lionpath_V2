@@ -1823,7 +1823,7 @@ body.prep-gen-lock {
   z-index: 99998;
 }
 
-.prep-dispute-backdrop {
+.prep-dispute-overlay {
   position: fixed;
   inset: 0;
   display: flex;
@@ -1831,6 +1831,11 @@ body.prep-gen-lock {
   justify-content: center;
   padding: 24px 16px;
   z-index: 99999;
+  pointer-events: none;
+}
+
+.prep-dispute-overlay .prep-dispute-dialog {
+  pointer-events: auto;
 }
 
 .prep-dispute-dialog {
@@ -1891,6 +1896,14 @@ body.prep-gen-lock {
   font-size: 13px;
   font-weight: 600;
   color: var(--dew-text-secondary);
+}
+
+.prep-dispute-file {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 0.875rem;
+  color: inherit;
 }
 
 .prep-dispute-select,

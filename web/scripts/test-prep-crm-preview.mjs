@@ -112,4 +112,123 @@ assert.ok(
   "corporate domain fallback must match the existing Advanzia account",
 );
 
+// Cross-SE resolve-to-attach: SE-1 owns account+deal; SE-2 resolves same company/email
+// and must see existing account + deal (no duplicate).
+{
+  const SE1 = "usr_se1_global";
+  const SE2 = "usr_se2_global";
+  const TEAM1 = "team_se1_global";
+  const TEAM2 = "team_se2_global";
+  const ORG = "org_global_attach";
+  const TS2 = TS + 1;
+
+  store.clearAll();
+  localStorage.removeItem("se-singha-domain:dealContacts");
+  clearLocalStoreCache();
+
+  await store.upsertUser({
+    id: SE1,
+    email: "se1@test.com",
+    authUid: null,
+    displayName: "SE One",
+    role: "se",
+    teamId: TEAM1,
+    orgId: ORG,
+    managerId: null,
+    jobTitle: null,
+    status: "active",
+    createdAt: TS2,
+    updatedAt: TS2,
+  });
+  await store.upsertUser({
+    id: SE2,
+    email: "se2@test.com",
+    authUid: null,
+    displayName: "SE Two",
+    role: "se",
+    teamId: TEAM2,
+    orgId: ORG,
+    managerId: null,
+    jobTitle: null,
+    status: "active",
+    createdAt: TS2,
+    updatedAt: TS2,
+  });
+
+  const se1Session = { email: "se1@test.com", teamId: TEAM1, orgId: ORG, userId: SE1 };
+  const se1Linked = await linkPrepToLifecycle(
+    se1Session,
+    {
+      companyName: "Northwind",
+      companyDomain: "northwind.com",
+      prospectEmail: "buyer@northwind.com",
+      prospectEmails: ["buyer@northwind.com"],
+      prepType: "new_business",
+    },
+    { prospects: [{ name: "Buyer", email: "buyer@northwind.com" }] },
+    { company: "Northwind", companyDomain: "northwind.com" },
+  );
+  assert.ok(se1Linked?.accountId, "SE-1 must create account");
+  assert.ok(se1Linked?.dealId, "SE-1 must create deal");
+
+  const se1Deal = await store.getDeal(se1Linked.dealId);
+  assert.equal(se1Deal.ownerId, SE1, "deal owned by SE-1");
+
+  // Name-only global search (no email contact yet for SE-2's typed address).
+  const { resolveAccountsForCompany, resolveContactsForEmails } = await import(
+    "../postcall-contact-resolve.js"
+  );
+  const byName = await resolveAccountsForCompany("Northwind", "northwind.com");
+  assert.ok(
+    byName.accounts.some((a) => a.id === se1Linked.accountId),
+    "global name/domain resolve must find SE-1 account",
+  );
+  assert.ok(
+    byName.deals.some((d) => d.id === se1Linked.dealId),
+    "global resolve must surface SE-1 deal to another SE",
+  );
+
+  // Same corporate email as SE-1's contact — attach, don't duplicate.
+  const asSe2 = await lookupPrepCrmMatches(["buyer@northwind.com"], {
+    companyName: "Northwind",
+    companyDomain: "northwind.com",
+  });
+  assert.equal(asSe2.accounts.length, 1, "SE-2 must see exactly one matching account");
+  assert.equal(asSe2.accounts[0].id, se1Linked.accountId, "SE-2 attaches to SE-1 account");
+  assert.ok(
+    asSe2.deals.some((d) => d.id === se1Linked.dealId),
+    "SE-2 must see SE-1's existing deal",
+  );
+  assert.ok(
+    asSe2.deals.some((d) => d.id === se1Linked.dealId && d.ownerName === "SE One"),
+    "existing deal badge enrichment includes owner display name",
+  );
+
+  const emailResolve = await resolveContactsForEmails(["buyer@northwind.com"]);
+  assert.equal(
+    emailResolve.accounts[0]?.id,
+    se1Linked.accountId,
+    "shared resolver path matches account",
+  );
+
+  // Confirm store still has a single account + single deal (no duplicate fork).
+  const allAccounts = await store.listAccounts();
+  const northwind = allAccounts.filter(
+    (a) => String(a.name || "").toLowerCase().includes("northwind"),
+  );
+  assert.equal(northwind.length, 1, "must not duplicate Northwind account");
+  const dealsOnAccount = await store.listDealsByAccount(se1Linked.accountId);
+  assert.equal(dealsOnAccount.length, 1, "must not duplicate deal when SE-2 resolves");
+
+  const { renderAccountDealPreviewHtml } = await import("../account-deal-preview.js");
+  const previewHtml = renderAccountDealPreviewHtml({
+    accountName: "Northwind",
+    accountMatched: true,
+    deals: asSe2.deals,
+    selectedDealId: se1Linked.dealId,
+  });
+  assert.ok(previewHtml.includes("Account matched · existing"), "account existing badge");
+  assert.ok(previewHtml.includes("Deal 1 · existing (owner: SE One)"), "deal existing owner badge");
+}
+
 console.log("test-prep-crm-preview.mjs: ok");

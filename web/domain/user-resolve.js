@@ -69,9 +69,6 @@ export async function resolveAuthIndexOwnerId(fb, session) {
     try {
       const snap = await fb.getDoc(fb.doc(fb.db, "authIndex", authUid));
       const userId = snap.exists() ? snap.data()?.userId : null;
-      // #region agent log
-      fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H1",location:"user-resolve.js:resolveAuthIndexOwnerId",message:"authIndex direct read",data:{authUid:authUid?.slice?.(0,8),userId:userId?.slice?.(0,24),sessionRaw:raw?.slice?.(0,24),exists:snap.exists()},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (userId && !String(userId).startsWith("usr_dummy_")) return userId;
     } catch (err) {
       console.warn("[user-resolve] authIndex direct read failed:", err?.message || err);
@@ -107,12 +104,18 @@ export async function resolveEffectiveOwnerId(session, storeOverride, fb) {
 }
 
 /** Load user profile from store and merge into session (production path). */
-export async function enrichSessionFromStore(session) {
+export async function enrichSessionFromStore(session, fb) {
   const lookupId = session?.userId || session?.uid;
   if (!lookupId && !session?.email && !session?.authUid) return session;
 
   const store = getStore();
-  const user = await lookupUserForSession(session, store);
+  let user = await lookupUserForSession(session, store);
+  if (!user) {
+    const ownerId = await resolveAuthIndexOwnerId(fb, session);
+    if (ownerId) {
+      user = await safeStoreGet("getUser by authIndex id", () => store.getUser(ownerId));
+    }
+  }
   if (!user) return session;
 
   return {
@@ -121,8 +124,8 @@ export async function enrichSessionFromStore(session) {
     uid: user.id,
     authUid: user.authUid ?? session.authUid ?? null,
     role: user.role,
-    teamId: user.teamId,
-    orgId: user.orgId || null,
+    teamId: user.teamId || session.teamId || null,
+    orgId: user.orgId || session.orgId || null,
     name: user.displayName || session.name,
     email: user.email || session.email,
   };

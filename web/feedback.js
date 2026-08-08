@@ -1,4 +1,4 @@
-/** Sidebar feedback. local queue + worker POST /api/feedback. */
+/** Sidebar feedback. Creates a Freshdesk ticket (type Feedback) + local queue mirror. */
 
 import {
   readFieldValueAsync,
@@ -7,6 +7,7 @@ import {
   showInlineStatus,
 } from "./crayons-ui.js";
 import { newId } from "./domain/types.js";
+import { createSupportTicket } from "./support-tickets.js";
 
 const STORAGE_KEY = "lionpath_feedback";
 
@@ -26,6 +27,63 @@ function loadQueue() {
 
 function saveQueue(list) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, 50)));
+}
+
+/**
+ * Fire-and-forget manager dispute email via worker.
+ * Soft-fails: returns { sent: false } on any error; never throws.
+ *
+ * @param {{
+ *   workerUrl?: string,
+ *   getToken?: () => Promise<string|null|undefined>,
+ *   email?: string,
+ *   to: string,
+ *   toName?: string,
+ *   seName?: string,
+ *   callTitle?: string,
+ *   category?: string,
+ *   note?: string,
+ *   link?: string,
+ *   via?: string|null,
+ * }} opts
+ * @returns {Promise<{ sent: boolean, via: string|null }>}
+ */
+export async function notifyManagerOfDispute(opts = {}) {
+  const workerUrl = String(opts.workerUrl || "").replace(/\/$/, "");
+  if (!workerUrl || !opts.to) {
+    return { sent: false, via: null };
+  }
+
+  try {
+    const headers = { "Content-Type": "application/json" };
+    const token = typeof opts.getToken === "function" ? await opts.getToken() : null;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${workerUrl}/api/disputes/notify`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        email: opts.email || "",
+        to: opts.to,
+        toName: opts.toName || "",
+        seName: opts.seName || "",
+        callTitle: opts.callTitle || "",
+        category: opts.category || "",
+        note: opts.note || "",
+        link: opts.link || "",
+        via: opts.via || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn("[dispute-notify] worker error:", data.error || res.status);
+      return { sent: false, via: opts.via || null };
+    }
+    return { sent: !!data.sent, via: data.via ?? opts.via ?? null };
+  } catch (err) {
+    console.warn("[dispute-notify] failed:", err?.message || err);
+    return { sent: false, via: opts.via || null };
+  }
 }
 
 export function initFeedback(deps = {}) {
@@ -53,6 +111,8 @@ export function initFeedback(deps = {}) {
     modal.isOpen = true;
     showMsg("");
     const ta = document.getElementById("feedback-text");
+    const shot = document.getElementById("feedback-screenshot");
+    if (shot) shot.value = "";
     if (ta) {
       ta.value = "";
       if (typeof ta.setFocus === "function") ta.setFocus();
@@ -70,10 +130,12 @@ export function initFeedback(deps = {}) {
 
     const textEl = document.getElementById("feedback-text");
     const catEl = document.getElementById("feedback-category");
+    const shotEl = document.getElementById("feedback-screenshot");
     const rawCat = await readFieldValueAsync(catEl);
     const message = (await readFieldValueAsync(textEl)).trim();
     const categoryKey = rawCat || "idea";
     const category = CATEGORY_MAP[categoryKey] || "Idea";
+    const file = shotEl?.files?.[0] || null;
 
     if (!message) {
       setFieldError(textEl, "Please enter your feedback.");
@@ -83,7 +145,7 @@ export function initFeedback(deps = {}) {
     setFieldError(textEl);
     setButtonLoading(submitBtn, true);
 
-    const email = getEmail() || "anonymous";
+    const email = getEmail() || "";
     const entry = {
       id: newId("event"),
       category,
@@ -92,36 +154,40 @@ export function initFeedback(deps = {}) {
       createdAt: Date.now(),
     };
 
-    const queue = loadQueue();
-    queue.unshift({ ...entry, email });
-    saveQueue(queue);
-
-    if (workerUrl) {
-      try {
-        const headers = { "Content-Type": "application/json" };
-        const token = await getToken();
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`${workerUrl}/api/feedback`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ email, entry }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
-      } catch (err) {
-        showMsg(
-          `Saved locally. Server sync failed: ${err.message || "offline"}.`,
-          false,
-        );
-        setTimeout(close, 2500);
-        setButtonLoading(submitBtn, false);
-        return;
-      }
+    if (!workerUrl) {
+      showMsg("Feedback service is not configured.", false);
+      setButtonLoading(submitBtn, false);
+      return;
     }
 
-    showMsg("Thanks. Your feedback was saved.");
-    setButtonLoading(submitBtn, false);
-    setTimeout(close, 1200);
+    try {
+      const ticket = await createSupportTicket({
+        workerUrl,
+        getToken,
+        email,
+        kind: "feedback",
+        description: message,
+        category,
+        page: entry.page,
+        link: location.href,
+        attachment: file,
+      });
+
+      const queue = loadQueue();
+      queue.unshift({ ...entry, email, freshdeskTicketId: ticket.ticketId });
+      saveQueue(queue);
+
+      showMsg(`Thanks. Ticket #${ticket.ticketId} was created.`);
+      setButtonLoading(submitBtn, false);
+      setTimeout(close, 1400);
+    } catch (err) {
+      // Soft fallback: keep local queue when Freshdesk is down.
+      const queue = loadQueue();
+      queue.unshift({ ...entry, email: email || "anonymous" });
+      saveQueue(queue);
+      showMsg(err?.message || "Could not create ticket. Saved locally.", false);
+      setButtonLoading(submitBtn, false);
+    }
   };
 
   btn.addEventListener("fwClick", open);

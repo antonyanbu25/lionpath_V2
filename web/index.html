@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.24" />
+    <meta name="portal-build" content="2.1.43" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -24,20 +24,20 @@
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
     <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.17" />
-    <link rel="stylesheet" href="./styles.css?v=2.1.24" />
-    <link rel="stylesheet" href="./precall.css?v=2.1.24" />
-    <link rel="stylesheet" href="./postcall.css?v=2.1.24" />
-    <link rel="stylesheet" href="./call-view.css?v=2.1.24" />
-    <link rel="stylesheet" href="./lifecycle.css?v=2.1.14" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.42" />
+    <link rel="stylesheet" href="./precall.css?v=2.1.31" />
+    <link rel="stylesheet" href="./postcall.css?v=2.1.37" />
+    <link rel="stylesheet" href="./call-view.css?v=2.1.41" />
+    <link rel="stylesheet" href="./lifecycle.css?v=2.1.42" />
     <style id="prep-dispute-critical-css">
-      #prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
-      #prep-dispute-modal.prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
-      #prep-dispute-modal .prep-dispute-dialog { width: min(480px,100%); background: #fff; color: #111; border: 1px solid #ccc; border-radius: 12px; padding: 0; max-height: 90vh; overflow: auto; }
-      #prep-dispute-modal .prep-dispute-form { display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 18px; }
-      #prep-dispute-modal .prep-dispute-field { display: flex; flex-direction: column; gap: 6px; }
-      #prep-dispute-modal .prep-dispute-select,
-      #prep-dispute-modal .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; }
-      #prep-dispute-modal .prep-dispute-textarea { min-height: 96px !important; }
+      .prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
+      .prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; pointer-events: none; }
+      .prep-dispute-overlay .prep-dispute-dialog { pointer-events: auto; width: min(480px,100%); background: #fff; color: #111; border: 1px solid #ccc; border-radius: 12px; padding: 0; max-height: 90vh; overflow: auto; }
+      .prep-dispute-overlay .prep-dispute-form { display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 18px; }
+      .prep-dispute-overlay .prep-dispute-field { display: flex; flex-direction: column; gap: 6px; }
+      .prep-dispute-overlay .prep-dispute-select,
+      .prep-dispute-overlay .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
+      .prep-dispute-overlay .prep-dispute-textarea { min-height: 96px !important; }
     </style>
     <script
       type="module"
@@ -195,9 +195,9 @@
             <span slot="before-label" class="nav-icon" data-nav-icon="analysis" aria-hidden="true"></span>
             <span class="nav-label">Post-call analysis</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="All calls">
+          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="Activities">
             <span slot="before-label" class="nav-icon" data-nav-icon="history" aria-hidden="true"></span>
-            <span class="nav-label">All calls</span>
+            <span class="nav-label">Activities</span>
           </fw-button>
           <div class="sidebar-nav-divider" role="separator" aria-hidden="true"></div>
           <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
@@ -505,7 +505,6 @@
               <div class="prep-form-center">
                 <div class="prep-form-heading">
                   <h1>New call analysis</h1>
-                  <p class="muted">Paste a Zoom or Kaia recording link — or upload a transcript. We match the account and score the call.</p>
                 </div>
                 <fw-card class="prep-form-card postcall-intake-card">
                   <form id="postcall-form" autocomplete="off">
@@ -715,6 +714,10 @@
             placeholder="What worked, what didn't, or what you'd like to see…"
             required
           ></fw-textarea>
+          <label class="feedback-file-field" for="feedback-screenshot">
+            <span class="feedback-file-label">Screenshot (optional)</span>
+            <input id="feedback-screenshot" type="file" accept="image/*" />
+          </label>
           <div class="feedback-actions">
             <fw-button id="feedback-close" type="button" color="secondary" fill="outline">Cancel</fw-button>
             <fw-button id="feedback-submit" type="submit" color="primary">Submit</fw-button>

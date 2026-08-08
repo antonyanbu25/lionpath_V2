@@ -4,6 +4,7 @@
 
 import { WORKER_BASE_URL } from "../firebase-config.js";
 import { shouldTriggerGapClustering, countPendingClusterGaps } from "../gap-cluster.js";
+import { mergePostCallDetail, setDetailArray } from "./post-call-detail.js";
 import { newId, now } from "./types.js";
 
 /** @type {(() => Promise<string|null>)|null} */
@@ -247,6 +248,7 @@ export function buildPass6Detail(drafts, context) {
     const doc = {
       id: newId("whatWorks"),
       postCallId: context.postCallId,
+      dealId: context.dealId,
       accountId: context.accountId,
       ownerId: context.ownerId,
       teamId: context.teamId,
@@ -262,6 +264,137 @@ export function buildPass6Detail(drafts, context) {
   return { productGaps, whatWorks, flatProductGaps, flatWhatWorks };
 }
 
+/** Dedupe key for deal-level product signal rollup (verbatim-first). */
+export function productSignalDedupeKey(row) {
+  return String(row?.verbatim || row?.headline || row?.title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 96);
+}
+
+/**
+ * Merge product signal rows across calls on a deal; tag first surface per call.
+ * @param {object[]} rows
+ * @param {string|null|undefined} currentCallId
+ */
+export function rollupProductSignalRows(rows, currentCallId = null) {
+  const sorted = [...(rows || [])].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  /** @type {Map<string, object>} */
+  const byKey = new Map();
+  for (const row of sorted) {
+    const key = productSignalDedupeKey(row);
+    if (!key) continue;
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        ...row,
+        firstSurfacedCallId: row.postCallId || null,
+        firstSurfacedAt: row.createdAt || null,
+      });
+    }
+  }
+  return [...byKey.values()]
+    .map((row) => ({
+      ...row,
+      surfacedOnThisCall: !!currentCallId && row.firstSurfacedCallId === currentCallId,
+    }))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+/** Collect pass 6 rows from local post-call history blobs. */
+export function productSignalsFromHistoryRecords(records) {
+  /** @type {object[]} */
+  const productGaps = [];
+  /** @type {object[]} */
+  const whatWorks = [];
+  const sorted = [...(records || [])].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  for (const rec of sorted) {
+    const pass6 = rec?.pass6 || rec?.result?.pass6;
+    if (!pass6) continue;
+    const ts = rec.timestamp || Date.now();
+    for (const g of pass6.productGaps || []) {
+      productGaps.push({
+        ...g,
+        postCallId: g.postCallId || rec.id,
+        dealId: g.dealId || rec.dealId || null,
+        createdAt: g.createdAt || ts,
+      });
+    }
+    for (const w of pass6.whatWorks || []) {
+      whatWorks.push({
+        ...w,
+        postCallId: w.postCallId || rec.id,
+        dealId: w.dealId || rec.dealId || null,
+        createdAt: w.createdAt || ts,
+      });
+    }
+  }
+  return { productGaps, whatWorks };
+}
+
+/**
+ * Deal-level product signals: store collections + history + this call, deduped.
+ * @param {object} store
+ * @param {string} dealId
+ * @param {{ currentCallId?: string|null, callGaps?: object[], callWorks?: object[], historyRecords?: object[] }} [opts]
+ */
+export async function resolveDealProductSignals(store, dealId, opts = {}) {
+  const { currentCallId = null, callGaps = [], callWorks = [], historyRecords = [] } = opts;
+  /** @type {object[]} */
+  const gapRows = [...callGaps];
+  /** @type {object[]} */
+  const workRows = [...callWorks];
+
+  if (store?.listProductGapsByDeal) {
+    try {
+      gapRows.push(...(await store.listProductGapsByDeal(dealId, 500)));
+    } catch {
+      /* optional read path */
+    }
+  }
+  if (store?.listWhatWorksByDeal) {
+    try {
+      workRows.push(...(await store.listWhatWorksByDeal(dealId, 500)));
+    } catch {
+      /* optional read path */
+    }
+  }
+
+  const fromHistory = productSignalsFromHistoryRecords(historyRecords);
+  gapRows.push(...fromHistory.productGaps);
+  workRows.push(...fromHistory.whatWorks);
+
+  const productGaps = rollupProductSignalRows(gapRows, currentCallId);
+  const whatWorks = rollupProductSignalRows(workRows, currentCallId);
+
+  return { productGaps, whatWorks, dealRollup: true };
+}
+
+/** Merge store-backed and history-derived deal product signals. */
+export function mergeDealProductSignalExtras(storeExtras = {}, historyExtras = {}) {
+  return {
+    productGaps: rollupProductSignalRows([
+      ...(storeExtras.productGaps || []),
+      ...(historyExtras.productGaps || []),
+    ]),
+    whatWorks: rollupProductSignalRows([
+      ...(storeExtras.whatWorks || []),
+      ...(historyExtras.whatWorks || []),
+    ]),
+  };
+}
+
+/** Embed pass 6 rows on postCalls.detail for fast per-call reads. */
+export async function embedPass6OnPostCallDetail(store, postCallId, built) {
+  if (!store?.getPostCall || !store?.upsertPostCall || !postCallId) return;
+  const postCall = await store.getPostCall(postCallId);
+  if (!postCall) return;
+  const detail = mergePostCallDetail(postCall.detail);
+  setDetailArray(detail, "productGaps", built.productGaps || []);
+  setDetailArray(detail, "whatWorks", built.whatWorks || []);
+  await store.upsertPostCall({ ...postCall, detail, updatedAt: now() });
+}
+
 export async function persistPass6ProductGaps(store, drafts, context) {
   const built = buildPass6Detail(drafts, context);
   const saved = [];
@@ -271,9 +404,17 @@ export async function persistPass6ProductGaps(store, drafts, context) {
   for (const doc of built.flatWhatWorks) {
     await store.upsertWhatWorks(doc);
   }
+  if (context.postCallId) {
+    try {
+      await embedPass6OnPostCallDetail(store, context.postCallId, built);
+    } catch (err) {
+      console.warn("[product-signal] postCall detail embed failed:", err?.message || err);
+    }
+  }
   if (saved.length && context.orgId) {
     await notifyGapClusteringPending(store, context.orgId, saved.length);
   }
+
   return { saved, ...built };
 }
 

@@ -3,19 +3,21 @@
  * SE sees own profile; manager sees team; nobody sideways.
  */
 
-import { listTeamSeEmailsAsync } from "../auth.js";
-import { listAnalysesWithQuality, getPostCallAnalysis } from "../history.js";
+import { getPostCallAnalysis, mergeHistoryLists, syncHistoryOnLogin, listPostCallAnalyses } from "../history.js";
 import { dedupeAnalysesByCallIdentity } from "../call-identity.js";
 import {
   postCallRecordsToAnalyses,
   fetchAndHydratePostCallAnalyses,
+  loadTeamCallSummariesFromStore,
 } from "./postcall-hydrate.js";
+import { callSummariesToAnalyses } from "./call-summary.js";
 import { listAccountsForSession } from "./account-service.js?v=2.1.14";
 import { canSessionAction, sessionToUser } from "./rbac.js";
 import { isManagerRole } from "./types.js";
 import { getStore } from "./store.js";
 import { normalizeUserEmail } from "../shared.js";
 import { stableUserIdForEmail as dummyUidForEmail } from "./id.js";
+import { resolveEffectiveOwnerId } from "./user-resolve.js";
 import { themeAverage } from "../quality-score.js";
 
 const COACHING_AGG_OPTS = { requireHighConfidence: true };
@@ -97,26 +99,85 @@ export async function getPostCallForSession(session, callId, ownerEmail) {
 }
 
 /**
- * All analyses visible for a session — own history or merged team history for managers.
+ * Load post-call analyses for a session — merges Firestore callSummaries, worker history, and local cache.
  * @param {object|null} session
- * @param {{ teamScope?: boolean }} [opts]
+ * @param {{ teamScope?: boolean, resolveOwnerFb?: object, fetchRemoteHistory?: () => Promise<object[]>, syncRemoteHistory?: boolean, limit?: number }} [opts]
  */
-export async function listAnalysesForSession(session, opts = {}) {
+export async function loadCallAnalysesForSession(session, opts = {}) {
   if (!session?.email) return [];
+
+  const email = normalizeSeEmail(session.email);
+  const dedupeByIdentity = opts.dedupeByCallIdentity !== false;
+  let localRecords = listPostCallAnalyses(email);
+
+  if (opts.syncRemoteHistory !== false) {
+    try {
+      if (typeof opts.fetchRemoteHistory === "function") {
+        const synced = await opts.fetchRemoteHistory();
+        if (Array.isArray(synced)) localRecords = synced;
+      } else {
+        localRecords = await syncHistoryOnLogin(email);
+      }
+    } catch (err) {
+      console.warn("[se-access] history sync failed:", err?.message || err);
+    }
+  }
 
   const user = sessionToUser(session);
   const teamScope = opts.teamScope === true && user && isManagerRole(user.role);
 
-  if (!teamScope) {
-    return dedupeAnalysesByCallIdentity(listAnalysesWithQuality(session.email));
+  if (teamScope) {
+    const teamRecords = await loadTeamCallSummariesFromStore(session);
+    const merged = mergeHistoryLists(teamRecords, localRecords);
+    return dedupeByIdentity ? dedupeAnalysesByCallIdentity(merged) : merged;
   }
 
-  const emails = await listTeamSeEmailsAsync(session);
-  const merged = [];
-  for (const email of emails) {
-    merged.push(...listAnalysesWithQuality(email));
+  const store = getStore();
+  const ownerId = await resolveEffectiveOwnerId(session, store, opts.resolveOwnerFb);
+  let firestoreRecords = [];
+
+  if (ownerId) {
+    /** @type {object[]} */
+    const mergedFirestore = [];
+    if (store.listCallSummariesByOwner) {
+      try {
+        const summaries = await store.listCallSummariesByOwner(ownerId, opts.limit || 200);
+        mergedFirestore.push(...callSummariesToAnalyses(summaries));
+      } catch (err) {
+        console.warn("[se-access] callSummaries load failed:", err?.message || err);
+      }
+    }
+    // Many production calls exist only in postCalls — dual-write did not always write callSummaries.
+    if (store.listPostCallsByOwner) {
+      try {
+        const postCalls = await store.listPostCallsByOwner(ownerId, opts.limit || 200);
+        mergedFirestore.push(...postCallRecordsToAnalyses(postCalls));
+      } catch (err) {
+        console.warn("[se-access] postCalls load failed:", err?.message || err);
+      }
+    }
+    try {
+      firestoreRecords = await fetchAndHydratePostCallAnalyses(
+        dedupeAnalysesByCallIdentity(mergedFirestore),
+        store,
+      );
+    } catch (err) {
+      console.warn("[se-access] call hydrate failed:", err?.message || err);
+      firestoreRecords = dedupeAnalysesByCallIdentity(mergedFirestore);
+    }
   }
-  return dedupeAnalysesByCallIdentity(merged);
+
+  const merged = mergeHistoryLists(firestoreRecords, localRecords);
+  return dedupeByIdentity ? dedupeAnalysesByCallIdentity(merged) : merged;
+}
+
+/**
+ * All analyses visible for a session — own history or merged team history for managers.
+ * @param {object|null} session
+ * @param {{ teamScope?: boolean, resolveOwnerFb?: object, fetchRemoteHistory?: () => Promise<object[]>, syncRemoteHistory?: boolean }} [opts]
+ */
+export async function listAnalysesForSession(session, opts = {}) {
+  return loadCallAnalysesForSession(session, opts);
 }
 
 /** @param {object|null} session @param {string} targetEmail */

@@ -134,6 +134,18 @@ export async function listProductGapsByOrg(orgId: string, limitCount = 500, env?
   );
 }
 
+export async function listProductGapsByDeal(dealId: string, limitCount = 500, env?: FirestoreEnv): Promise<FirestoreDoc[]> {
+  return cachedQuery("productGaps", { dealId, limitCount }, () =>
+    queryBy(
+      "productGaps",
+      [{ field: "dealId", op: "==", value: dealId }],
+      { field: "createdAt", direction: "desc" },
+      limitCount,
+      env,
+    ),
+  );
+}
+
 export async function listWhatWorksByPostCall(postCallId: string, env?: FirestoreEnv): Promise<FirestoreDoc[]> {
   return cachedQuery("whatWorks", { postCallId }, () =>
     queryBy("whatWorks", [{ field: "postCallId", op: "==", value: postCallId }], undefined, undefined, env),
@@ -145,6 +157,18 @@ export async function listWhatWorksByOrg(orgId: string, limitCount = 500, env?: 
     queryBy(
       "whatWorks",
       [{ field: "orgId", op: "==", value: orgId }],
+      { field: "createdAt", direction: "desc" },
+      limitCount,
+      env,
+    ),
+  );
+}
+
+export async function listWhatWorksByDeal(dealId: string, limitCount = 500, env?: FirestoreEnv): Promise<FirestoreDoc[]> {
+  return cachedQuery("whatWorks", { dealId, limitCount }, () =>
+    queryBy(
+      "whatWorks",
+      [{ field: "dealId", op: "==", value: dealId }],
       { field: "createdAt", direction: "desc" },
       limitCount,
       env,

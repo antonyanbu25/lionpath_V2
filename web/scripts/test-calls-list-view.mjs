@@ -1,5 +1,5 @@
 /**
- * Smoke tests for All calls list — spec §11.3.
+ * Smoke tests for Activities list — unified briefs + calls (#calls / #activities).
  */
 import {
   filterCallRecords,
@@ -10,6 +10,8 @@ import {
   resolveMomSent,
   resolveQipDisplay,
   resolveDurationMinutes,
+  mergeActivityFeed,
+  ACTIVITY_FILTER_PRECALL_BRIEFS,
 } from "../calls-list-view.js";
 
 function assert(cond, msg) {
@@ -75,11 +77,24 @@ const staleCall = {
   analysis: {},
 };
 
+const sampleBrief = {
+  id: `acme-brief-${now - 3 * day}`,
+  company: "Acme Corp",
+  kind: "Discovery",
+  when: new Date(now - 3 * day).toISOString(),
+  prep: { version: 8, headline: "Acme prep" },
+  meta: { company: "Acme Corp", domain: "acme.com" },
+};
+
 const all = [liveCall, shadowCall, staleCall];
 const filtered = filterCallRecords(all, { callType: "", window: "30d" });
 
 assert(filtered.length === 2, "30d window excludes stale call");
 assert(filterCallRecords(all, { callType: "demo", window: "all" }).length === 1, "type filter");
+assert(
+  filterCallRecords(all, { callType: ACTIVITY_FILTER_PRECALL_BRIEFS, window: "all" }).length === 0,
+  "precall_briefs filter excludes calls",
+);
 
 const metrics = aggregateCallListMetrics(filtered);
 assert(metrics.callCount === 1, "provisional excluded from call count");
@@ -103,5 +118,23 @@ assert(resolveDurationMinutes(liveCall) === 45, "duration");
 const row = buildCallListRow(liveCall, new Map(), new Map());
 assert(row.accountName.includes("Acme"), "account from title");
 assert(row.qipProvisional === false, "row not provisional");
+
+const merged = mergeActivityFeed(all, [sampleBrief], { callType: "", window: "30d" });
+assert(
+  merged.some((i) => i.kind === "brief") && merged.some((i) => i.kind === "call"),
+  "merged feed contains both a brief and a call row",
+);
+assert(merged[0].timestamp >= merged[merged.length - 1].timestamp, "merged feed is time-sorted desc");
+
+const briefsOnly = mergeActivityFeed(all, [sampleBrief], {
+  callType: ACTIVITY_FILTER_PRECALL_BRIEFS,
+  window: "all",
+});
+assert(briefsOnly.length === 1, "Pre-call briefs filter narrows to briefs");
+assert(briefsOnly.every((i) => i.kind === "brief"), "Pre-call briefs filter excludes calls");
+
+const demoOnly = mergeActivityFeed(all, [sampleBrief], { callType: "demo", window: "all" });
+assert(demoOnly.length === 1 && demoOnly[0].kind === "call", "activity type filter excludes briefs");
+assert(demoOnly[0].record.id === "pc_live", "demo filter keeps demo call");
 
 console.log("test-calls-list-view: ok");

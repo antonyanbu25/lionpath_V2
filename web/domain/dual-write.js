@@ -26,6 +26,7 @@ import { getStore } from "./store.js";
 import { newId, now } from "./types.js";
 import { callIdentityKey } from "../call-identity.js";
 import { callTitleFor, productDiscussedFromContext, aiShortFormFromAnalysis } from "../call-type-labels.js";
+import { buildCallSummaryFromPostCall } from "./call-summary.js";
 import { sessionUserId, effectiveSessionUserId } from "./session.js";
 import { resolveActingWriteContext } from "./acting-owner.js";
 import {
@@ -234,30 +235,43 @@ export async function linkPostCallToLifecycle(session, payload, data, record) {
     record?.title ||
     null;
 
-  const postCall = await attachPostCall(
-    lifecycle.id,
-    {
-      id: record?.id || newId("postCall"),
-      lifecycleId: lifecycle.id,
-      dealId: lifecycle.dealId || null,
-      ownerId,
-      teamId,
-      orgId: orgId || lifecycle.orgId || null,
-      accountId: account.id,
-      zoomLink: payload?.recordingUrl || record?.zoomLink,
-      title: callTitle,
-      callIdentityKey: identityKey,
-      analysis,
-      transcriptMeta: data?.transcriptMeta || record?.transcriptMeta,
-      qualityScore: typeof qualityScore === "number" ? qualityScore : null,
-      callType,
-      analysisConfidence: data?.analysisMeta?.analysisConfidence ?? qip?.confidence ?? null,
-      provisional: data?.analysisMeta?.provisional ?? qip?.provisional ?? false,
-      rubricVersion: data?.analysisMeta?.rubricVersion || qip?.rubricVersion || null,
-      ...audit,
-    },
-    ownerId
-  );
+  const postCallDraft = {
+    id: record?.id || newId("postCall"),
+    lifecycleId: lifecycle.id,
+    dealId: lifecycle.dealId || null,
+    ownerId,
+    teamId,
+    orgId: orgId || lifecycle.orgId || null,
+    accountId: account.id,
+    zoomLink: payload?.recordingUrl || record?.zoomLink,
+    title: callTitle,
+    callIdentityKey: identityKey,
+    analysis,
+    transcriptMeta: data?.transcriptMeta || record?.transcriptMeta,
+    qualityScore: typeof qualityScore === "number" ? qualityScore : null,
+    callType,
+    analysisConfidence: data?.analysisMeta?.analysisConfidence ?? qip?.confidence ?? null,
+    provisional: data?.analysisMeta?.provisional ?? qip?.provisional ?? false,
+    rubricVersion: data?.analysisMeta?.rubricVersion || qip?.rubricVersion || null,
+    createdAt: record?.timestamp || now(),
+    ...audit,
+  };
+  const callSummary = buildCallSummaryFromPostCall(postCallDraft, {
+    qip: qip
+      ? {
+          overall: qip.overall ?? qualityScore,
+          categoryScores: qip.categoryScores,
+          confidence: qip.confidence ?? data?.analysisMeta?.analysisConfidence,
+          provisional: qip.provisional ?? data?.analysisMeta?.provisional,
+          rubricVersion: qip.rubricVersion ?? data?.analysisMeta?.rubricVersion,
+        }
+      : undefined,
+    pass6: data?.pass6,
+    arrCompute: data?.arrCompute,
+    accountName: account.name,
+  });
+
+  const postCall = await attachPostCall(lifecycle.id, postCallDraft, ownerId, callSummary);
 
   if (qip) {
     try {

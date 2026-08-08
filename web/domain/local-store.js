@@ -8,6 +8,8 @@ import {
   detailArray,
   dealSignalsFromPostCalls,
   tcDeltasFromPostCalls,
+  productGapsFromPostCalls,
+  whatWorksFromPostCalls,
 } from "./post-call-detail.js";
 import { invalidateSessionListCache } from "./session-list-cache.js";
 import { stripEmbeddingFields } from "./field-masks.js";
@@ -181,6 +183,29 @@ export function createLocalStore() {
       return findMany(
         "accounts",
         (a) => String(a.domain || "").trim().toLowerCase() === key,
+        (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
+      );
+    },
+
+    /**
+     * Global name match (no teamId filter) — mirrors findAccountsByDomain for intake attach.
+     * Normalized equality on account.name so SE-2 resolves SE-1's company without ownership.
+     */
+    async findAccountsByName(nameQuery) {
+      const key = String(nameQuery || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      if (!key) return [];
+      return findMany(
+        "accounts",
+        (a) =>
+          String(a.name || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim() === key,
         (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
       );
     },
@@ -426,13 +451,20 @@ export function createLocalStore() {
       return findById("deals", id);
     },
 
+    /**
+     * Deals for an account. Default (no ownerId) is account-scoped — every deal on the
+     * account, not caller ownership — so intake attach surfaces other SEs' opportunities.
+     */
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       const teamId = opts.teamId || null;
+      // Coerce mistaken opts-as-ownerId objects from older call sites.
+      const ownerFilter =
+        typeof ownerId === "string" && ownerId ? ownerId : null;
       const rows = findMany(
         "deals",
         (d) =>
           d.accountId === accountId
-          && (!ownerId || d.ownerId === ownerId)
+          && (!ownerFilter || d.ownerId === ownerFilter)
           && (!teamId || d.teamId === teamId),
         (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
       );
@@ -967,6 +999,16 @@ export function createLocalStore() {
       );
     },
 
+    async listProductGapsByDeal(dealId, limitCount = 500) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = productGapsFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
+      return findMany("productGaps", (g) => g.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
     async upsertWhatWorks(docData) {
       return upsertById("whatWorks", docData);
     },
@@ -979,6 +1021,16 @@ export function createLocalStore() {
 
     async listWhatWorksByOrg(orgId, limitCount = 500) {
       return findMany("whatWorks", (w) => w.orgId === orgId, (a, b) => b.createdAt - a.createdAt).slice(
+        0,
+        limitCount,
+      );
+    },
+
+    async listWhatWorksByDeal(dealId, limitCount = 500) {
+      const postCalls = await this.listPostCallsByDeal(dealId, limitCount);
+      const fromDetail = whatWorksFromPostCalls(postCalls, limitCount);
+      if (fromDetail.length) return fromDetail;
+      return findMany("whatWorks", (w) => w.dealId === dealId, (a, b) => b.createdAt - a.createdAt).slice(
         0,
         limitCount,
       );

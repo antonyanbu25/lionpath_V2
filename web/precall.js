@@ -905,8 +905,16 @@ async function buildPayload() {
   const meetingZoomUrl = (await readFieldValueAsync($("meetingZoomUrl")))?.trim() || undefined;
   const meetingZoomPasscode = (await readFieldValueAsync($("meetingZoomPasscode")))?.trim() || undefined;
 
-  const engagementCtx = getAccountEngagementContext();
+  const rawEngagementCtx = getAccountEngagementContext();
   const crm = getPrepCrmSelection();
+  // Drop stale account/deal/lifecycle ids from account-detail navigation unless the CRM
+  // form has explicitly selected that account (matched id). Draft/new-domain preps must
+  // not inherit session ids — that is what caused worker lookups on the wrong account.
+  const engagementCtx = crm.accountId
+    ? rawEngagementCtx.accountId && rawEngagementCtx.accountId !== crm.accountId
+      ? { prepType: rawEngagementCtx.prepType }
+      : rawEngagementCtx
+    : { prepType: rawEngagementCtx.prepType };
 
   const prepType = engagementCtx.prepType || "new_business";
 

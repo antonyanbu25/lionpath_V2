@@ -40,7 +40,15 @@ preview_id = "00000000000000000000000000000002"
 #   wrangler secret put ANTHROPIC_API_KEY
 #   wrangler secret put GEMINI_API_KEY
 #   wrangler secret put ZOOM_CLIENT_SECRET
+#   wrangler secret put EMAIL_PROVIDER_API_KEY
 # Zoom OAuth (optional — phase 2):
 # ZOOM_CLIENT_ID = ""
 # ZOOM_CLIENT_SECRET = ""   # use secret put, not vars
 # ZOOM_REDIRECT_URI = "http://localhost:8787/api/zoom/callback"
+# Score dispute manager email (optional — off by default):
+# DISPUTE_NOTIFY_ENABLED = "0"
+# DISPUTE_NOTIFY_FROM = "LionPath <noreply@example.com>"
+# EMAIL_PROVIDER_API_KEY — use `wrangler secret put EMAIL_PROVIDER_API_KEY` (never commit a real key)
+# Freshdesk tickets (dispute score + feedback):
+# FRESHDESK_DOMAIN = "janus-assist.freshdesk.com"
+# FRESHDESK_API_KEY — use `wrangler secret put FRESHDESK_API_KEY` (never commit a real key)

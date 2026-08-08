@@ -192,6 +192,10 @@ function buildGenerationConfig(req: LlmRequest, model: string, env?: ProviderEnv
     temperature: req.temperature ?? (req.research ? 0.4 : 0.2),
   };
 
+  if (req.seed != null) {
+    generationConfig.seed = req.seed;
+  }
+
   if (req.jsonSchema) {
     generationConfig.responseMimeType = "application/json";
     generationConfig.responseSchema = toGeminiResponseSchema(req.jsonSchema);

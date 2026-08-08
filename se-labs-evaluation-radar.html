@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f2ede3; --card:#fff;
+    --ink:#2b2926; --muted:#6f6759; --muted2:#7c7466; --faint:#a49a88;
+    --border:#ece7de; --divider:#f4f0e8;
+    --shadow:0 12px 34px -18px rgba(58,38,24,.32), 0 1px 2px rgba(43,41,38,.04);
+    --sans:'Figtree', system-ui, -apple-system, sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--sans);background:
+      radial-gradient(900px 520px at 82% -12%, rgba(125,108,198,.05), transparent 60%),
+      radial-gradient(700px 460px at 10% 110%, rgba(79,157,107,.05), transparent 60%),
+      var(--bg);
+    color:var(--ink);-webkit-font-smoothing:antialiased;min-height:100vh;
+    display:flex;align-items:center;justify-content:center;padding:40px 24px}
+
+  .card{width:100%;max-width:600px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:26px 30px 24px}
+  .rhead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .rhead h2{font-size:18px;font-weight:700;letter-spacing:-.02em}
+  .rcap{margin-top:4px;font-size:12.5px;color:var(--muted2)}
+  .pill{display:flex;align-items:baseline;gap:6px;background:#f7f2ea;border:1px solid var(--border);border-radius:999px;padding:6px 13px}
+  .pill b{font-family:var(--mono);font-weight:600;font-size:16px;color:var(--ink)}
+  .pill span{font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em}
+  .stage{margin-top:4px}
+  svg.chart{width:100%;height:auto;display:block}
+
+  @keyframes grow{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+  #series{transform-origin:300px 250px;animation:grow .65s cubic-bezier(.2,.7,.2,1) both}
+  @media(prefers-reduced-motion:reduce){#series{animation:none}}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="rhead">
+      <div>
+        <h2>Evaluation signal</h2>
+        <div class="rcap">Five categories, each scored out of 10</div>
+      </div>
+      <div class="pill"><b>4.9</b><span>overall</span></div>
+    </div>
+    <div class="stage"><div id="mount"></div></div>
+  </div>
+
+<script>
+const CATS = [
+  {name:['Discovery &','qualification'],     score:5.2, color:'#4f9d6b'}, // green   (top)
+  {name:['Solutioning &','technical fit'],   score:4.1, color:'#2f9aa0'}, // teal    (right)
+  {name:['Business value &','articulation'], score:1.8, color:'#dd8a2e'}, // orange  (lower-right)
+  {name:['Objections &','credibility'],      score:6.2, color:'#d85c4c'}, // coral   (lower-left)
+  {name:['Communication &','engagement'],    score:6.2, color:'#7d6cc6'}  // violet  (left)
+];
+const N=CATS.length, MAX=10;
+const cx=300, cy=250, R=165, PAD=34;
+const SANS="'Figtree', system-ui, sans-serif";
+const MONO="'IBM Plex Mono', ui-monospace, monospace";
+
+function ang(i){ return (-90 + i*(360/N)) * Math.PI/180; }
+function pt(r,i){ return [cx + r*Math.cos(ang(i)), cy + r*Math.sin(ang(i))]; }
+function dataPt(i){ return pt((CATS[i].score/MAX)*R, i); }
+
+function build(){
+  var i,p;
+  var s = '<svg class="chart" viewBox="0 0 600 500" role="img" aria-label="Evaluation radar, overall 4.9 of 10">';
+
+  // ----- defs: one soft colour blob per vertex + a rainbow stroke -----
+  s += '<defs>';
+  for(i=0;i<N;i++){ p=dataPt(i);
+    s += '<radialGradient id="g'+i+'" gradientUnits="userSpaceOnUse" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+(R*0.72).toFixed(1)+'">'
+       + '<stop offset="0%" stop-color="'+CATS[i].color+'" stop-opacity="0.42"/>'
+       + '<stop offset="70%" stop-color="'+CATS[i].color+'" stop-opacity="0.10"/>'
+       + '<stop offset="100%" stop-color="'+CATS[i].color+'" stop-opacity="0"/></radialGradient>';
+  }
+  s += '<linearGradient id="stroke" gradientUnits="userSpaceOnUse" x1="'+(cx-R)+'" y1="'+(cy-R)+'" x2="'+(cx+R)+'" y2="'+(cy+R)+'">'
+     + '<stop offset="0%" stop-color="#4f9d6b"/><stop offset="28%" stop-color="#2f9aa0"/>'
+     + '<stop offset="52%" stop-color="#7d6cc6"/><stop offset="76%" stop-color="#d85c4c"/>'
+     + '<stop offset="100%" stop-color="#dd8a2e"/></linearGradient>';
+  var clip=[]; for(i=0;i<N;i++){ p=dataPt(i); clip.push(p[0].toFixed(1)+','+p[1].toFixed(1)); }
+  s += '<clipPath id="poly"><polygon points="'+clip.join(' ')+'"/></clipPath>';
+  s += '</defs>';
+
+  // ----- grid rings + spokes (neutral, subtle) -----
+  [2,4,6,8,10].forEach(function(lv){
+    var pts=[]; for(var j=0;j<N;j++){ var q=pt((lv/MAX)*R,j); pts.push(q[0].toFixed(1)+','+q[1].toFixed(1)); }
+    var outer=lv===10;
+    s += '<polygon points="'+pts.join(' ')+'" fill="none" stroke="'+(outer?'#ddccb6':'#ece7de')+'" stroke-width="1" opacity="'+(outer?1:0.7)+'"/>';
+  });
+  for(i=0;i<N;i++){ p=pt(R,i); s += '<line x1="'+cx+'" y1="'+cy+'" x2="'+p[0].toFixed(1)+'" y2="'+p[1].toFixed(1)+'" stroke="#ece7de" stroke-width="1" opacity="0.55"/>'; }
+  [2,4,6,8,10].forEach(function(lv){ var y=cy-(lv/MAX)*R; s += '<text x="'+(cx-10)+'" y="'+(y+3)+'" text-anchor="end" font-family="'+MONO+'" font-size="9" fill="#c2b7a6">'+lv+'</text>'; });
+
+  // ----- the ONE polygon, with a multi-colour wash fill -----
+  s += '<g id="series">';
+  s += '<g clip-path="url(#poly)">';
+  for(i=0;i<N;i++){ s += '<rect x="'+(cx-R-20)+'" y="'+(cy-R-20)+'" width="'+(2*R+40)+'" height="'+(2*R+40)+'" fill="url(#g'+i+')"/>'; }
+  s += '</g>';
+  var dpts=[]; for(i=0;i<N;i++){ p=dataPt(i); dpts.push(p[0].toFixed(1)+','+p[1].toFixed(1)); }
+  s += '<polygon points="'+dpts.join(' ')+'" fill="none" stroke="url(#stroke)" stroke-width="2.5" stroke-linejoin="round"/>';
+  // coloured vertex dots
+  for(i=0;i<N;i++){ p=dataPt(i); s += '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="5.5" fill="'+CATS[i].color+'" stroke="#fff" stroke-width="2.5"/>'; }
+  s += '<circle cx="'+cx+'" cy="'+cy+'" r="2.5" fill="#8a8072" opacity="0.4"/>';
+  s += '</g>';
+
+  // ----- labels: name muted, score in the category colour -----
+  for(i=0;i<N;i++){
+    var lp=pt(R+PAD,i);
+    var anchor = i===0 ? 'middle' : (i===1||i===2) ? 'start' : 'end';
+    var c=CATS[i];
+    s += '<text x="'+lp[0].toFixed(1)+'" y="'+(lp[1]-20).toFixed(1)+'" text-anchor="'+anchor+'" font-family="'+SANS+'" font-size="12.5" font-weight="600" fill="#6f6759">'+c.name[0]+'</text>';
+    s += '<text x="'+lp[0].toFixed(1)+'" y="'+(lp[1]-5).toFixed(1)+'" text-anchor="'+anchor+'" font-family="'+SANS+'" font-size="12.5" font-weight="600" fill="#6f6759">'+c.name[1]+'</text>';
+    s += '<text x="'+lp[0].toFixed(1)+'" y="'+(lp[1]+17).toFixed(1)+'" text-anchor="'+anchor+'" font-family="'+MONO+'" font-size="18" font-weight="600" fill="'+c.color+'">'+c.score.toFixed(1)+'</text>';
+  }
+
+  s += '</svg>';
+  return s;
+}
+document.getElementById('mount').innerHTML = build();
+</script>
+</body>
+</html>

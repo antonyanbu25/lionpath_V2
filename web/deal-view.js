@@ -4,6 +4,8 @@
 
 import { listDealsForSession, listDealsFromHistory, getAccountEngagementDetail, historyRecordsForAccount } from "./domain/account-service.js?v=2.1.14";
 import { buildDealExtrasFromHistory } from "./domain/history-deal-enrichment.js";
+import { rollupProductSignalRows } from "./domain/product-signal-service.js";
+import { renderCallProductSignalTab } from "./call-product-signal.js";
 import { setAccountEngagementContext } from "./domain/account-context.js";
 import { getDeal, DEAL_TYPE_LABELS } from "./domain/deal-service.js";
 import {
@@ -20,7 +22,7 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS } from "./domain/types.js";
 import { resolveCallType } from "./call-view.js";
-import { resolveDurationMinutes } from "./calls-list-view.js";
+import { resolveDurationMinutes, resolveQipScoreNumeric } from "./calls-list-view.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import { filterDealRows } from "./search-service.js?v=2.1.14";
 import { filterDealRowsForList } from "./domain/se-access-service.js";
@@ -29,6 +31,7 @@ import { displayMrrFromArr, formatUsd, mountDealArrModule, renderDealArrModule }
 import { selectLatestArrLines } from "./domain/arr-service.js";
 import { getWorkerAuthHeaders } from "./postcall.js";
 import { esc } from "./shared.js";
+import { CALL_QUALITY_SCORE_LABEL } from "./user-facing-copy.js";
 import { getDealTractionReadModels } from "./domain/read-models-service.js";
 
 const MEDDPICC_LETTERS = {
@@ -259,6 +262,11 @@ export async function enrichDealListRows(store, rows, opts = {}) {
         subRegion: meta.sub_region || meta.subRegion || null,
         forecastMonth: deal.forecastMonth || null,
         callCount: deal.postCallCount || 0,
+        /** Soft rollup from last scored call — display only; score still lives on the call. */
+        callQualityScore:
+          deal.latestQualityScore != null && Number.isFinite(Number(deal.latestQualityScore))
+            ? Number(deal.latestQualityScore)
+            : null,
       };
     }),
   );
@@ -382,33 +390,91 @@ export function summarizeDealListMetrics(rows) {
   };
 }
 
-function renderDealListMetricCard(label, value, sub = "", valueClass = "") {
+function renderDealListMetricCard(label, value, note = "") {
   return `
-    <div class="dash-stat prep-action-block deal-list-stat">
-      <span class="dash-stat-label">${esc(label)}</span>
-      <span class="dash-stat-value${valueClass ? ` ${valueClass}` : ""}">${esc(String(value))}</span>
-      ${sub ? `<span class="dash-stat-sub muted">${esc(sub)}</span>` : ""}
+    <div class="deal-kpi">
+      <span class="deal-kpi-label">${esc(label)}</span>
+      <span class="deal-kpi-val">${value}</span>
+      ${note ? `<span class="deal-kpi-note">${esc(note)}</span>` : ""}
     </div>`;
 }
 
 /** @param {ReturnType<typeof summarizeDealListMetrics>} metrics */
 function renderDealListMetrics(metrics) {
-  const arrVal = metrics.arrInPlay != null ? formatCompactUsd(metrics.arrInPlay) : "-";
+  const arrVal = metrics.arrInPlay != null ? formatCompactUsd(metrics.arrInPlay) : "—";
   const openSub = metrics.openCount === 1 ? "1 open deal" : `${metrics.openCount} open deals`;
-  const tcVal = metrics.openCount ? `${metrics.tcYes} / ${metrics.openCount}` : "-";
-  const tcSub = metrics.tcYesArr != null ? `${formatCompactUsd(metrics.tcYesArr)} committed` : "";
-  const aiVal = metrics.openCount ? `${metrics.aiAttachCount} / ${metrics.openCount}` : "-";
-  const coldSub = metrics.coldArr != null ? `${formatCompactUsd(metrics.coldArr)} at risk` : "";
-  const followSub = metrics.openFollowUps > 0 ? `${metrics.openFollowUps} open tasks` : "none tracked";
+  const tcVal = metrics.openCount ? `${metrics.tcYes} / ${metrics.openCount}` : "—";
+  const tcSub =
+    metrics.tcYesArr != null
+      ? `${formatCompactUsd(metrics.tcYesArr)} committed`
+      : "secured this quarter";
+  const aiVal = metrics.openCount ? `${metrics.aiAttachCount} / ${metrics.openCount}` : "—";
+  const coldSub = metrics.coldArr != null ? `${formatCompactUsd(metrics.coldArr)} at risk` : "no traction · 30 days";
+  const followSub = metrics.openFollowUps > 0 ? "tracked across deals" : "none tracked";
 
   return `
-    <div class="deal-list-metrics dash-stats prep-action-grid" aria-label="Deal metrics">
-      ${renderDealListMetricCard("ARR in play", arrVal, openSub)}
-      ${renderDealListMetricCard("Technical commit", tcVal, tcSub)}
-      ${renderDealListMetricCard("Cold", metrics.coldCount, coldSub, metrics.coldCount ? "deal-list-stat-warn deal-list-stat-danger" : "")}
-      ${renderDealListMetricCard("AI attach", aiVal, "Copilot or Agent")}
-      ${renderDealListMetricCard("Open follow-ups", metrics.openFollowUps, followSub, metrics.openFollowUps ? "deal-list-stat-warn" : "")}
+    <div class="deal-kpis" aria-label="Deal metrics">
+      ${renderDealListMetricCard("ARR in play", esc(arrVal), openSub)}
+      ${renderDealListMetricCard("Technical commit", esc(tcVal), tcSub)}
+      ${renderDealListMetricCard("Cold", esc(String(metrics.coldCount)), coldSub)}
+      ${renderDealListMetricCard("AI attach", esc(aiVal), "Copilot or Agent")}
+      ${renderDealListMetricCard("Open follow-ups", esc(String(metrics.openFollowUps)), followSub)}
     </div>`;
+}
+
+function dealInitials(name) {
+  const parts = String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  return parts
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function medScoreBand(v) {
+  if (v == null || !Number.isFinite(v)) return "var(--dew-text-faint)";
+  if (v < 40) return "var(--dew-red)";
+  if (v < 70) return "var(--dew-amber)";
+  return "var(--dew-green)";
+}
+
+function cqsScoreBand(v) {
+  if (v == null || !Number.isFinite(v)) return "var(--dew-text-faint)";
+  if (v < 4) return "var(--dew-red)";
+  if (v < 7) return "var(--dew-amber)";
+  return "var(--dew-green)";
+}
+
+function renderScoreCell(score, max, bandFn) {
+  if (score == null || !Number.isFinite(score)) {
+    return `<span class="deal-dash">—</span>`;
+  }
+  const pct = Math.max(0, Math.min(100, (score / max) * 100));
+  const color = bandFn(score);
+  const display = max === 10 ? score.toFixed(1) : String(Math.round(score));
+  return `<div class="deal-scorecell">
+    <span class="deal-scorecell-n" style="color:${color}">${esc(display)}<s>/${max}</s></span>
+    <span class="deal-minibar"><i style="width:${pct}%;background:${color}"></i></span>
+  </div>`;
+}
+
+function stagePill(stage) {
+  const label = STAGE_LABELS[stage] || stage || "—";
+  const mod =
+    stage === "closed_won" ? "deal-pill--won" : stage === "closed_lost" ? "deal-pill--lost" : "deal-pill--neutral";
+  return `<span class="deal-pill ${mod}">${esc(label)}</span>`;
+}
+
+function tractionPill(traction) {
+  if (!traction) return `<span class="deal-dash">—</span>`;
+  const t = String(traction);
+  const label = t.charAt(0).toUpperCase() + t.slice(1);
+  const mod = t === "hot" ? "deal-pill--hot" : t === "cold" ? "deal-pill--cold" : "deal-pill--warm";
+  return `<span class="deal-pill ${mod}">${esc(label)}</span>`;
 }
 
 function formatGeneratedSummaryMeta(generatedAt, sourceCallIds) {
@@ -585,36 +651,27 @@ function renderDealListItem(row) {
   const { deal, account } = row;
   const accountTitle = account?.name || account?.domain || "Account";
   const dealTitle = deal.title || DEAL_TYPE_LABELS[deal.type] || "Deal";
-  const tractionLabel = row.traction ? row.traction.charAt(0).toUpperCase() + row.traction.slice(1) : "-";
-  const created = deal.createdAt ? formatDate(deal.createdAt) : "-";
-  const mobileMeta = [
-    row.traction ? tractionLabel : null,
-    row.arrPoint != null ? formatDealListMoneyBand(row.arrLow, row.arrHigh, row.arrPoint) : null,
-    row.daysSilent != null ? `${row.daysSilent}d silent` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const arrCell = renderDealListMoneyCell(row, "ARR");
 
   return `
-    <button type="button" class="lifecycle-list-item deal-list-item deal-list-row" data-deal-id="${esc(deal.id)}">
-      <span class="deal-list-row-grid">
-        <span class="deal-list-col deal-list-col--deal">
-          <span class="deal-list-deal-title">${esc(dealTitle)}</span>
-          ${mobileMeta ? `<span class="deal-list-row-mobile-meta muted">${esc(mobileMeta)}</span>` : ""}
-        </span>
-        <span class="deal-list-col deal-list-col--account muted">${esc(accountTitle)}</span>
-        <span class="deal-list-col deal-list-col--stage">${stageBadge(deal.stage)}</span>
-        <span class="deal-list-col deal-list-col--arr">${renderDealListMoneyCell(row, "ARR")}</span>
-        <span class="deal-list-col deal-list-col--mrr">${renderDealListMoneyCell(row, "MRR")}</span>
-        <span class="deal-list-col deal-list-col--calls deal-list-num">${esc(String(row.callCount ?? 0))}</span>
-        <span class="deal-list-col deal-list-col--meddpicc">${meddpiccListTag(row.meddpiccScore)}</span>
-        <span class="deal-list-col deal-list-col--tc">${row._pending ? `<span class="muted">·</span>` : tcStatusTag(row.tcStatus)}</span>
-        <span class="deal-list-col deal-list-col--ai">${aiAttachListTag(row.aiAttach)}</span>
-        <span class="deal-list-col deal-list-col--traction">${row._pending ? `<span class="muted">·</span>` : row.traction ? tractionTag(row.traction) : `<span class="muted">-</span>`}</span>
-        <span class="deal-list-col deal-list-col--created muted">${esc(created)}</span>
-        <span class="deal-list-col deal-list-col--silent">${row._pending ? `<span class="muted">·</span>` : daysSilentCell(row.daysSilent, row.traction)}</span>
-      </span>
-    </button>`;
+    <tr class="deal-list-row" data-deal-id="${esc(deal.id)}" tabindex="0" role="button">
+      <td>
+        <div class="deal-cell">
+          <span class="deal-av" aria-hidden="true">${esc(dealInitials(dealTitle))}</span>
+          <span class="deal-nm">
+            <b>${esc(dealTitle)}</b>
+            <span>${esc(accountTitle)}</span>
+          </span>
+        </div>
+      </td>
+      <td>${stagePill(deal.stage)}</td>
+      <td class="deal-num">${arrCell}</td>
+      <td>${row._pending ? `<span class="deal-dash">·</span>` : renderScoreCell(row.meddpiccScore, 100, medScoreBand)}</td>
+      <td>${row._pending ? `<span class="deal-dash">·</span>` : renderScoreCell(row.callQualityScore, 10, cqsScoreBand)}</td>
+      <td>${row._pending ? `<span class="deal-dash">·</span>` : tractionPill(row.traction)}</td>
+      <td class="deal-num deal-num--r">${esc(String(row.callCount ?? 0))}</td>
+      <td class="deal-chev-cell"><span class="deal-chev" aria-hidden="true">›</span></td>
+    </tr>`;
 }
 
 function renderDealListSortHeader(sortKey) {
@@ -623,20 +680,18 @@ function renderDealListSortHeader(sortKey) {
     return `<button type="button" class="deal-list-sort-btn${active ? " deal-list-sort-btn--active" : ""}" data-deal-sort="${esc(key)}" aria-pressed="${active ? "true" : "false"}">${esc(label)}</button>`;
   };
   return `
-    <div class="deal-list-grid-header">
-      <span class="deal-list-col deal-list-col--deal">Deal</span>
-      <span class="deal-list-col deal-list-col--account">Account</span>
-      <span class="deal-list-col deal-list-col--stage">Stage</span>
-      <span class="deal-list-col deal-list-col--arr">${btn("arr", "ARR")}</span>
-      <span class="deal-list-col deal-list-col--mrr">${btn("mrr", "MRR")}</span>
-      <span class="deal-list-col deal-list-col--calls">Calls</span>
-      <span class="deal-list-col deal-list-col--meddpicc">MEDPICC</span>
-      <span class="deal-list-col deal-list-col--tc">TC</span>
-      <span class="deal-list-col deal-list-col--ai">AI</span>
-      <span class="deal-list-col deal-list-col--traction">Traction</span>
-      <span class="deal-list-col deal-list-col--created">Created</span>
-      <span class="deal-list-col deal-list-col--silent">Silent</span>
-    </div>`;
+    <thead>
+      <tr>
+        <th scope="col">Deal</th>
+        <th scope="col">Stage</th>
+        <th scope="col">${btn("arr", "ARR")}</th>
+        <th scope="col">MEDPICC</th>
+        <th scope="col">Call quality</th>
+        <th scope="col">Traction</th>
+        <th scope="col" class="deal-th-r">Calls</th>
+        <th scope="col"><span class="visually-hidden">Open</span></th>
+      </tr>
+    </thead>`;
 }
 
 function renderDealsEmptyState(message) {
@@ -667,10 +722,17 @@ function renderGeneratedSummarySection(title, summaryDoc, emptyHint, sectionOpts
   }
   const meta = formatGeneratedSummaryMeta(summaryDoc.generatedAt, summaryDoc.sourceCallIds);
   if (wireframe) {
+    const bullets = summary
+      .split(/\n+/)
+      .map((line) => line.replace(/^[-•*]\s*/, "").trim())
+      .filter(Boolean);
+    const items = (bullets.length > 1 ? bullets : [summary])
+      .map((b) => `<li>${esc(b)}</li>`)
+      .join("");
     return `
       <section class="account-record-section account-generated-summary deal-record-section account-record-section--card">
         <p class="prep-form-eyebrow account-section-eyebrow">${esc(title)} · regenerated after every call</p>
-        <p class="account-generated-summary-body">${esc(summary)}</p>
+        <ul class="deal-summary-bullets">${items}</ul>
         <p class="muted account-generated-summary-meta">${esc(meta)}</p>
       </section>`;
   }
@@ -681,6 +743,165 @@ function renderGeneratedSummarySection(title, summaryDoc, emptyHint, sectionOpts
         <span class="muted account-generated-summary-meta">${esc(meta)}</span>
       </div>
       <p class="account-generated-summary-body">${esc(summary)}</p>
+    </section>`;
+}
+
+function averageCallQuality(callRows) {
+  let sum = 0;
+  let n = 0;
+  for (const row of callRows || []) {
+    const score = resolveQipScoreNumeric(row.postCall);
+    if (score != null && Number.isFinite(score)) {
+      sum += score;
+      n += 1;
+    }
+  }
+  if (!n && callRows?.[0]?.postCall?.qualityScore != null) {
+    const q = Number(callRows[0].postCall.qualityScore);
+    return Number.isFinite(q) ? q : null;
+  }
+  return n ? Math.round((sum / n) * 10) / 10 : null;
+}
+
+function renderDealScoreStrip(detail) {
+  const deal = detail.selectedDeal;
+  const account = detail.account;
+  const signal = detail.latestSignal;
+  const tc = detail.technicalCommit;
+  const med = resolveDealMeddpicc(deal, account);
+  const medScore = med?.completionScore ?? computeMeddpiccScore(med);
+  const filled = MEDDPICC_FIELD_KEYS.filter((key) => {
+    const slot = med?.[key];
+    return slot?.value && slot.status !== "unknown";
+  }).length;
+  const total = MEDDPICC_FIELD_KEYS.length;
+  const cqs = averageCallQuality(detail.callRows);
+  const traction = signal?.traction || null;
+  const tractionLabel = traction ? traction.charAt(0).toUpperCase() + traction.slice(1) : "—";
+  const tractionNote =
+    signal?.daysSilent != null
+      ? `${signal.daysSilent}d silent`
+      : signal?.reasonsJson?.[0] || "Traction after first post-call";
+  const tcStatus = tc?.status || "pending";
+  const tcLabels = { yes: "Yes", no: "No", pending: "Pending", at_risk: "At risk" };
+  const tcLabel = tcLabels[tcStatus] || tcStatus;
+  const tcNote = tc?.justification ? String(tc.justification).slice(0, 80) : "After post-call analysis";
+  const cqsColor = cqsScoreBand(cqs);
+  const medColor = medScoreBand(medScore);
+  const tractColor =
+    traction === "hot" ? "var(--dew-green)" : traction === "cold" ? "var(--dew-red)" : "var(--dew-amber)";
+  const tcColor =
+    tcStatus === "yes" ? "var(--dew-green)" : tcStatus === "no" || tcStatus === "at_risk" ? "var(--dew-red)" : "var(--dew-amber)";
+  const segOn = Math.max(0, Math.min(total, filled));
+  const segs = Array.from({ length: total }, (_, i) => `<i class="${i < segOn ? "on" : ""}"></i>`).join("");
+
+  return `
+    <section class="deal-score-strip" aria-label="Deal score strip">
+      <div class="deal-scard" style="--_a:${cqsColor};--_c:${cqsColor}">
+        <span class="deal-scard-sl">${esc(CALL_QUALITY_SCORE_LABEL)}</span>
+        <span class="deal-scard-sv">${cqs != null ? `${cqs.toFixed(1)}<u>/10</u>` : "—"}</span>
+        <span class="deal-scard-bar"><i style="width:${cqs != null ? cqs * 10 : 0}%;background:${cqsColor}"></i></span>
+        <span class="deal-scard-note">How you ran the calls</span>
+      </div>
+      <div class="deal-scard" style="--_a:${medColor};--_c:${medColor}">
+        <span class="deal-scard-sl">MEDPICC</span>
+        <span class="deal-scard-sv">${esc(String(medScore))}<u>/100</u></span>
+        <span class="deal-scard-segbar">${segs}</span>
+        <span class="deal-scard-note">${esc(String(filled))} of ${total} surfaced · deal qualification</span>
+      </div>
+      <div class="deal-scard" style="--_a:${tractColor};--_c:${tractColor}">
+        <span class="deal-scard-sl">Traction</span>
+        <span class="deal-scard-sv deal-scard-sv--word">${esc(tractionLabel)}</span>
+        <span class="deal-scard-note">${esc(tractionNote)}</span>
+      </div>
+      <div class="deal-scard" style="--_a:${tcColor};--_c:${tcColor}">
+        <span class="deal-scard-sl">Technical commit</span>
+        <span class="deal-scard-sv deal-scard-sv--word">${esc(tcLabel)}</span>
+        <span class="deal-scard-note">${esc(tcNote)}</span>
+      </div>
+    </section>`;
+}
+
+function renderDealGapLine(detail) {
+  const deal = detail.selectedDeal;
+  const med = resolveDealMeddpicc(deal, detail.account);
+  const medScore = med?.completionScore ?? computeMeddpiccScore(med);
+  const cqs = averageCallQuality(detail.callRows);
+  if (cqs == null || !Number.isFinite(cqs)) return "";
+  const medGood = medScore >= 70;
+  const cqsMid = cqs < 7;
+  const cqsWeak = cqs < 4;
+  const medWeak = medScore < 40;
+  if (medGood && cqsMid) {
+    return `<div class="deal-gapline">The deal is <b>well-qualified (MEDPICC ${esc(String(medScore))})</b> but the call ran <b>${cqsWeak ? "weak" : "middling"} (${cqs.toFixed(1)})</b> — the deal is ahead of your delivery. Tighten the next call.</div>`;
+  }
+  if (medWeak && cqs >= 7) {
+    return `<div class="deal-gapline">Calls are <b>strong (${cqs.toFixed(1)})</b> but the deal is <b>under-qualified (MEDPICC ${esc(String(medScore))})</b> — surface buyer, criteria, and process on the next call.</div>`;
+  }
+  return "";
+}
+
+function renderAiAttachCallout(tc) {
+  const summary = formatTcValue(tc?.aiAttach);
+  if (!summary) return "";
+  const watch = /skeptic|unproven|not sure|not using|non-standard/i.test(summary);
+  return `
+    <div class="deal-callout${watch ? " deal-callout--warn" : ""}">
+      <div>
+        <div class="deal-callout-k">AI attach${watch ? " · watch" : ""}</div>
+        <p>${esc(summary)}</p>
+      </div>
+    </div>`;
+}
+
+function renderRecommendedActionCard(signal) {
+  const action = signal?.recommendedAction?.trim();
+  if (!action) return "";
+  return `
+    <section class="account-record-section deal-record-section deal-record-rec account-record-section--card">
+      <div class="deal-dothead"><span class="deal-dot" style="background:var(--dew-brand)"></span><span class="prep-form-eyebrow account-section-eyebrow" style="color:var(--dew-brand)">Recommended action</span></div>
+      <div class="deal-rec-title">${esc(action)}</div>
+      ${
+        Array.isArray(signal.reasonsJson) && signal.reasonsJson.length
+          ? `<p class="deal-rec-body">${esc(signal.reasonsJson[0])}</p>`
+          : ""
+      }
+    </section>`;
+}
+
+function renderCustomerVoiceSection(whatWorks, productGaps) {
+  const landed = (whatWorks || []).slice(0, 4);
+  const missed = (productGaps || []).slice(0, 4);
+  if (!landed.length && !missed.length) {
+    return `
+      <section class="account-record-section deal-record-section account-record-section--card">
+        <div class="deal-dothead"><span class="deal-dot" style="background:#b0785b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
+        <p class="muted">Landed themes and doubts appear here after post-call analysis.</p>
+      </section>`;
+  }
+  const quote = (row, cls) => {
+    const text = row?.verbatim || row?.description || row?.title || row?.gap || row?.theme || String(row);
+    return `<blockquote class="deal-voice-q ${cls}">${esc(text)}</blockquote>`;
+  };
+  const chip = (row, cls) => {
+    const text = row?.title || row?.product || row?.theme || row?.verbatim || row?.description || String(row);
+    return `<span class="deal-chip ${cls}">${esc(String(text).slice(0, 48))}</span>`;
+  };
+  return `
+    <section class="account-record-section deal-record-section account-record-section--card">
+      <div class="deal-dothead"><span class="deal-dot" style="background:#b0785b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
+      <div class="deal-voicegrid">
+        <div class="deal-vcol">
+          <div class="deal-vh" style="color:var(--dew-green)"><span class="deal-dot" style="background:var(--dew-green)"></span>Landed well</div>
+          ${landed.length ? landed.map((r) => quote(r, "pos")).join("") : `<p class="muted">No wins captured yet.</p>`}
+          ${landed.length ? `<div class="deal-chips">${landed.map((r) => chip(r, "good")).join("")}</div>` : ""}
+        </div>
+        <div class="deal-vcol">
+          <div class="deal-vh" style="color:#b0785b"><span class="deal-dot" style="background:#b0785b"></span>Doubts &amp; didn’t land</div>
+          ${missed.length ? missed.map((r) => quote(r, "neg")).join("") : `<p class="muted">No doubts captured yet.</p>`}
+          ${missed.length ? `<div class="deal-chips">${missed.map((r) => chip(r, "bad")).join("")}</div>` : ""}
+        </div>
+      </div>
     </section>`;
 }
 
@@ -858,6 +1079,17 @@ function renderFitmentSection(deal) {
         ${fitmentCard("Technical fitment", technical)}
       </div>
     </section>`;
+}
+
+function renderDealProductSignalSection(productGaps, whatWorks) {
+  if (!productGaps?.length && !whatWorks?.length) {
+    return `
+      <section class="account-record-section deal-record-section deal-record-product-signal deal-record-product-signal--empty">
+        <h3 class="account-record-section-title">Product signal</h3>
+        <p class="muted">Product gaps and wins appear here after post-call analysis on this deal.</p>
+      </section>`;
+  }
+  return `<div class="deal-record-product-signal">${renderCallProductSignalTab({}, { productGaps, whatWorks, dealRollup: true })}</div>`;
 }
 
 function renderTechnicalCommitSection(tc) {
@@ -1086,9 +1318,10 @@ function renderDealStatusPills(detail) {
 function renderDealRecordHeader(detail, backOpts = {}) {
   const deal = detail.selectedDeal;
   const account = detail.account;
+  const signal = detail.latestSignal;
   const dealTitle = deal?.title || DEAL_TYPE_LABELS[deal?.type] || "Deal";
   const accountLabel = account?.name || account?.domain || "Account";
-  const sfId = deal?.sfOpportunityId;
+  const domain = account?.domain || "";
   const back = backOpts || {};
   const useAccountBack = back.accountId && account?.id === back.accountId;
   const backLabel = useAccountBack
@@ -1097,19 +1330,28 @@ function renderDealRecordHeader(detail, backOpts = {}) {
   const backAction = useAccountBack ? "back-to-account" : "back-to-deal-list";
 
   return `
-    <header class="account-record-header deal-record-header deal-record-header--wireframe">
-      <fw-button class="lifecycle-back" color="secondary" fill="clear" data-action="${esc(backAction)}">${esc(backLabel)}</fw-button>
-      <div class="deal-record-header-main">
-        <div class="deal-record-title-row">
-          <h2 class="deal-record-title">${esc(dealTitle)}</h2>
-          ${sfId ? `<span class="deal-record-sf-id muted">${esc(sfId)}</span>` : ""}
+    <header class="deal-record-header deal-record-header--labs">
+      <button type="button" class="deal-crumb" data-action="${esc(backAction)}">${esc(backLabel)}</button>
+      <div class="deal-dhead">
+        <div class="deal-dhead-lft">
+          <span class="deal-logo" aria-hidden="true">${esc(dealInitials(dealTitle))}</span>
+          <div>
+            <div class="deal-titlerow">
+              <h1 class="deal-record-title">${esc(dealTitle)}</h1>
+              ${stagePill(deal?.stage)}
+              ${tractionPill(signal?.traction)}
+            </div>
+            <div class="deal-dom">
+              ${esc(domain || accountLabel)}
+              ${listMotionBadge(deal?.type)}
+            </div>
+          </div>
         </div>
-        <p class="muted deal-record-subtitle">${esc(accountLabel)} · ${stageBadge(deal?.stage)} · ${listMotionBadge(deal?.type)}</p>
-      </div>
-      ${renderDealHeaderArr(deal)}
-      <div class="account-detail-actions deal-record-header-actions">
-        <fw-button color="secondary" fill="outline" size="small" data-action="postcall">Post-call</fw-button>
-        <fw-button color="primary" fill="solid" size="small" data-action="prep">New prep</fw-button>
+        <div class="deal-dhead-acts account-detail-actions">
+          <fw-button color="secondary" fill="outline" size="small" data-action="prep">New brief</fw-button>
+          <fw-button color="secondary" fill="outline" size="small" data-action="postcall">Post-call</fw-button>
+          ${renderDealHeaderArr(deal)}
+        </div>
       </div>
     </header>`;
 }
@@ -1118,15 +1360,16 @@ function renderDealRecordHeader(detail, backOpts = {}) {
 function renderDealRecord(detail, viewOpts = {}) {
   const deal = detail.selectedDeal;
   const signal = detail.latestSignal;
-  const daysSilent = signal?.daysSilent ?? null;
   const backContext = viewOpts.backContext || null;
 
   return `
-    <div class="lifecycle-detail deal-detail deal-record deal-record--wireframe">
-      <div class="deal-record-top deal-record-top--wireframe">
+    <div class="lifecycle-detail deal-detail deal-record deal-record--wireframe deal-record--labs">
+      <div class="deal-record-top deal-record-top--labs">
         ${renderDealRecordHeader(detail, backContext || {})}
-        ${renderDealStatusPills(detail)}
       </div>
+      ${renderAiAttachCallout(detail.technicalCommit)}
+      ${renderDealScoreStrip(detail)}
+      ${renderDealGapLine(detail)}
       <div class="deal-record-layout">
         <div class="deal-record-main">
           ${renderGeneratedSummarySection(
@@ -1135,13 +1378,11 @@ function renderDealRecord(detail, viewOpts = {}) {
             "Generated after the first post-call on this deal; rewritten after every call.",
             { wireframe: true },
           )}
-          <div class="deal-record-metrics-grid">
-            ${renderMeddpiccCompactCard(deal, detail.account)}
-            ${renderVelocitySection(detail.daysInStage, detail.stageMedianDays, deal?.postCallCount, daysSilent)}
-          </div>
-          ${renderTractionSection(signal)}
-          ${renderFitmentSection(deal)}
+          ${renderRecommendedActionCard(signal)}
+          ${renderCustomerVoiceSection(detail.whatWorks, detail.productGaps)}
           ${renderTechnicalCommitSection(detail.technicalCommit)}
+          ${renderFitmentSection(deal)}
+          ${renderDealProductSignalSection(detail.productGaps, detail.whatWorks)}
           ${renderCallsSection(detail.callRows, { wireframe: true })}
         </div>
         <aside class="deal-record-aside">
@@ -1181,7 +1422,7 @@ export async function resolveDealNavId(session, dealId) {
     if (bySlug) return bySlug.deal.id;
 
     try {
-      const rows = await listDealsForSession(session);
+      const rows = await listDealsForSession(session, { resolveOwnerFb: opts.resolveOwnerFb });
       const fromStore = rows.find((r) => {
         const nameSlug = String(r.account?.name || "")
           .toLowerCase()
@@ -1264,6 +1505,8 @@ async function enrichDealRecordExtras(store, deal) {
     postCalls,
     arrLines,
     dealSummary,
+    productGapsRaw,
+    whatWorksRaw,
   ] = await Promise.all([
     safeStoreOp(
       "getTechnicalCommitByDeal",
@@ -1296,7 +1539,35 @@ async function enrichDealRecordExtras(store, deal) {
       () => (store.getDealSummaryByDeal ? store.getDealSummaryByDeal(deal.id) : null),
       null,
     ),
+    safeStoreOp(
+      "listProductGapsByDeal",
+      () => (store.listProductGapsByDeal ? store.listProductGapsByDeal(deal.id, 500) : []),
+      [],
+    ),
+    safeStoreOp(
+      "listWhatWorksByDeal",
+      () => (store.listWhatWorksByDeal ? store.listWhatWorksByDeal(deal.id, 500) : []),
+      [],
+    ),
   ]);
+
+  const productGaps = rollupProductSignalRows(productGapsRaw);
+  const whatWorks = rollupProductSignalRows(whatWorksRaw);
+
+  // #region agent log
+  fetch("http://127.0.0.1:7766/ingest/793ffe0c-a3bb-4749-8869-0b3f191d9f2f", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5dd933" },
+    body: JSON.stringify({
+      sessionId: "5dd933",
+      location: "deal-view.js:enrichDealRecordExtras",
+      message: "deal product signal load",
+      data: { dealId: deal.id, gapCount: productGaps.length, workCount: whatWorks.length },
+      timestamp: Date.now(),
+      hypothesisId: "PS-deal-read",
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const sortedCalls = [...postCalls].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const enrichHead = sortedCalls.slice(0, CALL_ROW_ENRICH_LIMIT);
@@ -1340,6 +1611,8 @@ async function enrichDealRecordExtras(store, deal) {
     callRows,
     arrLines,
     dealSummary,
+    productGaps,
+    whatWorks,
   };
 }
 
@@ -1456,7 +1729,7 @@ async function loadDealRecordDetail(session, dealId, opts = {}) {
 }
 
 function wireDealListItemClicks(container, opts) {
-  container.querySelectorAll(".deal-list-item").forEach((row) => {
+  container.querySelectorAll(".deal-list-row[data-deal-id]").forEach((row) => {
     const activate = () => {
       const id = row.getAttribute("data-deal-id");
       if (id) opts.onSelectDeal?.(id);
@@ -1473,7 +1746,7 @@ function wireDealListItemClicks(container, opts) {
 
 function wireDealListFilter(container, allRows, opts) {
   const input = container.querySelector("#deal-list-search");
-  const listEl = container.querySelector(".deal-list-compact");
+  const listEl = container.querySelector(".deal-list-tbody");
   if (!input || !listEl) return;
 
   const renderFiltered = (query) => {
@@ -1481,7 +1754,7 @@ function wireDealListFilter(container, allRows, opts) {
     const filtered = filterDealRows(sorted, query);
     listEl.innerHTML = filtered.length
       ? filtered.map((row) => renderDealListItem(row)).join("")
-      : `<p class="muted deal-list-no-matches">No deals match “${esc(query)}”</p>`;
+      : `<tr><td colspan="8" class="deal-list-no-matches muted">No deals match “${esc(query)}”</td></tr>`;
     wireDealListItemClicks(listEl, opts);
   };
 
@@ -1511,18 +1784,20 @@ function wireDealListSort(container, allRows, opts) {
       opts.listSortKey = key;
       opts.onListSortKeyChange?.(key);
 
-      const header = container.querySelector(".deal-list-grid-header");
-      if (header) header.outerHTML = renderDealListSortHeader(key);
-      wireDealListSort(container, allRows, opts);
+      const thead = container.querySelector(".deal-list-table thead");
+      if (thead) {
+        thead.outerHTML = renderDealListSortHeader(key);
+        wireDealListSort(container, allRows, opts);
+      }
 
-      const listEl = container.querySelector(".deal-list-compact");
+      const listEl = container.querySelector(".deal-list-tbody");
       if (listEl) {
         const sorted = sortDealListRows(allRows, key);
         const filtered = filterDealRows(sorted, opts.listSearchQuery || "");
         listEl.innerHTML = filtered.length
           ? filtered.map((row) => renderDealListItem(row)).join("")
           : opts.listSearchQuery
-            ? `<p class="muted deal-list-no-matches">No deals match “${esc(opts.listSearchQuery)}”</p>`
+            ? `<tr><td colspan="8" class="deal-list-no-matches muted">No deals match “${esc(opts.listSearchQuery)}”</td></tr>`
             : "";
         wireDealListItemClicks(listEl, opts);
       }
@@ -1555,24 +1830,28 @@ function paintDealList(container, opts, rows) {
     container,
     opts,
     `
-      <div class="lifecycle-list-view deal-list-view deal-list-view--compact">
-        <div class="deal-list-toolbar deal-list-toolbar--compact">
+      <div class="lifecycle-list-view deal-list-view deal-list-view--labs">
+        <div class="deal-list-toolbar">
           <div class="deal-list-title-group">
             <h1 class="deal-list-heading">${opts.listTractionFilter === "cold" ? "Cold deals" : "Your deals"}</h1>
-            <p class="deal-list-subtitle muted">${esc(dealListSubtitle(openCount, opts))}</p>
+            <p class="deal-list-subtitle">${esc(dealListSubtitle(openCount, opts))}</p>
           </div>
           <fw-input id="deal-list-search" class="deal-list-search" placeholder="Search deals" value="${esc(listQuery)}" clear-input></fw-input>
         </div>
         <div class="deal-list-metrics-host">${renderDealListMetrics(listMetrics)}</div>
-        <div class="deal-list-table-card card-wire">
-          ${renderDealListSortHeader(sortKey)}
-          <div class="lifecycle-list deal-list-compact">
-            ${filtered.length
-              ? filtered.map((row) => renderDealListItem(row)).join("")
-              : `<p class="muted deal-list-no-matches">No deals match “${esc(listQuery)}”</p>`}
+        <div class="deal-list-table-card">
+          <div class="deal-list-table-wrap">
+            <table class="deal-list-table">
+              ${renderDealListSortHeader(sortKey)}
+              <tbody class="deal-list-tbody">
+                ${filtered.length
+                  ? filtered.map((row) => renderDealListItem(row)).join("")
+                  : `<tr><td colspan="8" class="deal-list-no-matches muted">No deals match “${esc(listQuery)}”</td></tr>`}
+              </tbody>
+            </table>
           </div>
         </div>
-        <p class="deal-list-footnote muted">QIP grades you. MEDPICC grades the deal. When they diverge sharply, the gap is the story.</p>
+        <p class="deal-list-footnote">${esc(CALL_QUALITY_SCORE_LABEL)} grades <b>you</b>. MEDPICC grades the <b>deal</b>. When they diverge sharply, the gap is the story.</p>
       </div>`,
   );
   if (!applied) return false;
@@ -1584,11 +1863,14 @@ function paintDealList(container, opts, rows) {
 }
 
 function wireDealRecordEvents(container, session, opts, detail) {
-  container.querySelector('[data-action="back-to-deal-list"]')?.addEventListener("fwClick", () => {
-    opts.onBackToDealList?.();
-  });
-  container.querySelector('[data-action="back-to-account"]')?.addEventListener("fwClick", () => {
-    opts.onBackToAccount?.();
+  const onBack = (action) => {
+    if (action === "back-to-deal-list") opts.onBackToDealList?.();
+    else if (action === "back-to-account") opts.onBackToAccount?.();
+  };
+  container.querySelectorAll('[data-action="back-to-deal-list"], [data-action="back-to-account"]').forEach((el) => {
+    const action = el.getAttribute("data-action");
+    el.addEventListener("fwClick", () => onBack(action));
+    el.addEventListener("click", () => onBack(action));
   });
 
   const engage = (view) => {
@@ -1633,7 +1915,7 @@ export async function renderDealView(container, session, opts = {}) {
   let activeSession = session;
   if (!sessionUserId(activeSession)) {
     try {
-      activeSession = (await syncSessionWithDomainStore(activeSession)) || activeSession;
+      activeSession = (await syncSessionWithDomainStore(activeSession, opts.resolveOwnerFb)) || activeSession;
     } catch (err) {
       console.warn("[deal-view] session sync failed:", err);
     }
@@ -1713,7 +1995,7 @@ export async function renderDealView(container, session, opts = {}) {
     try {
       baseRows = await safeStoreOp(
         "listDealsForSession",
-        () => listDealsForSession(activeSession),
+        () => listDealsForSession(activeSession, { resolveOwnerFb: opts.resolveOwnerFb }),
         [],
       );
     } catch (err) {

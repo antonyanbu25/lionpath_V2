@@ -39,6 +39,7 @@ See **docs/VPS_DEPLOY.md** § Git authentication for full steps and the `instead
 | Secret | Where it lives | Never commit |
 |--------|----------------|--------------|
 | `GEMINI_API_KEY` | `deploy/vps/.env` on VPS only | Yes |
+| `FRESHDESK_API_KEY` | `deploy/vps/.env` on VPS; Secret Manager on Cloud Run | Yes |
 | VPS root password | Your password manager only | Yes |
 | SSH private keys | `~/.ssh/` on your machine | Yes |
 | Firebase service keys | `.env` if used later | Yes |

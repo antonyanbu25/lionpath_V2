@@ -51,17 +51,22 @@ export function canonicalCallType(raw, fallback = "demo") {
 const LEGACY_CALL_WITH_RE = /^(.+?) with (.+)$/i;
 
 /**
- * Label for a call type. Falls back to a de-underscored, capitalized version of an
- * unknown type, or "Call" when empty.
+ * Label for an activity type (persisted key remains callType). Falls back to a
+ * de-underscored, capitalized version of an unknown type, or "Activity" when empty.
  * @param {string} [callType]
  */
 export function callTypeLabel(callType) {
   const canonical = canonicalCallType(callType, "");
   const t = canonical || String(callType || "").trim();
-  if (!t) return "Call";
+  if (!t) return "Activity";
   if (CALL_TYPE_LABELS[t]) return CALL_TYPE_LABELS[t];
   const spaced = t.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** Display alias for callTypeLabel — keys / CALL_TYPES unchanged. */
+export function activityTypeLabel(callType) {
+  return callTypeLabel(callType);
 }
 
 /** @param {string} [text] @param {number} [maxLen] */
@@ -80,7 +85,9 @@ export function formatProductAreaLabel(area, subArea) {
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
   if (!subArea || subArea === "other") return a;
-  const sub = String(subArea).replace(/_/g, " ");
+  const sub = String(subArea)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
   return `${a} › ${sub}`;
 }
 
@@ -200,5 +207,5 @@ export function resolveCallTitleFromRecord(record, opts = {}) {
     aiShortForm: aiShortFormFromAnalysis(analysis),
   });
 
-  return built || stored || "Call";
+  return built || stored || "Activity";
 }

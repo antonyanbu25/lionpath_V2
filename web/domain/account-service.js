@@ -38,6 +38,7 @@ import { selectLatestArrLines } from "./arr-service.js";
 import { buildAccountArrRollup, formatProductLabel } from "./account-arr-service.js";
 import { resolveDealMeddpicc } from "./contact-service.js";
 import {
+  accountRowDedupeKeys,
   buildDealExtrasFromHistory,
   enrichDealFromHistoryRecords,
   dealSummaryFromHistoryRecords,
@@ -80,7 +81,23 @@ export async function upsertAccountFromPrep(input) {
   const forceNewAccount = input.createNewAccount === true;
 
   if (explicitAccountId && !forceNewAccount) {
-    account = await store.getAccount(explicitAccountId);
+    try {
+      account = await store.getAccount(explicitAccountId);
+    } catch (err) {
+      console.warn(
+        "[account-service] getAccount skipped:",
+        explicitAccountId,
+        err?.message || err,
+      );
+      account = null;
+    }
+  }
+
+  if (!account && !forceNewAccount && emails.length) {
+    account = await findAccountByContactEmails(emails, {
+      actorId: input.actorId,
+      domain: resolvedDomain,
+    });
   }
 
   if (!account && !forceNewAccount) {
@@ -446,22 +463,45 @@ export function historyPreviewContactsForSession(session) {
   return { contacts, accountNameById };
 }
 
-/** @param {object} session @param {string} accountId */
-function findHistoryAccountRow(session, accountId) {
-  return listAccountRowsFromHistory(session).find((r) => r.account?.id === accountId) || null;
+/**
+ * @param {object} session
+ * @param {string} accountId
+ * @param {object|null} [accountHint] store account for name/domain match when ids diverge
+ */
+function findHistoryAccountRow(session, accountId, accountHint = null) {
+  const rows = listAccountRowsFromHistory(session);
+  const exact = rows.find((r) => r.account?.id === accountId);
+  if (exact) return exact;
+  if (!accountHint?.name && !accountHint?.domain) return null;
+  const keys = accountRowDedupeKeys({ account: accountHint });
+  if (!keys.size) return null;
+  return (
+    rows.find((r) => [...accountRowDedupeKeys(r)].some((k) => keys.has(k))) || null
+  );
 }
 
-/** @param {object} session @param {string} accountId */
-export function historyRecordsForAccount(session, accountId) {
+/** @param {object} session @param {string} accountId @param {object|null} [accountHint] */
+export function historyRecordsForAccount(session, accountId, accountHint = null) {
   const email = normalizeUserEmail(session?.email);
   if (!email) return [];
+  const hintKeys =
+    accountHint?.name || accountHint?.domain
+      ? accountRowDedupeKeys({ account: accountHint })
+      : null;
   const out = [];
   for (const rec of listPostCallAnalyses(email)) {
     const name = accountNameFromHistoryRecord(rec);
     if (!name) continue;
     const key = name.toLowerCase();
     const id = resolveHistoryAccountId(rec, key.replace(/[^a-z0-9]+/g, "-").slice(0, 40));
-    if (id === accountId) out.push(rec);
+    if (id === accountId) {
+      out.push(rec);
+      continue;
+    }
+    if (hintKeys?.size) {
+      const recKeys = accountRowDedupeKeys({ account: { name, domain: null } });
+      if ([...recKeys].some((k) => hintKeys.has(k))) out.push(rec);
+    }
   }
   return out.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
@@ -516,51 +556,78 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
   const user = await sessionUser(session);
   if (!user) return null;
 
-  const account = { ...histRow.account, metadata: histRow.account.metadata || {} };
-  const lifecycle = { ...histRow.lifecycle };
-  const historyRecs = historyRecordsForAccount(session, accountId);
+  // Keep the navigable id (may be a store id after list merge) but pull calls via hist id/name.
+  const account = {
+    ...histRow.account,
+    id: accountId || histRow.account.id,
+    metadata: histRow.account.metadata || {},
+  };
+  const lifecycle = { ...histRow.lifecycle, accountId: account.id };
+  const historyRecs = historyRecordsForAccount(session, histRow.account.id, account);
   const ownerId = effectiveSessionUserId(session);
-  const dealId = histRow.canonicalDealId || `deal_hist_${String(accountId).replace(/^hist_/, "")}`;
-  const deals = [
-    {
-      id: dealId,
-      accountId,
-      type: "new_business",
-      stage: histRow.dealStage || "demo",
-      status: "active",
-      ownerId,
-      teamId: session?.teamId || null,
-      orgId: session?.orgId || null,
-      title: account.name,
-      postCallCount: historyRecs.length,
-      prepCount: 0,
-      openTaskCount: 0,
-      latestQualityScore: null,
-      createdAt: histRow.lastActivityAt || Date.now(),
-      updatedAt: histRow.lastActivityAt || Date.now(),
-      lastActivityAt: histRow.lastActivityAt || Date.now(),
-    },
-  ];
+  const store = getStore();
+
+  // Prefer real store deals when this id is store-backed (list merge kept store id).
+  let storeDeals = await safeStoreOp(
+    "listDealsForAccount",
+    () => listDealsForAccount(accountId),
+    [],
+  );
+  storeDeals = (storeDeals || []).filter(Boolean);
+
+  const histDealId =
+    histRow.canonicalDealId || `deal_hist_${String(accountId).replace(/^hist_/, "")}`;
+  const histDeal = {
+    id: histDealId,
+    accountId,
+    type: "new_business",
+    stage: histRow.dealStage || "demo",
+    status: "active",
+    ownerId,
+    teamId: session?.teamId || null,
+    orgId: session?.orgId || null,
+    title: account.name,
+    postCallCount: historyRecs.length,
+    prepCount: 0,
+    openTaskCount: 0,
+    latestQualityScore: null,
+    createdAt: histRow.lastActivityAt || Date.now(),
+    updatedAt: histRow.lastActivityAt || Date.now(),
+    lastActivityAt: histRow.lastActivityAt || Date.now(),
+  };
+
+  let deals = storeDeals.length ? [...storeDeals] : [histDeal];
+  if (storeDeals.length && !storeDeals.some((d) => d.id === histDealId) && historyRecs.length) {
+    // Keep a history deal only when store deals don't already cover the activity.
+    // Prefer attaching history calls onto the primary store deal below.
+  }
 
   let selectedDealId = null;
   if (typeof options.dealId === "string" && options.dealId) {
     selectedDealId = options.dealId;
   } else if (options.dealId !== null) {
-    selectedDealId = dealId;
+    selectedDealId = deals[0]?.id || histDealId;
+  } else {
+    // Account overview: still pick a deal for call enrichment / MEDPICC.
+    selectedDealId = deals.find((d) => d.status === "active")?.id || deals[0]?.id || null;
   }
+
   let selectedDeal = selectedDealId ? deals.find((d) => d.id === selectedDealId) || null : null;
-  selectedDeal = enrichDealFromHistoryRecords(selectedDeal, historyRecs);
+  selectedDeal = enrichDealFromHistoryRecords(selectedDeal || histDeal, historyRecs);
   if (selectedDeal && selectedDealId) {
     const dealIdx = deals.findIndex((d) => d.id === selectedDealId);
     if (dealIdx >= 0) deals[dealIdx] = selectedDeal;
+    else if (!storeDeals.length) deals = [selectedDeal];
   }
 
   const historyExtras = buildDealExtrasFromHistory(selectedDeal, account, historyRecs);
+  const callDealId = selectedDeal?.id || histDealId;
+  const callDeal = selectedDeal || histDeal;
 
   const postCalls = historyRecs.map((rec) => ({
     id: rec.id,
     accountId,
-    dealId,
+    dealId: callDealId,
     lifecycleId: lifecycle.id,
     ownerId,
     teamId: session?.teamId || null,
@@ -586,12 +653,15 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     payload: { qualityScore: pc.qualityScore, title: pc.title },
   }));
 
+  const dealLabelFor = (deal) =>
+    deal?.title || (deal ? DEAL_TYPE_LABELS[deal.type] || deal.type : account.name) || account.name;
+
   const accountCalls = postCalls.map((postCall) => {
-    const med = resolveDealMeddpicc(selectedDeal, account);
+    const med = resolveDealMeddpicc(callDeal, account);
     return {
       postCall,
-      deal: selectedDeal || deals[0],
-      dealLabel: account.name,
+      deal: callDeal,
+      dealLabel: dealLabelFor(callDeal),
       meddpiccScore: med?.completionScore ?? null,
       scorecard: postCall.scorecard || null,
       ownerName: session?.name || user.displayName || "-",
@@ -599,30 +669,90 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     };
   });
 
+  const seName = session?.name || user.displayName || "-";
+  const dealRows = deals.map((deal) => {
+    const enriched = deal.id === selectedDeal?.id ? selectedDeal : deal;
+    const signal =
+      deal.id === selectedDeal?.id ? historyExtras.latestSignal : null;
+    return {
+      deal: enriched,
+      arrPoint: enriched.arrEstimatePoint ?? null,
+      arrLow: enriched.arrEstimateLow ?? enriched.arrEstimatePoint ?? null,
+      arrHigh: enriched.arrEstimateHigh ?? enriched.arrEstimatePoint ?? null,
+      productLabel: formatProductLabel(enriched.product) || "-",
+      traction: signal?.traction || null,
+      primarySeName: seName,
+    };
+  });
+
+  let arrRollup = {
+    estimateBand: null,
+    linesByDealId: new Map(),
+    discussedUnquantified: [],
+    crossSellGaps: [],
+  };
+  let firmographics = {
+    industry: "-",
+    region: "-",
+    subRegion: "-",
+    hq: "-",
+    supportAgents: "-",
+    incumbent: "-",
+    competitor: "Unknown",
+  };
+  let reasonForEvaluation = historyExtras.technicalCommit?.reasonForEvaluation?.value
+    ?? historyExtras.technicalCommit?.reasonForEvaluation
+    ?? null;
+  let whyAi = historyExtras.technicalCommit?.whyAi?.value
+    ?? historyExtras.technicalCommit?.whyAi
+    ?? null;
+
+  if (storeDeals.length) {
+    try {
+      const storeRollup = await loadAccountOverviewRollup(
+        store,
+        account,
+        storeDeals,
+        histRow.seTeamDisplay || [],
+        [],
+      );
+      if (storeRollup?.dealRows?.length) {
+        // Prefer store deal rows; keep history calls (store may not have them yet).
+        arrRollup = storeRollup.arrRollup || arrRollup;
+        firmographics = { ...firmographics, ...(storeRollup.firmographics || {}) };
+        reasonForEvaluation = storeRollup.reasonForEvaluation || reasonForEvaluation;
+        whyAi = storeRollup.whyAi || whyAi;
+        // Replace dealRows with store-backed ones
+        dealRows.length = 0;
+        dealRows.push(...storeRollup.dealRows);
+      }
+      if (storeRollup?.accountCalls?.length) {
+        const seen = new Set(accountCalls.map((c) => c.postCall?.id));
+        for (const row of storeRollup.accountCalls) {
+          if (row?.postCall?.id && !seen.has(row.postCall.id)) accountCalls.push(row);
+        }
+        accountCalls.sort((a, b) => (b.postCall?.createdAt || 0) - (a.postCall?.createdAt || 0));
+      }
+    } catch (err) {
+      console.warn("[account-service] history detail store rollup failed:", err?.message || err);
+    }
+  }
+
   const accountRollup = {
-    arrRollup: {
-      estimateBand: null,
-      linesByDealId: new Map(),
-      discussedUnquantified: [],
-      crossSellGaps: [],
-    },
-    dealRows: [],
+    arrRollup,
+    dealRows,
     accountCalls,
-    firmographics: {
-      industry: "-",
-      region: "-",
-      subRegion: "-",
-      hq: "-",
-      supportAgents: "-",
-      incumbent: "-",
-      competitor: "Unknown",
-    },
-    reasonForEvaluation: null,
-    whyAi: null,
+    firmographics,
+    reasonForEvaluation,
+    whyAi,
     hasEconomicBuyer: false,
-    health: deriveAccountHealth(null, null, histRow.lastActivityAt),
-    callCount: postCalls.length,
-    dealCount: deals.length,
+    health: deriveAccountHealth(
+      dealRows.find((r) => r.traction)?.traction || null,
+      null,
+      histRow.lastActivityAt,
+    ),
+    callCount: accountCalls.length,
+    dealCount: dealRows.length,
   };
 
   return {
@@ -640,8 +770,8 @@ async function buildAccountEngagementDetailFromHistory(session, accountId, histR
     deals,
     selectedDealId,
     selectedDeal,
-    selectedDealType: "new_business",
-    engagementSelectionSource: "explicit",
+    selectedDealType: selectedDeal?.type || "new_business",
+    engagementSelectionSource: storeDeals.length ? "fallback" : "explicit",
     canManageTeam: false,
     assignableSeOptions: [],
     dealSummary: historyExtras.dealSummary || dealSummaryFromHistoryRecords(historyRecs),
@@ -670,7 +800,7 @@ export async function listAccountsForSession(session, opts = {}) {
 
     let lifecycles = [];
     try {
-      lifecycles = await listLifecyclesForSession(session);
+      lifecycles = await listLifecyclesForSession(session, opts.resolveOwnerFb);
     } catch (err) {
       console.warn("[account-service] listLifecyclesForSession failed:", err?.message || err);
     }
@@ -936,12 +1066,12 @@ export async function listAccountsForUser(session) {
  * @param {object} session
  * @returns {Promise<Array<{ deal: import("./types.js").Deal, account: import("./types.js").Account, seTeamDisplay: object[], primarySeName: string|null, lastActivityAt: number }>>}
  */
-export async function listDealsForSession(session) {
+export async function listDealsForSession(session, opts = {}) {
   /** @type {Map<string, object>} */
   const byDealId = new Map();
 
   try {
-    const accountRows = await listAccountsForSession(session);
+    const accountRows = await listAccountsForSession(session, opts);
 
     for (const row of accountRows) {
       const { account, seTeamDisplay, deals } = row;
@@ -1112,16 +1242,21 @@ export async function getAccountEngagementDetail(session, accountId, options = {
   }
   account = await safeStoreOp("backfillAccountSeTeam", () => backfillAccountSeTeam(accountId), account);
 
+  let storeDetail = null;
   try {
-    return await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
+    storeDetail = await loadAccountEngagementDetailFromStore(session, user, account, accountId, options);
   } catch (err) {
     console.warn("[account-service] engagement detail failed, trying history:", err?.message || err);
-    const histRow = findHistoryAccountRow(session, accountId);
-    if (histRow) {
-      return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
-    }
-    return null;
   }
+  if (storeDetail) return storeDetail;
+
+  // Store account can appear in the list (merged with history) but lack a usable
+  // lifecycle spine — fall back to history by id or name/domain so row clicks work.
+  const histRow = findHistoryAccountRow(session, accountId, account);
+  if (histRow) {
+    return buildAccountEngagementDetailFromHistory(session, accountId, histRow, options);
+  }
+  return null;
 }
 
 async function loadAccountEngagementDetailFromStore(session, user, account, accountId, options = {}) {
@@ -1207,14 +1342,56 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
     lensLifecycle = teamLifecycles[0];
     lensOwnerId = lensLifecycle.ownerId;
   }
-  if (!lensLifecycle) return null;
+  // Account can have deals/calls without an active lifecycle spine (partial sync /
+  // history-merged rows). Still render overview from store deals rather than bail.
+  if (!lensLifecycle) {
+    const primaryDeal = selectedDeal || deals.find((d) => d.status === "active") || deals[0] || null;
+    const storeCallProbe = store.listPostCallsByAccount
+      ? await safeStoreOp(
+          "listPostCallsByAccount",
+          () => store.listPostCallsByAccount(accountId, 1),
+          [],
+        )
+      : [];
+    if (!primaryDeal && !storeCallProbe.length) {
+      // Nothing store-backed to show — let history fallback handle it.
+      return null;
+    }
+    lensLifecycle = {
+      id: `lc_account_${accountId}`,
+      accountId,
+      dealId: primaryDeal?.id || null,
+      ownerId: lensOwnerId || user.id,
+      teamId: user.teamId || account.teamId || null,
+      orgId: user.orgId || account.orgId || null,
+      title: account.name || "Account",
+      stage: primaryDeal?.stage || "discovery",
+      status: "active",
+      prepCount: 0,
+      postCallCount: 0,
+      openTaskCount: 0,
+      lastActivityAt: account.updatedAt || Date.now(),
+      createdAt: account.createdAt || Date.now(),
+      updatedAt: account.updatedAt || Date.now(),
+      _synthetic: true,
+    };
+  }
 
-  const lensDetail = await safeStoreOp(
+  let lensDetail = await safeStoreOp(
     "getLifecycleDetail",
     () => getLifecycleDetail(lensLifecycle.id),
     null,
   );
-  if (!lensDetail) return null;
+  if (!lensDetail) {
+    lensDetail = {
+      lifecycle: lensLifecycle,
+      account,
+      events: [],
+      preps: [],
+      postCalls: [],
+      tasks: [],
+    };
+  }
 
   const userNameById = new Map(seTeamDisplay.map((m) => [m.seUserId, m.user.displayName]));
 
@@ -1328,6 +1505,59 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
       dealCount: (deals || []).length,
     },
   );
+
+  // Fold local history calls in when Firestore post-calls are missing/partial.
+  try {
+    const histRecs = historyRecordsForAccount(session, accountId, account);
+    if (histRecs.length) {
+      const seen = new Set((accountRollup.accountCalls || []).map((c) => c.postCall?.id));
+      const primaryDeal =
+        selectedDeal || deals.find((d) => d.status === "active") || deals[0] || null;
+      const ownerName =
+        seTeamDisplay.find((m) => m.seUserId === user.id)?.user?.displayName ||
+        seTeamDisplay[0]?.user?.displayName ||
+        user.displayName ||
+        "-";
+      for (const rec of histRecs) {
+        if (seen.has(rec.id)) continue;
+        seen.add(rec.id);
+        const postCall = {
+          id: rec.id,
+          accountId,
+          dealId: primaryDeal?.id || null,
+          ownerId: user.id,
+          title: rec.title || account.name || "Call",
+          createdAt: rec.timestamp || Date.now(),
+          updatedAt: rec.timestamp || Date.now(),
+          analysis: rec.analysis || rec.result?.analysis || {},
+          qualityScore:
+            rec.qualityScore ??
+            rec.analysis?.qualityCoach?.overallScore ??
+            rec.result?.scorecard?.overallScore ??
+            null,
+          scorecard: rec.scorecard || rec.result?.scorecard || null,
+        };
+        const med = primaryDeal ? resolveDealMeddpicc(primaryDeal, account) : null;
+        accountRollup.accountCalls.push({
+          postCall,
+          deal: primaryDeal,
+          dealLabel:
+            primaryDeal?.title ||
+            (primaryDeal ? DEAL_TYPE_LABELS[primaryDeal.type] : account.name) ||
+            account.name,
+          meddpiccScore: med?.completionScore ?? null,
+          scorecard: postCall.scorecard,
+          ownerName,
+        });
+      }
+      accountRollup.accountCalls.sort(
+        (a, b) => (b.postCall?.createdAt || 0) - (a.postCall?.createdAt || 0),
+      );
+      accountRollup.callCount = accountRollup.accountCalls.length;
+    }
+  } catch (err) {
+    console.warn("[account-service] history call merge failed:", err?.message || err);
+  }
 
   return {
     ...lensDetail,
@@ -1563,6 +1793,7 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
   if (action === "add_secondary" || action === "transfer_primary") {
     const addId = payload.seUserId || user.id;
     if (seTeam.some((m) => m.seUserId === addId)) {
+      await ensureLifecycleForSeOnAccount(store, account, addId, actorId, user);
       return { success: true, account };
     }
     if (seTeam.length >= MAX_SE_TEAM_SIZE) {
@@ -1571,12 +1802,7 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
     seTeam.push({ seUserId: addId, role: "secondary", addedAt: ts, addedBy: actorId });
     account = await store.updateAccount(accountId, { seTeam, updatedAt: ts });
 
-    const targetUser = await store.getUser(addId);
-    const lc = await getOrCreateLifecycle(addId, accountId, targetUser?.teamId || user.teamId || "", {
-      title: account.name,
-      actorId,
-      orgId: targetUser?.orgId || user.orgId || null,
-    });
+    const lc = await ensureLifecycleForSeOnAccount(store, account, addId, actorId, user);
     await logSeTeamEvent(lc.id, "se_added", actorId, {
       seUserId: addId,
       accountId,
@@ -1625,21 +1851,80 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
       updatedAt: ts,
     });
 
-    const lc = await store.findActiveLifecycle(newPrimaryId, accountId);
-    if (lc) {
-      await logSeTeamEvent(lc.id, "primary_se_changed", actorId, {
-        fromSeUserId: oldPrimaryId,
-        toSeUserId: newPrimaryId,
-        accountId,
-      });
-    }
+    const lc = await ensureLifecycleForSeOnAccount(store, account, newPrimaryId, actorId, user);
+    await logSeTeamEvent(lc.id, "primary_se_changed", actorId, {
+      fromSeUserId: oldPrimaryId,
+      toSeUserId: newPrimaryId,
+      accountId,
+    });
     return { success: true, account };
   }
 
   return { success: false, error: "Unknown action" };
 }
 
-/** Find account by company name + domain (slug → domain → normalized name). */
+/**
+ * Resolve an existing account from participant contact emails (global contacts query).
+ * Same prospect email → same account for every SE, so nav and CRM stay aligned.
+ * @param {string[]} emails
+ * @param {{ actorId?: string|null, domain?: string|null }} [opts]
+ */
+export async function findAccountByContactEmails(emails, opts = {}) {
+  const store = getStore();
+  if (!store.findContactsByEmail) return null;
+
+  const actorId = opts.actorId || null;
+  const domainHint = normalizeDomain(opts.domain);
+  /** @type {Map<string, object>} */
+  const accountsById = new Map();
+
+  for (const raw of emails || []) {
+    const email = String(raw || "").trim().toLowerCase();
+    if (!email.includes("@")) continue;
+    try {
+      const contacts = await store.findContactsByEmail(email);
+      for (const contact of contacts) {
+        if (!contact?.accountId || accountsById.has(contact.accountId)) continue;
+        let account = null;
+        try {
+          account = store.getAccount ? await store.getAccount(contact.accountId) : null;
+        } catch {
+          account = null;
+        }
+        if (account?.id) accountsById.set(account.id, account);
+      }
+    } catch {
+      /* best-effort contact lookup */
+    }
+  }
+
+  const accounts = [...accountsById.values()];
+  if (!accounts.length) return null;
+  if (accounts.length === 1) return accounts[0];
+
+  if (actorId) {
+    const onTeam = accounts.find((a) => (a.seTeam || []).some((m) => m.seUserId === actorId));
+    if (onTeam) return onTeam;
+  }
+  if (domainHint) {
+    const byDomain = accounts.filter((a) => normalizeDomain(a.domain) === domainHint);
+    if (byDomain.length === 1) return byDomain[0];
+  }
+  return accounts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+}
+
+/** Ensure an SE on the deal team has an active lifecycle (idempotent). */
+async function ensureLifecycleForSeOnAccount(store, account, seUserId, actorId, sessionUser) {
+  const targetUser = await store.getUser(seUserId);
+  const lc = await getOrCreateLifecycle(seUserId, account.id, targetUser?.teamId || sessionUser.teamId || "", {
+    title: account.name,
+    actorId,
+    orgId: targetUser?.orgId || sessionUser.orgId || null,
+  });
+  return lc;
+}
+
+/** Find account by company name + domain (slug → domain → normalized name). Global — no teamId. */
 export async function findAccountByCompanyName(companyName, domain) {
   const store = getStore();
   const normalizedDomain = normalizeDomain(domain);
@@ -1661,17 +1946,28 @@ export async function findAccountByCompanyName(companyName, domain) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-  if (normName && store.listAccounts) {
-    const all = await store.listAccounts();
-    const matches = all.filter(
-      (a) =>
-        String(a.name || "")
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, " ")
-          .trim() === normName,
-    );
-    if (matches.length === 1) return matches[0];
+  if (normName && store.findAccountsByName) {
+    try {
+      const byName = await store.findAccountsByName(companyName);
+      if (byName?.length === 1) return byName[0];
+    } catch {
+      /* best-effort name lookup */
+    }
+  } else if (normName && store.listAccounts) {
+    try {
+      const all = await store.listAccounts();
+      const matches = all.filter(
+        (a) =>
+          String(a.name || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim() === normName,
+      );
+      if (matches.length === 1) return matches[0];
+    } catch {
+      /* best-effort name lookup */
+    }
   }
 
   return null;

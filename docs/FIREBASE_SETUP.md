@@ -87,6 +87,60 @@ FIREBASE_PROJECT_ID=your-project-id
 
 Deploy web with `web/firebase-config.local.js` merged at build time, or inline config in `web/firebase-config.js` for production Pages deploy.
 
+## Production-like local (Firebase + Firestore — same as VPS)
+
+Use this when you need real CRM data (existing accounts/deals), Google SSO, and worker API auth — not dummy localStorage mode.
+
+### 1. Enable Firebase on web
+
+```bash
+cp web/firebase-config.local.example.js web/firebase-config.local.js
+# Edit — projectId must be se-singha-paathi (see firebase-config.local.example.js)
+```
+
+### 2. Enable Firebase on worker
+
+In `worker/.dev.vars`:
+
+```
+FIREBASE_PROJECT_ID=se-singha-paathi
+```
+
+### 3. Worker GCP credentials (required for `/api/accounts`, read-models)
+
+Download a service account JSON from [Firebase Console](https://console.firebase.google.com/) → **se-singha-paathi** → Project settings → Service accounts → **Generate new private key**.
+
+Add **one** of these to `worker/.dev.vars` (never commit the JSON file):
+
+```
+GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/se-singha-paathi-adminsdk.json
+```
+
+or inline (single line):
+
+```
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
+
+Alternative: install [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) and run `gcloud auth application-default login`.
+
+### 4. Start and verify
+
+```bash
+npm run stop:dev && npm run dev:all
+```
+
+Worker boot log should show: `Firestore admin: ready (project=se-singha-paathi, ...)`.
+
+| Check | Expected |
+|-------|----------|
+| Login | **Sign in with Google** (not dummy email/password) |
+| Console | `[domain] store mode: api` |
+| Post-call intake | Existing account shows **Account matched · existing** |
+| Prep / post-call | Bearer token sent; no "Sign-in required" |
+
+---
+
 ## Dummy mode (local dev without Firebase)
 
 Leave `web/firebase-config.local.js` absent or with empty `projectId`. Dummy logins and localStorage domain store continue to work.

@@ -8,6 +8,15 @@ import {
 } from "./shared/qip-scorecard-normalize.js";
 import { videoDependentThemeKeys } from "./rubric-profiles.js";
 
+/** UI nouns — display only; persisted keys remain call / callType. */
+export const ACTIVITY_NOUN = "Activity";
+export const ACTIVITY_TYPE_LABEL = "Activity type";
+export const ACTIVITIES_NAV_LABEL = "Activities";
+export const PRECALL_BRIEFS_TYPE_LABEL = "Pre-call briefs";
+
+/** User-facing name for the call execution score (internal keys remain qip*). */
+export const CALL_QUALITY_SCORE_LABEL = "Call Quality Score";
+
 export const VIDEO_THEME_UNAVAILABLE_REASON =
   "No video recording — this theme requires visual evidence from the recording and cannot be scored from transcript alone.";
 
