@@ -2722,6 +2722,14 @@ function ensureFirebaseSdk() {
 
       initDomainStore(fb);
 
+      // If store resolved to API mode (SE user), terminate Firestore transport
+      // to stop the WebChannel retry loop — the worker API handles all reads.
+      const store = getStore();
+      if (store?.readMode === "api" || store?.mode === "api") {
+        try { fsMod.terminate(fsMod.getFirestore(app)); } catch (_) {}
+        fb.db = null;
+      }
+
       try {
         await authMod.setPersistence(firebaseAuth, authMod.browserLocalPersistence);
       } catch (err) {
