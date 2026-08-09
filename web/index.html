@@ -778,7 +778,12 @@
         }
 
         window.ensureStaticDisputeShell = initDisputeShell;
-        window.purgeLegacyDisputeModal = function() {};
+        // Real implementation is purgeLegacyDisputeModals() (plural) in
+        // prep-disputes.js, exposed as window.purgeLegacyDisputeModals —
+        // this was a same-name-minus-a-letter dead stub that always no-op'd.
+        // Deferred lookup (not a direct reference) since prep-disputes.js's
+        // module script may not have run yet when this inline script does.
+        window.purgeLegacyDisputeModal = function() { window.purgeLegacyDisputeModals?.(); };
 
         window.ensureDisputeFieldsVisible = function() {
           var cat = document.getElementById("prep-dispute-category");

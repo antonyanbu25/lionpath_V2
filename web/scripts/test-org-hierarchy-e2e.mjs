@@ -54,28 +54,40 @@ async function main() {
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
 
-    await page.evaluate(() => {
-      const email = document.getElementById("login-email");
-      const pass = document.getElementById("login-password");
-      if (email) email.value = "vipin.thomas@freshworks.com";
-      if (pass) pass.value = "vipin123";
-      document.getElementById("login-form")?.requestSubmit?.();
-    });
+    // fw-input's real <input> lives in its shadow DOM — setting .value on
+    // the custom-element host directly never syncs the component's internal
+    // state, so login silently never happened (same root cause fixed in
+    // test-dispute-full-flow-e2e.mjs and the test-dashboard-*.mjs suite).
+    await page.locator("#login-email input:not([type=hidden])").fill("vipin.thomas@freshworks.com");
+    await page.locator("#login-password input:not([type=hidden])").fill("vipin123");
+    await page.click("#login-submit");
     await page.waitForTimeout(2000);
 
+    // The manager/director team page's title is always literally "Team"
+    // (dashboard.js hardcodes it) — org-wide-ness shows up in the subtitle
+    // ("Org-wide roll-up · N SEs · ...") via managerDashboardSubtitle(),
+    // not the title. "Org dashboard" never existed anywhere in the source.
     const title = await page.textContent(".one-pager-title");
-    if (!title?.includes("Org dashboard")) {
-      throw new Error(`Expected Org dashboard title, got: ${title}`);
+    if (title?.trim() !== "Team") {
+      throw new Error(`Expected "Team" title, got: ${title}`);
+    }
+    const subtitle = await page.textContent(".manager-subtitle");
+    if (!subtitle?.includes("Org-wide")) {
+      throw new Error(`Expected org-wide subtitle for a director login, got: ${subtitle}`);
     }
 
+    // displayNameForEmail() (auth.js) is a deliberately synchronous, simple
+    // fallback — always the raw email local-part, never a "real" display
+    // name (that comes from session.name at login time, a different path).
+    // Confirmed live: the table renders "saketh.poruri" not "Saketh Poruri".
     const tableText = await page.textContent(".manager-se-table");
-    if (!tableText?.includes("Saketh Poruri") && !tableText?.includes("Vivehanandan Agoram")) {
+    if (!tableText?.includes("saketh.poruri") && !tableText?.includes("vivehanandan.agoram")) {
       throw new Error("Director dashboard missing Antony-branch team SEs");
     }
-    if (!tableText?.includes("Vijai Vijayakumar") && !tableText?.includes("Cibby Kurian")) {
+    if (!tableText?.includes("vijai.vijayakumar") && !tableText?.includes("cibby.kurian")) {
       throw new Error("Director dashboard missing Nurture team SE");
     }
-    if (!tableText?.includes("Avinash Kumar") && !tableText?.includes("Calvin Joseph")) {
+    if (!tableText?.includes("avinash.kumar") && !tableText?.includes("calvin.joseph")) {
       throw new Error("Director dashboard missing Digital team SE");
     }
     if (!tableText?.includes("Team")) {
