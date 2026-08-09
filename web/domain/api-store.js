@@ -224,7 +224,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     } catch (err) {
       const msg = String(err?.message || err);
       if (!/404|not found/i.test(msg)) throw err;
-      const postCall = await firestoreDelegate.getPostCall(key);
+      const postCall = await firestoreDelegate?.getPostCall(key);
       if (!postCall) throw err;
       const detail = { postCall, ...(postCall.detail || {}) };
       putDetail(callDetailCache, key, detail);
@@ -282,7 +282,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     } catch {
       /* fall through */
     }
-    if (firestoreDelegate.listProductGapsByDeal) {
+    if (firestoreDelegate?.listProductGapsByDeal) {
       return firestoreDelegate.listProductGapsByDeal(dealId, limitCount);
     }
     return [];
@@ -296,7 +296,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     } catch {
       /* fall through */
     }
-    if (firestoreDelegate.listWhatWorksByDeal) {
+    if (firestoreDelegate?.listWhatWorksByDeal) {
       return firestoreDelegate.listWhatWorksByDeal(dealId, limitCount);
     }
     return [];
@@ -306,10 +306,10 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     mode: "api",
 
     get readCacheEnabled() {
-      return firestoreDelegate.readCacheEnabled;
+      return firestoreDelegate?.readCacheEnabled ?? false;
     },
     set readCacheEnabled(v) {
-      firestoreDelegate.readCacheEnabled = v;
+      if (firestoreDelegate) firestoreDelegate.readCacheEnabled = v;
     },
 
     async getPostCall(id) {
@@ -328,7 +328,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listPostCallsByOwner(ownerId, limit = 200) {
-      if (firestoreDelegate.listPostCallsByOwner) {
+      if (firestoreDelegate?.listPostCallsByOwner) {
         try {
           return await firestoreDelegate.listPostCallsByOwner(ownerId, limit);
         } catch (err) {
@@ -342,7 +342,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
         const data = await apiFetch(`/api/calls?scope=own&limit=${encodeURIComponent(String(limit))}`);
         return data.calls || [];
       } catch (err) {
-        if (firestoreDelegate.listPostCallsByOwner) {
+        if (firestoreDelegate?.listPostCallsByOwner) {
           return firestoreDelegate.listPostCallsByOwner(ownerId, limit);
         }
         throw err;
@@ -360,7 +360,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listCallSummariesByOwner(ownerId, limit = 200) {
-      if (firestoreDelegate.listCallSummariesByOwner) {
+      if (firestoreDelegate?.listCallSummariesByOwner) {
         return firestoreDelegate.listCallSummariesByOwner(ownerId, limit);
       }
       const data = await apiFetch(`/api/calls?scope=own&limit=${encodeURIComponent(String(limit))}`);
@@ -368,7 +368,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listCallSummariesByTeam(teamId, limit = 200) {
-      if (firestoreDelegate.listCallSummariesByTeam) {
+      if (firestoreDelegate?.listCallSummariesByTeam) {
         return firestoreDelegate.listCallSummariesByTeam(teamId, limit);
       }
       const data = await apiFetch(`/api/calls?scope=team&limit=${encodeURIComponent(String(limit))}`);
@@ -376,7 +376,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listCallSummariesByOrg(orgId, limit = 200) {
-      if (firestoreDelegate.listCallSummariesByOrg) {
+      if (firestoreDelegate?.listCallSummariesByOrg) {
         return firestoreDelegate.listCallSummariesByOrg(orgId, limit);
       }
       const data = await apiFetch(`/api/calls?scope=org&limit=${encodeURIComponent(String(limit))}`);
@@ -384,13 +384,13 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     },
 
     async listCallSummariesByDeal(dealId, limit = 50) {
-      return firestoreDelegate.listCallSummariesByDeal
+      return firestoreDelegate?.listCallSummariesByDeal
         ? firestoreDelegate.listCallSummariesByDeal(dealId, limit)
         : [];
     },
 
     async listCallSummariesByAccount(accountId, limit = 80) {
-      return firestoreDelegate.listCallSummariesByAccount
+      return firestoreDelegate?.listCallSummariesByAccount
         ? firestoreDelegate.listCallSummariesByAccount(accountId, limit)
         : [];
     },
@@ -403,7 +403,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       } catch (err) {
         const msg = String(err?.message || err);
         if (!/404|not found/i.test(msg)) {
-          const fallback = await firestoreDelegate.getAccount(id);
+          const fallback = await firestoreDelegate?.getAccount(id);
           if (fallback) return fallback;
         }
         if (/404|not found/i.test(msg)) return null;
@@ -416,7 +416,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
         const data = await apiFetch("/api/accounts");
         return data.accounts || [];
       } catch (err) {
-        return firestoreDelegate.listAccounts ? firestoreDelegate.listAccounts() : [];
+        return firestoreDelegate?.listAccounts ? firestoreDelegate.listAccounts() : [];
       }
     },
 
@@ -434,7 +434,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       if (isHistoryStubId(accountId)) return [];
       // Intake attach: account-scoped deals via client Firestore (global on account, not owner-only).
-      if (firestoreDelegate.listDealsByAccount) {
+      if (firestoreDelegate?.listDealsByAccount) {
         return firestoreDelegate.listDealsByAccount(accountId, ownerId, opts);
       }
       const all = await loadDealsList(300);
