@@ -2702,10 +2702,9 @@ function setSignInButtonReady(ready) {
 function ensureFirebaseSdk() {
   if (!firebaseSdkReady) {
     firebaseSdkReady = (async () => {
-      const [{ initializeApp }, authMod, fsMod] = await Promise.all([
+      const [{ initializeApp }, authMod] = await Promise.all([
         import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
         import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
-        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
       ]);
       const app = initializeApp(firebaseConfig);
       firebaseAuth = authMod.getAuth(app);
@@ -2717,41 +2716,59 @@ function ensureFirebaseSdk() {
         provider: firebaseProvider,
         signInWithPopup: authMod.signInWithPopup,
         signOut: authMod.signOut,
-        db: null,  // Lazy-init after role check — avoids WebChannel transport for SEs
-        collection: fsMod.collection,
-        addDoc: fsMod.addDoc,
-        doc: fsMod.doc,
-        getDoc: fsMod.getDoc,
-        getDocs: fsMod.getDocs,
-        onSnapshot: fsMod.onSnapshot,
-        setDoc: fsMod.setDoc,
-        updateDoc: fsMod.updateDoc,
-        deleteDoc: fsMod.deleteDoc,
-        query: fsMod.query,
-        where: fsMod.where,
-        orderBy: fsMod.orderBy,
-        limit: fsMod.limit,
-        documentId: fsMod.documentId,
-        select: fsMod.select,
-        serverTimestamp: fsMod.serverTimestamp,
-        writeBatch: fsMod.writeBatch,
+        db: null,
+        fsMod: null,
+        collection: null,
+        addDoc: null,
+        doc: null,
+        getDoc: null,
+        getDocs: null,
+        onSnapshot: null,
+        setDoc: null,
+        updateDoc: null,
+        deleteDoc: null,
+        query: null,
+        where: null,
+        orderBy: null,
+        limit: null,
+        documentId: null,
+        select: null,
+        serverTimestamp: null,
+        writeBatch: null,
       };
 
       initDomainStore(fb);
 
-      // Lazy-init Firestore db only for managers/admins who need realtime subs.
+      // Only managers/admins need Firestore — lazy load the SDK to avoid WebChannel transport for SEs.
       const _bootSession = getSession();
       if (_bootSession?.role === "manager" || _bootSession?.role === "admin") {
-        try {
-          const fsFirestore = fsMod.getFirestore(app);
-          fb.db = fsFirestore;
-          fb.getDoc = fsMod.getDoc;
-          fb.getDocs = fsMod.getDocs;
-          fb.onSnapshot = fsMod.onSnapshot;
-          initDomainStore(fb);
-        } catch (err) {
-          console.warn("[app] Firestore init failed:", err);
-        }
+        (async () => {
+          try {
+            const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+            fb.fsMod = fsMod;
+            fb.db = fsMod.getFirestore(app);
+            fb.collection = fsMod.collection;
+            fb.addDoc = fsMod.addDoc;
+            fb.doc = fsMod.doc;
+            fb.getDoc = fsMod.getDoc;
+            fb.getDocs = fsMod.getDocs;
+            fb.onSnapshot = fsMod.onSnapshot;
+            fb.setDoc = fsMod.setDoc;
+            fb.updateDoc = fsMod.updateDoc;
+            fb.deleteDoc = fsMod.deleteDoc;
+            fb.query = fsMod.query;
+            fb.where = fsMod.where;
+            fb.orderBy = fsMod.orderBy;
+            fb.limit = fsMod.limit;
+            fb.documentId = fsMod.documentId;
+            fb.select = fsMod.select;
+            fb.serverTimestamp = fsMod.serverTimestamp;
+            fb.writeBatch = fsMod.writeBatch;
+            initDomainStore(fb);
+          } catch (err) {
+            console.warn("[app] Firestore lazy-init failed:", err);
+          }
+        })();
       }
 
       try {
