@@ -2,7 +2,6 @@
  * Production-safe user/session resolution — no dev seeding or DUMMY_USERS.
  */
 
-import { firebaseConfig } from "../firebase-config.js";
 import { getStore } from "./store.js";
 import { now } from "./types.js";
 import { stableUserIdForEmail } from "./id.js";
@@ -111,6 +110,17 @@ export async function resolveEffectiveOwnerId(session, storeOverride, fb) {
   const isDummy = raw?.startsWith("usr_dummy_");
   const isAuthUidAsProfile = session.authUid && raw === session.authUid;
   if (raw && !isDummy && !isAuthUidAsProfile) return raw;
+
+  // No Firebase auth UID anywhere (dummy-auth local dev — loginDummy always sets
+  // authUid: null — or any session with no real Firebase sign-in) — there is no
+  // authIndex to promote a usr_dummy_* id from, so it IS the real, final id.
+  // Falling through to the production-only lookup chain below resolves to null
+  // here (its email fallback also finds a usr_dummy_* id in dummy mode, since
+  // dummy-mode users are seeded under that same id), silently breaking every
+  // scope-resolution caller (pipeline view, write-scope, lifecycle reads, postcall).
+  if (isDummy && !session.authUid && !fb?.auth?.currentUser?.uid) {
+    return raw || (session.email ? stableUserIdForEmail(session.email) : null);
+  }
 
   const fromAuthIndex = await resolveAuthIndexOwnerId(fb, session);
   if (fromAuthIndex) return fromAuthIndex;

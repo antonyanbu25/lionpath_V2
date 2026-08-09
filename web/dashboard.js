@@ -22,6 +22,7 @@ import { aggregateFollowUps, stepsFromNextSteps } from "./follow-ups.js";
 import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./auth.js";
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
+import { listDealsForSession } from "./domain/account-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
 import { countPrepsGenerated, loadAllLocalBriefs, saveLocalBriefs } from "./precall.js?v=2.1.14";
 import { mergeAllBriefs } from "./briefs-list-view.js";

@@ -490,6 +490,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-manager-team-view.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-manager-ux-e2e.mjs",
     "tags": [
       "e2e"
