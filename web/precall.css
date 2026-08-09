@@ -406,38 +406,8 @@ body.prep-gen-lock {
   align-items: start;
 }
 
-/* Pre-call intake only — post-call #pc-account-deal-preview keeps postcall.css flex layout */
-#prep-account-deal-preview {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  align-items: start;
-  margin: 8px 0 6px;
-}
-
-#prep-account-deal-preview .nb-account-column > .nb-label,
-#prep-account-deal-preview .nb-deal-head {
-  height: 20px;
-  margin-bottom: 7px;
-  line-height: 1;
-}
-
-#prep-account-deal-preview .nb-account-slot,
-#prep-account-deal-preview .pc-deal-tiles-row {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-#prep-account-deal-preview .nb-account-card,
-#prep-account-deal-preview .pc-deal-tiles-row > .nb-deal-card,
-#prep-account-deal-preview .pc-deal-tiles-row > .pc-deal-tile,
-#prep-account-deal-preview .pc-deal-tiles-row > .pc-new-deal-field {
-  flex: 1;
-  align-self: stretch;
-  min-height: 46px;
-}
+/* Pre-call preview uses .pc-account-deal-preview flex row from postcall.css (same as post-call).
+   Do not override with grid or column-stacked deal tiles — horizontal deal chips must match post-call. */
 
 #prep-account-deal-preview .nb-account-picker-panel {
   display: flex;
