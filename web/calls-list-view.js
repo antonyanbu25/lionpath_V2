@@ -14,6 +14,7 @@ import { syncSessionWithDomainStore } from "./auth.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord, companyFromCallTitle, CALL_TYPE_LABELS } from "./call-type-labels.js";
+import { stepsFromNextSteps } from "./follow-ups.js";
 import {
   loadMergedBriefs,
   parseBriefTimestamp,
@@ -229,7 +230,7 @@ function isBlankAction(v) {
 
 export function hasNextStep(record) {
   const a = record.analysis || record.result?.analysis || {};
-  const steps = a.nextSteps || [];
+  const steps = stepsFromNextSteps(a.nextSteps);
   if (steps.some((s) => s?.action && !isBlankAction(s.action))) return true;
   return !isBlankAction(a.momentum?.topAction);
 }

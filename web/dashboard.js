@@ -474,7 +474,7 @@ export function aggregateQualityMetrics(analyses) {
     scoreBands[scoreBand(overall)] += 1;
     const mom = r.analysis?.momentum || {};
     const company = companyFromRecord(r);
-    const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
+    const nextStep = stepsFromNextSteps(r.analysis?.nextSteps).find((s) => s.action)?.action
       || mom.topAction
       || "-";
     return {
