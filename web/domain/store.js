@@ -41,10 +41,12 @@ function resolveReadMode(fb) {
   }
   if (typeof localStorage !== "undefined") {
     const override = localStorage.getItem("lionpath.readVia");
-    if (override === "firestore") return "firestore";
     if (override === "api") return "api";
   }
-  return "firestore";
+  // Default to firestore for admin/manager, api for SEs (Firestore rules block broad SE reads).
+  const session = getSession();
+  const isManager = session?.role === "manager" || session?.role === "admin";
+  return isManager ? "firestore" : "api";
 }
 
 /** @returns {"local"|"firestore"|"api"} */
