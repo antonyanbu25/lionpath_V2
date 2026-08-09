@@ -1508,7 +1508,9 @@ function withDashboardTimeout(promise, ms, label) {
 }
 
 function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = null) {
-  const hasRemoteHistory = typeof opts.fetchRemoteHistory === "function";
+  const hasRemoteHistory =
+    typeof opts.fetchRemoteHistory === "function" ||
+    typeof opts.subscribeRemoteCalls === "function";
   const hasRemotePreps = typeof briefsCountFetcher(opts) === "function";
   const cachedCalls = cached?.totalCalls;
   const cachedPreps = cached?.prepsCount;
@@ -1516,7 +1518,11 @@ function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = nul
     calls:
       hasRemoteHistory &&
       ((!(callRecords?.length) && cachedCalls == null) ||
-        (cachedCalls != null && (callRecords?.length ?? 0) < cachedCalls)),
+        (cachedCalls != null && (callRecords?.length ?? 0) < cachedCalls) ||
+        // When remote subscriptions exist but no cached snapshot,
+        // show shimmer to avoid flash from stale local data being
+        // overwritten by the real Firestore count.
+        (!cachedCalls && (callRecords?.length ?? 0) > 0)),
     preps: hasRemotePreps && !prepsCount && cachedPreps == null,
   };
 }
