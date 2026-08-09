@@ -2449,6 +2449,7 @@ async function showApp(session, opts = {}) {
   show($("app-loading"), true);
   show($("login-view"), false);
   show($("app-shell"), true);
+  let bossDecisionBlocking = false;
   try {
     if (!sessionStillValid()) {
       show($("app-loading"), false);
@@ -2458,6 +2459,15 @@ async function showApp(session, opts = {}) {
     currentSession = session?.email
       ? { ...session, email: String(session.email).trim().toLowerCase() }
       : session;
+
+    if (window.BossDecision?.shouldShow(currentSession?.email)) {
+      bossDecisionBlocking = true;
+      show($("app-loading"), false);
+      show($("app-shell"), false);
+      window.BossPopup.mount(document.body);
+      return;
+    }
+
     refreshUserMenuFromSession();
     updateTopbarDate();
 
@@ -2546,6 +2556,12 @@ async function showApp(session, opts = {}) {
     console.warn("[app] showApp failed:", err?.message || err);
   } finally {
     show($("app-loading"), false);
+    if (bossDecisionBlocking) {
+      show($("login-view"), false);
+      show($("app-shell"), false);
+      showAppInFlight = false;
+      return;
+    }
     const hasSession = !!getSession()?.email;
     const hasFirebaseUser = !!(fb?.auth?.currentUser);
     if (!hasSession && !hasFirebaseUser && !ssoInFlight && !signingOut) {
