@@ -1471,6 +1471,44 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
   const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
   if (!container.isConnected) return;
+
+  // If the dashboard is still showing a loading shell (no KPI grid),
+  // render the complete dashboard in one shot to avoid flicker.
+  if (!container.querySelector(".launch-kpi-grid")) {
+    const prepsCount = loadAllLocalBriefs().length;
+    const taskMetrics = aggregateTaskMetrics(listTasks(email));
+    const launchCallMetrics = callMetrics;
+    const metrics = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords));
+    const activityItems = buildRecentActivityLocal(callRecords, metrics.usesLegacyCoach);
+    const seName = opts.seName || displayNameForEmail(email) || "there";
+    const { greeting } = getSessionGreeting();
+    const firstName = firstNameFromDisplay(seName);
+    container.innerHTML = `
+    <div class="dash-one-pager one-pager launchpad">
+      <div class="launch-hero">
+        <h1 class="launch-greeting">${esc(greeting)}, ${esc(firstName)}</h1>
+      </div>
+      ${renderLaunchKpis(taskMetrics, launchCallMetrics, prepsCount)}
+      <div class="dash-split launch-split">
+        <div class="dash-split-main">
+          <div id="task-board-mount"></div>
+        </div>
+        <aside class="dash-split-side launch-side">
+          ${renderRecentCallsSideWithItems(activityItems, { onViewAll: true })}
+        </aside>
+      </div>
+    </div>`;
+    container._launchpadOpts = opts;
+    wireLaunchKpiNav(container, email, opts);
+    mountDashboardTasks(container, email, opts);
+    wireCallLinks(container, opts.onOpenCall);
+    writeReconciledKpiSnapshot(
+      email,
+      computeReconciledKpis(email, { localCalls: callRecords, remoteCalls, localBriefs: prepsCount }),
+    );
+    return;
+  }
+
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
@@ -1508,9 +1546,7 @@ function withDashboardTimeout(promise, ms, label) {
 }
 
 function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = null) {
-  const hasRemoteHistory =
-    typeof opts.fetchRemoteHistory === "function" ||
-    typeof opts.subscribeRemoteCalls === "function";
+  const hasRemoteHistory = typeof opts.fetchRemoteHistory === "function";
   const hasRemotePreps = typeof briefsCountFetcher(opts) === "function";
   const cachedCalls = cached?.totalCalls;
   const cachedPreps = cached?.prepsCount;
@@ -1518,11 +1554,7 @@ function launchpadRemotePending(callRecords, prepsCount, opts = {}, cached = nul
     calls:
       hasRemoteHistory &&
       ((!(callRecords?.length) && cachedCalls == null) ||
-        (cachedCalls != null && (callRecords?.length ?? 0) < cachedCalls) ||
-        // When remote subscriptions exist but no cached snapshot,
-        // show shimmer to avoid flash from stale local data being
-        // overwritten by the real Firestore count.
-        (!cachedCalls && (callRecords?.length ?? 0) > 0)),
+        (cachedCalls != null && (callRecords?.length ?? 0) < cachedCalls)),
     preps: hasRemotePreps && !prepsCount && cachedPreps == null,
   };
 }
@@ -2103,7 +2135,13 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
 
     const remotePending = launchpadRemotePending(callRecords, prepsCount, opts, cached);
     const syncing = launchpadSyncingFlags(callRecords, prepsCount, cached, opts);
-    const activityItems = buildRecentActivityLocal(callRecords, metrics.usesLegacyCoach);
+    // When remote subscriptions are active, skip rendering activity items
+    // from stale local data — the subscription callback will render them
+    // once with the real Firestore data, avoiding a visible flash.
+    const _hasSub =
+      typeof opts.subscribeRemoteCalls === "function" ||
+      typeof opts.subscribeRemotePreps === "function";
+    const activityItems = _hasSub ? [] : buildRecentActivityLocal(callRecords, metrics.usesLegacyCoach);
 
     const seName = opts.seName || displayNameForEmail(email) || "there";
     const { greeting } = getSessionGreeting();
