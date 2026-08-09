@@ -23,7 +23,7 @@ import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
 import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } from "./tasks.js";
-import { countPrepsGenerated, loadAllLocalBriefs } from "./precall.js?v=2.1.14";
+import { countPrepsGenerated, loadAllLocalBriefs, saveLocalBriefs } from "./precall.js?v=2.1.14";
 import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { renderLoadingPanel, wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
@@ -75,6 +75,7 @@ let __recentActivityRenderArgs = null;
 let _remoteSyncPending = false;
 let _lastReconciledKpis = null;
 let _lastReconciledKpiEmail = "";
+let _lastActivityDataHash = "";
 
 function wireCallLinks(container, onOpenCall) {
   wireCrayonCallLinks(container, onOpenCall, CALL_LINK_UNWIRED_SELECTOR);
@@ -1438,7 +1439,11 @@ function patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount) {
 
 async function applyRemoteBriefsToLaunchpad(container, email, opts, remoteBriefs) {
   if (!container?.isConnected) return;
-  const prepsCount = mergeAllBriefs(loadAllLocalBriefs(), remoteBriefs || []).length;
+  // Persist merged briefs to localStorage so loadAllLocalBriefs() returns
+  // the correct count even before the briefs subscription fires.
+  const merged = mergeAllBriefs(loadAllLocalBriefs(), remoteBriefs || []);
+  try { saveLocalBriefs(merged); } catch {/* localStorage quota */}
+  const prepsCount = merged.length;
   patchLaunchKpiValue(container, "preps", prepsCount);
   const callRecords = dedupeAnalysesByCallIdentity(listPostCallAnalyses(email));
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
@@ -1467,10 +1472,13 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   const callMetrics = buildLaunchpadCallMetricsFromRecords(callRecords);
   if (!container.isConnected) return;
   const taskMetrics = aggregateTaskMetrics(listTasks(email));
-  const prepsCount = loadAllLocalBriefs().length;
   const grid = container.querySelector(".launch-kpi-grid");
   if (grid) {
-    patchLaunchKpis(container, taskMetrics, callMetrics, prepsCount);
+    // Only patch calls and tasks — calls subscription doesn't own briefs data
+    // and must not overwrite preps KPI with a stale 0.
+    patchLaunchKpiValue(container, "calls", callMetrics.totalCalls);
+    patchLaunchKpiValue(container, "open", taskMetrics.openTotal);
+    patchLaunchKpiValue(container, "done-week", taskMetrics.completedThisWeek);
   }
   const usesLegacyCoach = aggregateQualityMetrics(analysesWithQualityFromRecords(callRecords)).usesLegacyCoach;
   scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, opts);
@@ -1885,6 +1893,17 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   wireRecentActivitySection(section, opts);
   const signature = recentActivitySignature(items);
   section.dataset.activitySignature = signature;
+
+  // Skip identical-data renders within the same rAF window but still
+  // wire call links — prevents flicker without breaking clickability.
+  if (signature === _lastActivityDataHash) {
+    const currentOpts = section._recentActivityOpts;
+    if (currentOpts && typeof currentOpts.onOpenCall === "function") {
+      wireCallLinks(section, currentOpts.onOpenCall);
+    }
+    return;
+  }
+  _lastActivityDataHash = signature;
 
   const card = section.querySelector(".launch-activity-card");
   const head = section.querySelector(".launch-activity-head");

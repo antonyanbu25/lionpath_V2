@@ -390,7 +390,7 @@ export async function countPrepsGenerated(fetchAllRemotePreps) {
   return mergeAllBriefs(local, remote).length;
 }
 
-function saveLocalBriefs(list) {
+export function saveLocalBriefs(list) {
   let trimmed = list.slice(0, MAX_BRIEFS).map(compactBriefForStorage);
   while (trimmed.length > 0) {
     try {
