@@ -451,8 +451,8 @@ function renderActiveTab() {
   // on .prep-tab-panel-wrap. Patch the shadow root internals directly.
   document.querySelectorAll("#prep-tabs fw-tab-panel").forEach((panel) => {
     const sr = panel.shadowRoot;
-    if (!sr || sr.dataset.precallPatched === "1") return;
-    sr.dataset.precallPatched = "1";
+    if (!sr || sr._precallPatched) return;
+    sr._precallPatched = true;
     const inner = sr.querySelector('[part="container"], .tab-panel, [role="tabpanel"], div:not([hidden])');
     if (inner) {
       inner.style.cssText = "display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;";
