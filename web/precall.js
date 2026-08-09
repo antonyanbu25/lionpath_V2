@@ -345,6 +345,7 @@ export function compactBriefForStorage(record) {
     company: record.company,
     kind: record.kind,
     when: record.when,
+    whenTs: record.whenTs ?? null,
     lifecycleId: record.lifecycleId || null,
     prep: record.prep,
     meta: {
@@ -816,7 +817,8 @@ export function saveBriefToSidebar(input, prep, meta, linkedIds = null) {
     id,
     company: storedMeta.company || input.companyName,
     kind: "Discovery",
-    when: new Date().toLocaleDateString(),
+    when: new Date().toISOString().slice(0, 10),
+    whenTs: Date.now(),
     prep,
     meta: storedMeta,
     input: storedInput,

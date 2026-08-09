@@ -403,6 +403,40 @@ body.prep-gen-lock {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+  align-items: start;
+}
+
+/* Pre-call intake only — post-call #pc-account-deal-preview keeps postcall.css flex layout */
+#prep-account-deal-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  margin: 8px 0 6px;
+}
+
+#prep-account-deal-preview .nb-account-column > .nb-label,
+#prep-account-deal-preview .nb-deal-head {
+  height: 20px;
+  margin-bottom: 7px;
+  line-height: 1;
+}
+
+#prep-account-deal-preview .nb-account-slot,
+#prep-account-deal-preview .pc-deal-tiles-row {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#prep-account-deal-preview .nb-account-card,
+#prep-account-deal-preview .pc-deal-tiles-row > .nb-deal-card,
+#prep-account-deal-preview .pc-deal-tiles-row > .pc-deal-tile,
+#prep-account-deal-preview .pc-deal-tiles-row > .pc-new-deal-field {
+  flex: 1;
+  align-self: stretch;
+  min-height: 46px;
 }
 
 .nb-account-card,
@@ -979,6 +1013,8 @@ body.prep-gen-lock {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
 }
 
@@ -3049,17 +3085,32 @@ body.prep-gen-lock {
 
 /* All briefs list (#precall/briefs) */
 
-.prep-briefs-list-host {
-  flex: 1;
+#view-precall:has(.prep-briefs-list-host:not([hidden])) {
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.prep-briefs-list-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   padding: 0 26px 24px;
 }
 
 #view-precall .brief-list-view {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 0;
+  overflow: hidden;
   --brief-list-cols: minmax(160px, 1.6fr) 96px minmax(100px, 1fr) 88px;
 }
 
@@ -3096,7 +3147,19 @@ body.prep-gen-lock {
 }
 
 .brief-list-table-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.brief-list-compact {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .brief-list-grid-header,
@@ -3161,6 +3224,7 @@ body.prep-gen-lock {
 }
 
 .prep-result-back {
+  flex: none;
   padding: 12px 26px 0;
   background: var(--dew-surface);
 }
