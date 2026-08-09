@@ -134,6 +134,8 @@ body.prep-gen-lock {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 120px);
+  max-height: 100vh;
+  overflow: hidden;
   line-height: 1.55;
 }
 

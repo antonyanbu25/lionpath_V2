@@ -1,0 +1,36 @@
+You are implementing a FAILPROOF dark-mode optimization fix for the Lionpath SE portal (branch 2.1, repo /root/lionpath_V2).
+
+Read the complete, authoritative plan FIRST:
+  /root/lionpath_V2/docs/plans/2026-08-08-component-dark-plan.md
+That plan (authored by GLM-5.2) contains the exact master mapping table, the exact classes to change per file, and the anti-regression rules. Follow it EXACTLY. Do not improvise substitutions beyond what the plan specifies.
+
+Also read the analysis for context:
+  /root/lionpath_V2/docs/plans/2026-08-08-component-dark-analysis.md
+
+THE CORE RULES (from the plan — non-negotiable):
+1. Replace light surface/background/border/text hexes with the --dew-* theme variables defined in web/dew-theme.css (var(--dew-surface), var(--dew-surface-subtle), var(--dew-surface-faint), var(--surface-hover), var(--surface-active), var(--dew-text), var(--dew-text-secondary), var(--dew-text-muted), var(--dew-border), var(--dew-hairline), var(--dew-input-border)). Do NOT hardcode dark hexes for surfaces/text/borders. Do NOT install any package. Do NOT add new CSS files. Do NOT use @media prefers-color-scheme. Do NOT add !important unless you are removing one.
+2. Keep intentional accent hexes as-is (brand greens #2f6f4e #3d8b5f, ambers #b8862f #d4a017, reds #b03838 #c44848 #b91c1c #dc2626 #991b1b). These get dark overrides ONLY if washed out.
+3. Light mode must stay visually IDENTICAL (each --dew-* light value matches the original hex it replaces).
+4. Commit AFTER EACH FILE (5 commits total), in this order:
+   - web/precall.css (PRIORITY 1)
+   - web/call-view.css (PRIORITY 2)
+   - web/postcall.css (PRIORITY 3)
+   - web/lifecycle.css (finish partial)
+   - web/styles.css (finish partial)
+5. After swapping precall/call-view/postcall, verify:
+   grep -rn '#fff\b\|#ffffff\b' web/precall.css web/call-view.css web/postcall.css -> zero matches (except box-shadow/rgba).
+6. Build MUST pass: cd /root/lionpath_V2/web && npm run build   (check for errors, exit 0).
+7. When all files done and build passes, push to origin/2.1:
+   cd /root/lionpath_V2 && git push origin 2.1
+
+WORKFLOW: work file-by-file. For each file: (a) apply the substitutions per the plan's class list, (b) commit that file, (c) move on. After the last commit, run the build, fix any errors, then push.
+
+Important context for the classes in the plan (verify they exist in the CSS before editing; the plan lists the main ones — also sweep the whole file for ANY light surface/background/border/text hex per the plan's master mapping table, not just the named classes):
+- precall.css has .prep-v9-card, .prep-v9-card-title, .prep-v9-about, .prep-v9-tile, .prep-v9-tile-label, .prep-v9-tile-val, .prep-v9-fact-tile, .prep-v9-fact-tile-key, .prep-v9-fact-tile-val, .prep-v9-fact-tile-source, .prep-v9-news-row, .prep-v9-news-headline, .prep-v9-news-source, .prep-v9-news-date, .prep-v9-support-item, .prep-v9-maturity-bar-track, .prep-v9-unknown-item, .prep-v9-callplan-step, .prep-v9-attendee-row, .prep-v9-section and their hover states.
+- call-view.css has .call-transcript, .call-transcript-entry, .call-transcript-speaker, .call-transcript-time, .call-transcript-text, .call-transcript-text.is-highlight, .call-transcript-search, score strip, AI attach callout, video facts, quality coach.
+- postcall.css has .postcall-result-card, .postcall-traction-tile, .postcall-arr-tile.
+- lifecycle.css and styles.css: finish any remaining light surface/background/border/text hexes not already covered by an existing [data-theme="dark"] rule; replace existing dark rules that duplicate a token as a hardcoded hex with the token. Focus modals, drawers, toasts, tooltips, dropdowns, lifecycle stages/cards/pills/table/filters.
+
+When you finish, report: the 5 commit SHAs, the grep zero-match result, the build result, and the push result.
+
+If ANY rule is ambiguous or a class in the plan does not exist in the file, DO NOT guess — use your judgment to map the hex per the master mapping table and note what you did in the final report.
