@@ -14,6 +14,11 @@ body.cs-hidden .nav-item[data-view="coaching"] {
   display: none !important;
 }
 
+/* Also hide the feedback button when in hidden mode — it sits below the nav area looks off without the 4 nav items above */
+body.cs-hidden #sidebar-feedback {
+  display: none !important;
+}
+
 body.cs-hidden .coming-soon-shell {
   display: grid;
 }
