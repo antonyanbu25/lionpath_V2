@@ -646,16 +646,27 @@ function buildSubscribeRemotePreps() {
 
     const watch = (label, q, bucket) => {
       try {
-        const unsub = fb.onSnapshot(
+        let unsub;
+        const onError = (err) => {
+          const msg = String(err?.message || err || "").toLowerCase();
+          if (msg.includes("missing or insufficient permissions") || msg.includes("permission denied")) {
+            console.warn(`[app] ${label} denied — unsubscribing`);
+            if (unsub) { try { unsub(); } catch (_) {} }
+            unsub = () => {};
+            return;
+          }
+          console.warn(`[app] ${label} snapshot failed:`, err?.message || err);
+        };
+        unsub = fb.onSnapshot(
           q,
           (snap) => {
             bucket.clear();
             for (const doc of snap.docs) bucket.set(doc.id, doc);
             emit();
           },
-          (err) => console.warn(`[app] ${label} snapshot failed:`, err?.message || err),
+          onError,
         );
-        unsubs.push(unsub);
+        unsubs.push(() => { if (unsub) { try { unsub(); } catch (_) {} } });
       } catch (err) {
         console.warn(`[app] ${label} snapshot setup failed:`, err?.message || err);
       }
@@ -732,10 +743,15 @@ function buildSubscribeRemoteCalls() {
           const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
           onChange(calls);
         },
-        // silent — Firestore postCalls may not exist for this user.
-        // Trigger onChange with empty data so the dashboard renders
-        // from local cache instead of waiting forever.
-        () => { if (typeof onChange === 'function') onChange([]); },
+        (err) => {
+          const msg = String(err?.message || err || "").toLowerCase();
+          if (msg.includes("missing or insufficient permissions") || msg.includes("permission denied")) {
+            console.warn("[app] calls snapshot denied — unsubscribing");
+            if (typeof unsub === "function") { try { unsub(); } catch (_) {} }
+            unsub = null;
+          }
+          if (typeof onChange === 'function') onChange([]);
+        },
       );
       if (cancelled && typeof unsub === "function") unsub();
     });
