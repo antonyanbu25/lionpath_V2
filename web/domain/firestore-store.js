@@ -202,14 +202,29 @@ export function createFirestoreStore(fb) {
       return () => {};
     }
     const q = query(collection(db, col), where(field, "==", key));
-    return onSnapshot(
+    let unsub;
+    const onError = (err) => {
+      const msg = (err?.message || err || "").toLowerCase();
+      if (msg.includes("missing or insufficient permissions") || msg.includes("permission denied")) {
+        console.warn(`[firestore] ${col} query denied — treating as empty`);
+        onRows([]);
+        if (unsub) { try { unsub(); } catch (_) {} }
+        unsub = () => {};
+        return;
+      }
+      console.warn(`[firestore] ${col} snapshot failed:`, err?.message || err);
+    };
+    unsub = onSnapshot(
       q,
       (snap) => {
         const rows = mapSnapDocs(snap);
         onRows(opts.sortKey ? sortRows(rows, opts.sortKey, opts.dir) : rows);
       },
-      (err) => console.warn(`[firestore] ${col} snapshot failed:`, err?.message || err),
+      onError,
     );
+    return () => {
+      if (unsub) { try { unsub(); } catch (_) {} }
+    };
   }
 
   function subscribeDocRow(col, id, onRow) {
