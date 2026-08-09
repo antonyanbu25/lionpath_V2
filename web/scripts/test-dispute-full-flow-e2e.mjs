@@ -12,13 +12,14 @@ try {
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
 
-  await page.evaluate(() => {
-    const email = document.getElementById("login-email");
-    const pass = document.getElementById("login-password");
-    if (email) email.value = "se@freshworks.com";
-    if (pass) pass.value = "se123";
-    document.getElementById("login-form")?.requestSubmit?.();
-  });
+  // fw-input's actual native <input> lives in its shadow DOM — setting
+  // .value on the custom-element host directly (or via requestSubmit
+  // without real input events) doesn't sync the component's internal
+  // state, so login silently never happens. Fill the real shadow input
+  // like a user would, same fix as test-dashboard-nav.mjs etc.
+  await page.locator("#login-email input:not([type=hidden])").fill("se@freshworks.com");
+  await page.locator("#login-password input:not([type=hidden])").fill("se123");
+  await page.click('#login-submit');
   await page.waitForTimeout(2000);
 
   const loggedIn = await page.evaluate(() => ({

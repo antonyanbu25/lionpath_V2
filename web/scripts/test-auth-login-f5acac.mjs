@@ -64,8 +64,8 @@ try {
     log({ hypothesisId: "A", location: "e2e:SKIP", message: "Firebase SSO mode — dashboard covered by test-launchpad-render.mjs" });
   } else {
     await page.waitForSelector("#login-email", { timeout: 15000 });
-    await page.fill("#login-email", "se@freshworks.com");
-    await page.fill("#login-password", "se123");
+    await page.locator("#login-email input:not([type=hidden])").fill("se@freshworks.com");
+    await page.locator("#login-password input:not([type=hidden])").fill("se123");
     await page.click("#login-submit");
     await page.waitForSelector("#app-shell:not([hidden])", { timeout: 15000 });
     const dashDeadline = Date.now() + 15000;
