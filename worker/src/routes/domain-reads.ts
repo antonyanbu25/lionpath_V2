@@ -6,7 +6,7 @@ import { requireUser } from "../auth";
 import type { Env } from "../env";
 import { json } from "../http";
 import { isNodeRuntime } from "../video/capability";
-import { assertFirestoreAvailable, firestoreAdminReady, type FirestoreEnv } from "../data/firestore-admin";
+import { assertFirestoreAvailable, firestoreAdminReady, getDb, type FirestoreEnv } from "../data/firestore-admin";
 import {
   canReadResource,
   assertCanReadResource,
@@ -185,10 +185,29 @@ export async function handleDealGetById(
   return json(detail, 200, cors);
 }
 
+export async function handleBriefsListGet(
+  request: Request,
+  env: Env,
+  _url: URL,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const ctx = await authContext(request, env);
+  const userId = ctx.userId;
+  const db = await getDb(fsEnv(env));
+  const [prepsSnap, briefsSnap] = await Promise.all([
+    db.collection("preps").where("uid", "==", userId).get(),
+    db.collection("prepBriefs").where("ownerId", "==", userId).get(),
+  ]);
+  const preps = prepsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const prepBriefs = briefsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return json({ briefs: [...preps, ...prepBriefs] }, 200, cors);
+}
+
 export const domainReadRoutes: Record<string, Record<string, RouteHandler>> = {
   "/api/calls": { GET: handleCallsListGet },
   "/api/accounts": { GET: handleAccountsListGet },
   "/api/deals": { GET: handleDealsListGet },
+  "/api/briefs": { GET: handleBriefsListGet },
 };
 
 export async function dispatchDomainReadById(
