@@ -23,6 +23,7 @@ import {
   filterSessionEmailFromProspects,
   isSessionProspectEmail,
   pickPreferredIntakeAccount,
+  computeAnalyzeButtonDisabled,
 } from "../postcall.js";
 
 function assert(cond, msg) {
@@ -248,11 +249,14 @@ function testProspectEmailFieldNotPrefilledInHtml() {
   const match = html.match(/id="pc-prospect-emails"[\s\S]*?<\/fw-input>/);
   assert(match, "pc-prospect-emails fw-input present");
   assert(!/\bvalue\s*=/.test(match[0]), "prospect email field has no default value attribute");
+  assert(!/\brequired\b/.test(match[0]), "prospect email validated in JS not HTML required");
   assert(match[0].includes('autocomplete="nope"'), "prospect email autofill disabled with nope token");
   assert(match[0].includes('name="pc-attendee-emails"'), "prospect field uses attendee name not login email");
   assert(match[0].includes('data-lpignore="true"'), "password manager ignore hint present");
   assert(!match[0].includes("se@freshworks.com"), "demo SE email not in prospect field markup");
   assert(html.includes('id="postcall-form" autocomplete="off"'), "postcall form disables autocomplete");
+  assert(html.includes('id="postcall-form" autocomplete="off" novalidate'), "postcall form skips native validation");
+  assert(html.includes('id="analyze-call"') && html.includes("disabled"), "analyze button starts disabled");
   assert(html.includes("postcall-autofill-decoys"), "decoy autofill trap fields present");
   assert(!html.includes('id="pc-enable-video-pass"'), "video pass opt-in toggle removed");
   assert(!html.includes("postcall-video-pass-opt"), "video pass opt-in block removed");
@@ -317,6 +321,29 @@ function testNewDealSelectedStateNoExistingDeals() {
   assert(!html.includes("pc-deal-tile--static"), "static card replaced by editor in new-deal mode");
 }
 
+function testAnalyzeButtonGating() {
+  assert(
+    computeAnalyzeButtonDisabled({ busy: false, hasEmail: false, crmResolving: false, crmPreviewSurfacedOnce: false }),
+    "disabled with no email on load",
+  );
+  assert(
+    computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: true, crmPreviewSurfacedOnce: false }),
+    "disabled while CRM resolving",
+  );
+  assert(
+    computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: false, crmPreviewSurfacedOnce: false }),
+    "disabled until CRM preview surfaces",
+  );
+  assert(
+    !computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: false, crmPreviewSurfacedOnce: true }),
+    "enabled when email present and preview surfaced",
+  );
+  assert(
+    computeAnalyzeButtonDisabled({ busy: false, hasEmail: false, crmResolving: false, crmPreviewSurfacedOnce: true }),
+    "still disabled without email even after preview surfaced",
+  );
+}
+
 function main() {
   testTitleCase();
   testCaseInsensitiveAccountMatch();
@@ -336,6 +363,7 @@ function main() {
   testMatchedAccountNoDealsHidesNewDealInput();
   testNewDealSelectedStateWhenCreating();
   testNewDealSelectedStateNoExistingDeals();
+  testAnalyzeButtonGating();
   console.log("test-postcall-intake-preview.mjs: all assertions passed");
 }
 

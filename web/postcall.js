@@ -22,6 +22,7 @@ import {
   bindActionOnce,
   readFieldValue,
   readFieldValueAsync,
+  syncFieldValueFromShadow,
   setFieldValue,
   setButtonLoading,
   setFieldError,
@@ -316,6 +317,10 @@ function writeAccountName(name, { touch = false, titleCaseOnWrite = false } = {}
 let companyPrefillTimer = null;
 let crmMatchesTimer = null;
 let crmMatchesToken = 0;
+let crmResolving = false;
+let crmPreviewSurfacedOnce = false;
+/** Last non-empty prospect email raw string — survives brief host/shadow desync. */
+let lastProspectEmailsRaw = "";
 /** @type {null | { byEmail: object[] }} */
 let lastCrmMatchResult = null;
 
@@ -544,7 +549,63 @@ function scheduleCompanyPrefill() {
 
 function scheduleCrmMatches() {
   window.clearTimeout(crmMatchesTimer);
-  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 50);
+  crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 200);
+}
+
+function rememberProspectEmailsRaw(raw) {
+  const trimmed = String(raw ?? "").trim();
+  if (trimmed) lastProspectEmailsRaw = trimmed;
+}
+
+function readProspectEmailRawSync() {
+  const el = $("pc-prospect-emails");
+  syncFieldValueFromShadow(el);
+  const raw = readFieldValue(el);
+  rememberProspectEmailsRaw(raw);
+  return raw || lastProspectEmailsRaw;
+}
+
+async function readProspectEmailRawAsync() {
+  const el = $("pc-prospect-emails");
+  syncFieldValueFromShadow(el);
+  const raw = (await readFieldValueAsync(el))?.trim() || "";
+  rememberProspectEmailsRaw(raw);
+  return raw || lastProspectEmailsRaw;
+}
+
+function prospectEmailsPresentSync() {
+  const raw = readProspectEmailRawSync();
+  return filterSessionEmailFromProspects(parseProspectEmails(raw)).length > 0;
+}
+
+/** @param {{ busy?: boolean, hasEmail?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s */
+export function computeAnalyzeButtonDisabled(s) {
+  const busy = !!s.busy;
+  const hasEmail = !!s.hasEmail;
+  return busy || !hasEmail || !!s.crmResolving || !s.crmPreviewSurfacedOnce;
+}
+
+function updateAnalyzeButtonState() {
+  const btn = $("analyze-call");
+  if (!btn) return;
+  const busy = pass0Busy || contextParsing || linkedinParsing || generating;
+  const hasEmail = prospectEmailsPresentSync();
+  btn.disabled = computeAnalyzeButtonDisabled({
+    busy,
+    hasEmail,
+    crmResolving,
+    crmPreviewSurfacedOnce,
+  });
+}
+
+function markCrmPreviewSurfaced() {
+  crmPreviewSurfacedOnce = true;
+  updateAnalyzeButtonState();
+}
+
+function resetCrmPreviewGate() {
+  crmPreviewSurfacedOnce = false;
+  updateAnalyzeButtonState();
 }
 
 /** Cancel debounced CRM preview and run immediately (e.g. on Start analysis). */
@@ -778,6 +839,7 @@ function wireAccountDealPreview(previewEl) {
       pcSelectedDealId = btn.dataset.dealId || null;
       pcCreateNewDeal = false;
       pcFocusNewDealInput = false;
+      updateAnalyzeButtonState();
       void renderCrmMatchesPanel();
     });
   });
@@ -875,8 +937,14 @@ async function renderCrmMatchesPanel() {
     panel.hidden = true;
     panel.innerHTML = "";
     if (preview) preview.hidden = true;
+    crmResolving = false;
+    crmPreviewSurfacedOnce = false;
+    updateAnalyzeButtonState();
     return;
   }
+
+  crmResolving = true;
+  updateAnalyzeButtonState();
 
   const token = ++crmMatchesToken;
   let result;
@@ -886,6 +954,8 @@ async function renderCrmMatchesPanel() {
     console.warn("[postcall] CRM match lookup failed:", err?.message || err);
     panel.hidden = true;
     if (preview) preview.hidden = true;
+    crmResolving = false;
+    markCrmPreviewSurfaced();
     return;
   }
   if (token !== crmMatchesToken) return;
@@ -959,6 +1029,10 @@ async function renderCrmMatchesPanel() {
       focusAndSelectNewDealInput(preview);
     }
   }
+  markCrmPreviewSurfaced();
+
+  crmResolving = false;
+  updateAnalyzeButtonState();
 
   if (!shouldShowCrmMatchesPanel(result)) {
     panel.hidden = true;
@@ -1021,6 +1095,7 @@ function wireCrmMatchesPanel(panel, result) {
       void writeAccountName(account.name || "", { touch: true, titleCaseOnWrite: true });
       panel.querySelectorAll(".pc-crm-account").forEach((el) => el.classList.remove("pc-crm-account--selected"));
       btn.classList.add("pc-crm-account--selected");
+      updateAnalyzeButtonState();
       void renderCrmMatchesPanel();
     });
   });
@@ -4437,7 +4512,17 @@ function configureProspectEmailAntiAutofill(el) {
   const unlock = () => {
     el.dataset.pcAutofillUnlocked = "1";
     const inner = el.shadowRoot?.querySelector("input, textarea");
-    if (inner) inner.readOnly = false;
+    if (inner) {
+      inner.readOnly = false;
+      if (inner.value && !String(el.value || "").trim()) {
+        try {
+          el.value = inner.value;
+        } catch {
+          /* crayons guard */
+        }
+        rememberProspectEmailsRaw(inner.value);
+      }
+    }
   };
   el.addEventListener("focus", unlock, true);
   el.addEventListener("fwFocus", unlock);
@@ -4467,7 +4552,7 @@ async function rejectSessionEmailInProspectField(el) {
 }
 
 async function getProspectEmailsFromField() {
-  const raw = await readFieldValueAsync($("pc-prospect-emails"));
+  const raw = await readProspectEmailRawAsync();
   return filterSessionEmailFromProspects(parseProspectEmails(raw));
 }
 
@@ -4528,6 +4613,9 @@ export function clearPostCallForm() {
   const preview = $("pc-account-deal-preview");
   if (preview) { preview.innerHTML = ""; preview.hidden = true; }
   crmMatchesToken++;
+  crmResolving = false;
+  crmPreviewSurfacedOnce = false;
+  updateAnalyzeButtonState();
 
   const fileInput = $("pc-transcript-file");
   if (fileInput) fileInput.value = "";
@@ -4555,6 +4643,7 @@ export function clearPostCallForm() {
   pcCreateNewDeal = false;
   pcNewDealType = "new_business";
   pcLastAccountDeals = [];
+  lastProspectEmailsRaw = "";
   const emailsEl = $("pc-prospect-emails");
   if (emailsEl) delete emailsEl.dataset.pcAutofillUnlocked;
   syncPasscodeVisibility();
@@ -4623,7 +4712,7 @@ async function collectIntakePayload() {
     await readFieldValueAsync(recordingField),
     await readFieldValueAsync($("pc-recording-pwd")),
   );
-  const prospectEmailsRaw = (await readFieldValueAsync(emailsField))?.trim() || "";
+  const prospectEmailsRaw = await readProspectEmailRawAsync();
   const allProspectEmails = parseProspectEmails(prospectEmailsRaw);
   const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
   let companyName = await resolveIntakeCompanyName(prospectEmails);
@@ -4733,9 +4822,19 @@ async function startPipeline(e) {
   e?.preventDefault?.();
   if (linkedinParsing || contextParsing || pass0Busy || generating) return;
   const btn = $("analyze-call");
+  if (btn?.disabled) return;
   const status = $("postcall-status");
 
+  // Read fw-input values before disabling the form — Crayons can stop exposing shadow values when disabled.
+  await flushCrmMatchesPanel();
+  const collected = await collectIntakePayload();
+  if (collected.error) {
+    showInlineStatus(status, { type: "error", message: collected.error });
+    return;
+  }
+
   pass0Busy = true;
+  updateAnalyzeButtonState();
   setButtonLoading(btn, true);
   setFormFieldsDisabled($("postcall-form"), true);
   show($("postcall-result"), false);
@@ -4750,15 +4849,6 @@ async function startPipeline(e) {
   const domainContextP = postCallOwnerId().then((ownerId) =>
     ownerId ? loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] },
   );
-
-  const collected = await collectIntakePayload();
-  if (collected.error) {
-    cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
-    pass0Busy = false;
-    setButtonLoading(btn, false);
-    showInlineStatus(status, { type: "error", message: collected.error });
-    return;
-  }
   const { payload } = collected;
   pipelineState = { payload, resolve: null, classify: null, generated: false, recordId: null };
   const { signal, gen } = beginPostcallPipeline();
@@ -4769,6 +4859,7 @@ async function startPipeline(e) {
     const resolve = await postJson(
       RESOLVE_URL,
       {
+        email: currentSession?.email || undefined,
         transcript: payload.transcript,
         recordingUrl: payload.recordingUrl,
         recordingPassword: payload.recordingPassword,
@@ -4803,6 +4894,7 @@ async function startPipeline(e) {
     const classify = await postJson(
       CLASSIFY_URL,
       {
+        email: currentSession?.email || undefined,
         transcript: pipelineState.resolve.transcript,
         meetingTitle: pipelineState.resolve.meetingTitle,
       },
@@ -4849,14 +4941,25 @@ async function startPipeline(e) {
       });
     } else {
       showInlineStatus(status, { type: "error", message: msg });
+      if (/recording not found|could not fetch kaia|provide a transcript/i.test(msg)) {
+        const recordingField = $("pc-recording-url");
+        const hint =
+          /provide a transcript/i.test(msg)
+            ? msg
+            : `${msg} Expand "No recording? Paste or upload a transcript" and paste the call transcript to continue locally.`;
+        setFieldError(recordingField, hint);
+      }
     }
   } finally {
     pass0Busy = false;
+    updateAnalyzeButtonState();
     setButtonLoading(btn, false);
   }
 }
 
 async function analyzeCall(e) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
   return startPipeline(e);
 }
 
@@ -4882,6 +4985,7 @@ export function onSessionCleared() {
   pcCreateNewDeal = false;
   pcNewDealType = "new_business";
   pcLastAccountDeals = [];
+  lastProspectEmailsRaw = "";
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
   activePostcallProgress?.hide();
@@ -4945,10 +5049,34 @@ export function initPostcall() {
   transcriptFileBtn?.addEventListener("click", () => transcriptFile?.click());
   transcriptFile?.addEventListener("change", (e) => { void handleTranscriptFileChange(e); });
 
-  emailsEl?.addEventListener("fwBlur", () => { void rejectSessionEmailInProspectField(emailsEl); void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
-  emailsEl?.addEventListener("blur", () => { void rejectSessionEmailInProspectField(emailsEl); void prefillCompanyFromEmails(); void renderCrmMatchesPanel(); });
-  emailsEl?.addEventListener("fwInput", () => { void rejectSessionEmailInProspectField(emailsEl); scheduleCompanyPrefill(); });
-  emailsEl?.addEventListener("input", () => { void rejectSessionEmailInProspectField(emailsEl); scheduleCompanyPrefill(); });
+  emailsEl?.addEventListener("fwBlur", () => {
+    void rejectSessionEmailInProspectField(emailsEl);
+    void prefillCompanyFromEmails();
+    updateAnalyzeButtonState();
+    void renderCrmMatchesPanel();
+  });
+  emailsEl?.addEventListener("blur", () => {
+    void rejectSessionEmailInProspectField(emailsEl);
+    void prefillCompanyFromEmails();
+    updateAnalyzeButtonState();
+    void renderCrmMatchesPanel();
+  });
+  emailsEl?.addEventListener("fwInput", () => {
+    rememberProspectEmailsRaw(readFieldValue(emailsEl));
+    void rejectSessionEmailInProspectField(emailsEl);
+    resetCrmPreviewGate();
+    scheduleCompanyPrefill();
+    scheduleCrmMatches();
+    updateAnalyzeButtonState();
+  });
+  emailsEl?.addEventListener("input", () => {
+    rememberProspectEmailsRaw(readFieldValue(emailsEl));
+    void rejectSessionEmailInProspectField(emailsEl);
+    resetCrmPreviewGate();
+    scheduleCompanyPrefill();
+    scheduleCrmMatches();
+    updateAnalyzeButtonState();
+  });
 
   initLinkedInPdfUpload({
     bag: "postcall",
@@ -4959,8 +5087,7 @@ export function initPostcall() {
     parsingElId: "pc-linkedin-parsing",
     setParsing: (on) => {
       linkedinParsing = on;
-      const btn = $("analyze-call");
-      if (btn) btn.disabled = on || contextParsing;
+      updateAnalyzeButtonState();
       const addBtn = $("pc-linkedin-add-btn");
       if (addBtn) addBtn.disabled = on;
     },
@@ -4975,10 +5102,11 @@ export function initPostcall() {
     parsingElId: "pc-context-parsing",
     setParsing: (on) => {
       contextParsing = on;
-      const btn = $("analyze-call");
-      if (btn) btn.disabled = on || linkedinParsing;
+      updateAnalyzeButtonState();
       const addBtn = $("pc-context-add-btn");
       if (addBtn) addBtn.disabled = on;
     },
   });
+
+  updateAnalyzeButtonState();
 }

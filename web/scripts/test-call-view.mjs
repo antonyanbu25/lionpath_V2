@@ -320,7 +320,7 @@ Object.defineProperty(seCamFallbackContainer, "querySelector", { value: () => nu
 Object.defineProperty(seCamFallbackContainer, "querySelectorAll", { value: () => [], configurable: true });
 await renderCallView(seCamFallbackContainer, firebaseSession, { callId: seCamFallbackSaved.id });
 assert(seCamFallbackContainer.innerHTML.includes("cam On"), "SE falls back to top-level cameraOnPct when curve lacks camera");
-assert(seCamFallbackContainer.innerHTML.includes("82%"), "SE shows cameraOnPct from top-level videoFacts");
+assert(!seCamFallbackContainer.innerHTML.includes("82%"), "room cam pills show On/Off only (no pct label)");
 
 const transcriptOnlySaved = await savePostCallAnalysis(
   email,

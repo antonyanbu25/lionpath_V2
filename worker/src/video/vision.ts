@@ -39,6 +39,8 @@ export interface VisionAnalysis {
   /** Whether slides/PPT/deck content appeared in sampled frames. */
   pptUsed?: boolean | null;
   pptEvidence?: string | null;
+  slideDeckTailored?: boolean | null;
+  slideVisualsWalked?: boolean | null;
   attendeeCurveJson?: Array<{
     name: string;
     talkPct?: number | null;
@@ -50,6 +52,13 @@ export interface VisionAnalysis {
     startS: number;
     endS: number;
     segmentType: "slides";
+    label?: string;
+  }>;
+  /** Classified share segments (slides/product/cde/customer_screen) when detectable. */
+  classifiedSegments?: Array<{
+    startS: number;
+    endS: number;
+    segmentType: "slides" | "product" | "cde" | "customer_screen";
     label?: string;
   }>;
 }
@@ -190,6 +199,8 @@ export async function analyzeKeyframes(
     shareOnPct: null,
     pptUsed: null,
     pptEvidence: null,
+    slideDeckTailored: null,
+    slideVisualsWalked: null,
     attendeeCurveJson: null,
   };
   if (!keyframes.length) return empty;
@@ -233,27 +244,40 @@ export async function analyzeKeyframes(
         "(~15s per window except closing_1min which is 60s).",
         "A participant with a visible face or live video tile counts as camera ON.",
         "Also detect slides/PPT/deck usage and whether product CDE/tenant looks customized vs stock demo (Acme Corp, demo@, placeholders).",
+        "Judge slide_deck signals: slideDeckTailored (customer logo/industry/name visible), slideVisualsWalked (complex charts/diagrams explained, not read verbatim).",
+        "For each window estimate dominant screen segmentType: slides|product|cde|customer_screen when share is visible.",
         "Reply JSON only with a windows array covering all sampled windows:",
         JSON.stringify({
           windows: [windowExample, { label: "pct_30", windowSeconds: 15, participants: {} }],
           pptUsed: true,
           pptEvidence: "Slide deck visible in opening window",
+          slideDeckTailored: true,
+          slideVisualsWalked: false,
           shareOnPct: 70,
           cdeCustomized: true,
           cdeEvidence: "Tenant branded for customer",
+          segments: [
+            { startS: 0, endS: 180, segmentType: "slides", label: "Opening deck" },
+            { startS: 180, endS: 600, segmentType: "product", label: "Product demo" },
+          ],
         }),
       ].join(" ")
     : [
         "You analyze SE call screenshare keyframes. DO NOT identify or describe faces.",
         "Judge screen content only: slides/PPT/deck usage, share presence, CDE customization vs stock demo.",
+        "Judge slide_deck signals: slideDeckTailored, slideVisualsWalked when slides visible.",
+        "Emit segments[] with segmentType slides|product|cde|customer_screen per visible share window.",
         "Set camera fields to null / omit participant camera states (no face consent).",
         "Reply JSON only:",
         JSON.stringify({
           pptUsed: true,
           pptEvidence: "Deck visible",
+          slideDeckTailored: true,
+          slideVisualsWalked: true,
           shareOnPct: 70,
           cdeCustomized: null,
           cdeEvidence: null,
+          segments: [{ startS: 0, endS: 300, segmentType: "slides", label: "Deck" }],
         }),
       ].join(" ");
 
@@ -270,6 +294,36 @@ export async function analyzeKeyframes(
   const pptUsed = typeof parsed.pptUsed === "boolean" ? parsed.pptUsed : null;
   const pptEvidence =
     typeof parsed.pptEvidence === "string" ? parsed.pptEvidence.trim().slice(0, 160) : null;
+  const slideDeckTailored =
+    typeof parsed.slideDeckTailored === "boolean" ? parsed.slideDeckTailored : null;
+  const slideVisualsWalked =
+    typeof parsed.slideVisualsWalked === "boolean" ? parsed.slideVisualsWalked : null;
+
+  const classifiedTypes = new Set(["slides", "product", "cde", "customer_screen"]);
+  const classifiedSegments: VisionAnalysis["classifiedSegments"] = [];
+  const segRaw = Array.isArray(parsed.segments) ? parsed.segments : [];
+  const durCap = Math.max(1, Math.round(opts?.durationSec ?? 60));
+  for (const row of segRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const type = String(r.segmentType || "").trim().toLowerCase();
+    if (!classifiedTypes.has(type)) continue;
+    let startS = Number(r.startS);
+    let endS = Number(r.endS);
+    if (!Number.isFinite(startS) || startS < 0) startS = 0;
+    if (!Number.isFinite(endS) || endS <= startS) continue;
+    startS = Math.min(startS, durCap);
+    endS = Math.min(endS, durCap);
+    if (endS <= startS) continue;
+    const label = typeof r.label === "string" ? r.label.trim().slice(0, 80) : undefined;
+    classifiedSegments.push({
+      startS: Math.round(startS),
+      endS: Math.round(endS),
+      segmentType: type as "slides" | "product" | "cde" | "customer_screen",
+      label: label || undefined,
+    });
+  }
+  classifiedSegments.sort((a, b) => a.startS - b.startS);
 
   let cameraOnPct: number | null = null;
   let attendeeCurveJson: VisionAnalysis["attendeeCurveJson"] = null;
@@ -315,8 +369,11 @@ export async function analyzeKeyframes(
     cdeEvidence: evidence || null,
     pptUsed,
     pptEvidence,
+    slideDeckTailored,
+    slideVisualsWalked,
     attendeeCurveJson,
     pptSegments: segmentsFromPpt,
+    classifiedSegments: classifiedSegments.length ? classifiedSegments : undefined,
   };
 }
 

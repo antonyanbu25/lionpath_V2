@@ -33,10 +33,28 @@ function sidebarWidthPx() {
 
 function positionFlyout(panel) {
   if (!panel) return;
+  const minBottom = 18;
+  const trigger = document.getElementById("sidebar-user");
   panel.style.left = `${Math.round(sidebarWidthPx())}px`;
-  panel.style.bottom = "18px";
   panel.style.top = "auto";
   panel.style.right = "auto";
+
+  if (trigger) {
+    const rect = trigger.getBoundingClientRect();
+    let bottom = Math.max(minBottom, window.innerHeight - rect.bottom);
+    panel.style.bottom = `${Math.round(bottom)}px`;
+
+    requestAnimationFrame(() => {
+      if (panel.hidden) return;
+      const panelRect = panel.getBoundingClientRect();
+      if (panelRect.top < minBottom) {
+        bottom = Math.max(minBottom, bottom - (minBottom - panelRect.top));
+        panel.style.bottom = `${Math.round(bottom)}px`;
+      }
+    });
+  } else {
+    panel.style.bottom = `${minBottom}px`;
+  }
 }
 
 function rememberTeleportHome(el) {

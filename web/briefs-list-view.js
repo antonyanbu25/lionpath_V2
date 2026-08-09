@@ -11,14 +11,57 @@ function briefDedupeKey(b) {
 }
 
 export function parseBriefTimestamp(b) {
+  const idMatch = /-(\d{10,})$/.exec(String(b.id || ""));
+  if (idMatch) {
+    const ms = Number(idMatch[1]);
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  if (b.whenTs != null) {
+    const ts = Number(b.whenTs);
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  }
   const when = String(b.when || "").trim();
   if (when) {
-    const parsed = Date.parse(when);
-    if (Number.isFinite(parsed)) return parsed;
+    const slashMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(when);
+    if (slashMatch) {
+      const first = Number(slashMatch[1]);
+      const second = Number(slashMatch[2]);
+      const year = Number(slashMatch[3]);
+      const dmyValid = second >= 1 && second <= 12 && first >= 1 && first <= 31;
+      const mdyValid = first >= 1 && first <= 12 && second >= 1 && second <= 31;
+      let day;
+      let month;
+      if (dmyValid && !mdyValid) {
+        day = first;
+        month = second;
+      } else if (mdyValid && !dmyValid) {
+        month = first;
+        day = second;
+      } else if (dmyValid && mdyValid) {
+        // Ambiguous legacy locale strings — US briefs used MM/DD via toLocaleDateString.
+        month = first;
+        day = second;
+      }
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const parsed = new Date(year, month - 1, day).getTime();
+        if (Number.isFinite(parsed)) return parsed;
+      }
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(when)) {
+      const parsed = Date.parse(when);
+      if (Number.isFinite(parsed)) return parsed;
+    }
   }
-  const idMatch = /-(\d{10,})$/.exec(String(b.id || ""));
-  if (idMatch) return Number(idMatch[1]);
   return 0;
+}
+
+function formatBriefDate(ts) {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /**
@@ -42,11 +85,25 @@ export async function loadMergedBriefs(opts = {}) {
 export function normalizeRemoteBrief(record) {
   if (!record || typeof record !== "object") return null;
   const company = record.company || record.meta?.company || "Account";
+  let whenTs = record.whenTs;
+  if (whenTs == null && record.createdAt != null) {
+    if (typeof record.createdAt?.toDate === "function") {
+      whenTs = record.createdAt.toDate().getTime();
+    } else if (typeof record.createdAt === "number") {
+      whenTs = record.createdAt;
+    }
+  }
+  const idEpoch = /-(\d{10,})$/.exec(String(record.id || ""));
+  if (whenTs == null && idEpoch) {
+    const ms = Number(idEpoch[1]);
+    if (Number.isFinite(ms) && ms > 0) whenTs = ms;
+  }
   return {
     id: record.id,
     company,
     kind: record.kind || "Discovery",
     when: record.when || "",
+    whenTs: whenTs ?? null,
     prep: record.prep,
     meta: record.meta || {
       company,
@@ -107,12 +164,13 @@ export function filterBriefRecords(briefs, filters = {}) {
 export function buildBriefListRow(brief) {
   const company = brief.company || brief.meta?.company || "Account";
   const domain = brief.meta?.domain || brief.meta?.companyDomain || "";
+  const ts = parseBriefTimestamp(brief);
   return {
     id: brief.id,
     company,
     companyMono: companyMono(company),
     kind: brief.kind || "Discovery",
-    whenLabel: brief.when || "-",
+    whenLabel: ts ? formatBriefDate(ts) : "-",
     domainLabel: domain || "-",
     hasPrep: !!brief.prep,
   };
