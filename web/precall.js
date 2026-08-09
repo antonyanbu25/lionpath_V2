@@ -2,6 +2,8 @@
 
 import {
   bindActionOnce,
+  fillShadowField,
+  fillShadowTabs,
   readFieldValue,
   readFieldValueAsync,
   setButtonLoading,
@@ -628,7 +630,10 @@ function showResultView(prep, meta, opts = {}) {
   wireBriefResultBack();
 
   const tabs = $("prep-tabs");
-  if (tabs) tabs.activeTabName = state.tab;
+  if (tabs) {
+    tabs.activeTabName = state.tab;
+    fillShadowTabs(tabs);
+  }
 
   renderActiveTab();
 }

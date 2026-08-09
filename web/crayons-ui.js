@@ -44,6 +44,41 @@ export function fillShadowField(el) {
   observeRoot();
 }
 
+/**
+ * fw-tabs's shadow .tabs div doesn't constrain its height (no overflow/min-height),
+ * so panels overflow the container and the scrollbar appears/disappears.
+ * Inject style into the shadow root to constrain .tabs and make the default slot
+ * fill remaining space.
+ * @param {HTMLElement} el the <fw-tabs> element
+ */
+export function fillShadowTabs(el) {
+  const CSS = ".tabs{overflow:hidden!important;min-height:0!important;}" +
+    ".tabs>slot:not([name]){flex:1!important;min-height:0!important;display:flex!important;flex-direction:column!important;}" +
+    ".tabs>slot:not([name])::slotted(*){flex:1!important;min-height:0!important;}";
+  const apply = () => {
+    const root = el.shadowRoot;
+    if (!root || root.querySelector("style[data-fill-tabs]")) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-fill-tabs", "");
+    style.textContent = CSS;
+    root.appendChild(style);
+  };
+  const tryApply = () => {
+    if (el.shadowRoot) apply();
+  };
+  tryApply();
+  if (typeof el.componentOnReady === "function") el.componentOnReady().then(tryApply);
+  const observer = new MutationObserver(tryApply);
+  const observeRoot = () => {
+    if (el.shadowRoot) {
+      observer.observe(el.shadowRoot, { childList: true });
+    } else {
+      requestAnimationFrame(observeRoot);
+    }
+  };
+  observeRoot();
+}
+
 /** @param {HTMLElement | null | undefined} el */
 export function readFieldValue(el) {
   if (!el) return "";

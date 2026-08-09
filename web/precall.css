@@ -1087,8 +1087,8 @@ body.prep-gen-lock {
 #prep-tabs {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100%;            /* NEW — computed height becomes 100% (not auto), so shadow .tabs height:inherit resolves to a definite value */
-  --fw-tabs-height: 100%;  /* NEW — directly sets shadow .tabs height via Crayons custom property, bypassing inherit as a backup path */
+  height: 100%;
+  --fw-tabs-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1099,6 +1099,8 @@ body.prep-gen-lock {
 #prep-tabs fw-tab-panel {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
+  --fw-tab-panel-height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
