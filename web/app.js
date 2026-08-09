@@ -2627,6 +2627,11 @@ async function completeFirebaseLogin(user, opts = {}) {
         const session = await persistFirebaseSession(user, { persist: false });
         const enriched = await syncSessionWithDomainStore(session || quickSession, fb);
         setSession(enriched || session || quickSession, { notify: false });
+        // Kill Firestore WebChannel transport for SE users — api-store handles all reads.
+        const role = enriched?.role || session?.role || quickSession?.role;
+        if (role === "se" || !role) {
+          try { fsMod?.terminate(fsMod.getFirestore(app)); fb.db = null; } catch (_) {}
+        }
         return enriched || session || quickSession;
       } catch (err) {
         console.warn("Firebase session enrich failed:", err?.message || err);
@@ -2720,12 +2725,6 @@ function ensureFirebaseSdk() {
         writeBatch: fsMod.writeBatch,
       };
 
-      // SE users don't need Firestore — stop the WebChannel transport immediately
-      // to prevent the perpetual retry loop (api-store.js handles all reads).
-      const _preSession = getSession();
-      if (_preSession?.role === "se" || _preSession?.role === undefined) {
-        try { fsMod.terminate(fsMod.getFirestore(app)); fb.db = null; } catch (_) {}
-      }
       initDomainStore(fb);
 
       try {
