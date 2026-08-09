@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+          cache-dependency-path: ${{ matrix.package == 'rules' && 'rules-tests' || matrix.package }}/package-lock.json
 
       - name: Install Playwright Chromium (web only)
         if: matrix.package == 'web'
