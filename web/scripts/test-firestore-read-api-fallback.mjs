@@ -4,8 +4,21 @@ import { initDomainStore } from "../domain/store.js";
 
 firebaseConfig.projectId = "test-project";
 globalThis.location = { hostname: "portal.test", search: "" };
+// resolveReadMode() (domain/store.js) now branches on session role — added
+// as part of today's SE-Firestore-permission-denied-loop fix, so it isn't a
+// scenario this test anticipated when written. A session-less mock (as this
+// was) resolves straight to api mode for every read, never exercising the
+// firestore-primary + api-fallback path this file exists to test. Managers
+// still default to firestore-primary (rules allow their broader reads), so
+// mocking a manager session is what actually reaches the fallback wrapper —
+// confirmed by tracing resolveReadMode()/createReadFallbackStore() directly.
+const SESSION_JSON = JSON.stringify({
+  email: "manager@freshworks.com",
+  role: "manager",
+  name: "Test Manager",
+});
 globalThis.sessionStorage = {
-  getItem: () => null,
+  getItem: (key) => (key === "se-sp-session" ? SESSION_JSON : null),
   setItem: () => {},
 };
 globalThis.localStorage = {
