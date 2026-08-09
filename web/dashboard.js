@@ -84,7 +84,7 @@ function scheduleRecentActivityRender(container, callRecords, usesLegacyCoach, o
   __recentActivityRenderArgs = { container, callRecords, usesLegacyCoach, opts };
   if (__recentActivityRenderScheduled) return;
   __recentActivityRenderScheduled = true;
-  queueMicrotask(() => {
+  requestAnimationFrame(() => {
     __recentActivityRenderScheduled = false;
     const args = __recentActivityRenderArgs;
     __recentActivityRenderArgs = null;
@@ -1408,7 +1408,9 @@ function patchLaunchKpiValue(container, stat, value) {
   if (el.classList.contains("launch-kpi-value--pending")) {
     el.classList.remove("launch-kpi-value--pending");
     el.removeAttribute("aria-busy");
-    setValue();
+    if (el.textContent.replace(/\s*↻\s*/g, "").trim() !== next) {
+      setValue();
+    }
   } else if (el.textContent.replace(/\s*↻\s*/g, "").trim() !== next) {
     setValue();
   } else {
@@ -1887,6 +1889,10 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   if (!section.isConnected) return;
   wireRecentActivitySection(section, opts);
   const signature = recentActivitySignature(items);
+  // If everything is identical, skip all DOM work — eliminates flicker
+  // from parallel Firestore subscriptions firing the same data in
+  // separate microtask boundaries.
+  if (section.dataset.activitySignature === signature) return;
   section.dataset.activitySignature = signature;
 
   const card = section.querySelector(".launch-activity-card");
