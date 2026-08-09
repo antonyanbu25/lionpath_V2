@@ -29,7 +29,11 @@ function isLocalDevHost() {
 
 /** @returns {"local"|"firestore"|"api"} */
 function resolveReadMode(fb) {
-  if (!useFirestore(fb)) return "local";
+  if (!useFirestore(fb)) {
+    // Firebase configured but db not yet initialized (lazy init) — use API mode.
+    if (!!firebaseConfig.projectId && !fb?.db) return "api";
+    return "local";
+  }
   if (typeof location !== "undefined" && typeof sessionStorage !== "undefined") {
     const params = new URLSearchParams(location.search || "");
     const override = params.get("storeMode");

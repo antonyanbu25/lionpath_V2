@@ -2705,7 +2705,7 @@ function ensureFirebaseSdk() {
         provider: firebaseProvider,
         signInWithPopup: authMod.signInWithPopup,
         signOut: authMod.signOut,
-        db: fsMod.getFirestore(app),
+        db: null,  // Lazy-init after role check — avoids WebChannel transport for SEs
         collection: fsMod.collection,
         addDoc: fsMod.addDoc,
         doc: fsMod.doc,
@@ -2726,6 +2726,21 @@ function ensureFirebaseSdk() {
       };
 
       initDomainStore(fb);
+
+      // Lazy-init Firestore db only for managers/admins who need realtime subs.
+      const _bootSession = getSession();
+      if (_bootSession?.role === "manager" || _bootSession?.role === "admin") {
+        try {
+          const fsFirestore = fsMod.getFirestore(app);
+          fb.db = fsFirestore;
+          fb.getDoc = fsMod.getDoc;
+          fb.getDocs = fsMod.getDocs;
+          fb.onSnapshot = fsMod.onSnapshot;
+          initDomainStore(fb);
+        } catch (err) {
+          console.warn("[app] Firestore init failed:", err);
+        }
+      }
 
       try {
         await authMod.setPersistence(firebaseAuth, authMod.browserLocalPersistence);
