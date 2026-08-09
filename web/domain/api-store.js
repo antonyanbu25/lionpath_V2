@@ -617,6 +617,15 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     }
   }
 
+  if (!firestoreDelegate) {
+    // SE users (fb.db === null) have no Firestore delegate — return API reads directly.
+    return Object.assign(Object.create(null), {
+      readMode: "api",
+      mode: "api",
+      ...apiReads,
+    });
+  }
+
   return new Proxy(firestoreDelegate, {
     get(target, prop, receiver) {
       if (prop in apiReads) return apiReads[prop];
