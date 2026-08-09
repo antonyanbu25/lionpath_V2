@@ -439,6 +439,40 @@ body.prep-gen-lock {
   min-height: 46px;
 }
 
+#prep-account-deal-preview .nb-account-picker-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--dew-border);
+  border-radius: 11px;
+  padding: 12px;
+  background: var(--dew-surface-subtle);
+  min-height: 46px;
+}
+
+#prep-account-deal-preview .nb-account-picker-head {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-text-secondary);
+}
+
+#prep-account-deal-preview .nb-account-picker-domain {
+  font-size: 12px;
+}
+
+#prep-account-deal-preview .nb-account-picker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#prep-account-deal-preview .nb-account-picker-chip {
+  min-width: 0;
+}
+
 .nb-account-card,
 .nb-deal-card {
   display: flex;

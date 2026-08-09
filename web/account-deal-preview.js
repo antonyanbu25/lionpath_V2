@@ -70,6 +70,9 @@ export function renderNewDealEditor(displayName, newDealType, newDealTitle, sele
  *   newDealTitle?: string,
  *   editableAccount?: boolean,
  *   dealsLoading?: boolean,
+ *   accountOptions?: { id: string, name?: string, domain?: string|null }[],
+ *   selectedAccountId?: string|null,
+ *   accountPickerDomain?: string|null,
  * }} opts
  */
 export function renderAccountDealPreviewHtml(opts) {
@@ -83,7 +86,16 @@ export function renderAccountDealPreviewHtml(opts) {
     newDealTitle = "",
     editableAccount = true,
     dealsLoading = false,
+    accountOptions = null,
+    selectedAccountId = null,
+    accountPickerDomain = null,
   } = opts;
+
+  const showAccountPicker =
+    !accountMatched && Array.isArray(accountOptions) && accountOptions.length > 1;
+  if (showAccountPicker) {
+    return renderAccountPickerPreviewHtml(accountOptions, selectedAccountId, accountPickerDomain);
+  }
 
   const displayName = titleCaseDisplayName(accountName) || "Account";
   const hasExistingDeals = deals.length > 0;
@@ -140,5 +152,40 @@ export function renderAccountDealPreviewHtml(opts) {
   <div class="nb-deal-slot pc-deal-showcase">
     ${dealHead}
     <div class="pc-deal-tiles-row">${dealTilesHtml}</div>
+  </div>`;
+}
+
+function renderAccountPickerPreviewHtml(accounts, selectedAccountId, domain) {
+  const chips = accounts
+    .map((a) => {
+      const selected = selectedAccountId === a.id ? " pc-crm-account--selected" : "";
+      const label = titleCaseDisplayName(a.name || a.domain || "Account");
+      return `<button type="button" class="pc-crm-account nb-account-picker-chip${selected}" data-action="prep-pick-account" data-account-id="${esc(a.id)}">
+          <span class="pc-crm-account-name">${esc(label)}</span>
+        </button>`;
+    })
+    .join("");
+
+  return `<div class="nb-account-column">
+    <span class="nb-label">Account</span>
+    <div class="nb-account-slot nb-account-slot--picker">
+      <div class="nb-account-picker-panel">
+        <p class="nb-account-picker-head">Multiple accounts found — pick one</p>
+        ${domain ? `<span class="nb-account-picker-domain muted">${esc(domain)}</span>` : ""}
+        <div class="nb-account-picker-list">${chips}</div>
+      </div>
+    </div>
+  </div>
+  <div class="nb-deal-slot pc-deal-showcase">
+    <div class="nb-deal-head"><span class="nb-label">Deal</span></div>
+    <div class="pc-deal-tiles-row">
+      <div class="nb-deal-card pc-deal-tile pc-deal-tile--static pc-deal-tile--muted">
+        <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
+        <div class="nb-deal-card-body">
+          <span class="nb-deal-card-title muted">Select an account first</span>
+          <span class="nb-deal-card-stage muted">Deals appear after you pick</span>
+        </div>
+      </div>
+    </div>
   </div>`;
 }

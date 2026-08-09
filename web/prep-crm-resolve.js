@@ -17,7 +17,7 @@ import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domai
 import { formatDealTitlePreview, inferDealTypeFromTitle } from "./domain/deal-service.js";
 import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
 import { readFieldValueAsync } from "./crayons-ui.js";
-import { esc, $ } from "./shared.js";
+import { $ } from "./shared.js";
 
 function normalizeDomain(raw) {
   return String(raw || "")
@@ -47,6 +47,12 @@ let lookupTimer = 0;
 let lookupToken = 0;
 let previewToken = 0;
 let prepDealsLoading = false;
+/** @type {object[]} */
+let prepAccountOptions = [];
+/** @type {string|null} */
+let prepAccountPickerDomain = null;
+/** @type {{ accounts: object[], deals: object[] }} */
+let lastCrmLookupResult = { accounts: [], deals: [] };
 
 function parseEmails(raw) {
   return String(raw || "")
@@ -152,6 +158,14 @@ function hideAccountDealPreview() {
   if (preview) {
     preview.hidden = true;
     preview.innerHTML = "";
+  }
+}
+
+function hidePrepCrmMatchesPanel() {
+  const panel = $("prep-crm-matches");
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = "";
   }
 }
 
@@ -262,6 +276,9 @@ export function resetPrepCrmSelection() {
   prepFocusNewDealInput = false;
   lastDeals = [];
   prepDealsLoading = false;
+  prepAccountOptions = [];
+  prepAccountPickerDomain = null;
+  lastCrmLookupResult = { accounts: [], deals: [] };
   prepDraftAccountName = null;
   prepAccountNameUserEdited = false;
 }
@@ -271,11 +288,7 @@ export function resetPrepCrmUi() {
   resetPrepCrmSelection();
   clearAccountEngagementContext();
   previewToken = ++lookupToken;
-  const panel = $("prep-crm-matches");
-  if (panel) {
-    panel.hidden = true;
-    panel.innerHTML = "";
-  }
+  hidePrepCrmMatchesPanel();
   hideAccountDealPreview();
 }
 
@@ -345,6 +358,15 @@ function wirePrepAccountDealPreview(previewEl) {
       }
     });
   });
+  previewEl.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const account = prepAccountOptions.find((a) => a.id === btn.dataset.accountId);
+      if (!account) return;
+      prepCreateNewDeal = false;
+      const deals = (lastCrmLookupResult.deals || []).filter((d) => d.accountId === account.id);
+      void applyAccount(account, deals);
+    });
+  });
 }
 
 function renderPrepAccountDealPreview(expectedToken) {
@@ -352,6 +374,25 @@ function renderPrepAccountDealPreview(expectedToken) {
   if (!preview) return;
   const token = expectedToken ?? previewToken;
   if (token !== previewToken) return;
+
+  const showAccountPicker =
+    prepAccountOptions.length > 1 && !prepResolvedAccount?.id;
+
+  if (showAccountPicker) {
+    preview.hidden = false;
+    preview.innerHTML = renderAccountDealPreviewHtml({
+      accountName: "",
+      accountMatched: false,
+      accountOptions: prepAccountOptions,
+      selectedAccountId: prepResolvedAccount?.id || null,
+      accountPickerDomain: prepAccountPickerDomain,
+      deals: [],
+      editableAccount: false,
+    });
+    wirePrepAccountDealPreview(preview);
+    if (typeof window !== "undefined") window.__logPrecallDeploy?.();
+    return;
+  }
 
   if (!prepResolvedAccount) {
     hideAccountDealPreview();
@@ -397,13 +438,10 @@ async function readCompanyLookupContext() {
 }
 
 async function renderCrmPanel() {
-  const panel = $("prep-crm-matches");
-  if (!panel) return;
   const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
   if (!emails.length) {
     resetPrepCrmSelection();
-    panel.hidden = true;
-    panel.innerHTML = "";
+    hidePrepCrmMatchesPanel();
     hideAccountDealPreview();
     return;
   }
@@ -416,11 +454,12 @@ async function renderCrmPanel() {
     result = await lookupPrepCrmMatches(emails, ctx);
   } catch (err) {
     console.warn("[prep] CRM lookup failed:", err?.message || err);
-    panel.hidden = true;
+    hidePrepCrmMatchesPanel();
     return;
   }
   if (seq !== lookupToken) return;
 
+  lastCrmLookupResult = result;
   const accounts = result.accounts || [];
   const domainGroups = groupByDomain(result.byEmail || []);
   const primaryGroup = domainGroups.find((g) => g.domain) || domainGroups[0];
@@ -428,70 +467,38 @@ async function renderCrmPanel() {
   const defaultName = resolveDefaultAccountName(primaryGroup?.domain, groupAccounts);
   if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
 
+  prepAccountOptions = groupAccounts.length > 1 ? groupAccounts : [];
+  prepAccountPickerDomain = primaryGroup?.domain || null;
+
   if (groupAccounts.length === 1) {
+    prepAccountOptions = [];
     await applyAccount(groupAccounts[0], result.deals || []);
   } else if (groupAccounts.length > 1) {
     prepSelectedDealId = null;
     prepCreateNewDeal = false;
-    if (prepResolvedAccount?.id && !groupAccounts.some((a) => a.id === prepResolvedAccount.id)) {
+    lastDeals = [];
+    if (prepResolvedAccount?.id && groupAccounts.some((a) => a.id === prepResolvedAccount.id)) {
+      await applyAccount(
+        prepResolvedAccount,
+        (result.deals || []).filter((d) => d.accountId === prepResolvedAccount.id),
+      );
+    } else {
       prepResolvedAccount = null;
+      renderPrepAccountDealPreview(seq);
     }
   } else if (primaryGroup?.domain && !prepResolvedAccount?.id) {
+    prepAccountOptions = [];
     ensureDraftAccount(primaryGroup.domain, defaultName);
+    renderPrepAccountDealPreview(seq);
   } else if (!primaryGroup?.domain && !prepResolvedAccount?.id) {
+    prepAccountOptions = [];
     prepResolvedAccount = null;
-  }
-
-  const domainRows = domainGroups
-    .map((group) => {
-      const domainLabel = group.domain || "Personal email";
-      const contactList = group.emails.map((e) => esc(e)).join(", ");
-      const accountChips = group.accounts
-        .map((a) => {
-          const selected = prepResolvedAccount?.id === a.id ? " pc-crm-account--selected" : "";
-          return `<button type="button" class="pc-crm-account${selected}" data-action="prep-pick-account" data-account-id="${esc(a.id)}">
-            <span class="pc-crm-account-name">${esc(a.name || a.domain || "Account")}</span>
-          </button>`;
-        })
-        .join("");
-      const status = group.matched
-        ? accountChips
-        : `<span class="pc-crm-new muted">No match yet — account created on generate</span>`;
-      return `<div class="pc-crm-domain-group">
-        <div class="pc-crm-row pc-crm-row--domain">
-          <span class="pc-crm-domain-label">${esc(domainLabel)}</span>
-          <span class="pc-crm-contacts muted">${contactList}</span>
-        </div>
-        <div class="pc-crm-row pc-crm-row--status">
-          <span class="pc-crm-matchset">${status}</span>
-        </div>
-      </div>`;
-    })
-    .join("");
-
-  if (groupAccounts.length <= 1) {
-    panel.hidden = true;
-    panel.innerHTML = "";
+    hideAccountDealPreview();
   } else {
-    const header = "Multiple accounts found — pick one";
-    panel.innerHTML = `<div class="pc-crm-head">${esc(header)}</div>${domainRows}`;
-    panel.hidden = false;
-
-    panel.querySelectorAll('[data-action="prep-pick-account"]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const account = groupAccounts.find((a) => a.id === btn.dataset.accountId);
-        if (!account) return;
-        prepCreateNewDeal = false;
-        void applyAccount(account, (result.deals || []).filter((d) => d.accountId === account.id));
-        panel.querySelectorAll(".pc-crm-account").forEach((el) => el.classList.remove("pc-crm-account--selected"));
-        btn.classList.add("pc-crm-account--selected");
-      });
-    });
+    renderPrepAccountDealPreview(seq);
   }
 
-  if (groupAccounts.length !== 1) {
-    renderPrepAccountDealPreview();
-  }
+  hidePrepCrmMatchesPanel();
 }
 
 function scheduleLookup() {
@@ -504,6 +511,7 @@ function scheduleLookup() {
 
 async function showInstantAccountPreview() {
   if (prepResolvedAccount?.id) return;
+  if (prepAccountOptions.length > 1) return;
   const seq = ++previewToken;
   const emails = parseEmails(await readFieldValueAsync($("prospectEmail")));
   if (seq !== previewToken) return;
