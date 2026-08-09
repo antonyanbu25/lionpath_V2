@@ -176,6 +176,13 @@ const VIEW_TITLES = {
   signal: "Product signal",
 };
 
+const COMING_SOON_VIEWS = {
+  deals: { view: "deals", panelId: "deal-panel", navView: "deals", title: "My deals", hash: "deals" },
+  contacts: { view: "contacts", panelId: "contacts-panel", navView: "contacts", title: "My contacts", hash: "contacts" },
+  coaching: { view: "coaching", panelId: "coaching-panel", navView: "coaching", title: "My coaching", hash: "coaching" },
+  calls: { view: "calls", panelId: "call-panel", navView: "calls", title: "Activities", hash: "calls" },
+};
+
 let selectedAccountId = null;
 /** @type {string|null|undefined} undefined = auto-resolve deal on account load */
 let selectedAccountDealId = undefined;
@@ -1044,7 +1051,35 @@ function refreshActiveDashboard() {
 function normalizeViewName(name) {
   if (name === "analysis" || name === "workspace") return "postcall";
   if (name === "lifecycles") return "accounts";
+  if (name === "my-deals") return "deals";
+  if (name === "my-contacts") return "contacts";
+  if (name === "my-coaching") return "coaching";
+  if (name === "live") return "calls";
   return name;
+}
+
+function mountComingSoonView(name, panels) {
+  const config = COMING_SOON_VIEWS[name];
+  if (!config) {
+    window.ComingSoon?.unmount?.();
+    return false;
+  }
+
+  Object.entries(panels).forEach(([key, el]) => show(el, key === config.view));
+  $("main-view-title").textContent = config.title;
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === config.navView);
+  });
+
+  const target = $(config.panelId) || panels[config.view];
+  if (window.ComingSoon?.mount) {
+    window.ComingSoon.mount(target);
+  } else if (target) {
+    target.innerHTML = `<div class="coming-soon-shell"><section class="coming-soon-card"><h1>Coming Soon</h1><p class="coming-soon-copy">We are putting the finishing touches on this experience.</p></section></div>`;
+  }
+  history.replaceState(null, "", `#${config.hash}`);
+  closeSidebar();
+  return true;
 }
 
 function switchView(name, opts = {}) {
@@ -1072,6 +1107,7 @@ function switchView(name, opts = {}) {
     profile: $('view-profile'),
     "org-structure": $('view-org-structure'),
   };
+  if (!COMING_SOON_VIEWS[name]) window.ComingSoon?.unmount?.();
 
   if (name === "pipeline" && !currentSession?.isOrgDirector) {
     name = isManager ? "manager" : "dashboard";
@@ -1108,6 +1144,8 @@ function switchView(name, opts = {}) {
     location.hash = "profile";
     return;
   }
+
+  if (mountComingSoonView(name, panels)) return;
 
   if (isManager && !currentSession?.isOrgDirector) {
     const allowDrill = opts.drillDown === true || MANAGER_DRILL_VIEWS.has(name);
@@ -1789,21 +1827,13 @@ function applyRouteFromHash() {
   if (dealNavMatch) {
     selectedDealNavId = dealNavMatch[1];
     dealListTractionFilter = "";
-    if (currentView !== "deals") {
-      switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
-    } else {
-      void renderDealPanel();
-    }
+    switchView("deals", { drillDown: true, dealId: dealNavMatch[1] });
     return;
   }
   if (hash === "deals") {
     selectedDealNavId = null;
     dealListTractionFilter = hashParams.get("filter") || "";
-    if (currentView !== "deals") {
-      switchView("deals", { drillDown: !!dealListTractionFilter });
-    } else {
-      void renderDealPanel();
-    }
+    switchView("deals", { drillDown: !!dealListTractionFilter });
     return;
   }
 
@@ -1815,21 +1845,13 @@ function applyRouteFromHash() {
     callRecordOwnerEmail = hashParams.get("owner")
       ? normalizeSeEmail(hashParams.get("owner"))
       : undefined;
-    if (currentView !== "calls") {
-      switchView("calls", { drillDown: true, callId: callMatch[1] });
-    } else {
-      void renderCallPanel();
-    }
+    switchView("calls", { drillDown: true, callId: callMatch[1] });
     return;
   }
   if (hash === "calls" || hash === "activities") {
     selectedCallId = null;
     callsListFilter = hashParams.get("filter") || "";
-    if (currentView !== "calls") {
-      switchView("calls", { drillDown: !!callsListFilter });
-    } else {
-      void renderCallPanel();
-    }
+    switchView("calls", { drillDown: !!callsListFilter });
     return;
   }
 
@@ -1909,16 +1931,20 @@ function applyRouteFromHash() {
   const topLevelViews = new Set([
     "dashboard",
     "coaching",
+    "my-coaching",
     "precall",
     "postcall",
     "deals",
+    "my-deals",
     "contacts",
+    "my-contacts",
+    "live",
     "manager",
     "pipeline",
     "signal",
     "profile",
   ]);
-  if (topLevelViews.has(hash) && currentView !== hash) {
+  if (topLevelViews.has(hash)) {
     switchView(hash);
   }
 }

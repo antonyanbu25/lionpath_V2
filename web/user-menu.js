@@ -2,8 +2,6 @@
  * Sidebar user profile menu — Slack-style flyout on the left edge.
  */
 
-import { wireThemeMenu, syncThemeMenuState } from "./theme.js";
-
 let globalEventsBound = false;
 let menuScrollBound = false;
 let menuCallbacks = {
@@ -106,11 +104,9 @@ export function initUserMenu(opts) {
   const trigger = document.getElementById("sidebar-user") || document.getElementById("user-menu-trigger");
   const panel = document.getElementById("user-menu-panel");
   const backdrop = document.getElementById("user-menu-backdrop");
-  const themeToggle = document.getElementById("user-menu-theme-toggle");
-  const themeSubmenu = document.getElementById("user-menu-theme-submenu");
   if (!trigger || !panel) return;
 
-  wireThemeMenu(panel);
+  panel.querySelector(".user-menu-theme")?.remove();
 
   if (panel.dataset.userMenuWired !== "1") {
     panel.dataset.userMenuWired = "1";
@@ -145,7 +141,6 @@ export function initUserMenu(opts) {
     panel.hidden = false;
     if (backdrop) backdrop.hidden = false;
     trigger.setAttribute("aria-expanded", "true");
-    syncThemeMenuState(panel);
   }
 
   function toggleMenu() {
@@ -163,13 +158,6 @@ export function initUserMenu(opts) {
       toggleMenu();
     });
   }
-
-  themeToggle?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const expanded = themeToggle.getAttribute("aria-expanded") === "true";
-    themeToggle.setAttribute("aria-expanded", expanded ? "false" : "true");
-    if (themeSubmenu) themeSubmenu.hidden = expanded;
-  });
 
   if (!globalEventsBound) {
     globalEventsBound = true;

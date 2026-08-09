@@ -261,7 +261,7 @@
                 <span id="user-menu-email" class="user-menu-email muted"></span>
               </div>
               <div class="user-menu-divider" role="separator"></div>
-              <div class="user-menu-theme">
+              <div class="user-menu-theme" hidden aria-hidden="true">
                 <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
                   <span class="user-menu-item-icon" aria-hidden="true">◐</span>
                   <span class="user-menu-item-label">Theme</span>
@@ -855,6 +855,8 @@
         el.hidden = false;
       }, true);
     </script>
+    <link rel="stylesheet" href="components/coming-soon.css">
+    <script src="components/coming-soon.js"></script>
     <script type="module">
       const PROD_HOST =
         /^(portal\.benjaminsquare\.com|yonus\.benjaminsquare\.com|janus\.benjaminsquare\.com|lionpath\.benjaminsquare\.com)$/.test(location.hostname) ||

@@ -63,6 +63,14 @@ body.splash-lock { overflow: hidden; }
   animation: login-theme-enter 0.8s ease 0.4s both;
 }
 
+#login-view .login-theme-toggle,
+#login-view [data-theme-toggle],
+.user-menu-theme,
+#user-menu-theme-toggle,
+#user-menu-theme-submenu {
+  display: none !important;
+}
+
 .login-theme-toggle .theme-toggle-icon {
   display: flex;
   align-items: center;

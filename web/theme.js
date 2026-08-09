@@ -14,6 +14,11 @@ function applyTheme(theme) {
   document.documentElement.classList.toggle("fw-dark-theme", theme === "dark");
   localStorage.setItem(THEME_KEY, theme);
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    if (btn.closest("#login-view")) {
+      btn.hidden = true;
+      btn.style.display = "none";
+      return;
+    }
     const isDark = theme === "dark";
     btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
     const iconHost = btn.querySelector(".theme-toggle-icon");
@@ -46,6 +51,11 @@ function toggleTheme() {
 
 function wireThemeToggles() {
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    if (btn.closest("#login-view")) {
+      btn.hidden = true;
+      btn.style.display = "none";
+      return;
+    }
     if (btn.dataset.themeWired === "1") return;
     btn.dataset.themeWired = "1";
     btn.addEventListener("fwClick", toggleTheme);
