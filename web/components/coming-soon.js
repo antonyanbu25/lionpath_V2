@@ -31,7 +31,7 @@
       <main class="coming-soon-shell" aria-labelledby="coming-soon-title">
         <section class="coming-soon-card">
           <img class="coming-soon-logo" src="${LOGO_URL}" alt="Janus logo" width="96" height="96" />
-          <p class="coming-soon-product">Janus</p>
+          <p class="coming-soon-product">Janus 2.0</p>
           <h1 id="coming-soon-title">Coming Soon</h1>
           <p class="coming-soon-copy">We are putting the finishing touches on this experience.</p>
           <div class="coming-soon-timer" aria-label="Countdown to launch">
