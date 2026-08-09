@@ -2094,13 +2094,13 @@ fw-button.sidebar-history-item.active {
   overflow: hidden;
 }
 
-.app-shell:has(#prep-result-view:not([hidden])) {
+.app-shell.has-result-view {
   height: 100vh;
   max-height: 100vh;
   overflow: hidden;
 }
 
-.main-content:has(#prep-result-view:not([hidden])) {
+.main-content.has-result-view {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -2109,14 +2109,14 @@ fw-button.sidebar-history-item.active {
   padding-top: 0;
 }
 
-.main-content:has(#prep-result-view:not([hidden])) #view-precall.view-panel {
+.main-content.has-result-view #view-precall.view-panel {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.main-content:has(#prep-result-view:not([hidden])) #prep-result-view {
+.main-content.has-result-view #prep-result-view {
   flex: 1 1 auto;
   min-height: 0;
 }

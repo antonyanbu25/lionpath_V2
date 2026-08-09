@@ -44,6 +44,18 @@ import { canonicalizePrepSources } from "./prep-source-canon.js";
 import { hydrateRecentNews } from "./recent-news.js";
 import { getPrepCrmSelection } from "./prep-crm-resolve.js";
 import { esc, $, show } from "./shared.js";
+
+/**
+ * Toggle .has-result-view on .app-shell and .main-content synchronously
+ * alongside hidden attribute changes on #prep-result-view, eliminating
+ * the one-frame :has() evaluation gap that causes a scrollbar flash.
+ */
+function setResultLayout(on) {
+  const appShell = document.querySelector(".app-shell");
+  const mainContent = document.querySelector(".main-content");
+  if (appShell) appShell.classList.toggle("has-result-view", on);
+  if (mainContent) mainContent.classList.toggle("has-result-view", on);
+}
 import { showPipelineProgress, hidePipelineProgress } from "./pipeline-progress.js";
 import {
   showPrepGenOverlay,
@@ -455,6 +467,7 @@ export function resetPrecallForm() {
   show($("prep-form-view"), true);
   show($("prep-briefs-list-view"), false);
   show($("prep-result-view"), false);
+  setResultLayout(false);
   show($("prep-result-back"), false);
   show($("prep-status"), false);
   show($("prep-loading"), false);
@@ -544,6 +557,7 @@ function showFormView() {
   show($("prep-form-view"), true);
   show($("prep-briefs-list-view"), false);
   show($("prep-result-view"), false);
+  setResultLayout(false);
   show($("prep-result-back"), false);
   show($("prep-status"), false);
 }
@@ -560,6 +574,7 @@ export function showPrepBriefsListView() {
   show($("prep-form-view"), false);
   show($("prep-briefs-list-view"), true);
   show($("prep-result-view"), false);
+  setResultLayout(false);
   show($("prep-result-back"), false);
   show($("prep-status"), false);
   show($("prep-loading"), false);
@@ -586,6 +601,7 @@ function showResultView(prep, meta, opts = {}) {
     show($("prep-briefs-list-view"), false);
     show($("prep-result-view"), false);
     show($("prep-result-back"), false);
+    setResultLayout(false);
     return;
   }
 
@@ -606,6 +622,7 @@ function showResultView(prep, meta, opts = {}) {
     resultView.classList.remove("prep-result-enter", "prep-result-enter-active");
   }
   show(resultView, !opts.deferReveal);
+  setResultLayout(!opts.deferReveal);
   show($("prep-result-back"), state.fromBriefList && !opts.deferReveal);
 
   wireBriefResultBack();
