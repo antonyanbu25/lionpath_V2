@@ -220,11 +220,26 @@ export function createFirestoreStore(fb) {
       onRow(null);
       return () => {};
     }
-    return onSnapshot(
+    let unsub;
+    const onError = (err) => {
+      const msg = (err?.message || err || "").toLowerCase();
+      if (msg.includes("missing or insufficient permissions") || msg.includes("permission denied")) {
+        console.warn(`[firestore] ${col}/${key} not found or denied — treating as absent`);
+        onRow(null);
+        if (unsub) { try { unsub(); } catch (_) {} }
+        unsub = () => {};
+        return;
+      }
+      console.warn(`[firestore] ${col}/${key} snapshot failed:`, err?.message || err);
+    };
+    unsub = onSnapshot(
       doc(db, col, key),
       (snap) => onRow(mapDocSnap(snap)),
-      (err) => console.warn(`[firestore] ${col}/${key} snapshot failed:`, err?.message || err),
+      onError,
     );
+    return () => {
+      if (unsub) { try { unsub(); } catch (_) {} }
+    };
   }
 
   function subscribeMany(specs, emit) {
