@@ -732,8 +732,10 @@ function buildSubscribeRemoteCalls() {
           const calls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
           onChange(calls);
         },
-        // silent — Firestore postCalls may not exist for this user
-        (err) => {},
+        // silent — Firestore postCalls may not exist for this user.
+        // Trigger onChange with empty data so the dashboard renders
+        // from local cache instead of waiting forever.
+        () => { if (typeof onChange === 'function') onChange([]); },
       );
       if (cancelled && typeof unsub === "function") unsub();
     });

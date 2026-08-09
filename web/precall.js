@@ -443,6 +443,25 @@ function renderActiveTab() {
   if (demo) demo.innerHTML = renderDemoPrepTab(prep, state.checks, accountId(meta));
 
   wireTabInteractions();
+
+  // Force the fw-tab-panel shadow root to propagate the bounded flex chain.
+  // fw-tab-panel's internal shadow wrapper does NOT pass through the flex
+  // container properties to its slot children, which breaks overflow-y:auto
+  // on .prep-tab-panel-wrap. Patch the shadow root internals directly.
+  document.querySelectorAll("#prep-tabs fw-tab-panel").forEach((panel) => {
+    const sr = panel.shadowRoot;
+    if (!sr || sr.dataset.precallPatched === "1") return;
+    sr.dataset.precallPatched = "1";
+    const inner = sr.querySelector('[part="container"], .tab-panel, [role="tabpanel"], div:not([hidden])');
+    if (inner) {
+      inner.style.cssText = "display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;";
+    } else {
+      // No identifiable inner wrapper — add a style rule to the shadow root
+      const style = document.createElement("style");
+      style.textContent = ":host { display:flex; flex-direction:column; flex:1; min-height:0; } ::slotted(*) { flex:1; min-height:0; overflow-y:auto; }";
+      sr.appendChild(style);
+    }
+  });
 }
 
 function clearFwInput(id) {

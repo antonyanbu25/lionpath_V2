@@ -2,15 +2,26 @@
 
 #view-calls:has(.call-record) {
   max-width: none;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .call-panel {
-  min-height: 200px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .call-record {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   line-height: 1.55;
 }
 
@@ -18,6 +29,11 @@
   max-width: 1400px;
   margin: 0 auto;
   padding: 16px 28px 70px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .call-record-title-block {
@@ -953,7 +969,11 @@
   border: none;
   border-radius: 0;
   background: transparent;
-  overflow: visible;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .call-record-tablist.tabs {
@@ -991,15 +1011,22 @@
 
 .call-record-tabpane {
   display: none;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .call-record-tabpane.on {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .call-tab-panel-inner {
   padding: 0;
-  min-height: 200px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .call-tab-empty {
