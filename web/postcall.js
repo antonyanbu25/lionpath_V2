@@ -550,8 +550,15 @@ function scheduleCrmMatches() {
 }
 
 function prospectEmailsPresentSync() {
-  const raw = $("pc-prospect-emails")?.value ?? "";
+  const raw = readFieldValue($("pc-prospect-emails"));
   return filterSessionEmailFromProspects(parseProspectEmails(raw)).length > 0;
+}
+
+/** @param {{ busy?: boolean, hasEmail?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s */
+export function computeAnalyzeButtonDisabled(s) {
+  const busy = !!s.busy;
+  const hasEmail = !!s.hasEmail;
+  return busy || !hasEmail || !!s.crmResolving || !s.crmPreviewSurfacedOnce;
 }
 
 function updateAnalyzeButtonState() {
@@ -559,8 +566,12 @@ function updateAnalyzeButtonState() {
   if (!btn) return;
   const busy = pass0Busy || contextParsing || linkedinParsing || generating;
   const hasEmail = prospectEmailsPresentSync();
-  const crmGate = hasEmail && (crmResolving || !crmPreviewSurfacedOnce);
-  btn.disabled = busy || crmGate;
+  btn.disabled = computeAnalyzeButtonDisabled({
+    busy,
+    hasEmail,
+    crmResolving,
+    crmPreviewSurfacedOnce,
+  });
 }
 
 function markCrmPreviewSurfaced() {
@@ -4764,6 +4775,14 @@ async function startPipeline(e) {
   if (btn?.disabled) return;
   const status = $("postcall-status");
 
+  // Read fw-input values before disabling the form — Crayons can stop exposing shadow values when disabled.
+  await flushCrmMatchesPanel();
+  const collected = await collectIntakePayload();
+  if (collected.error) {
+    showInlineStatus(status, { type: "error", message: collected.error });
+    return;
+  }
+
   pass0Busy = true;
   updateAnalyzeButtonState();
   setButtonLoading(btn, true);
@@ -4780,16 +4799,6 @@ async function startPipeline(e) {
   const domainContextP = postCallOwnerId().then((ownerId) =>
     ownerId ? loadPostCallResolveContext(ownerId) : { briefs: [], accounts: [], deals: [] },
   );
-
-  const collected = await collectIntakePayload();
-  if (collected.error) {
-    cleanupPass0Attempt({ hideOverlay: true, reenableForm: true });
-    pass0Busy = false;
-    updateAnalyzeButtonState();
-    setButtonLoading(btn, false);
-    showInlineStatus(status, { type: "error", message: collected.error });
-    return;
-  }
   const { payload } = collected;
   pipelineState = { payload, resolve: null, classify: null, generated: false, recordId: null };
   const { signal, gen } = beginPostcallPipeline();
