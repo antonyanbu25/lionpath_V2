@@ -57,9 +57,28 @@
     return choice === "timer" || choice === "hidden" ? choice : null;
   }
 
+  /** Apply the stored choice immediately on the current page view */
+  function applyChoice(choice) {
+    if (choice === "timer") {
+      document.body.classList.add("cs-timer");
+      document.body.classList.remove("cs-hidden");
+    } else if (choice === "hidden") {
+      document.body.classList.add("cs-hidden");
+      document.body.classList.remove("cs-timer");
+    }
+  }
+
+  /** Auto-apply on page load if a choice was previously recorded */
+  function autoApplyOnLoad() {
+    var choice = getChoice();
+    if (choice) applyChoice(choice);
+  }
+
   window.BossDecision = {
     shouldShow: shouldShow,
     recordDecision: recordDecision,
     getChoice: getChoice,
+    applyChoice: applyChoice,
+    autoApplyOnLoad: autoApplyOnLoad,
   };
 })();

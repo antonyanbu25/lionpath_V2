@@ -1,0 +1,19 @@
+/* Coming Soon state classes — applied via BossDecision on body */
+
+/* === TIMER MODE === */
+body.cs-timer .view-coming-soon-target .coming-soon-shell {
+  /* Allow the existing coming-soon timer to show */
+  display: grid;
+}
+
+/* === HIDDEN ICONS MODE === */
+body.cs-hidden .nav-item[data-view="accounts"],
+body.cs-hidden .nav-item[data-view="deals"],
+body.cs-hidden .nav-item[data-view="contacts"],
+body.cs-hidden .nav-item[data-view="coaching"] {
+  display: none !important;
+}
+
+body.cs-hidden .coming-soon-shell {
+  display: grid;
+}

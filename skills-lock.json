@@ -1,11 +1,65 @@
 {
   "version": 1,
   "skills": {
+    "8-bit-orbit-video-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/8-bit-orbit-video-template/SKILL.md",
+      "computedHash": "4dc23e4efd92f081d3f12f45b2d1131b05832ac4d659e6676e548a7ca716ed06"
+    },
+    "ad-creative": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ad-creative/SKILL.md",
+      "computedHash": "0e34a9585693914a03266ded0da62140fdd02378c89f8f7de75223fb3fc1878d"
+    },
+    "after-hours-editorial-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/after-hours-editorial-template/SKILL.md",
+      "computedHash": "72d63f90ff77d65420cb3ca851c6ec86fe946538bd10c16575b520ac72b4c79a"
+    },
+    "agent-browser": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/agent-browser/SKILL.md",
+      "computedHash": "09ef2d39e3905cee2f1a40f6e6223da42c2b77efe7df45cf15f6c093f7fa36b5"
+    },
+    "ai-music-album": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ai-music-album/SKILL.md",
+      "computedHash": "9f33ae92e8689fde486927dee7717ddb3e953eaeb0e7824a806d686918cb0bf5"
+    },
+    "algorithmic-art": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/algorithmic-art/SKILL.md",
+      "computedHash": "bd8d3ee280a9be1cac71e56e23fd87ef5f0b81aac112fea5af84dca866e13039"
+    },
     "algorithmic-color-palette": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/algorithmic-color-palette/SKILL.md",
       "computedHash": "edbee625a90db8231fdcd6a4cce8af87f102a58125e26cf65c8edd08543e03b7"
+    },
+    "apple-hig": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/apple-hig/SKILL.md",
+      "computedHash": "810dd0ff8da113fceee96b5d4228b0d298d29d14ee90b9977fae1bc76d1358e8"
+    },
+    "article-magazine": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/article-magazine/SKILL.md",
+      "computedHash": "87027fe506acf8ef2c2479bde97d8e4fb6bacab66aca074413489a8affe176b6"
+    },
+    "artifacts-builder": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/artifacts-builder/SKILL.md",
+      "computedHash": "9b59e116000cc4e7cadf28d1697262b6a905aa85ac97880d8cb5cb616bd9a4ac"
     },
     "authentic-product-representation": {
       "source": "dembrandt/dembrandt-skills",
@@ -13,11 +67,35 @@
       "skillPath": "skills/authentic-product-representation/SKILL.md",
       "computedHash": "e48f78f43be518bc7a6ec2bc49f44927a7cb06744535765185421ede993c1d92"
     },
+    "brainstorming": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "b81a2afee85463796b78c180270625040e1f5a1fb6e04778f2f19e303a5ea077"
+    },
+    "brand-extract": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/brand-extract/SKILL.md",
+      "computedHash": "daf1497a38c7011764021e8126af43da310e0618dd7f8b289fd8fab2c2f57b54"
+    },
+    "brand-guidelines": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/brand-guidelines/SKILL.md",
+      "computedHash": "8af0e4d2097017080331ec7b123accdfce234e4dbbc5f41666dd682ce4a50257"
+    },
     "brand-visual-language": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/brand-visual-language/SKILL.md",
       "computedHash": "a890a7650d1652d1b3a506bd4055c66b1e016519748bbad49028918daeefa424"
+    },
+    "brandkit": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/brandkit/SKILL.md",
+      "computedHash": "181bc174e9c6ade767a4071e8f1a4b158e11d1a68bd83802f4cb314938963263"
     },
     "button-states": {
       "source": "dembrandt/dembrandt-skills",
@@ -25,11 +103,47 @@
       "skillPath": "skills/button-states/SKILL.md",
       "computedHash": "b3eab1cd2f883f5c1e1ae62c532f7a43db86f854d8f0e0e975255a470faac266"
     },
+    "canvas-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/canvas-design/SKILL.md",
+      "computedHash": "b681c2a9354093877851b6c23c5e17c7602a766d1ecd403f8f1a49df2d631af3"
+    },
+    "card-twitter": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/card-twitter/SKILL.md",
+      "computedHash": "8faaf88065010fc72c215a184680d5974b8d35eb4c86d859a458f334a065fb07"
+    },
+    "card-xiaohongshu": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/card-xiaohongshu/SKILL.md",
+      "computedHash": "77e80e7ca48a64d4975ba26843913148c495ec804c462b7cf921c58fe47c740e"
+    },
+    "chat-motion-overlay": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/chat-motion-overlay/SKILL.md",
+      "computedHash": "50e563bb422d95f4793cb41d300880f69509ca7d2ef1fc94694de39661630ece"
+    },
+    "color-expert": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/color-expert/SKILL.md",
+      "computedHash": "cb54d52ad8e920ac86a9d63516c85a42ebe51f7ef540f6e6120e1b407819e237"
+    },
     "color-mode-and-theme": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/color-mode-and-theme/SKILL.md",
       "computedHash": "bb6425081d4b0d22620841904de6dc95f85d2a0e5de10ba68b55fb1fa2912bb6"
+    },
+    "competitive-ads-extractor": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/competitive-ads-extractor/SKILL.md",
+      "computedHash": "c640dec31aac6eddae67c0bedf3b2bbee406090b9c4c643e861b3aff36929688"
     },
     "component-family-consistency": {
       "source": "dembrandt/dembrandt-skills",
@@ -43,11 +157,53 @@
       "skillPath": "skills/coordinated-data-views/SKILL.md",
       "computedHash": "15173a87fb01434191cee375bda5a99a5b60f3f603238514d1db201a470b74f7"
     },
+    "copywriting": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/copywriting/SKILL.md",
+      "computedHash": "0c80ef86794636c2d9c7661bf1a29b38dd5cd987209fa51a6a387ffa302dea28"
+    },
+    "creative-director": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/creative-director/SKILL.md",
+      "computedHash": "927d096f20fb86d6e7d86551c485596953e02579a61d4ff8777b28d11bddd654"
+    },
+    "d3-visualization": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/d3-visualization/SKILL.md",
+      "computedHash": "a05b0e2b1dfe85fdfae38cae4fb8c32febae0b8444b1cd9b0777845b5027403e"
+    },
     "data-display-and-selection": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/data-display-and-selection/SKILL.md",
       "computedHash": "0e9499759f09189df01741581833c357ee7828f7991d2aca19e0da568b6fc9b1"
+    },
+    "data-report": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/data-report/SKILL.md",
+      "computedHash": "75da1930a78d216acc576b7412bd70011296c123866b35d2d2e74df635f27936"
+    },
+    "deck-guizang-editorial": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/deck-guizang-editorial/SKILL.md",
+      "computedHash": "dabf6dd24cb225bd99920c4d6b5f8362f41286e7f9c163fb28c9ccea61c2b6b9"
+    },
+    "deck-open-slide-canvas": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/deck-open-slide-canvas/SKILL.md",
+      "computedHash": "0a9a632a4e8739fde3053ece29b15a0f6d9cd2c14e1b94635756b4581d4a16d0"
+    },
+    "deck-swiss-international": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/deck-swiss-international/SKILL.md",
+      "computedHash": "bd63eaf8220707350489765353e4f698af4b77ffa5d19c16e5c9e2e8e9d5f495"
     },
     "dembrandt": {
       "source": "dembrandt/dembrandt-skills",
@@ -55,11 +211,89 @@
       "skillPath": "skills/dembrandt/SKILL.md",
       "computedHash": "607bbb8cbe25f7810d0d165cb84409fb76c2acc6a21bb1c3d6f71c07a2d9f3ed"
     },
+    "design-brief": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/design-brief/SKILL.md",
+      "computedHash": "719dbe2e92359929d796392ecd18a37e5c5fb45f74b48e764d9a92459be60db3"
+    },
+    "design-consultation": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/design-consultation/SKILL.md",
+      "computedHash": "68edc612a13a5db5fa181f11507651cc47ecc204ef06c098f5f6053a8014f6be"
+    },
+    "design-md": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/design-md/SKILL.md",
+      "computedHash": "fe539b83d2cc8f3d4aa3b1aecf4933d12aaf1a45e321991d9143026038279865"
+    },
+    "design-review": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/design-review/SKILL.md",
+      "computedHash": "9642d1c5de6c1aa7556b012e66d2850f8c6472c090766e59e6024676322f07b5"
+    },
+    "design-taste-frontend": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "487467674b8b57954ddffedb5424fd77f0efdfed0c8875bcc8327d688358782f"
+    },
+    "design-taste-frontend-v1": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill-v1/SKILL.md",
+      "computedHash": "875b3f9f93ac765a60e372af30504334c8da730734705441f9aaf2e004bef01c"
+    },
+    "digits-fintech-swiss-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/digits-fintech-swiss-template/SKILL.md",
+      "computedHash": "1916089b4e1e11a0f9fd430f1efd986b3908984aea0c324dc5154eda1aca8c8f"
+    },
+    "doc": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/doc/SKILL.md",
+      "computedHash": "d083d1658b7da6b5cbec56a5d188d8c1d33e4f1d8ad756304fc811ddb7934836"
+    },
+    "doc-kami-parchment": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/doc-kami-parchment/SKILL.md",
+      "computedHash": "6e38d55bd47b6528f43f143a23888b03ecb80443a92b8122744cf99bde7ac810"
+    },
+    "docx": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/docx/SKILL.md",
+      "computedHash": "154df931053067e50f77da2ac37000957c0a149bd43b222878d60c95c86adc7b"
+    },
     "domain-expert-configuration": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/domain-expert-configuration/SKILL.md",
       "computedHash": "0fcdba3894a43921873e9ada24a7318832e479c87245d0ca1c4aebddbcb34ff0"
+    },
+    "domain-name-brainstormer": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/domain-name-brainstormer/SKILL.md",
+      "computedHash": "b4a6800b4d9c1fcfc9c869186ea001068d746d89bb015ab87969dc3e68b5b283"
+    },
+    "ecommerce-image-workflow": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ecommerce-image-workflow/SKILL.md",
+      "computedHash": "63a9c8476647391a1fbe0856b84a7b1bd92cc041c28e38f97047750e835fe2e6"
+    },
+    "editorial-burgundy-principles-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/editorial-burgundy-principles-template/SKILL.md",
+      "computedHash": "168e3501459b78579c90b3f15591cf69792478d1c7b35596724ee3bc59f1197f"
     },
     "elevation-and-depth": {
       "source": "dembrandt/dembrandt-skills",
@@ -67,17 +301,251 @@
       "skillPath": "skills/elevation-and-depth/SKILL.md",
       "computedHash": "0cf3557091143852c59daa9c7bcaf4a5dbb27cdc6731028d0f827d74f2502009"
     },
+    "emil-design-eng": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "9279bbe065dde3b66b31ba3ecc887dd6b30b4a81e3473bcd9bf2e1067c7a83b4"
+    },
+    "emilkowalski-motion": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/emilkowalski-motion/SKILL.md",
+      "computedHash": "ac9e827c591d2527dea51f937e0ba0fc88627c04b713eaaa76bf634c807d547f"
+    },
+    "enhance-prompt": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/enhance-prompt/SKILL.md",
+      "computedHash": "90e3fcd97c7e0374e04b8bfd51e7508ec259b26b63bbc15b836deacbe17d9086"
+    },
+    "export-download-debugging": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/export-download-debugging/SKILL.md",
+      "computedHash": "6a71fd8f84e0ba1271b272a1d3e663f4eef3a3ec141b147d1607666313462d63"
+    },
     "extract-design": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/extract-design/SKILL.md",
       "computedHash": "b12b00dc25869eefd845d3caa12d87ab3fd7d11cf4aba798ac47ba4ac502771b"
     },
+    "fal-3d": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-3d/SKILL.md",
+      "computedHash": "571a75f1d8659037f36c0ac77ef0ec755cde03416c7ac57e318d4983953e4e7c"
+    },
+    "fal-generate": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-generate/SKILL.md",
+      "computedHash": "58e41712fbd59a18392adfd168d539c335111d833c678f2af6cd84a2424eb392"
+    },
+    "fal-image-edit": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-image-edit/SKILL.md",
+      "computedHash": "c148709d37318c49055e7ff24bdb444802e93daa9e00301ffa90f1e335d41919"
+    },
+    "fal-kling-o3": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-kling-o3/SKILL.md",
+      "computedHash": "47f6cb23b8f597b138e0a645de2277f167c19bb9ba84efd55f8f34459e83d935"
+    },
+    "fal-lip-sync": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-lip-sync/SKILL.md",
+      "computedHash": "7831c7214979b5b9b4050ee0abf542d66f9d0084e6d48c2cfcc6acbee574b044"
+    },
+    "fal-realtime": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-realtime/SKILL.md",
+      "computedHash": "a4d9b12fedc7bd843c15bbd7ab3245e730f817d0049dc5cbadd4828e7e61caff"
+    },
+    "fal-restore": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-restore/SKILL.md",
+      "computedHash": "c9a0aaabfd37b7447d9cec0f525716c7e1932bc7bdb23cd3d6a0bf8161b18db4"
+    },
+    "fal-train": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-train/SKILL.md",
+      "computedHash": "fa86f2e9b5e054409e46ad28423f1cf5b72611e75430c14c5f08de930eaf96b9"
+    },
+    "fal-tryon": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-tryon/SKILL.md",
+      "computedHash": "e77ea5014777fe8b23c461e0bd7f0596a95f7c0ded1520e416078d698af2ec96"
+    },
+    "fal-upscale": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-upscale/SKILL.md",
+      "computedHash": "e9fba8b5959b3f682493fe4881e5f5dea67c865ef20dde0d2788ba8304b7eb25"
+    },
+    "fal-video-edit": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-video-edit/SKILL.md",
+      "computedHash": "ea0504ed38cb214ff76f45d6e30d433bc52efca7635c9d102550e937eb63a5d2"
+    },
+    "fal-vision": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/fal-vision/SKILL.md",
+      "computedHash": "6134e0a083faa68cafc8e083a644812d45a31f2d157f7a298260ea267af85533"
+    },
+    "faq-page": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/faq-page/SKILL.md",
+      "computedHash": "53c2b5f458965267d20908e58c5be48df8e6852f549b6d8674cb91051bd5a931"
+    },
+    "field-notes-editorial-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/field-notes-editorial-template/SKILL.md",
+      "computedHash": "014e7925c64b0e3da5828452785029a5e0dbd2df82689d7fc9125bf31b2627ea"
+    },
+    "figma-code-connect-components": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-code-connect-components/SKILL.md",
+      "computedHash": "b79e7f8c07e533a4906d46425c7633ca089ca0c8d204f95af80da5fc163af9dc"
+    },
+    "figma-create-design-system-rules": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-create-design-system-rules/SKILL.md",
+      "computedHash": "d33c2f1360bff57cccc61fe1e2c66443ee65f1ad0848576e0a0888e70267f77f"
+    },
+    "figma-create-new-file": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-create-new-file/SKILL.md",
+      "computedHash": "dcb5502f059a9901ffb106f4d3cae64ccb851e64846c5dbd51a1e74c5a9a902e"
+    },
+    "figma-generate-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-generate-design/SKILL.md",
+      "computedHash": "35ff65ef74e27fe83f222622c97f45713f585fdb8a2d3cc975d6db1604b2cb7e"
+    },
+    "figma-generate-library": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-generate-library/SKILL.md",
+      "computedHash": "478fa8ab8484b97b45ac37d61bb4d77f6609d640b6509ff6ba0990e9d697b483"
+    },
+    "figma-implement-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-implement-design/SKILL.md",
+      "computedHash": "2e5149c56497c46809b5655f6d320fdd5462f440a2eb5ca06b05fddfffbbe1d4"
+    },
+    "figma-use": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/figma-use/SKILL.md",
+      "computedHash": "c758d069679db2ded9b4921ccf00d89c28db0c2a828eb742d4a4020081f87632"
+    },
+    "flutter-animating-apps": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/flutter-animating-apps/SKILL.md",
+      "computedHash": "0f7c5629404d5d3c842deab8a401eb913e6076b8fec1678f2e92c52d7b34c04f"
+    },
     "form-design": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/form-design/SKILL.md",
       "computedHash": "b9407c1145fb64764adcc5ce371151ef40ecf919ae431eccb405eed4a0571ccb"
+    },
+    "frame-data-chart-nyt": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-data-chart-nyt/SKILL.md",
+      "computedHash": "0c816a5a049432cdd238282b9008b24074d31d6c1fc6374babcf8163dc46e1e7"
+    },
+    "frame-flowchart-sticky": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-flowchart-sticky/SKILL.md",
+      "computedHash": "815a928b897e024f117fef3e9b5aa62cc0f5688bcc6fb3eeca84910a5f8a0ba5"
+    },
+    "frame-glitch-title": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-glitch-title/SKILL.md",
+      "computedHash": "436b05b57b38f668a61bc8a09a06ce6557490454f8d79afaa2d4ca2bf5a86f8a"
+    },
+    "frame-light-leak-cinema": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-light-leak-cinema/SKILL.md",
+      "computedHash": "c4f8178e61d1d8deac2fe542b42ac85ed86d80d8c03d00a7459041a75b00f422"
+    },
+    "frame-liquid-bg-hero": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-liquid-bg-hero/SKILL.md",
+      "computedHash": "c7aafe8681303cad600387d37ded3c82cdf301c6b97b185bb9707a94ae144fe3"
+    },
+    "frame-logo-outro": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-logo-outro/SKILL.md",
+      "computedHash": "00ca1673338cefee595368c9123868724686ff7bbea474eaf46d247620e16b3d"
+    },
+    "frame-macos-notification": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frame-macos-notification/SKILL.md",
+      "computedHash": "4082c328fb160afdb6eabdaf82e1eab7414d05fc88790a9e7820b86b61deb97f"
+    },
+    "frontend-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "1e9380363b2118bbcc608aa0f3d15eadce050b39f0c62cbd74cadb56fae7abea"
+    },
+    "frontend-dev": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-dev/SKILL.md",
+      "computedHash": "85307234d373a544744db033e233488f47e52e7ca7eda514163e15bcda36ff71"
+    },
+    "frontend-skill": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-skill/SKILL.md",
+      "computedHash": "3389f3d7535d4ff8ac39d1d6a72cd170cf0a6a5120461817eb28d168403ba7ee"
+    },
+    "frontend-slides": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-slides/SKILL.md",
+      "computedHash": "aa9c0511b2845394baef7b5922baa06701422452edd1265032e49401ade5e4c6"
+    },
+    "full-output-enforcement": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/output-skill/SKILL.md",
+      "computedHash": "1356e8b955c299209d7e145dcef0b3941521d037c1910eb3fd8e12ac729de145"
+    },
+    "full-page-screenshot": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/full-page-screenshot/SKILL.md",
+      "computedHash": "a1390c97ba94b6eb318692fe8118d10dcd8bacc2f3f6bf8c2a8b0cf6a3b2520d"
     },
     "generate-ui-from-brand": {
       "source": "dembrandt/dembrandt-skills",
@@ -91,11 +559,143 @@
       "skillPath": "skills/gestalt-ui-organisation/SKILL.md",
       "computedHash": "d84f4eb2ff00562f68443f82d014ead9e2d548814d98aa7309528d5fa95d9549"
     },
+    "gif-sticker-maker": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gif-sticker-maker/SKILL.md",
+      "computedHash": "2b18d1fe35394361580374dbde62571a763bd73dd8ff4c2951a398289d978b5c"
+    },
     "global-toolbar-controls": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/global-toolbar-controls/SKILL.md",
       "computedHash": "09e026bc245b76dd344c5d5bf9ed89678a1d13729c6a159bf3538ab64a5115f1"
+    },
+    "gpt-taste": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gpt-tasteskill/SKILL.md",
+      "computedHash": "655d937030ea7669786a5f1340acdef60521ce779a4805e3058d07bd82793b55"
+    },
+    "gsap-core": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-core/SKILL.md",
+      "computedHash": "e14468bc306183d19db463dd622163a62013c1fd4424ac2794e06ce636117aea"
+    },
+    "gsap-frameworks": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-frameworks/SKILL.md",
+      "computedHash": "6041853821d9252ca63d72924e0191d7ad9b4c6e6da0328722fa1a1a8fa7e3cb"
+    },
+    "gsap-performance": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-performance/SKILL.md",
+      "computedHash": "5cf5d7dafdf20e57131d6a81a44208a2800cc07f9e93db6507925c8dad999980"
+    },
+    "gsap-plugins": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-plugins/SKILL.md",
+      "computedHash": "15a5dfe91efd4ecaa4038b1eb7554169523dfebfbb680ec8b0cbceb0eb542ce3"
+    },
+    "gsap-react": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-react/SKILL.md",
+      "computedHash": "22109aaf856e9a036e7bf1a7425b7847059fb7fcac576ce55d21549fca110ec6"
+    },
+    "gsap-scrolltrigger": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-scrolltrigger/SKILL.md",
+      "computedHash": "87845b8d368aa61a7926640d560ee6fa55f0bde49745c6c2a0de62f1bffa474c"
+    },
+    "gsap-timeline": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-timeline/SKILL.md",
+      "computedHash": "46bb93e0fae1a8b2aebe37ed3704f215a317539e38fcd86cb4d0af0ffc81ffe1"
+    },
+    "gsap-utils": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-utils/SKILL.md",
+      "computedHash": "36943f0cd68caebff81a92db0f98539cffef944a7aefe4be912630fbfd869879"
+    },
+    "hand-drawn-diagrams": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/hand-drawn-diagrams/SKILL.md",
+      "computedHash": "5c5aaf5d998b52363b2dcba78d45eb50daba3b605ee71be46b86aa514eb3156a"
+    },
+    "hatch-pet": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/hatch-pet/SKILL.md",
+      "computedHash": "7079627151bca58f8a6922b4a6fd71e302410535e16e03a95f8a127d8b63c3ff"
+    },
+    "high-end-visual-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/soft-skill/SKILL.md",
+      "computedHash": "cff8e68eeb556d4779dd7513b999e80036ea29d568e28344566bfb831cbb2ced"
+    },
+    "html-ppt-retro-quarterly-review": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/html-ppt-retro-quarterly-review/SKILL.md",
+      "computedHash": "2eeb8087cb344b59f07f0e2c6d623d37718416d1e145633ed2758eaf8e4f6cc4"
+    },
+    "image-enhancer": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/image-enhancer/SKILL.md",
+      "computedHash": "c0aeaaedeb271d6798abb7d97dca66668464ce36a3d0111e6f57b5a6082d9232"
+    },
+    "image-to-code": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/image-to-code-skill/SKILL.md",
+      "computedHash": "4b5b7a88e33eaaf8995b1ae5751b4001cb5d337d36514e665520c70f306a0f8f"
+    },
+    "imagegen": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen/SKILL.md",
+      "computedHash": "bc7c2babbdf2f95e86c87c37312a4524b9ce3c1e994ed5ccb66235310d5feff5"
+    },
+    "imagegen-frontend-mobile": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-mobile/SKILL.md",
+      "computedHash": "5562940c8db9a4aab4aa826529c7ba6b083f0b1dd27c74671a1e06bf5ea772e5"
+    },
+    "imagegen-frontend-web": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-web/SKILL.md",
+      "computedHash": "97f91c260f75270fe42efea5f7ab11628103114f59a08fa43f947d89245fd4b9"
+    },
+    "imagen": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/imagen/SKILL.md",
+      "computedHash": "9fc27d6ac06bda20a4abea82d0d74aa61e89129dcd526c64db9e3d7ce9ccfc86"
+    },
+    "impeccable-design-polish": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/impeccable-design-polish/SKILL.md",
+      "computedHash": "4e503449a58d0609daba362aea73aebf920b532a9793446158cc8a907e821b78"
+    },
+    "industrial-brutalist-ui": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/brutalist-skill/SKILL.md",
+      "computedHash": "054f3b93978948db4093fa79863b22c4ac4ced5212cb48a8772fc5ac9b04e1f3"
     },
     "information-architecture": {
       "source": "dembrandt/dembrandt-skills",
@@ -109,17 +709,59 @@
       "skillPath": "skills/layout-paradigms-and-consistency/SKILL.md",
       "computedHash": "c979ee25caa52c150b2235023b006c2eb865a3e30e3142598c73187bcf2bea8a"
     },
+    "library-curator": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/library-curator/SKILL.md",
+      "computedHash": "b421136a941816b75b723bb425a570e03cd592577ed4c53e104315ea4af0932e"
+    },
     "loading-states-and-perceived-performance": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/loading-states-and-perceived-performance/SKILL.md",
       "computedHash": "0abaf28761eec09822024a9ca5642945736c2c06a8eef2455f2b503c21c1dd99"
     },
+    "login-flow": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/login-flow/SKILL.md",
+      "computedHash": "f76d63660a053f9fdf99dec3a6396da73a9ec70a534e82a1ec79481c44f82775"
+    },
+    "marketing-psychology": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/marketing-psychology/SKILL.md",
+      "computedHash": "c12601a76aadac59d193daa401cb63ff6918bc19e8279eeac24d163a4fd4a027"
+    },
     "micro-interactions": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/micro-interactions/SKILL.md",
       "computedHash": "4acc952a4c71257d0e2e504325839668d333762085baa6802373242377d441d2"
+    },
+    "minimalist-ui": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/minimalist-skill/SKILL.md",
+      "computedHash": "8a365fff1bd8e54d5283c0dcf4d65e3be6c63e8b8c4596cab9d224f220377e3a"
+    },
+    "minimax-docx": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/minimax-docx/SKILL.md",
+      "computedHash": "01e6de86fc036a8d7c6c8a2b7fcc287fd6c40b978c1c4f1690d38a3f206d188c"
+    },
+    "minimax-pdf": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/minimax-pdf/SKILL.md",
+      "computedHash": "3056a471cea27a26978f1832722b48b1a334c1b602c09f3e2f7e42a82697683f"
+    },
+    "mockup-device-3d": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/mockup-device-3d/SKILL.md",
+      "computedHash": "9347ed4ac9811b03a5c9d4fb8d910990b1d80ded50f5db22d50e21fe14d51238"
     },
     "modal-and-overlay-patterns": {
       "source": "dembrandt/dembrandt-skills",
@@ -139,6 +781,12 @@
       "skillPath": "skills/motion-and-storytelling/SKILL.md",
       "computedHash": "eb916e5188ef825558267ea45733f641d34c08fc8eecb544d91e64d5ef387932"
     },
+    "nanobanana-ppt": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/nanobanana-ppt/SKILL.md",
+      "computedHash": "6408bc2c6719c8691a79725641465be81501e12698ad3935599899db472e8a42"
+    },
     "nielsen-usability-heuristics": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
@@ -151,11 +799,29 @@
       "skillPath": "skills/notifications-and-recovery/SKILL.md",
       "computedHash": "d596e74ddc67b3bc596320f03fde0c6b42fc3998e276124cb413b857144d391d"
     },
+    "od-contribute": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/od-contribute/SKILL.md",
+      "computedHash": "f63530096bbfe76369838a9550b41fba0f57e1f5059206e7c50c6e5c7f89f6cc"
+    },
     "operational-expert-tool-ui": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/operational-expert-tool-ui/SKILL.md",
       "computedHash": "2fc59954e48d95dc72c23379a155be1c5d374b83eae15e24d5b772fef6ff17a0"
+    },
+    "paywall-upgrade-cro": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/paywall-upgrade-cro/SKILL.md",
+      "computedHash": "184d73fbe941b14404cb95b529b3d39a1c1bba45734ee491868e7217e6fab656"
+    },
+    "pdf": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pdf/SKILL.md",
+      "computedHash": "9bb151658b3ed8c40a9b3f8bb780f80a5f1bb01114e81ec1ea8bc7a6ec6f69c5"
     },
     "performance-and-web-vitals": {
       "source": "dembrandt/dembrandt-skills",
@@ -163,11 +829,89 @@
       "skillPath": "skills/performance-and-web-vitals/SKILL.md",
       "computedHash": "47ecc69e496af5c0aafb6a0e4b9f1cf68e17569229b9d60448eabfa8d5b2ba4c"
     },
+    "pixelbin-media": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pixelbin-media/SKILL.md",
+      "computedHash": "891dc65b44aef7a38ea30bcbc100d9db9a77a44d1fccf8087948a68ba0d562f9"
+    },
+    "plan-design-review": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/plan-design-review/SKILL.md",
+      "computedHash": "5f6e51eca1168c6dd59634c504acbc5c811c57602ef061a4ba07e20eda7303b1"
+    },
+    "platform-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/platform-design/SKILL.md",
+      "computedHash": "f647561840d6120a060e2f319ed2d93c345b6b03d3c6ffd0b36888d37c68f8e4"
+    },
+    "poster-hero": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/poster-hero/SKILL.md",
+      "computedHash": "54894f2e8cbb9b3ce0da41b459ea8bdba6438b533d5a4976b03c08eeac81c504"
+    },
+    "ppt-keynote": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ppt-keynote/SKILL.md",
+      "computedHash": "8b5f4bcae9a428309698d0ec09051b9a769e62c45f6d60750985983520738e74"
+    },
+    "pptx": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pptx/SKILL.md",
+      "computedHash": "615ee5150d94f26e123930902511e1c837d23f89a29f5d7f5fd17ab1a035d7c1"
+    },
+    "pptx-generator": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pptx-generator/SKILL.md",
+      "computedHash": "ed8d97d3a87bca97e1c9c038314e36e4f449f4c54be63d6124f0ad4207ae587c"
+    },
+    "pptx-html-fidelity-audit": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pptx-html-fidelity-audit/SKILL.md",
+      "computedHash": "ff3a8f75c04ea9a641e65d3d636393c84c2fd542ebe9d12a1a2a04ea8d3f8520"
+    },
+    "pr-feedback-quality-gate": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/pr-feedback-quality-gate/SKILL.md",
+      "computedHash": "f942a046ddb7da1cdf82b8e3835810cf7145bfe9408f3669eb652c180fd38a1b"
+    },
     "real-world-metaphors": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/real-world-metaphors/SKILL.md",
       "computedHash": "7612f7487c01a5e9aac217b501aeac358db36963828cfcd40038fec66f5098fb"
+    },
+    "redesign-existing-projects": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/redesign-skill/SKILL.md",
+      "computedHash": "b80f20b4d6a38f901df385bf01fbd4e0f69527ce11c12acd650637382079f7a6"
+    },
+    "reference-design-contract": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/reference-design-contract/SKILL.md",
+      "computedHash": "424b535f1d34c29b517662dcb4be6aa81fc087e0526bfb7ed8d4593557682384"
+    },
+    "release-notes-one-pager": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/release-notes-one-pager/SKILL.md",
+      "computedHash": "5f05266761390e3df2cfaa9c80388ac2fe06c9cc96cd46a55a5055ee64d912e1"
+    },
+    "remotion": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/remotion/SKILL.md",
+      "computedHash": "3d2559055d3157a2d54c3cb4ea8346b0cdbad7641b42356702c63259ac089b2d"
     },
     "repeated-component-alignment": {
       "source": "dembrandt/dembrandt-skills",
@@ -175,11 +919,47 @@
       "skillPath": "skills/repeated-component-alignment/SKILL.md",
       "computedHash": "17cc6c02fde9fd23aab691e10a068cd213b140751511acb86e3342cd4176d0aa"
     },
+    "replicate": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/replicate/SKILL.md",
+      "computedHash": "2cd3305970b091d0c0c72805dcf1198617251a100caa2e64c7b4ea2211995b21"
+    },
+    "research-decision-room": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/research-decision-room/SKILL.md",
+      "computedHash": "62f5b63340cf6995f6f58871c7345eb9ee26620c7099600bf586e1e5967b9031"
+    },
     "responsive-paradigms": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/responsive-paradigms/SKILL.md",
       "computedHash": "ec2ee93dc12e63f9a95e1e5dff3bc600a52d405b596da870e8e977889c6250b8"
+    },
+    "resume-modern": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/resume-modern/SKILL.md",
+      "computedHash": "f9b2e0a0e9736c251204ddb372693f03b888787ba2342328e28ed6b158b7b196"
+    },
+    "review-animations": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/review-animations/SKILL.md",
+      "computedHash": "6130f0b00c6422049f30dc099a2f7e19148f8a9574d62cc8b2dd464e50040211"
+    },
+    "screenshot": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/screenshot/SKILL.md",
+      "computedHash": "f0009a2cbc3648a210a25bf6c242bcc0dac635b7c64d4a327d7bf44849d0b307"
+    },
+    "screenshots-marketing": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/screenshots-marketing/SKILL.md",
+      "computedHash": "098a23bf691b377cf107866b2e0c96e717646cb7c976b57ff8ab73e38ca948cf"
     },
     "scroll-areas": {
       "source": "dembrandt/dembrandt-skills",
@@ -193,6 +973,60 @@
       "skillPath": "skills/semantic-html-and-seo/SKILL.md",
       "computedHash": "bf498b949c76a3500fdd0ea31df24f410bca00aae152e7112e69d8fb1516e268"
     },
+    "shadcn-ui": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/shadcn-ui/SKILL.md",
+      "computedHash": "207ea00ca26cfcf884cba9f47db312af617e9fd6cde0ae429412e64a059575ea"
+    },
+    "shader-dev": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/shader-dev/SKILL.md",
+      "computedHash": "c45786d662542fdda4c68224e05a7df9175a68db1ab6371932cc281f976890b8"
+    },
+    "slack-gif-creator": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/slack-gif-creator/SKILL.md",
+      "computedHash": "67e5c15f55e79fc2651b8ab972c7d2a120d7131125f3d571c91d090d5b90fe92"
+    },
+    "slides": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/slides/SKILL.md",
+      "computedHash": "e239320f0d6a3953d48d9c61a8afc6a5e2f2193721321f69826118a34debb9cb"
+    },
+    "social-reddit-card": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/social-reddit-card/SKILL.md",
+      "computedHash": "7d9baae0362d5054fbe48a1cb0ba6a764df238e0963ca3b548ac105b0ed93514"
+    },
+    "social-spotify-card": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/social-spotify-card/SKILL.md",
+      "computedHash": "7ddc0a436d7979ed2ea6ae0620d948a01148f8204d88d9466cb9b2d8277e8f29"
+    },
+    "social-x-post-card": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/social-x-post-card/SKILL.md",
+      "computedHash": "232d13869116003ab051e283e8912aff3498760bc0c290501e72bdf996f2bbd5"
+    },
+    "sora": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/sora/SKILL.md",
+      "computedHash": "b9f4c002931cdc7ab3d3852ccab93548405b427e23649a12a54bfc48f5a9ba87"
+    },
+    "speech": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/speech/SKILL.md",
+      "computedHash": "612af69e5840481f5acf2b1b0962d8cc1de3aa6fc8a60c2df60543ef2e493bce"
+    },
     "status-colors-and-errors": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
@@ -205,11 +1039,53 @@
       "skillPath": "skills/sticky-and-fixed-elements/SKILL.md",
       "computedHash": "6723053a38c40abf62c703a8838c45af69cf1656f13c223e794e4eb6adde9ce9"
     },
+    "stitch-design-taste": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/stitch-skill/SKILL.md",
+      "computedHash": "1f9869f393c0d9c7b0eb2b7255d92316aafaf7dc96d8ffe2c1524ce23ebf9d62"
+    },
+    "stitch-loop": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/stitch-loop/SKILL.md",
+      "computedHash": "add669ab2a7a63030cdf9515bf3146d35964cc217197cff1b0ee5ed4e303a43e"
+    },
+    "swiftui-design": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/swiftui-design/SKILL.md",
+      "computedHash": "f0030434894b61850e8ee8d0f07a83843ac69302c210bbc30d26f4637c644534"
+    },
+    "swiss-creative-mode-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/swiss-creative-mode-template/SKILL.md",
+      "computedHash": "40b38d2096496b0e93ed9914c6964cb523854d0ce2b37db428dbdc4f515dc68b"
+    },
+    "swiss-user-research-video-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/swiss-user-research-video-template/SKILL.md",
+      "computedHash": "1fa4aa638c43afcd3adfaf3df8257c32676c00a38b9199487683021f1da4d2f8"
+    },
     "tab-navigation": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/tab-navigation/SKILL.md",
       "computedHash": "011962fe061ec09cfe27282cb31475efc4f2a42a477df6bcec7c0a2d8d91ea91"
+    },
+    "theme-factory": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/theme-factory/SKILL.md",
+      "computedHash": "d07c1dc4dfb011fe7e88dca3e4f476cc7a20d8041268642021666942bce566a7"
+    },
+    "threejs": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/threejs/SKILL.md",
+      "computedHash": "3092a815b2d618723804e855e4fb250e8adb80a1979535ea7d455fbeb3a7f8b5"
     },
     "ui-context-and-scope": {
       "source": "dembrandt/dembrandt-skills",
@@ -223,11 +1099,71 @@
       "skillPath": "skills/ui-density/SKILL.md",
       "computedHash": "618879d7763ead8eed629366be4fb514ae8dc4a467f89965b43db43fa352c2fb"
     },
+    "ui-skills": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ui-skills/SKILL.md",
+      "computedHash": "3ba5da1d379cb695455df748503d0915341b77566728f89440366cd00b8d3e40"
+    },
+    "ui-ux-pro-max": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "13887b516bebbd2e97885435ea022b2aec36cc77224f639d098a47f2723865cb"
+    },
     "user-flows-and-guided-paths": {
       "source": "dembrandt/dembrandt-skills",
       "sourceType": "github",
       "skillPath": "skills/user-flows-and-guided-paths/SKILL.md",
       "computedHash": "9d31f572116c244abd87218d426b1faeb122128cef4feefd7b1a5e8a375d76b3"
+    },
+    "venice-audio-music": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/venice-audio-music/SKILL.md",
+      "computedHash": "88a8e855e5208b92bb44be44fbb8eb4d69e0b020868d59b1d901435710d6596f"
+    },
+    "venice-audio-speech": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/venice-audio-speech/SKILL.md",
+      "computedHash": "38fa6067661cea78ba91805c4fc0199a672cfaf91be1d7b8b2049ea376e50a36"
+    },
+    "venice-image-edit": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/venice-image-edit/SKILL.md",
+      "computedHash": "873d3ca4e46edcbb3e1e7cad2a42624cd70a7de2303bbed381a8db414db72887"
+    },
+    "venice-image-generate": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/venice-image-generate/SKILL.md",
+      "computedHash": "77c880a832b762f8105a18b303fea87cfa80cf74045f63d0b4091191a4aa934b"
+    },
+    "venice-video": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/venice-video/SKILL.md",
+      "computedHash": "e7549d9b9cecb9e2694836cd224449dc7df270a7314ff4f720b89ab548c58887"
+    },
+    "vfx-text-cursor": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/vfx-text-cursor/SKILL.md",
+      "computedHash": "91fabc286ff6bdff4424e7980987ca6192a88e0d2f239cddaded202eca7e49e0"
+    },
+    "video-downloader": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/video-downloader/SKILL.md",
+      "computedHash": "c0132fbf76c6e0ec3d73ab43d7cf6e5e72a821a5652eef152409a3dc78b5e1b8"
+    },
+    "video-hyperframes": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/video-hyperframes/SKILL.md",
+      "computedHash": "d9c7ad59f8be126d10d06fefccff291af4f064d52d48025b742353c4652d00f9"
     },
     "visual-emphasis-and-hierarchy": {
       "source": "dembrandt/dembrandt-skills",
@@ -240,6 +1176,48 @@
       "sourceType": "github",
       "skillPath": "skills/wcag-accessibility/SKILL.md",
       "computedHash": "7f6a1d5bfec0bb1572173e3cd950143eda5c26f6a2c22889a36b92d6f809fff0"
+    },
+    "web-artifacts-builder": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/web-artifacts-builder/SKILL.md",
+      "computedHash": "7aef36d4cadf9f7ae530b9a1c3999e2c3925bcf44d64cd8118737c0b139d8342"
+    },
+    "web-clone": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/web-clone/SKILL.md",
+      "computedHash": "4ac48d6cc4d4f4f019c702c7b5d1e92d605eef55ded8e82fbed4f8fb88af9fb8"
+    },
+    "web-design-guidelines": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "df2006a9f46ff0d4ea81bd42649a15d1b85440ed2ced14d9d0f3868a4ffad66d"
+    },
+    "weread-year-in-review-video-template": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/weread-year-in-review-video-template/SKILL.md",
+      "computedHash": "d4cb969409d9e08c2c8e7e6fda2ce7b10abf084f966c3ccdf76385c8d9052b2b"
+    },
+    "wpds": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/wpds/SKILL.md",
+      "computedHash": "7243a7d573959495c6f1a49884695762d5aaa3ae542773ae81a13d1e0d7a16d7"
+    },
+    "writing-guidelines": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/writing-guidelines/SKILL.md",
+      "computedHash": "081ebc8caf8a5cf6b0798bfe20ab9b38a453aa816db9418ede320bceeef26f02"
+    },
+    "youtube-clipper": {
+      "source": "nexu-io/open-design",
+      "sourceType": "github",
+      "skillPath": "skills/youtube-clipper/SKILL.md",
+      "computedHash": "701ffd8201d84f75ef73e11889f5b98c508d352c8bc1c316f98ab612eabcb3b3"
     }
   }
 }

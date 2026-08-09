@@ -2468,6 +2468,11 @@ async function showApp(session, opts = {}) {
       return;
     }
 
+    // Auto-apply previously chosen coming-soon state
+    if (window.BossDecision?.autoApplyOnLoad) {
+      window.BossDecision.autoApplyOnLoad();
+    }
+
     refreshUserMenuFromSession();
     updateTopbarDate();
 

@@ -3,13 +3,14 @@
 
   function trigger(choice) {
     if (choice !== "timer" && choice !== "hidden") return;
-    if (window.BossToast && typeof window.BossToast.show === "function") {
-      window.BossToast.show("Updates being applied. Estimated time: 30s", 30000);
-      return;
+    // Apply immediately — no fake 30s countdown
+    if (typeof window.BossDecision?.applyChoice === "function") {
+      window.BossDecision.applyChoice(choice);
     }
-    window.setTimeout(function () {
-      window.location.reload();
-    }, 30000);
+    // Simple one-time notification toast
+    if (window.BossToast && typeof window.BossToast.show === "function") {
+      window.BossToast.show("Preference saved! Reload to see the update.", 3000);
+    }
   }
 
   window.BossRedeploy = {
