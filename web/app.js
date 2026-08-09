@@ -2630,7 +2630,7 @@ async function completeFirebaseLogin(user, opts = {}) {
         // Kill Firestore WebChannel transport for SE users — api-store handles all reads.
         const role = enriched?.role || session?.role || quickSession?.role;
         if (role === "se" || !role) {
-          try { fsMod?.terminate(fsMod.getFirestore(app)); fb.db = null; } catch (_) {}
+          fb.db = null;
         }
         return enriched || session || quickSession;
       } catch (err) {
