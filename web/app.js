@@ -2720,15 +2720,13 @@ function ensureFirebaseSdk() {
         writeBatch: fsMod.writeBatch,
       };
 
-      initDomainStore(fb);
-
-      // If store resolved to API mode (SE user), terminate Firestore transport
-      // to stop the WebChannel retry loop — the worker API handles all reads.
-      const store = getStore();
-      if (store?.readMode === "api" || store?.mode === "api") {
-        try { fsMod.terminate(fsMod.getFirestore(app)); } catch (_) {}
-        fb.db = null;
+      // SE users don't need Firestore — stop the WebChannel transport immediately
+      // to prevent the perpetual retry loop (api-store.js handles all reads).
+      const _preSession = getSession();
+      if (_preSession?.role === "se" || _preSession?.role === undefined) {
+        try { fsMod.terminate(fsMod.getFirestore(app)); fb.db = null; } catch (_) {}
       }
+      initDomainStore(fb);
 
       try {
         await authMod.setPersistence(firebaseAuth, authMod.browserLocalPersistence);
