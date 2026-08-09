@@ -35,6 +35,33 @@ function matches(entry) {
 }
 
 const selected = manifest.filter(matches);
+const needsServer = selected.some((e) => e.needsServer);
+const PORT = process.env.WORKER_TEST_PORT || "8787";
+const CONFIG_URL = `http://127.0.0.1:${PORT}/api/config`;
+
+/** Poll until the worker's own HTTP server responds (or timeout). */
+async function waitForServer(url, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      if (res.ok || res.status < 500) return true;
+    } catch {
+      // not up yet
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return false;
+}
+
+async function isServerAlreadyUp(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
+    return res.ok || res.status < 500;
+  } catch {
+    return false;
+  }
+}
 
 function runFile(file) {
   return new Promise((resolve) => {
@@ -58,6 +85,35 @@ function indent(text) {
 }
 
 async function main() {
+  // test-history-api.mjs / test-tasks-api.mjs hit the worker's own HTTP API
+  // (127.0.0.1:8787), not just Firestore — the `firebase emulators:exec`
+  // wrapping this command only starts the Firestore emulator, so without
+  // this the worker server never binds the port and both fail with
+  // ECONNREFUSED (confirmed via an actual CI run, 2026-08-10). Start it once
+  // for the whole batch — harmless for tests that don't need it.
+  let serverProc = null;
+  if (needsServer) {
+    const alreadyUp = await isServerAlreadyUp(CONFIG_URL);
+    if (!alreadyUp) {
+      console.log(`\nStarting worker server on :${PORT} (needed by emulator API tests)...`);
+      // detached so we own the process GROUP, not just this one process:
+      // dev-node.mjs spawns its actual server (`npx tsx src/node-server.ts`)
+      // with shell:true and never forwards signals, so a plain kill() on
+      // this process alone leaves that real server orphaned on the port
+      // (confirmed — had to manually `kill -9` a leaked process during
+      // testing). Killing the negative PID kills the whole group instead.
+      serverProc = spawn("node", [join(SCRIPTS_DIR, "dev-node.mjs")], {
+        cwd: ROOT,
+        env: { ...process.env, PORT },
+        detached: true,
+      });
+      const up = await waitForServer(CONFIG_URL);
+      if (!up) {
+        console.error(`FAIL  worker server did not respond on :${PORT} within timeout`);
+      }
+    }
+  }
+
   console.log(`\n=== Running ${selected.length} worker test(s) ===`);
   const results = [];
   for (const entry of selected) {
@@ -65,6 +121,14 @@ async function main() {
     results.push(r);
     console.log(`${r.ok ? "PASS" : "FAIL"}  ${entry.file}  (${r.ms}ms)`);
     if (!r.ok) console.log(indent(r.output));
+  }
+
+  if (serverProc) {
+    try {
+      process.kill(-serverProc.pid, "SIGTERM");
+    } catch {
+      serverProc.kill(); // fallback if the group kill itself fails
+    }
   }
 
   const failed = results.filter((r) => !r.ok);
