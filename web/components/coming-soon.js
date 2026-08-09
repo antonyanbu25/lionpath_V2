@@ -30,8 +30,8 @@
     return `
       <main class="coming-soon-shell" aria-labelledby="coming-soon-title">
         <section class="coming-soon-card">
-          <img class="coming-soon-logo" src="${LOGO_URL}" alt="Freshworks logo" width="96" height="96" />
-          <p class="coming-soon-product">Freshworks SE Portal</p>
+          <img class="coming-soon-logo" src="${LOGO_URL}" alt="Janus logo" width="96" height="96" />
+          <p class="coming-soon-product">Janus</p>
           <h1 id="coming-soon-title">Coming Soon</h1>
           <p class="coming-soon-copy">We are putting the finishing touches on this experience.</p>
           <div class="coming-soon-timer" aria-label="Countdown to launch">
@@ -55,7 +55,7 @@
               <small>Seconds</small>
             </div>
           </div>
-          <footer class="coming-soon-footer">Copyright Freshworks. All rights reserved.</footer>
+          <footer class="coming-soon-footer">Janus - Copyright Freshworks.</footer>
         </section>
       </main>
     `;

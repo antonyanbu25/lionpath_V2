@@ -180,7 +180,6 @@ const COMING_SOON_VIEWS = {
   deals: { view: "deals", panelId: "deal-panel", navView: "deals", title: "My deals", hash: "deals" },
   contacts: { view: "contacts", panelId: "contacts-panel", navView: "contacts", title: "My contacts", hash: "contacts" },
   coaching: { view: "coaching", panelId: "coaching-panel", navView: "coaching", title: "My coaching", hash: "coaching" },
-  calls: { view: "calls", panelId: "call-panel", navView: "calls", title: "Activities", hash: "calls" },
 };
 
 let selectedAccountId = null;

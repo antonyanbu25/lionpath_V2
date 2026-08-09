@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "skills": {
+    "algorithmic-color-palette": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/algorithmic-color-palette/SKILL.md",
+      "computedHash": "edbee625a90db8231fdcd6a4cce8af87f102a58125e26cf65c8edd08543e03b7"
+    },
+    "authentic-product-representation": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/authentic-product-representation/SKILL.md",
+      "computedHash": "e48f78f43be518bc7a6ec2bc49f44927a7cb06744535765185421ede993c1d92"
+    },
+    "brand-visual-language": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/brand-visual-language/SKILL.md",
+      "computedHash": "a890a7650d1652d1b3a506bd4055c66b1e016519748bbad49028918daeefa424"
+    },
+    "button-states": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/button-states/SKILL.md",
+      "computedHash": "b3eab1cd2f883f5c1e1ae62c532f7a43db86f854d8f0e0e975255a470faac266"
+    },
+    "color-mode-and-theme": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/color-mode-and-theme/SKILL.md",
+      "computedHash": "bb6425081d4b0d22620841904de6dc95f85d2a0e5de10ba68b55fb1fa2912bb6"
+    },
+    "component-family-consistency": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/component-family-consistency/SKILL.md",
+      "computedHash": "687c4532365b886f567856a80145bff3372acb3dfb4cc0a23c9cc2308f51da76"
+    },
+    "coordinated-data-views": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/coordinated-data-views/SKILL.md",
+      "computedHash": "15173a87fb01434191cee375bda5a99a5b60f3f603238514d1db201a470b74f7"
+    },
+    "data-display-and-selection": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-display-and-selection/SKILL.md",
+      "computedHash": "0e9499759f09189df01741581833c357ee7828f7991d2aca19e0da568b6fc9b1"
+    },
+    "dembrandt": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dembrandt/SKILL.md",
+      "computedHash": "607bbb8cbe25f7810d0d165cb84409fb76c2acc6a21bb1c3d6f71c07a2d9f3ed"
+    },
+    "domain-expert-configuration": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/domain-expert-configuration/SKILL.md",
+      "computedHash": "0fcdba3894a43921873e9ada24a7318832e479c87245d0ca1c4aebddbcb34ff0"
+    },
+    "elevation-and-depth": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/elevation-and-depth/SKILL.md",
+      "computedHash": "0cf3557091143852c59daa9c7bcaf4a5dbb27cdc6731028d0f827d74f2502009"
+    },
+    "extract-design": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/extract-design/SKILL.md",
+      "computedHash": "b12b00dc25869eefd845d3caa12d87ab3fd7d11cf4aba798ac47ba4ac502771b"
+    },
+    "form-design": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/form-design/SKILL.md",
+      "computedHash": "b9407c1145fb64764adcc5ce371151ef40ecf919ae431eccb405eed4a0571ccb"
+    },
+    "generate-ui-from-brand": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/generate-ui-from-brand/SKILL.md",
+      "computedHash": "4529ee40e07babf4e7bf81d025b3da522b74138eb49431f4e3f9c6ff3615fe47"
+    },
+    "gestalt-ui-organisation": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gestalt-ui-organisation/SKILL.md",
+      "computedHash": "d84f4eb2ff00562f68443f82d014ead9e2d548814d98aa7309528d5fa95d9549"
+    },
+    "global-toolbar-controls": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/global-toolbar-controls/SKILL.md",
+      "computedHash": "09e026bc245b76dd344c5d5bf9ed89678a1d13729c6a159bf3538ab64a5115f1"
+    },
+    "information-architecture": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/information-architecture/SKILL.md",
+      "computedHash": "046d03be3ec85828d32c719411f5921ec33ed2fdfa2e03435069168d9c4666a2"
+    },
+    "layout-paradigms-and-consistency": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/layout-paradigms-and-consistency/SKILL.md",
+      "computedHash": "c979ee25caa52c150b2235023b006c2eb865a3e30e3142598c73187bcf2bea8a"
+    },
+    "loading-states-and-perceived-performance": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/loading-states-and-perceived-performance/SKILL.md",
+      "computedHash": "0abaf28761eec09822024a9ca5642945736c2c06a8eef2455f2b503c21c1dd99"
+    },
+    "micro-interactions": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/micro-interactions/SKILL.md",
+      "computedHash": "4acc952a4c71257d0e2e504325839668d333762085baa6802373242377d441d2"
+    },
+    "modal-and-overlay-patterns": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/modal-and-overlay-patterns/SKILL.md",
+      "computedHash": "ebb04c23910d8c652bab9c41d9ca549b2006242960469a8d399a0f819403c7d4"
+    },
+    "modular-scale-typography": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/modular-scale-typography/SKILL.md",
+      "computedHash": "4f2f0edf8f515375a099b27d7b3495b95ce1c7464e4f3292c0e4b41ac2d842c2"
+    },
+    "motion-and-storytelling": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/motion-and-storytelling/SKILL.md",
+      "computedHash": "eb916e5188ef825558267ea45733f641d34c08fc8eecb544d91e64d5ef387932"
+    },
+    "nielsen-usability-heuristics": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nielsen-usability-heuristics/SKILL.md",
+      "computedHash": "18344fdd990903e9c507b940939f0721c4cf8f82b78b961065248be2205c96cf"
+    },
+    "notifications-and-recovery": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/notifications-and-recovery/SKILL.md",
+      "computedHash": "d596e74ddc67b3bc596320f03fde0c6b42fc3998e276124cb413b857144d391d"
+    },
+    "operational-expert-tool-ui": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/operational-expert-tool-ui/SKILL.md",
+      "computedHash": "2fc59954e48d95dc72c23379a155be1c5d374b83eae15e24d5b772fef6ff17a0"
+    },
+    "performance-and-web-vitals": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/performance-and-web-vitals/SKILL.md",
+      "computedHash": "47ecc69e496af5c0aafb6a0e4b9f1cf68e17569229b9d60448eabfa8d5b2ba4c"
+    },
+    "real-world-metaphors": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/real-world-metaphors/SKILL.md",
+      "computedHash": "7612f7487c01a5e9aac217b501aeac358db36963828cfcd40038fec66f5098fb"
+    },
+    "repeated-component-alignment": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/repeated-component-alignment/SKILL.md",
+      "computedHash": "17cc6c02fde9fd23aab691e10a068cd213b140751511acb86e3342cd4176d0aa"
+    },
+    "responsive-paradigms": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/responsive-paradigms/SKILL.md",
+      "computedHash": "ec2ee93dc12e63f9a95e1e5dff3bc600a52d405b596da870e8e977889c6250b8"
+    },
+    "scroll-areas": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/scroll-areas/SKILL.md",
+      "computedHash": "e382cae0ad21d5034135d22568cbbd506d4f828b5c5b866516debc274a4731b8"
+    },
+    "semantic-html-and-seo": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/semantic-html-and-seo/SKILL.md",
+      "computedHash": "bf498b949c76a3500fdd0ea31df24f410bca00aae152e7112e69d8fb1516e268"
+    },
+    "status-colors-and-errors": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/status-colors-and-errors/SKILL.md",
+      "computedHash": "2ead436c06fb8b5b165aee7a165b89e62d62c28a22e4fd3e45976508fb879f0a"
+    },
+    "sticky-and-fixed-elements": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/sticky-and-fixed-elements/SKILL.md",
+      "computedHash": "6723053a38c40abf62c703a8838c45af69cf1656f13c223e794e4eb6adde9ce9"
+    },
+    "tab-navigation": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tab-navigation/SKILL.md",
+      "computedHash": "011962fe061ec09cfe27282cb31475efc4f2a42a477df6bcec7c0a2d8d91ea91"
+    },
+    "ui-context-and-scope": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ui-context-and-scope/SKILL.md",
+      "computedHash": "a8d0c039d162e151b1720b34f0478053309823e214c5756b7617a8c17b24b8ba"
+    },
+    "ui-density": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ui-density/SKILL.md",
+      "computedHash": "618879d7763ead8eed629366be4fb514ae8dc4a467f89965b43db43fa352c2fb"
+    },
+    "user-flows-and-guided-paths": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/user-flows-and-guided-paths/SKILL.md",
+      "computedHash": "9d31f572116c244abd87218d426b1faeb122128cef4feefd7b1a5e8a375d76b3"
+    },
+    "visual-emphasis-and-hierarchy": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/visual-emphasis-and-hierarchy/SKILL.md",
+      "computedHash": "fb3dc0682c0e66394b0e08800f7afd7ef182bf5d1ae7522bed45b242ca228b75"
+    },
+    "wcag-accessibility": {
+      "source": "dembrandt/dembrandt-skills",
+      "sourceType": "github",
+      "skillPath": "skills/wcag-accessibility/SKILL.md",
+      "computedHash": "7f6a1d5bfec0bb1572173e3cd950143eda5c26f6a2c22889a36b92d6f809fff0"
+    }
+  }
+}
