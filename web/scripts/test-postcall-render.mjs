@@ -245,7 +245,12 @@ for (const [name, data] of cases) {
       if (!wireframeHtml.includes("qip-weight-key")) throw new Error("missing weight key near score");
       if (wireframeHtml.includes("How to read this")) throw new Error("verbose scorecard legend still rendered");
       if (wireframeHtml.includes("carries the call ·")) throw new Error("verbose weight prose still rendered");
-      if (!wireframeHtml.includes("Override a score")) throw new Error("missing override action");
+      // "Override a score" was renamed to "Dispute a score" in 783b623
+      // (Release 2.1.2), which replaced the old inline override affordance with
+      // the Freshdesk-backed dispute flow (score-dispute-trigger →
+      // POST /api/tickets). Deliberate product change, not a regression — this
+      // assertion was just orphaned so it never caught up.
+      if (!wireframeHtml.includes("Dispute a score")) throw new Error("missing dispute action");
       if (!wireframeHtml.includes("Compare to my average")) throw new Error("missing compare action");
       if (!wireframeHtml.includes("qip-subparam-list")) throw new Error("missing sub-parameter drill-down");
       if (wireframeHtml.includes("qip-radar-svg")) throw new Error("wireframe QIP tab should not duplicate radar");

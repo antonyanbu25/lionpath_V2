@@ -5,7 +5,7 @@
 
 import { recordLlmUsage } from "../data/llm-usage";
 import type { FirestoreEnv } from "../data/firestore-admin";
-import type { TimelineSegmentType } from "../domain-model/video-facts";
+import type { TimelineSegmentType, TranscriptSegmentType } from "../domain-model/video-facts";
 import type { ProviderEnv } from "../providers/types";
 import { parseTranscriptCues } from "../transcript";
 import { buildVideoFactsDraft } from "./facts";
@@ -220,6 +220,173 @@ export function parseInferResponse(
     segments,
     participants,
   };
+}
+
+const TRANSCRIPT_PHASE_TYPES = new Set<TranscriptSegmentType>([
+  "intro",
+  "discovery",
+  "demo",
+  "pricing",
+  "objection_handling",
+  "next_steps",
+]);
+
+function normalizeSummaryPhaseType(raw: unknown): TranscriptSegmentType {
+  const s = String(raw || "discovery").trim().toLowerCase();
+  if (TRANSCRIPT_PHASE_TYPES.has(s as TranscriptSegmentType)) return s as TranscriptSegmentType;
+  if (s.includes("intro") || s.includes("agenda")) return "intro";
+  if (s.includes("discover") || s.includes("pain")) return "discovery";
+  if (s.includes("demo") || s.includes("walk")) return "demo";
+  if (s.includes("pric") || s.includes("budget")) return "pricing";
+  if (s.includes("objection") || s.includes("concern")) return "objection_handling";
+  if (s.includes("next") || s.includes("follow")) return "next_steps";
+  return "discovery";
+}
+
+/** @internal exported for unit tests */
+export function parseSummaryPhaseResponse(
+  parsed: Record<string, unknown> | null,
+  durationSec: number | null,
+): Array<{
+  startS: number;
+  endS: number;
+  segmentType: TranscriptSegmentType;
+  label?: string;
+  source: "summary";
+}> {
+  if (!parsed) return [];
+  const segRaw = Array.isArray(parsed.segments) ? parsed.segments : [];
+  const dur =
+    durationSec && durationSec > 0
+      ? durationSec
+      : typeof parsed.durationSec === "number" && parsed.durationSec > 0
+        ? Math.round(parsed.durationSec)
+        : null;
+  const segments: ReturnType<typeof parseSummaryPhaseResponse> = [];
+  for (const row of segRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    let startS = Number(r.startS);
+    let endS = Number(r.endS);
+    if (!Number.isFinite(startS) || startS < 0) startS = 0;
+    if (!Number.isFinite(endS) || endS <= startS) continue;
+    if (dur != null) {
+      startS = Math.min(startS, dur);
+      endS = Math.min(endS, dur);
+      if (endS <= startS) continue;
+    }
+    const label = typeof r.label === "string" ? r.label.trim().slice(0, 80) : undefined;
+    segments.push({
+      startS: Math.round(startS),
+      endS: Math.round(endS),
+      segmentType: normalizeSummaryPhaseType(r.segmentType),
+      label: label || undefined,
+      source: "summary",
+    });
+  }
+  segments.sort((a, b) => a.startS - b.startS);
+  return segments;
+}
+
+export interface SummaryPhaseTimelineInput {
+  summary: string;
+  durationSec?: number | null;
+  callType?: string | null;
+  userId?: string;
+  callId?: string;
+}
+
+/**
+ * Infer conversation phases from a Kaia/plain summary (no VTT clock).
+ * Display-only — reuses the transcript-infer Gemini path with phase segment types.
+ */
+export async function inferSummaryPhaseTimeline(
+  env: ProviderEnv & FirestoreEnv,
+  input: SummaryPhaseTimelineInput,
+): Promise<{ segments: ReturnType<typeof parseSummaryPhaseResponse>; durationSec: number | null }> {
+  const summary = input.summary?.trim() || "";
+  if (!summary) return { segments: [], durationSec: null };
+
+  const key = geminiKey(env);
+  if (!key) return { segments: [], durationSec: input.durationSec ?? null };
+
+  const durationSec = input.durationSec ?? null;
+  const callType = input.callType?.trim() || "demo";
+  const prompt = [
+    "You analyze SE customer call AI summaries (no timestamps) and infer approximate conversation phases.",
+    "Place phases on a proportional clock — intro early, demo mid-call, next steps at the end.",
+    durationSec
+      ? `Estimated call duration: ${Math.round(durationSec / 60)} minutes (${durationSec}s).`
+      : "Estimate duration from summary length and content; default ~45 minutes if unclear.",
+    `Call type: ${callType}.`,
+    "Reply JSON only with segments using phase types intro|discovery|demo|pricing|objection_handling|next_steps:",
+    JSON.stringify({
+      durationSec: durationSec || 2700,
+      segments: [
+        { startS: 0, endS: 300, segmentType: "intro", label: "Intro and agenda" },
+        { startS: 300, endS: 1200, segmentType: "discovery", label: "Discovery" },
+        { startS: 1200, endS: 2400, segmentType: "demo", label: "Product demo" },
+        { startS: 2400, endS: 2700, segmentType: "next_steps", label: "Next steps" },
+      ],
+    }),
+    "\n\nSUMMARY:\n",
+    summary.slice(0, MAX_TRANSCRIPT_CHARS),
+  ].join(" ");
+
+  const model = modelId(env);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+
+  try {
+    const started = Date.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json",
+        },
+      }),
+    });
+    if (!res.ok) return { segments: [], durationSec };
+
+    const body = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        cachedContentTokenCount?: number;
+      };
+    };
+    if (input.userId) {
+      recordLlmUsage(env, {
+        userId: input.userId,
+        callId: input.callId,
+        passName: "video/summary-timeline",
+        model,
+        promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+        groundingQueries: 0,
+        latencyMs: Date.now() - started,
+      });
+    }
+    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      parsed = null;
+    }
+    const segments = parseSummaryPhaseResponse(parsed, durationSec);
+    const dur =
+      parseDurationSec(parsed?.durationSec, durationSec) ||
+      (segments.length ? segments[segments.length - 1].endS : durationSec);
+    return { segments, durationSec: dur };
+  } catch {
+    return { segments: [], durationSec: durationSec ?? null };
+  }
 }
 
 export async function inferVideoFactsFromTranscript(

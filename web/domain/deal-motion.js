@@ -97,7 +97,7 @@ export function shouldUseWonNbDeal(account, wonNbDeal, asOfMs = Date.now()) {
 
 /**
  * @typedef {'new_business' | 'expansion'} DealMotionType
- * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'actor' | 'default' | 'won_grace'} DealMotionSource
+ * @typedef {'manual' | 'account' | 'context' | 'allowlist' | 'phase' | 'actor' | 'default' | 'won_grace' | 'won_grace_expired'} DealMotionSource
  */
 
 /**
@@ -183,7 +183,13 @@ export function resolveEngagementDealInput(input) {
   }
 
   if (wonNbDealInGrace && shouldRouteWonNbToExpansion(wonNbDealInGrace, asOfMs) === "expansion") {
-    return { prepType: "expansion", dealId: null, source: "won_grace" };
+    // Distinct from the still-in-grace branch above: this fires once the
+    // grace window has EXPIRED and we're deliberately routing to expansion
+    // motion instead of reusing the won NB deal. Was mislabeled "won_grace"
+    // (same as the still-in-grace case) until 2026-08-09 — no current caller
+    // branches on this specific string (checked), so this is a diagnostic-
+    // accuracy fix, not a behavior change: dealId/prepType are unaffected.
+    return { prepType: "expansion", dealId: null, source: "won_grace_expired" };
   }
 
   if (account?.programPhase === "expansion") {

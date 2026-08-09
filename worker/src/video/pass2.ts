@@ -12,11 +12,12 @@ import {
   type ZoomShareMedia,
 } from "../zoomShare";
 import { ffmpegAvailable, isNodeRuntime, videoPassReady } from "./capability";
-import { buildVideoFactsDraft, DEFAULT_SAMPLE_INTERVAL_S, pickVisionKeyframes } from "./facts";
+import { buildVideoFactsDraft, buildPass2TimelineSegments, buildSceneSegments, curveHasCameraData, DEFAULT_SAMPLE_INTERVAL_S, pickVisionKeyframes } from "./facts";
 import { cleanupJobDir, sampleStrategicWindowsFromUrl } from "./ffmpeg";
 import { mergeAttendeeCurveTalk } from "./sampling";
-import { inferVideoFactsFromTranscript } from "./transcript-infer";
+import { inferVideoFactsFromTranscript, inferSummaryPhaseTimeline } from "./transcript-infer";
 import { analyzeKeyframes } from "./vision";
+import { parseTranscriptCues } from "../transcript";
 
 export interface VideoPassEnv extends ProviderEnv {
   VIDEO_PASS_ENABLED?: string;
@@ -69,16 +70,32 @@ export interface Pass2Debug {
   fallbackReason?: string;
 }
 
-function curveHasCameraData(
-  curve: VideoFactsDraft["attendeeCurveJson"] | null | undefined,
-): boolean {
-  if (!Array.isArray(curve)) return false;
-  return curve.some(
-    (p) =>
-      p?.cameraOn === true ||
-      p?.cameraOn === false ||
-      (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
-  );
+async function attachSummaryTimelineSpine(
+  env: VideoPassEnv,
+  input: VideoPassInput,
+  draft: VideoFactsDraft,
+): Promise<VideoFactsDraft> {
+  const transcript = input.transcript?.trim() || "";
+  if (!transcript || parseTranscriptCues(transcript).length) return draft;
+  if (draft.timelineSpine?.segments?.length) return draft;
+  if ((draft.segments || []).some((s) => s.segmentType !== "none")) return draft;
+
+  const summaryTimeline = await inferSummaryPhaseTimeline(env, {
+    summary: transcript,
+    durationSec: draft.durationSec ?? input.durationSec ?? input.media?.durationSec ?? null,
+    callType: input.callType,
+    userId: input.userId,
+    callId: input.callId,
+  });
+  if (!summaryTimeline.segments.length) return draft;
+  return {
+    ...draft,
+    timelineSpine: {
+      source: "summary",
+      segments: summaryTimeline.segments,
+      durationSec: summaryTimeline.durationSec ?? draft.durationSec ?? null,
+    },
+  };
 }
 
 function seedCurveFromTopLevelCamera(
@@ -222,7 +239,7 @@ async function runTranscriptPass(
   });
   if (draft.status === "ready") {
     const consent = !!input.visualAnalysisConsent;
-    let videoFacts = draft;
+    let videoFacts = await attachSummaryTimelineSpine(env, input, draft);
     if (consent && draft.streamKind === "transcript_infer") {
       const hint = "ffmpeg/vision unavailable — camera not scored from video frames";
       videoFacts = {
@@ -292,8 +309,12 @@ async function runFfmpegPass(
     let cdeCustomized: boolean | null = null;
     let cdeEvidence: string | null = null;
     let shareOnPct: number | null = null;
+    let pptUsed: boolean | null = null;
+    let pptEvidence: string | null = null;
+    let slideDeckTailored: boolean | null = null;
+    let slideVisualsWalked: boolean | null = null;
     let attendeeCurveJson: VideoFactsDraft["attendeeCurveJson"] = null;
-    let extraSegments: VideoFactsDraft["segments"] = [];
+    let classifiedSegments: VideoFactsDraft["segments"] = [];
 
     if (!input.skipVision) {
       const vision = await analyzeKeyframes(env, keyframeSamples, {
@@ -311,14 +332,26 @@ async function runFfmpegPass(
       cdeCustomized = vision.cdeCustomized;
       cdeEvidence = vision.cdeEvidence;
       shareOnPct = vision.shareOnPct;
+      pptUsed = vision.pptUsed ?? null;
+      pptEvidence = vision.pptEvidence ?? null;
+      slideDeckTailored = vision.slideDeckTailored ?? null;
+      slideVisualsWalked = vision.slideVisualsWalked ?? null;
       attendeeCurveJson = vision.attendeeCurveJson ?? null;
-      extraSegments = vision.pptSegments ?? [];
+      classifiedSegments = (vision.classifiedSegments || vision.pptSegments || []).map((s) => ({
+        startS: s.startS,
+        endS: s.endS,
+        segmentType: s.segmentType,
+        label: s.label,
+      }));
       if (consent && !attendeeCurveJson?.length) {
         attendeeCurveJson = seedCurveFromTopLevelCamera(cameraOnPct, input);
       }
     }
 
     await cleanupJobDir(workDir);
+
+    const sceneSegments = buildSceneSegments(samples, media.durationSec ?? samples[samples.length - 1]?.atS ?? 0);
+    const segments = buildPass2TimelineSegments(sceneSegments, classifiedSegments);
 
     const draft = buildVideoFactsDraft({
       status: "ready",
@@ -329,9 +362,13 @@ async function runFfmpegPass(
       cdeCustomized,
       cdeEvidence,
       shareOnPct,
+      pptUsed,
+      pptEvidence,
+      slideDeckTailored,
+      slideVisualsWalked,
       visualAnalysisConsent: consent,
       attendeeCurveJson,
-      segments: extraSegments.length ? extraSegments : undefined,
+      segments,
       sampleIntervalS: 3,
     });
 

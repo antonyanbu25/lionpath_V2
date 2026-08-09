@@ -1066,14 +1066,21 @@ fw-button.sidebar-history-item.active {
 }
 .sidebar-foot {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 14px 14px 0;
   border-top: none;
   margin-top: auto;
   position: relative;
 }
 .user-menu--sidebar {
+  order: 2;
   position: relative;
   width: 100%;
+}
+#sidebar-feedback {
+  order: 1;
 }
 .user-menu-panel--sidebar {
   position: fixed;

@@ -240,6 +240,10 @@
           </fw-button>
         </nav>
         <div class="sidebar-foot">
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
+            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
+            <span class="nav-label">Feedback</span>
+          </fw-button>
           <div class="user-menu user-menu--sidebar" id="user-menu">
             <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
               <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
@@ -257,10 +261,6 @@
                 <span id="user-menu-email" class="user-menu-email muted"></span>
               </div>
               <div class="user-menu-divider" role="separator"></div>
-              <button type="button" class="user-menu-item" id="user-menu-profile" role="menuitem">
-                <span class="user-menu-item-icon" aria-hidden="true">⚙</span>
-                <span class="user-menu-item-label">Profile settings</span>
-              </button>
               <div class="user-menu-theme">
                 <button type="button" class="user-menu-item user-menu-theme-toggle" id="user-menu-theme-toggle" aria-expanded="false" aria-controls="user-menu-theme-submenu">
                   <span class="user-menu-item-icon" aria-hidden="true">◐</span>
@@ -279,10 +279,6 @@
               </button>
             </div>
           </div>
-          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
-            <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
-            <span class="nav-label">Feedback</span>
-          </fw-button>
         </div>
         </div>
       </aside>
@@ -398,8 +394,8 @@
                       </div>
                       <p class="nb-hint">We auto-detect the account from the domain. Inviting more than one? Paste the emails from your calendar invite separated by commas — we'll research each attendee.</p>
                     </div>
-                    <div id="prep-crm-matches" class="pc-crm-matches nb-crm-panel" hidden aria-live="polite"></div>
                     <div id="prep-account-deal-preview" class="pc-account-deal-preview" hidden aria-live="polite"></div>
+                    <div id="prep-crm-matches" class="pc-crm-matches nb-crm-panel" hidden aria-live="polite"></div>
                     <div class="nb-field nb-field-full">
                       <label class="nb-label" for="companyDomain">
                         Company website
@@ -507,7 +503,7 @@
                   <h1>New call analysis</h1>
                 </div>
                 <fw-card class="prep-form-card postcall-intake-card">
-                  <form id="postcall-form" autocomplete="off">
+                  <form id="postcall-form" autocomplete="off" novalidate>
                     <div class="postcall-recording-block">
                       <div class="postcall-field-label">Call recording <span class="postcall-required">*</span></div>
                       <fw-input
@@ -565,7 +561,6 @@
                         data-lpignore="true"
                         data-1p-ignore="true"
                         data-form-type="other"
-                        required
                         clear-input
                       ></fw-input>
                     </div>
@@ -617,7 +612,7 @@
                       </div>
                       </div>
                     </details>
-                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit">Analyse call</fw-button>
+                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit" disabled>Analyse call</fw-button>
                     <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>
                   </form>
                 </fw-card>

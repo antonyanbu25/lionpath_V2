@@ -182,7 +182,15 @@ export function can(user, action, resource = {}) {
   const isSegmentLeader = user.isSegmentLeader === true;
   const segmentTeamIds = user.segmentTeamIds || [];
   const seTeamIds = resource.seTeamUserIds || [];
-  const seTeamMemberTeamIds = resource.seTeamMemberTeamIds || [];
+  // Real field name is seTeamTeamIds (see domain/account-se-team.js's
+  // seTeamTeamIds() helper and its callers) — this previously read a field
+  // that doesn't exist anywhere in the data model, so onSeTeamMemberTeam
+  // always evaluated false: a manager sharing an SE-team with an account
+  // (but not org director / segment leader) was silently denied read_account
+  // and manage_account_team in the UI, even though firestore.rules'
+  // managerSharesSeTeam() would have allowed the equivalent read. Found by
+  // scripts/test-rbac-parity.mjs, orphaned until 2026-08-09.
+  const seTeamMemberTeamIds = resource.seTeamTeamIds || [];
   const onSeTeam = seTeamIds.includes(user.id);
   const onSeTeamMemberTeam =
     user.teamId && seTeamMemberTeamIds.includes(user.teamId);

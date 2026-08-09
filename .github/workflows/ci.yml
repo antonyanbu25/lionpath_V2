@@ -1,5 +1,20 @@
-# Minimal CI — npm ci && npm test for worker and web.
-# Pre-existing Windows-only failure (test-node-boot spawn EINVAL) does not apply on ubuntu-latest.
+# CI — npm ci && npm test for worker and web, plus Firestore rules tests.
+#
+# worker and web legs both now run through web/scripts/run-tests.mjs and
+# worker/scripts/run-tests.mjs (aggregating runners, see test-manifest.mjs in
+# each package) instead of the old `&&`-chained npm test, which silently
+# hid every failure after the first and silently excluded any file someone
+# forgot to add to the chain.
+#
+# web leg additionally installs Chromium so the "e2e" tag actually runs
+# (Playwright is a devDependency but the browser binary isn't installed by
+# `npm ci` alone) — without this step, e2e tests self-report
+# "SKIP: playwright not installed" and pass trivially without testing
+# anything.
+#
+# worker leg wraps its test run in the same `firebase emulators:exec`
+# mechanism rules-tests/run-all.mjs already uses, so "emulator"-tagged tests
+# (which need a live Firestore Admin SDK backend) can run.
 name: CI
 
 on:
@@ -24,11 +39,21 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.package }}/package-lock.json
 
+      - name: Install Playwright Chromium (web only)
+        if: matrix.package == 'web'
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
       - name: Install and test (${{ matrix.package }})
         working-directory: ${{ matrix.package == 'rules' && '.' || matrix.package }}
+        env:
+          FIREBASE_PROJECT_ID: lionpath-rules-test
         run: |
           if [ "${{ matrix.package }}" = "rules" ]; then
             npm run test:rules
+          elif [ "${{ matrix.package }}" = "worker" ]; then
+            npm ci
+            npx firebase emulators:exec --only firestore --project lionpath-rules-test "npm test"
           else
             npm ci && npm test
           fi

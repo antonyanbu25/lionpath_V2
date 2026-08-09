@@ -1,6 +1,6 @@
 /** QIP v2.1 scoring — mirrors worker/src/quality-score.ts */
 
-import { CATEGORY_KEYS, profileFor } from "./rubric-profiles.js";
+import { CATEGORY_KEYS, profileFor, CORE_FOUR_THEME_KEYS } from "./rubric-profiles.js";
 
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
@@ -115,6 +115,15 @@ export function profileAverage(scorecards, callType, opts = {}) {
   };
 }
 
+/** Resolves one line's grade on the 0-10 scale — /10 `grade` field, or legacy /100 `score`. */
+function lineGrade(sc, themeKey) {
+  const line = (sc.lines || []).find(
+    (l) => l.themeKey === themeKey && !l.evidenceUnavailable && !l.modelOmitted,
+  );
+  if (!line) return null;
+  return line.grade ?? (line.maxScore === 100 ? (line.score ?? 0) / 10 : line.score ?? 0);
+}
+
 export function themeAverage(scorecards, themeKey, callTypeFilter = null, opts = {}) {
   const eligible = filterEligibleScorecards(scorecards, opts).filter(
     (sc) => !callTypeFilter || sc.callType === callTypeFilter,
@@ -122,11 +131,9 @@ export function themeAverage(scorecards, themeKey, callTypeFilter = null, opts =
   let gradeSum = 0;
   let count = 0;
   for (const sc of eligible) {
-    const line = (sc.lines || []).find(
-      (l) => l.themeKey === themeKey && !l.evidenceUnavailable && !l.modelOmitted,
-    );
-    if (!line) continue;
-    gradeSum += line.grade ?? (line.maxScore === 100 ? (line.score ?? 0) / 10 : line.score ?? 0);
+    const grade = lineGrade(sc, themeKey);
+    if (grade == null) continue;
+    gradeSum += grade;
     count += 1;
   }
   return {
@@ -217,9 +224,42 @@ export function typeComposite(scorecards, callType, opts = {}) {
   };
 }
 
-/** @deprecated v2.1 — removed */
-export function spineComposite() {
-  return { score: null, themeCount: 0, callCount: 0, coverage: 0 };
+/**
+ * "Shared spine" composite — call_flow / customer_engagement / objections / camera_on,
+ * the four themes every call type scores (§ coaching-spine-note: "not your overall
+ * grade"). Unlike profileAverage/typeComposite this deliberately spans every call
+ * type, so it's the one number comparable across a whole history regardless of mix.
+ * Per call: average of whichever of the four core themes that call has data for.
+ * Overall: average of those per-call spine scores across all eligible calls.
+ */
+export function spineComposite(scorecards, opts = {}) {
+  const pool = filterEligibleScorecards(scorecards, opts);
+  const themesWithData = new Set();
+  let scoreSum = 0;
+  let scoredCallCount = 0;
+
+  for (const sc of pool) {
+    let sum = 0;
+    let count = 0;
+    for (const key of CORE_FOUR_THEME_KEYS) {
+      const grade = lineGrade(sc, key);
+      if (grade == null) continue;
+      themesWithData.add(key);
+      sum += grade;
+      count += 1;
+    }
+    if (count > 0) {
+      scoreSum += sum / count;
+      scoredCallCount += 1;
+    }
+  }
+
+  return {
+    score: scoredCallCount > 0 ? round2(scoreSum / scoredCallCount) : null,
+    themeCount: themesWithData.size,
+    callCount: scoredCallCount,
+    coverage: pool.length > 0 ? round2(scoredCallCount / pool.length) : 0,
+  };
 }
 
 /** @deprecated v2.1 — use formatProfileAverage */
@@ -229,4 +269,44 @@ export function formatTypeComposite(result) {
     callType: result.callType,
     rubricVersion: result.rubricVersion,
   });
+}
+
+/** Mirrors worker/src/video/facts.ts — room panel + camera_on CQS share one source. */
+export function curveHasCameraData(curve) {
+  if (!Array.isArray(curve)) return false;
+  return curve.some(
+    (p) =>
+      p?.cameraOn === true ||
+      p?.cameraOn === false ||
+      (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
+  );
+}
+
+export function aggregateCameraOnPct(topLevel, curve, seIdentity) {
+  if (topLevel != null && Number.isFinite(Number(topLevel))) {
+    return Math.max(0, Math.min(100, Math.round(Number(topLevel))));
+  }
+  if (!Array.isArray(curve) || !curve.length) return null;
+
+  const seKey = seIdentity?.trim().toLowerCase();
+  const seRow =
+    (seKey && curve.find((p) => String(p?.name || "").trim().toLowerCase() === seKey)) ||
+    curve.find((p) => String(p?.role || "").trim().toLowerCase() === "se");
+
+  if (seRow?.cameraOnPct != null && Number.isFinite(Number(seRow.cameraOnPct))) {
+    return Math.max(0, Math.min(100, Math.round(Number(seRow.cameraOnPct))));
+  }
+
+  const pcts = curve
+    .map((p) => p?.cameraOnPct)
+    .filter((v) => v != null && Number.isFinite(Number(v)))
+    .map((v) => Math.max(0, Math.min(100, Math.round(Number(v)))));
+  if (pcts.length) {
+    return Math.round(pcts.reduce((sum, v) => sum + v, 0) / pcts.length);
+  }
+
+  const known = curve.filter((p) => p?.cameraOn === true || p?.cameraOn === false);
+  if (!known.length) return null;
+  const onCount = known.filter((p) => p?.cameraOn === true).length;
+  return Math.round((onCount / known.length) * 100);
 }

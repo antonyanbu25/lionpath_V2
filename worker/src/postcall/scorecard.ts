@@ -25,6 +25,7 @@ import { formatTimestampedTranscript } from "../transcript";
 import { trimWords } from "../word-limits";
 import type { DealRiskFlag, ScorecardEvidence, SubParameterLine } from "../domain-model/scorecard";
 import type { VideoFactsDraft } from "../domain-model/video-facts";
+import { aggregateCameraOnPct, curveHasCameraData } from "../video/facts";
 
 export type Env = ProviderEnv;
 
@@ -420,6 +421,44 @@ function cdeSubParametersFromVision(customized: boolean): SubParameterLine[] {
   }));
 }
 
+/** Deterministic slide_deck sub-params from Pass 2 slide vision signals. */
+function slideSubParametersFromVision(facts: VideoFactsDraft): SubParameterLine[] {
+  const slideSecs = slideTimeOnDeckSec(facts);
+  const proportionate = slideSecs > 0 && slideSecs <= 15 * 60;
+  let grade = 5;
+  if (facts.pptUsed === false) grade = 2;
+  else if (facts.slideDeckTailored === true && facts.slideVisualsWalked === true) grade = 8;
+  else if (facts.slideDeckTailored === true || facts.slideVisualsWalked === true) grade = 7;
+  else if (facts.pptUsed === true && proportionate) grade = 6;
+  else if (facts.pptUsed === true) grade = 5;
+  if (slideSecs > 15 * 60) grade = Math.min(grade, 4);
+  const base = Math.floor(grade / 5);
+  const extra = grade % 5;
+  return Array.from({ length: 5 }, (_, i) => ({
+    score: clampSubScore(base + (i < extra ? 1 : 0)),
+    evidence: [],
+  }));
+}
+
+function slideVisionPresent(facts: VideoFactsDraft | null | undefined): boolean {
+  if (!facts) return false;
+  return (
+    facts.pptUsed === true ||
+    !!facts.pptEvidence?.trim() ||
+    slideSegmentsFromFacts(facts).length > 0 ||
+    facts.slideDeckTailored != null ||
+    facts.slideVisualsWalked != null
+  );
+}
+
+function effectiveCameraOnPct(
+  facts: VideoFactsDraft | null | undefined,
+  seIdentity?: string | null,
+): number | null {
+  if (!facts) return null;
+  return aggregateCameraOnPct(facts.cameraOnPct, facts.attendeeCurveJson, seIdentity);
+}
+
 export interface NormalizeScorecardOptions {
   profile: QipProfile;
   videoAvailable: boolean;
@@ -472,20 +511,44 @@ export function normalizeScorecardLines(opts: NormalizeScorecardOptions): {
     }
 
     if (theme.key === "camera_on" && canScoreVideo) {
-      if (!opts.videoFacts?.visualAnalysisConsent || opts.videoFacts.cameraOnPct == null) {
+      const camPct = effectiveCameraOnPct(opts.videoFacts);
+      const hasCameraEvidence =
+        !!opts.videoFacts?.visualAnalysisConsent &&
+        (camPct != null || curveHasCameraData(opts.videoFacts?.attendeeCurveJson));
+      if (!hasCameraEvidence) {
         subParameters = Array.from({ length: 5 }, () => ({ score: 0 as const, evidence: [] }));
         evidenceUnavailable = true;
         confidence = 1;
         coachingNote = null;
       } else {
-        subParameters = cameraSubParametersFromPct(opts.videoFacts.cameraOnPct);
+        const pct = camPct ?? 0;
+        subParameters = cameraSubParametersFromPct(pct);
         confidence = Math.max(confidence, 0.75);
-        const quote = `Recording showed camera on ${Math.round(opts.videoFacts.cameraOnPct)}% across keyframes.`;
+        const quote = `Recording showed camera on ${Math.round(pct)}% across keyframes.`;
         subParameters[0] = {
           ...subParameters[0],
           evidence: [{ atS: 0, quote, source: "video" }],
         };
       }
+    }
+
+    if (
+      theme.key === "slide_deck" &&
+      canScoreVideo &&
+      opts.deckPresent &&
+      slideVisionPresent(opts.videoFacts)
+    ) {
+      subParameters = slideSubParametersFromVision(opts.videoFacts!);
+      confidence = Math.max(confidence, 0.7);
+      const quote =
+        opts.videoFacts!.pptEvidence?.trim() ||
+        (opts.videoFacts!.slideDeckTailored
+          ? "Video analysis: slide deck appears tailored to the customer."
+          : "Video analysis: slides visible during the call.");
+      subParameters[0] = {
+        ...subParameters[0],
+        evidence: [{ atS: 0, quote: trimWords(quote, 40), source: "video" }],
+      };
     }
 
     if (theme.key === "cde_build" && canScoreVideo && opts.videoFacts?.cdeCustomized != null) {

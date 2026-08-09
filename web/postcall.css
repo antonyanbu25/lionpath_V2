@@ -71,22 +71,25 @@
 }
 
 .pc-account-deal-preview {
-  display: flex;
-  flex-direction: row;
-  gap: 1rem;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
   margin: 8px 0 6px;
 }
 
-.pc-account-deal-preview .nb-account-column {
-  flex: 1 1 180px;
-  min-width: 160px;
-  max-width: 240px;
+.pc-account-deal-preview .nb-account-column,
+.pc-account-deal-preview .pc-deal-showcase {
+  min-width: 0;
+  max-width: none;
 }
 
-.pc-account-deal-preview .pc-deal-showcase {
-  flex: 2 1 280px;
-  min-width: 0;
+.pc-account-deal-preview .nb-account-card,
+.pc-account-deal-preview .nb-deal-card,
+.pc-account-deal-preview .pc-new-deal-field {
+  min-height: 72px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .pc-deal-tiles-row {
@@ -94,6 +97,13 @@
   flex-wrap: wrap;
   gap: 10px;
   align-items: stretch;
+}
+
+.pc-account-deal-preview .pc-deal-tile,
+.pc-account-deal-preview .pc-new-deal-field {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .pc-deal-tile {
@@ -119,7 +129,7 @@ button.pc-deal-tile {
 .pc-deal-tile.is-selected {
   border-color: var(--dew-accent, #2563eb);
   box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
-  background: var(--dew-surface);
+  background: color-mix(in srgb, var(--dew-accent, #2563eb) 6%, var(--dew-surface-subtle));
 }
 
 .pc-deal-tile--static {
@@ -144,7 +154,7 @@ button.pc-deal-tile {
 .pc-new-deal-field.is-selected {
   border-color: var(--dew-accent, #2563eb);
   box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
-  background: var(--dew-surface);
+  background: color-mix(in srgb, var(--dew-accent, #2563eb) 6%, var(--dew-surface-subtle));
 }
 
 .pc-new-deal-title-input {
@@ -2431,25 +2441,11 @@ button.pc-deal-tile {
 
 @media (max-width: 640px) {
   .pc-account-deal-preview {
-    flex-direction: column;
-  }
-
-  .pc-account-deal-preview .nb-account-column {
-    max-width: none;
+    grid-template-columns: 1fr;
   }
 
   .postcall-optional-grid {
     grid-template-columns: 1fr;
-  }
-
-  .pc-deal-tiles-row {
-    flex-direction: column;
-  }
-
-  .pc-deal-tile,
-  .pc-new-deal-field {
-    flex-basis: auto;
-    min-width: 0;
   }
 
   .postcall-stage-panel {

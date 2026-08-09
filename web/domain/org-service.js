@@ -241,15 +241,17 @@ export async function listSeEmailsForTeamIds(teamIds) {
   const store = getStore();
   const emails = [];
   const seen = new Set();
-  for (const teamId of teamIds) {
-    const team = await store.getTeam(teamId);
-    if (!team?.memberIds?.length) continue;
-    for (const memberId of team.memberIds) {
-      const member = await store.getUser(memberId);
-      if (member?.email && member.role === "se" && !seen.has(member.email)) {
-        seen.add(member.email);
-        emails.push(member.email);
-      }
+  // Fetched serially before 2026-08-09 — flagged by test-no-await-in-loop.mjs.
+  // Team and member lookups are independent (no cross-iteration dependency),
+  // so fan them out instead: parallelizing matters more now that segment
+  // leaders (not just org directors) route through this via listVisibleSeEmails.
+  const teams = await Promise.all(teamIds.map((teamId) => store.getTeam(teamId)));
+  const allMemberIds = teams.flatMap((team) => team?.memberIds || []);
+  const members = await Promise.all(allMemberIds.map((memberId) => store.getUser(memberId)));
+  for (const member of members) {
+    if (member?.email && member.role === "se" && !seen.has(member.email)) {
+      seen.add(member.email);
+      emails.push(member.email);
     }
   }
   return emails;
@@ -303,12 +305,17 @@ export async function listVisibleSeEmails(session) {
 export async function mapEmailToTeamName(emails) {
   const store = getStore();
   const map = new Map();
-  for (const email of emails) {
-    const user = await store.getUserByEmail(email);
-    if (!user?.teamId) continue;
-    const team = await store.getTeam(user.teamId);
-    if (team?.name) map.set(email, team.name);
-  }
+  // Each email's own user->team lookup stays sequential (team depends on the
+  // user), but different emails are independent — parallelize across emails
+  // (flagged by test-no-await-in-loop.mjs).
+  await Promise.all(
+    emails.map(async (email) => {
+      const user = await store.getUserByEmail(email);
+      if (!user?.teamId) return;
+      const team = await store.getTeam(user.teamId);
+      if (team?.name) map.set(email, team.name);
+    }),
+  );
   return map;
 }
 

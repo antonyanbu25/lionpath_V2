@@ -59,14 +59,29 @@ assert.equal(
   "manager proxy update rejected",
 );
 
-// Firestore rules parity: writes require ownerId == auth uid (canWriteOwnResource).
+// Firestore rules parity: per-owner resources (lifecycles, prepBriefs, postCalls,
+// deals, etc.) require ownerId == auth uid via canWriteOwnResource/canCreateTeamResource.
 const rulesPath = join(dirname(fileURLToPath(import.meta.url)), "../../firestore.rules");
 const rules = await readFile(rulesPath, "utf8");
 assert.match(rules, /function canWriteOwnResource\(ownerId\)/, "rules define canWriteOwnResource");
 assert.match(
   rules,
-  /allow create: if canWriteOwnResource\(request\.resource\.data\.ownerId\)/,
-  "rules reject proxy create (ownerId must match auth)",
+  /allow create: if canCreateTeamResource\(request\.resource\.data\.ownerId,/,
+  "rules reject proxy create on team-scoped resources (ownerId must match auth)",
+);
+
+// Accounts are a deliberate exception (introduced with org hierarchy in 2.1.29,
+// commit 68383ec): they're shared/collaborative entities per docs/DOMAIN_MODEL.md
+// ("one account can have multiple lifecycles (different SE owners)"), not
+// single-owner resources — any org-scoped admin/manager/SE may create one.
+// This assertion used to check accounts required ownerId == auth like the
+// per-owner collections above; that stopped being true intentionally, not by
+// regression, so this documents the current contract instead of the old one.
+assert.match(rules, /function canCreateAccount\(\)/, "rules define canCreateAccount");
+assert.doesNotMatch(
+  rules,
+  /match \/accounts\/\{accountId\} \{\s*allow read:[^}]*allow create: if canWriteOwnResource/,
+  "accounts create is intentionally not ownerId-gated — if this ever changes, update the comment above too",
 );
 
 console.log("test-rbac-parity.mjs: ok");

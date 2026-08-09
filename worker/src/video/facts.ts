@@ -18,6 +18,98 @@ export interface SampleFrame {
   windowLabel?: string;
 }
 
+const CLASSIFIED_SEGMENT_TYPES = new Set<TimelineSegmentType>([
+  "slides",
+  "product",
+  "cde",
+  "customer_screen",
+]);
+
+/** True when attendee curve rows carry camera on/off or pct. */
+export function curveHasCameraData(
+  curve: VideoFactsDraft["attendeeCurveJson"] | null | undefined,
+): boolean {
+  if (!Array.isArray(curve)) return false;
+  return curve.some(
+    (p) =>
+      p?.cameraOn === true ||
+      p?.cameraOn === false ||
+      (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
+  );
+}
+
+/**
+ * Call-level camera_on_pct — prefer explicit top-level, else SE row / curve aggregate.
+ * Keeps room panel and CQS camera_on on the same source.
+ */
+export function aggregateCameraOnPct(
+  topLevel: number | null | undefined,
+  curve: VideoFactsDraft["attendeeCurveJson"] | null | undefined,
+  seIdentity?: string | null,
+): number | null {
+  if (topLevel != null && Number.isFinite(Number(topLevel))) {
+    return Math.max(0, Math.min(100, Math.round(Number(topLevel))));
+  }
+  if (!Array.isArray(curve) || !curve.length) return null;
+
+  const seKey = seIdentity?.trim().toLowerCase();
+  const seRow =
+    (seKey &&
+      curve.find((p) => String(p?.name || "").trim().toLowerCase() === seKey)) ||
+    curve.find((p) => String(p?.role || "").trim().toLowerCase() === "se");
+
+  if (seRow?.cameraOnPct != null && Number.isFinite(Number(seRow.cameraOnPct))) {
+    return Math.max(0, Math.min(100, Math.round(Number(seRow.cameraOnPct))));
+  }
+
+  const pcts = curve
+    .map((p) => p?.cameraOnPct)
+    .filter((v): v is number => v != null && Number.isFinite(Number(v)))
+    .map((v) => Math.max(0, Math.min(100, Math.round(Number(v)))));
+  if (pcts.length) {
+    return Math.round(pcts.reduce((sum, v) => sum + v, 0) / pcts.length);
+  }
+
+  const known = curve.filter((p) => p?.cameraOn === true || p?.cameraOn === false);
+  if (!known.length) return null;
+  const onCount = known.filter((p) => p?.cameraOn === true).length;
+  return Math.round((onCount / known.length) * 100);
+}
+
+function mergeAdjacentSegments(
+  segments: VideoFactsDraft["segments"],
+): VideoFactsDraft["segments"] {
+  if (!segments.length) return [];
+  const sorted = segments.slice().sort((a, b) => a.startS - b.startS);
+  const out: VideoFactsDraft["segments"] = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = out[out.length - 1];
+    const cur = sorted[i];
+    if (prev.segmentType === cur.segmentType && prev.endS >= cur.startS - 1) {
+      prev.endS = Math.max(prev.endS, cur.endS);
+      if (!prev.label && cur.label) prev.label = cur.label;
+    } else {
+      out.push({ ...cur });
+    }
+  }
+  return out;
+}
+
+/**
+ * One timeline builder per call — prefer vision-classified share segments;
+ * fall back to honest scene_change/none when classification is absent.
+ */
+export function buildPass2TimelineSegments(
+  sceneSegments: VideoFactsDraft["segments"],
+  classifiedSegments: VideoFactsDraft["segments"] | null | undefined,
+): VideoFactsDraft["segments"] {
+  const classified = (classifiedSegments || []).filter((s) =>
+    CLASSIFIED_SEGMENT_TYPES.has(s.segmentType),
+  );
+  if (classified.length) return mergeAdjacentSegments(classified);
+  return sceneSegments?.length ? sceneSegments : [];
+}
+
 /** Collapse high-delta samples into coarse scene_change segments. */
 export function buildSceneSegments(
   samples: SampleFrame[],
@@ -160,6 +252,11 @@ export function buildVideoFactsDraft(opts: {
   /** When set (e.g. Gemini transcript inference), skip scene-delta segment builder. */
   segments?: VideoFactsDraft["segments"];
   attendeeCurveJson?: VideoFactsDraft["attendeeCurveJson"];
+  pptUsed?: boolean | null;
+  pptEvidence?: string | null;
+  slideDeckTailored?: boolean | null;
+  slideVisualsWalked?: boolean | null;
+  timelineSpine?: VideoFactsDraft["timelineSpine"];
 }): VideoFactsDraft {
   const durationSec = opts.durationSec ?? null;
   const keyframes = opts.status === "ready" ? pickKeyframes(opts.samples) : [];
@@ -169,12 +266,11 @@ export function buildVideoFactsDraft(opts: {
       ? buildSceneSegments(opts.samples, durationSec ?? 0)
       : []);
 
+  const cameraOnPct = aggregateCameraOnPct(opts.cameraOnPct, opts.attendeeCurveJson);
+
   return {
     status: opts.status,
-    cameraOnPct:
-      opts.cameraOnPct == null || !Number.isFinite(opts.cameraOnPct)
-        ? null
-        : Math.max(0, Math.min(100, Math.round(opts.cameraOnPct))),
+    cameraOnPct,
     keyframeRefs: keyframes.map((k) => ({
       atS: k.atS,
       path: k.path,
@@ -194,5 +290,10 @@ export function buildVideoFactsDraft(opts: {
     visualAnalysisConsent: !!opts.visualAnalysisConsent,
     attendeeCurveJson: opts.attendeeCurveJson ?? null,
     segments,
+    pptUsed: typeof opts.pptUsed === "boolean" ? opts.pptUsed : null,
+    pptEvidence: opts.pptEvidence?.trim() || null,
+    slideDeckTailored: typeof opts.slideDeckTailored === "boolean" ? opts.slideDeckTailored : null,
+    slideVisualsWalked: typeof opts.slideVisualsWalked === "boolean" ? opts.slideVisualsWalked : null,
+    timelineSpine: opts.timelineSpine ?? null,
   };
 }

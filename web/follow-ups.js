@@ -97,11 +97,45 @@ function companyFromRecord(record) {
   return companyFromCallTitle(title) || title || "Call";
 }
 
+/**
+ * Normalize post-call nextSteps — API may return an array of rows or a structured object.
+ * Restored 2026-08-09: this guard was dropped somewhere between the original fix
+ * (commit 543949d, "Fix blank dashboard/coaching when nextSteps is an object") and
+ * a later "Apply V2 source snapshot" import (c16bccd) that appears to have reverted
+ * follow-ups.js and dashboard.js to a pre-fix state — silently reintroducing the
+ * original crash for any historical analysis whose nextSteps is still object-shaped
+ * (seActions/aeActions). Caught by scripts/test-nextsteps-shape.mjs, orphaned until now.
+ * @param {unknown} nextSteps
+ * @returns {{ owner?: string, action: string, due?: string }[]}
+ */
+export function stepsFromNextSteps(nextSteps) {
+  if (Array.isArray(nextSteps)) return nextSteps;
+  if (!nextSteps || typeof nextSteps !== "object") return [];
+
+  const items = [];
+  const push = (owner, list) => {
+    for (const step of Array.isArray(list) ? list : []) {
+      const action = step?.action || step?.followUp || step?.thisCall;
+      if (!action) continue;
+      items.push({
+        owner,
+        action: String(action),
+        due: step.due || step.dueHint || "",
+      });
+    }
+  };
+
+  push("SE", nextSteps.seActions);
+  push("AE", nextSteps.aeActions);
+  push("Customer", nextSteps.customerCommitments);
+  return items;
+}
+
 function normalizeSteps(record) {
   const a = record.analysis || {};
   const items = [];
 
-  for (const step of a.nextSteps || []) {
+  for (const step of stepsFromNextSteps(a.nextSteps)) {
     if (!step?.action || UNKNOWN_DUE.has(String(step.action).toLowerCase())) continue;
     items.push({
       owner: step.owner || "",

@@ -25,7 +25,7 @@ export type TranscriptSegmentType =
 
 export type TimelineSegmentType = VideoSegmentType | TranscriptSegmentType;
 
-export type TimelineSource = "video" | "transcript";
+export type TimelineSource = "video" | "transcript" | "summary";
 
 export interface KeyframeRef {
   atS: number;
@@ -100,4 +100,21 @@ export interface VideoFactsDraft {
     segmentType: TimelineSegmentType;
     label?: string | null;
   }>;
+  /** Slides/PPT detected in sampled frames. */
+  pptUsed?: boolean | null;
+  pptEvidence?: string | null;
+  slideDeckTailored?: boolean | null;
+  slideVisualsWalked?: boolean | null;
+  /** Kaia / plain-summary phase spine — display only, source summary. */
+  timelineSpine?: {
+    source: "summary";
+    segments: Array<{
+      startS: number;
+      endS: number;
+      segmentType: TranscriptSegmentType;
+      label?: string | null;
+      source?: "summary";
+    }>;
+    durationSec?: number | null;
+  } | null;
 }

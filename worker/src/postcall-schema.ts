@@ -177,79 +177,16 @@ export const POSTCALL_SCHEMA = {
         crmNotes: { type: "string" },
       },
     },
-    dealQualification: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        metrics: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-        economicBuyer: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-            contactId: { type: "string" },
-          },
-        },
-        decisionCriteria: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-        decisionProcess: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-        paperProcess: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-        identifyPain: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-        champion: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-            contactId: { type: "string" },
-          },
-        },
-        competition: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            value: { type: "string" },
-            status: { type: "string", enum: ["unknown", "partial", "confirmed"] },
-          },
-        },
-      },
-      description: "Optional MEDDPICC qualification extracted from the call when evidence exists.",
-    },
+    // dealQualification removed (2026-08-09): vestigial Pass-3 field, never
+    // populated by this pass's prompt, silently dropped by
+    // normalizePostCallOutput (caught by scripts/test-schema-drift.ts).
+    // Superseded by Pass 4 (postcall/qualify.ts → POST /api/postcall/qualify
+    // → analysis.qualification), which does MEDDPICC extraction properly
+    // with its own dedicated prompt and evidence rules — see
+    // web/domain/contact-service.js's meddpiccSignalsFromPostCall, which
+    // already prefers analysis.qualification and only fell back to this
+    // field for compatibility. See docs/BUILD_ALIGNMENT.md §7.3 for the
+    // original finding.
     // Pass 7 owns callNotes — optional here so stored merges survive schema checks.
     // Generate must leave this empty; /api/postcall/summarise fills it.
     callNotes: { type: "string" },

@@ -11,7 +11,7 @@ import { isManagerRole } from "./domain/types.js";
 import { canViewSeProfile, getPostCallForSession, normalizeSeEmail } from "./domain/se-access-service.js";
 import { sessionToUser } from "./domain/rbac.js";
 import { dedupeAnalysesByCallIdentity } from "./call-identity.js";
-import { formatTypeComposite, isEligibleForAggregate, typeComposite, scoreCall } from "./quality-score.js";
+import { formatTypeComposite, isEligibleForAggregate, typeComposite, scoreCall, aggregateCameraOnPct } from "./quality-score.js";
 import { RUBRIC_VERSION, profileFor, effectiveRubricVersion } from "./rubric-profiles.js";
 import { renderQipScorecard, normalizeQipScorecard } from "./postcall.js";
 import { coerceScorecardLines } from "./shared/qip-scorecard-normalize.js";
@@ -173,9 +173,26 @@ const SPINE_LEGEND = [
   ["none", "No share", SPINE_SEGMENT_PALETTE.none[0], SPINE_SEGMENT_PALETTE.none[1]],
 ];
 
+const SCENE_SPINE_LEGEND = [
+  ["scene_change", "Scene / share change", SPINE_SEGMENT_PALETTE.scene_change[0], SPINE_SEGMENT_PALETTE.scene_change[1]],
+  ["none", "Stable view", SPINE_SEGMENT_PALETTE.none[0], SPINE_SEGMENT_PALETTE.none[1]],
+];
+
+const CLASSIFIED_SPINE_TYPES = new Set(["slides", "product", "cde", "customer_screen"]);
+
+function resolveTimelineSegmentsForBundle(draftTimeline, draftVf, storedSegments = []) {
+  if (storedSegments?.length) return storedSegments;
+  const draftSegs = draftTimeline?.segments || [];
+  if (draftSegs.length) return draftSegs;
+  const videoSegs = (draftVf?.segments || []).map((s) => ({ ...s, source: s.source || "video" }));
+  if (videoSegs.length) return videoSegs;
+  return (draftVf?.timelineSpine?.segments || []).map((s) => ({ ...s, source: "summary" }));
+}
+
 function spineSegmentLabel(type, customLabel) {
   if (customLabel) return customLabel;
   if (type === "product" || type === "cde") return "Product / CDE";
+  if (type === "scene_change") return "Scene / share change";
   return segmentTypeLabel(type);
 }
 
@@ -278,9 +295,23 @@ function markerDisplayLabel(marker) {
   return humanizeMarkerLabel(String(raw).trim(), marker?.kind);
 }
 
-function renderSpineLegend({ inHead = false } = {}) {
+function spineLegendForSegments(segments) {
+  const types = new Set((segments || []).map((s) => s.segmentType || "none"));
+  const hasClassified = [...types].some((t) => CLASSIFIED_SPINE_TYPES.has(t));
+  if (hasClassified) {
+    return SPINE_LEGEND.filter(([type]) => types.has(type) || type === "product");
+  }
+  if ([...types].every((t) => t === "scene_change" || t === "none" || !t)) {
+    return SCENE_SPINE_LEGEND.filter(([type]) => types.has(type));
+  }
+  return SPINE_LEGEND;
+}
+
+function renderSpineLegend(segments, { inHead = false } = {}) {
+  const legend = spineLegendForSegments(segments);
+  if (!legend.length) return "";
   const headCls = inHead ? " call-spine-legend--head" : "";
-  return `<div class="call-spine-legend${headCls}" aria-hidden="true">${SPINE_LEGEND.map(
+  return `<div class="call-spine-legend${headCls}" aria-hidden="true">${legend.map(
     ([, label, bg, fg]) =>
       `<span class="call-spine-legend-item"><span class="call-spine-legend-swatch" style="background:${bg};color:${fg}"></span>${esc(label)}</span>`,
   ).join("")}</div>`;
@@ -757,7 +788,7 @@ function buildLocalCallBundle(session, record) {
     attendees,
     timeline: {
       facts: draftVf || null,
-      segments: draftTimeline?.segments || draftVf?.segments || [],
+      segments: resolveTimelineSegmentsForBundle(draftTimeline, draftVf),
       markers: draftTimeline?.markers || [],
     },
     videoFacts: draftVf || null,
@@ -905,7 +936,14 @@ function finalizeVideoFactsCamera(videoFacts) {
     };
   }
   curve = finalizeParticipantCameraRows(curve);
-  return { ...videoFacts, attendeeCurveJson: curve, visualAnalysisConsent: videoFacts.visualAnalysisConsent ?? true };
+  const seIdentity = videoFacts.seIdentity || null;
+  const cameraOnPct = aggregateCameraOnPct(videoFacts.cameraOnPct, curve, seIdentity);
+  return {
+    ...videoFacts,
+    attendeeCurveJson: curve,
+    cameraOnPct,
+    visualAnalysisConsent: videoFacts.visualAnalysisConsent ?? true,
+  };
 }
 
 function curveHasCameraData(curve) {
@@ -1524,11 +1562,12 @@ function buildStakeholderRows(identities, attendees, videoFacts, contacts = []) 
 
   const merged = mergeCallIdentities(candidates, contacts, transcriptSpeakers);
 
-  const topLevelCameraOnPct =
-    videoFacts?.cameraOnPct != null && Number.isFinite(Number(videoFacts.cameraOnPct))
-      ? Math.max(0, Math.min(100, Math.round(Number(videoFacts.cameraOnPct))))
-      : null;
   const seIdentity = identities?.seIdentity?.trim() || "";
+  const topLevelCameraOnPct = aggregateCameraOnPct(
+    videoFacts?.cameraOnPct,
+    videoFacts?.attendeeCurveJson,
+    seIdentity,
+  );
 
   const rows = merged.map((att) => {
     const displayName = String(att.name || att.label || att.email || "").trim();
@@ -1972,6 +2011,57 @@ function formatPass2DebugNote(analysisMeta, videoFacts, stakeholderRows) {
   return "Camera state could not be determined from the recording.";
 }
 
+function slideDeckKeyframeRefs(videoFacts) {
+  if (!videoFacts?.visualAnalysisConsent) return [];
+  const refs = Array.isArray(videoFacts.keyframeRefs) ? videoFacts.keyframeRefs : [];
+  const slideSegs = (videoFacts.segments || []).filter((s) => s.segmentType === "slides");
+  if (slideSegs.length) {
+    return refs
+      .filter((k) => slideSegs.some((s) => Number(k.atS) >= s.startS && Number(k.atS) < s.endS))
+      .slice(0, 6);
+  }
+  if (videoFacts.pptUsed === true || videoFacts.pptEvidence?.trim()) {
+    return refs.slice(0, 4);
+  }
+  return [];
+}
+
+function keyframeDisplayUrl(ref) {
+  const path = String(ref?.path || "").trim();
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/api/")) return path;
+  return null;
+}
+
+function renderSlideDeckKeyframeThumbnails(videoFacts) {
+  const picks = slideDeckKeyframeRefs(videoFacts);
+  if (!picks.length) return "";
+  const tiles = picks
+    .map((k) => {
+      const url = keyframeDisplayUrl(k);
+      const time = formatSegmentTime(Number(k.atS) || 0);
+      const visual = url
+        ? `<img src="${esc(url)}" alt="" loading="lazy" width="120" height="68" style="object-fit:cover;border-radius:6px;display:block;" />`
+        : `<span class="muted" style="display:block;padding:20px 12px;font-size:11px;">Slide frame</span>`;
+      return `<figure style="margin:0;text-align:center;">${visual}<figcaption class="num muted" style="font-size:11px;margin-top:4px;">${esc(time)}</figcaption></figure>`;
+    })
+    .join("");
+  return `<div class="call-slide-kf-row" style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px;" aria-label="Slide keyframes from video">${tiles}</div>`;
+}
+
+function injectSlideDeckThemeExtras(html, videoFacts, _callId) {
+  const extras = renderSlideDeckKeyframeThumbnails(videoFacts);
+  if (!extras) return html;
+  const marker = 'data-theme-key="slide_deck"';
+  const idx = html.indexOf(marker);
+  if (idx < 0) return html;
+  const bodyMarker = '<div class="thm-body">';
+  const bodyIdx = html.indexOf(bodyMarker, idx);
+  if (bodyIdx < 0) return html;
+  return `${html.slice(0, bodyIdx + bodyMarker.length)}${extras}${html.slice(bodyIdx + bodyMarker.length)}`;
+}
+
 function renderStakeholderName(row) {
   const nameHtml = esc(row.name);
   if (row.contactId && row.accountId) {
@@ -1996,11 +2086,7 @@ function renderStakeholderSection(identities, attendees, hasVideo, videoFacts, s
             : "";
         const camKnown = r.cameraOn === true || r.cameraOn === false;
         const camCls = r.cameraOn === true ? "green" : r.cameraOn === false ? "amber" : "";
-        const camLabel = !camKnown
-          ? "-"
-          : r.cameraOnPct != null
-            ? `${r.cameraOn ? "On" : "Off"} · ${esc(String(r.cameraOnPct))}%`
-            : r.cameraOn ? "On" : "Off";
+        const camLabel = !camKnown ? "-" : r.cameraOn ? "On" : "Off";
         const camAnimCls = camKnown ? " call-stakeholder-pill--cam" : "";
         return `<div class="call-stakeholder-card${i < rows.length - 1 ? " call-stakeholder-card--border" : ""}">
           <div class="call-stakeholder-avatar call-stakeholder-avatar--${avCls || "neutral"}">${esc(stakeholderInitials(r.name))}</div>
@@ -2118,8 +2204,15 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
   const markers = timelineDisplayMarkers(allMarkers);
   const videoSegments = all.filter((s) => (s.source || "video") === "video");
   const transcriptSegments = all.filter((s) => s.source === "transcript");
+  const summarySegments = all.filter((s) => s.source === "summary");
   const usingTranscript = !videoSegments.length && transcriptSegments.length > 0;
-  const segments = videoSegments.length ? videoSegments : transcriptSegments;
+  const usingSummary =
+    !videoSegments.length && !transcriptSegments.length && summarySegments.length > 0;
+  const segments = videoSegments.length
+    ? videoSegments
+    : transcriptSegments.length
+      ? transcriptSegments
+      : summarySegments;
   const durationSec = segments.length
     ? resolveSpineDuration(
         timeline?.facts?.durationSec ??
@@ -2135,6 +2228,8 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     body += renderSpineTimeAxis(durationSec);
     if (usingTranscript) {
       body += `<p class="muted call-timeline-note">Built from transcript timestamps, not video. Camera, CDE, call flow, and engagement require video analysis and stay unscored here.</p>`;
+    } else if (usingSummary) {
+      body += `<p class="muted call-timeline-note">Phases inferred from the Kaia AI summary — approximate timing, display only. Camera, CDE, call flow, and engagement require video or a timestamped transcript and stay unscored here.</p>`;
     }
   } else if (markers.length) {
     body = renderTimelineMarkers(markers);
@@ -2166,8 +2261,10 @@ export function renderTimelineSection(hasVideo, timeline, durationLabel, opts = 
     : "How the call went";
   const subtitle = usingTranscript
     ? "Conversation phases from the transcript clock (evidence only, not scored)"
-    : "";
-  const headLegend = segments.length ? renderSpineLegend({ inHead: true }) : "";
+    : usingSummary
+      ? "Conversation phases inferred from Kaia summary (display only, not scored)"
+      : "";
+  const headLegend = segments.length ? renderSpineLegend(segments, { inHead: true }) : "";
 
   return `
     <section class="call-section call-timeline-section card-wire">
@@ -2325,13 +2422,21 @@ export function resolveMinutesViewModel(record, momDraft, followUps) {
 
   const rawOutcome = (mom?.outcome || "").trim();
   const keyPoints = Array.isArray(mom?.keyPoints) ? mom.keyPoints.filter((k) => k?.title) : [];
+  // Not SE-only: minutes of meeting are customer-facing, so "Next steps" must
+  // list every party's commitments — the customer's own most of all. Both the
+  // email formatter (shared/mom-email-draft.js: OWNER_LABEL covers se/ae/customer
+  // and formatActionLine renders "(AE, by Friday)") and the card renderer
+  // (momOwnerChip + .mom-owner--ae/.mom-owner--customer in call-view.css) are
+  // explicitly built for all three owners — an SE-only filter made all of that
+  // unreachable. Filter added in 2.1.29 (68383ec), after the tests asserting
+  // AE/customer items were written (e943701); orphaned, so nobody noticed.
   let actionItems = Array.isArray(mom?.actionItems)
-    ? mom.actionItems.filter((a) => a?.text && (a.owner === "se" || isSeOwner(a.owner)))
+    ? mom.actionItems.filter((a) => a?.text)
     : [];
 
   if (!actionItems.length && fus.length) {
     actionItems = fus
-      .filter((f) => f.owner === "se" || isSeOwner(f.owner))
+      .filter((f) => f.description)
       .map((f) => ({
       text: f.description,
       owner: f.owner || null,
@@ -2488,6 +2593,7 @@ function renderCallTabs(record, scorecard, analysisMeta, tabs = {}) {
             company: tabs.company || "",
           })
         : `<div class="call-tab-empty"><h4>No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())}</h4><p>Re-run post-call analysis to populate the scorecard.</p></div>`;
+    qipHtml = injectSlideDeckThemeExtras(qipHtml, tabs.videoFacts, record.id);
   } catch (err) {
     console.error("[call-view] Call Quality Score render failed:", err);
     qipHtml = `<div class="call-tab-empty"><h4>${esc(CALL_QUALITY_SCORE_LABEL)} unavailable</h4><p class="muted">Could not render the scorecard for this call. Try refreshing; if it persists, re-run post-call analysis.</p></div>`;
@@ -2818,8 +2924,15 @@ async function loadCallBundle(session, record, detailOverride = null) {
   let timelineFacts = parallel.storedFacts?.[0] || null;
   let timelineSegments = parallel.timelineSegments;
   if (!timelineSegments.length && Array.isArray(draftVf?.segments)) {
-    timelineSegments = draftVf.segments;
+    timelineSegments = draftVf.segments.map((s) => ({ ...s, source: s.source || "video" }));
     timelineFacts = timelineFacts || draftVf;
+  }
+  if (!timelineSegments.length && draftVf?.timelineSpine?.segments?.length) {
+    timelineSegments = draftVf.timelineSpine.segments.map((s) => ({ ...s, source: "summary" }));
+    timelineFacts = timelineFacts || draftVf;
+  }
+  if (!timelineSegments.length) {
+    timelineSegments = resolveTimelineSegmentsForBundle(draftTimeline, draftVf);
   }
   if (timelineFacts && draftVf?.attendeeCurveJson && !timelineFacts.attendeeCurveJson) {
     timelineFacts = { ...timelineFacts, attendeeCurveJson: draftVf.attendeeCurveJson };
@@ -3020,6 +3133,7 @@ function renderCallRecord(bundle, opts = {}) {
         })}
         ${renderCallTabs(record, bundle.scorecard, bundle.analysisMeta, {
           ...bundle.productSignal,
+          videoFacts: bundle.videoFacts,
           dealRollup: !!(bundle.dealId || bundle.deal?.id),
           currentCallId: record.id,
           technicalCommit: bundle.technicalCommit,

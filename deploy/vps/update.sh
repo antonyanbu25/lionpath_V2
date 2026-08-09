@@ -73,6 +73,24 @@ else
   echo "=== Portal build: $PORTAL_BUILD ==="
 fi
 
+if [[ "${SKIP_TEST_GATE:-}" == "1" ]]; then
+  echo "=== Test gate: SKIPPED (SKIP_TEST_GATE=1) ==="
+else
+  echo "=== Test gate: worker (fast/free tests only) ==="
+  docker build -f "$DEPLOY_DIR/Dockerfile.worker-test" -t se-paathai-worker-test "$REPO_ROOT"
+  docker run --rm se-paathai-worker-test
+
+  echo "=== Test gate: web (fast/free tests only) ==="
+  # Mount read-only, then copy to a writable path inside the container before
+  # `npm ci` — mounting read-write would let Alpine-installed native binaries
+  # (esbuild, playwright) leak back into the host's web/node_modules, which
+  # would then mismatch the host's actual OS/libc on next local `npm install`.
+  docker run --rm -v "$REPO_ROOT/web:/src:ro" node:20-alpine \
+    sh -c "cp -r /src /app && cd /app && npm ci --no-audit --no-fund && npm run test:fast"
+
+  echo "=== Test gate: PASSED ==="
+fi
+
 echo "=== Building portal bundle (web/dist) ==="
 bash "$DEPLOY_DIR/build-web-bundle.sh"
 
