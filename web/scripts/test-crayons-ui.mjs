@@ -1,4 +1,4 @@
-import { readFieldValue, readFieldValueAsync } from "../crayons-ui.js";
+import { readFieldValue, readFieldValueAsync, syncFieldValueFromShadow } from "../crayons-ui.js";
 
 function mockTextarea({ sync = "", getValue = "" }) {
   return {
@@ -48,6 +48,31 @@ const checks = [
         shadowRoot: { querySelector: () => ({ value: "shadow text" }) },
       };
       return readFieldValue(el) === "shadow text";
+    },
+  ],
+  [
+    "syncFieldValueFromShadow promotes shadow value to host",
+    () => {
+      const el = {
+        tagName: "FW-INPUT",
+        value: "",
+        shadowRoot: { querySelector: () => ({ value: "simon@wildfawnjewellery.com" }) },
+      };
+      syncFieldValueFromShadow(el);
+      return el.value === "simon@wildfawnjewellery.com";
+    },
+  ],
+  [
+    "readFieldValueAsync prefers shadow after host empty on fw-input",
+    async () => {
+      const el = {
+        tagName: "FW-INPUT",
+        value: "",
+        shadowRoot: { querySelector: () => ({ value: "alex@acme.com" }) },
+        getValue: async () => "",
+      };
+      syncFieldValueFromShadow(el);
+      return (await readFieldValueAsync(el)) === "alex@acme.com";
     },
   ],
 ];

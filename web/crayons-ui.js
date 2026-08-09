@@ -79,9 +79,33 @@ export function fillShadowTabs(el) {
   observeRoot();
 }
 
+/**
+ * Crayons fw-input can show text in the shadow native control while `el.value`
+ * is still empty (autofill, readOnly anti-autofill, or a re-render race). Sync
+ * shadow → host before reading so submit and gating see the same value as CRM.
+ * @param {HTMLElement | null | undefined} el
+ */
+export function syncFieldValueFromShadow(el) {
+  if (!el?.shadowRoot) return;
+  const tag = String(el.tagName || "").toLowerCase();
+  if (tag !== "fw-input" && tag !== "fw-textarea") return;
+  const inner = el.shadowRoot.querySelector("input, textarea");
+  if (!inner) return;
+  const innerVal = String(inner.value ?? "");
+  const hostVal = el.value != null ? String(el.value) : "";
+  if (innerVal !== hostVal) {
+    try {
+      el.value = innerVal;
+    } catch {
+      /* crayons guard */
+    }
+  }
+}
+
 /** @param {HTMLElement | null | undefined} el */
 export function readFieldValue(el) {
   if (!el) return "";
+  syncFieldValueFromShadow(el);
   const host = el.value;
   if (host != null && host !== "") return String(host).trim();
   const inner = el.shadowRoot?.querySelector("input, textarea");
@@ -109,8 +133,10 @@ export async function setFieldValue(el, value) {
 /** @param {HTMLElement | null | undefined} el */
 export async function readFieldValueAsync(el) {
   if (!el) return "";
+  syncFieldValueFromShadow(el);
   const tag = String(el.tagName || "").toLowerCase();
   const isTextarea = tag === "fw-textarea";
+  const isInput = tag === "fw-input";
   const getValueTimeoutMs = isTextarea ? 800 : 300;
 
   async function readViaGetValue() {
@@ -135,10 +161,20 @@ export async function readFieldValueAsync(el) {
     return fromGet;
   }
 
+  if (isInput) {
+    const sync = readFieldValue(el);
+    if (sync) return sync;
+    const fromGet = await readViaGetValue();
+    if (fromGet) return fromGet;
+    syncFieldValueFromShadow(el);
+    return readFieldValue(el);
+  }
+
   const sync = readFieldValue(el);
   if (sync) return sync;
   const fromGet = await readViaGetValue();
   if (fromGet) return fromGet;
+  syncFieldValueFromShadow(el);
   return readFieldValue(el);
 }
 

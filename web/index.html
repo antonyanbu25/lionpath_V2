@@ -507,7 +507,7 @@
                   <h1>New call analysis</h1>
                 </div>
                 <fw-card class="prep-form-card postcall-intake-card">
-                  <form id="postcall-form" autocomplete="off">
+                  <form id="postcall-form" autocomplete="off" novalidate>
                     <div class="postcall-recording-block">
                       <div class="postcall-field-label">Call recording <span class="postcall-required">*</span></div>
                       <fw-input
@@ -565,7 +565,6 @@
                         data-lpignore="true"
                         data-1p-ignore="true"
                         data-form-type="other"
-                        required
                         clear-input
                       ></fw-input>
                     </div>
@@ -617,7 +616,7 @@
                       </div>
                       </div>
                     </details>
-                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit">Analyse call</fw-button>
+                    <fw-button id="analyze-call" color="primary" type="submit" class="prep-form-submit" disabled>Analyse call</fw-button>
                     <p class="prep-form-footnote">Analysis takes 40 to 90 seconds.</p>
                   </form>
                 </fw-card>

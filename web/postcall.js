@@ -22,6 +22,7 @@ import {
   bindActionOnce,
   readFieldValue,
   readFieldValueAsync,
+  syncFieldValueFromShadow,
   setFieldValue,
   setButtonLoading,
   setFieldError,
@@ -318,6 +319,8 @@ let crmMatchesTimer = null;
 let crmMatchesToken = 0;
 let crmResolving = false;
 let crmPreviewSurfacedOnce = false;
+/** Last non-empty prospect email raw string — survives brief host/shadow desync. */
+let lastProspectEmailsRaw = "";
 /** @type {null | { byEmail: object[] }} */
 let lastCrmMatchResult = null;
 
@@ -549,8 +552,29 @@ function scheduleCrmMatches() {
   crmMatchesTimer = window.setTimeout(() => { void renderCrmMatchesPanel(); }, 200);
 }
 
+function rememberProspectEmailsRaw(raw) {
+  const trimmed = String(raw ?? "").trim();
+  if (trimmed) lastProspectEmailsRaw = trimmed;
+}
+
+function readProspectEmailRawSync() {
+  const el = $("pc-prospect-emails");
+  syncFieldValueFromShadow(el);
+  const raw = readFieldValue(el);
+  rememberProspectEmailsRaw(raw);
+  return raw || lastProspectEmailsRaw;
+}
+
+async function readProspectEmailRawAsync() {
+  const el = $("pc-prospect-emails");
+  syncFieldValueFromShadow(el);
+  const raw = (await readFieldValueAsync(el))?.trim() || "";
+  rememberProspectEmailsRaw(raw);
+  return raw || lastProspectEmailsRaw;
+}
+
 function prospectEmailsPresentSync() {
-  const raw = readFieldValue($("pc-prospect-emails"));
+  const raw = readProspectEmailRawSync();
   return filterSessionEmailFromProspects(parseProspectEmails(raw)).length > 0;
 }
 
@@ -4473,7 +4497,17 @@ function configureProspectEmailAntiAutofill(el) {
   const unlock = () => {
     el.dataset.pcAutofillUnlocked = "1";
     const inner = el.shadowRoot?.querySelector("input, textarea");
-    if (inner) inner.readOnly = false;
+    if (inner) {
+      inner.readOnly = false;
+      if (inner.value && !String(el.value || "").trim()) {
+        try {
+          el.value = inner.value;
+        } catch {
+          /* crayons guard */
+        }
+        rememberProspectEmailsRaw(inner.value);
+      }
+    }
   };
   el.addEventListener("focus", unlock, true);
   el.addEventListener("fwFocus", unlock);
@@ -4503,7 +4537,7 @@ async function rejectSessionEmailInProspectField(el) {
 }
 
 async function getProspectEmailsFromField() {
-  const raw = await readFieldValueAsync($("pc-prospect-emails"));
+  const raw = await readProspectEmailRawAsync();
   return filterSessionEmailFromProspects(parseProspectEmails(raw));
 }
 
@@ -4594,6 +4628,7 @@ export function clearPostCallForm() {
   pcCreateNewDeal = false;
   pcNewDealType = "new_business";
   pcLastAccountDeals = [];
+  lastProspectEmailsRaw = "";
   const emailsEl = $("pc-prospect-emails");
   if (emailsEl) delete emailsEl.dataset.pcAutofillUnlocked;
   syncPasscodeVisibility();
@@ -4662,7 +4697,7 @@ async function collectIntakePayload() {
     await readFieldValueAsync(recordingField),
     await readFieldValueAsync($("pc-recording-pwd")),
   );
-  const prospectEmailsRaw = (await readFieldValueAsync(emailsField))?.trim() || "";
+  const prospectEmailsRaw = await readProspectEmailRawAsync();
   const allProspectEmails = parseProspectEmails(prospectEmailsRaw);
   const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
   let companyName = await resolveIntakeCompanyName(prospectEmails);
@@ -4898,6 +4933,8 @@ async function startPipeline(e) {
 }
 
 async function analyzeCall(e) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
   return startPipeline(e);
 }
 
@@ -4923,6 +4960,7 @@ export function onSessionCleared() {
   pcCreateNewDeal = false;
   pcNewDealType = "new_business";
   pcLastAccountDeals = [];
+  lastProspectEmailsRaw = "";
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
   activePostcallProgress?.hide();
@@ -4999,6 +5037,7 @@ export function initPostcall() {
     void renderCrmMatchesPanel();
   });
   emailsEl?.addEventListener("fwInput", () => {
+    rememberProspectEmailsRaw(readFieldValue(emailsEl));
     void rejectSessionEmailInProspectField(emailsEl);
     resetCrmPreviewGate();
     scheduleCompanyPrefill();
@@ -5006,6 +5045,7 @@ export function initPostcall() {
     updateAnalyzeButtonState();
   });
   emailsEl?.addEventListener("input", () => {
+    rememberProspectEmailsRaw(readFieldValue(emailsEl));
     void rejectSessionEmailInProspectField(emailsEl);
     resetCrmPreviewGate();
     scheduleCompanyPrefill();
