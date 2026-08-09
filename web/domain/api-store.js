@@ -175,7 +175,7 @@ function invalidateAfterWrite(method, args, callDetailCache, dealDetailCache) {
 /** @param {{ workerBaseUrl: string, getToken?: () => Promise<string|undefined>, fb: object }} opts */
 export function createApiStore({ workerBaseUrl, getToken, fb }) {
   const base = String(workerBaseUrl || "").replace(/\/$/, "");
-  const firestoreDelegate = createFirestoreStore(fb);
+  const firestoreDelegate = fb?.db ? createFirestoreStore(fb) : null;
   /** @type {Map<string, DetailCacheEntry>} */
   const callDetailCache = new Map();
   /** @type {Map<string, DetailCacheEntry>} */
