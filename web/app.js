@@ -2442,14 +2442,13 @@ async function showApp(session, opts = {}) {
   }
   showAppInFlight = true;
   const expectedEmail = String(session?.email || "").trim().toLowerCase();
-  const sessionStillValid = () => {
+  let sessionStillValid = () => {
     const live = getSession();
     return !!(live?.email && String(live.email).trim().toLowerCase() === expectedEmail);
   };
   show($("app-loading"), true);
   show($("login-view"), false);
   show($("app-shell"), true);
-  let bossDecisionBlocking = false;
   try {
     if (!sessionStillValid()) {
       show($("app-loading"), false);
@@ -2459,19 +2458,6 @@ async function showApp(session, opts = {}) {
     currentSession = session?.email
       ? { ...session, email: String(session.email).trim().toLowerCase() }
       : session;
-
-    if (window.BossDecision?.shouldShow(currentSession?.email)) {
-      bossDecisionBlocking = true;
-      show($("app-loading"), false);
-      show($("app-shell"), false);
-      window.BossPopup.mount(document.body);
-      return;
-    }
-
-    // Auto-apply previously chosen coming-soon state
-    if (window.BossDecision?.autoApplyOnLoad) {
-      window.BossDecision.autoApplyOnLoad();
-    }
 
     refreshUserMenuFromSession();
     updateTopbarDate();
@@ -2561,12 +2547,6 @@ async function showApp(session, opts = {}) {
     console.warn("[app] showApp failed:", err?.message || err);
   } finally {
     show($("app-loading"), false);
-    if (bossDecisionBlocking) {
-      show($("login-view"), false);
-      show($("app-shell"), false);
-      showAppInFlight = false;
-      return;
-    }
     const hasSession = !!getSession()?.email;
     const hasFirebaseUser = !!(fb?.auth?.currentUser);
     if (!hasSession && !hasFirebaseUser && !ssoInFlight && !signingOut) {

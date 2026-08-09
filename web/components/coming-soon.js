@@ -31,14 +31,7 @@
     seconds.textContent = pad(parts.seconds);
   }
 
-  function getChoice() {
-    if (window.BossDecision && typeof window.BossDecision.getChoice === "function") {
-      return window.BossDecision.getChoice();
-    }
-    return null;
-  }
-
-  function renderTimer() {
+  function render() {
     return `
       <main class="coming-soon-shell" aria-labelledby="coming-soon-title">
         <section class="coming-soon-card">
@@ -73,20 +66,6 @@
     `;
   }
 
-  function renderHidden() {
-    return `
-      <main class="coming-soon-shell cs-hidden-mode" aria-labelledby="coming-soon-title">
-        <section class="coming-soon-card">
-          <img class="coming-soon-logo" src="${LOGO_URL}" alt="Janus logo" width="96" height="96" />
-          <p class="coming-soon-product">Janus 2.0</p>
-          <h1 id="coming-soon-title">Coming Soon</h1>
-          <p class="coming-soon-copy">This workspace is temporarily streamlined while we finish the next Janus experience.</p>
-          <footer class="coming-soon-footer">Janus - Copyright Freshworks.</footer>
-        </section>
-      </main>
-    `;
-  }
-
   function unmount() {
     if (activeTimer) {
       clearInterval(activeTimer);
@@ -101,13 +80,10 @@
   function mount(target) {
     if (!target) return;
     unmount();
-    const choice = getChoice();
-    target.innerHTML = choice === "hidden" ? renderHidden() : renderTimer();
+    target.innerHTML = render();
     mountedRoot = target;
-    if (choice !== "hidden") {
-      updateTimer(target);
-      activeTimer = setInterval(() => updateTimer(target), 1000);
-    }
+    updateTimer(target);
+    activeTimer = setInterval(() => updateTimer(target), 1000);
   }
 
   window.ComingSoon = { mount, unmount };
