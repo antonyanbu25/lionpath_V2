@@ -37,11 +37,16 @@ assert.match(idJs, /stableUserIdForEmail/);
 assert.match(read("firestore.rules"), /authIndex/);
 assert.match(read("firestore.rules"), /currentUserId/);
 
-const seedDevJs = read("web/domain/seed-dev.js");
-assert.match(seedDevJs, /lookupUserForSession/);
-assert.match(seedDevJs, /safeStoreGet/);
+// lookupUserForSession moved from seed-dev.js to its own module in
+// commit 38b1380 ("unified write scope resolver" / "dev-seed split") — this
+// test wasn't updated at the time because it was orphaned (not wired into
+// npm test), so the drift went unnoticed. Confirmed 2026-08-09 that the
+// function and its ordering guarantee still exist, just relocated.
+const userResolveJs = read("web/domain/user-resolve.js");
+assert.match(userResolveJs, /lookupUserForSession/);
+assert.match(userResolveJs, /safeStoreGet/);
 assert.ok(
-  seedDevJs.indexOf("getUserIdByAuthUid") < seedDevJs.indexOf("getUser by session id"),
+  userResolveJs.indexOf("getUserIdByAuthUid") < userResolveJs.indexOf("getUser by session id"),
   "authIndex lookup must run before session userId getUser",
 );
 
@@ -54,9 +59,20 @@ assert.match(appJs, /from "\.\/auth\.js"/);
 assert.doesNotMatch(appJs, /isFirebaseAuthEnabled.*from "\.\/firebase-config\.js"/);
 assert.doesNotMatch(appJs, /const authEnabled = !!firebaseConfig\.projectId/);
 
+// "auth-fix-v3" was a one-time hardcoded cache-bust literal on the
+// firebase-config.js <script> tag — superseded by a dynamic mechanism
+// (AUTH_BUILD_ID/MODULE_BUILD exported from firebase-config.js, applied to
+// app.js's import at boot time) so the cache-bust value doesn't need a
+// literal-string test update every release. Assert the mechanism exists
+// structurally instead of a specific version string, which would just go
+// stale again next release the same way "auth-fix-v3" did.
+const firebaseConfigForBuildId = read("web/firebase-config.js");
+assert.match(firebaseConfigForBuildId, /export const AUTH_BUILD_ID/);
+assert.match(firebaseConfigForBuildId, /export const MODULE_BUILD = AUTH_BUILD_ID/);
+
 const indexHtml = read("web/index.html");
-assert.match(indexHtml, /auth-fix-v3/);
-assert.match(indexHtml, /firebase-config\.js\?v=auth-fix-v3/);
+assert.match(indexHtml, /const \{ MODULE_BUILD \} = await import\("\.\/firebase-config\.js"\)/);
+assert.match(indexHtml, /await import\(`\.\/app\.js\?v=\$\{MODULE_BUILD\}`\)/);
 assert.match(indexHtml, /id="login-hint"/);
 assert.match(indexHtml, /id="login-subtitle"/);
 assert.match(indexHtml, /id="firebase-signin-block"/);

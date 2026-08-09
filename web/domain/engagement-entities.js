@@ -155,6 +155,13 @@ export async function resolveEngagementEntities(session, payload, opts = {}) {
     researchBundle: opts.researchBundle,
     contactDrafts,
     actorId: ownerId,
+    // Pass the resolved write scope through so a newly created account carries
+    // orgId/team scope from birth — see the create branch in
+    // account-service.js#upsertAccountFromPrep. Previously omitted, so
+    // prep/post-call-created accounts had orgId: null forever (nothing else
+    // backfills it — buildAccountScopeDenorm only propagates account.orgId).
+    orgId,
+    teamId,
   });
 
   const { accountId, contactIds, primaryContactId, account } = upserted;

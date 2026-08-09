@@ -512,11 +512,11 @@ async function stampCallIdentities({ account, lifecycle, postCall, confirmedIden
   const emails = (participantEmails || [])
     .map((e) => String(e || "").trim().toLowerCase())
     .filter((e) => e.includes("@"));
-  const contactIds = [];
-  for (const email of emails) {
-    const c = store.findContactByAccountEmail ? await store.findContactByAccountEmail(account.id, email) : null;
-    if (c?.id) contactIds.push(c.id);
-  }
+  // Independent per-email lookups — parallelize (flagged by test-no-await-in-loop.mjs).
+  const contactLookups = store.findContactByAccountEmail
+    ? await Promise.all(emails.map((email) => store.findContactByAccountEmail(account.id, email)))
+    : [];
+  const contactIds = contactLookups.filter((c) => c?.id).map((c) => c.id);
 
   const identities = {
     aeName: ae?.name || null,

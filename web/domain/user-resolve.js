@@ -187,12 +187,9 @@ export async function listTeamMemberEmails(teamId) {
   const team = await store.getTeam(teamId);
   if (!team?.memberIds?.length) return [];
 
-  const emails = [];
-  for (const memberId of team.memberIds) {
-    const user = await store.getUser(memberId);
-    if (user?.email && user.role === "se") emails.push(user.email);
-  }
-  return emails;
+  // Independent per-member lookups — parallelize (flagged by test-no-await-in-loop.mjs).
+  const users = await Promise.all(team.memberIds.map((memberId) => store.getUser(memberId)));
+  return users.filter((u) => u?.email && u.role === "se").map((u) => u.email);
 }
 
 /** Upsert Firebase user on login. internal User.id + authIndex (no dev seed). */

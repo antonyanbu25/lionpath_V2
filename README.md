@@ -366,6 +366,13 @@ cd deploy/vps && bash upgrade-now.sh
 
 Stable production line remains **`2.1`** / **`2.1.1`** until **`2.1.2`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
 
+#### Promotion checklist (before pushing a release branch to production)
+
+1. **CI green** on the source branch — `web`, `worker`, and `rules` legs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
+2. **Manually trigger [`Promotion Gate`](./.github/workflows/promotion-gate.yml)** (Actions tab → Promotion Gate → Run workflow) and confirm it's green — this runs the full fast test suite plus both live-Gemini evals (prep golden-set, post-call score self-consistency) in one pass.
+3. **Note the Promotion Gate run URL** in the release commit or PR description, so there's a record of what was checked before this went live.
+4. Only then run the VPS deploy steps below. `deploy/vps/update.sh` also runs its own fast/free test gate automatically before rebuilding the worker container (opt out with `SKIP_TEST_GATE=1` only for an urgent hotfix — see [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md)).
+
 For Freshdesk on Cloud Run: `FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-freshdesk-secret.sh` then confirm `GET /api/config` → `"freshdesk": { "configured": true }`.
 
 ### Push workflow summary

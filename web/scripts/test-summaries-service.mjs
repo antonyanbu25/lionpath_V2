@@ -20,6 +20,7 @@ const { getStore } = await import("../domain/store.js");
 const { buildSummariesContext, regenerateDealAndAccountSummaries } = await import(
   "../domain/summaries-service.js"
 );
+const { buildCallSummaryFromPostCall } = await import("../domain/call-summary.js");
 
 const store = getStore();
 
@@ -93,8 +94,8 @@ const baseCall = {
   },
 };
 
-await store.upsertPostCall({ ...baseCall, id: callA });
-await store.upsertPostCall({
+const postCallA = { ...baseCall, id: callA };
+const postCallB = {
   ...baseCall,
   id: callB,
   callIdentityKey: "key-b",
@@ -105,6 +106,27 @@ await store.upsertPostCall({
     momentum: "Advancing",
     callHeader: { date: "2026-07-23" },
   },
+};
+await store.upsertPostCall(postCallA);
+await store.upsertPostCall(postCallB);
+// buildSummariesContext reads from the callSummaries collection (a derived
+// view of postCalls), not postCalls directly. In production this is
+// populated by dual-write.js's buildCallSummaryFromPostCall() as part of
+// linkPostCallToLifecycle — this raw-store-write test path bypasses that,
+// so it must derive+persist the summary rows itself, orphaned until now.
+//
+// The digest's `callNotes` field (summaries-service.js#buildCallDigestFromSummary)
+// reads call.aiShortForm, not analysis.callNotes directly — aiShortForm is a
+// separately-generated short-form summary in production (a real Pass-9-ish
+// step, not a copy of the raw notes). Setting it to the notes text here
+// simulates that step for this unit test's purposes.
+await store.upsertCallSummary({
+  ...buildCallSummaryFromPostCall(postCallA),
+  aiShortForm: postCallA.analysis.callNotes,
+});
+await store.upsertCallSummary({
+  ...buildCallSummaryFromPostCall(postCallB),
+  aiShortForm: postCallB.analysis.callNotes,
 });
 
 const ctx = await buildSummariesContext(dealId, accountId);

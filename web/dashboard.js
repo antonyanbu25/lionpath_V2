@@ -18,7 +18,7 @@ import {
 import { themeLabel } from "./theme-library.js";
 import { CALL_TYPES, heatmapThemeKeys, isProvisionalCallType } from "./rubric-profiles.js";
 import { buildTeamThemeAverages as teamThemeAveragesFromAccess } from "./domain/se-access-service.js";
-import { aggregateFollowUps } from "./follow-ups.js";
+import { aggregateFollowUps, stepsFromNextSteps } from "./follow-ups.js";
 import { listTeamSeEmails, listTeamSeEmailsAsync, displayNameForEmail } from "./auth.js";
 import { getStore } from "./domain/store.js";
 import { mapEmailToTeamName } from "./domain/org-service.js";
@@ -197,7 +197,17 @@ function legacyDimensionMetrics(records) {
 }
 
 function rankDimensions(dimensions) {
-  const ranked = [...dimensions].sort((a, b) => b.avgScore / b.maxScore - a.avgScore / a.maxScore);
+  // themeAverage() stopped returning maxScore in QIP v2.1 (every theme grade is
+  // now on the same 0-10 scale), so the old `avgScore / maxScore` comparator
+  // evaluated NaN - NaN for every pair. A NaN comparator leaves Array#sort order
+  // untouched, so best/worst silently became *alphabetical* — worstDimension was
+  // whichever theme sorted last by name, not the lowest-scoring one. That drives
+  // the coaching "weakest theme" receipts, so SEs were shown an arbitrary theme.
+  // Ranking on avgScore directly is correct now that the scale is shared; the
+  // maxScore normalisation is kept only for any legacy row that still carries it.
+  const ratio = (d) =>
+    Number.isFinite(d?.maxScore) && d.maxScore > 0 ? d.avgScore / d.maxScore : d?.avgScore;
+  const ranked = [...dimensions].sort((a, b) => ratio(b) - ratio(a));
   return {
     bestDimension: ranked[0] || null,
     worstDimension: ranked[ranked.length - 1] || null,
@@ -411,7 +421,7 @@ export function aggregateQualityMetrics(analyses) {
       if (trendScore != null) scoreBands[qipScoreBand(trendScore)] += 1;
       const mom = r.analysis?.momentum || {};
       const company = companyFromRecord(r);
-      const nextStep = (r.analysis?.nextSteps || []).find((s) => s.action)?.action
+      const nextStep = stepsFromNextSteps(r.analysis?.nextSteps).find((s) => s.action)?.action
         || mom.topAction
         || "-";
       return {
@@ -546,8 +556,9 @@ export function buildCoachingNudge(email, metrics) {
   const themes = new Map();
 
   for (const rec of deduped) {
-    const missed = rec.analysis?.qualityCoach?.missedOpportunities || [];
-    for (const m of missed) {
+    const missed = rec.analysis?.qualityCoach?.missedOpportunities;
+    const missedList = Array.isArray(missed) ? missed : [];
+    for (const m of missedList) {
       const t = String(m ?? "").trim();
       if (!t || t.toLowerCase() === "unknown") continue;
       themes.set(t, (themes.get(t) || 0) + 1);

@@ -237,7 +237,15 @@ export async function listTeamSeEmails() {
 
 /** Preferred: team member emails from domain store (Firestore or local shim). */
 export async function listTeamSeEmailsAsync(session) {
-  if (session?.isOrgDirector) {
+  // Segment leaders need the same org/segment-wide expansion as org directors —
+  // otherwise a segment leader can only see/proxy-act for SEs on their own
+  // team, not the other teams in their segment. getVisibleScope() re-derives
+  // segment-leader status independently from the user+org records, so this
+  // is safe even if the session's isSegmentLeader flag is stale. Found by
+  // scripts/test-cross-team-proxy.mjs, orphaned until 2026-08-09 — without
+  // this, a segment leader (e.g. a Digital-segment leader) could not run
+  // prep/post-call on behalf of any IC outside their own direct team.
+  if (session?.isOrgDirector || session?.isSegmentLeader) {
     try {
       const emails = await listVisibleSeEmails(session);
       if (emails.length) return emails;

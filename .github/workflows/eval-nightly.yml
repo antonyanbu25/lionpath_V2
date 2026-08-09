@@ -1,0 +1,108 @@
+# Nightly LLM output-quality eval — prep golden-set accuracy/hallucination/
+# stability and post-call Quality Coach score self-consistency.
+#
+# Runs on a schedule (not on every push) and on manual trigger. Deliberately
+# NOT wired into the deploy gate or regular CI — these hit the live Gemini
+# API, cost real money, and take minutes to run. See the priority rationale
+# in the eval-harness plan: post-call scores are HR-adjacent (feed manager
+# coaching across 50 SEs) and prep hallucinations can reach a live customer
+# call, so this runs on its own cadence rather than waiting behind the rest
+# of the pipeline work.
+name: Nightly LLM Eval
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install
+        working-directory: worker
+        run: npm ci
+
+      - name: Prep golden-set eval (accuracy / hallucination / stability)
+        id: prep_golden
+        working-directory: worker
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+        run: npm run eval:prep-golden -- --stability 3 2>&1 | tee prep-golden-output.log
+
+      - name: Self-consistency eval (post-call Quality Coach score repeatability)
+        id: self_consistency
+        working-directory: worker
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+        run: npm run eval:self-consistency -- --runs 5 2>&1 | tee self-consistency-output.log
+
+      - name: Plain-language summary
+        if: always()
+        working-directory: worker
+        run: |
+          {
+            echo "# Nightly LLM eval — $(date -u +%Y-%m-%d)"
+            echo ""
+            echo "## Prep golden-set (accuracy / hallucination / stability)"
+            echo ""
+            if [ "${{ steps.prep_golden.outcome }}" = "success" ]; then
+              echo "✅ **PASSED** — all fixtures met the accuracy ≥50%, hallucination ≤15% bar."
+            else
+              echo "❌ **FAILED** — one or more fixtures missed the accuracy/hallucination bar. A regression here means a prep brief may state something false to a customer."
+            fi
+            echo ""
+            echo '```'
+            tail -n 30 prep-golden-output.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+            echo ""
+            echo "## Post-call score self-consistency (fairness across repeat scoring)"
+            echo ""
+            if [ "${{ steps.self_consistency.outcome }}" = "success" ]; then
+              echo "✅ **PASSED** — Quality Coach scores are stable across repeat runs (within configured thresholds)."
+            else
+              echo "❌ **FAILED** — score repeatability degraded. A regression here means an SE's coaching score may vary run-to-run for no real reason — an HR-adjacent fairness issue, not just a metrics blip."
+            fi
+            echo ""
+            echo '```'
+            tail -n 30 self-consistency-output.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Optional webhook alert on failure
+        if: steps.prep_golden.outcome != 'success' || steps.self_consistency.outcome != 'success'
+        env:
+          WEBHOOK_URL: ${{ secrets.EVAL_ALERT_WEBHOOK_URL || secrets.COST_ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "No EVAL_ALERT_WEBHOOK_URL or COST_ALERT_WEBHOOK_URL secret set — skipping webhook, see the Job Summary instead."
+            exit 0
+          fi
+          curl -sf -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"Nightly LLM eval failed — see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            || echo "Webhook POST failed (non-fatal)."
+
+      - name: Upload self-consistency run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consistency-runs
+          path: worker/consistency-runs/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Fail the job if either eval failed
+        if: steps.prep_golden.outcome != 'success' || steps.self_consistency.outcome != 'success'
+        run: exit 1

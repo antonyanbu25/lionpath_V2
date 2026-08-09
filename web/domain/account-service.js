@@ -28,6 +28,7 @@ import {
 } from "./contact-service.js";
 import {
   backfillAccountSeTeam,
+  buildAccountScopeDenorm,
   ensureSeTeamForPrepActor,
   resolveSeTeamDisplay,
   seTeamUserIds,
@@ -123,11 +124,30 @@ export async function upsertAccountFromPrep(input) {
   if (!account) {
     const createMetadata = metadataPatch ? { ...metadataPatch } : {};
     if (fromFreeMailProspect) createMetadata.domainNeedsConfirmation = true;
+    // orgId and the actor's seTeam seat are stamped at create time, not left
+    // for a follow-up write: buildAccountScopeDenorm's orgId/seTeamUserIds are
+    // the denormalized fields firestore.rules reads for membership checks
+    // (canReadAccountData -> onAccountSeTeam), so an account that lands without
+    // them is unreadable under those rules until something backfills it.
+    // input.orgId/input.teamId were accepted but silently ignored here before
+    // 2026-08-09, and the production caller (engagement-entities.js) didn't
+    // pass orgId at all — so prep/post-call-created accounts never got one.
+    // Idempotent with the ensureSeTeamForPrepActor() call that follows in
+    // engagement-entities.js: it early-returns when the actor is already seated.
+    const actorId = input.actorId || null;
+    const seTeam = actorId
+      ? [{ seUserId: actorId, role: "primary", addedAt: ts, addedBy: actorId }]
+      : [];
     account = await store.createAccount({
       id: newId("account"),
       name: companyName || slug,
       domain: resolvedDomain,
       slug,
+      orgId: input.orgId || null,
+      seTeam,
+      primarySeUserId: actorId,
+      seTeamUserIds: actorId ? [actorId] : [],
+      seTeamTeamIds: input.teamId ? [input.teamId] : [],
       metadata: Object.keys(createMetadata).length ? createMetadata : undefined,
       createdAt: ts,
       updatedAt: ts,
@@ -1167,13 +1187,18 @@ async function listAssignableSeOptions(user, currentMemberIds) {
 async function canReadAccountEngagement(user, account, lifecycles) {
   if (!user || !account) return false;
   const ids = seTeamUserIds(account);
+  // Same fix as manage_account_team's call sites — seTeamTeamIds must be
+  // computed live, not omitted. Without it, onSeTeamMemberTeam always
+  // evaluates false, so a manager sharing a team with an account's SE roster
+  // (but not org director / segment leader) is denied read_account entirely
+  // — the account-detail view returns null for them instead of loading.
+  const { seTeamTeamIds: liveSeTeamTeamIdsRead } = await buildAccountScopeDenorm(account);
   const orgId = lifecycles[0]?.orgId || user.orgId || null;
   return can(user, "read_account", {
     ownerId: account.primarySeUserId || lifecycles[0]?.ownerId,
     seTeamUserIds: ids,
+    seTeamTeamIds: liveSeTeamTeamIdsRead,
     accountOrgId: orgId,
-    teamId: user.teamId || undefined,
-    orgId: user.orgId || undefined,
   });
 }
 
@@ -1456,10 +1481,14 @@ async function loadAccountEngagementDetailFromStore(session, user, account, acco
     {},
   );
 
+  // Same fix as updateAccountSeTeam: seTeamTeamIds must be computed live,
+  // not read off `account` (can be stale/absent — see that call site's
+  // comment for why).
+  const { seTeamTeamIds: liveSeTeamTeamIdsDetail } = await buildAccountScopeDenorm(account);
   const canManageTeam = can(user, "manage_account_team", {
     seTeamUserIds: memberIds,
+    seTeamTeamIds: liveSeTeamTeamIdsDetail,
     accountOrgId: lensLifecycle.orgId || user.orgId,
-    teamId: user.teamId || undefined,
   });
 
   let assignableSeOptions = [];
@@ -1719,12 +1748,14 @@ export async function setAccountEngagementOverride(session, accountId, payload =
   if (!account) return { success: false, error: "Account not found" };
 
   const memberIds = seTeamUserIds(account);
+  // Same fix as updateAccountSeTeam — seTeamTeamIds must be computed live.
+  const { seTeamTeamIds: liveSeTeamTeamIdsOverride } = await buildAccountScopeDenorm(account);
   const canManage =
     memberIds.includes(user.id) ||
     can(user, "manage_account_team", {
       seTeamUserIds: memberIds,
+      seTeamTeamIds: liveSeTeamTeamIdsOverride,
       accountOrgId: user.orgId,
-      teamId: user.teamId || undefined,
     }) ||
     user.role === "admin";
 
@@ -1771,11 +1802,19 @@ export async function updateAccountSeTeam(session, accountId, action, payload = 
   if (!account) return { success: false, error: "Account not found" };
 
   const memberIds = seTeamUserIds(account);
+  // seTeamTeamIds must be computed live, not read off `account` — the object
+  // backfillAccountSeTeam() returns predates its own syncAccountScopeDenorm()
+  // call, so account.seTeamTeamIds can be stale/absent even right after
+  // backfill. Without this, `can()`'s onSeTeamMemberTeam path (a manager
+  // sharing a team with an SE already on the account) could never succeed,
+  // regardless of what teamId that manager and SE actually shared — found by
+  // scripts/test-account-assignment.mjs, orphaned until 2026-08-09.
+  const { seTeamTeamIds: liveSeTeamTeamIds } = await buildAccountScopeDenorm(account);
   if (
     !can(user, "manage_account_team", {
       seTeamUserIds: memberIds,
+      seTeamTeamIds: liveSeTeamTeamIds,
       accountOrgId: user.orgId,
-      teamId: user.teamId || undefined,
     })
   ) {
     if (action === "add_secondary" && payload.seUserId === user.id) {

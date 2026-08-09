@@ -231,7 +231,11 @@ cd /opt/se-singha-paathai/deploy/vps
 bash update.sh
 ```
 
-`update.sh` fetches **`origin/2.1`** from `antonyanbu25/lionpath_V2` via SSH (bypassing HTTPS rewrites), resets the repo, runs **`build-web-bundle.sh`** (`cd web && npm ci && npm run build` → `web/dist/`, gitignored), rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`. Production hostnames load `./dist/boot.js`; without this step the portal boots unbundled modules and misses the esbuild graph.
+`update.sh` fetches **`origin/2.1`** from `antonyanbu25/lionpath_V2` via SSH (bypassing HTTPS rewrites), resets the repo, **runs a test gate** (below), runs **`build-web-bundle.sh`** (`cd web && npm ci && npm run build` → `web/dist/`, gitignored), rebuilds the worker, recreates the web container, and runs `verify-deploy.sh`. Production hostnames load `./dist/boot.js`; without this step the portal boots unbundled modules and misses the esbuild graph.
+
+**Test gate (before the worker rebuild):** `update.sh` builds a throwaway `deploy/vps/Dockerfile.worker-test` image and a temporary web container, and runs each package's fast/free unit tests (`npm run test:fast` — no live API calls, no Firestore emulator). If either fails, `update.sh` aborts (`set -euo pipefail`) **before** touching the running production containers — the old version keeps serving traffic. This only covers the deterministic/`unit` tier; it is defense-in-depth against VPS-side drift, not a replacement for CI or the [Promotion Gate](../.github/workflows/promotion-gate.yml) workflow (see the promotion checklist in the main [README.md](../README.md#promotion-checklist-before-pushing-a-release-branch-to-production)).
+
+Skip the gate only for an urgent hotfix that can't wait: `SKIP_TEST_GATE=1 bash update.sh`. Don't make this the default — it exists so a still-shaking-out gate can't block a genuine emergency, not as a routine bypass.
 
 Manual pull (if you are not using `update.sh`):
 

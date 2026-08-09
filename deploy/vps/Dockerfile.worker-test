@@ -1,0 +1,23 @@
+# Test-gate image — NOT part of the production compose stack.
+#
+# deploy/vps/Dockerfile.worker installs with --omit=dev, so tsx (needed by
+# most worker tests) isn't even present in the production image (see
+# docs/VPS_DEPLOY.md: "Node is not required on the VPS — everything runs in
+# Docker"). This image installs full devDependencies so the fast/free unit
+# test tier can actually run as a pre-deploy gate. Built and run ad hoc by
+# deploy/vps/update.sh, never pushed anywhere, never part of `docker compose up`.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY worker/package.json worker/package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
+
+COPY worker/tsconfig.json ./
+COPY worker/src ./src
+COPY worker/scripts ./scripts
+COPY worker/testdata ./testdata
+
+# Fast/free tier only: no live API calls (live-api tag), no Firestore
+# emulator (emulator tag) — those are CI's job, not every VPS deploy's.
+CMD ["npm", "run", "test:fast"]

@@ -6,6 +6,7 @@ import { getStore } from "./store.js";
 import { newId, now, stageAfterFirstPostCall, can } from "./types.js";
 import { sessionUserId } from "./session.js";
 import { resolveEngagementMotion, resolveDealOwnerId } from "./deal-motion.js";
+import { buildAccountScopeDenorm } from "./account-se-team.js";
 
 /** @type {Record<import("./types.js").DealType, string>} */
 export const DEAL_TYPE_LABELS = {
@@ -679,12 +680,15 @@ export async function handoffToExpansion(session, accountId, opts = {}) {
   const primaryId = account.primarySeUserId || memberIds[0] || actorId;
   const targetOwnerId = opts.targetOwnerId || primaryId;
 
+  // Same fix as account-service.js's updateAccountSeTeam — seTeamTeamIds
+  // must be computed live, not assumed present on `account`.
+  const { seTeamTeamIds: liveSeTeamTeamIdsHandoff } = await buildAccountScopeDenorm(account);
   const canHandoff =
     actorId === primaryId ||
     can(user, "manage_account_team", {
       seTeamUserIds: memberIds,
+      seTeamTeamIds: liveSeTeamTeamIdsHandoff,
       accountOrgId: user.orgId,
-      teamId: user.teamId || undefined,
     }) ||
     user.role === "admin";
   if (!canHandoff) return { success: false, error: "Not allowed to hand off account" };

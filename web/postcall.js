@@ -2095,6 +2095,14 @@ function resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabe
   }
   const tip = insightfulCoachTip(spLabel, themeKey, spIndex, score);
   if (tip) return truncateWords(sanitizeUserFacingCopy(tip), 45);
+  // Fallback only: coachTextForSubParameter (buildCoachOutput-generated, hand-
+  // curated per docs/COACH_TIPS) and insightfulCoachTip's bucketed tips both
+  // take priority over this raw per-call note when either is available — verified
+  // by tracing actual runtime behavior, not assumed. Previously lineCoachingNote
+  // wasn't threaded through to this function at all (see the call site), so this
+  // branch was unreachable dead code; now it's at least a real fallback for
+  // themes/sub-parameters neither of the above covers. Found by
+  // scripts/test-theme-score-suppression.mjs, orphaned until 2026-08-09.
   if (lineCoachingNote && score < 2 && !isUnknown(lineCoachingNote)) {
     return truncateWords(sanitizeUserFacingCopy(lineCoachingNote), 45);
   }
@@ -2102,7 +2110,7 @@ function resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabe
   return "Listen back for a moment where this rubric bar was missed, then plan one concrete fix for next call.";
 }
 
-function renderQipSubParameter(spLabel, sp, coachOutput, themeKey, spIndex, themeCredit) {
+function renderQipSubParameter(spLabel, sp, coachOutput, themeKey, spIndex, themeCredit, lineCoachingNote) {
   const score = sp?.score ?? 0;
   const evidence = (sp?.evidence || []).filter((e) => e?.quote && !isUnknown(e.quote));
   const evidenceHtml = evidence.length
@@ -2113,7 +2121,7 @@ function renderQipSubParameter(spLabel, sp, coachOutput, themeKey, spIndex, them
         })
         .join("")
     : "";
-  const coachText = resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabel);
+  const coachText = resolveSubParameterCoachText(sp, coachOutput, themeKey, spIndex, spLabel, lineCoachingNote);
   const creditBadge =
     themeCredit != null ? `<span class="qip-sp-credit muted">${esc(String(themeCredit))} cr</span>` : "";
   return `
@@ -2171,6 +2179,13 @@ function renderQipThemeRow(line, profileTheme, fallbackConf, wireframe, coachOut
               line.themeKey,
               i,
               profileTheme?.credit,
+              // lineCoachingNote — wasn't threaded through at all before
+              // 2026-08-09, so resolveSubParameterCoachText's line-coaching-note
+              // branch was silently dead code: a specific, model-authored coaching
+              // note (line.coachingNote) was always discarded in favor of a
+              // generic canned tip/fallback. Found by
+              // scripts/test-theme-score-suppression.mjs, orphaned until now.
+              line.coachingNote,
             ),
           )
           .join("")

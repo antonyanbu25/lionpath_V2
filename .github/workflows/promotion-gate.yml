@@ -1,0 +1,106 @@
+# Pre-production promotion gate — manual trigger only.
+#
+# Run this before promoting a release branch to the production branch (e.g.
+# before `git push origin 2.1.1` per README.md's Deploy section). Runs the
+# full fast/free suite (web + worker + rules), the schema-drift test, and
+# both live-Gemini evals in one pass, posting a single aggregated,
+# plain-language pass/fail summary.
+#
+# This can be set as a required status check in GitHub branch protection for
+# the production branch — that part isn't a repo file, it's a GitHub Settings
+# → Branches configuration a repo admin sets up separately (see
+# docs/VPS_DEPLOY.md's promotion checklist).
+#
+# What this does NOT do: verify from the VPS itself that this gate passed
+# before `upgrade-now.sh` runs — that would need the VPS to call the GitHub
+# API and check a commit status, which isn't built yet (documented as a
+# future hardening option, not required for this to be useful today).
+name: Promotion Gate
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  promotion-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Web — full fast/free suite (unit + e2e)
+        id: web_tests
+        working-directory: web
+        continue-on-error: true
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test 2>&1 | tee web-test-output.log
+
+      - name: Worker — full fast/free suite (unit + emulator)
+        id: worker_tests
+        working-directory: worker
+        continue-on-error: true
+        env:
+          FIREBASE_PROJECT_ID: lionpath-rules-test
+        run: |
+          npm ci
+          npx firebase emulators:exec --only firestore --project lionpath-rules-test "npm test" 2>&1 | tee worker-test-output.log
+
+      - name: Firestore rules tests
+        id: rules_tests
+        continue-on-error: true
+        run: npm run test:rules 2>&1 | tee rules-test-output.log
+
+      - name: Prep golden-set eval
+        id: prep_golden
+        working-directory: worker
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+        run: npm run eval:prep-golden -- --stability 3 2>&1 | tee eval-prep-golden-output.log
+
+      - name: Self-consistency eval
+        id: self_consistency
+        working-directory: worker
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
+        run: npm run eval:self-consistency -- --runs 5 2>&1 | tee eval-self-consistency-output.log
+
+      - name: Aggregated plain-language summary
+        if: always()
+        run: |
+          {
+            echo "# Promotion gate — $(date -u +%Y-%m-%d) — commit ${{ github.sha }}"
+            echo ""
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Web fast/free suite | ${{ steps.web_tests.outcome == 'success' && '✅ passed' || '❌ FAILED' }} |"
+            echo "| Worker fast/free suite | ${{ steps.worker_tests.outcome == 'success' && '✅ passed' || '❌ FAILED' }} |"
+            echo "| Firestore rules tests | ${{ steps.rules_tests.outcome == 'success' && '✅ passed' || '❌ FAILED' }} |"
+            echo "| Prep golden-set eval (accuracy/hallucination) | ${{ steps.prep_golden.outcome == 'success' && '✅ passed' || '❌ FAILED' }} |"
+            echo "| Post-call score self-consistency | ${{ steps.self_consistency.outcome == 'success' && '✅ passed' || '❌ FAILED' }} |"
+            echo ""
+            if [ "${{ steps.web_tests.outcome }}" = "success" ] && \
+               [ "${{ steps.worker_tests.outcome }}" = "success" ] && \
+               [ "${{ steps.rules_tests.outcome }}" = "success" ] && \
+               [ "${{ steps.prep_golden.outcome }}" = "success" ] && \
+               [ "${{ steps.self_consistency.outcome }}" = "success" ]; then
+              echo "**Overall: ✅ safe to promote.**"
+            else
+              echo "**Overall: ❌ do NOT promote — one or more checks failed. See the failing step's log above.**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the job if anything failed
+        if: |
+          steps.web_tests.outcome != 'success' ||
+          steps.worker_tests.outcome != 'success' ||
+          steps.rules_tests.outcome != 'success' ||
+          steps.prep_golden.outcome != 'success' ||
+          steps.self_consistency.outcome != 'success'
+        run: exit 1

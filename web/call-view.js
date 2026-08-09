@@ -2325,13 +2325,21 @@ export function resolveMinutesViewModel(record, momDraft, followUps) {
 
   const rawOutcome = (mom?.outcome || "").trim();
   const keyPoints = Array.isArray(mom?.keyPoints) ? mom.keyPoints.filter((k) => k?.title) : [];
+  // Not SE-only: minutes of meeting are customer-facing, so "Next steps" must
+  // list every party's commitments — the customer's own most of all. Both the
+  // email formatter (shared/mom-email-draft.js: OWNER_LABEL covers se/ae/customer
+  // and formatActionLine renders "(AE, by Friday)") and the card renderer
+  // (momOwnerChip + .mom-owner--ae/.mom-owner--customer in call-view.css) are
+  // explicitly built for all three owners — an SE-only filter made all of that
+  // unreachable. Filter added in 2.1.29 (68383ec), after the tests asserting
+  // AE/customer items were written (e943701); orphaned, so nobody noticed.
   let actionItems = Array.isArray(mom?.actionItems)
-    ? mom.actionItems.filter((a) => a?.text && (a.owner === "se" || isSeOwner(a.owner)))
+    ? mom.actionItems.filter((a) => a?.text)
     : [];
 
   if (!actionItems.length && fus.length) {
     actionItems = fus
-      .filter((f) => f.owner === "se" || isSeOwner(f.owner))
+      .filter((f) => f.description)
       .map((f) => ({
       text: f.description,
       owner: f.owner || null,

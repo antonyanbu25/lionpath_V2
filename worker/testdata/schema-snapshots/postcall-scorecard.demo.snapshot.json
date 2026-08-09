@@ -1,0 +1,79 @@
+{
+  "_capturedAt": null,
+  "_capturedBy": "hand-built placeholder — NOT a live capture",
+  "_note": "No GEMINI_API_KEY was available when this test was written (2026-08-09). This fixture is hand-constructed to match POSTCALL_SCHEMA's exact required-field shape (worker/src/postcall-schema.ts) and the demo.transcript.txt content in this directory, NOT a real Gemini response. Replace it by running `GEMINI_API_KEY=... npx tsx scripts/capture-schema-snapshots.mjs` as soon as a key is available, then re-run test-schema-drift.ts to confirm the real response still normalizes the same way.",
+  "raw": {
+    "callHeader": {
+      "title": "Support platform evaluation — routing accuracy follow-up",
+      "duration": "18 min",
+      "date": "this call",
+      "attendees": [
+        { "name": "Alex Kim", "role": "Solution Engineer", "influence": "medium" },
+        { "name": "Jamie Torres", "role": "VP Support Ops", "influence": "high" }
+      ]
+    },
+    "momentum": {
+      "status": "Advancing",
+      "reason": "CFO sign-off path is clear and prospect wants to reconnect within a week.",
+      "topAction": "Get CFO Maria Chen on a call",
+      "topActionDue": "Before Q3 close"
+    },
+    "followUpTable": [
+      {
+        "category": "commitment",
+        "thisCall": "Send routing accuracy case study",
+        "followUp": "Send same-size customer case study today"
+      },
+      {
+        "category": "next_meeting",
+        "thisCall": "Reconnect with CFO",
+        "followUp": "Schedule call with Maria Chen"
+      }
+    ],
+    "signals": {
+      "painsConfirmed": ["Manual re-triage costs ~2 FTEs/week"],
+      "objectionsOpen": ["HelpStack pilot accuracy claims didn't hold up"],
+      "competitors": ["HelpStack"]
+    },
+    "nextSteps": [
+      {
+        "owner": "Alex Kim",
+        "action": "Send case study with real routing accuracy numbers",
+        "due": "Today",
+        "why": "Directly answers the HelpStack pilot objection",
+        "isRisk": false
+      },
+      {
+        "owner": "Alex Kim",
+        "action": "Set up call with CFO Maria Chen",
+        "due": "This week",
+        "why": "CFO sign-off required before POC can start",
+        "isRisk": false
+      }
+    ],
+    "qualityCoach": {
+      "overallScore": 4,
+      "overallLabel": "Strong discovery, clear next step",
+      "dimensions": [
+        {
+          "name": "Discovery depth",
+          "score": 4,
+          "feedback": "Confirmed quantified pain (2 FTEs/week) from the prior call.",
+          "evidence": "\"It's costing us roughly two FTEs worth of time a week.\""
+        }
+      ],
+      "strengths": ["Quantified the cost of the pain in FTE-hours"],
+      "improvements": ["Could have asked about the POC evaluation criteria directly"],
+      "missedOpportunities": ["Did not confirm decision process/paper process timeline"]
+    },
+    "artifacts": {
+      "suggestedFollowUpEmail": {
+        "subject": "Routing accuracy case study + next steps",
+        "body": "Hi Jamie, great catching up today. Attaching the case study we discussed..."
+      },
+      "crmNotes": "Confirmed pain (2 FTE/week manual re-triage). Economic buyer: Maria Chen (CFO), needs ROI story before Q3 close. Competing against HelpStack; pilot accuracy claims were the objection. Next: case study sent, CFO call to schedule."
+    },
+    "analysisVersion": 1,
+    "rubricVersion": "demo-1.0"
+  }
+}
