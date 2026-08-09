@@ -112,7 +112,18 @@ async function main() {
       // testing). Killing the negative PID kills the whole group instead.
       serverProc = spawn("node", [join(SCRIPTS_DIR, "dev-node.mjs")], {
         cwd: ROOT,
-        env: { ...process.env, PORT, HISTORY_FILE_DIR: historyDir },
+        env: {
+          ...process.env,
+          PORT,
+          HISTORY_FILE_DIR: historyDir,
+          // CI sets FIREBASE_PROJECT_ID at the job-step level (for the
+          // Firestore emulator), which flips auth.ts's firebaseAuthEnforced()
+          // to true — these tests send no Bearer token, so the real project
+          // id turned into a THIRD wall, "Sign-in required." (confirmed via
+          // another actual CI run). Matches .dev.vars.example's documented
+          // pattern: keep the project id, disable Bearer verification.
+          FIREBASE_AUTH_ENFORCED: "0",
+        },
         detached: true,
       });
       const up = await waitForServer(CONFIG_URL);
