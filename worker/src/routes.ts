@@ -82,6 +82,7 @@ import { firestoreAdminReady, getDb, getDoc } from "./data/firestore-admin";
 import { resolveRequestContext } from "./data/scope";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
+import { domainReadRoutes } from "./routes/domain-reads";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -1644,6 +1645,8 @@ export async function handleDealsCreate(
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
+  // Domain read routes (Firestore list endpoints — /api/accounts, /api/calls, /api/deals GET)
+  ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
   "/api/zoom/auth": { GET: handleZoomAuth },
