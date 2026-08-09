@@ -15,6 +15,12 @@
 # worker leg wraps its test run in the same `firebase emulators:exec`
 # mechanism rules-tests/run-all.mjs already uses, so "emulator"-tagged tests
 # (which need a live Firestore Admin SDK backend) can run.
+#
+# worker and rules legs both need a real JDK for the Firestore emulator —
+# firebase-tools@15.x requires JDK 21+, and ubuntu-latest's default `java`
+# on PATH doesn't meet that (confirmed via an actual failing run: "Error:
+# firebase-tools no longer supports Java version before 21"). setup-java
+# installs Temurin 21 and puts it on PATH before the emulator ever launches.
 name: CI
 
 on:
@@ -43,6 +49,13 @@ jobs:
         if: matrix.package == 'web'
         working-directory: web
         run: npx playwright install --with-deps chromium
+
+      - name: Install JDK 21 (worker/rules only — Firestore emulator requirement)
+        if: matrix.package != 'web'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
 
       - name: Install and test (${{ matrix.package }})
         working-directory: ${{ matrix.package == 'rules' && '.' || matrix.package }}
