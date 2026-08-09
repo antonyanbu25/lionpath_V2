@@ -406,8 +406,7 @@ body.prep-gen-lock {
   align-items: start;
 }
 
-/* Pre-call preview uses .pc-account-deal-preview flex row from postcall.css (same as post-call).
-   Do not override with grid or column-stacked deal tiles — horizontal deal chips must match post-call. */
+/* Pre-call preview shares .pc-account-deal-preview horizontal tile grid from postcall.css. */
 
 #prep-account-deal-preview .nb-account-picker-panel {
   display: flex;

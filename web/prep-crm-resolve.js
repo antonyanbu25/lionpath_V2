@@ -53,6 +53,8 @@ let prepAccountOptions = [];
 let prepAccountPickerDomain = null;
 /** @type {{ accounts: object[], deals: object[] }} */
 let lastCrmLookupResult = { accounts: [], deals: [] };
+/** Skip redundant CRM re-lookups when email + resolved account unchanged. */
+let lastCrmLookupEmailKey = "";
 
 function parseEmails(raw) {
   return String(raw || "")
@@ -93,6 +95,18 @@ function dedupeAccounts(accounts) {
     if (account?.id && !byId.has(account.id)) byId.set(account.id, account);
   }
   return [...byId.values()];
+}
+
+/** When CRM returns Firestore + hist_* stub for the same company, keep one canonical row. */
+function collapseSameCompanyAccounts(accounts) {
+  const list = (accounts || []).filter((a) => a?.id);
+  if (list.length <= 1) return list;
+  const names = new Set(list.map((a) => String(a.name || "").trim().toLowerCase()).filter(Boolean));
+  const domains = new Set(list.map((a) => String(a.domain || "").trim().toLowerCase()).filter(Boolean));
+  const sameCompany = names.size <= 1 || domains.size <= 1;
+  if (!sameCompany) return list;
+  const firestore = list.filter((a) => !String(a.id).startsWith("hist_"));
+  return [firestore[0] || list[0]];
 }
 
 function dedupeDeals(deals) {
@@ -216,11 +230,19 @@ async function applyAccount(account, deals = []) {
     prepNewDealType = "new_business";
   }
   if (account?.id && lastDeals.length) {
-    prepCreateNewDeal = false;
-    if (lastDeals.length === 1) {
-      prepSelectedDealId = lastDeals[0].id;
-    } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
-      prepSelectedDealId = lastDeals[0]?.id || null;
+    if (prevAccountId !== account.id) {
+      prepCreateNewDeal = false;
+      if (lastDeals.length === 1) {
+        prepSelectedDealId = lastDeals[0].id;
+      } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
+        prepSelectedDealId = lastDeals[0]?.id || null;
+      }
+    } else if (!prepCreateNewDeal) {
+      if (lastDeals.length === 1) {
+        prepSelectedDealId = lastDeals[0].id;
+      } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
+        prepSelectedDealId = lastDeals[0]?.id || null;
+      }
     }
   } else if (lastDeals.length === 1 && !prepCreateNewDeal) {
     prepSelectedDealId = lastDeals[0].id;
@@ -232,8 +254,11 @@ async function applyAccount(account, deals = []) {
     if (field) {
       const normalized = normalizeDomain(account.domain);
       const display = formatCompanyWebsiteDisplay(normalized);
-      field.value = display;
-      field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value: display } }));
+      const current = String(field.value || "").trim();
+      if (current !== display) {
+        field.value = display;
+        field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value: display } }));
+      }
     }
   }
   syncEngagementContext();
@@ -278,6 +303,7 @@ export function resetPrepCrmSelection() {
   prepDealsLoading = false;
   prepAccountOptions = [];
   prepAccountPickerDomain = null;
+  lastCrmLookupEmailKey = "";
   lastCrmLookupResult = { accounts: [], deals: [] };
   prepDraftAccountName = null;
   prepAccountNameUserEdited = false;
@@ -446,6 +472,17 @@ async function renderCrmPanel() {
     return;
   }
 
+  const emailKey = emails.join(",");
+  if (
+    emailKey === lastCrmLookupEmailKey &&
+    prepResolvedAccount?.id &&
+    lastDeals.length > 0 &&
+    !prepDealsLoading
+  ) {
+    return;
+  }
+  lastCrmLookupEmailKey = emailKey;
+
   const seq = ++lookupToken;
   previewToken = seq;
   let result;
@@ -463,7 +500,9 @@ async function renderCrmPanel() {
   const accounts = result.accounts || [];
   const domainGroups = groupByDomain(result.byEmail || []);
   const primaryGroup = domainGroups.find((g) => g.domain) || domainGroups[0];
-  const groupAccounts = dedupeAccounts([...accounts, ...(primaryGroup?.accounts || [])]);
+  const groupAccountsRaw = dedupeAccounts([...accounts, ...(primaryGroup?.accounts || [])]);
+  const groupAccounts =
+    groupAccountsRaw.length > 1 ? collapseSameCompanyAccounts(groupAccountsRaw) : groupAccountsRaw;
   const defaultName = resolveDefaultAccountName(primaryGroup?.domain, groupAccounts);
   if (!prepAccountNameUserEdited) prepDraftAccountName = defaultName;
 
@@ -472,7 +511,12 @@ async function renderCrmPanel() {
 
   if (groupAccounts.length === 1) {
     prepAccountOptions = [];
-    await applyAccount(groupAccounts[0], result.deals || []);
+    const sole = groupAccounts[0];
+    if (prepResolvedAccount?.id === sole.id && lastDeals.length > 0) {
+      renderPrepAccountDealPreview(seq);
+    } else {
+      await applyAccount(sole, result.deals || []);
+    }
   } else if (groupAccounts.length > 1) {
     prepSelectedDealId = null;
     prepCreateNewDeal = false;
@@ -501,7 +545,13 @@ async function renderCrmPanel() {
   hidePrepCrmMatchesPanel();
 }
 
+function prepIntakeVisible() {
+  const view = $("view-precall");
+  return !!(view && !view.hidden);
+}
+
 function scheduleLookup() {
+  if (!prepIntakeVisible()) return;
   void showInstantAccountPreview();
   window.clearTimeout(lookupTimer);
   lookupTimer = window.setTimeout(() => {

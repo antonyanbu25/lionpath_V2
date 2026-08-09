@@ -4844,6 +4844,7 @@ async function startPipeline(e) {
     const resolve = await postJson(
       RESOLVE_URL,
       {
+        email: currentSession?.email || undefined,
         transcript: payload.transcript,
         recordingUrl: payload.recordingUrl,
         recordingPassword: payload.recordingPassword,
@@ -4878,6 +4879,7 @@ async function startPipeline(e) {
     const classify = await postJson(
       CLASSIFY_URL,
       {
+        email: currentSession?.email || undefined,
         transcript: pipelineState.resolve.transcript,
         meetingTitle: pipelineState.resolve.meetingTitle,
       },
@@ -4924,6 +4926,14 @@ async function startPipeline(e) {
       });
     } else {
       showInlineStatus(status, { type: "error", message: msg });
+      if (/recording not found|could not fetch kaia|provide a transcript/i.test(msg)) {
+        const recordingField = $("pc-recording-url");
+        const hint =
+          /provide a transcript/i.test(msg)
+            ? msg
+            : `${msg} Expand "No recording? Paste or upload a transcript" and paste the call transcript to continue locally.`;
+        setFieldError(recordingField, hint);
+      }
     }
   } finally {
     pass0Busy = false;

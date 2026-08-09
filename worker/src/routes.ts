@@ -485,8 +485,8 @@ export async function handlePostCallResolve(
   cors: Record<string, string>,
 ): Promise<Response> {
   await requireUser(request, env);
-  const input = (await request.json()) as Partial<PostCallResolveInput>;
-  await assertManagerProxyOwnerEmail(request, env, input.ownerEmail);
+  const input = (await request.json()) as Partial<PostCallResolveInput> & { email?: string };
+  await assertManagerProxyOwnerEmail(request, env, input.ownerEmail, input.email || input.ownerEmail);
   if (!input.transcript?.trim() && !input.recordingUrl?.trim()) {
     return json(
       { error: "Paste a transcript or a Zoom/Kaia recording link (with passcode if needed)." },

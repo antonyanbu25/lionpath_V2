@@ -174,10 +174,11 @@ export async function assertManagerProxyOwnerEmail(
   request: Request,
   env: Env,
   ownerEmail?: string,
+  callerEmailFallback?: string,
 ): Promise<void> {
   const normalized = ownerEmail ? normalizeHistoryEmail(ownerEmail) : "";
   if (!normalized) return;
-  const callerEmail = await resolveHistoryEmail(request, env, "");
+  const callerEmail = await resolveHistoryEmail(request, env, callerEmailFallback || "");
   if (normalized === callerEmail) return;
   if (firebaseAuthEnforced(env)) return;
   if (!isDemoManagerEmail(callerEmail)) {
