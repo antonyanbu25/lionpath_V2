@@ -32,21 +32,25 @@ await page.route("**/api/history?email=*", async (route) => {
 });
 
 await page.goto("http://127.0.0.1:8788/", { waitUntil: "networkidle" });
-await page.fill("#login-email", "se@freshworks.com");
-await page.fill("#login-password", "se123");
-await page.click('button[type="submit"]');
+await page.locator("#login-email input:not([type=hidden])").fill("se@freshworks.com");
+await page.locator("#login-password input:not([type=hidden])").fill("se123");
+await page.click('#login-submit');
 await page.waitForSelector("#app-shell:not([hidden])");
 await page.waitForTimeout(2000);
 
 const dash = await page.locator("#view-dashboard").innerText();
-const sidebarItems = await page.locator("#sidebar-history-list li").count();
+// #sidebar-history-list was removed from the UI (recent-activity now lives
+// in the launchpad's "Recent activity" side panel — see test-user-menu.mjs's
+// "no sidebar recent work" check) — assert on that instead of dead markup.
+const hasRecentActivityEmptyState = dash.includes("Generate a brief or analyze a recording to see activity here.");
+const hasSyncedCall = dash.includes("Acme Corp");
 
-console.log({ sidebarItems, hasScores: dash.includes("/10"), noCalls: dash.includes("No calls yet") });
+console.log({ hasSyncedCall, hasRecentActivityEmptyState, noCalls: dash.includes("No calls yet") });
 console.log(dash);
 
 await browser.close();
 
-if (sidebarItems < 1 || dash.includes("No calls yet")) {
+if (!hasSyncedCall || hasRecentActivityEmptyState || dash.includes("No calls yet")) {
   console.error("FAIL: dashboard did not refresh after history sync");
   process.exit(1);
 }

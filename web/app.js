@@ -832,8 +832,20 @@ function dashboardOpts(extra = {}) {
     resolveOwnerFb: fb,
     fetchAllRemotePreps: buildFetchAllRemotePreps(),
     fetchRemotePreps: buildFetchRemotePreps(),
-    subscribeRemotePreps: buildSubscribeRemotePreps(),
-    subscribeRemoteCalls: buildSubscribeRemoteCalls(),
+    // Only pass these when there's a real subscription to make: both builders
+    // already no-op internally when Firebase isn't configured, but dashboard.js
+    // only checks `typeof opts.subscribeRemoteCalls === "function"` to decide
+    // whether to skip the initial synchronous "Recent activity" render in favor
+    // of waiting for the subscription callback (avoids a flash of stale data).
+    // A builder function is always truthy even when it will never call back —
+    // in dummy-mode (no Firebase project configured) that meant "Recent
+    // activity" rendered permanently empty, even with real synced call/prep
+    // data already in localStorage, since the callback that was supposed to
+    // populate it never fires. Confirmed via test-dashboard-refresh.mjs /
+    // test-dashboard-seeded.mjs both showing correct KPI counts (a separate,
+    // always-local aggregation) alongside an empty Recent Activity panel.
+    subscribeRemotePreps: isFirebaseAuthEnabled() ? buildSubscribeRemotePreps() : undefined,
+    subscribeRemoteCalls: isFirebaseAuthEnabled() ? buildSubscribeRemoteCalls() : undefined,
     subscribeRemoteDeals: buildSubscribeRemoteDeals(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
     skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,

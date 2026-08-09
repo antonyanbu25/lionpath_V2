@@ -5,9 +5,9 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 
 await page.goto(`${base}/`);
-await page.fill("#login-email", "se@freshworks.com");
-await page.fill("#login-password", "se123");
-await page.click('button[type="submit"]');
+await page.locator("#login-email input:not([type=hidden])").fill("se@freshworks.com");
+await page.locator("#login-password input:not([type=hidden])").fill("se123");
+await page.click('#login-submit');
 await page.waitForSelector("#app-shell:not([hidden])");
 
 for (const wait of [500, 1500, 4000, 8000]) {

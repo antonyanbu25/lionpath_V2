@@ -4,9 +4,9 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 
 await page.goto("http://127.0.0.1:8788/#workspace");
-await page.fill("#login-email", "se@freshworks.com");
-await page.fill("#login-password", "se123");
-await page.click('button[type="submit"]');
+await page.locator("#login-email input:not([type=hidden])").fill("se@freshworks.com");
+await page.locator("#login-password input:not([type=hidden])").fill("se123");
+await page.click('#login-submit');
 await page.waitForSelector("#app-shell:not([hidden])");
 await page.waitForTimeout(300);
 
