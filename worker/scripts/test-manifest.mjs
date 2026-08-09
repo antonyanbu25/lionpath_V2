@@ -15,16 +15,16 @@
  * An untagged file is NOT covered by `npm test` — that's the exact failure
  * mode this manifest exists to prevent. Add new test files here explicitly.
  *
- * @typedef {{ file: string, tags: string[], reason?: string }} ManifestEntry
+ * @typedef {{ file: string, tags: string[], reason?: string, needsServer?: boolean }} ManifestEntry
  * @type {ManifestEntry[]}
  */
 export const manifest = [
   {
     "file": "test-api-store-parity.ts",
     "tags": [
-      "emulator"
+      "live-api"
     ],
-    "reason": "needs FIREBASE_PROJECT_ID + Firestore Admin SDK (real or emulator)"
+    "reason": "own docstring requires GOOGLE_APPLICATION_CREDENTIALS against a real project — confirmed on 2026-08-10 it fails under the Firestore emulator with \"Set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_JSON\", so `emulator` was the wrong tag"
   },
   {
     "file": "test-arr-compute.ts",
@@ -189,7 +189,8 @@ export const manifest = [
     "tags": [
       "emulator"
     ],
-    "reason": "needs FIREBASE_PROJECT_ID + Firestore Admin SDK (real or emulator)"
+    "reason": "needs FIREBASE_PROJECT_ID + Firestore Admin SDK (real or emulator)",
+    "needsServer": true
   },
   {
     "file": "test-icp-criteria.ts",
@@ -458,7 +459,8 @@ export const manifest = [
     "tags": [
       "emulator"
     ],
-    "reason": "needs FIREBASE_PROJECT_ID + Firestore Admin SDK (real or emulator)"
+    "reason": "needs FIREBASE_PROJECT_ID + Firestore Admin SDK (real or emulator)",
+    "needsServer": true
   },
   {
     "file": "test-transcript-infer.ts",
