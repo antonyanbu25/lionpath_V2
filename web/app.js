@@ -538,7 +538,7 @@ async function resolveRemoteBriefsOwnerIds(session = currentSession) {
 }
 
 async function queryRemotePrepCollections() {
-  if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) {
+  if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser) {
     return { prepDocs: [], prepBriefDocs: [] };
   }
   const user = fb.auth.currentUser;
@@ -547,6 +547,23 @@ async function queryRemotePrepCollections() {
   const prepDocs = [];
   const prepBriefDocs = [];
   const prepBriefSeen = new Set();
+
+  // SE users (fb.db === null) fetch briefs via worker API
+  if (!fb?.db) {
+    try {
+      const token = await user.getIdToken();
+      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+      const res = await fetch(`${WORKER_BASE_URL}/api/briefs`, { headers, credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const briefs = data?.briefs || [];
+        return { prepDocs: briefs.filter((b) => b.kind !== "prepBrief"), prepBriefDocs: briefs.filter((b) => b.kind === "prepBrief") };
+      }
+    } catch (err) {
+      console.warn("[app] briefs API fetch failed:", err?.message || err);
+    }
+    return { prepDocs: [], prepBriefDocs: [] };
+  }
 
   const collectPreps = (snap) => {
     if (!snap?.docs) return;
