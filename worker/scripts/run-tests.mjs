@@ -16,6 +16,8 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { manifest } from "./test-manifest.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -92,10 +94,16 @@ async function main() {
   // ECONNREFUSED (confirmed via an actual CI run, 2026-08-10). Start it once
   // for the whole batch — harmless for tests that don't need it.
   let serverProc = null;
+  let historyDir = null;
   if (needsServer) {
     const alreadyUp = await isServerAlreadyUp(CONFIG_URL);
     if (!alreadyUp) {
       console.log(`\nStarting worker server on :${PORT} (needed by emulator API tests)...`);
+      // history-api/tasks-api need HISTORY_FILE_DIR set (node-server.ts's
+      // file-based history/task backend — gated separately from Firestore,
+      // confirmed via an actual CI run: server started fine but both still
+      // 503'd with "storage is not configured" because this was never set)
+      historyDir = await mkdtemp(join(tmpdir(), "worker-test-history-"));
       // detached so we own the process GROUP, not just this one process:
       // dev-node.mjs spawns its actual server (`npx tsx src/node-server.ts`)
       // with shell:true and never forwards signals, so a plain kill() on
@@ -104,7 +112,7 @@ async function main() {
       // testing). Killing the negative PID kills the whole group instead.
       serverProc = spawn("node", [join(SCRIPTS_DIR, "dev-node.mjs")], {
         cwd: ROOT,
-        env: { ...process.env, PORT },
+        env: { ...process.env, PORT, HISTORY_FILE_DIR: historyDir },
         detached: true,
       });
       const up = await waitForServer(CONFIG_URL);
@@ -129,6 +137,9 @@ async function main() {
     } catch {
       serverProc.kill(); // fallback if the group kill itself fails
     }
+  }
+  if (historyDir) {
+    await rm(historyDir, { recursive: true, force: true }).catch(() => {});
   }
 
   const failed = results.filter((r) => !r.ok);
