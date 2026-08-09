@@ -245,6 +245,8 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 - **Node.js 18+** (24.x recommended)
 - **Gemini API key** — [Google AI Studio](https://aistudio.google.com/apikey)
 - **Firebase** (optional) — portal runs in dummy-auth mode without `firebase-config.local.js`
+- **JDK 21+** (optional, for local testing only) — required to run `rules-tests/` and `worker`'s `emulator`-tagged tests against a real Firestore emulator. Without it, `worker/npm test` still runs everything except the emulator tag; CI installs Temurin 21 itself via `actions/setup-java@v4` (confirmed 2026-08-10 — `firebase-tools@15.x` requires JDK 21+, the plain `java` on `ubuntu-latest` doesn't meet that on its own)
+- **Docker** (optional, for local testing only) — required to dry-run the VPS deploy test gate (`deploy/vps/Dockerfile.worker-test`)
 
 ### One-time setup
 
@@ -311,33 +313,54 @@ Seed roster: `worker/scripts/seed-users.example.csv`, `web/dummy-users.js`, `web
 
 ## Testing
 
+`web` and `worker` each run through an aggregating runner
+(`scripts/run-tests.mjs`, reading `scripts/test-manifest.mjs`) instead of
+individually-invoked files — every test in the manifest runs as its own
+subprocess, one crash can't take down the run, and the summary at the end
+shows exactly what passed/failed. `rules-tests/` still runs as a single
+`firebase emulators:exec`-wrapped script (needs a real JDK — see
+Prerequisites).
+
 ```bash
-# Full web regression suite (~2–5 min)
+# web — full suite (unit + e2e, ~3–6 min; needs Playwright's Chromium —
+# npx playwright install chromium once if you haven't, or e2e tests
+# self-report "SKIP: playwright not installed" and pass trivially)
 cd web && npm test
 
-# CRM parity (prep ↔ post-call)
-node web/scripts/test-prep-postcall-crm-parity.mjs
-node web/scripts/test-precall-dual-write-e2e.mjs
-node web/scripts/test-contact-deal-mapping.mjs
+# web — fast/free tests only (no browser, no network) — what the VPS
+# deploy gate runs
+npm run test:fast
 
-# 2.1.2 — Activities / call view / QIP / product signal
-node web/scripts/test-activities-feed-dedupe.mjs
-node web/scripts/test-calls-list-view.mjs
-node web/scripts/test-qip-radar.mjs
-node web/scripts/test-deal-product-signal-rollup.mjs
-node web/scripts/test-call-view-animate-progressive.mjs
-node web/scripts/test-account-contact-dedupe.mjs
+# web — e2e only
+npm run test:e2e
 
-# Org hierarchy
-node web/scripts/test-org-service.mjs
-node web/scripts/test-org-structure.mjs
+# worker — full suite (unit + emulator-tagged; needs a real JDK — the
+# emulator tag is skipped otherwise, everything else still runs)
+cd worker && npm test
 
-# Worker — disputes / Freshdesk / post-call
-cd worker
-npx tsx scripts/test-dispute-notify.ts
-npx tsx scripts/test-rivals-context.ts
-node scripts/check-local-firebase.mjs
+# worker — fast/free tests only
+npm run test:fast
+
+# worker — live-api tests (real GEMINI_API_KEY, costs money — run
+# deliberately, never part of any automated gate)
+npm run test:live-api
+
+# Firestore rules coverage (needs a real JDK)
+npm run test:rules   # from repo root — npm ci in rules-tests/ + node run-all.mjs
 ```
+
+CI (`.github/workflows/ci.yml`) runs all three legs (`worker`, `web`,
+`rules`) on every push and PR — see [docs/HARNESS_FINDINGS.md](./docs/HARNESS_FINDINGS.md)
+for the working log of what the harness has caught, including real bugs
+(not just orphaned/stale tests) it found along the way.
+
+**Writing a new e2e test that logs in:** `fw-input`'s real `<input>` lives
+in its shadow DOM — `page.fill("#login-email", ...)` or setting `.value`
+directly on the custom-element host both silently no-op. Use
+`page.locator("#login-email input:not([type=hidden])").fill(...)` instead
+(the `:not([type=hidden])` excludes a light-DOM helper input Crayons adds
+for native form association), and click `#login-submit` specifically —
+`button[type="submit"]` matches multiple unrelated buttons app-wide.
 
 Key modules under test: `calls-list-view.js`, `score-disputes.js`, `support-tickets.js`, `product-signal-service.js`, `engagement-entities.js`, `dual-write.js`, `account-service.js`, `org-service.js`, `freshdesk.ts`, `notify-email.ts`.
 
@@ -401,6 +424,7 @@ git push -u origin 2.1.2
 | [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | DISC / enrich API |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | Production deploy |
 | [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
+| [docs/HARNESS_FINDINGS.md](./docs/HARNESS_FINDINGS.md) | Eval harness working log — real bugs the test suite caught |
 | [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) | Cloud Run + Freshdesk secret |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Onboarding & tunnels |
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo |
