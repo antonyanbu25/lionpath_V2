@@ -1485,7 +1485,7 @@ async function applyRemoteCallsToLaunchpad(container, email, opts, remoteCalls) 
   if (!container.isConnected) return;
   writeReconciledKpiSnapshot(
     email,
-    computeReconciledKpis(email, { localCalls: callRecords, remoteCalls, localBriefs: prepsCount }),
+    computeReconciledKpis(email, { localCalls: callRecords, remoteCalls, localBriefs: loadAllLocalBriefs().length }),
   );
 }
 
