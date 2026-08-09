@@ -41,7 +41,7 @@
 
     var title = document.createElement("h2");
     title.id = "boss-decision-title";
-    title.textContent = "This will trigger a push and redeploy (~30s). Continue?";
+    title.textContent = "Apply preference now? Reload to see the update.";
 
     var actions = document.createElement("div");
     actions.className = "boss-actions";

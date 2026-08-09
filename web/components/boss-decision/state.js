@@ -62,9 +62,49 @@
     if (choice === "timer") {
       document.body.classList.add("cs-timer");
       document.body.classList.remove("cs-hidden");
+      // Restore feedback to original position
+      restoreFeedbackPosition();
     } else if (choice === "hidden") {
       document.body.classList.add("cs-hidden");
       document.body.classList.remove("cs-timer");
+      // Move feedback button to where Accounts nav was
+      moveFeedbackToNav();
+    }
+  }
+
+  // Keep reference to original feedback parent/sibling for restoration
+  var feedbackOrigParent = null;
+  var feedbackOrigNextSibling = null;
+
+  function captureFeedbackPosition() {
+    var fb = document.getElementById("sidebar-feedback");
+    if (fb && !feedbackOrigParent) {
+      feedbackOrigParent = fb.parentNode;
+      feedbackOrigNextSibling = fb.nextSibling;
+    }
+  }
+
+  function moveFeedbackToNav() {
+    var fb = document.getElementById("sidebar-feedback");
+    var nav = document.querySelector(".sidebar-nav");
+    var accounts = nav?.querySelector('.nav-item[data-view="accounts"]');
+    if (!fb || !nav || !accounts) return;
+    captureFeedbackPosition();
+    // Insert feedback button right after the accounts position (which is hidden via CSS)
+    if (accounts.nextSibling) {
+      nav.insertBefore(fb, accounts.nextSibling);
+    } else {
+      nav.appendChild(fb);
+    }
+  }
+
+  function restoreFeedbackPosition() {
+    var fb = document.getElementById("sidebar-feedback");
+    if (!fb || !feedbackOrigParent) return;
+    if (feedbackOrigNextSibling) {
+      feedbackOrigParent.insertBefore(fb, feedbackOrigNextSibling);
+    } else {
+      feedbackOrigParent.appendChild(fb);
     }
   }
 

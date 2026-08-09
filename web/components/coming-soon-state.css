@@ -1,21 +1,15 @@
 /* Coming Soon state classes — applied via BossDecision on body */
 
 /* === TIMER MODE === */
-body.cs-timer .view-coming-soon-target .coming-soon-shell {
-  /* Allow the existing coming-soon timer to show */
+body.cs-timer .coming-soon-shell {
   display: grid;
 }
 
-/* === HIDDEN ICONS MODE === */
+/* === HIDDEN ICONS MODE — 4 nav items hidden, feedback moves up in JS, shell shows */
 body.cs-hidden .nav-item[data-view="accounts"],
 body.cs-hidden .nav-item[data-view="deals"],
 body.cs-hidden .nav-item[data-view="contacts"],
 body.cs-hidden .nav-item[data-view="coaching"] {
-  display: none !important;
-}
-
-/* Also hide the feedback button when in hidden mode — it sits below the nav area looks off without the 4 nav items above */
-body.cs-hidden #sidebar-feedback {
   display: none !important;
 }
 

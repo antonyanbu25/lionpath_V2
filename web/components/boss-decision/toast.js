@@ -5,7 +5,7 @@
   var activeTimer = null;
 
   function clearActive() {
-    if (activeTimer) window.clearInterval(activeTimer);
+    if (activeTimer) window.clearTimeout(activeTimer);
     activeTimer = null;
     if (activeToast) activeToast.remove();
     activeToast = null;
@@ -14,43 +14,27 @@
   function show(message, durationMs) {
     clearActive();
 
-    var totalMs = Number.isFinite(Number(durationMs)) ? Number(durationMs) : 30000;
-    var remaining = Math.max(0, Math.ceil(totalMs / 1000));
-    var baseMessage = message || "Updates being applied. Estimated time: 30s";
+    var totalMs = Number.isFinite(Number(durationMs)) ? Number(durationMs) : 3000;
+    var msg = message || "Preference saved!";
 
     var toast = document.createElement("div");
     toast.className = "boss-toast boss-toast--enter";
     toast.setAttribute("role", "status");
     toast.setAttribute("aria-live", "polite");
+    toast.textContent = msg;
     document.body.appendChild(toast);
     activeToast = toast;
 
-    function setProgress() {
-      toast.textContent = baseMessage + " (" + remaining + ")";
-    }
-
-    function finish() {
-      if (activeTimer) window.clearInterval(activeTimer);
+    activeTimer = window.setTimeout(function () {
+      if (activeTimer) window.clearTimeout(activeTimer);
       activeTimer = null;
-      toast.textContent = "Done!";
+      toast.classList.remove("boss-toast--enter");
+      toast.classList.add("boss-toast--exit");
       window.setTimeout(function () {
-        toast.classList.remove("boss-toast--enter");
-        toast.classList.add("boss-toast--exit");
-      }, 450);
-      window.setTimeout(function () {
-        window.location.reload();
-      }, 900);
-    }
-
-    setProgress();
-    activeTimer = window.setInterval(function () {
-      remaining -= 1;
-      if (remaining <= 0) {
-        finish();
-      } else {
-        setProgress();
-      }
-    }, 1000);
+        if (activeToast) activeToast.remove();
+        activeToast = null;
+      }, 300);
+    }, totalMs);
   }
 
   window.BossToast = {
