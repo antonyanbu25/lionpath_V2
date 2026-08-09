@@ -62,17 +62,17 @@
 }
 
 .boss-button:focus-visible {
-  outline: 3px solid rgba(18, 52, 190, 0.28);
+  outline: 3px solid rgba(0, 0, 0, 0.22);
   outline-offset: 2px;
 }
 
 .boss-button--primary {
-  background: #1234be;
+  background: #1a1a1a;
   color: #ffffff;
 }
 
 .boss-button--primary:hover {
-  background: #0d2999;
+  background: #000000;
 }
 
 .boss-button--secondary {
@@ -133,6 +133,21 @@ body.dark .boss-button--secondary,
 body.dark .boss-button--secondary:hover,
 [data-theme="dark"] .boss-button--secondary:hover {
   background: #273449;
+}
+
+body.dark .boss-button:focus-visible,
+[data-theme="dark"] .boss-button:focus-visible {
+  outline-color: rgba(255, 255, 255, 0.34);
+}
+
+body.dark .boss-button--primary,
+[data-theme="dark"] .boss-button--primary {
+  background: #000000;
+}
+
+body.dark .boss-button--primary:hover,
+[data-theme="dark"] .boss-button--primary:hover {
+  background: #1a1a1a;
 }
 
 body.light .boss-modal,

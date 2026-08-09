@@ -20,13 +20,25 @@
 
   function updateTimer(root) {
     const parts = partsUntilLaunch();
-    root.querySelector("[data-coming-soon-days]").textContent = pad(parts.days);
-    root.querySelector("[data-coming-soon-hours]").textContent = pad(parts.hours);
-    root.querySelector("[data-coming-soon-minutes]").textContent = pad(parts.minutes);
-    root.querySelector("[data-coming-soon-seconds]").textContent = pad(parts.seconds);
+    const days = root.querySelector("[data-coming-soon-days]");
+    const hours = root.querySelector("[data-coming-soon-hours]");
+    const minutes = root.querySelector("[data-coming-soon-minutes]");
+    const seconds = root.querySelector("[data-coming-soon-seconds]");
+    if (!days || !hours || !minutes || !seconds) return;
+    days.textContent = pad(parts.days);
+    hours.textContent = pad(parts.hours);
+    minutes.textContent = pad(parts.minutes);
+    seconds.textContent = pad(parts.seconds);
   }
 
-  function render() {
+  function getChoice() {
+    if (window.BossDecision && typeof window.BossDecision.getChoice === "function") {
+      return window.BossDecision.getChoice();
+    }
+    return null;
+  }
+
+  function renderTimer() {
     return `
       <main class="coming-soon-shell" aria-labelledby="coming-soon-title">
         <section class="coming-soon-card">
@@ -61,6 +73,20 @@
     `;
   }
 
+  function renderHidden() {
+    return `
+      <main class="coming-soon-shell cs-hidden-mode" aria-labelledby="coming-soon-title">
+        <section class="coming-soon-card">
+          <img class="coming-soon-logo" src="${LOGO_URL}" alt="Janus logo" width="96" height="96" />
+          <p class="coming-soon-product">Janus 2.0</p>
+          <h1 id="coming-soon-title">Coming Soon</h1>
+          <p class="coming-soon-copy">This workspace is temporarily streamlined while we finish the next Janus experience.</p>
+          <footer class="coming-soon-footer">Janus - Copyright Freshworks.</footer>
+        </section>
+      </main>
+    `;
+  }
+
   function unmount() {
     if (activeTimer) {
       clearInterval(activeTimer);
@@ -75,10 +101,13 @@
   function mount(target) {
     if (!target) return;
     unmount();
-    target.innerHTML = render();
+    const choice = getChoice();
+    target.innerHTML = choice === "hidden" ? renderHidden() : renderTimer();
     mountedRoot = target;
-    updateTimer(target);
-    activeTimer = setInterval(() => updateTimer(target), 1000);
+    if (choice !== "hidden") {
+      updateTimer(target);
+      activeTimer = setInterval(() => updateTimer(target), 1000);
+    }
   }
 
   window.ComingSoon = { mount, unmount };
