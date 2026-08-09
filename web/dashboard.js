@@ -1590,12 +1590,7 @@ async function refreshLaunchpadRemote(container, email, opts = {}) {
     const taskMetrics = aggregateTaskMetrics(listTasks(email));
     const prepsCount =
       remotePreps ??
-      Number(
-        container
-          .querySelector('.launch-kpi-value[data-stat="preps"]')
-          ?.textContent?.replace(/\s*↻\s*/g, "")
-          .trim() || 0,
-    );
+      loadAllLocalBriefs().length;
     patchLaunchKpis(container, taskMetrics, remoteLaunchMetrics, prepsCount);
     scheduleRecentActivityRender(container, remoteRecords, remoteMetrics.usesLegacyCoach, opts);
     _remoteSyncPending = false;
@@ -1889,10 +1884,6 @@ async function updateRecentActivitySection(container, callRecords, usesLegacyCoa
   if (!section.isConnected) return;
   wireRecentActivitySection(section, opts);
   const signature = recentActivitySignature(items);
-  // If everything is identical, skip all DOM work — eliminates flicker
-  // from parallel Firestore subscriptions firing the same data in
-  // separate microtask boundaries.
-  if (section.dataset.activitySignature === signature) return;
   section.dataset.activitySignature = signature;
 
   const card = section.querySelector(".launch-activity-card");
@@ -2083,7 +2074,7 @@ async function renderSeLaunchpadOnce(container, email, opts = {}) {
     const taskMetrics = renderMetrics?.taskMetrics || aggregateTaskMetrics(listTasks(email));
     let launchCallMetrics = renderMetrics?.launchCallMetrics || buildLaunchpadCallMetricsFromRecords(callRecords);
     if (renderMetrics) launchCallMetrics = { ...launchCallMetrics, records: callRecords };
-    const prepsCount = renderMetrics?.prepsCount ?? loadAllLocalBriefs().length;
+    const prepsCount = loadAllLocalBriefs().length || renderMetrics?.prepsCount || 0;
 
     const remotePending = launchpadRemotePending(callRecords, prepsCount, opts, cached);
     const syncing = launchpadSyncingFlags(callRecords, prepsCount, cached, opts);
