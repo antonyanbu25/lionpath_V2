@@ -26,6 +26,56 @@ import type {
   PostCallSourceKind,
   VideoThemeApplicability,
 } from "./types";
+import type { VideoFactsDraft } from "../domain-model/video-facts";
+
+export interface SummaryTimelineDraft {
+  source: "summary";
+  segments: Array<{
+    startS: number;
+    endS: number;
+    segmentType: string;
+    label?: string | null;
+    source: "summary";
+  }>;
+  markers: [];
+  hasTimestamps: boolean;
+  durationSec: number | null;
+}
+
+/** Promote Pass 2 summary spine onto timeline.segments for Kaia / plain-summary calls. */
+export function timelineDraftFromVideoFacts(
+  videoFacts: VideoFactsDraft | null | undefined,
+): SummaryTimelineDraft | null {
+  const spine = videoFacts?.timelineSpine;
+  if (!spine?.segments?.length) return null;
+  return {
+    source: "summary",
+    segments: spine.segments.map((seg) => ({
+      startS: seg.startS,
+      endS: seg.endS,
+      segmentType: seg.segmentType,
+      label: seg.label ?? null,
+      source: "summary" as const,
+    })),
+    markers: [],
+    hasTimestamps: true,
+    durationSec: spine.durationSec ?? videoFacts?.durationSec ?? null,
+  };
+}
+
+/**
+ * When Kaia summary is present and no video/transcript segments exist yet,
+ * prefer the Pass 2 summary spine for display timeline.segments.
+ */
+export function mergeSummaryTimelineSegments(
+  existingSegments: Array<{ source?: string }> | null | undefined,
+  videoFacts: VideoFactsDraft | null | undefined,
+): SummaryTimelineDraft | null {
+  const hasVideo = (existingSegments || []).some((s) => (s.source || "video") === "video");
+  const hasTranscript = (existingSegments || []).some((s) => s.source === "transcript");
+  if (hasVideo || hasTranscript) return null;
+  return timelineDraftFromVideoFacts(videoFacts);
+}
 
 function briefSnapshotsFromInput(input: PostCallResolveInput) {
   return (input.briefs || []).map((b) => ({

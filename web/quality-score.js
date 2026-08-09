@@ -230,3 +230,43 @@ export function formatTypeComposite(result) {
     rubricVersion: result.rubricVersion,
   });
 }
+
+/** Mirrors worker/src/video/facts.ts — room panel + camera_on CQS share one source. */
+export function curveHasCameraData(curve) {
+  if (!Array.isArray(curve)) return false;
+  return curve.some(
+    (p) =>
+      p?.cameraOn === true ||
+      p?.cameraOn === false ||
+      (p?.cameraOnPct != null && Number.isFinite(Number(p.cameraOnPct))),
+  );
+}
+
+export function aggregateCameraOnPct(topLevel, curve, seIdentity) {
+  if (topLevel != null && Number.isFinite(Number(topLevel))) {
+    return Math.max(0, Math.min(100, Math.round(Number(topLevel))));
+  }
+  if (!Array.isArray(curve) || !curve.length) return null;
+
+  const seKey = seIdentity?.trim().toLowerCase();
+  const seRow =
+    (seKey && curve.find((p) => String(p?.name || "").trim().toLowerCase() === seKey)) ||
+    curve.find((p) => String(p?.role || "").trim().toLowerCase() === "se");
+
+  if (seRow?.cameraOnPct != null && Number.isFinite(Number(seRow.cameraOnPct))) {
+    return Math.max(0, Math.min(100, Math.round(Number(seRow.cameraOnPct))));
+  }
+
+  const pcts = curve
+    .map((p) => p?.cameraOnPct)
+    .filter((v) => v != null && Number.isFinite(Number(v)))
+    .map((v) => Math.max(0, Math.min(100, Math.round(Number(v)))));
+  if (pcts.length) {
+    return Math.round(pcts.reduce((sum, v) => sum + v, 0) / pcts.length);
+  }
+
+  const known = curve.filter((p) => p?.cameraOn === true || p?.cameraOn === false);
+  if (!known.length) return null;
+  const onCount = known.filter((p) => p?.cameraOn === true).length;
+  return Math.round((onCount / known.length) * 100);
+}
