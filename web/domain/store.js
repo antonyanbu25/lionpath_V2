@@ -8,6 +8,7 @@ import { createFirestoreStore } from "./firestore-store.js";
 import { createApiStore } from "./api-store.js";
 import { isFirebasePermissionError } from "./safe-store.js";
 import { runMeddpiccDealMigrationIfNeeded } from "./migrate-meddpicc-to-deals.js";
+import { getSession } from "../auth.js";
 
 /** @type {ReturnType<createLocalStore>|null} */
 let storeInstance = null;
