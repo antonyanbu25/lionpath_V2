@@ -23,6 +23,12 @@ try {
     collapseIconSlot: document.querySelector("#sidebar-collapse .sidebar-collapse-glyph")?.getAttribute("slot") || "",
   }));
 
+  // purgeLegacyDisputeModal's real target (purgeLegacyDisputeModals, wired
+  // via app.js boot() -> initPrepDisputes()) isn't set until boot completes —
+  // unlike the inline-script globals checked above, which are synchronous.
+  // Wait for it explicitly rather than a guessed sleep.
+  await page.waitForFunction(() => typeof window.purgeLegacyDisputeModals === "function", { timeout: 10000 });
+
   const legacyDom = await page.evaluate(() => {
     const legacy = document.createElement("fw-modal");
     legacy.id = "prep-dispute-modal";
