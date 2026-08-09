@@ -132,7 +132,7 @@ Two layers of drift, both because the file was orphaned and never ran:
 Verified: `npx tsx scripts/test-firebase-auth.mjs` passes standalone. Full worker unit
 suite: 69/69 (100%).
 
-# test-pipeline-view.mjs — DEFERRED, not fixed (user decision 2026-08-09)
+# test-pipeline-view.mjs — RESOLVED (2026-08-10)
 
 Root cause traced fully: web/domain/user-resolve.js's resolveEffectiveOwnerId() returns
 null for dummy-mode sessions (e.g. org director vipin.thomas@freshworks.com,
@@ -143,11 +143,14 @@ resolveEffectiveOwnerId -> listLifecyclesForSession -> listAccountsForSession/
 listDealsForSession all return empty for dummy-mode org directors/managers, so the
 Pipeline view (and likely other scope-resolution-dependent views) shows nothing for them.
 
-Likely fix (not applied): when isDummy is true AND no `fb` was provided, fall back to the
-dummy `raw` id instead of null, rather than only falling back to `raw` when `!isDummy`.
-
-NOT fixed — Tony is checking with the team that built this before changing shared
-identity-resolution code (resolveEffectiveOwnerId is used well beyond pipeline-view).
+Fixed: when isDummy is true AND there's no real Firebase auth UID anywhere
+(`!session.authUid && !fb?.auth?.currentUser?.uid`), short-circuit to the dummy `raw` id
+instead of falling through to the production-only authIndex/lookup chain, which has no
+fallback for "there's no better id to find" and silently resolves to null. Verified this
+doesn't regress the real-Firebase-SSO path: test-firebase-session-resolve.mjs (authIndex
+must still win over a usr_dummy_* placeholder when a genuine authUid is present) passes
+unchanged. Confirmed live in the browser as a manager/segment-leader persona — Team
+dashboard and Pipeline review both render real data instead of hanging/empty.
 
 # test-nextsteps-shape.mjs — resolved, real regression restored (2026-08-09)
 
@@ -287,12 +290,12 @@ replaced by "Dispute a score" (score-dispute-trigger -> Freshdesk POST /api/tick
 783b623 "Release 2.1.2: activities feed, disputes notify, Freshdesk tickets". Product
 rename, not a regression. Updated the assertion. Verified: passes.
 
-# test-user-menu.mjs — DEFERRED, needs a product decision (2026-08-09)
+# test-user-menu.mjs — RESOLVED (2026-08-10)
 
-One assertion of ~50 fails: ["no profile settings in popup",
-!html.includes('id="user-menu-profile"')]. index.html DOES still contain that button.
+One assertion of ~50 failed: ["no profile settings in popup",
+!html.includes('id="user-menu-profile"')]. index.html DID still contain that button.
 
-Root cause is a cross-branch inconsistency, not a simple regression:
+Root cause was a cross-branch inconsistency, not a simple regression:
 - Commit 68383ec ("Release 2.1.29: org hierarchy, CRM parity, and contact dedupe")
   BOTH removed <button id="user-menu-profile"> from index.html AND added this test
   assertion — a coherent, deliberate change (de-duplicate: profile settings stays
@@ -300,12 +303,11 @@ Root cause is a cross-branch inconsistency, not a simple regression:
 - BUT 68383ec lives on refs/remotes/v2/2.1-org-hierarchy, a DIFFERENT branch. On 2.1
   (our base) the test assertion arrived but the index.html removal did not.
 
-So the branches disagree about whether "Profile settings" belongs in the user popup.
-Two valid resolutions, both UI-visible:
- (a) remove the popup item from index.html (adopt 2.1-org-hierarchy's intent), or
- (b) drop/relax the test assertion on 2.1 (keep the popup entry).
-NOT fixed — this is a product/UX call and removing a menu entry users may rely on
-shouldn't be guessed at. Profile IS reachable via the settings nav item either way.
+Resolved by adopting 2.1-org-hierarchy's intent (option a): removed the dead, unwired
+`#user-menu-profile` popup button from index.html — grep-confirmed no JS referenced its
+id at all, so it was pure leftover markup. Profile settings stays reachable via the
+sidebar's own Settings nav item either way. Verified live in the browser: popup now
+shows Theme + Sign out only. All 49 checks in test-user-menu.mjs pass.
 
 # test-history-persistence.mjs — resolved, THREE stacked stale issues (2026-08-09)
 Each masked the next (the file exits on first failure), so fixing one revealed another:
@@ -342,20 +344,69 @@ model-authored `overall` (0-10) instead of re-deriving a weighted composite from
 the fixture needed `overall` values; and the per-type average renders on the 0-10 scale, so
 the legacy ">73<" (weighted /100) expectation became a precise markup-anchored match on 7.
 
-DEFERRED (needs a product decision): ["spine composite present"] still fails.
-quality-score.js's spineComposite() is a no-arg stub returning a hardcoded
+RESOLVED (2026-08-10): ["spine composite present"] now passes.
+quality-score.js's spineComposite() was a no-arg stub returning a hardcoded
 {score: null, themeCount: 0, callCount: 0, coverage: 0}, with `@deprecated v2.1` on the
 adjacent function — yet dashboard.js:1073 still renders the "Shared themes (core four)"
-UI note. So either the spine feature should be reimplemented, or the stub + dead UI +
-this assertion should all be removed. Not guessing at that. This is the ONLY remaining
-red test in web; it must be resolved before the VPS deploy gate is flipped from
-SKIP_TEST_GATE opt-out to a hard block.
+UI note, and this fed the SE dashboard's overall snapshot plus the manager dashboard's
+"Team average" KPI tile, both permanently stuck at "-". Reimplemented against the
+current v2.1 schema: per call, average whichever of the four core themes (call_flow,
+customer_engagement, objections, camera_on) that call has data for; overall, average
+those per-call scores across every call regardless of type (deliberately spans all
+types, unlike profileAverage/typeComposite — it's the one number comparable across a
+whole call history). Factored the shared per-line grade-resolution logic (used by
+themeAverage too) into one helper to avoid a third copy. Verified: passes.
+
+# Manager dashboard hang — found and fixed during local manual testing (2026-08-10)
+
+Not caught by any existing or new automated test — found by actually logging into the
+locally-running app as a manager/segment-leader persona and clicking into the Team tab.
+dashboard.js's buildManagerTeamView() called listDealsForSession(session) without ever
+importing it (exported correctly from domain/account-service.js, just never wired into
+dashboard.js) — an uncaught ReferenceError on every manager/segment-leader/org-director
+Team dashboard load, which hung forever on "Loading team dashboard...". Confirmed via
+git archaeology this bug has existed since the 2.0.7 release baseline — not introduced
+by this session's changes, just never caught because no test actually invoked
+buildManagerTeamView end-to-end (test-manager-dashboard.mjs only exercises pure render
+helpers with a hand-built view object).
+
+Fixed: added the missing import. New regression test:
+web/scripts/test-manager-team-view.mjs calls buildManagerTeamView end-to-end against a
+real dummy-mode manager session; confirmed it fails with the bug reintroduced and
+passes with the fix. Wired into test-manifest.mjs as unit-tagged.
+
+This is the clearest argument in this whole log for why "tests all green" isn't the
+same as "the app works" — every automated check here was passing while this was live,
+and it took a human clicking through the actual UI to surface it.
 
 ---
 
-## Final state
+## Final state (2026-08-10)
 
 - Worker: 69/69 unit tests passing.
-- Web: 114/117 unit tests passing. The 3 remaining are the deliberate deferrals above
-  (`test-pipeline-view.mjs`, `test-user-menu.mjs`, `test-coaching-render.mjs`'s spine
-  assertion) — not unfinished work, product/architecture calls for the team.
+- Web: 118/118 unit tests passing (133 total incl. e2e; the 15 e2e failures are
+  Playwright's Chromium binary not being installed in the working sandbox, not app
+  bugs — CI installs it separately).
+- npm audit: 0 vulnerabilities across root, web/, worker/, rules-tests/ (see the
+  "fix: clear remaining npm audit findings" commit for detail).
+- All three items marked DEFERRED above are now resolved — see their updated sections.
+- One additional bug (manager dashboard hang) found by manual browser testing, not by
+  any automated test, and fixed — see above.
+
+## What's still unverified, not just "passing by omission"
+
+Four of the seven harness legs built on this branch have never actually executed
+successfully anywhere in this whole effort — not in this sandbox, and not in CI either,
+since no PR/workflow run has triggered against this branch yet:
+- **Firestore rules-tests** — only `node --check` syntax-validated, never run against a
+  real emulator (no JDK in this sandbox).
+- **e2e/Playwright suite** (15 files) — 0% ever green; this sandbox has no Chromium
+  binary, and ci.yml's new install step has never actually run on GitHub.
+- **VPS deploy gate** (Dockerfile.worker-test + update.sh) — only `bash -n` syntax- and
+  file-existence-checked; no Docker in this sandbox to build/run it.
+- **Nightly LLM eval** (eval:prep-golden, eval:self-consistency) — never run at all; no
+  GEMINI_API_KEY has been available in any session that touched this branch.
+
+Recommend triggering CI (open a PR against 2.1, or push and let ci.yml run) before
+treating this branch as fully proven — CI is the first environment in this branch's
+entire history that can actually execute the emulator and e2e legs.
