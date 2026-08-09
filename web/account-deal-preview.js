@@ -39,6 +39,16 @@ export function renderStaticDealCard(title, stage) {
     </div>`;
 }
 
+export function renderLoadingDealCard() {
+  return `<div class="nb-deal-card pc-deal-tile pc-deal-tile--static pc-deal-tile--loading" aria-busy="true">
+      <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
+      <div class="nb-deal-card-body">
+        <span class="nb-deal-card-title muted">Loading deals…</span>
+        <span class="nb-deal-card-stage muted">Please wait</span>
+      </div>
+    </div>`;
+}
+
 export function renderNewDealEditor(displayName, newDealType, newDealTitle, selected = true) {
   const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
   return `<div class="pc-new-deal-field${selected ? " is-selected" : ""}">
@@ -59,6 +69,7 @@ export function renderNewDealEditor(displayName, newDealType, newDealTitle, sele
  *   newDealType?: 'new_business'|'expansion',
  *   newDealTitle?: string,
  *   editableAccount?: boolean,
+ *   dealsLoading?: boolean,
  * }} opts
  */
 export function renderAccountDealPreviewHtml(opts) {
@@ -71,6 +82,7 @@ export function renderAccountDealPreviewHtml(opts) {
     newDealType = "new_business",
     newDealTitle = "",
     editableAccount = true,
+    dealsLoading = false,
   } = opts;
 
   const displayName = titleCaseDisplayName(accountName) || "Account";
@@ -84,7 +96,9 @@ export function renderAccountDealPreviewHtml(opts) {
     </div>`;
 
   let dealTilesHtml = "";
-  if (!accountMatched && !hasExistingDeals) {
+  if (dealsLoading && accountMatched) {
+    dealTilesHtml = renderLoadingDealCard();
+  } else if (!accountMatched && !hasExistingDeals) {
     const title = newDealTitle || formatDealTitlePreview(displayName, newDealType);
     dealTilesHtml = renderStaticDealCard(title, "Create on confirm");
   } else if (!deals.length) {

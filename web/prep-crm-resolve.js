@@ -46,6 +46,7 @@ let prepAccountNameUserEdited = false;
 let lookupTimer = 0;
 let lookupToken = 0;
 let previewToken = 0;
+let prepDealsLoading = false;
 
 function parseEmails(raw) {
   return String(raw || "")
@@ -173,7 +174,8 @@ export function ensureDraftAccount(domain, name) {
 }
 
 async function applyAccount(account, deals = []) {
-  previewToken = ++lookupToken;
+  const token = ++lookupToken;
+  previewToken = token;
   const prevAccountId = prepResolvedAccount?.id || null;
   prepResolvedAccount = account
     ? { id: account.id, name: account.name, domain: account.domain || null }
@@ -182,13 +184,19 @@ async function applyAccount(account, deals = []) {
     prepDraftAccountName = account?.name || prepDraftAccountName;
   }
   if (account?.id) {
+    prepDealsLoading = true;
+    renderPrepAccountDealPreview(token);
     const { listDealsForAccount } = await import("./domain/deal-service.js");
+    if (token !== lookupToken) return;
     lastDeals = await enrichDealOwnerNames(await listDealsForAccount(account.id));
+    prepDealsLoading = false;
   } else {
+    prepDealsLoading = false;
     lastDeals = await enrichDealOwnerNames(
       deals.filter((d) => !account || d.accountId === account.id),
     );
   }
+  if (token !== lookupToken) return;
   if (prevAccountId !== (account?.id || null)) {
     prepDraftNewDealTitle = "";
     prepNewDealType = "new_business";
@@ -215,7 +223,7 @@ async function applyAccount(account, deals = []) {
     }
   }
   syncEngagementContext();
-  renderPrepAccountDealPreview();
+  renderPrepAccountDealPreview(token);
 }
 
 function renderAccountDealPreview(domain, accountName) {
@@ -253,6 +261,7 @@ export function resetPrepCrmSelection() {
   prepNewDealType = "new_business";
   prepFocusNewDealInput = false;
   lastDeals = [];
+  prepDealsLoading = false;
   prepDraftAccountName = null;
   prepAccountNameUserEdited = false;
 }
@@ -338,9 +347,11 @@ function wirePrepAccountDealPreview(previewEl) {
   });
 }
 
-function renderPrepAccountDealPreview() {
+function renderPrepAccountDealPreview(expectedToken) {
   const preview = $("prep-account-deal-preview");
   if (!preview) return;
+  const token = expectedToken ?? previewToken;
+  if (token !== previewToken) return;
 
   if (!prepResolvedAccount) {
     hideAccountDealPreview();
@@ -361,6 +372,7 @@ function renderPrepAccountDealPreview() {
     newDealType: prepNewDealType,
     newDealTitle: prepDraftNewDealTitle,
     editableAccount: false,
+    dealsLoading: prepDealsLoading,
   });
   wirePrepAccountDealPreview(preview);
   if (prepFocusNewDealInput && prepCreateNewDeal) {
@@ -477,7 +489,9 @@ async function renderCrmPanel() {
     });
   }
 
-  renderPrepAccountDealPreview();
+  if (groupAccounts.length !== 1) {
+    renderPrepAccountDealPreview();
+  }
 }
 
 function scheduleLookup() {
