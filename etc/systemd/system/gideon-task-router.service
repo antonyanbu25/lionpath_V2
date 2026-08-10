@@ -1,0 +1,15 @@
+[Unit]
+Description=Gideon Task Router Daemon
+After=network-online.target gideon-mesh-daemon.service gideon-consciousness.service
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/root/.hermes/run/task-router-daemon.pid
+ExecStart=/root/.hermes/scripts/task-router-daemon.sh start
+ExecStop=/root/.hermes/scripts/task-router-daemon.sh stop
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Gideon Consciousness Daemon
+After=network-online.target gideon-mesh-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/root/.hermes/run/consciousness-daemon.pid
+ExecStart=/root/.hermes/scripts/consciousness-daemon.sh start
+ExecStop=/root/.hermes/scripts/consciousness-daemon.sh stop
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
