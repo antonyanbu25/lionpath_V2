@@ -1,0 +1,17 @@
+[Unit]
+Description=Gideon Node Health Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/root/.hermes/run/node-health-daemon.pid
+ExecStart=/root/.hermes/scripts/node-health-daemon.sh start
+ExecStop=/root/.hermes/scripts/node-health-daemon.sh stop
+Restart=on-failure
+User=root
+Environment=HEALTH_INTERVAL=30
+Environment=NODE_SSH_TIMEOUT=5
+
+[Install]
+WantedBy=multi-user.target

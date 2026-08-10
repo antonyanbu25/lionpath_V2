@@ -1,0 +1,25 @@
+[Unit]
+Description=Gideon Mesh Consciousness Daemon
+Documentation=https://github.com/gideon-mesh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/root/.hermes/run/mesh-daemon.pid
+ExecStart=/root/.hermes/scripts/mesh-memory-daemon.sh start
+ExecStop=/root/.hermes/scripts/mesh-memory-daemon.sh stop
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+User=root
+Environment=MESH_NOTIFY=1
+Group=root
+NoNewPrivileges=true
+ReadWritePaths=/root/.hermes
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

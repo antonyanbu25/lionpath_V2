@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Gideon Node Discovery Daily
+Wants=gideon-node-discovery.service
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
