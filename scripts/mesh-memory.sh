@@ -7,7 +7,14 @@ DB_PATH="$HERMES_HOME/state.db"
 REMOTE_DB_PATH="$HERMES_HOME/state.db"
 NODE=""
 ACTION=""
+WATCH_INTERVAL="${MESH_INTERVAL:-60}"
+NOTIFY="${MESH_NOTIFY:-0}"
 BATCH_SIZE="${MESH_BATCH:-500}"
+DISCOVERED_NODES="$HERMES_HOME/config/discovered-nodes.json"
+MESH_NODES_CONF="$HERMES_HOME/config/mesh-nodes.conf"
+CONFLICT_LOG="$HERMES_HOME/logs/memory-conflicts.log"
+RADIO_MESH="$HERMES_HOME/scripts/agent-radio-mesh.sh"
+RADIO_SESSION="${MESH_RADIO_SESSION:-mesh}"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
 LOCK_FD=9
 
@@ -23,6 +30,7 @@ Usage:
   mesh-memory.sh --pull   --node <user@host> [--db <path>] [--remote-db <path>]
   mesh-memory.sh --push   --node <user@host> [--db <path>] [--remote-db <path>]
   mesh-memory.sh --sync   --node <user@host> [--db <path>] [--remote-db <path>]
+  mesh-memory.sh --watch  [--interval <sec>] [--notify] [--db <path>] [--remote-db <path>]
   mesh-memory.sh --status [--node <user@host>] [--db <path>]
   mesh-memory.sh --migrate [--db <path>]
   mesh-memory.sh --help
@@ -30,6 +38,9 @@ Usage:
 Environment:
   HERMES_HOME       Defaults to ~/.hermes
   MESH_BATCH        Rows per page, defaults to 500
+  MESH_INTERVAL     Watch interval, defaults to 60 seconds
+  MESH_NOTIFY       Set to 1 to broadcast sync events
+  MESH_RADIO_SESSION Radio mesh session, defaults to mesh
   MESH_REMOTE_LOCAL Set to 1 to force local execution for --node
 USAGE
 }
@@ -62,6 +73,51 @@ check_prereqs() {
     fi
   done
   (( missing == 0 )) || exit 2
+}
+
+trim_ws() {
+  local s="${1:-}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+load_known_nodes() {
+  local node
+  printf '%s\n' "localhost"
+  if [[ -f "$DISCOVERED_NODES" ]] && command -v jq >/dev/null 2>&1; then
+    jq -r '
+      def rows:
+        if type == "array" then .
+        else (.nodes // .known_nodes // .discovered // .items // [])
+        end;
+      rows[]?
+      | select((.reachable // true) != false)
+      | if (.ssh_target // .target // .node // .node_host // empty) != "" then
+          (.ssh_target // .target // .node // .node_host)
+        elif (.ssh_user // .user // empty) != "" and (.ip // .host // .hostname // empty) != "" then
+          ((.ssh_user // .user) + "@" + (.ip // .host // .hostname))
+        else
+          (.host // .hostname // .ip // empty)
+        end
+    ' "$DISCOVERED_NODES" 2>/dev/null || true
+  elif [[ -f "$MESH_NODES_CONF" ]]; then
+    while IFS= read -r node || [[ -n "$node" ]]; do
+      node="${node%%#*}"
+      node="$(trim_ws "$node")"
+      [[ -n "$node" ]] && printf '%s\n' "$node"
+    done < "$MESH_NODES_CONF"
+  fi | awk 'NF && !seen[$0]++'
+}
+
+notify_radio() {
+  local message="$1"
+  [[ "$NOTIFY" == "1" ]] || return 0
+  if [[ ! -x "$RADIO_MESH" ]]; then
+    log WARN "notify requested but missing executable: $RADIO_MESH"
+    return 0
+  fi
+  "$RADIO_MESH" broadcast "$RADIO_SESSION" FYI "$message" >/dev/null 2>&1 || log WARN "radio notify failed"
 }
 
 is_local_node() {
@@ -236,7 +292,40 @@ CREATE TEMP TABLE __mesh_staging (
 SQL
 }
 
-merge_sql_suffix() {
+shell_quote() {
+  printf '%q' "$1"
+}
+
+apply_lww_merge() {
+  local direction="$1"
+  local node="$2"
+  local qdirection qnode log_dir_q log_file_q
+  qdirection="$(sql_quote "$direction")"
+  qnode="$(sql_quote "$node")"
+  log_dir_q="$(shell_quote "$(dirname "$CONFLICT_LOG")")"
+  log_file_q="$(shell_quote "$CONFLICT_LOG")"
+  cat <<'SQL'
+.mode tabs
+SQL
+  printf '.once | mkdir -p %s && cat >> %s\n' "$log_dir_q" "$log_file_q"
+  cat <<SQL
+SELECT
+  strftime('%Y-%m-%dT%H:%M:%SZ','now') ||
+  char(9) || 'node=' || $qnode ||
+  char(9) || 'direction=' || $qdirection ||
+  char(9) || 'key=' || quote(s.key) ||
+  char(9) || 'BEFORE target_updated_at=' || COALESCE(m.updated_at,0) || ' target_origin=' || quote(m.origin_node) || ' target_value=' || quote(m.value) ||
+  char(9) || 'incoming_updated_at=' || COALESCE(s.updated_at,0) || ' incoming_origin=' || quote(s.origin_node) || ' incoming_value=' || quote(s.value) ||
+  char(9) || 'winner=' || CASE WHEN COALESCE(s.updated_at,0) > COALESCE(m.updated_at,0) THEN 'incoming' ELSE 'target' END ||
+  char(9) || 'AFTER updated_at=' || CASE WHEN COALESCE(s.updated_at,0) > COALESCE(m.updated_at,0) THEN COALESCE(s.updated_at,0) ELSE COALESCE(m.updated_at,0) END ||
+  ' origin=' || CASE WHEN COALESCE(s.updated_at,0) > COALESCE(m.updated_at,0) THEN quote(s.origin_node) ELSE quote(m.origin_node) END ||
+  ' value=' || CASE WHEN COALESCE(s.updated_at,0) > COALESCE(m.updated_at,0) THEN quote(s.value) ELSE quote(m.value) END
+FROM __mesh_staging s
+JOIN memory m ON m.key = s.key
+WHERE COALESCE(s.value,'') != COALESCE(m.value,'')
+   OR COALESCE(s.updated_at,0) != COALESCE(m.updated_at,0)
+   OR COALESCE(s.origin_node,'') != COALESCE(m.origin_node,'');
+SQL
   cat <<'SQL'
 INSERT OR REPLACE INTO memory(key,value,updated_at,origin_node)
 SELECT s.key, s.value, s.updated_at, s.origin_node
@@ -246,6 +335,10 @@ WHERE m.key IS NULL OR s.updated_at > COALESCE(m.updated_at,0);
 DROP TABLE __mesh_staging;
 COMMIT;
 SQL
+}
+
+merge_sql_suffix() {
+  apply_lww_merge "$@"
 }
 
 run_merge_local() {
@@ -286,7 +379,7 @@ pull_from() {
     tmp="$(mktemp)"
     merge_sql_prefix > "$tmp"
     emit_insert_sql remote "$node" "$last" "$BATCH_SIZE" "$offset" >> "$tmp"
-    merge_sql_suffix >> "$tmp"
+    merge_sql_suffix "pull" "$node" >> "$tmp"
     run_merge_local "$tmp"
     rm -f "$tmp"
     rows=$(( rows + BATCH_SIZE ))
@@ -309,7 +402,7 @@ push_to() {
     tmp="$(mktemp)"
     merge_sql_prefix > "$tmp"
     emit_insert_sql local "$node" "$last" "$BATCH_SIZE" "$offset" >> "$tmp"
-    merge_sql_suffix >> "$tmp"
+    merge_sql_suffix "push" "$node" >> "$tmp"
     run_merge_remote "$node" "$tmp"
     rm -f "$tmp"
     offset=$(( offset + BATCH_SIZE ))
@@ -334,6 +427,31 @@ do_sync() {
   fi
 }
 
+do_watch() {
+  local node i
+  migrate_schema
+  log INFO "watch started interval=$WATCH_INTERVAL"
+  notify_radio "mesh memory watch started on $(hostname 2>/dev/null || printf localhost) interval=${WATCH_INTERVAL}s"
+  while true; do
+    while IFS= read -r node || [[ -n "$node" ]]; do
+      node="$(trim_ws "$node")"
+      [[ -n "$node" ]] || continue
+      log INFO "watch sync start: $node"
+      if ( do_sync "$node" ); then
+        log INFO "watch sync ok: $node"
+        notify_radio "mesh memory sync ok: $node"
+      else
+        log ERROR "watch sync failed: $node"
+        notify_radio "mesh memory sync failed: $node"
+      fi
+    done < <(load_known_nodes)
+    log INFO "watch cycle complete; sleeping $WATCH_INTERVAL"
+    for ((i=0; i<WATCH_INTERVAL; i++)); do
+      sleep 1
+    done
+  done
+}
+
 show_status() {
   migrate_schema
   if [[ -n "$NODE" ]]; then
@@ -347,8 +465,17 @@ parse_args() {
   [[ $# -gt 0 ]] || { usage; exit 1; }
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --pull|--push|--sync|--status|--migrate)
+      --pull|--push|--sync|--watch|--status|--migrate)
         ACTION="$1"
+        shift
+        ;;
+      --interval)
+        [[ $# -ge 2 ]] || { log ERROR "--interval requires a value"; exit 1; }
+        WATCH_INTERVAL="$2"
+        shift 2
+        ;;
+      --notify)
+        NOTIFY=1
         shift
         ;;
       --node)
@@ -377,6 +504,7 @@ parse_args() {
         ;;
     esac
   done
+  [[ "$WATCH_INTERVAL" =~ ^[0-9]+$ && "$WATCH_INTERVAL" -gt 0 ]] || { log ERROR "invalid interval: $WATCH_INTERVAL"; exit 1; }
 }
 
 main() {
@@ -406,6 +534,9 @@ main() {
     --sync)
       [[ -n "$NODE" ]] || { log ERROR "--sync requires --node"; exit 1; }
       do_sync "$NODE"
+      ;;
+    --watch)
+      do_watch
       ;;
     --status)
       show_status
