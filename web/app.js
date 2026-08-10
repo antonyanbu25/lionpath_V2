@@ -2145,21 +2145,10 @@ function wireUserMenu() {
     onSignOut: () => void handleSignOut(),
   });
   // Dev-only "Login as…" — only for the 3 of us
-  // Try immediately AND on session change (SSO async timing)
-  tryShowLoginAs();
-  onSessionChange(() => tryShowLoginAs());
-}
-
-function tryShowLoginAs() {
-  const email = getSession()?.email;
-  if (isDevAccount(email)) {
-    initLoginAs();
-    return;
-  }
-  // SSO session may not be written yet — retry once after 3s
-  setTimeout(() => {
+  if (isDevAccount(getSession()?.email)) initLoginAs();
+  onSessionChange(() => {
     if (isDevAccount(getSession()?.email)) initLoginAs();
-  }, 3000);
+  });
 }
 
 let signingOut = false;
