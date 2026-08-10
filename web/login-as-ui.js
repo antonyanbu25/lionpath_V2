@@ -205,8 +205,18 @@ async function switchToUserSso(email, statusEl) {
   }
 }
 
-// Close overlay on backdrop click or Escape
+// Wire button click on DOM ready — always runs, no dependency on app.js timing
 document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("user-menu-login-as");
+  if (btn) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeUserMenu();
+      showLoginAsPicker();
+    });
+  }
+
   const overlay = document.getElementById("login-as-overlay");
   if (!overlay) return;
   const closeBtn = document.getElementById("login-as-close");
