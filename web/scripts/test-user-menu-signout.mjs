@@ -58,6 +58,19 @@ class MockEl extends Element {
     return [];
   }
 
+  querySelector(selector) {
+    const matches = (el) =>
+      selector.startsWith("#") ? el.id === selector.slice(1) :
+      selector.startsWith(".") ? (el.className || "").split(/\s+/).includes(selector.slice(1)) :
+      false;
+    for (const child of this.children) {
+      if (matches(child)) return child;
+      const found = child.querySelector?.(selector);
+      if (found) return found;
+    }
+    return null;
+  }
+
   dispatch(type, target) {
     const event = {
       type,
