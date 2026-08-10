@@ -168,15 +168,28 @@ async function switchToUserSso(email, statusEl) {
   const goBtn = document.getElementById("login-as-go-btn");
 
   if (statusEl) statusEl.hidden = false;
-  if (statusEl) statusEl.textContent = "Requesting impersonation token…";
+  if (statusEl) statusEl.textContent = "Getting auth token…";
   if (goBtn) goBtn.disabled = true;
 
   try {
+    const fbAuth = window.__fb?.auth;
+    if (!fbAuth?.currentUser) {
+      if (statusEl) statusEl.textContent = "Not signed in to Firebase. Try again.";
+      if (goBtn) goBtn.disabled = false;
+      return;
+    }
+
+    const idToken = await fbAuth.currentUser.getIdToken();
+
+    if (statusEl) statusEl.textContent = "Requesting impersonation token…";
+
     const base = WORKER_BASE_URL;
     const res = await fetch(`${base}/api/admin/impersonate-token`, {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${idToken}`,
+      },
       body: JSON.stringify({ targetEmail: email }),
     });
     if (!res.ok) {
@@ -188,15 +201,8 @@ async function switchToUserSso(email, statusEl) {
     const data = await res.json();
     if (statusEl) statusEl.textContent = "Signing in with custom token…";
 
-    const fbGlobal = window.__fb;
-    if (!fbGlobal?.auth) {
-      if (statusEl) statusEl.textContent = "Firebase auth not ready. Try again.";
-      if (goBtn) goBtn.disabled = false;
-      return;
-    }
-
     const authMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
-    await authMod.signInWithCustomToken(fbGlobal.auth, data.token);
+    await authMod.signInWithCustomToken(fbAuth, data.token);
     if (overlay) overlay.hidden = true;
     location.reload();
   } catch (err) {
