@@ -173,13 +173,25 @@ async function switchToUserSso(email, statusEl) {
 
   try {
     const fbAuth = window.__fb?.auth;
-    if (!fbAuth?.currentUser) {
+    if (!fbAuth) {
+      if (statusEl) statusEl.textContent = "Firebase auth not initialized. Try again.";
+      if (goBtn) goBtn.disabled = false;
+      return;
+    }
+
+    // Wait for auth state to resolve (currentUser may be null initially)
+    if (typeof fbAuth.authStateReady === "function") {
+      await fbAuth.authStateReady();
+    }
+
+    const user = fbAuth.currentUser;
+    if (!user) {
       if (statusEl) statusEl.textContent = "Not signed in to Firebase. Try again.";
       if (goBtn) goBtn.disabled = false;
       return;
     }
 
-    const idToken = await fbAuth.currentUser.getIdToken();
+    const idToken = await user.getIdToken();
 
     if (statusEl) statusEl.textContent = "Requesting impersonation token…";
 
