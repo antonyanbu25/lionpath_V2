@@ -576,6 +576,14 @@ function hasRealTechnicalCommit(technicalCommit) {
   ].some((key) => String(technicalCommit[key] ?? "").trim());
 }
 
+/** ARR is optional — drop legacy stored failures so old calls still render fully. */
+function stripOptionalHydrationErrors(errors) {
+  if (!errors || typeof errors !== "object") return {};
+  const next = { ...errors };
+  delete next.arr;
+  return next;
+}
+
 function resolveRecordHydration(record) {
   const h = record?.result?.hydration || {};
   const pending = Array.isArray(h.pending) ? h.pending : [];
@@ -586,9 +594,31 @@ function resolveRecordHydration(record) {
   }
   return {
     pending: effectivePending,
-    errors: h.errors && typeof h.errors === "object" ? h.errors : {},
+    errors: stripOptionalHydrationErrors(h.errors),
     progressMessage,
   };
+}
+
+/** One-time cleanup for records saved before ARR was treated as optional. */
+export async function scrubLegacyArrHydrationError(email, recordId) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized || !recordId) return;
+  const record = getPostCallAnalysis(normalized, recordId);
+  if (!record?.result?.hydration?.errors?.arr) return;
+  await updatePostCallAnalysis(normalized, recordId, (rec) => {
+    const hydration = rec.result?.hydration;
+    if (!hydration?.errors?.arr) return rec;
+    const errors = { ...hydration.errors };
+    delete errors.arr;
+    rec.result = {
+      ...(rec.result || {}),
+      hydration: {
+        ...hydration,
+        errors: Object.keys(errors).length ? errors : undefined,
+      },
+    };
+    return rec;
+  });
 }
 
 /** Drop hydration keys when generate-pass data is already on the record (avoids pocket skeletons). */
@@ -1714,9 +1744,7 @@ function renderDealContextLine(ctx, opts = {}) {
   const stage = deal?.stage ? STAGE_LABELS[deal.stage] || deal.stage : null;
   if (stage) pairs.push({ label: "Stage", value: `<span class="pill">${esc(stage)}</span>` });
 
-  if (errors.arr && recordId) {
-    return renderCallSectionRetry("arr", errors.arr, recordId);
-  }
+  // ARR is optional — omit the field when unavailable; never block deal context.
   if (pending.has("arr") && !arrLabel) {
     pairs.push({
       label: "ARR",
@@ -3400,6 +3428,7 @@ export async function renderCallView(container, session, opts = {}) {
 
   try {
     const ownerEmail = opts.ownerEmail || activeSession.email;
+    await scrubLegacyArrHydrationError(ownerEmail, targetCallId);
     const selfEmail = normalizeSeEmail(activeSession.email);
     const record =
       !opts.ownerEmail || normalizeSeEmail(ownerEmail) === selfEmail

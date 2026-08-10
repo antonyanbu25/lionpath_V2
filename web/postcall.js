@@ -4311,7 +4311,13 @@ async function runPostcallParallelHydration(ctx) {
       });
       dropPending("arr");
     } else if (effectiveDealId && effectiveAccountId && arrResult?.arrInputs) {
-      markError("arr", "ARR estimate could not be computed.", ["arr"]);
+      // ARR is optional — keep inputs for retry but never block the rest of the call record.
+      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+        rec.result = { ...(rec.result || {}), arrInputs: arrResult.arrInputs };
+        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.gaps });
+        return rec;
+      });
+      dropPending("arr");
     } else {
       dropPending("arr");
     }
