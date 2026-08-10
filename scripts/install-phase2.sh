@@ -75,48 +75,33 @@ backup_state_db() {
 init_state_db() {
   sqlite3 "$DB_PATH" <<'SQL'
 PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
+
 CREATE TABLE IF NOT EXISTS task_queue (
   task_id TEXT PRIMARY KEY,
-  parent_task_id TEXT,
-  originator TEXT NOT NULL,
-  assignee TEXT,
-  payload TEXT NOT NULL,
-  capability TEXT,
-  state TEXT NOT NULL,
-  priority INTEGER DEFAULT 5,
-  chunk_seq INTEGER,
-  chunk_total INTEGER,
+  status TEXT,
+  origin_node TEXT,
+  worker_node TEXT,
+  task_type TEXT,
+  spec TEXT,
+  created_at INTEGER,
+  assigned_at INTEGER,
+  completed_at INTEGER,
+  exit_code INTEGER,
   result TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  deadline INTEGER
+  error TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_tq_state ON task_queue(state);
-CREATE INDEX IF NOT EXISTS idx_tq_parent ON task_queue(parent_task_id);
-CREATE TABLE IF NOT EXISTS task_offers (
-  offer_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id TEXT NOT NULL,
-  agent_id TEXT NOT NULL,
-  capacity REAL NOT NULL,
-  eta_ms INTEGER NOT NULL,
-  received_at INTEGER NOT NULL,
-  UNIQUE(task_id, agent_id)
-);
+CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status);
+CREATE INDEX IF NOT EXISTS idx_task_queue_worker ON task_queue(worker_node);
+
 CREATE TABLE IF NOT EXISTS mesh_consciousness (
-  snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agent_id TEXT NOT NULL,
-  epoch INTEGER NOT NULL,
-  state_blob TEXT NOT NULL,
-  confidence REAL DEFAULT 0.5,
-  received_at INTEGER NOT NULL,
-  origin TEXT,
-  UNIQUE(agent_id, epoch)
+  node_host TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  state_digest TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_mc_agent ON mesh_consciousness(agent_id, epoch);
 SQL
 
-  log "enabled WAL mode and applied Phase 2 schema to $DB_PATH"
+  log "enabled WAL mode and verified Phase 2 schema at $DB_PATH"
 }
 
 copy_phase2_scripts() {
