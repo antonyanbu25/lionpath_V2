@@ -2144,16 +2144,16 @@ function wireUserMenu() {
     onProfileSettings: () => switchView("profile"),
     onSignOut: () => void handleSignOut(),
   });
-  // Dev-only "Login as…" — only for the 3 of us (works with both dummy and SSO auth)
+  // Dev-only "Login as…" — only for the 3 of us
+  // Try immediately AND on session change (SSO async timing)
+  tryShowLoginAs();
+  onSessionChange(() => tryShowLoginAs());
+}
+
+function tryShowLoginAs() {
   if (isDevAccount(getSession()?.email)) {
     initLoginAs();
   }
-  // Also re-check when session changes (login/restore)
-  onSessionChange((session) => {
-    if (isDevAccount(session?.email)) {
-      initLoginAs();
-    }
-  });
 }
 
 let signingOut = false;
