@@ -4096,45 +4096,55 @@ async function runPostcallParallelHydration(ctx) {
   };
 
   try {
+    // qualify (MEDDPICC) and summarise are independent LLM calls with no data
+    // dependency on each other — handle each as soon as IT resolves instead
+    // of forcing summarise's UI update to wait behind qualify's.
     setCallRecordProgress(recordId, POSTCALL_STAGE.qualifying);
-    const qualify = await qualifyP;
-    if (isPostcallPipelineStale(gen)) return;
-    if (qualify?.qualification) {
-      data.qualification = qualify.qualification;
-      data.framework = qualify.framework;
-      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
-        rec.result = {
-          ...(rec.result || {}),
-          qualification: qualify.qualification,
-          framework: qualify.framework,
-        };
-        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.summarising });
-        return rec;
-      });
-      dropPending("qualify");
-    } else if (qualify === null) {
-      markError("qualify", "Qualification could not be generated.", ["qualify"]);
-    }
 
-    setCallRecordProgress(recordId, POSTCALL_STAGE.summarising);
-    const summarise = await summariseP;
-    if (isPostcallPipelineStale(gen)) return;
-    if (summarise) {
-      data.summarise = summarise;
-      if (typeof summarise.callNotes === "string" && summarise.callNotes.trim()) {
-        data.analysis = { ...(data.analysis || {}), callNotes: summarise.callNotes };
+    const handleQualify = (async () => {
+      const qualify = await qualifyP;
+      if (isPostcallPipelineStale(gen)) return;
+      if (qualify?.qualification) {
+        data.qualification = qualify.qualification;
+        data.framework = qualify.framework;
+        await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+          rec.result = {
+            ...(rec.result || {}),
+            qualification: qualify.qualification,
+            framework: qualify.framework,
+          };
+          patchHydration(rec, { pending, errors });
+          return rec;
+        });
+        dropPending("qualify");
+      } else if (qualify === null) {
+        markError("qualify", "Qualification could not be generated.", ["qualify"]);
       }
-      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
-        if (data.analysis) rec.analysis = { ...(rec.analysis || {}), ...data.analysis };
-        rec.result = { ...(rec.result || {}), summarise };
-        patchHydration(rec, { pending, errors, progressMessage: POSTCALL_STAGE.committing });
-        return rec;
-      });
-      dropPending("summarise");
-      notifyCallRecordUpdated(recordId, ["summarise"]);
-    } else if (summarise === null) {
-      markError("summarise", "Call summary could not be generated.", ["summarise", "callNotes"]);
-    }
+    })();
+
+    const handleSummarise = (async () => {
+      const summarise = await summariseP;
+      if (isPostcallPipelineStale(gen)) return;
+      if (summarise) {
+        data.summarise = summarise;
+        if (typeof summarise.callNotes === "string" && summarise.callNotes.trim()) {
+          data.analysis = { ...(data.analysis || {}), callNotes: summarise.callNotes };
+        }
+        await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+          if (data.analysis) rec.analysis = { ...(rec.analysis || {}), ...data.analysis };
+          rec.result = { ...(rec.result || {}), summarise };
+          patchHydration(rec, { pending, errors });
+          return rec;
+        });
+        dropPending("summarise");
+        notifyCallRecordUpdated(recordId, ["summarise"]);
+      } else if (summarise === null) {
+        markError("summarise", "Call summary could not be generated.", ["summarise", "callNotes"]);
+      }
+    })();
+
+    await Promise.all([handleQualify, handleSummarise]);
+    if (isPostcallPipelineStale(gen)) return;
 
     setCallRecordProgress(recordId, POSTCALL_STAGE.committing);
     const latest = getPostCallAnalysis(sessionEmail, recordId) || { id: recordId };
@@ -4210,23 +4220,31 @@ async function runPostcallParallelHydration(ctx) {
       return { arrInputs, arrCompute };
     })();
 
-    const [commit, videoRes, arrResult, pass6Raw] = await Promise.all([
-      commitP,
-      videoP,
-      arrWorkP,
-      gapsP,
-    ]);
-    if (isPostcallPipelineStale(gen)) return;
-    if (videoRes?.videoFacts) {
-      pipelineState.videoFacts = videoRes.videoFacts;
-      data.videoFacts = videoRes.videoFacts;
-      await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
-        rec.result = { ...(rec.result || {}), videoFacts: videoRes.videoFacts };
-        return rec;
+    // Video (ffmpeg frame sampling + vision model) is typically the slowest
+    // single step in the pipeline and has nothing to do with commit/arr/gaps
+    // or the timeline derived from them — persist it independently as soon
+    // as it resolves instead of making everything else wait on it.
+    void videoP
+      .then(async (videoRes) => {
+        if (isPostcallPipelineStale(gen)) return;
+        if (videoRes?.videoFacts) {
+          pipelineState.videoFacts = videoRes.videoFacts;
+          data.videoFacts = videoRes.videoFacts;
+          await updatePostCallAnalysis(sessionEmail, recordId, (rec) => {
+            rec.result = { ...(rec.result || {}), videoFacts: videoRes.videoFacts };
+            return rec;
+          });
+        }
+        pipelineState.pass2Debug =
+          videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        console.warn("[postcall] video pass soft-fail:", err?.message || err);
       });
-    }
-    pipelineState.pass2Debug =
-      videoRes?.pass2Debug || pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null;
+
+    const [commit, arrResult, pass6Raw] = await Promise.all([commitP, arrWorkP, gapsP]);
+    if (isPostcallPipelineStale(gen)) return;
     if (commit?.technicalCommit) {
       data.technicalCommit = commit.technicalCommit;
       data.tcDeltas = commit.tcDeltas || [];
