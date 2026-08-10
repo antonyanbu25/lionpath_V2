@@ -868,8 +868,11 @@ function dashboardOpts(extra = {}) {
     // populate it never fires. Confirmed via test-dashboard-refresh.mjs /
     // test-dashboard-seeded.mjs both showing correct KPI counts (a separate,
     // always-local aggregation) alongside an empty Recent Activity panel.
-    subscribeRemotePreps: isFirebaseAuthEnabled() ? buildSubscribeRemotePreps() : undefined,
-    subscribeRemoteCalls: isFirebaseAuthEnabled() ? buildSubscribeRemoteCalls() : undefined,
+    // Same dead-callback trap hits real Firebase sessions with fb.db === null
+    // (SE / role-unknown users — Firestore is intentionally never opened for
+    // them, see completeFirebaseLogin), so gate on fb?.db too.
+    subscribeRemotePreps: isFirebaseAuthEnabled() && fb?.db ? buildSubscribeRemotePreps() : undefined,
+    subscribeRemoteCalls: isFirebaseAuthEnabled() && fb?.db ? buildSubscribeRemoteCalls() : undefined,
     subscribeRemoteDeals: buildSubscribeRemoteDeals(),
     fetchRemoteHistory: buildFetchRemoteHistory(),
     skipRemoteHistory: extra.skipRemoteHistory ?? historyHydratedForEmail !== currentSession?.email,
@@ -2713,9 +2716,6 @@ function wireFirebaseSignIn(runSignIn) {
   const btn = $("signin-google");
   setSignInButtonReady(false);
   const attach = () => bindActionOnce(btn, () => {
-    // #region agent log
-    if(false)fetch("http://127.0.0.1:7865/ingest/46e458f7-44ce-49a5-87ef-1bb8839e9c5e",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2da05d"},body:JSON.stringify({sessionId:"2da05d",hypothesisId:"H5",location:"app.js:wireFirebaseSignIn",message:"SSO button activated",data:{disabled:!!btn?.disabled,ssoInFlight},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     void runSignIn();
   });
   if (customElements.get("fw-button")) attach();
@@ -2730,12 +2730,6 @@ let firebaseAuth = null;
 /** @type {import("firebase/auth").GoogleAuthProvider|null} */
 let firebaseProvider = null;
 let firebaseSignInWired = false;
-/** Resolves once Firebase auth bootstrap (authStateReady + session restore) finishes. */
-let firebaseBootstrapReadyPromise = null;
-
-function waitForFirebaseBootstrap() {
-  return firebaseBootstrapReadyPromise || Promise.resolve();
-}
 
 function setSignInButtonReady(ready) {
   const btn = $("signin-google");
@@ -2835,7 +2829,9 @@ async function runFirebaseSignIn() {
   setButtonLoading(btn, true);
   showAuthWaiting("Preparing Google sign-in…");
   try {
-    await waitForFirebaseBootstrap();
+    // No await before signInWithPopup's window.open — an async gap here (e.g.
+    // waitForFirebaseBootstrap) loses the click's popup-blocker trust on the
+    // first click; ssoInFlight already makes bootstrap defer to us.
     await ensureFirebaseSdk();
     showAuthWaiting("Opening Google sign-in…");
     await fb.signInWithPopup(firebaseAuth, firebaseProvider);
@@ -2919,7 +2915,6 @@ async function initFirebase() {
     if (existing?.email) logout();
     if (!showAppInFlight && !ssoInFlight) showLogin();
   });
-  firebaseBootstrapReadyPromise = firebaseBootstrapPromise;
 }
 
 async function warnIfWorkerDown() {
