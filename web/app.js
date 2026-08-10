@@ -2151,8 +2151,16 @@ function wireUserMenu() {
 }
 
 function tryShowLoginAs() {
-  if (isDevAccount(getSession()?.email)) {
+  const email = getSession()?.email;
+  if (isDevAccount(email)) {
     initLoginAs();
+    return;
+  }
+  // SSO auth may not have written session to storage yet — retry
+  if (email) {
+    setTimeout(() => {
+      if (isDevAccount(getSession()?.email)) initLoginAs();
+    }, 2000);
   }
 }
 
