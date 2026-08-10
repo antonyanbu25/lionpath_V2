@@ -28,6 +28,7 @@ export const MODULE_BUILD = AUTH_BUILD_ID;
 export function isProductionHost(host) {
   return (
     host === "portal.benjaminsquare.com" ||
+    host === "janus.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
     host.endsWith(".run.app")
   );
