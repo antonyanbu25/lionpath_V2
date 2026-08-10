@@ -8,6 +8,7 @@ import {
   readFieldValueAsync,
   setButtonLoading,
   setFieldError,
+  setFieldValue,
   setFormFieldsDisabled,
   showInlineStatus,
 } from "./crayons-ui.js";
@@ -468,7 +469,10 @@ function renderActiveTab() {
 function clearFwInput(id) {
   const field = $(id);
   if (!field) return;
-  field.value = "";
+  // fw-input's `value` prop isn't backed by a plain assignable field on this
+  // Crayons build — setting field.value alone is a no-op. setFieldValue also
+  // clears the shadow-DOM control that's actually on screen.
+  void setFieldValue(field, "");
   field.dispatchEvent(new CustomEvent("fwInput", { bubbles: true, detail: { value: "" } }));
 }
 
@@ -913,7 +917,7 @@ async function buildPayload() {
   if (normalizeCompanyDomain(await readFieldValueAsync($("companyDomain"))) !== companyDomain) {
     const field = $("companyDomain");
     if (field) {
-      field.value = companyDomain;
+      void setFieldValue(field, companyDomain);
       field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value: companyDomain } }));
     }
   }

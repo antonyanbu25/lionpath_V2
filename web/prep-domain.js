@@ -142,12 +142,17 @@ function readDomainValue(field) {
 function setDomainValue(field, value) {
   programmaticDomainUpdate = true;
   try {
-    if ("value" in field) {
+    // fw-input keeps a hidden light-DOM <input> for form serialization —
+    // the real, visible control lives in the shadow root. Writing to the
+    // light-DOM one (via field.querySelector) never reaches the screen and
+    // gets clobbered back to empty on the next shadow-DOM sync.
+    const inner = field.shadowRoot?.querySelector("input") ?? field.querySelector?.("input");
+    if (inner) {
+      inner.value = value;
+      inner.dispatchEvent(new Event("input", { bubbles: true }));
+    } else if ("value" in field) {
       field.value = value;
     }
-    const inner = field.querySelector?.("input");
-    if (inner) inner.value = value;
-    field.dispatchEvent?.(new Event("input", { bubbles: true }));
     field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value } }));
   } finally {
     programmaticDomainUpdate = false;

@@ -13,10 +13,10 @@ import {
   clearAccountEngagementContext,
 } from "./domain/account-context.js";
 import { isFreeMailDomain } from "./domain/constants.js";
-import { companyNameFromDomain, formatCompanyWebsiteDisplay } from "./prep-domain.js";
+import { companyNameFromDomain, formatCompanyWebsiteDisplay, prepDomainUiState } from "./prep-domain.js";
 import { formatDealTitlePreview, inferDealTypeFromTitle } from "./domain/deal-service.js";
 import { renderAccountDealPreviewHtml } from "./account-deal-preview.js";
-import { readFieldValueAsync } from "./crayons-ui.js";
+import { readFieldValueAsync, setFieldValue } from "./crayons-ui.js";
 import { $ } from "./shared.js";
 
 function normalizeDomain(raw) {
@@ -249,15 +249,21 @@ async function applyAccount(account, deals = []) {
   } else if (!lastDeals.some((d) => d.id === prepSelectedDealId)) {
     prepSelectedDealId = lastDeals[0]?.id || null;
   }
-  if (account?.domain) {
+  if (account?.domain && !prepDomainUiState.userEdited) {
     const field = $("companyDomain");
     if (field) {
       const normalized = normalizeDomain(account.domain);
       const display = formatCompanyWebsiteDisplay(normalized);
       const current = String(field.value || "").trim();
       if (current !== display) {
-        field.value = display;
+        // field.value = x alone is a no-op on this fw-input build (see
+        // prep-domain.js setDomainValue) — write the shadow-DOM control so
+        // the CRM-resolved domain actually appears, and record it as an
+        // auto value so the email-domain inferer doesn't treat it as a
+        // manual edit and refuse to update the field on later keystrokes.
+        void setFieldValue(field, display);
         field.dispatchEvent?.(new CustomEvent("fwInput", { bubbles: true, detail: { value: display } }));
+        prepDomainUiState.lastAutoValue = normalized;
       }
     }
   }
