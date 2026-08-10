@@ -2156,12 +2156,10 @@ function tryShowLoginAs() {
     initLoginAs();
     return;
   }
-  // SSO auth may not have written session to storage yet — retry
-  if (email) {
-    setTimeout(() => {
-      if (isDevAccount(getSession()?.email)) initLoginAs();
-    }, 2000);
-  }
+  // SSO session may not be written yet — retry once after 3s
+  setTimeout(() => {
+    if (isDevAccount(getSession()?.email)) initLoginAs();
+  }, 3000);
 }
 
 let signingOut = false;
