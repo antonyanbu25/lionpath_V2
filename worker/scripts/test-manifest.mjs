@@ -407,6 +407,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-demo-thesis.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-rivals-context.ts",
     "tags": [
       "unit"

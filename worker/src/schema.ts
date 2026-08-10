@@ -1,6 +1,7 @@
 // Pre-call (Discovery) output shape (v8): wireframe brief with prospects + ICP fitment.
 
 import type { DemoGuidance } from "./prep/demo-guidance";
+import type { DemoThesis } from "./prep/demo-thesis";
 import type { RivalComparison } from "./prep/rivals";
 import type { FishContextSizing } from "./prep/rivals-context";
 import type { NewsSource } from "./prep/company-news";
@@ -624,6 +625,8 @@ export interface Prep {
   >;
   /** Demo-day talking points, generated separately — see prep/demo-guidance.ts. */
   demoGuidance?: DemoGuidance;
+  /** Theme-first thesis for Demo Prep hero tile — see prep/demo-thesis.ts. */
+  demoThesis?: DemoThesis;
   /**
    * The PROSPECT's market rivals and how it sizes up against them. Note the name: `incumbent`
    * and `ProspectProfile.competitorTouchpoints` already mean *our* competitors (Zendesk,

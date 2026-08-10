@@ -430,6 +430,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-fish-sizing-scenarios.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-gap-cluster.mjs",
     "tags": [
       "unit"

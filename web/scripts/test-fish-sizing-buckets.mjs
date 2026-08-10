@@ -3,6 +3,8 @@ import {
   parseFishMetricValue,
   fishBucketPlacement,
   fishBucketFromMetric,
+  normalizeFishSizingMetrics,
+  formatFishSizingDisplay,
 } from "../fish-sizing-buckets.js";
 
 function assert(name, ok) {
@@ -52,6 +54,28 @@ assert("101 agents bucket 2", fishBucketFromMetric("Support agents", "101").buck
 // fishBucketPlacement labels
 const empPlacement = fishBucketPlacement("employees", 50);
 assert("employees labels", empPlacement.labels.join(",") === "0–50,50–250,>250");
+
+const fundingPlacement = fishBucketPlacement("funding", 2_000_000);
+assert("funding bucket labels include M", fundingPlacement.labels.join(",") === "$0–1M,$1–10M,>$10M");
+
+assert("format employees", formatFishSizingDisplay("employees", "50") === "50");
+assert("format agents strips suffix", formatFishSizingDisplay("supportAgents", "3 agents") === "3");
+assert("format funding 2 million", formatFishSizingDisplay("funding", "2 Million") === "$2M");
+assert("format funding lowercase", formatFishSizingDisplay("funding", "2 million") === "$2M");
+assert("format funding 80M series", formatFishSizingDisplay("funding", "$80M Series C") === "$80M");
+
+const normalized = normalizeFishSizingMetrics([
+  { label: "Employees", value: "50" },
+  { label: "Industry", value: "Software licenses" },
+  { label: "Support agents", value: "3 agents" },
+  { label: "Funding raised", value: "2 Million" },
+]);
+assert("normalize drops industry", normalized.length === 3);
+assert("normalize order employees first", normalized[0].label === "Employee count");
+assert("normalize agent count label", normalized[1].label === "Agent count");
+assert("normalize funding label", normalized[2].label === "Funding");
+assert("agent count bucket type", resolveFishBucketType("Agent count") === "supportAgents");
+assert("employee count bucket type", resolveFishBucketType("Employee count") === "employees");
 
 if (process.exitCode) {
   console.error("\nFish sizing bucket tests failed.");
