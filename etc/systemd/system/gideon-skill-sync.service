@@ -1,0 +1,9 @@
+[Unit]
+Description=Gideon Skill Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/.hermes/scripts/skill-sync.sh --sync
+User=root

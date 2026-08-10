@@ -1,0 +1,9 @@
+[Unit]
+Description=Gideon Node Discovery Scan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/.hermes/scripts/node-discovery.sh --scan
+User=root
