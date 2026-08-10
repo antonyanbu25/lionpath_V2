@@ -166,31 +166,119 @@
       </div>
     </div>
     <script>
-      // Dev login-as: wire button click inline so it works regardless of module cache
+      // Dev login-as: SSO impersonation (inline — no module cache issues)
       (function() {
-        function wireDevLoginAs() {
-          var btn = document.getElementById("user-menu-login-as");
-          if (!btn) { setTimeout(wireDevLoginAs, 100); return; }
-          btn.addEventListener("click", function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var panel = document.getElementById("user-menu-panel");
-            if (panel) panel.hidden = true;
-            var back = document.getElementById("user-menu-backdrop");
-            if (back) back.hidden = true;
-            var trig = document.getElementById("sidebar-user");
-            if (trig) trig.setAttribute("aria-expanded", "false");
-            var ts = Date.now();
-            import("./login-as-ui.js?v=" + ts).then(function(m) { m.showLoginAsPicker(); }).catch(function() {
-              var o = document.getElementById("login-as-overlay");
-              if (o) o.hidden = false;
-            });
-          });
-        }
-        if (document.readyState === "loading") {
-          document.addEventListener("DOMContentLoaded", function() { setTimeout(wireDevLoginAs, 0); });
-        } else {
-          setTimeout(wireDevLoginAs, 0);
+        var DEV_EMAILS = ["sathish.kuttan@freshworks.com","antony.sagayaraj@freshworks.com","sowrav.sunil@freshworks.com"];
+        var btn = document.getElementById("user-menu-login-as");
+        if (!btn) { setTimeout(arguments.callee, 200); return; }
+        btn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var panel = document.getElementById("user-menu-panel");
+          if (panel) panel.hidden = true;
+          var back = document.getElementById("user-menu-backdrop");
+          if (back) back.hidden = true;
+          var trig = document.getElementById("sidebar-user");
+          if (trig) trig.setAttribute("aria-expanded", "false");
+          showLoginAsOverlay();
+        });
+
+        function showLoginAsOverlay() {
+          var o = document.getElementById("login-as-overlay");
+          if (!o) return;
+          o.hidden = false;
+          var list = document.getElementById("login-as-list");
+          var search = document.getElementById("login-as-search");
+          if (search) search.hidden = true;
+          if (!list || list.dataset.populated) return;
+          list.dataset.populated = "1";
+          list.innerHTML =
+            '<div style="padding:0 0 8px;font-size:12px;color:var(--dew-text-muted)">Enter the email to impersonate:</div>' +
+            '<div style="padding:0 0 8px"><input type="email" id="login-as-email-input" placeholder="user@freshworks.com" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--dew-border,#ddd);font:inherit;background:var(--dew-surface,#fff);color:inherit;box-sizing:border-box" /></div>' +
+            '<button type="button" id="login-as-go-btn" style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--dew-brand,#5a4fcf);color:#fff;font:inherit;font-weight:500;cursor:pointer">Impersonate</button>' +
+            '<div id="login-as-status" style="padding:6px 0 0;font-size:12px;color:var(--dew-text-muted)" hidden></div>';
+          var input = document.getElementById("login-as-email-input");
+          var goBtn = document.getElementById("login-as-go-btn");
+          var statusEl = document.getElementById("login-as-status");
+          if (!input || !goBtn) return;
+          function doImpersonate() {
+            var email = input.value.trim().toLowerCase();
+            if (!email || !email.includes("@")) {
+              statusEl.hidden = false;
+              statusEl.textContent = "Enter a full email (user@freshworks.com)";
+              return;
+            }
+            statusEl.hidden = false;
+            statusEl.textContent = "Getting auth token…";
+            goBtn.disabled = true;
+            // Wait for Firebase auth to be available (poll up to 15s)
+            var pollCount = 0;
+            var pollTimer = setInterval(function() {
+              pollCount++;
+              var auth = window.__firebaseAuth || (window.__fb && window.__fb.auth);
+              if (auth) {
+                clearInterval(pollTimer);
+                statusEl.textContent = "Waiting for auth state…";
+                // Use authStateReady if available
+                var ready = (typeof auth.authStateReady === "function") ? auth.authStateReady() : Promise.resolve();
+                ready.then(function() {
+                  var user = auth.currentUser;
+                  if (!user) {
+                    statusEl.textContent = "Not signed in. Reload and try again.";
+                    goBtn.disabled = false;
+                    return;
+                  }
+                  statusEl.textContent = "Getting ID token…";
+                  user.getIdToken().then(function(idToken) {
+                    statusEl.textContent = "Requesting impersonation token…";
+                    fetch("https://portalapi.benjaminsquare.com/api/admin/impersonate-token", {
+                      method: "POST",
+                      headers: {"Content-Type":"application/json","Authorization":"Bearer " + idToken},
+                      body: JSON.stringify({targetEmail: email})
+                    }).then(function(r) { return r.json().then(function(j) { return {ok: r.ok, data: j}; }); }).then(function(res) {
+                      if (!res.ok) {
+                        statusEl.textContent = "Failed: " + (res.data.error || "unknown");
+                        goBtn.disabled = false;
+                        return;
+                      }
+                      statusEl.textContent = "Signing in with custom token…";
+                      // Dynamically import signInWithCustomToken
+                      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js").then(function(authMod) {
+                        authMod.signInWithCustomToken(auth, res.data.token).then(function() {
+                          document.getElementById("login-as-overlay").hidden = true;
+                          location.reload();
+                        }).catch(function(err) {
+                          statusEl.textContent = "Sign-in failed: " + (err.message || "unknown");
+                          goBtn.disabled = false;
+                        });
+                      }).catch(function() {
+                        statusEl.textContent = "Failed to load Firebase SDK";
+                        goBtn.disabled = false;
+                      });
+                    }).catch(function(err) {
+                      statusEl.textContent = "Request failed: " + (err.message || "unknown");
+                      goBtn.disabled = false;
+                    });
+                  }).catch(function(err) {
+                    statusEl.textContent = "Token failed: " + (err.message || "unknown");
+                    goBtn.disabled = false;
+                  });
+                }).catch(function() {
+                  statusEl.textContent = "Auth state wait failed";
+                  goBtn.disabled = false;
+                });
+                return;
+              }
+              if (pollCount > 75) { // 15 seconds
+                clearInterval(pollTimer);
+                statusEl.textContent = "Firebase auth not ready after 15s. Reload and try again.";
+                goBtn.disabled = false;
+              }
+            }, 200);
+          }
+          goBtn.addEventListener("click", doImpersonate);
+          input.addEventListener("keydown", function(e) { if (e.key === "Enter") doImpersonate(); });
+          setTimeout(function() { input.focus(); }, 100);
         }
       })();
     </script>
