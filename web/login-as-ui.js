@@ -175,8 +175,13 @@ async function switchToUserSso(email, statusEl) {
     // Wait for Firebase auth to be available (retry until ready)
     let fbAuth = null;
     for (let i = 0; i < 50; i++) {
-      if (window.__fb?.auth) {
-        fbAuth = window.__fb.auth;
+      // Try direct reference first (set synchronously after SDK init)
+      const a = window.__firebaseAuth || window.__fb?.auth;
+      if (a && (typeof a.authStateReady !== "function" || await Promise.race([
+        a.authStateReady().then(() => true),
+        new Promise(r => setTimeout(r, 3000)).then(() => false)
+      ]))) {
+        fbAuth = a;
         break;
       }
       await new Promise((r) => setTimeout(r, 200));

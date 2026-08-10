@@ -2752,6 +2752,7 @@ function ensureFirebaseSdk() {
       ]);
       const app = initializeApp(firebaseConfig);
       firebaseAuth = authMod.getAuth(app);
+      window.__firebaseAuth = firebaseAuth; // Expose immediately for login-as-ui
       firebaseProvider = new authMod.GoogleAuthProvider();
       if (ALLOWED_EMAIL_DOMAIN) firebaseProvider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
 
@@ -2780,8 +2781,9 @@ function ensureFirebaseSdk() {
         serverTimestamp: null,
         writeBatch: null,
       };
-      // Expose for login-as-ui.js impersonation flow
+      // Expose for login-as-ui.js impersonation flow — AFTER firebaseAuth is assigned
       window.__fb = fb;
+      window.__firebaseAuth = firebaseAuth;
 
       initDomainStore(fb);
 
