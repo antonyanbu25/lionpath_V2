@@ -205,8 +205,8 @@ async function switchToUserSso(email, statusEl) {
   }
 }
 
-// Wire button click on DOM ready — always runs, no dependency on app.js timing
-document.addEventListener("DOMContentLoaded", () => {
+// Wire button click immediately — module loads via dynamic import so DOM is ready
+{
   const btn = document.getElementById("user-menu-login-as");
   if (btn) {
     btn.addEventListener("click", (e) => {
@@ -218,15 +218,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const overlay = document.getElementById("login-as-overlay");
-  if (!overlay) return;
-  const closeBtn = document.getElementById("login-as-close");
-  if (closeBtn) {
-    closeBtn.addEventListener("click", () => { overlay.hidden = true; });
+  if (overlay) {
+    const closeBtn = document.getElementById("login-as-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => { overlay.hidden = true; });
+    }
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.hidden = true;
+    });
   }
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !overlay.hidden) overlay.hidden = true;
+    if (e.key === "Escape") {
+      const o = document.getElementById("login-as-overlay");
+      if (o && !o.hidden) o.hidden = true;
+    }
   });
-});
+}
