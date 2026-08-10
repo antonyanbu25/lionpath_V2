@@ -70,11 +70,13 @@ export function filterFishContextMetrics(
     const value = trimWords(String(row.value || ""), 12);
     if (!label || !value) continue;
     if (REQUIREMENT_RE.test(`${label} ${value}`)) continue;
-    const key = `${label.toLowerCase()}|${value.toLowerCase()}`;
+    if (!isCanonicalFishLabel(label)) continue;
+    const canonical = canonicalFishLabel(label);
+    const key = `${canonical.toLowerCase()}|${value.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label, value });
-    if (out.length >= 4) break;
+    out.push({ label: canonical, value });
+    if (out.length >= 3) break;
   }
   return out;
 }
@@ -105,15 +107,16 @@ export function fishContextSupplementMetrics(
     .filter(Boolean);
   const out: FishContextMetric[] = [];
   for (const m of metrics) {
-    const label = String(m.label || "").toLowerCase();
-    if (!label) continue;
+    const label = String(m.label || "");
+    if (!isCanonicalFishLabel(label)) continue;
+    const canonical = canonicalFishLabel(label).toLowerCase();
     const dup = covered.some(
-      (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
+      (a) => a.includes(canonical) || canonical.includes(a) || tokenOverlap(a, canonical) >= 2,
     );
     if (dup) continue;
-    out.push(m);
+    out.push({ label: canonicalFishLabel(label), value: m.value });
   }
-  return out;
+  return out.slice(0, 3);
 }
 
 function tokenOverlap(a: string, b: string): number {
@@ -130,9 +133,27 @@ const UNKNOWN_VALUES = new Set(["unknown", "n/a", "na", "not found", "unclear", 
 const FISH_FACT_LABELS: Record<string, string> = {
   "Company size": "Employees",
   "Support team": "Support agents",
-  Ownership: "Ownership",
-  Industry: "Industry",
 };
+
+const CANONICAL_FISH_LABEL_RE =
+  /\b(employees?|employee count|headcount|staff|support agents?|support team|agent count|agents?|funding)\b/i;
+
+function isCanonicalFishLabel(label: string): boolean {
+  const l = String(label || "").toLowerCase();
+  if (!l || !CANONICAL_FISH_LABEL_RE.test(l)) return false;
+  if (/\b(industry|ownership|customer base|user volume|revenue)\b/.test(l)) return false;
+  if (/\b(employees?|headcount|staff|employee count)\b/.test(l) && !/\bsupport\b/.test(l)) return true;
+  if (/\bfunding\b/.test(l)) return true;
+  if (/\b(support agents?|support team|agent count|agents?)\b/.test(l)) return true;
+  return false;
+}
+
+function canonicalFishLabel(label: string): string {
+  const l = String(label || "").toLowerCase();
+  if (/\b(employees?|headcount|staff|employee count)\b/.test(l) && !/\bsupport\b/.test(l)) return "Employees";
+  if (/\bfunding\b/.test(l)) return "Funding raised";
+  return "Support agents";
+}
 
 function isUsableFactValue(raw: string): boolean {
   const v = String(raw || "").trim();
@@ -179,16 +200,8 @@ export function fishSizingFromPrepResult(prep: {
   if (isUsableFactValue(supportVal)) {
     syntheticFacts.push({ key: "Support team", value: supportVal, category: "signal", sourceLabel: "SE" });
   }
-  const ownership = trimWords(String(prep.businessContext?.fundingParent || ""), 12);
-  const ownershipFact = prep.facts?.find((f) => f.key === "Ownership");
-  const ownershipVal = isUsableFactValue(ownership)
-    ? ownership
-    : trimWords(String(ownershipFact?.value || ""), 12);
-  if (isUsableFactValue(ownershipVal)) {
-    syntheticFacts.push({ key: "Ownership", value: ownershipVal, category: "signal", sourceLabel: "SE" });
-  }
   for (const fact of prep.facts || []) {
-    if (fact.key === "Company size" || fact.key === "Support team" || fact.key === "Ownership") continue;
+    if (fact.key === "Company size" || fact.key === "Support team") continue;
     const label = FISH_FACT_LABELS[String(fact.key || "")];
     if (!label) continue;
     const value = trimWords(String(fact.value || ""), 12);
@@ -211,7 +224,7 @@ export function fishSizingFromResearchFacts(facts: ResearchFact[] | undefined): 
     if (seen.has(key)) continue;
     seen.add(key);
     metrics.push({ label, value });
-    if (metrics.length >= 4) break;
+    if (metrics.length >= 3) break;
   }
   if (!metrics.length) return null;
   return { metrics, source: "context" };
@@ -225,14 +238,15 @@ export function mergeFishContextSizing(
   const seen = new Set<string>();
   for (const group of groups) {
     for (const m of group?.metrics || []) {
-      const key = String(m.label || "").toLowerCase();
+      if (!isCanonicalFishLabel(String(m.label || ""))) continue;
+      const key = canonicalFishLabel(String(m.label || "")).toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      metrics.push(m);
+      metrics.push({ label: canonicalFishLabel(String(m.label || "")), value: m.value });
     }
   }
   if (!metrics.length) return null;
-  return { metrics: metrics.slice(0, 4), source: "context" };
+  return { metrics: metrics.slice(0, 3), source: "context" };
 }
 
 /** Compose LLM input from company, domain, emails, facts, and optional AE notes. */
