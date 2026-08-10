@@ -4,12 +4,12 @@
  */
 
 import { resolveDisplayFacts } from "./precall-render.js?v=2.1.14";
+import { normalizeFishSizingMetrics } from "./fish-sizing-buckets.js";
 
+/** Only the three canonical fish-sizing facts — not Industry, Ownership, etc. */
 const FISH_FACT_LABELS = {
   "Company size": "Employees",
   "Support team": "Support agents",
-  Ownership: "Ownership",
-  Industry: "Industry",
 };
 
 const UNKNOWN = new Set(["unknown", "n/a", "na", "not found", "unclear", "—", "-"]);
@@ -33,27 +33,20 @@ export function buildFishContextFromPrep(prep) {
     if (seen.has(key)) continue;
     seen.add(key);
     metrics.push({ label, value });
-    if (metrics.length >= 4) break;
   }
-  if (!metrics.length) return prep?.fishContext || null;
 
-  const fromPrep = { metrics, source: "context" };
-  const existing = prep?.fishContext?.metrics || [];
-  if (!existing.length) return fromPrep;
+  const fromPrep = normalizeFishSizingMetrics(metrics);
+  if (!fromPrep.length) return prep?.fishContext ? { ...prep.fishContext, metrics: normalizeFishSizingMetrics(prep.fishContext.metrics) } : null;
+
+  const existing = normalizeFishSizingMetrics(prep?.fishContext?.metrics || []);
+  if (!existing.length) return { metrics: fromPrep, source: "context" };
 
   const merged = [];
-  const labels = new Set();
-  for (const m of existing) {
-    const key = String(m.label || "").toLowerCase();
-    if (!key || labels.has(key)) continue;
-    labels.add(key);
+  const types = new Set();
+  for (const m of [...existing, ...fromPrep]) {
+    if (!m.type || types.has(m.type)) continue;
+    types.add(m.type);
     merged.push(m);
   }
-  for (const m of fromPrep.metrics) {
-    const key = String(m.label || "").toLowerCase();
-    if (!key || labels.has(key)) continue;
-    labels.add(key);
-    merged.push(m);
-  }
-  return merged.length ? { metrics: merged.slice(0, 4), source: "context" } : fromPrep;
+  return merged.length ? { metrics: merged, source: "context" } : { metrics: fromPrep, source: "context" };
 }

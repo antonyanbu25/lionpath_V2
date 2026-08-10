@@ -22,6 +22,7 @@ import { factsFromSeContext } from "./se-context-facts";
 import { canonicalizePrepSources } from "./canonicalize-sources";
 import { supplementNewsFacts } from "./extract-news";
 import { generateDemoGuidance, pruneLeadAssets } from "./demo-guidance";
+import { generateDemoThesis } from "./demo-thesis";
 import { generateRivalComparison } from "./rivals";
 import {
   extractFishSizingFromContext,
@@ -448,6 +449,8 @@ export async function generatePrep(env: Env, rawInput: PrepInput): Promise<PrepR
   if (rivals) prep.rivals = rivals;
   prep.fishContext =
     mergeFishContextSizing(fishContext, fishSizingFromPrepResult(prep)) || fishContext || undefined;
+  const demoThesis = await generateDemoThesis(env, prep, mergedContext);
+  if (demoThesis) prep.demoThesis = demoThesis;
   timings.validate = Date.now() - t2;
 
   const researchBundle = buildResearchBundle(input, emails, {
@@ -625,6 +628,8 @@ export async function runPrepSynthesize(
   if (rivals) prep.rivals = rivals;
   prep.fishContext =
     mergeFishContextSizing(fishContext, fishSizingFromPrepResult(prep)) || fishContext || undefined;
+  const demoThesis = await generateDemoThesis(env, prep, mergedContext);
+  if (demoThesis) prep.demoThesis = demoThesis;
   const researchBundle =
     rawInput.researchBundle ||
     buildResearchBundle(input, emails, {

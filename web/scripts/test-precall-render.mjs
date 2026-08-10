@@ -463,32 +463,66 @@ const checks = [
       !discoveryNewsHtmlGarbage.includes("prep-v9-news-detail") &&
       !discoveryNewsHtmlGarbage.includes("&lt;a href"),
   ],
-  ["know tab fish context from ae notes", discoveryFishContext.includes("120 agents") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
+  ["know tab fish context from ae notes", discoveryFishContext.includes(">120<") && discoveryFishContext.includes("$80M") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
   [
     "know tab fish builds from prep facts when fishContext missing",
     discoveryFishFromFacts.includes("How big is this fish?") &&
-      discoveryFishFromFacts.includes("3 agents") &&
+      discoveryFishFromFacts.includes("Agent count") &&
+      discoveryFishFromFacts.includes(">3<") &&
       discoveryFishFromFacts.includes("prep-v9-src-input"),
   ],
   [
     "know tab fish keeps INPUT when rival axis lacks prospect",
-    discoveryFishFromFacts.includes("Employees") && discoveryFishFromFacts.includes("50"),
+    discoveryFishFromFacts.includes("Employee count") && discoveryFishFromFacts.includes("50"),
   ],
   [
     "know tab fish bucket labels for recognized metrics",
     discoveryFishBuckets.includes("prep-v9-benchmark-buckets") &&
       discoveryFishBuckets.includes("0–50") &&
-      discoveryFishBuckets.includes("1–10") &&
+      discoveryFishBuckets.includes("$1–10M") &&
       discoveryFishBuckets.includes("1–25") &&
       discoveryFishBuckets.includes("prep-v9-benchmark-bucket-active") &&
-      discoveryFishBuckets.includes("millions USD"),
+      discoveryFishBuckets.includes("$2M") &&
+      !discoveryFishBuckets.includes("millions USD"),
   ],
   [
     "know tab fish bucket dot positions",
     discoveryFishBuckets.includes('style="left:16.67%"') &&
       discoveryFishBuckets.includes('style="left:50.00%"'),
   ],
-  ["know tab fish unrecognized metric keeps placeholder bar", discoveryFishCombined.includes("2M users") && !discoveryFishCombined.match(/2M users[\s\S]{0,400}prep-v9-benchmark-buckets/)],
+  ["know tab fish excludes non-canonical metrics", (() => {
+    const html = renderKnowTab({
+      facts: [],
+      businessContext: {},
+      fishContext: {
+        source: "context",
+        metrics: [
+          { label: "Employees", value: "50" },
+          { label: "Industry", value: "Software licenses" },
+          { label: "Support agents", value: "3 agents" },
+          { label: "Funding raised", value: "2 Million" },
+        ],
+      },
+    }, false);
+    return html.includes("Employee count") &&
+      html.includes("Agent count") &&
+      html.includes("Funding") &&
+      !html.includes("Software licenses") &&
+      (html.match(/prep-v9-benchmark-bucketed/g) || []).length === 3;
+  })()],
+  ["know tab fish omits non-canonical supplemental metric", (() => {
+    const html = renderKnowTab({
+      ...sampleV8,
+      fishContext: {
+        source: "context",
+        metrics: [
+          { label: "Customer base", value: "2M users" },
+          { label: "Support agents", value: "120 agents" },
+        ],
+      },
+    }, false);
+    return html.includes("500") && !html.includes("2M users");
+  })()],
   ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
   ["know tab fact fallback from businessContext", (() => {
     const html = renderKnowTab({
@@ -524,6 +558,87 @@ const checks = [
   ["know tab disc animate hook", discovery.includes('data-prep-v9-animate="disc-chart"')],
   ["demo has demo moments", demo.includes("prep-v9-moment")],
   ["demo has sixty second hero", demo.includes("Sixty seconds before the call")],
+  [
+    "demo thesis uses theme headline when demoThesis present",
+    renderDemoPrepTab(
+      {
+        ...sampleV8,
+        demoThesis: {
+          headline: "Email inbox → structured ticketing platform",
+          sub: "Zendesk entrenched — lead with routing + omnichannel",
+        },
+      },
+      {},
+      "endurance-doors",
+    ).includes("Email inbox → structured ticketing platform") &&
+      !renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Email inbox → structured ticketing platform",
+            sub: "Zendesk entrenched — lead with routing + omnichannel",
+          },
+        },
+        {},
+        "endurance-doors",
+      ).includes("Endurance Doors manufactures"),
+  ],
+  [
+    "demo legacy thesis uses about slice without demoThesis",
+    demo.includes("Endurance Doors manufactures"),
+  ],
+  [
+    "demo thesis sub uses demoThesis.sub not displacement",
+    (() => {
+      const withThesis = renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Email inbox → structured ticketing platform",
+            sub: "Zendesk entrenched — lead with routing + omnichannel",
+          },
+        },
+        {},
+        "endurance-doors",
+      );
+      return (
+        withThesis.includes("Zendesk entrenched — lead with routing + omnichannel") &&
+        !withThesis.includes("Displacement: entrenched")
+      );
+    })(),
+  ],
+  [
+    "demo thin brief keeps listening thesis",
+    (() => {
+      const thinDemo = renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Should not show",
+            sub: "Should not show sub",
+          },
+          facts: [
+            { key: "Industry", value: "unknown", sourceLabel: "S1" },
+            { key: "Head office", value: "—", sourceLabel: "S2" },
+            { key: "Company size", value: "unknown", sourceLabel: "S3" },
+          ],
+          businessContext: {
+            market: "",
+            model: "",
+            users: "",
+            uptimeNeed: "",
+            fundingParent: "",
+            headOffice: "",
+            languages: "",
+          },
+          companySizeAgents: { agents: "unknown", estimated: true },
+        },
+        {},
+        "endurance-doors",
+      );
+      return thinDemo.includes("going in with limited data") && !thinDemo.includes("Should not show");
+    })(),
+  ],
   ["demo rows match pcv count", (demo.match(/class="prep-v9-moment"/g) || []).length === sampleV8.painCapabilityValue.length],
   ["demo value bullets", demo.includes("prep-v9-value-row")],
   ["demo no use cases", !demo.includes("prep-uc-grid")],

@@ -3,6 +3,15 @@
  * Mirrors parseMagnitude from worker/src/prep/rivals.ts for comparable ordering.
  */
 
+/** Fixed display order and labels for "How big is this fish?" */
+export const FISH_SIZING_ORDER = ["employees", "supportAgents", "funding"];
+
+export const FISH_SIZING_LABELS = {
+  employees: "Employee count",
+  supportAgents: "Agent count",
+  funding: "Funding",
+};
+
 export const FISH_SIZE_BUCKETS = {
   employees: {
     labels: ["0–50", "50–250", ">250"],
@@ -10,10 +19,9 @@ export const FISH_SIZE_BUCKETS = {
     thresholds: [50, 250],
   },
   funding: {
-    labels: ["0–1", "1–10", ">10"],
+    labels: ["$0–1M", "$1–10M", ">$10M"],
     /** Values compared in millions USD */
     thresholds: [1, 10],
-    unitNote: "millions USD",
   },
   supportAgents: {
     labels: ["1–25", "25–100", ">100"],
@@ -36,9 +44,9 @@ const NON_VALUES = /^(?:|-|–|—|n\/?a|unknown|none|tbd|undisclosed|not disclo
 export function resolveFishBucketType(label) {
   const l = String(label || "").toLowerCase().trim();
   if (!l) return null;
-  if (/\b(employees?|headcount|staff)\b/.test(l) && !/\bsupport\b/.test(l)) return "employees";
+  if (/\b(employees?|headcount|staff|employee count)\b/.test(l) && !/\bsupport\b/.test(l)) return "employees";
   if (/\bfunding\b/.test(l)) return "funding";
-  if (/\b(support agents?|support team|support users?)\b/.test(l)) return "supportAgents";
+  if (/\b(support agents?|support team|support users?|agent count)\b/.test(l)) return "supportAgents";
   if (/^agents?$/.test(l)) return "supportAgents";
   return null;
 }
@@ -107,8 +115,66 @@ export function fishBucketPlacement(type, numeric) {
     bucketIndex,
     dotPercent,
     labels: config.labels,
-    unitNote: config.unitNote,
   };
+}
+
+/** Clean display for fish sizing headline values — label carries the noun, funding carries the unit. */
+export function formatFishSizingDisplay(type, raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return text;
+  const numeric = parseFishMetricValue(text);
+
+  if (type === "employees") {
+    if (numeric != null) return String(Math.round(numeric));
+    return text.replace(/\s*(employees?|staff|people|headcount)\s*$/i, "").trim() || text;
+  }
+
+  if (type === "supportAgents") {
+    if (numeric != null) return String(Math.round(numeric));
+    return text.replace(/\s*(support\s*)?agents?\s*$/i, "").trim() || text;
+  }
+
+  if (type === "funding") {
+    if (numeric != null) {
+      const millions = fundingValueInMillions(numeric);
+      if (!Number.isFinite(millions)) return text;
+      if (millions >= 1000) {
+        const billions = millions / 1000;
+        return `$${billions % 1 === 0 ? billions.toFixed(0) : billions.toFixed(1)}B`;
+      }
+      return `$${millions % 1 === 0 ? millions.toFixed(0) : millions.toFixed(1)}M`;
+    }
+    return text
+      .replace(/\s*(million|mn|mm)\b/gi, "M")
+      .replace(/\s*(billion|bn|b)\b/gi, "B")
+      .replace(/^\$?\s*/, "$")
+      .replace(/\$(\d)/, "$$1");
+  }
+
+  return text;
+}
+
+/**
+ * Keep only the three canonical sizing metrics, deduped, in fixed order.
+ * @param {{ label?: string, value?: string }[] | undefined} metrics
+ * @returns {{ label: string, value: string, type: string }[]}
+ */
+export function normalizeFishSizingMetrics(metrics) {
+  const byType = new Map();
+  for (const m of metrics || []) {
+    const type = resolveFishBucketType(m.label);
+    if (!type || !FISH_SIZING_ORDER.includes(type)) continue;
+    const value = String(m.value || "").trim();
+    if (!value) continue;
+    if (!byType.has(type)) {
+      byType.set(type, {
+        type,
+        label: FISH_SIZING_LABELS[type],
+        value,
+      });
+    }
+  }
+  return FISH_SIZING_ORDER.filter((t) => byType.has(t)).map((t) => byType.get(t));
 }
 
 /** Resolve label + value string into bucket placement, or null. */

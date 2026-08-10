@@ -17,7 +17,7 @@ import {
 } from "./precall-render.js?v=2.1.14";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
-import { fishBucketFromMetric } from "./fish-sizing-buckets.js";
+import { fishBucketFromMetric, formatFishSizingDisplay, resolveFishBucketType, FISH_SIZING_LABELS, FISH_SIZING_ORDER } from "./fish-sizing-buckets.js";
 import { buildFishContextFromPrep } from "./fish-context-from-prep.js";
 
 const isUnknown = (v) => {
@@ -26,8 +26,6 @@ const isUnknown = (v) => {
   if (s.toLowerCase() === "unknown") return true;
   return s === "-" || s === "–" || s === "—";
 };
-
-const VERDICT_LABEL = { below: "Smaller than its rivals", within: "In range", above: "Larger than its rivals" };
 
 const MATURITY_LEVELS = ["Manual", "Basic", "Automated", "AI-assisted"];
 
@@ -387,13 +385,6 @@ function maturityRows(fitSnapshot) {
   </div>`;
 }
 
-/** Map a numeric value to a percentage along min→max for the fish benchmark bar. */
-function benchmarkBarPos(value, min, max) {
-  const span = max - min;
-  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || span <= 0) return null;
-  return `${Math.max(0, Math.min(100, ((value - min) / span) * 100)).toFixed(2)}%`;
-}
-
 /**
  * "How big is this fish?" — the prospect against sourced market rivals.
  *
@@ -405,51 +396,56 @@ function benchmarkBarPos(value, min, max) {
  * Everything here comes from prep.rivals, where each figure is traceable to a citation and the
  * range and verdict are derived server-side rather than asked of the model.
  */
-function fishContextSupplement(metrics, axes) {
-  if (!metrics?.length) return [];
-  const covered = (axes || [])
-    .filter((axis) => {
-      const own = axis?.prospect;
-      if (!own) return false;
-      if (Number.isFinite(own.numeric)) return true;
-      const display = String(own.display || "").trim();
-      return !!display && !isUnknown(display);
-    })
-    .map((axis) => String(axis.label || "").toLowerCase())
-    .filter(Boolean);
-  const tokenOverlap = (a, b) => {
-    const ta = new Set(a.split(/\W+/).filter((w) => w.length > 2));
-    const tb = new Set(b.split(/\W+/).filter((w) => w.length > 2));
-    let n = 0;
-    for (const t of ta) if (tb.has(t)) n++;
-    return n;
-  };
-  return metrics.filter((m) => {
-    const label = String(m.label || "").toLowerCase();
-    if (!label) return false;
-    return !covered.some(
-      (a) => a.includes(label) || label.includes(a) || tokenOverlap(a, label) >= 2,
-    );
-  });
+function resolveFishSizingRows(prep) {
+  const enriched = { ...prep, fishContext: buildFishContextFromPrep(prep) };
+  const byType = new Map();
+
+  for (const m of enriched.fishContext?.metrics || []) {
+    if (m.type) byType.set(m.type, { ...m, source: "input" });
+  }
+
+  for (const axis of enriched.rivals?.axes || []) {
+    const type = resolveFishBucketType(axis.label);
+    if (!type || !FISH_SIZING_ORDER.includes(type)) continue;
+    const own = axis.prospect;
+    if (!own) continue;
+    const display = String(own.display || "").trim();
+    if (!display || isUnknown(display)) continue;
+    if (!Number.isFinite(own.numeric) && isUnknown(display)) continue;
+    byType.set(type, {
+      type,
+      label: FISH_SIZING_LABELS[type],
+      value: display,
+      source: "rivals",
+      sourceLabel: own.sourceLabel,
+    });
+  }
+
+  return FISH_SIZING_ORDER.filter((t) => byType.has(t)).map((t) => byType.get(t));
 }
 
-function renderFishContextRow(m) {
+function renderFishContextRow(m, sources) {
   const bucket = fishBucketFromMetric(m.label, m.value);
+  const sourceBadge =
+    m.source === "rivals" && m.sourceLabel
+      ? srcBadge(m.sourceLabel, sources)
+      : '<span class="prep-v9-src prep-v9-src-input">INPUT</span>';
   if (bucket) {
+    const displayValue = formatFishSizingDisplay(bucket.type, m.value);
     const bucketFoot = bucket.labels
-      .map(
-        (lbl, i) =>
-          `<span class="prep-v9-benchmark-bucket${i === bucket.bucketIndex ? " prep-v9-benchmark-bucket-active" : ""}">${esc(lbl)}</span>`,
-      )
+      .map((lbl, i) => {
+        const active = i === bucket.bucketIndex;
+        const meta = active ? `<div class="prep-v9-benchmark-bucket-meta">${sourceBadge}</div>` : "";
+        return `<div class="prep-v9-benchmark-bucket-cell${active ? " prep-v9-benchmark-bucket-cell-active" : ""}">
+          <span class="prep-v9-benchmark-bucket${active ? " prep-v9-benchmark-bucket-active" : ""}">${esc(lbl)}</span>
+          ${meta}
+        </div>`;
+      })
       .join("");
-    const unitHint =
-      bucket.unitNote === "millions USD"
-        ? `<span class="prep-v9-benchmark-bucket-unit muted">(${esc(bucket.unitNote)})</span>`
-        : "";
     return `<div class="prep-v9-benchmark prep-v9-benchmark-context prep-v9-benchmark-bucketed">
         <div class="prep-v9-benchmark-head">
           <span>${esc(m.label)}</span>
-          <strong>${esc(m.value)}</strong>
+          <strong>${esc(displayValue)}</strong>
         </div>
         <div class="prep-v9-benchmark-bar prep-v9-benchmark-bar-bucketed" aria-hidden="true">
           <span class="prep-v9-benchmark-bar-rail"></span>
@@ -459,116 +455,43 @@ function renderFishContextRow(m) {
         </div>
         <div class="prep-v9-benchmark-bar-foot prep-v9-benchmark-buckets">
           <div class="prep-v9-benchmark-bucket-row">${bucketFoot}</div>
-          <div class="prep-v9-benchmark-bucket-meta">
-            <span class="prep-v9-src prep-v9-src-input">INPUT</span>${unitHint}
-          </div>
         </div>
       </div>`;
   }
 
-  return `<div class="prep-v9-benchmark prep-v9-benchmark-context">
-        <div class="prep-v9-benchmark-head">
-          <span>${esc(m.label)}</span>
-          <strong>${esc(m.value)}</strong>
-        </div>
-        <div class="prep-v9-benchmark-bar" aria-hidden="true">
-          <span class="prep-v9-benchmark-bar-rail"></span>
-          <span class="prep-v9-benchmark-bar-dot" style="left:50%"></span>
-        </div>
-        <div class="prep-v9-benchmark-bar-foot prep-v9-benchmark-bar-foot-context">
-          <span class="prep-v9-benchmark-bar-min"></span>
-          <span class="prep-v9-benchmark-bar-verdict"><span class="prep-v9-src prep-v9-src-input">INPUT</span></span>
-          <span class="prep-v9-benchmark-bar-max"></span>
-        </div>
-      </div>`;
+  return "";
 }
 
-function renderFishContextRows(metrics) {
-  return metrics.map((m) => renderFishContextRow(m)).join("");
+function renderFishContextRows(metrics, sources) {
+  return metrics.map((m) => renderFishContextRow(m, sources)).join("");
 }
 
 function benchmarkRows(prep) {
   const enriched = { ...prep, fishContext: buildFishContextFromPrep(prep) };
+  const rows = resolveFishSizingRows(prep);
   const rivals = enriched.rivals;
-  const axes = rivals?.axes || [];
-  const allCtx = enriched.fishContext?.metrics || [];
-  const supplemental = fishContextSupplement(allCtx, axes);
 
-  if (axes.length) {
-    return renderFishBenchmarkCard(axes, rivals, supplemental);
-  }
-
-  if (allCtx.length) {
-    return renderFishContextCard(allCtx);
-  }
-
-  return `<div class="prep-v9-card">
+  if (!rows.length) {
+    return `<div class="prep-v9-card">
       <h2 class="prep-v9-card-title">How big is this fish?</h2>
       <div class="prep-v9-empty-box">
         <p class="prep-v9-empty-title">We could not size this account.</p>
         <p class="muted">No headcount, funding or volume figures are public. Ask for team size — it anchors everything else.</p>
       </div>
     </div>`;
-}
+  }
 
-/** Context-only sizing — same bar layout as wireframe, INPUT badge in verdict slot. */
-function renderFishContextCard(metrics) {
-  return `<div class="prep-v9-card">
-    <h2 class="prep-v9-card-title">How big is this fish?</h2>
-    <div class="prep-v9-benchmark-list">${renderFishContextRows(metrics)}</div>
-    <p class="prep-v9-benchmark-note muted">From your additional context — not verified on the web.</p>
-  </div>`;
-}
+  const names = (rivals?.rivals || []).map((r) => esc(r.name)).join(" · ");
+  const allInput = rows.every((r) => r.source === "input");
+  const note = allInput
+    ? `<p class="prep-v9-benchmark-note muted">From your additional context — not verified on the web.</p>`
+    : `<p class="prep-v9-benchmark-note muted">Web-sourced rival ranges where available; INPUT rows from your notes.</p>`;
 
-function renderFishBenchmarkCard(axes, rivals, supplementalCtx = []) {
-  const rows = axes
-    .map((axis) => {
-      const own = axis.prospect;
-      const verdict = own && axis.verdict ? VERDICT_LABEL[axis.verdict] : null;
-      const minN = axis.min?.numeric;
-      const maxN = axis.max?.numeric;
-      const prospectN = own?.numeric;
-      const barPos = benchmarkBarPos(prospectN, minN, maxN);
-      const barHtml =
-        Number.isFinite(minN) && Number.isFinite(maxN) && minN !== maxN
-          ? `<div class="prep-v9-benchmark-bar" aria-hidden="true">
-              <span class="prep-v9-benchmark-bar-rail"></span>
-              <span class="prep-v9-benchmark-bar-range"></span>
-              ${barPos ? `<span class="prep-v9-benchmark-bar-dot" style="left:${barPos}"></span>` : ""}
-            </div>
-            <div class="prep-v9-benchmark-bar-foot">
-              <span class="prep-v9-benchmark-bar-min">${esc(axis.min.display)}</span>
-              ${verdict ? `<span class="prep-v9-benchmark-bar-verdict">${esc(verdict)}</span>` : "<span></span>"}
-              <span class="prep-v9-benchmark-bar-max">${esc(axis.max.display)}</span>
-            </div>`
-          : `<div class="prep-v9-benchmark-range muted">
-              Rivals ${esc(axis.min.display)} – ${esc(axis.max.display)}
-              <span class="prep-v9-benchmark-n">${axis.sourcedCount} sourced</span>
-              ${verdict ? `<span class="prep-v9-benchmark-verdict prep-v9-benchmark-${esc(axis.verdict)}">${esc(verdict)}</span>` : ""}
-              ${own ? srcBadge(own.sourceLabel, rivals.sources) : ""}
-            </div>`;
-      return `<div class="prep-v9-benchmark">
-        <div class="prep-v9-benchmark-head">
-          <span>${esc(axis.label)}${axis.unit ? ` <span class="muted">(${esc(axis.unit)})</span>` : ""}</span>
-          <strong>${own ? esc(own.display) : `<span class="muted">${EMPTY_DISPLAY}</span>`}</strong>
-        </div>
-        ${barHtml}
-        ${axis.rationale ? `<p class="prep-v9-benchmark-why muted">${esc(axis.rationale)}</p>` : ""}
-      </div>`;
-    })
-    .join("");
-  const names = (rivals.rivals || []).map((r) => esc(r.name)).join(" · ");
-  const sizingNote = axes.find((a) => a.rationale)?.rationale;
-  const ctxExtra = supplementalCtx?.length ? renderFishContextRows(supplementalCtx) : "";
-  const ctxNote = supplementalCtx?.length
-    ? `<p class="prep-v9-benchmark-note muted">Additional sizing from your notes (INPUT) — web rivals shown above.</p>`
-    : "";
   return `<div class="prep-v9-card">
     <h2 class="prep-v9-card-title">How big is this fish?</h2>
     ${names ? `<p class="muted prep-v9-card-sub">Against ${names}</p>` : ""}
-    <div class="prep-v9-benchmark-list">${rows}${ctxExtra}</div>
-    ${sizingNote ? `<p class="prep-v9-benchmark-note muted">${esc(sizingNote)}</p>` : ""}
-    ${ctxNote}
+    <div class="prep-v9-benchmark-list">${renderFishContextRows(rows, rivals?.sources)}</div>
+    ${note}
   </div>`;
 }
 
@@ -779,7 +702,14 @@ function sixtySeconds(prep, sources) {
           { label: "Bring this", color: "#e0bd7e", value: prep.likelyPains?.[0] || "A discovery question bank", sub: "Anchor on their pain, not features." },
         ]
       : [
-          { label: "The thesis", color: "#dba79f", value: prep.about?.slice(0, 80) || "Strong fit for Freshdesk.", sub: prep.incumbent?.displacement ? `Displacement: ${prep.incumbent.displacement}` : "Lead with their biggest gap." },
+          {
+            label: "The thesis",
+            color: "#dba79f",
+            value: prep.demoThesis?.headline || prep.about?.slice(0, 80) || "Strong fit for Freshdesk.",
+            sub:
+              prep.demoThesis?.sub ||
+              (prep.incumbent?.displacement ? `Displacement: ${prep.incumbent.displacement}` : "Lead with their biggest gap."),
+          },
           { label: "Biggest gap", color: "#b3ab9c", value: topGap || prep.fitSnapshot?.[0]?.label || "Support maturity", sub: prep.fitSnapshot?.[0]?.gapVerdict || "Pitch the shaded distance." },
           { label: "Ask this first", color: "#7fd0c4", value: firstQ || "What's driving the evaluation now?", sub: "Tie urgency to renewal or growth." },
           { label: "Bring this", color: "#e0bd7e", value: prep.painCapabilityValue?.[0]?.capability || "Demo storyline", sub: prep.painCapabilityValue?.[0]?.pain || "Match feature to pain." },

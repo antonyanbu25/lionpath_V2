@@ -69,8 +69,7 @@ const eq = (a: unknown, b: unknown, m: string) => {
     ],
     [{ label: "Support agents", prospect: { display: "120", numeric: 120 } }],
   );
-  eq(sup.length, 1, "drops axis with web prospect value");
-  eq(sup[0].label, "Customer base", "keeps non-overlapping context metric");
+  eq(sup.length, 0, "drops non-canonical context metric when axis covered");
 }
 
 {
@@ -112,7 +111,7 @@ const eq = (a: unknown, b: unknown, m: string) => {
     { key: "Support team", value: "40 agents", category: "signal", sourceLabel: "S1" },
     { key: "Industry", value: "SaaS", category: "signal", sourceLabel: "S1" },
   ]);
-  ok(fromFacts?.metrics.length === 3, "research facts map to fish metrics");
+  ok(fromFacts?.metrics.length === 2, "research facts map to fish metrics without industry");
   eq(fromFacts?.metrics[0].label, "Employees", "company size maps to employees");
 }
 
