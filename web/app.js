@@ -2144,13 +2144,13 @@ function wireUserMenu() {
     onProfileSettings: () => switchView("profile"),
     onSignOut: () => void handleSignOut(),
   });
-  // Dev-only "Login as…" — only for the 3 of us in dummy auth
-  if (isDummyAuth() && isDevAccount(getSession()?.email)) {
+  // Dev-only "Login as…" — only for the 3 of us (works with both dummy and SSO auth)
+  if (isDevAccount(getSession()?.email)) {
     initLoginAs();
   }
   // Also re-check when session changes (login/restore)
   onSessionChange((session) => {
-    if (isDummyAuth() && isDevAccount(session?.email)) {
+    if (isDevAccount(session?.email)) {
       initLoginAs();
     }
   });
@@ -2785,6 +2785,8 @@ function ensureFirebaseSdk() {
         serverTimestamp: null,
         writeBatch: null,
       };
+      // Expose for login-as-ui.js impersonation flow
+      window.__fb = fb;
 
       initDomainStore(fb);
 

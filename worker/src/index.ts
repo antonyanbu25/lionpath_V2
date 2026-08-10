@@ -15,6 +15,7 @@
 //   POST /api/analyze-call       — legacy facade (auto-pick + generate)
 //   GET  /api/zoom/status     — whether Zoom OAuth is configured
 //   GET  /api/zoom/auth       — start Zoom OAuth (phase 2)
+//   POST /api/admin/impersonate-token — dev-only: mint a Firebase custom token for any user email
 
 import type { Env } from "./env";
 import { json } from "./http";
@@ -33,6 +34,7 @@ import {
 } from "./routes";
 import { dispatchDomainReadById } from "./routes/domain-reads";
 import { dispatchReadModelsById } from "./routes/read-models";
+import { handleImpersonateToken } from "./routes/impersonate";
 
 export type { Env } from "./env";
 
@@ -110,6 +112,14 @@ export default {
         const handler = methodRoutes?.[request.method];
         if (handler) {
           return withCorrelationHeader(await handler(request, env, url, cors), correlationId);
+        }
+
+        // Dev-only impersonation endpoint
+        if (path === "/api/admin/impersonate-token" && request.method === "POST") {
+          return withCorrelationHeader(
+            await handleImpersonateToken(request, env, url, cors),
+            correlationId,
+          );
         }
 
         const taskIdMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
