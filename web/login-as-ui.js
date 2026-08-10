@@ -172,9 +172,18 @@ async function switchToUserSso(email, statusEl) {
   if (goBtn) goBtn.disabled = true;
 
   try {
-    const fbAuth = window.__fb?.auth;
+    // Wait for Firebase auth to be available (retry until ready)
+    let fbAuth = null;
+    for (let i = 0; i < 50; i++) {
+      if (window.__fb?.auth) {
+        fbAuth = window.__fb.auth;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
     if (!fbAuth) {
-      if (statusEl) statusEl.textContent = "Firebase auth not initialized. Try again.";
+      if (statusEl) statusEl.textContent = "Firebase auth not ready after 10s. Reload and try again.";
       if (goBtn) goBtn.disabled = false;
       return;
     }
