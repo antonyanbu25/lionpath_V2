@@ -71,6 +71,7 @@ import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-serv
 import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1.14";
 import { stableUserIdForEmail } from "./domain/id.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
+import { initLoginAs, isDevAccount } from "./login-as-ui.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
@@ -2142,6 +2143,16 @@ function wireUserMenu() {
     getSession: () => currentSession,
     onProfileSettings: () => switchView("profile"),
     onSignOut: () => void handleSignOut(),
+  });
+  // Dev-only "Login as…" — only for the 3 of us in dummy auth
+  if (isDummyAuth() && isDevAccount(getSession()?.email)) {
+    initLoginAs();
+  }
+  // Also re-check when session changes (login/restore)
+  onSessionChange((session) => {
+    if (isDummyAuth() && isDevAccount(session?.email)) {
+      initLoginAs();
+    }
   });
 }
 

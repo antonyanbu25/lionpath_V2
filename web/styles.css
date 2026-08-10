@@ -6073,3 +6073,119 @@ fw-card.about-section {
     animation: none;
   }
 }
+
+/* ---------- Dev "Login as…" picker ---------- */
+.user-menu-login-as {
+  color: var(--dew-brand, #5a4fcf) !important;
+}
+.user-menu-login-as .user-menu-item-icon {
+  opacity: 0.7;
+}
+
+.login-as-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(2px);
+}
+.login-as-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--dew-surface, #fff);
+  border: 1px solid var(--dew-border, #e0ddd7);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  width: min(420px, 90vw);
+  max-height: 80vh;
+  padding: 20px;
+  gap: 12px;
+}
+.login-as-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.login-as-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.login-as-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--muted, #888);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.login-as-close:hover {
+  background: var(--surface-hover, #f0ede8);
+}
+.login-as-search {
+  width: 100%;
+}
+.login-as-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 50vh;
+  min-height: 120px;
+}
+.login-as-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.login-as-user:hover {
+  background: var(--surface-hover, #f0ede8);
+}
+.login-as-user-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--dew-text, #1a1a1a);
+}
+.login-as-user-email {
+  font-size: 11.5px;
+  color: var(--dew-text-muted, #7c7466);
+}
+.login-as-user-role {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dew-brand, #5a4fcf);
+  background: color-mix(in srgb, var(--dew-brand, #5a4fcf) 12%, transparent);
+  padding: 1px 8px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+.login-as-user[hidden] {
+  display: none;
+}
+[data-theme="dark"] .login-as-panel {
+  background: var(--dew-surface, #1e1e1e);
+  border-color: var(--dew-border, #333);
+}
+[data-theme="dark"] .login-as-overlay {
+  background: rgba(0,0,0,0.6);
+}
+[data-theme="dark"] .login-as-user:hover {
+  background: rgba(255,255,255,0.06);
+}
+[data-theme="dark"] .login-as-close:hover {
+  background: rgba(255,255,255,0.06);
+}

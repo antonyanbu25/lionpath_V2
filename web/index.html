@@ -148,6 +148,24 @@
       </div>
     </div>
 
+    <!-- Login-as picker overlay (dev only) -->
+    <div id="login-as-overlay" class="login-as-overlay" hidden>
+      <div class="login-as-panel" role="dialog" aria-label="Login as another user">
+        <div class="login-as-header">
+          <span class="login-as-title">Login as…</span>
+          <button type="button" class="login-as-close" id="login-as-close" aria-label="Close">×</button>
+        </div>
+        <fw-input
+          id="login-as-search"
+          class="login-as-search"
+          type="text"
+          placeholder="Search by name or email…"
+          clear-input
+        ></fw-input>
+        <div id="login-as-list" class="login-as-list"></div>
+      </div>
+    </div>
+
     <script>
       (function () {
         try {
@@ -272,6 +290,11 @@
                   <button type="button" class="user-menu-item user-menu-theme-option" data-theme-value="dark" role="menuitemradio">Dark</button>
                 </div>
               </div>
+              <div class="user-menu-divider" role="separator"></div>
+              <button type="button" class="user-menu-item user-menu-login-as" id="user-menu-login-as" role="menuitem" hidden>
+                <span class="user-menu-item-icon" aria-hidden="true">⇄</span>
+                <span class="user-menu-item-label">Login as…</span>
+              </button>
               <div class="user-menu-divider" role="separator"></div>
               <button type="button" class="user-menu-item user-menu-signout" id="user-menu-signout" role="menuitem">
                 <span class="user-menu-item-icon" aria-hidden="true">↪</span>
