@@ -295,6 +295,12 @@ export const manifest = [
     "server": "shared"
   },
   {
+    "file": "test-dashboard-subscribe-fb-db-gate.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-dashboard.mjs",
     "tags": [
       "unit"
@@ -603,6 +609,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-hydration-sequencing.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-intake-preview.mjs",
     "tags": [
       "unit"
@@ -670,6 +682,12 @@ export const manifest = [
   },
   {
     "file": "test-prep-context-files.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-prep-crm-domain-writeback.mjs",
     "tags": [
       "unit"
     ]
@@ -835,6 +853,12 @@ export const manifest = [
   },
   {
     "file": "test-search-service.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-sso-popup-no-async-gap.mjs",
     "tags": [
       "unit"
     ]

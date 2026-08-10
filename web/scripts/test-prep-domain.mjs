@@ -39,19 +39,33 @@ assert.equal(formatCompanyWebsiteDisplay("https://www.acme.com"), "https://www.a
 
 assert.ok(PERSONAL_EMAIL_DOMAINS.has("gmail.com"));
 
+/**
+ * Models the real fw-input quirk that shipped a real bug once already:
+ * assigning `.value` directly is a no-op (the visible control lives only in
+ * the shadow root), and `field.querySelector("input")` matches a *hidden*
+ * light-DOM serialization input, not the real one. A naive mock with a plain
+ * `.value` property would never have caught setDomainValue() writing to the
+ * wrong node — this one fails loudly if that regresses.
+ */
 function mockField(initial = "") {
-  let value = initial;
+  const shadowInput = { value: initial, dispatchEvent: () => {} };
+  const hiddenInput = { value: initial, dispatchEvent: () => {} }; // decoy — must never be the write target
   const events = [];
   return {
     get value() {
-      return value;
+      return shadowInput.value;
     },
-    set value(v) {
-      value = v;
+    set value(_v) {
+      /* no-op, matching the real Crayons build */
     },
-    querySelector: () => null,
+    shadowRoot: {
+      querySelector: (sel) => (sel === "input" ? shadowInput : null),
+    },
+    querySelector: (sel) => (sel === "input" ? hiddenInput : null),
     dispatchEvent: (ev) => events.push(ev.type),
     events,
+    _shadowInput: shadowInput,
+    _hiddenInput: hiddenInput,
   };
 }
 
@@ -93,5 +107,20 @@ assert.equal(isProgrammaticDomainUpdate(), false);
 const progField = mockField("");
 applyAutoCompanyDomain(progField, "user@corp.com", { userEdited: false });
 assert.equal(isProgrammaticDomainUpdate(), false);
+
+// Regression guard: the write must land on the real shadow-DOM input, never
+// the light-DOM decoy (see mockField doc comment — this exact mistake shipped).
+const shadowField = mockField("");
+applyAutoCompanyDomain(shadowField, "user@shadowtest.com", { userEdited: false });
+assert.equal(
+  shadowField._shadowInput.value,
+  "https://www.shadowtest.com",
+  "auto-fill must write the shadow-DOM input, not just the host property",
+);
+assert.notEqual(
+  shadowField._hiddenInput.value,
+  "https://www.shadowtest.com",
+  "auto-fill must not write the light-DOM hidden serialization input",
+);
 
 console.log("test-prep-domain.mjs: ok");

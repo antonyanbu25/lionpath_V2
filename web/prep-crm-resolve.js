@@ -201,7 +201,8 @@ export function ensureDraftAccount(domain, name) {
   // Wait for CRM lookup to confirm whether deals already exist before flagging new deal.
 }
 
-async function applyAccount(account, deals = []) {
+/** Exported for test-prep-crm-domain-writeback.mjs — no other change in behavior. */
+export async function applyAccount(account, deals = []) {
   const token = ++lookupToken;
   previewToken = token;
   const prevAccountId = prepResolvedAccount?.id || null;
