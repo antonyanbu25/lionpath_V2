@@ -105,7 +105,11 @@ function workerBaseUrl() {
     if (host === "portal.benjaminsquare.com") {
       return "https://portalapi.benjaminsquare.com";
     }
-    // GCP Cloud Run custom domain (parallel to VPS)
+    // GCP Cloud Run: janus routes to the same API as run.app
+    if (host === "janus.benjaminsquare.com") {
+      return "https://prep-portal-api-781846715448.us-central1.run.app";
+    }
+    // GCP Cloud Run: yonus routes to its dedicated API domain
     if (host === "yonus.benjaminsquare.com") {
       return "https://yonus-api.benjaminsquare.com";
     }
