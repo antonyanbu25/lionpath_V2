@@ -35,7 +35,7 @@ export function initLoginAs() {
   });
 }
 
-function showLoginAsPicker() {
+export function showLoginAsPicker() {
   const overlay = document.getElementById("login-as-overlay");
   if (!overlay) return;
   overlay.hidden = false;

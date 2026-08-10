@@ -165,6 +165,35 @@
         <div id="login-as-list" class="login-as-list"></div>
       </div>
     </div>
+    <script>
+      // Dev login-as: wire button click inline so it works regardless of module cache
+      (function() {
+        function wireDevLoginAs() {
+          var btn = document.getElementById("user-menu-login-as");
+          if (!btn) { setTimeout(wireDevLoginAs, 100); return; }
+          btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var panel = document.getElementById("user-menu-panel");
+            if (panel) panel.hidden = true;
+            var back = document.getElementById("user-menu-backdrop");
+            if (back) back.hidden = true;
+            var trig = document.getElementById("sidebar-user");
+            if (trig) trig.setAttribute("aria-expanded", "false");
+            var ts = Date.now();
+            import("./login-as-ui.js?v=" + ts).then(function(m) { m.showLoginAsPicker(); }).catch(function() {
+              var o = document.getElementById("login-as-overlay");
+              if (o) o.hidden = false;
+            });
+          });
+        }
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", function() { setTimeout(wireDevLoginAs, 0); });
+        } else {
+          setTimeout(wireDevLoginAs, 0);
+        }
+      })();
+    </script>
 
     <script>
       (function () {
