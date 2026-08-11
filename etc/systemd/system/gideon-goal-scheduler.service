@@ -1,0 +1,19 @@
+[Unit]
+Description=Gideon Goal Scheduler Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/root/.hermes/scripts/goal-scheduler-daemon.sh
+Restart=on-failure
+RestartSec=10
+User=root
+NoNewPrivileges=true
+ReadWritePaths=/root/.hermes
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
