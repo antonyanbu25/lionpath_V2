@@ -19,7 +19,7 @@
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights (2.1.2)](#release-highlights-212)
+2. [Release highlights](#release-highlights)
 3. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
 4. [Architecture](#architecture)
 5. [Repository layout](#repository-layout)
