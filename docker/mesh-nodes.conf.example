@@ -1,0 +1,6 @@
+# Known mesh peers, one per line.
+# Use key-based SSH auth for remote nodes.
+#
+# Examples:
+# root@lead.example.net
+# hermes@10.0.0.42

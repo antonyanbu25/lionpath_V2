@@ -4,10 +4,10 @@ set -Eeuo pipefail
 SCRIPT_NAME="$(basename "$0")"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 SCRIPTS_DIR="$HERMES_HOME/scripts"
-STATE_DIR="$HERMES_HOME/state"
+STATE_DIR="$HERMES_HOME"
 RUN_DIR="$HERMES_HOME/run"
 LOG_DIR="$HERMES_HOME/logs"
-DEFAULT_DB="$HERMES_HOME/state/state.db"
+DEFAULT_DB="$HERMES_HOME/state.db"
 [[ -s "$HERMES_HOME/state.db" && ! -s "$DEFAULT_DB" ]] && DEFAULT_DB="$HERMES_HOME/state.db"
 DB="${HERMES_DB:-${GIDEON_DB:-$DEFAULT_DB}}"
 LOCK="$RUN_DIR/multi-mesh-peering.lock"
@@ -41,7 +41,7 @@ It never synchronizes a peer's full task_queue. --forward is explicit per task.
 
 Environment:
   HERMES_HOME                 Defaults to ~/.hermes
-  HERMES_DB or GIDEON_DB      Defaults to ~/.hermes/state/state.db, or ~/.hermes/state.db if populated
+  HERMES_DB or GIDEON_DB      Defaults to ~/.hermes/state.db, or ~/.hermes/state.db if populated
   HERMES_PEER_SYNC_INTERVAL   Defaults to 60 seconds
   HERMES_PEER_SESSION         Defaults to multi-mesh-peering
 USAGE
@@ -134,7 +134,7 @@ set -Eeuo pipefail
 script="$HOME/.hermes/scripts/agent-radio-mesh.sh"
 [[ -x "$script" ]]
 found=0
-for db in "$HOME/.hermes/state/state.db" "$HOME/.hermes/state.db"; do
+for db in "$HOME/.hermes/state.db" "$HOME/.hermes/state.db"; do
   [[ -e "$db" ]] && found=1
 done
 [[ "$found" -eq 1 ]]
@@ -225,7 +225,7 @@ fetch_remote_digest() {
   ssh "${SSH_OPTS[@]}" "$target" 'bash -s' <<'REMOTE'
 set -Eeuo pipefail
 db=""
-for candidate in "$HOME/.hermes/state/state.db" "$HOME/.hermes/state.db"; do
+for candidate in "$HOME/.hermes/state.db" "$HOME/.hermes/state.db"; do
   [[ -s "$candidate" ]] && { db="$candidate"; break; }
 done
 [[ -n "$db" ]] || exit 1
@@ -244,7 +244,7 @@ fetch_remote_liveness() {
   ssh "${SSH_OPTS[@]}" "$target" 'bash -s' <<'REMOTE'
 set -Eeuo pipefail
 db=""
-for candidate in "$HOME/.hermes/state/state.db" "$HOME/.hermes/state.db"; do
+for candidate in "$HOME/.hermes/state.db" "$HOME/.hermes/state.db"; do
   [[ -s "$candidate" ]] && { db="$candidate"; break; }
 done
 [[ -n "$db" ]] || exit 1
@@ -342,10 +342,10 @@ set -Eeuo pipefail
 task_id="$1"
 sql_b64="$2"
 db=""
-for candidate in "$HOME/.hermes/state/state.db" "$HOME/.hermes/state.db"; do
+for candidate in "$HOME/.hermes/state.db" "$HOME/.hermes/state.db"; do
   [[ -e "$candidate" ]] && { db="$candidate"; break; }
 done
-[[ -n "$db" ]] || db="$HOME/.hermes/state/state.db"
+[[ -n "$db" ]] || db="$HOME/.hermes/state.db"
 mkdir -p "$(dirname "$db")"
 printf '%s' "$sql_b64" | base64 -d | sqlite3 "$db"
 HERMES_DB="$db" "$HOME/.hermes/scripts/task-routing-protocol.sh" --offer "$task_id"

@@ -4,8 +4,8 @@ set -Eeuo pipefail
 SCRIPT_NAME="$(basename "$0")"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 SCRIPTS_DIR="$HERMES_HOME/scripts"
-STATE_DIR="$HERMES_HOME/state"
-DB="${HERMES_DB:-$STATE_DIR/state.db}"
+STATE_DIR="$HERMES_HOME"
+DB="${HERMES_DB:-$HERMES_HOME/state.db}"
 RUN_DIR="$HERMES_HOME/run"
 LOG_DIR="$HERMES_HOME/logs"
 LOG_FILE="$LOG_DIR/autonomous-spawner.log"
@@ -38,7 +38,7 @@ Usage:
 
 Environment:
   HERMES_HOME        Defaults to ~/.hermes
-  HERMES_DB          Defaults to ~/.hermes/state/state.db
+  HERMES_DB          Defaults to ~/.hermes/state.db
   HERMES_LEAD_HOST   Lead host passed to agent-radio-mesh.sh join
   HERMES_LEAD_USER   Lead SSH user passed to agent-radio-mesh.sh join
   MESH_SESSION       Mesh radio session, defaults to mesh
@@ -219,7 +219,7 @@ migrate_remote_db() {
   local target="$1"
   log INFO "running remote mesh-memory migration on $target"
   ssh "${SSH_OPTS[@]}" "$target" \
-    'mkdir -p "$HOME/.hermes/state"; HERMES_HOME="$HOME/.hermes" bash "$HOME/.hermes/scripts/mesh-memory.sh" --migrate --db "$HOME/.hermes/state/state.db"'
+    'mkdir -p "$HOME/.hermes/state"; HERMES_HOME="$HOME/.hermes" bash "$HOME/.hermes/scripts/mesh-memory.sh" --migrate --db "$HOME/.hermes/state.db"'
 }
 
 copy_systemd_units_remote() {
@@ -384,7 +384,7 @@ fi
 for script in mesh-memory-daemon.sh node-health-daemon.sh consciousness-daemon.sh task-router-daemon.sh; do
   path="$HOME/.hermes/scripts/$script"
   [[ -x "$path" ]] || continue
-  HERMES_HOME="$HOME/.hermes" HERMES_DB="$HOME/.hermes/state/state.db" bash "$path" start >/dev/null 2>&1 || true
+  HERMES_HOME="$HOME/.hermes" HERMES_DB="$HOME/.hermes/state.db" bash "$path" start >/dev/null 2>&1 || true
 done
 REMOTE
 }

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-DB="${HERMES_DB:-$HERMES_HOME/state/state.db}"
+DB="${HERMES_DB:-$HERMES_HOME/state.db}"
 LOCK="$HERMES_HOME/run/scale-test.lock"
 LOG="$HERMES_HOME/logs/scale-test.log"
 RESULT_TIMEOUT="${RESULT_TIMEOUT:-120}"
@@ -29,7 +29,7 @@ Usage:
 
 Environment:
   HERMES_HOME      Defaults to ~/.hermes
-  HERMES_DB        Defaults to ~/.hermes/state/state.db
+  HERMES_DB        Defaults to ~/.hermes/state.db
   RESULT_TIMEOUT  Seconds to wait for node results, defaults to 120
   SSH_TIMEOUT     SSH connect timeout in seconds, defaults to 8
 USAGE

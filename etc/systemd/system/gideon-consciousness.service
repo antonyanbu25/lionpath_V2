@@ -9,7 +9,13 @@ PIDFile=/root/.hermes/run/consciousness-daemon.pid
 ExecStart=/root/.hermes/scripts/consciousness-daemon.sh start
 ExecStop=/root/.hermes/scripts/consciousness-daemon.sh stop
 Restart=on-failure
+RestartSec=10
 User=root
+NoNewPrivileges=true
+ReadWritePaths=/root/.hermes
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

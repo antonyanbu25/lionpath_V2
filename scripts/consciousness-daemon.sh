@@ -97,28 +97,10 @@ sql_quote() {
 
 init_db() {
   mkdir -p "$(dirname "$DB_PATH")"
-  sqlite3 "$DB_PATH" <<'SQL'
-PRAGMA journal_mode=WAL;
-CREATE TABLE IF NOT EXISTS mesh_consciousness (
-  snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  agent_id TEXT NOT NULL,
-  epoch INTEGER NOT NULL,
-  state_blob TEXT NOT NULL,
-  confidence REAL DEFAULT 0.5,
-  received_at INTEGER NOT NULL,
-  origin TEXT,
-  UNIQUE(agent_id, epoch)
-);
-CREATE INDEX IF NOT EXISTS idx_mc_agent ON mesh_consciousness(agent_id, epoch);
-CREATE TABLE IF NOT EXISTS mesh_node_health (
-  hostname TEXT PRIMARY KEY,
-  ip TEXT,
-  last_seen INTEGER,
-  reachable INTEGER,
-  response_time_ms INTEGER,
-  error_count INTEGER DEFAULT 0
-);
-SQL
+  sqlite3 "$DB_PATH" "PRAGMA journal_mode=WAL;"
+  # Tables created by consciousness-propagation-hooks.sh:
+  # mesh_consciousness(node_host, state_json, state_digest, updated_at)
+  # No DDL needed here — D3 handles it. Just ensure WAL mode.
 }
 
 health_state() {
@@ -135,22 +117,7 @@ SQL
 }
 
 peer_state() {
-  sqlite3 -separator $'\t' "$DB_PATH" <<'SQL' 2>/dev/null || true
-WITH latest AS (
-  SELECT agent_id, MAX(epoch) AS epoch
-    FROM mesh_consciousness
-   WHERE COALESCE(origin, '') != 'self'
-   GROUP BY agent_id
-)
-SELECT m.agent_id,
-       m.epoch,
-       COALESCE(m.confidence, 0),
-       LENGTH(COALESCE(m.state_blob, '')),
-       COALESCE(m.state_blob, '')
-  FROM mesh_consciousness m
-  JOIN latest l ON l.agent_id = m.agent_id AND l.epoch = m.epoch
- ORDER BY m.agent_id;
-SQL
+  sqlite3 -separator $'\t' "$DB_PATH" "SELECT node_host, updated_at, substr(state_digest,1,16), length(state_json) FROM mesh_consciousness ORDER BY node_host;" 2>/dev/null || true
 }
 
 hash_text() {
@@ -310,7 +277,7 @@ status_daemon() {
   local pid last="never" peers="unavailable" health_rows="unavailable"
   [[ -f "$LAST_CYCLE_FILE" ]] && last="$(cat "$LAST_CYCLE_FILE")"
   if [[ -f "$DB_PATH" ]] && command -v sqlite3 >/dev/null 2>&1; then
-    peers="$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT agent_id) FROM mesh_consciousness WHERE COALESCE(origin, '') != 'self';" 2>/dev/null || printf unavailable)"
+    peers="$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT node_host) FROM mesh_consciousness;" 2>/dev/null || printf unavailable)"
     health_rows="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM mesh_node_health;" 2>/dev/null || printf unavailable)"
   fi
   if [[ -f "$PID_FILE" ]]; then

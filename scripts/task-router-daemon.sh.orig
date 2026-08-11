@@ -146,24 +146,25 @@ init_db() {
   mkdir -p "$(dirname "$DB_PATH")"
   sqlite3 "$DB_PATH" <<'SQL'
 PRAGMA journal_mode=WAL;
-
+PRAGMA synchronous=NORMAL;
 CREATE TABLE IF NOT EXISTS task_queue (
   task_id TEXT PRIMARY KEY,
-  status TEXT,
-  origin_node TEXT,
-  worker_node TEXT,
-  task_type TEXT,
-  spec TEXT,
-  created_at INTEGER,
-  assigned_at INTEGER,
-  completed_at INTEGER,
-  exit_code INTEGER,
+  parent_task_id TEXT,
+  originator TEXT NOT NULL,
+  assignee TEXT,
+  payload TEXT NOT NULL,
+  capability TEXT,
+  state TEXT NOT NULL,
+  priority INTEGER DEFAULT 5,
+  chunk_seq INTEGER,
+  chunk_total INTEGER,
   result TEXT,
-  error TEXT
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deadline INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status);
-CREATE INDEX IF NOT EXISTS idx_task_queue_worker ON task_queue(worker_node);
-
+CREATE INDEX IF NOT EXISTS idx_tq_state ON task_queue(state);
+CREATE INDEX IF NOT EXISTS idx_tq_parent ON task_queue(parent_task_id);
 CREATE TABLE IF NOT EXISTS task_offers (
   offer_id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id TEXT NOT NULL,
@@ -265,7 +266,7 @@ offer_task() {
   offer_id="${task_id}#offer#${AGENT_ID}"
   offer_payload="$(jq -nc --arg task_id "$task_id" --arg agent_id "$AGENT_ID" --argjson capacity "$capacity" --argjson eta_ms "$eta" '{type:"OFFER", task_id:$task_id, agent_id:$agent_id, capacity:$capacity, eta_ms:$eta_ms}')"
   db "PRAGMA journal_mode=WAL; INSERT OR REPLACE INTO task_offers(task_id,agent_id,capacity,eta_ms,received_at) VALUES($(sql_quote "$task_id"),$(sql_quote "$AGENT_ID"),$capacity,$eta,$ts);"
-  db "PRAGMA journal_mode=WAL; INSERT OR REPLACE INTO task_queue(task_id,status,origin_node,worker_node,spec,task_type,created_at) VALUES('offer:$task_id','OFFERED','$AGENT_ID','$AGENT_ID','$offer_payload','$capability',$ts);"
+  db "PRAGMA journal_mode=WAL; INSERT OR REPLACE INTO task_queue(task_id,parent_task_id,originator,assignee,payload,capability,state,priority,created_at,updated_at) VALUES($(sql_quote "$offer_id"),$(sql_quote "$task_id"),$(sql_quote "$AGENT_ID"),$(sql_quote "$AGENT_ID"),$(sql_quote "$offer_payload"),$(sql_quote "$capability"),'OFFERED',5,$ts,$ts);"
   log INFO "offer task_id=$task_id capability=$capability capacity=$capacity eta_ms=$eta"
 }
 
@@ -283,7 +284,7 @@ watch_queries() {
     if local_can_handle "$capability" "$payload"; then
       offer_task "$task_id" "$capability" "$payload"
     fi
-  done < <(db -separator $'\t' "SELECT task_id, COALESCE(task_type,''), spec, origin_node FROM task_queue WHERE status='QUERY';")
+  done < <(db -separator $'\t' "SELECT task_id, COALESCE(capability,''), payload, originator FROM task_queue WHERE state='QUERY';")
 }
 
 extract_task_command() {
@@ -298,7 +299,7 @@ extract_task_command() {
 mark_result() {
   local task_id="$1" status="$2" result="$3" ts
   ts="$(now)"
-  db "PRAGMA journal_mode=WAL; UPDATE task_queue SET status='RESULT', result=$(sql_quote "$result"), completed_at=$ts WHERE task_id=$(sql_quote "$task_id") AND worker_node=$(sql_quote "$AGENT_ID");"
+  db "PRAGMA journal_mode=WAL; UPDATE task_queue SET state='RESULT', result=$(sql_quote "$result"), updated_at=$ts WHERE task_id=$(sql_quote "$task_id") AND assignee=$(sql_quote "$AGENT_ID");"
   log INFO "result task_id=$task_id status=$status"
 }
 
@@ -329,14 +330,14 @@ start_assigned_tasks() {
       continue
     fi
     ts="$(now)"
-    db "PRAGMA journal_mode=WAL; UPDATE task_queue SET status='RUNNING', assigned_at=$ts WHERE task_id=$(sql_quote "$task_id") AND worker_node=$(sql_quote "$AGENT_ID") AND status='ASSIGNED';"
-    if [[ "$(db "SELECT status FROM task_queue WHERE task_id=$(sql_quote "$task_id");")" != "RUNNING" ]]; then
+    db "PRAGMA journal_mode=WAL; UPDATE task_queue SET state='RUNNING', updated_at=$ts WHERE task_id=$(sql_quote "$task_id") AND assignee=$(sql_quote "$AGENT_ID") AND state='ASSIGNED';"
+    if [[ "$(db "SELECT state FROM task_queue WHERE task_id=$(sql_quote "$task_id");")" != "RUNNING" ]]; then
       continue
     fi
     mkdir -p "$TASK_LOG_DIR"
     setsid "$0" __worker "$task_id" "$payload" >/dev/null 2>&1 &
     log INFO "assigned task started task_id=$task_id worker_pid=$!"
-  done < <(db -separator $'\t' "SELECT task_id, COALESCE(task_type,''), spec FROM task_queue WHERE status='ASSIGNED' AND worker_node=$(sql_quote "$AGENT_ID") ORDER BY created_at ASC;")
+  done < <(db -separator $'\t' "SELECT task_id, COALESCE(capability,''), payload FROM task_queue WHERE state='ASSIGNED' AND assignee=$(sql_quote "$AGENT_ID") ORDER BY priority DESC, created_at ASC;")
 }
 
 handle_signal() {
