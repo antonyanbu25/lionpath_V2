@@ -448,11 +448,15 @@ git remote add skut264 https://github.com/skut264/lionpath.git
 git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
 
 # Feature workflow
-git checkout -b feature/my-change 2.1.2
+git checkout main
+git pull                       # always pull latest first
+git checkout -b feat/my-change # new work branches off main
 # ... develop, npm test ...
-git push -u skut264 feature/my-change
-# Open PR to 2.1.2 (or 2.1.1 / 2.1) on skut264/lionpath
+git push -u origin feat/my-change
+# Open a PR into main (the source of truth) on antonyanbu25/lionpath_V2
 ```
+
+Branch naming: use `feat/<scope>` for features, `fix/<scope>` for fixes, `docs/<scope>` for documentation, and `chore/<scope>` for chores. Never branch off `2.1`; it is the production deploy anchor. Hotfixes are the only exception: PR them into `2.1`, then cherry-pick to `main`. See [docs/BRANCHING.md](./docs/BRANCHING.md) for the full policy.
 
 **Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, `worker/secrets/*` (except README), API keys, `.cursor/` debug logs.
 
