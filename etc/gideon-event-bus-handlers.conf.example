@@ -1,0 +1,2 @@
+declare -gA EVENT_BUS_HANDLERS=()
+EVENT_BUS_HANDLERS[deploy_complete]="my_handler"
