@@ -4,15 +4,15 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score** → **janus.freshdesk.com**, Activities feed, account/deal/call fixes |
-| **Portal build** | `2.1.43` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
+| **This branch** | **`main`** — source of truth (newest stable) |
+| **Portal build** | `2.1.42` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
 | **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
 | **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
 | **Production deploy fork** | [github.com/antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2) (VPS pulls from here) |
-| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/2.1.2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2) |
+| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/main](https://github.com/antonyanbu25/lionpath_V2/tree/main) |
 
 ---
 
@@ -48,14 +48,14 @@ Both prep and post-call write to the **same domain model** — accounts, contact
 
 ---
 
-## Release highlights (2.1.2)
+## Release highlights
 
-Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2). Build stamps: portal **`2.1.43`**, worker / `VERSION` **`2.1.30`**.
+Build **`2.1.2`** is on **`main`** at [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/main). Build stamps: portal **`2.1.42`**, worker / `VERSION` **`2.1.30`**.
 
 ### What’s new at a glance
 
-| Area | What shipped in 2.1.2 |
-|------|------------------------|
+| Area | What shipped |
+|------|--------------|
 | **Dispute a score** | New end-to-end flow: SE disputes a Quality Coach score → Freshdesk ticket on **janus.freshdesk.com** (type **Dispute of score** + **Issue Type**) → manager email notify (soft-fail) |
 | **Accounts** | Contact/email account resolve, history enrichment, contact dedupe, list/view fixes |
 | **Deals** | Deal record polish, product-signal rollup from scored calls, deal/account linking fixes |
