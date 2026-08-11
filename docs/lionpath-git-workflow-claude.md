@@ -1,7 +1,6 @@
 ---
+name: lionpath-git-workflow
 description: Lionpath repo workflow — branch naming, pull/merge rules, and the 2.1 deploy-anchor rule. Follow for every change.
-globs:
-  - "**/*"
 ---
 
 # Lionpath — Git Workflow Rules (follow every time)
