@@ -1,0 +1,1 @@
+5 3 * * * root /root/.hermes/scripts/consolidation-daemon.sh run >> /var/log/gideon-consolidation.log 2>&1
