@@ -1,3 +1,9 @@
+---
+description: Lionpath repo workflow — branch naming, pull/merge rules, and the 2.1 deploy-anchor rule. Follow for every change.
+globs:
+  - "**/*"
+---
+
 # Lionpath — Git Workflow Rules (follow every time)
 
 This repo (`antonyanbu25/lionpath_V2`) was cleaned up. Old branches (`2.0.x`, `2.1.1`, `2.1.2`, `3.0`) are archived as `archive/*` tags. Only these branches are live:
