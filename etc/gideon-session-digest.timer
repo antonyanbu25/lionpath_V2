@@ -1,0 +1,8 @@
+[Unit]
+Description=Gideon Session Digest Consolidation every 60s
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+Persistent=true
+[Install]
+WantedBy=timers.target

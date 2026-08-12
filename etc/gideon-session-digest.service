@@ -1,0 +1,9 @@
+[Unit]
+Description=Gideon Session Digest Consolidation
+After=network.target
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -lc 'HERMES_HOME=/root/.hermes /root/.hermes/scripts/consolidation-daemon.sh digest'
+Environment=HERMES_HOME=/root/.hermes
+StandardOutput=journal
+StandardError=journal
