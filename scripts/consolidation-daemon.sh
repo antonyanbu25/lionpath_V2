@@ -16,7 +16,7 @@ log() {
 usage() {
   cat <<'USAGE'
 Usage:
-  consolidation-daemon.sh [run|once]
+  consolidation-daemon.sh [run|once|digest]
   consolidation-daemon.sh daemon [--interval <sec>]
   consolidation-daemon.sh --help
 
@@ -138,6 +138,92 @@ SQL
   printf 'ts=%s episodic_count=%s semantic_count=%s db_size_bytes=%s\n' "$ts" "$episodic_count" "$semantic_count" "$db_size_bytes"
 }
 
+event_table_exists() {
+  sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='gideon_events';"
+}
+
+query_recent_session_heartbeats() {
+  local has_created_at has_ts time_filter order_expr
+
+  [[ "$(event_table_exists)" == "1" ]] || return 0
+
+  has_created_at="$(table_has_column gideon_events created_at)"
+  has_ts="$(table_has_column gideon_events ts)"
+
+  if [[ "$has_created_at" != "0" ]]; then
+    time_filter="((typeof(created_at) = 'integer' AND created_at > strftime('%s','now','-30 minutes')) OR (typeof(created_at) != 'integer' AND created_at > datetime('now','-30 minutes')))"
+    order_expr="created_at"
+  elif [[ "$has_ts" != "0" ]]; then
+    time_filter="ts > strftime('%s','now','-30 minutes')"
+    order_expr="ts"
+  else
+    time_filter="1 = 1"
+    order_expr="rowid"
+  fi
+
+  sqlite3 -batch -noheader -separator $'\t' "$DB_PATH" \
+    "SELECT COALESCE(payload, ''), COALESCE($order_expr, 0) FROM gideon_events WHERE type='session_heartbeat' AND $time_filter ORDER BY $order_expr ASC;"
+}
+
+write_session_digest() {
+  local digest_path="${SESSION_DIGEST_PATH:-/tmp/session-digest.md}"
+  local rows body
+
+  check_prereqs
+  if ! command -v jq >/dev/null 2>&1; then
+    log ERROR "missing prerequisite for digest: jq"
+    exit 2
+  fi
+
+  rows="$(query_recent_session_heartbeats)"
+  if [[ -z "$rows" ]]; then
+    printf 'No active sessions\n' >"$digest_path"
+    printf '%s\n' "$digest_path"
+    return 0
+  fi
+
+  body="$(printf '%s\n' "$rows" | jq -r -R -s '
+    def clean($n):
+      tostring
+      | gsub("[\\r\\n\\t|]"; " ")
+      | gsub(" +"; " ")
+      | ltrimstr(" ")
+      | rtrimstr(" ")
+      | if length > $n then .[0:($n - 3)] + "..." else . end;
+    split("\n")
+    | map(select(length > 0) | split("\t"))
+    | map(select(length >= 1) | {payload: .[0], event_ts: ((.[1] // "0") | tonumber? // 0)})
+    | map((.payload | fromjson?) as $p | select($p != null) | ($p + {event_ts: .event_ts}))
+    | map(select((.session_id // "") != ""))
+    | sort_by(.session_id, (.ts // .event_ts // 0))
+    | group_by(.session_id)
+    | map(max_by(.ts // .event_ts // 0))
+    | sort_by(.ts // .event_ts // 0)
+    | reverse
+    | .[:5]
+    | if length == 0 then
+        "No active sessions"
+      else
+        "## Active Sessions\n" +
+        "| Agent | Goal | Status | Last Action | Blocked | Topics |\n" +
+        "|-------|------|--------|-------------|---------|--------|\n" +
+        (map(
+          "| " +
+          ((.agent_id // .session_id // "unknown") | clean(18)) + " | " +
+          ((.goal // "") | clean(30)) + " | " +
+          ((.status // "") | clean(12)) + " | " +
+          ((.last_action // "") | clean(30)) + " | " +
+          ((.blocked_on // "") | clean(24)) + " | " +
+          (((.topics // []) | if type == "array" then join(",") else tostring end) | clean(24)) +
+          " |"
+        ) | join("\n"))
+      end
+  ')"
+
+  printf '%s\n' "$body" >"$digest_path"
+  printf '%s\n' "$digest_path"
+}
+
 run_once() {
   check_prereqs
   init_stats_table
@@ -192,6 +278,9 @@ main() {
   case "$cmd" in
     run|once)
       run_once
+      ;;
+    digest)
+      write_session_digest
       ;;
     daemon)
       shift
