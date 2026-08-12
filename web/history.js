@@ -189,7 +189,7 @@ async function pushRemoteEntry(email, entry, opts = {}) {
 }
 
 /** @param {string} email @param {object[]} entries */
-async function pushRemoteEntries(email, entries) {
+export async function pushRemoteEntries(email, entries) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return false;
   const res = await fetch(`${WORKER_BASE_URL}/api/history`, {

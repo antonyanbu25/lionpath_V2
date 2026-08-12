@@ -1,0 +1,70 @@
+body.local-sync-lock {
+  overflow: hidden;
+}
+
+.local-sync-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.local-sync-overlay[hidden] {
+  display: none !important;
+}
+
+.local-sync-overlay-active .local-sync-backdrop {
+  opacity: 1;
+}
+
+.local-sync-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--dew-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.local-sync-panel {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  padding: 32px 28px 26px;
+  text-align: center;
+  border: 1px solid var(--dew-border);
+  border-radius: calc(var(--dew-radius-lg) + 4px);
+  background: var(--dew-surface);
+  box-shadow: var(--dew-shadow-popover);
+}
+
+.local-sync-eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.local-sync-title {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.local-sync-body,
+.local-sync-progress {
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.local-sync-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.local-sync-done {
+  margin: 16px 0 0;
+  color: var(--dew-success, #0a7);
+  font-weight: 600;
+}

@@ -63,10 +63,11 @@ import {
   type Task,
 } from "./tasks";
 import { fetchRecordingFromShareLink } from "./zoomShare";
-import { zoomAuthUrl, zoomConfigured } from "./zoom";
+import { zoomApiConfigured, zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
+import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import type { Env } from "./env";
 
@@ -83,7 +84,14 @@ export async function handleZoomStatus(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  return json({ configured: zoomConfigured(env) }, 200, cors);
+  return json(
+    {
+      configured: zoomApiConfigured(env),
+      userOAuthConfigured: zoomConfigured(env),
+    },
+    200,
+    cors,
+  );
 }
 
 export async function handleConfig(
@@ -114,7 +122,10 @@ export async function handleConfig(
             ? effectiveGeminiModel(env, env.POSTCALL_MODEL)
             : postcallModel,
       },
-      zoom: { configured: zoomConfigured(env) },
+      zoom: {
+        configured: zoomApiConfigured(env),
+        userOAuthConfigured: zoomConfigured(env),
+      },
       keys: {
         anthropic: !!env.ANTHROPIC_API_KEY,
         gemini: !!env.GEMINI_API_KEY || !!(env.GOOGLE_CLOUD_PROJECT || env.VERTEX_PROJECT),
@@ -1021,6 +1032,8 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
+  "/api/recovery/upload": { POST: handleRecoveryUpload },
+  "/api/recovery/status": { GET: handleRecoveryStatus },
   "/api/search/rag": { POST: handleSearchRag },
   "/api/org/structure": { GET: handleOrgStructureGet, PATCH: handleOrgStructurePatch },
 };
