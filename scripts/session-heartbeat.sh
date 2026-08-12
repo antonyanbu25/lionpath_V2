@@ -135,7 +135,7 @@ emit() {
   [[ -x "$HERMES_HOME/scripts/event-bus.sh" || -f "$HERMES_HOME/scripts/event-bus.sh" ]] \
     || die "event-bus script not found: $HERMES_HOME/scripts/event-bus.sh"
 
-  EVENT_BUS_DB="$DB_PATH" bash "$HERMES_HOME/scripts/event-bus.sh" publish gideon_events "$payload"
+  EVENT_BUS_DB="$DB_PATH" bash "$HERMES_HOME/scripts/event-bus.sh" publish session_heartbeat "$payload"
 }
 
 main() {

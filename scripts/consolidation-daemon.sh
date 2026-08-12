@@ -154,7 +154,7 @@ query_recent_session_heartbeats() {
     time_filter="((typeof(created_at) = 'integer' AND created_at > strftime('%s','now','-30 minutes')) OR (typeof(created_at) != 'integer' AND created_at > datetime('now','-30 minutes')))"
     order_expr="created_at"
   elif [[ "$has_ts" != "0" ]]; then
-    time_filter="ts > strftime('%s','now','-30 minutes')"
+    time_filter="ts > (CAST(strftime('%s','now') AS INTEGER) - 1800)"
     order_expr="ts"
   else
     time_filter="1 = 1"
