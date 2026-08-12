@@ -81,6 +81,7 @@ import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { firestoreAdminReady, getDb, getDoc } from "./data/firestore-admin";
 import { resolveRequestContext } from "./data/scope";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
+import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import { domainReadRoutes } from "./routes/domain-reads";
 import type { Env } from "./env";
@@ -1674,6 +1675,8 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/analyze-call": { POST: handleAnalyzeCall },
   "/api/tasks": { GET: handleTasksGet, POST: handleTasksPost },
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
+  "/api/recovery/upload": { POST: handleRecoveryUpload },
+  "/api/recovery/status": { GET: handleRecoveryStatus },
   "/api/deals": { POST: handleDealsCreate },
   "/api/domain-write": { POST: handleDomainWrite },
   "/api/tickets": { POST: handleTicketsPost },

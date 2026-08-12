@@ -47,6 +47,7 @@ import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
+import { setLocalSyncAuthGetter, autoSyncOnLogin } from "./recovery/local-recovery.js";
 import {
   syncTasksOnLogin,
   syncTasksAfterActivity,
@@ -2272,6 +2273,7 @@ function applySessionAuthGetters() {
     ? () => fb.auth.currentUser.getIdToken()
     : null;
   setHistoryAuthGetter(tokenFn);
+  setLocalSyncAuthGetter(tokenFn);
   setTasksAuthGetter(tokenFn);
   setSummariesAuthGetter(tokenFn);
   setCallPayloadAuthGetter(tokenFn);
@@ -2535,6 +2537,17 @@ async function showApp(session, opts = {}) {
         }
         applySessionAuthGetters();
         await loadPersistedHistory();
+        if (!sessionStillValid()) return;
+        void autoSyncOnLogin(currentSession, { force: true }).then((result) => {
+          if (!result || !sessionStillValid()) return;
+          refreshSidebarRecentWork();
+          if (
+            !dashboardRenderInFlight &&
+            (currentView === "dashboard" || currentView === "manager" || currentView === "coaching")
+          ) {
+            refreshDashboardFromStorage();
+          }
+        });
         if (!sessionStillValid()) return;
         refreshSidebarRecentWork();
         if (
