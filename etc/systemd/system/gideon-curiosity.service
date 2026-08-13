@@ -1,0 +1,21 @@
+[Unit]
+Description=Gideon Curiosity Daemon
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Restart=on-failure
+RestartSec=30
+ExecStart=/root/.hermes/scripts/curiosity-daemon.sh
+Environment=HERMES_HOME=/root/.hermes
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ReadWritePaths=/root/.hermes
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
