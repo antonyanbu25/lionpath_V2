@@ -198,8 +198,32 @@ def state_script_path(home):
 
 
 def record_skipped(home, trigger_type, topic, changes_proposed, relevance_score, reason):
-    script = state_script_path(home)
     brief_text = f"Skipped: {reason}"
+    record_brief(
+        home,
+        trigger_type,
+        topic,
+        brief_text,
+        changes_proposed,
+        relevance_score,
+        1,
+        reason,
+        "skipped",
+    )
+
+
+def record_brief(
+    home,
+    trigger_type,
+    topic,
+    brief_text,
+    changes_proposed,
+    relevance_score,
+    skipped,
+    skip_reason,
+    label,
+):
+    script = state_script_path(home)
     changes_json = json.dumps(changes_proposed, separators=(",", ":"), sort_keys=True)
     env = os.environ.copy()
     env["HERMES_HOME"] = home
@@ -213,8 +237,8 @@ def record_skipped(home, trigger_type, topic, changes_proposed, relevance_score,
             brief_text,
             changes_json,
             str(relevance_score),
-            "1",
-            reason,
+            str(skipped),
+            skip_reason,
         ],
         text=True,
         capture_output=True,
@@ -223,13 +247,17 @@ def record_skipped(home, trigger_type, topic, changes_proposed, relevance_score,
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
-        die(f"failed to record skipped curiosity brief: {detail}", 5)
+        print(f"failed to record {label} curiosity brief: {detail}", file=sys.stderr)
+
+
+def brief_file_content(topic, trigger_type, brief):
+    return f"# Curiosity Brief: {topic}\n\nTrigger: {trigger_type}\n\n{brief}\n"
 
 
 def write_brief(topic, trigger_type, brief):
     epoch = int(time.time())
     path = f"/tmp/curiosity.{epoch}.md"
-    content = f"# Curiosity Brief: {topic}\n\nTrigger: {trigger_type}\n\n{brief}\n"
+    content = brief_file_content(topic, trigger_type, brief)
     with open(path, "w", encoding="utf-8") as brief_file:
         brief_file.write(content)
     return path
@@ -284,6 +312,17 @@ def synthesize(topic, trigger_type, fetch_path):
         return
 
     brief_path = write_brief(topic, trigger_type, brief)
+    record_brief(
+        home,
+        trigger_type,
+        topic,
+        brief_file_content(topic, trigger_type, brief),
+        changes_proposed,
+        relevance_score,
+        0,
+        "",
+        "successful",
+    )
     print(
         json.dumps(
             {
