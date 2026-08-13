@@ -204,7 +204,8 @@ noop() {
 run_cycle() {
   local now day last_cycle daily_cycles daily_tokens
   local cycles_key tokens_key decision_json trigger_json
-  local fetch_path synth_result surface_result
+  local TOPIC TRIGGER_TYPE fetch_path synth_result surface_result
+  local synth_status brief_path synth_topic tokens_used changes_proposed_json
   local cycle_status=0
 
   now="$(date -u +%s)"
@@ -244,26 +245,52 @@ run_cycle() {
   export CURIOSITY_TRIGGER_JSON="$decision_json"
   log INFO "cycle started trigger=$decision_json"
 
-  if fetch_path="$(run_stage_capture FETCH "$FETCH" "$decision_json")"; then
+  TOPIC="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("topic", ""); print("" if value is None else value)' "$decision_json")"
+  TRIGGER_TYPE="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("trigger_type") or data.get("id") or data.get("type") or data.get("trigger") or ""; print(value)' "$decision_json")"
+
+  if [[ -z "$TOPIC" || -z "$TRIGGER_TYPE" ]]; then
+    log ERROR "invalid trigger decision topic=$TOPIC trigger_type=$TRIGGER_TYPE"
+    cycle_status=1
+  fi
+
+  if (( cycle_status == 0 )) && fetch_path="$(run_stage_capture FETCH "$FETCH" "$TOPIC")"; then
     export CURIOSITY_FETCH_PATH="$fetch_path"
   else
     cycle_status=1
   fi
 
-  if (( cycle_status == 0 )) && synth_result="$(run_stage_capture SYNTHESIZE python3 "$SYNTHESIZE" "$decision_json" "$fetch_path")"; then
+  if (( cycle_status == 0 )) && synth_result="$(run_stage_capture SYNTHESIZE python3 "$SYNTHESIZE" "$TOPIC" "$TRIGGER_TYPE" "$fetch_path")"; then
     export CURIOSITY_SYNTHESIZE_RESULT="$synth_result"
   else
     cycle_status=1
   fi
 
-  if (( cycle_status == 0 )) && surface_result="$(run_stage_capture SURFACE "$SURFACE" "$synth_result")"; then
-    export CURIOSITY_SURFACE_RESULT="$surface_result"
-  else
-    cycle_status=1
-  fi
-
   if (( cycle_status == 0 )); then
-    run_stage_capture FEEDBACK python3 "$FEEDBACK" "$synth_result" "$surface_result" >/dev/null || cycle_status=1
+    synth_status="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); print(data.get("status", ""))' "$synth_result")"
+    if [[ "$synth_status" == "skipped" ]]; then
+      log INFO "synthesize skipped trigger_type=$TRIGGER_TYPE topic=$TOPIC"
+    else
+      brief_path="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("brief_path", ""); print("" if value is None else value)' "$synth_result")"
+      synth_topic="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("topic", ""); print("" if value is None else value)' "$synth_result")"
+      tokens_used="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("tokens_used", 0); print(0 if value is None else value)' "$synth_result")"
+      changes_proposed_json="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); print(json.dumps(data.get("changes_proposed", {}), separators=(",", ":")))' "$synth_result")"
+      [[ -n "$synth_topic" ]] || synth_topic="$TOPIC"
+
+      if [[ -z "$brief_path" ]]; then
+        log ERROR "synthesize result missing brief_path topic=$TOPIC trigger_type=$TRIGGER_TYPE"
+        cycle_status=1
+      fi
+
+      if (( cycle_status == 0 )) && surface_result="$(run_stage_capture SURFACE "$SURFACE" "$brief_path" "$TOPIC" "$tokens_used")"; then
+        export CURIOSITY_SURFACE_RESULT="$surface_result"
+      else
+        cycle_status=1
+      fi
+
+      if (( cycle_status == 0 )); then
+        run_stage_capture FEEDBACK python3 "$FEEDBACK" "$brief_path" "$changes_proposed_json" >/dev/null || cycle_status=1
+      fi
+    fi
   fi
 
   state_set last_cycle_at "$now" || true
