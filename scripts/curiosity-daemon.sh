@@ -331,6 +331,16 @@ PY
           bash "$SCRIPT_DIR/curiosity-act.sh" --brief-id "$brief_id" || log INFO "ACT failed (non-fatal)"
           log INFO "VERIFY start brief_id=$brief_id"
           bash "$SCRIPT_DIR/curiosity-verify.sh" --brief-id "$brief_id" || log INFO "VERIFY failed (non-fatal)"
+
+          # Invoke goal-dispatcher after act layer completes so newly
+          # registered goals are dispatched immediately without waiting
+          # for the cron trigger.  Failures are non-fatal to the daemon.
+          if [[ -x "$HERMES_HOME/scripts/goal-dispatcher.sh" ]]; then
+            log INFO "DISPATCH start brief_id=$brief_id"
+            "$HERMES_HOME/scripts/goal-dispatcher.sh" || log INFO "DISPATCH failed (non-fatal)"
+          else
+            log INFO "DISPATCH skipped (goal-dispatcher.sh not installed)"
+          fi
         fi
       fi
     fi

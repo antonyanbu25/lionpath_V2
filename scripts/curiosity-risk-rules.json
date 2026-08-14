@@ -5,7 +5,9 @@
     "goal_register",
     "radio_broadcast",
     "event_emit",
-    "delegate_task"
+    "delegate_task",
+    "dispatch_now",
+    "subagent_dispatch"
   ],
   "human_required_primitives": [
     "skill_create",
