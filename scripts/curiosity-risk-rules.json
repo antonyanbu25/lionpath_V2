@@ -1,0 +1,34 @@
+{
+  "auto_act_primitives": [
+    "memory_write",
+    "skill_patch",
+    "goal_register",
+    "radio_broadcast",
+    "event_emit",
+    "delegate_task"
+  ],
+  "human_required_primitives": [
+    "skill_create",
+    "cron_create",
+    "systemd_create",
+    "table_alter",
+    "external_api",
+    "goal_activate"
+  ],
+  "block_primitives": [
+    "agent_code_mutate",
+    "self_code_mutate",
+    "data_delete",
+    "deploy_trigger",
+    "config_mutate",
+    "budget_mutate"
+  ],
+  "block_target_substrings": [
+    "/agents/",
+    "/config/",
+    "systemctl",
+    "git push",
+    "rm -rf",
+    "DELETE FROM"
+  ]
+}
