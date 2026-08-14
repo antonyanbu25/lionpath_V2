@@ -291,11 +291,12 @@ dispatch_goal() {
     local result_file="$RESULTS_DIR/goal-${goal_id}-attempt-${new_attempt}.out"
     rm -f "$result_file"  # clean any stale leftover
 
-    # ── Build prompt file ──
-    local prompt_file
-    prompt_file="$(mktemp "$RESULTS_DIR/prompt-${goal_id}-${new_attempt}.XXXXXX")"
-    cat > "$prompt_file" <<PROMPT
-You are a goal-worker for Gideon's curiosity mesh.
+    # ── Spawn subagent via hermes chat --cli ──
+    log_info "goal $goal_id: spawning subagent (timeout=${MAX_DISPATCH_TIMEOUT}s)"
+    local delegate_rc=0
+    export RESULT_FILE="$result_file"
+    export GOAL_ID="$goal_id"
+    hermes chat --cli -q "You are a goal-worker for Gideon's curiosity mesh.
 
 GOAL ID: ${goal_id}
 GOAL: ${goal_text}
@@ -315,24 +316,12 @@ If you encounter an unrecoverable error, write STATUS: FAILED with the error det
 Do NOT leave the result file empty.
 
 RESULT_FILE is: ${result_file}
-GOAL_ID is: ${goal_id}
-PROMPT
-
-    # ── Call hermes delegate_task ──
-    log_info "goal $goal_id: calling hermes delegate_task (timeout=${MAX_DISPATCH_TIMEOUT}s)"
-    local delegate_rc=0
-    hermes delegate_task \
-        --role "goal-worker" \
-        --prompt-file "$prompt_file" \
-        --timeout "$MAX_DISPATCH_TIMEOUT" \
-        --env "RESULT_FILE=${result_file}" \
-        --env "GOAL_ID=${goal_id}" \
+GOAL_ID is: ${goal_id}" \
         >> "$LOG_FILE" 2>&1 || delegate_rc=$?
 
     if (( delegate_rc != 0 )); then
-        log_error "goal $goal_id: hermes delegate_task failed (rc=$delegate_rc)"
+        log_error "goal $goal_id: subagent spawn failed (rc=$delegate_rc)"
     fi
-    rm -f "$prompt_file"
 
     # ── Poll for result_file ──
     log_info "goal $goal_id: polling for result file: $result_file"

@@ -62,7 +62,7 @@ if table_exists curiosity_topics; then
 
   if [[ -n "$stale_row" ]]; then
     IFS=$'\t' read -r stale_topic stale_priority <<< "$stale_row"
-    triggers+=("{\"id\":\"T_STALE_TOPIC\",\"topic\":\"$(json_escape "$stale_topic")\",\"priority\":$stale_priority}")
+    triggers+=("{\"id\":\"T_STALE_TOPIC\",\"topic\":\"$(json_escape "$stale_topic")\",\"priority\":$stale_priority,\"trigger_type\":\"T_STALE_TOPIC\"}")
   fi
 fi
 
@@ -71,7 +71,7 @@ if (( last_self_reflect == 0 || last_self_reflect < now_epoch - 3 * 86400 )); th
   if table_exists curiosity_topics; then
     self_priority="$(sqlite_read "SELECT COALESCE((SELECT priority FROM curiosity_topics WHERE topic='Gideon self-reflection & behavior patterns'), 9);" 2>/dev/null || printf '9')"
   fi
-  triggers+=("{\"id\":\"T_SELF_REFLECT\",\"topic\":\"Gideon self-reflection & behavior patterns\",\"priority\":$self_priority}")
+  triggers+=("{\"id\":\"T_SELF_REFLECT\",\"topic\":\"Gideon self-reflection & behavior patterns\",\"priority\":$self_priority,\"trigger_type\":\"T_SELF_REFLECT\"}")
   HERMES_STATE="$HERMES_HOME/scripts/curiosity-state.sh"
   "$HERMES_STATE" set-kv last_self_reflect "$now_epoch"
 fi
