@@ -213,20 +213,15 @@ run_cycle() {
   cycles_key="daily_cycles_$day"
   tokens_key="daily_tokens_$day"
 
-  trigger_json="$(run_stage_capture SENSE "$SENSE")" || {
-    noop "sense_failed"
-    return 0
-  }
-
-  decision_json="$(decide_trigger "$trigger_json")"
-  if [[ -z "$decision_json" ]]; then
-    noop "no_trigger"
-    return 0
-  fi
-
   last_cycle="$(state_int "$(state_get last_cycle_at)")"
   if (( last_cycle > 0 && now - last_cycle < THROTTLE_SEC )); then
     noop "throttle_active wait_sec=$((THROTTLE_SEC - (now - last_cycle)))"
+    return 0
+  fi
+
+  daily_tokens="$(state_int "$(state_get "$tokens_key")")"
+  if (( daily_tokens + TOKENS_PER_CYCLE > DAILY_TOKEN_BUDGET )); then
+    noop "daily_token_budget_exceeded tokens=$daily_tokens reserve=$TOKENS_PER_CYCLE budget=$DAILY_TOKEN_BUDGET"
     return 0
   fi
 
@@ -236,9 +231,14 @@ run_cycle() {
     return 0
   fi
 
-  daily_tokens="$(state_int "$(state_get "$tokens_key")")"
-  if (( daily_tokens + TOKENS_PER_CYCLE > DAILY_TOKEN_BUDGET )); then
-    noop "daily_token_budget_exceeded tokens=$daily_tokens reserve=$TOKENS_PER_CYCLE budget=$DAILY_TOKEN_BUDGET"
+  trigger_json="$(run_stage_capture SENSE "$SENSE")" || {
+    noop "sense_failed"
+    return 0
+  }
+
+  decision_json="$(decide_trigger "$trigger_json")"
+  if [[ -z "$decision_json" ]]; then
+    noop "no_trigger"
     return 0
   fi
 
@@ -290,6 +290,13 @@ run_cycle() {
       if (( cycle_status == 0 )); then
         run_stage_capture FEEDBACK python3 "$FEEDBACK" "$brief_path" "$changes_proposed_json" >/dev/null || cycle_status=1
       fi
+    fi
+  fi
+
+  if (( cycle_status == 0 )); then
+    "$STATE" update-topic "$TOPIC" || true
+    if [[ "$TRIGGER_TYPE" == "T_SELF_REFLECT" ]]; then
+      state_set last_self_reflect "$now" || true
     fi
   fi
 
