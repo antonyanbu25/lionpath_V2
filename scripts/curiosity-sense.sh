@@ -23,6 +23,22 @@ table_exists() {
   [[ "$(sqlite_read "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='$table';" 2>/dev/null || printf '0')" == "1" ]]
 }
 
+column_exists() {
+  local table="$1"
+  local column="$2"
+  sqlite_read -separator $'\t' "PRAGMA table_info($table);" 2>/dev/null \
+    | awk -F $'\t' -v column="$column" '$2 == column { found = 1 } END { exit !found }'
+}
+
+columns_exist() {
+  local table="$1"
+  shift
+  local column
+  for column in "$@"; do
+    column_exists "$table" "$column" || return 1
+  done
+}
+
 now_epoch="$(sqlite_read "SELECT CAST(strftime('%s','now') AS INTEGER);" 2>/dev/null || printf '0')"
 last_cycle_at=0
 triggers=()
@@ -58,6 +74,46 @@ if (( last_self_reflect == 0 || last_self_reflect < now_epoch - 3 * 86400 )); th
   triggers+=("{\"id\":\"T_SELF_REFLECT\",\"topic\":\"Gideon self-reflection & behavior patterns\",\"priority\":$self_priority}")
   HERMES_STATE="$HERMES_HOME/scripts/curiosity-state.sh"
   "$HERMES_STATE" set-kv last_self_reflect "$now_epoch"
+fi
+
+if table_exists gideon_goals && columns_exist gideon_goals id title status last_progress_at; then
+  while IFS=$'\t' read -r goal_id goal_title; do
+    [[ -n "$goal_id" ]] || continue
+    triggers+=("{\"id\":\"T_GOAL_DRIFT\",\"topic\":\"$(json_escape "$goal_title")\",\"priority\":10,\"trigger_type\":\"T_GOAL_DRIFT\",\"ref_id\":$goal_id}")
+  done < <(sqlite_read -separator $'\t' "
+    SELECT id, title
+    FROM gideon_goals
+    WHERE status='active'
+      AND last_progress_at < datetime('now','-3 days')
+    LIMIT 5;
+  " 2>/dev/null || true)
+fi
+
+if table_exists curiosity_actions && columns_exist curiosity_actions id classification status proposed_at; then
+  while IFS=$'\t' read -r action_id; do
+    [[ -n "$action_id" ]] || continue
+    triggers+=("{\"id\":\"T_CURIOSITY_FINDING\",\"topic\":\"curiosity: pending approval\",\"priority\":7,\"trigger_type\":\"T_CURIOSITY_FINDING\",\"ref_id\":$action_id}")
+  done < <(sqlite_read "
+    SELECT id
+    FROM curiosity_actions
+    WHERE classification='HUMAN_REQUIRED'
+      AND status='proposed'
+      AND proposed_at < datetime('now','-1 day')
+    LIMIT 5;
+  " 2>/dev/null || true)
+fi
+
+if table_exists curiosity_actions && columns_exist curiosity_actions id outcome verified_at; then
+  while IFS=$'\t' read -r action_id; do
+    [[ -n "$action_id" ]] || continue
+    triggers+=("{\"id\":\"T_ACTION_FAILED\",\"topic\":\"curiosity: action failed\",\"priority\":8,\"trigger_type\":\"T_ACTION_FAILED\",\"ref_id\":$action_id}")
+  done < <(sqlite_read "
+    SELECT id
+    FROM curiosity_actions
+    WHERE outcome='failure'
+      AND verified_at > datetime('now','-1 day')
+    LIMIT 5;
+  " 2>/dev/null || true)
 fi
 
 printf '{"triggers":['
