@@ -208,7 +208,11 @@ run_cycle() {
   local cycles_key tokens_key decision_json trigger_json
   local TOPIC TRIGGER_TYPE fetch_path synth_result surface_result
   local synth_status brief_path synth_topic tokens_used changes_proposed_json
+  local brief_id db_path
   local cycle_status=0
+
+  SCRIPT_DIR="${HERMES_HOME}/scripts"
+  db_path="${HERMES_DB:-$HERMES_HOME/state.db}"
 
   now="$(date -u +%s)"
   day="$(date -u +%Y%m%d)"
@@ -292,6 +296,35 @@ run_cycle() {
       if (( cycle_status == 0 )); then
         run_stage_capture FEEDBACK python3 "$FEEDBACK" "$brief_path" "$changes_proposed_json" >/dev/null || cycle_status=1
       fi
+
+      if (( cycle_status == 0 )); then
+        # --- CLASSIFY (new act layer) ---
+        brief_id=""
+        if [[ -n "$synth_result" ]]; then
+          brief_id="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("id",""))' "$synth_result" 2>/dev/null || echo "")"
+        fi
+        if [[ -z "$brief_id" && -f "$db_path" ]]; then
+          brief_id="$(python3 - "$db_path" <<'PY' 2>/dev/null || echo ""
+import sqlite3
+import sys
+
+conn = sqlite3.connect(sys.argv[1])
+row = conn.execute(
+    "SELECT id FROM curiosity_briefs ORDER BY created_at DESC, id DESC LIMIT 1"
+).fetchone()
+print("" if row is None else row[0])
+PY
+)"
+        fi
+        if [[ -n "$brief_id" ]]; then
+          log INFO "CLASSIFY start brief_id=$brief_id"
+          python3 "$SCRIPT_DIR/curiosity-classify.py" --brief-id "$brief_id" || log INFO "CLASSIFY failed (non-fatal)"
+          log INFO "ACT start brief_id=$brief_id"
+          bash "$SCRIPT_DIR/curiosity-act.sh" --brief-id "$brief_id" || log INFO "ACT failed (non-fatal)"
+          log INFO "VERIFY start brief_id=$brief_id"
+          bash "$SCRIPT_DIR/curiosity-verify.sh" --brief-id "$brief_id" || log INFO "VERIFY failed (non-fatal)"
+        fi
+      fi
     fi
   fi
 
@@ -305,6 +338,9 @@ run_cycle() {
   state_set last_cycle_at "$now" || true
   state_set "$cycles_key" "$((daily_cycles + 1))" || true
   state_set "$tokens_key" "$((daily_tokens + TOKENS_PER_CYCLE))" || true
+  if (( cycle_status == 0 )) && [[ -n "${brief_id:-}" ]]; then
+    state_set last_completed_brief_id "$brief_id" || true
+  fi
 
   if (( cycle_status == 0 )); then
     log INFO "cycle completed tokens_reserved=$TOKENS_PER_CYCLE"
