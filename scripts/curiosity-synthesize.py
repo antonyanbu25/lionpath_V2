@@ -148,6 +148,127 @@ def strip_code_fence(text):
     return stripped
 
 
+SUGGESTION_KEYS = {
+    "audit_transition_trigger", "escalate_priority", "observation",
+    "recommendation", "stop_cycling", "action", "rationale", "risk",
+}
+MEMORY_KEYS = {
+    "audit_transition_trigger", "pattern_log", "token_trend_flag",
+    "monitoring_target",
+}
+
+
+def _human_required():
+    return {
+        "primitive": "HUMAN_REQUIRED", "target": "", "payload": {},
+        "tags": ["AGENT_REQUIRES_APPROVAL"], "creates_new": False, "destructive": False,
+    }
+
+
+def _memory_write(key, value):
+    return {
+        "primitive": "memory_write", "target": "memory",
+        "payload": {"key": key, "value": value},
+        "tags": [], "creates_new": True, "destructive": False,
+    }
+
+
+def _goal_register(title, description, priority="medium"):
+    return {
+        "primitive": "goal_register", "target": "gideon_goals",
+        "payload": {"title": title, "description": description, "priority": priority},
+        "tags": [], "creates_new": True, "destructive": False,
+    }
+
+
+def _event_emit(topic, detail):
+    return {
+        "primitive": "event_emit", "target": "gideon_events",
+        "payload": {"topic": topic, "payload": {"detail": detail}},
+        "tags": [], "creates_new": False, "destructive": False,
+    }
+
+
+def normalize_changes_proposed(changes):
+    """Translate GLM's changes_proposed into classify-compatible structured primitives."""
+    if changes is None:
+        return []
+    if isinstance(changes, str):
+        try:
+            changes = json.loads(changes)
+        except json.JSONDecodeError:
+            return [_human_required()]
+    if not isinstance(changes, (dict, list)):
+        return [_human_required()]
+
+    # Already structured list — pass through
+    if isinstance(changes, list):
+        result = []
+        for item in changes:
+            if isinstance(item, dict) and "primitive" in item:
+                result.append({
+                    "primitive": item.get("primitive", "HUMAN_REQUIRED"),
+                    "target": item.get("target", ""),
+                    "payload": item.get("payload", {}),
+                    "tags": item.get("tags", []),
+                    "creates_new": bool(item.get("creates_new", False)),
+                    "destructive": bool(item.get("destructive", False)),
+                })
+            elif isinstance(item, dict):
+                for k, v in item.items():
+                    result.extend(_translate_legacy(k, v))
+            else:
+                result.append(_human_required())
+        return result if result else [_human_required()]
+
+    # Dict — translate key-value pairs or structured object
+    if "primitive" in changes:
+        return [{
+            "primitive": changes.get("primitive", "HUMAN_REQUIRED"),
+            "target": changes.get("target", ""),
+            "payload": changes.get("payload", {}),
+            "tags": changes.get("tags", []),
+            "creates_new": bool(changes.get("creates_new", False)),
+            "destructive": bool(changes.get("destructive", False)),
+        }]
+    if isinstance(changes.get("items"), list):
+        return normalize_changes_proposed(changes["items"])
+
+    result = []
+    for k, v in changes.items():
+        result.extend(_translate_legacy(str(k), v))
+    return result if result else [_human_required()]
+
+
+def _translate_legacy(key, value):
+    """Translate a legacy free-text change into one or more structured primitives."""
+    # gideon_goals must be checked before MEMORY_KEYS (it's in both)
+    if key == "gideon_goals":
+        if isinstance(value, str):
+            try:
+                goals = json.loads(value)
+            except json.JSONDecodeError:
+                goals = [{"goal": value, "priority": "medium", "status": "active"}]
+        elif isinstance(value, list):
+            goals = value
+        else:
+            goals = [{"goal": str(value), "priority": "medium", "status": "active"}]
+        changes_ = []
+        for g in goals:
+            if isinstance(g, dict):
+                changes_.append(_goal_register(g.get("goal", ""), g.get("description", ""), g.get("priority", "medium")))
+            else:
+                changes_.append(_goal_register(str(g), "", "medium"))
+        return changes_
+    if key in SUGGESTION_KEYS:
+        return [_event_emit("curiosity.brief.suggestion", {key: str(value)})]
+    if key in MEMORY_KEYS:
+        return [_memory_write(key, str(value))]
+    if isinstance(value, str) and value.strip():
+        return [_event_emit("curiosity.brief.suggestion", {key: value})]
+    return [_human_required()]
+
+
 def parse_model_content(content):
     text = strip_code_fence(content)
     try:
@@ -172,17 +293,7 @@ def parse_model_content(content):
         die("GLM JSON missing integer relevance_score", 4)
     score = max(0, min(100, score))
 
-    changes = data.get("changes_proposed")
-    if changes is None:
-        changes = {}
-    if isinstance(changes, str):
-        try:
-            changes = json.loads(changes)
-        except json.JSONDecodeError:
-            changes = {"raw": changes}
-    if not isinstance(changes, dict):
-        changes = {"items": changes}
-
+    changes = normalize_changes_proposed(data.get("changes_proposed"))
     return brief.strip(), score, changes
 
 
