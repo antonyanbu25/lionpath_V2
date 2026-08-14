@@ -56,6 +56,8 @@ if (( last_self_reflect == 0 || last_self_reflect < now_epoch - 3 * 86400 )); th
     self_priority="$(sqlite_read "SELECT COALESCE((SELECT priority FROM curiosity_topics WHERE topic='Gideon self-reflection & behavior patterns'), 9);" 2>/dev/null || printf '9')"
   fi
   triggers+=("{\"id\":\"T_SELF_REFLECT\",\"topic\":\"Gideon self-reflection & behavior patterns\",\"priority\":$self_priority}")
+  HERMES_STATE="$HERMES_HOME/scripts/curiosity-state.sh"
+  "$HERMES_STATE" set-kv last_self_reflect "$now_epoch"
 fi
 
 printf '{"triggers":['
