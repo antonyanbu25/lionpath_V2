@@ -17,8 +17,8 @@ DB="${HERMES_DB:-$HERMES_HOME/state.db}"
 CRON_FILE="/etc/cron.d/gideon-dispatch"
 CRON_LINE='*/10 * * * * root /root/.hermes/scripts/goal-dispatcher.sh >> /var/log/goal-dispatcher.log 2>&1'
 
-DISPATCHER_SRC="$REPO_ROOT/scripts/goal-dispatcher.sh"
-WORKER_SRC="$REPO_ROOT/scripts/goal-dispatcher-worker.sh"
+DISPATCHER_SRC="$REPO_ROOT/goal-dispatcher.sh"
+WORKER_SRC="$REPO_ROOT/goal-dispatcher-worker.sh"
 MIGRATION_SCRIPT="$REPO_ROOT/scripts/curiosity-migrations/003_dispatch_state.sh"
 MIGRATIONS_RUNNER="$REPO_ROOT/scripts/curiosity-migrations/run.sh"
 

@@ -307,7 +307,7 @@ test_retry_logic() {
 
     local attempts_after
     attempts_after="$(run_sql "SELECT attempts FROM goal_dispatch_state WHERE goal_id=$gid;")"
-    assert_eq "attempts after ${(max_attempts-1)} failures" "$attempts_after" "$((max_attempts - 1))"
+    assert_eq "attempts after $((max_attempts - 1)) failures" "$attempts_after" "$((max_attempts - 1))"
 
     local status_mid
     status_mid="$(run_sql "SELECT last_status FROM goal_dispatch_state WHERE goal_id=$gid;")"
