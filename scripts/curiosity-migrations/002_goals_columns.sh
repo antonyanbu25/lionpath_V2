@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Owner: Agent 1
+set -euo pipefail
+
+HERMES_HOME="${HERMES_HOME:-/root/.hermes}"
+DB="${HERMES_DB:-${DB:-$HERMES_HOME/state.db}}"
+
+die() {
+  printf '002_goals_columns.sh: %s\n' "$*" >&2
+  exit 1
+}
+
+sql_quote() {
+  local value="${1-}"
+  value="${value//\'/\'\'}"
+  printf "'%s'" "$value"
+}
+
+require_sqlite3() {
+  command -v sqlite3 >/dev/null 2>&1 || die "sqlite3 is required"
+}
+
+ensure_db() {
+  mkdir -p "$(dirname "$DB")"
+  [[ -f "$DB" ]] || sqlite3 "$DB" 'PRAGMA user_version;' >/dev/null
+}
+
+table_exists() {
+  local table="$1"
+  local count
+  count="$(sqlite3 -noheader "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=$(sql_quote "$table");")"
+  [[ "$count" == "1" ]]
+}
+
+column_exists() {
+  local table="$1"
+  local column="$2"
+  local count
+  count="$(sqlite3 -noheader "$DB" "SELECT COUNT(*) FROM pragma_table_info($(sql_quote "$table")) WHERE name=$(sql_quote "$column");")"
+  [[ "$count" == "1" ]]
+}
+
+add_column_if_missing() {
+  local table="$1"
+  local column="$2"
+  local definition="$3"
+
+  if column_exists "$table" "$column"; then
+    return 0
+  fi
+
+  sqlite3 "$DB" "ALTER TABLE $table ADD COLUMN $column $definition;"
+}
+
+main() {
+  require_sqlite3
+  ensure_db
+
+  if ! table_exists "gideon_goals"; then
+    die "gideon_goals table does not exist"
+  fi
+
+  add_column_if_missing "gideon_goals" "source" "TEXT DEFAULT 'manual'"
+  add_column_if_missing "gideon_goals" "status" "TEXT DEFAULT 'active'"
+  add_column_if_missing "gideon_goals" "last_progress_at" "TEXT"
+  add_column_if_missing "gideon_goals" "progress_log" "TEXT DEFAULT '[]'"
+}
+
+main "$@"

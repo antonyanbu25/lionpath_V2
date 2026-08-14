@@ -1,0 +1,18 @@
+-- Owner: Agent 1
+-- gideon_goals ACT-layer columns.
+--
+-- SQLite cannot conditionally ALTER TABLE from static SQL on all deployed
+-- versions. The companion 002_goals_columns.sh performs:
+--
+--   PRAGMA table_info(gideon_goals)
+--
+-- before adding each missing column:
+--
+--   source TEXT DEFAULT 'manual'
+--   status TEXT DEFAULT 'active'
+--   last_progress_at TEXT
+--   progress_log TEXT DEFAULT '[]'
+--
+-- Keep this file as the ordered migration manifest; run.sh executes the
+-- companion shell wrapper for this migration ID.
+PRAGMA table_info(gideon_goals);
