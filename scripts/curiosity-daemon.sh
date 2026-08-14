@@ -161,19 +161,21 @@ def trigger_type(item):
         return None
     for key in ("trigger_type", "type", "trigger"):
         value = item.get(key)
-        if value in valid_types:
+        if isinstance(value, str) and value in valid_types:
             return value
     for value in item.values():
-        if value in valid_types:
+        if isinstance(value, str) and value in valid_types:
             return value
     return None
 
 def is_ready(item):
     if not isinstance(item, dict):
         return False
-    if item.get("should_run") is False or item.get("active") is False or item.get("ready") is False:
-        return False
-    if item.get("skip") is True:
+    for key in ("should_run", "active", "ready"):
+        v = item.get(key)
+        if isinstance(v, bool) and not v:
+            return False
+    if isinstance(item.get("skip"), bool) and item.get("skip"):
         return False
     return trigger_type(item) is not None
 
@@ -185,7 +187,7 @@ elif isinstance(data, dict):
         value = data.get(key)
         if isinstance(value, list):
             items.extend(value)
-    if not items:
+    if not items and trigger_type(data) is not None:
         items = [data]
 
 for item in items:
