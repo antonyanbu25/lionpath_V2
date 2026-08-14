@@ -7,6 +7,7 @@ SCRIPT_NAME="$(basename "$0")"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 CURIOSITY_HOME="$HERMES_HOME/curiosity"
 LOG_FILE="$CURIOSITY_HOME/daemon.log"
+LOCK_FILE="${CURIOSITY_LOCK_FILE:-/tmp/curiosity-daemon.lock}"
 
 THROTTLE_SEC="${CURIOSITY_THROTTLE_SEC:-1800}"
 MAX_DAILY="${CURIOSITY_MAX_DAILY:-12}"
@@ -211,6 +212,13 @@ run_cycle() {
   local brief_id db_path
   local cycle_status=0
 
+  # Lock interlock — prevent overlapping cycles
+  if [[ -f "$LOCK_FILE" ]]; then
+    log INFO "cycle skipped: lock file exists ($(cat "$LOCK_FILE"))"
+    return 1
+  fi
+  echo "$$" > "$LOCK_FILE"
+
   SCRIPT_DIR="${HERMES_HOME}/scripts"
   db_path="${HERMES_DB:-$HERMES_HOME/state.db}"
 
@@ -347,6 +355,8 @@ PY
   else
     log ERROR "cycle completed with errors tokens_reserved=$TOKENS_PER_CYCLE"
   fi
+
+  rm -f "$LOCK_FILE"
 }
 
 main() {

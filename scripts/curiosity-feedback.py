@@ -11,7 +11,7 @@ import urllib.request
 
 API_URL = "https://api.neuralwatt.com/v1/chat/completions"
 MODEL = "glm-5.2"
-MAX_TOKENS = 1200
+MAX_TOKENS = 2400
 TEMPERATURE = 0.2
 API_KEY_NAME = "HERMES_CUSTOM_API_NEURALWATT_COM_API_KEY"
 SYSTEM_PROMPT = (
