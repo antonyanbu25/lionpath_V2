@@ -82,7 +82,16 @@ def build_messages(topic, trigger_type, fetch_text):
             "required_keys": {
                 "brief_markdown": "string, markdown brief of 300 words or fewer",
                 "relevance_score": "integer 0-100",
-                "changes_proposed": "json object",
+                "changes_proposed": [
+                    {
+                        "primitive": "string",
+                        "target": "string",
+                        "payload": "object",
+                        "tags": "array of strings",
+                        "creates_new": "boolean",
+                        "destructive": "boolean",
+                    }
+                ],
             },
         },
     }
@@ -148,18 +157,168 @@ def strip_code_fence(text):
     return stripped
 
 
+SUGGESTION_KEYS = {
+    "audit_transition_trigger",
+    "escalate_priority",
+    "observation",
+    "recommendation",
+    "stop_cycling",
+}
+
+MEMORY_KEYS = {
+    "audit_transition_trigger",
+    "pattern_log",
+}
+
+
+def extract_json_payload(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    candidates = [
+        re.search(r"\{.*\}", text, flags=re.DOTALL),
+        re.search(r"\[.*\]", text, flags=re.DOTALL),
+    ]
+    for match in candidates:
+        if not match:
+            continue
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+    die("GLM content did not contain valid JSON", 4)
+
+
+def structured_change(primitive, target, payload=None, tags=None, creates_new=False, destructive=False):
+    return {
+        "primitive": str(primitive or ""),
+        "target": str(target or ""),
+        "payload": payload if isinstance(payload, dict) else {},
+        "tags": [tag for tag in (tags or []) if isinstance(tag, str)],
+        "creates_new": bool(creates_new),
+        "destructive": bool(destructive),
+    }
+
+
+def looks_like_goal_register(key, value):
+    text = f"{key} {value}".lower()
+    return key == "register_goal" or bool(
+        re.search(r"\bregister(?:ing)?\s+(?:a\s+)?goal\b|\bgoal\s+register", text)
+    )
+
+
+def looks_like_memory_key(key):
+    lowered = key.lower()
+    return (
+        lowered in MEMORY_KEYS
+        or lowered.endswith("_log")
+        or lowered.startswith("pattern_")
+        or "memory" in lowered
+    )
+
+
+def suggestion_change(key, value):
+    return structured_change(
+        "event_emit",
+        "gideon_events",
+        {"topic": "curiosity.brief.suggestion", "payload": {key: value}},
+    )
+
+
+def memory_change(key, value):
+    return structured_change(
+        "memory_write",
+        "memory",
+        {"key": key, "value": value},
+    )
+
+
+def goal_change(key, value):
+    if isinstance(value, dict):
+        payload = dict(value)
+        if "title" not in payload:
+            payload["title"] = payload.get("goal") or key
+        if "description" not in payload:
+            payload["description"] = payload.get("details") or payload.get("rationale") or ""
+    else:
+        payload = {"title": str(value), "description": ""}
+    return structured_change("goal_register", "gideon_goals", payload, creates_new=True)
+
+
+def human_required_change():
+    return structured_change(
+        "HUMAN_REQUIRED",
+        "",
+        {},
+        tags=["AGENT_REQUIRES_APPROVAL"],
+    )
+
+
+def normalize_structured_change(change):
+    return structured_change(
+        change.get("primitive"),
+        change.get("target"),
+        change.get("payload") if isinstance(change.get("payload"), dict) else {},
+        change.get("tags") if isinstance(change.get("tags"), list) else [],
+        change.get("creates_new") is True,
+        change.get("destructive") is True,
+    )
+
+
+def translate_legacy_change(key, value):
+    changes = []
+    if looks_like_goal_register(key, value):
+        changes.append(goal_change(key, value))
+    if looks_like_memory_key(key):
+        changes.append(memory_change(key, value))
+    if key in SUGGESTION_KEYS:
+        changes.append(suggestion_change(key, value))
+    if not changes:
+        changes.append(human_required_change())
+    return changes
+
+
+def normalize_changes_proposed(changes):
+    if changes is None:
+        return []
+    if isinstance(changes, str):
+        stripped = changes.strip()
+        if not stripped:
+            return []
+        try:
+            changes = json.loads(stripped)
+        except json.JSONDecodeError:
+            return [human_required_change()]
+    if isinstance(changes, list):
+        normalized = []
+        for item in changes:
+            if isinstance(item, dict) and "primitive" in item:
+                normalized.append(normalize_structured_change(item))
+            elif isinstance(item, dict):
+                for key, value in item.items():
+                    normalized.extend(translate_legacy_change(str(key), value))
+            else:
+                normalized.append(human_required_change())
+        return normalized
+    if isinstance(changes, dict):
+        if "primitive" in changes:
+            return [normalize_structured_change(changes)]
+        if isinstance(changes.get("items"), list):
+            return normalize_changes_proposed(changes["items"])
+        normalized = []
+        for key, value in changes.items():
+            normalized.extend(translate_legacy_change(str(key), value))
+        return normalized
+    return [human_required_change()]
+
+
 def parse_model_content(content):
     text = strip_code_fence(content)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            die("GLM content did not contain JSON", 4)
-        try:
-            data = json.loads(match.group(0))
-        except json.JSONDecodeError as exc:
-            die(f"GLM JSON payload was invalid: {exc}", 4)
+    data = extract_json_payload(text)
+    if not isinstance(data, dict):
+        die("GLM JSON payload must be an object", 4)
 
     brief = data.get("brief_markdown") or data.get("brief") or data.get("brief_text")
     if not isinstance(brief, str) or not brief.strip():
@@ -172,16 +331,7 @@ def parse_model_content(content):
         die("GLM JSON missing integer relevance_score", 4)
     score = max(0, min(100, score))
 
-    changes = data.get("changes_proposed")
-    if changes is None:
-        changes = {}
-    if isinstance(changes, str):
-        try:
-            changes = json.loads(changes)
-        except json.JSONDecodeError:
-            changes = {"raw": changes}
-    if not isinstance(changes, dict):
-        changes = {"items": changes}
+    changes = normalize_changes_proposed(data.get("changes_proposed"))
 
     return brief.strip(), score, changes
 
