@@ -480,3 +480,122 @@ PY
 
   _done_action "$db" "$aid" "$outcome" "delegated task $task_id"
 }
+
+# ---------------------------------------------------------------------------
+# Goal-dispatcher primitives (dispatch_now, subagent_dispatch)
+# ---------------------------------------------------------------------------
+
+# Extract the goal_id from a payload JSON.  Falls back to reading it from
+# the action's own payload (which may have been enriched by goal_register).
+_dispatch_goal_id() {
+  local db="$1" aid="$2" payload="$3"
+  local goal_id
+
+  goal_id="$(json_get "$payload" goal_id)"
+  if [[ -z "$goal_id" ]]; then
+    goal_id="$(json_get "$payload" goal)"
+  fi
+  if [[ -z "$goal_id" ]] && [[ -n "$aid" ]]; then
+    # Try reading goal_id from the action payload (goal_register stashes it).
+    local stored
+    stored="$(sqlite3 -noheader "$db" \
+      "SELECT COALESCE(payload,'') FROM curiosity_actions WHERE id=$aid;" 2>/dev/null || true)"
+    if [[ -n "$stored" ]]; then
+      goal_id="$(json_get "$stored" goal_id)"
+      [[ -z "$goal_id" ]] && goal_id="$(json_get "$stored" goal)"
+    fi
+  fi
+  printf '%s' "$goal_id"
+}
+
+# dispatch_now: immediately invoke goal-dispatcher.sh for a specific goal.
+act_dispatch_now() {
+  local db="$1" aid="$2" payload="$3"
+  local goal_id
+
+  goal_id="$(_dispatch_goal_id "$db" "$aid" "$payload")"
+
+  if [[ -z "$goal_id" ]]; then
+    _fail_action "$db" "$aid" "missing_goal_id" "dispatch_now requires payload.goal_id"
+    return 0
+  fi
+
+  # Record a dispatch row (if the table exists from migration 003).
+  sqlite3 "$db" \
+    "INSERT INTO gideon_goal_dispatches(goal_id, agent, status, started_at)
+     VALUES($goal_id, 'curiosity-act', 'pending', datetime('now'));" \
+    >/dev/null 2>/dev/null || true
+
+  # Invoke do_dispatch_now (defined in curiosity-act.sh's scope).
+  # We call goal-dispatcher directly here so the function is self-contained.
+  local dispatcher="${GOAL_DISPATCHER:-$HERMES_HOME/scripts/goal-dispatcher.sh}"
+  local outcome="dispatched"
+  local detail="dispatch_now goal_id=$goal_id"
+
+  if [[ -x "$dispatcher" ]]; then
+    "$dispatcher" --goal-id "$goal_id" || outcome="dispatch_failed"
+  else
+    outcome="dispatcher_missing"
+    detail="$detail (goal-dispatcher not found at $dispatcher)"
+  fi
+
+  sqlite3 "$db" \
+    "UPDATE gideon_goal_dispatches
+     SET status=$(sql_quote "$outcome"), completed_at=datetime('now')
+     WHERE goal_id=$goal_id AND agent='curiosity-act'
+     ORDER BY id DESC LIMIT 1;" \
+    >/dev/null 2>/dev/null || true
+
+  if [[ "$outcome" == "dispatched" ]]; then
+    _done_action "$db" "$aid" "$outcome" "$detail"
+  else
+    _fail_action "$db" "$aid" "$outcome" "$detail"
+  fi
+}
+
+# subagent_dispatch: dispatch a goal to a subagent.
+# This is an alias of dispatch_now with goal routing — it immediately
+# invokes goal-dispatcher.sh for the specified goal_id.
+act_subagent_dispatch() {
+  local db="$1" aid="$2" payload="$3"
+  local goal_id agent_name
+
+  goal_id="$(_dispatch_goal_id "$db" "$aid" "$payload")"
+  agent_name="$(json_get "$payload" agent)"
+  [[ -n "$agent_name" ]] || agent_name="subagent"
+
+  if [[ -z "$goal_id" ]]; then
+    _fail_action "$db" "$aid" "missing_goal_id" "subagent_dispatch requires payload.goal_id"
+    return 0
+  fi
+
+  # Record a dispatch row with the agent name.
+  sqlite3 "$db" \
+    "INSERT INTO gideon_goal_dispatches(goal_id, agent, status, started_at)
+     VALUES($goal_id, $(sql_quote "$agent_name"), 'pending', datetime('now'));" \
+    >/dev/null 2>/dev/null || true
+
+  local dispatcher="${GOAL_DISPATCHER:-$HERMES_HOME/scripts/goal-dispatcher.sh}"
+  local outcome="dispatched"
+  local detail="subagent_dispatch goal_id=$goal_id agent=$agent_name"
+
+  if [[ -x "$dispatcher" ]]; then
+    "$dispatcher" --goal-id "$goal_id" || outcome="dispatch_failed"
+  else
+    outcome="dispatcher_missing"
+    detail="$detail (goal-dispatcher not found at $dispatcher)"
+  fi
+
+  sqlite3 "$db" \
+    "UPDATE gideon_goal_dispatches
+     SET status=$(sql_quote "$outcome"), completed_at=datetime('now')
+     WHERE goal_id=$goal_id AND agent=$(sql_quote "$agent_name")
+     ORDER BY id DESC LIMIT 1;" \
+    >/dev/null 2>/dev/null || true
+
+  if [[ "$outcome" == "dispatched" ]]; then
+    _done_action "$db" "$aid" "$outcome" "$detail"
+  else
+    _fail_action "$db" "$aid" "$outcome" "$detail"
+  fi
+}

@@ -42,6 +42,29 @@ mark_failed() {
   log_action "$aid" "failed" "$detail" || true
 }
 
+# --- Goal-dispatcher integration ---------------------------------------------
+
+# Path to the installed goal-dispatcher.  May not exist on all systems yet;
+# callers guard with [[ -x ]] before invoking.
+GOAL_DISPATCHER="${GOAL_DISPATCHER:-$HERMES_HOME/scripts/goal-dispatcher.sh}"
+
+# Dispatch a single goal immediately (synchronous, non-fatal on failure).
+# Called by the dispatch_now / subagent_dispatch primitives.
+do_dispatch_now() {
+  local goal_id="${1:-}"
+  if [[ -z "$goal_id" ]]; then
+    log_action "${ACTION_ID:-0}" "dispatch_skipped" "do_dispatch_now called with empty goal_id" || true
+    return 0
+  fi
+  if [[ ! -x "$GOAL_DISPATCHER" ]]; then
+    log_action "${ACTION_ID:-0}" "dispatch_skipped" "goal-dispatcher not found at $GOAL_DISPATCHER" || true
+    return 0
+  fi
+  log_action "${ACTION_ID:-0}" "dispatch_now" "dispatching goal $goal_id immediately" || true
+  # Synchronous dispatch; failures are non-fatal to the act loop.
+  "$GOAL_DISPATCHER" --goal-id "$goal_id" || true
+}
+
 BRIEF_ID=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -116,6 +139,14 @@ for line in "${ACTIONS[@]}"; do
       ;;
     delegate_task)
       act_delegate_task "$DB" "$ACTION_ID" "$PAYLOAD" || mark_failed "$ACTION_ID" "primitive_error" "delegate_task returned non-zero"
+      ;;
+    # Immediately dispatch a registered goal to a subagent.
+    dispatch_now)
+      act_dispatch_now "$DB" "$ACTION_ID" "$PAYLOAD" || mark_failed "$ACTION_ID" "primitive_error" "dispatch_now returned non-zero"
+      ;;
+    # Dispatch a goal to a subagent (alias of dispatch_now with goal routing).
+    subagent_dispatch)
+      act_subagent_dispatch "$DB" "$ACTION_ID" "$PAYLOAD" || mark_failed "$ACTION_ID" "primitive_error" "subagent_dispatch returned non-zero"
       ;;
     *)
       mark_failed "$ACTION_ID" "unknown_primitive" "unknown primitive: $PRIMITIVE"
