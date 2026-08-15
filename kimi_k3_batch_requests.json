@@ -5,8 +5,7 @@
       "model": "claude-fable-5",
       "max_tokens": 32000,
       "thinking": {
-        "type": "enabled",
-        "budget_tokens": 8000
+        "type": "adaptive"
       },
       "messages": [
         {
@@ -22,8 +21,7 @@
       "model": "claude-fable-5",
       "max_tokens": 32000,
       "thinking": {
-        "type": "enabled",
-        "budget_tokens": 8000
+        "type": "adaptive"
       },
       "messages": [
         {
@@ -39,8 +37,7 @@
       "model": "claude-fable-5",
       "max_tokens": 32000,
       "thinking": {
-        "type": "enabled",
-        "budget_tokens": 8000
+        "type": "adaptive"
       },
       "messages": [
         {
@@ -56,8 +53,7 @@
       "model": "claude-fable-5",
       "max_tokens": 32000,
       "thinking": {
-        "type": "enabled",
-        "budget_tokens": 8000
+        "type": "adaptive"
       },
       "messages": [
         {
@@ -73,8 +69,7 @@
       "model": "claude-fable-5",
       "max_tokens": 32000,
       "thinking": {
-        "type": "enabled",
-        "budget_tokens": 8000
+        "type": "adaptive"
       },
       "messages": [
         {
