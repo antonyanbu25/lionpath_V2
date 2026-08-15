@@ -1,0 +1,62 @@
+{
+  "manifest_version": "1.0",
+  "last_updated": "2026-08-15",
+  "capabilities": [
+    {
+      "capability": "semantic_cache",
+      "description": "Deduplicate semantically similar thoughts using similarity scoring",
+      "confidence": 0.85,
+      "last_verified": "2026-08-15",
+      "dependencies": ["difflib", "hashlib"],
+      "status": "active"
+    },
+    {
+      "capability": "inner_monologue_stream",
+      "description": "Broadcast live thought stream to dashboard via WebSocket",
+      "confidence": 0.95,
+      "last_verified": "2026-08-14",
+      "dependencies": ["FastAPI", "WebSocket"],
+      "status": "active"
+    },
+    {
+      "capability": "se_metrics_reporting",
+      "description": "Generate SE pre/post-call reports from Zoom/Firestore data",
+      "confidence": 0.80,
+      "last_verified": "2026-08-15",
+      "dependencies": ["Zoom API", "Firestore", "GLM-5.2"],
+      "status": "active"
+    },
+    {
+      "capability": "curiosity_loop",
+      "description": "9-stage self-directed capability improvement loop",
+      "confidence": 0.75,
+      "last_verified": "2026-08-14",
+      "dependencies": ["GLM-5.2", "event-bus"],
+      "status": "active"
+    },
+    {
+      "capability": "portal_sync",
+      "description": "Sync Janus GitHub data with Firestore for portal janus.benjaminsquare.com",
+      "confidence": 0.70,
+      "last_verified": "2026-08-13",
+      "dependencies": ["GitHub API", "Firestore"],
+      "status": "experimental"
+    },
+    {
+      "capability": "token_accounting",
+      "description": "Real-time token tracking across GLM, Codex, and session models",
+      "confidence": 0.90,
+      "last_verified": "2026-08-15",
+      "dependencies": ["SQLite", "event-bus"],
+      "status": "active"
+    },
+    {
+      "capability": "multi_agent_dispatch",
+      "description": "Parallel Codex/GLM subagent orchestration via worktrees",
+      "confidence": 0.85,
+      "last_verified": "2026-08-15",
+      "dependencies": ["git", "worktree"],
+      "status": "active"
+    }
+  ]
+}
