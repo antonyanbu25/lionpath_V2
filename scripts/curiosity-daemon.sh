@@ -21,8 +21,34 @@ FETCH="$SCRIPT_DIR/curiosity-fetch.sh"
 SYNTHESIZE="$SCRIPT_DIR/curiosity-synthesize.py"
 SURFACE="$SCRIPT_DIR/curiosity-surface.sh"
 FEEDBACK="$SCRIPT_DIR/curiosity-feedback.py"
+HMC="$SCRIPT_DIR/curiosity-memory-hmc.py"
+SNAPSHOT_FILE="${CURIOSITY_MEMORY_SNAPSHOT:-/tmp/curiosity-memory-snapshot.json}"
+
+THOUGHT_STREAM_URL="${THOUGHT_STREAM_URL:-http://localhost:7892}"
 
 STOP_REQUESTED=0
+
+# Emit current brief as a thought to the thought stream
+_emit_thought() {
+  local brief_path="$1"
+  local topic="${2:-unknown}"
+  if [[ -f "$brief_path" ]]; then
+    local body
+    body=$(python3 -c "
+import sys, json, uuid
+brief = open('$brief_path').read()
+# Extract a short excerpt (first 200 chars)
+excerpt = brief[:200].replace('\"', '\\\"').replace('\n', ' ')
+text = f'$topic: {excerpt}'
+payload = json.dumps({'type': 'reflection', 'text': text, 'confidence': 0.7})
+print(payload)
+" 2>/dev/null) || return 0
+    curl -s -X POST "${THOUGHT_STREAM_URL}/emit" \
+      -H "Content-Type: application/json" \
+      -d "$body" \
+      -m 2 >/dev/null || true
+  fi
+}
 
 log() {
   local level="$1"
@@ -155,7 +181,11 @@ try:
 except json.JSONDecodeError:
     sys.exit(0)
 
-valid_types = {"T_STALE_TOPIC", "T_SELF_REFLECT"}
+valid_types = {
+    "T_STALE_TOPIC", "T_SELF_REFLECT", "T_GOAL_DRIFT",
+    "T_ACTION_FAILED", "T_CURIOSITY_FINDING", "T_MEMORY_SIGNIFICANT",
+    "T_NEW_SESSION", "T_DAEMON_START"
+}
 
 def trigger_type(item):
     if not isinstance(item, dict):
@@ -262,9 +292,53 @@ run_cycle() {
   TOPIC="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("topic", ""); print("" if value is None else value)' "$decision_json")"
   TRIGGER_TYPE="$(python3 -c 'import json, sys; data=json.loads(sys.argv[1]); value=data.get("trigger_type") or data.get("id") or data.get("type") or data.get("trigger") or ""; print(value)' "$decision_json")"
 
+  # Load HMC (Hierarchical Memory Compaction) snapshot and pass trigger topic.
+  # Snapshot persists at /tmp/curiosity-memory-snapshot.json between cycles so
+  # the HMC can carry forward compacted memory context across daemon cycles.
+  if [[ -n "$TOPIC" ]]; then
+    if [[ -f "$SNAPSHOT_FILE" ]]; then
+      if hmc_snapshot="$(cat "$SNAPSHOT_FILE" 2>/dev/null)" && [[ -n "$hmc_snapshot" ]]; then
+        export CURIOSITY_HMC_SNAPSHOT="$hmc_snapshot"
+        log INFO "HMC snapshot loaded from $SNAPSHOT_FILE topic=$TOPIC"
+      else
+        log INFO "HMC snapshot file unreadable or empty: $SNAPSHOT_FILE"
+      fi
+    else
+      log INFO "HMC snapshot not found (first cycle): $SNAPSHOT_FILE"
+    fi
+    # Pass trigger topic to hmc regardless of snapshot presence so it can
+    # initialise state on the first run.
+    if [[ -f "$HMC" ]]; then
+      CURIOSITY_HMC_TOPIC="$TOPIC" \
+      CURIOSITY_HMC_SNAPSHOT_FILE="$SNAPSHOT_FILE" \
+      python3 "$HMC" load "$TOPIC" >/dev/null 2>&1 || log INFO "HMC load failed (non-fatal) topic=$TOPIC"
+    else
+      log INFO "HMC script missing, skipping load: $HMC"
+    fi
+  fi
+
   if [[ -z "$TOPIC" || -z "$TRIGGER_TYPE" ]]; then
     log ERROR "invalid trigger decision topic=$TOPIC trigger_type=$TRIGGER_TYPE"
     cycle_status=1
+  fi
+
+  # === SAME-TOPIC SKIP GATE ===
+  # 9 of 11 cycles today were identical topic with empty output — pure waste
+  # Skip if same topic ran within the last 90 minutes (less than half a throttle cycle)
+  if (( cycle_status == 0 )); then
+    last_topic="$(state_get last_brief_topic 2>/dev/null || echo '')"
+    last_topic_ts="$(state_int "$(state_get last_brief_ts 2>/dev/null || echo '0')")"
+    SKIP_COOLDOWN="${CURIOSITY_SKIP_COOLDOWN:-5400}"  # 90 min default
+    age_sec=$(( now - last_topic_ts ))
+    if [[ "$TOPIC" == "$last_topic" && "$last_topic_ts" -gt 0 && age_sec -lt SKIP_COOLDOWN ]]; then
+      log INFO "same_topic_cooldown topic=$TOPIC age_sec=$age_sec skip_cooldown=$SKIP_COOLDOWN"
+      curl -s -X POST "${THOUGHT_STREAM_URL}/emit" \
+        -H "Content-Type: application/json" \
+        -d "{\"type\":\"observation\",\"text\":\"[SKIP] Same topic again — $TOPIC — skipping to save tokens\",\"confidence\":0.3}" \
+        -m 2 >/dev/null || true
+      rm -f "$LOCK_FILE"
+      return 0
+    fi
   fi
 
   if (( cycle_status == 0 )) && fetch_path="$(run_stage_capture FETCH "$FETCH" "$TOPIC")"; then
@@ -302,7 +376,8 @@ run_cycle() {
       fi
 
       if (( cycle_status == 0 )); then
-        run_stage_capture FEEDBACK python3 "$FEEDBACK" "$brief_path" "$changes_proposed_json" >/dev/null || cycle_status=1
+        # Topic passed as 3rd arg for HMC memory context (delta tracking)
+        run_stage_capture FEEDBACK python3 "$FEEDBACK" "$brief_path" "$changes_proposed_json" "$TOPIC" >/dev/null || cycle_status=1
       fi
 
       if (( cycle_status == 0 )); then
@@ -358,6 +433,21 @@ PY
   state_set "$tokens_key" "$((daily_tokens + TOKENS_PER_CYCLE))" || true
   if (( cycle_status == 0 )) && [[ -n "${brief_id:-}" ]]; then
     state_set last_completed_brief_id "$brief_id" || true
+    state_set last_brief_topic "$TOPIC" || true
+    state_set last_brief_ts "$now" || true
+
+    # Emit current brief as a thought to the thought stream
+    _emit_thought "$brief_path" "$TOPIC"
+    # Save HMC snapshot at end of successful cycle so the next cycle can
+    # carry forward compacted memory state.
+    if [[ -f "$HMC" ]]; then
+      CURIOSITY_HMC_TOPIC="$TOPIC" \
+      CURIOSITY_HMC_TRIGGER_TYPE="$TRIGGER_TYPE" \
+      CURIOSITY_HMC_SNAPSHOT_FILE="$SNAPSHOT_FILE" \
+      python3 "$HMC" save "$TOPIC" >/dev/null 2>&1 \
+        && log INFO "HMC snapshot saved to $SNAPSHOT_FILE topic=$TOPIC" \
+        || log INFO "HMC save failed (non-fatal) topic=$TOPIC"
+    fi
   fi
 
   if (( cycle_status == 0 )); then

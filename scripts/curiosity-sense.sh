@@ -66,6 +66,46 @@ if table_exists curiosity_topics; then
   fi
 fi
 
+if table_exists gideon_sessions && column_exists gideon_sessions created_at; then
+  recent_session_count="$(sqlite_read "
+    SELECT COUNT(*)
+    FROM gideon_sessions
+    WHERE (
+      typeof(created_at) IN ('integer','real')
+      AND CAST(created_at AS INTEGER) >= CAST(strftime('%s','now','-2 hours') AS INTEGER)
+    ) OR (
+      typeof(created_at) = 'text'
+      AND created_at >= datetime('now','-2 hours')
+    );
+  " 2>/dev/null || printf '0')"
+  if (( recent_session_count > 0 )); then
+    triggers+=("{\"id\":\"T_RECENT_SESSION\",\"topic\":\"Recent conversation with Kuttan\",\"priority\":8,\"trigger_type\":\"T_RECENT_SESSION\"}")
+  fi
+fi
+
+if table_exists memory && columns_exist memory key updated_at; then
+  significant_memory_count="$(sqlite_read "
+    SELECT COUNT(*)
+    FROM memory
+    WHERE (
+      lower(key) LIKE '%kuttan%'
+      OR lower(key) LIKE '%goal%'
+      OR lower(key) LIKE '%task%'
+      OR lower(key) LIKE '%metric%'
+    )
+    AND (
+      (typeof(updated_at) IN ('integer','real')
+       AND CAST(updated_at AS INTEGER) >= CAST(strftime('%s','now','-24 hours') AS INTEGER))
+      OR
+      (typeof(updated_at) = 'text'
+       AND updated_at >= datetime('now','-24 hours'))
+    );
+  " 2>/dev/null || printf '0')"
+  if (( significant_memory_count > 0 )); then
+    triggers+=("{\"id\":\"T_MEMORY_SIGNIFICANT\",\"topic\":\"Memory: something important happened\",\"priority\":7,\"trigger_type\":\"T_MEMORY_SIGNIFICANT\"}")
+  fi
+fi
+
 if (( last_self_reflect == 0 || last_self_reflect < now_epoch - 3 * 86400 )); then
   self_priority=9
   if table_exists curiosity_topics; then
@@ -77,6 +117,22 @@ if (( last_self_reflect == 0 || last_self_reflect < now_epoch - 3 * 86400 )); th
 fi
 
 if table_exists gideon_goals && columns_exist gideon_goals id title status last_progress_at; then
+  stalled_goal_count="$(sqlite_read "
+    SELECT COUNT(*)
+    FROM gideon_goals
+    WHERE status='active'
+      AND (
+        (typeof(last_progress_at) IN ('integer','real')
+         AND CAST(last_progress_at AS INTEGER) <= CAST(strftime('%s','now','-7 days') AS INTEGER))
+        OR
+        (typeof(last_progress_at) = 'text'
+         AND last_progress_at <= datetime('now','-7 days'))
+      );
+  " 2>/dev/null || printf '0')"
+  if (( stalled_goal_count > 0 )); then
+    triggers+=("{\"id\":\"T_GOAL_STALLED\",\"topic\":\"Goal has stalled — needs attention\",\"priority\":9,\"trigger_type\":\"T_GOAL_STALLED\"}")
+  fi
+
   while IFS=$'\t' read -r goal_id goal_title; do
     [[ -n "$goal_id" ]] || continue
     triggers+=("{\"id\":\"T_GOAL_DRIFT\",\"topic\":\"$(json_escape "$goal_title")\",\"priority\":10,\"trigger_type\":\"T_GOAL_DRIFT\",\"ref_id\":$goal_id}")
