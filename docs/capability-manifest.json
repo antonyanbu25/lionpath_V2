@@ -14,7 +14,7 @@
       "capability": "inner_monologue_stream",
       "description": "Broadcast live thought stream to dashboard via WebSocket",
       "confidence": 0.95,
-      "last_verified": "2026-08-14",
+      "last_verified": "2026-08-15",
       "dependencies": ["FastAPI", "WebSocket"],
       "status": "active"
     },

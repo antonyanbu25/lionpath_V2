@@ -26,7 +26,7 @@ Self-directed capability improvement loop running every 30 minutes.
 Map each stage to oh-my-hermes labels:
 - Stages 1-3: `Plan · running`
 - Stage 4: `Code · running`
-- Stage 5-6: `Test · running`
+- Stages 5-6: `Test · running`
 - Stage 7: `Plan · not run` (next loop)
 - Stage 8: `Code · running`
 - Stage 9: `Test · verified`

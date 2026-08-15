@@ -25,5 +25,5 @@ difference between "an executor said it finished" vs "something actually passed 
 
 ## Usage in Gideon
 
-Gideon's mesh status output should show the current stage of the primary active task.
-The inner monologue dashboard can display this as a stage badge (see D1-UI).
+Gideon's mesh status output shows the current stage of the primary active task.
+The inner monologue dashboard displays this as a stage badge.
