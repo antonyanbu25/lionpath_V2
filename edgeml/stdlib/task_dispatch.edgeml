@@ -1,0 +1,29 @@
+// EdgeML Standard Library: Task Dispatch
+// Portable mesh coordination primitives for any hardware
+
+// Dispatch a task to an agent
+fn task_dispatch(task_id: int, agent: int, priority: int) -> int;
+
+// Get current task status
+fn task_status(task_id: int) -> int;  // 0=pending, 1=running, 2=done, 3=failed
+
+// Event wait with timeout
+fn event_wait(event_id: int, timeout_ms: int) -> int;  // 0=timeout, 1=signaled
+
+// Ring buffer for task queue
+struct TaskQueue {
+    capacity: int,
+    head: int,
+    tail: int,
+    buffer: tensor<bf16, [?capacity?]>,
+}
+
+// Spawn N concurrent tasks
+fn parallel_spawn(tasks: tensor<int, [N]>, fn_ptr: int) -> tensor<int, [N]>;
+
+// Memory-mapped event bus
+struct EventBus {
+    epoll_fd: int,
+    num_events: int,
+    events: tensor<int, [256]>,
+}

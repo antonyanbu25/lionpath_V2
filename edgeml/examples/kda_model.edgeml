@@ -1,0 +1,66 @@
+// EdgeML Example: 100M Parameter KDA Model
+// Based on kimi-k3's Key-Delta Attention
+
+target pi4 {
+    arch = arm64;
+    simd = neon;
+    ram = 512MB;
+    align = 16;
+}
+
+quantscheme q_mxfp4 = mxfp4[block=32, scale=e8m0];
+quantscheme q_int8 = int8[block=64, scale=fp16, zero=sym];
+
+// Embedding
+weight embed_w: tensor<q_mxfp4, [32000, 512]>;
+weight embed_b: tensor<bf16, [512]>;
+
+// KDA attention block
+attention kda_layer {
+    kind = kda;
+    heads = 8;
+    head_dim = 64;
+    kv_heads = 2;
+    rope_base = 10000;
+    decay = learned;
+    beta = learned;
+    state_dtype = bf16;
+
+    weight w_q: tensor<q_mxfp4, [512, 512]>;
+    weight w_k: tensor<q_mxfp4, [512, 512]>;
+    weight w_v: tensor<q_mxfp4, [512, 512]>;
+    weight w_o: tensor<q_mxfp4, [512, 512]>;
+    weight w_beta: tensor<bf16, [512, 8]>;
+    weight w_decay: tensor<bf16, [512, 8]>;
+}
+
+// Feed-forward
+layer feed_forward {
+    weight ff_w1: tensor<q_mxfp4, [512, 3072]>;
+    weight ff_b1: tensor<bf16, [3072]>;
+    weight ff_w_gate: tensor<q_mxfp4, [512, 3072]>;
+    weight ff_w2: tensor<q_mxfp4, [3072, 512]>;
+    weight ff_b2: tensor<bf16, [512]>;
+}
+
+// Output head
+weight lm_head: tensor<q_mxfp4, [512, 32000]>;
+
+// Model definition
+model KDA100M {
+    vocab = 32000;
+    d_model = 512;
+    max_seq = 2048;
+    num_layers = 12;
+}
+
+// Pipeline: 12 layers of KDA + FF
+pipeline {
+    repeat(12) {
+        kda_layer(embed_w);
+        feed_forward(ff_w1, ff_b1, ff_w2, ff_b2);
+    }
+    lm_head();
+}
+
+export KDA100M for pi4;
