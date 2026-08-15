@@ -1,0 +1,87 @@
+[
+  {
+    "custom_id": "k3-arch",
+    "params": {
+      "model": "claude-fable-5",
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 8000
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "You are analyzing kimi-k3-in-c (github.com/FareedKhan-dev/kimi-k3-in-c). Read the README, QUICKSTART, k3.h, and key source files. Explain: (1) overall inference architecture, (2) KDA (Key-Delta Attention) mechanism, (3) MoE layer structure and dispatch, (4) KV cache and memory management, (5) key config params (embed_dim, num_heads, num_experts, top_k). Use specific numbers and data structures."
+        }
+      ]
+    }
+  },
+  {
+    "custom_id": "k3-moe",
+    "params": {
+      "model": "claude-fable-5",
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 8000
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Analyze the Mixture of Experts in kimi-k3-in-c. Read MoE source files. Explain: (1) total experts and active per token (top_k), (2) routing algorithm, (3) expert weight storage format and quantization, (4) fused matmul for MoE, (5) KDA head-parallel recurrence. Include code snippets and memory estimates."
+        }
+      ]
+    }
+  },
+  {
+    "custom_id": "k3-quantize",
+    "params": {
+      "model": "claude-fable-5",
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 8000
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Analyze MXFP4 quantization in kimi-k3-in-c. Read quant code. Explain: (1) MXFP4 vs INT4 vs FP4, (2) block scale computation and storage, (3) dequantization kernel, (4) memory reduction ratio vs FP16/BF16, (5) attention vs MLP weight quantization differences. Include bit-layout diagrams."
+        }
+      ]
+    }
+  },
+  {
+    "custom_id": "k3-pi-port",
+    "params": {
+      "model": "claude-fable-5",
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 8000
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Plan porting kimi-k3-in-c to Raspberry Pi 4 (4GB RAM, ARM Cortex-A72, no GPU). Based on the architecture: (1) min RAM at what context length, (2) memory bottlenecks, (3) SIMD (AVX2/NEON) adaptation, (4) armv7 vs armv8 changes, (5) expected tokens/sec on Pi 4, (6) OS-level changes needed. Be specific about Pi hardware."
+        }
+      ]
+    }
+  },
+  {
+    "custom_id": "k3-dsl-design",
+    "params": {
+      "model": "claude-fable-5",
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 8000
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Design a DSL called 'EdgeML' for ultra-low-memory AI inference on edge devices (inspired by kimi-k3-in-c). Requirements: (1) clean syntax for model architectures (layers, attention, MoE), (2) compiles to minimal C99 (zero deps), (3) explicit quantization types per tensor (MXFP4, INT8, BF16), (4) built-in KDA attention, (5) static RAM allocator, (6) codegen for x86(AVX2) and ARM(NEON), (7) hardware-agnostic IR. Deliver: BNF grammar, IR node types, memory strategy, compiler CLI design, example program."
+        }
+      ]
+    }
+  }
+]
