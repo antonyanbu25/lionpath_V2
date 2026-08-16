@@ -63,10 +63,14 @@ def info(source_path: str):
     ir = _build_ir(source_path)
     nodes = list(ir.nodes.values())
     total_params = sum(n.attrs.get("params", 0) for n in nodes if n.op == "weight")
-    total_weight = sum(n.attrs.get("size", 0) for n in nodes if n.op == "weight")
-    total_state = sum(n.attrs.get("size", 0) for n in nodes if n.op == "state")
+    total_weight = sum(n.attrs.get("size", n.attrs.get("size_bytes", 0)) for n in nodes if n.op == "weight")
+    total_state = sum(n.attrs.get("size", n.attrs.get("size_bytes", 0)) for n in nodes if n.op == "state")
     target_ram = ir.metadata.get("ram") or 512 * 1024 * 1024
-    _, _, scratch_peak, allocs = MemoryPlanner(ir, target_ram=target_ram).plan()
+    plan_result = MemoryPlanner(ir, target_ram=target_ram).plan()
+    if isinstance(plan_result, tuple) and len(plan_result) >= 4:
+        _, _, scratch_peak, allocs = plan_result[:4]
+    else:
+        scratch_peak, allocs = 0, []
 
     print(f"Model: {ir.metadata.get('model', 'model')}")
     print(f"Target: {ir.metadata.get('target', 'default')} ({ir.metadata.get('arch')}/{ir.metadata.get('simd')})")
@@ -77,7 +81,8 @@ def info(source_path: str):
     print(f"Total weight memory: {total_weight / 1024 / 1024:.2f} MB")
     print(f"Total state memory: {total_state / 1024 / 1024:.2f} MB")
     print(f"Scratch peak estimate: {scratch_peak / 1024 / 1024:.2f} MB")
-    print(f"RAM estimate: {allocs['peak'] / 1024 / 1024:.2f} MB / {target_ram / 1024 / 1024:.0f} MB")
+    peak_mb = allocs['peak'] / 1024 / 1024 if isinstance(allocs, dict) and 'peak' in allocs else 0
+    print(f"RAM estimate: {peak_mb:.2f} MB / {target_ram / 1024 / 1024:.0f} MB")
 
 
 def bench(source_path: str):

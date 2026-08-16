@@ -112,6 +112,19 @@ class Parser:
                 self._parse_layer_decl()
             elif token_type == TokenType.EXPORT:
                 self._parse_export_decl()
+            elif token_type == TokenType.IDENT:
+                # Generic tensor decl: name: tensor<dtype, [shape]>;
+                # parse as input/state by default
+                name = self._advance().value
+                self._expect(TokenType.COLON)
+                self._expect(TokenType.TENSOR)
+                self._expect(TokenType.LT)
+                quant_type = self._parse_quant_ref()
+                self._expect(TokenType.COMMA)
+                shape = self._parse_shape()
+                self._expect(TokenType.GT)
+                self._expect(TokenType.SEMICOLON)
+                declarations.append(TensorDecl("input", name, quant_type, shape))
             else:
                 self._syntax_error(self._peek(), "top-level declaration")
         return Program(declarations)

@@ -1,0 +1,17 @@
+// EdgeML Minimal Test Program
+// Tests: lexer, parser, IR builder, memory planner, codegen
+
+target pi4 {
+    arch = arm64;
+    simd = neon;
+    ram = 256MB;
+}
+
+quantscheme q_mxfp4 = mxfp4[block=32, scale=e8m0];
+
+weight embed_w: tensor<q_mxfp4, [1024, 256]>;
+weight fc1_w: tensor<q_mxfp4, [256, 512]>;
+weight fc2_w: tensor<q_mxfp4, [512, 256]>;
+
+input_ids: tensor<int32, [1, 128]>;
+output: tensor<bf16, [1, 256]>;

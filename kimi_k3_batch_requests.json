@@ -10,7 +10,13 @@
       "messages": [
         {
           "role": "user",
-          "content": "You are analyzing kimi-k3-in-c (github.com/FareedKhan-dev/kimi-k3-in-c). Read the README, QUICKSTART, k3.h, and key source files. Explain: (1) overall inference architecture, (2) KDA (Key-Delta Attention) mechanism, (3) MoE layer structure and dispatch, (4) KV cache and memory management, (5) key config params (embed_dim, num_heads, num_experts, top_k). Use specific numbers and data structures."
+          "content": [
+            {
+              "type": "text",
+              "text": "You are analyzing kimi-k3-in-c (github.com/FareedKhan-dev/kimi-k3-in-c). Read the README, QUICKSTART, k3.h, and key source files. Explain with specific numbers and data structures: (1) overall inference architecture — how does the forward pass work from input token to output? (2) KDA (Key-Delta Attention) mechanism — what is the delta rule, how does head-parallel recurrence work? (3) MoE layer — how many total experts, how many active per token (top_k), how is routing done? (4) KV cache and memory management — what is the memory footprint per token at different context lengths? (5) key config params — embed_dim, num_heads, num_layers, num_experts, top_k, context_length, MXFP4 block size. Include actual data structure definitions from the C code.",
+              "cache_control": {"type": "ephemeral"}
+            }
+          ]
         }
       ]
     }
@@ -26,7 +32,13 @@
       "messages": [
         {
           "role": "user",
-          "content": "Analyze the Mixture of Experts in kimi-k3-in-c. Read MoE source files. Explain: (1) total experts and active per token (top_k), (2) routing algorithm, (3) expert weight storage format and quantization, (4) fused matmul for MoE, (5) KDA head-parallel recurrence. Include code snippets and memory estimates."
+          "content": [
+            {
+              "type": "text",
+              "text": "Analyze the Mixture of Experts implementation in kimi-k3-in-c. Read the MoE source files and explain with code snippets: (1) Total number of experts and how many are active per token (top_k value). (2) Routing algorithm — how is the routing decision made? Is it a simple linear projection + top-k or something more complex? (3) Expert weight storage — what data format are the weights stored in (MXFP4 block format, scales, how are they memory-mapped)? (4) Fused matmul for MoE — how does the dispatch + compute work, what SIMD intrinsics are used? (5) KDA head-parallel recurrence in MoE context — how does attention state flow when multiple experts are active? Provide memory usage estimates per expert activation.",
+              "cache_control": {"type": "ephemeral"}
+            }
+          ]
         }
       ]
     }
@@ -42,7 +54,13 @@
       "messages": [
         {
           "role": "user",
-          "content": "Analyze MXFP4 quantization in kimi-k3-in-c. Read quant code. Explain: (1) MXFP4 vs INT4 vs FP4, (2) block scale computation and storage, (3) dequantization kernel, (4) memory reduction ratio vs FP16/BF16, (5) attention vs MLP weight quantization differences. Include bit-layout diagrams."
+          "content": [
+            {
+              "type": "text",
+              "text": "Analyze the MXFP4 quantization scheme in kimi-k3-in-c. Read the quantization code and explain: (1) MXFP4 definition — what does 'mixed-precision floating point 4-bit' mean exactly? How does it differ from INT4 (integer quantization) and standard FP4? (2) Block scales — how are they computed, stored, and applied? What is the block size? (3) The dequantization kernel — show the actual C code for converting MXFP4 -> FP16/BF16 at compute time. (4) Memory reduction ratio — MXFP4 vs BF16 weights, actual bytes per parameter. (5) Different quantization for attention weights vs MLP weights — are they treated differently? (6) Bit-layout diagram — show the exact in-memory representation of an MXFP4 block. Be precise with bit ranges.",
+              "cache_control": {"type": "ephemeral"}
+            }
+          ]
         }
       ]
     }
@@ -58,7 +76,13 @@
       "messages": [
         {
           "role": "user",
-          "content": "Plan porting kimi-k3-in-c to Raspberry Pi 4 (4GB RAM, ARM Cortex-A72, no GPU). Based on the architecture: (1) min RAM at what context length, (2) memory bottlenecks, (3) SIMD (AVX2/NEON) adaptation, (4) armv7 vs armv8 changes, (5) expected tokens/sec on Pi 4, (6) OS-level changes needed. Be specific about Pi hardware."
+          "content": [
+            {
+              "type": "text",
+              "text": "Plan porting kimi-k3-in-c to run on a Raspberry Pi 4 Model B (4GB RAM, BCM2711 Cortex-A72 ARMv8 64-bit, no GPU, no AVX). Based on the kimi-k3-in-c architecture: (1) Minimum RAM needed to run k3 at context length 512, 1024, 2048? (2) Memory bottlenecks — which tensors consume the most RAM (weights, KV cache, MoE activations, temporary buffers)? (3) SIMD analysis — k3 uses AVX2 (x86) for matmul. How would you adapt the matmul kernels for ARM NEON? What is the NEON equivalent of the key intrinsics? (4) armv7 (32-bit) vs armv8 (64-bit) — which is more feasible and why? (5) Expected tokens/second throughput on Pi 4 at int8 vs BF16? (6) OS-level changes — swap configuration, memory mapping strategy, compiler flags for ARM. (7) What is the minimum viable Pi model for a 1B parameter variant?",
+              "cache_control": {"type": "ephemeral"}
+            }
+          ]
         }
       ]
     }
@@ -74,7 +98,13 @@
       "messages": [
         {
           "role": "user",
-          "content": "Design a DSL called 'EdgeML' for ultra-low-memory AI inference on edge devices (inspired by kimi-k3-in-c). Requirements: (1) clean syntax for model architectures (layers, attention, MoE), (2) compiles to minimal C99 (zero deps), (3) explicit quantization types per tensor (MXFP4, INT8, BF16), (4) built-in KDA attention, (5) static RAM allocator, (6) codegen for x86(AVX2) and ARM(NEON), (7) hardware-agnostic IR. Deliver: BNF grammar, IR node types, memory strategy, compiler CLI design, example program."
+          "content": [
+            {
+              "type": "text",
+              "text": "Design a domain-specific language (DSL) called EdgeML for ultra-low-memory AI inference on edge devices, inspired by kimi-k3-in-c's philosophy: pure C, zero dependencies, ARM target, 8GB RAM constraint. The DSL must: (1) Have a clean syntax for defining model architectures — layers, attention mechanisms, MoE blocks, quantization annotations. (2) Compile to minimal, dependency-free C99 code — no runtime beyond stdlib. (3) Have a type system that makes quantization explicit — MXFP4, INT8, BF16, FP16 per tensor, with block scales declared statically. (4) Have built-in support for KDA (Key-Delta Attention) from kimi-k3. (5) Include a static memory planner that computes RAM usage at compile time based on model config, rejecting configs that exceed target hardware. (6) Support code generation for x86 (AVX2) and ARM (NEON) targets from the same IR. (7) Have a hardware-agnostic Intermediate Representation (IR). Deliver: (a) Full BNF or EBNF grammar. (b) Core IR node types (at least 15 node types). (c) Memory allocation strategy. (d) CLI tool design — compiler phases. (e) A complete example program defining a small 100M parameter model with KDA attention.",
+              "cache_control": {"type": "ephemeral"}
+            }
+          ]
         }
       ]
     }
