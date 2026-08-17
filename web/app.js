@@ -2800,9 +2800,11 @@ function ensureFirebaseSdk() {
 
       initDomainStore(fb);
 
-      // Only managers/admins need Firestore — lazy load the SDK to avoid WebChannel transport for SEs.
-      const _bootSession = getSession();
-      if (_bootSession?.role === "manager" || _bootSession?.role === "admin") {
+      // Always load Firestore SDK when Firebase Auth is enabled.
+      // Previously gated on cached session role (manager/admin), causing 0-dashboard
+      // in fresh incognito/private windows when _bootSession was null.
+      // isFirebaseAuthEnabled() guard ensures this only runs in proper environments.
+      if (isFirebaseAuthEnabled()) {
         (async () => {
           try {
             const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
