@@ -42,7 +42,11 @@ import { renderAccountView } from "./account-view.js?v=2.1.43";
 import { renderDealView, isDealListCacheFresh } from "./deal-view.js?v=2.1.43";
 import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1.14";
-import { renderCallView, renderCallRecordLoadingPanel, resolveEffectiveHydrationPending } from "./call-view.js";
+import {
+  renderCallView,
+  renderCallRecordLoadingPanel,
+  resolveEffectiveHydrationPending,
+} from "./call-view.js?v=2.1.43";
 import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";

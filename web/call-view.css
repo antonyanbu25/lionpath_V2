@@ -283,6 +283,13 @@
   font-weight: 500;
 }
 
+.call-deal-context-retry {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .call-deal-context-seq {
   margin-left: auto;
   font-size: 12px;
