@@ -4,22 +4,22 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score** → **janus.freshdesk.com**, Activities feed, account/deal/call fixes |
-| **Portal build** | `2.1.43` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
+| **This branch** | **`main`** — source of truth (newest stable) |
+| **Portal build** | `2.1.42` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
 | **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
 | **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
 | **Production deploy fork** | [github.com/antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2) (VPS pulls from here) |
-| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/2.1.2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2) |
+| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/main](https://github.com/antonyanbu25/lionpath_V2/tree/main) |
 
 ---
 
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights (2.1.2)](#release-highlights-212)
+2. [Release highlights](#release-highlights)
 3. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
 4. [Architecture](#architecture)
 5. [Repository layout](#repository-layout)
@@ -48,14 +48,14 @@ Both prep and post-call write to the **same domain model** — accounts, contact
 
 ---
 
-## Release highlights (2.1.2)
+## Release highlights
 
-Branch **`2.1.2`** is cut from **`2.1.1`** on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2). Build stamps: portal **`2.1.43`**, worker / `VERSION` **`2.1.30`**.
+Build **`2.1.2`** is on **`main`** at [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/main). Build stamps: portal **`2.1.42`**, worker / `VERSION` **`2.1.30`**.
 
 ### What’s new at a glance
 
-| Area | What shipped in 2.1.2 |
-|------|------------------------|
+| Area | What shipped |
+|------|--------------|
 | **Dispute a score** | New end-to-end flow: SE disputes a Quality Coach score → Freshdesk ticket on **janus.freshdesk.com** (type **Dispute of score** + **Issue Type**) → manager email notify (soft-fail) |
 | **Accounts** | Contact/email account resolve, history enrichment, contact dedupe, list/view fixes |
 | **Deals** | Deal record polish, product-signal rollup from scored calls, deal/account linking fixes |
@@ -253,7 +253,7 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ```bash
 git clone https://github.com/antonyanbu25/lionpath_V2.git
 cd lionpath_V2
-git checkout 2.1.2
+git checkout main
 
 cd worker
 cp .dev.vars.example .dev.vars
@@ -372,22 +372,21 @@ Key modules under test: `calls-list-view.js`, `score-disputes.js`, `support-tick
 
 Production VPS deploys from **`antonyanbu25/lionpath_V2`**.
 
-**Release branch `2.1.2`** (sourced from **`2.1.1`** ← **`2.1`**):
+Production deploys from **`2.1`** (the deploy anchor). Developers branch from **`main`**, push `feat/` or `fix/` branches, and open PRs into **`main`**; do not create release branches for production deploys.
 
 ```bash
-# Developer machine — push release branch
-git checkout 2.1.2
-git push origin 2.1.2
+# Developer machine — push a feature/fix branch and open a PR into main
+git checkout main
+git pull origin main
+git checkout -b feat/my-change
+git push -u origin feat/my-change
 
-# On VPS (after review)
+# On VPS — update.sh auto-deploys the 2.1 deploy anchor
 cd /opt/se-singha-paathai
-git fetch origin
-git checkout 2.1.2
-git pull origin 2.1.2
-cd deploy/vps && bash upgrade-now.sh
+cd deploy/vps && bash update.sh
 ```
 
-Stable production line remains **`2.1`** / **`2.1.1`** until **`2.1.2`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
+Stable production line remains **`2.1`**. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
 
 #### Promotion checklist (before pushing a release branch to production)
 
@@ -402,12 +401,15 @@ For Freshdesk on Cloud Run: `FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-
 
 | Remote | Repo | Branch | Purpose |
 |--------|------|--------|---------|
-| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.2`** | Current release branch (from **`2.1.1`**) — Tony's fork / VPS |
+| **`origin`** | antonyanbu25/lionpath_V2 | **`main`** (`feat/` / `fix/` branches) | PR into **`main`** — Tony's fork / VPS |
 | **`skut264`** | skut264/lionpath | `2.1` / features | Upstream / team development |
 
+For the full branch naming policy, see [docs/BRANCHING.md](./docs/BRANCHING.md).
+
 ```bash
-git checkout 2.1.2
-git push -u origin 2.1.2
+git checkout -b feat/my-change main
+git push -u origin feat/my-change
+# Open a PR into main
 ```
 
 ---
@@ -448,11 +450,15 @@ git remote add skut264 https://github.com/skut264/lionpath.git
 git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
 
 # Feature workflow
-git checkout -b feature/my-change 2.1.2
+git checkout main
+git pull                       # always pull latest first
+git checkout -b feat/my-change # new work branches off main
 # ... develop, npm test ...
-git push -u skut264 feature/my-change
-# Open PR to 2.1.2 (or 2.1.1 / 2.1) on skut264/lionpath
+git push -u origin feat/my-change
+# Open a PR into main (the source of truth) on antonyanbu25/lionpath_V2
 ```
+
+Branch naming: use `feat/<scope>` for features, `fix/<scope>` for fixes, `docs/<scope>` for documentation, and `chore/<scope>` for chores. Never branch off `2.1`; it is the production deploy anchor. Hotfixes are the only exception: PR them into `2.1`, then cherry-pick to `main`. See [docs/BRANCHING.md](./docs/BRANCHING.md) for the full policy.
 
 **Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, `worker/secrets/*` (except README), API keys, `.cursor/` debug logs.
 

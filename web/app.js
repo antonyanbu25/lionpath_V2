@@ -75,6 +75,7 @@ import { canSessionReadAccount, normalizeSeEmail } from "./domain/se-access-serv
 import { invalidateSessionListCache } from "./domain/account-service.js?v=2.1.14";
 import { stableUserIdForEmail } from "./domain/id.js";
 import { initUserMenu, refreshUserMenu } from "./user-menu.js";
+import { initLoginAs, isDevAccount } from "./login-as-ui.js";
 import { resetSessionGreeting } from "./greeting.js";
 import { updateTopbarDate } from "./topbar-date.js";
 import { renderProfileSettings } from "./profile-settings.js";
@@ -2147,6 +2148,11 @@ function wireUserMenu() {
     onProfileSettings: () => switchView("profile"),
     onSignOut: () => void handleSignOut(),
   });
+  // Dev-only "Login as…" — only for the 3 of us
+  if (isDevAccount(getSession()?.email)) initLoginAs();
+  onSessionChange(() => {
+    if (isDevAccount(getSession()?.email)) initLoginAs();
+  });
 }
 
 let signingOut = false;
@@ -2750,6 +2756,7 @@ function ensureFirebaseSdk() {
       ]);
       const app = initializeApp(firebaseConfig);
       firebaseAuth = authMod.getAuth(app);
+      window.__firebaseAuth = firebaseAuth; // Expose immediately for login-as-ui
       firebaseProvider = new authMod.GoogleAuthProvider();
       if (ALLOWED_EMAIL_DOMAIN) firebaseProvider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
 
@@ -2778,6 +2785,9 @@ function ensureFirebaseSdk() {
         serverTimestamp: null,
         writeBatch: null,
       };
+      // Expose for login-as-ui.js impersonation flow — AFTER firebaseAuth is assigned
+      window.__fb = fb;
+      window.__firebaseAuth = firebaseAuth;
 
       initDomainStore(fb);
 
