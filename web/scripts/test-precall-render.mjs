@@ -338,6 +338,21 @@ const discoveryMultiTab1 = renderKnowTab(
   false,
   { peopleProspectTab: "prospect-1" },
 );
+const longAttendeeSummary = `${"Experienced support operator. ".repeat(18).trim()}`;
+const discoveryLongAttendee = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        summary: longAttendeeSummary,
+        email: "jane@endurancedoors.com",
+      },
+    ],
+  },
+  false,
+  { linkedinMatchedEmails: ["jane@endurancedoors.com"], prospectEmails: ["jane@endurancedoors.com"] },
+);
 const demo = renderDemoPrepTab(sampleV8, {}, "endurance-doors");
 const header = renderResultHeader(sampleV8, meta);
 
@@ -569,6 +584,16 @@ const checks = [
     return html.includes("500 employees");
   })()],
   ["know tab attendee summary", discovery.includes("Seasoned support leader")],
+  [
+    "know tab long attendee summary expands in details",
+    discoveryLongAttendee.includes("prep-v9-attendee-summary-details") &&
+      discoveryLongAttendee.includes("prep-v9-attendee-summary-full") &&
+      discoveryLongAttendee.includes(longAttendeeSummary.slice(0, 40)),
+  ],
+  [
+    "header prep-desc title carries full description",
+    header.includes('class="prep-desc muted" title="B2B SaaS customer support platform"'),
+  ],
   ["know tab single prospect", !discovery.includes("prep-people-tabs")],
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has call plan", demo.includes("Your call plan")],
