@@ -27,6 +27,13 @@ import type { DealRiskFlag, ScorecardEvidence, SubParameterLine } from "../domai
 import type { VideoFactsDraft } from "../domain-model/video-facts";
 import { aggregateCameraOnPct, curveHasCameraData } from "../video/facts";
 import type { ConfirmedRoomAttribution, PostCallDeckContent } from "./types";
+import {
+  LEADERSHIP_CAP_THRESHOLD,
+  verifyScorecardForLeadershipCap,
+  type VerifierJustification,
+} from "./scorecard-verify";
+
+export { LEADERSHIP_CAP_THRESHOLD };
 
 export type Env = ProviderEnv;
 
@@ -65,6 +72,16 @@ export interface ScorecardDraft {
   confidence: number;
   lines: ScorecardLineDraft[];
   dealRiskFlags: DealRiskFlag[];
+  /**
+   * v2.2 leadership cap — only set when `overall` was above LEADERSHIP_CAP_THRESHOLD and the
+   * adversarial verifier (./scorecard-verify) ran and confirmed every remaining score-2
+   * sub-parameter. When absent/false, a UI rendering `overall` above the cap should clamp the
+   * displayed number via applyLeadershipCap() in ../quality-score. Additive — omitted entirely
+   * on scorecards that never crossed the cap.
+   */
+  leadershipShareable?: boolean;
+  /** v2.2 — adversarial verifier's per-sub-parameter verdicts, when it ran. Additive. */
+  verifierJustifications?: VerifierJustification[];
 }
 
 export interface PostCallScorecardInput {
@@ -299,6 +316,13 @@ RULES (mandatory):
     Executive is CONTEXT and customer-signal evidence only (e.g. did the SE respond well to it) —
     it must never itself earn SE-execution credit, even if it happens to describe something the
     SE also did or should have done.
+11. CALIBRATION (mandatory) — score like a skeptical SE director doing QA, not a cheerleader:
+    - A sub-parameter score of 2 requires clear, VERBATIM, timestamped evidence of excellent
+      execution — not merely evidence something happened, but evidence it was done well.
+    - A typical average call should land mostly on 1s across sub-parameters, not 2s.
+    - Thin or generic evidence scores 1; absent evidence scores 0.
+    - Score DOWN (never a 2) for shallow discovery, a generic/rehearsed-sounding demo, or the SE
+      dominating talk-time over the customer — these are red flags, not strengths.
 
 THEMES FOR THIS PROFILE:
 ${themeBlocks.join("\n\n")}`;
@@ -562,6 +586,13 @@ export function normalizeScorecardLines(opts: NormalizeScorecardOptions): {
     let coachingNote = trimWords(String(raw.coachingNote ?? ""), 20) || null;
     let evidenceUnavailable = false;
     let modelOmitted = false;
+    // Set true only inside the deterministic video/vision-derived branches below (camera_on,
+    // cde_build, and slide_deck-via-video-vision) — those sub-parameters are legitimately
+    // derived from Pass 2 facts rather than a model-cited transcript quote, so they are exempt
+    // from the "score 2 needs a quoted excerpt" downgrade rule a few lines down. PDF-deck-derived
+    // slide_deck evidence (deckPresent via parsed PDF, no video vision) is NOT exempt — it stays
+    // model-scored and must cite an actual quote like every other theme.
+    let videoDerivedThisLine = false;
 
     if (isVideoTheme(theme) && !canScoreVideo) {
       subParameters = Array.from({ length: 5 }, () => ({ score: 0 as const, evidence: [] }));
@@ -595,6 +626,7 @@ export function normalizeScorecardLines(opts: NormalizeScorecardOptions): {
           ...subParameters[0],
           evidence: [{ atS: 0, quote, source: "video" }],
         };
+        videoDerivedThisLine = true;
       }
     }
 
@@ -615,6 +647,7 @@ export function normalizeScorecardLines(opts: NormalizeScorecardOptions): {
         ...subParameters[0],
         evidence: [{ atS: 0, quote: trimWords(quote, 40), source: "video" }],
       };
+      videoDerivedThisLine = true;
     }
 
     if (theme.key === "cde_build" && canScoreVideo && opts.videoFacts?.cdeCustomized != null) {
@@ -629,6 +662,18 @@ export function normalizeScorecardLines(opts: NormalizeScorecardOptions): {
         ...subParameters[0],
         evidence: [{ atS: 0, quote: trimWords(quote, 40), source: "video" }],
       };
+      videoDerivedThisLine = true;
+    }
+
+    // Deterministic downgrade (v2.2): a sub-parameter scored 2 with no quoted evidence excerpt
+    // is not trustworthy at face value — pull it down to 1. normalizeEvidence() upstream already
+    // drops any evidence entry with an empty quote, so "no quoted excerpt" here is exactly
+    // "sp.evidence.length === 0". Exempt only the video/vision-derived branches above — PDF-deck
+    // slide_deck evidence is deliberately NOT exempt, it must cite real deck/transcript text.
+    if (!videoDerivedThisLine) {
+      subParameters = subParameters.map((sp) =>
+        sp.score === 2 && sp.evidence.length === 0 ? { ...sp, score: 1 as const } : sp,
+      );
     }
 
     if (!evidenceUnavailable && !hasTimestampedEvidence(subParameters)) {
@@ -807,7 +852,33 @@ export async function runPostCallScorecard(
     videoFacts: input.videoFacts,
   });
 
-  const scorecard = buildScorecardDraft(profile, lines, analysisConfidence, dealRiskFlags);
+  let scorecard = buildScorecardDraft(profile, lines, analysisConfidence, dealRiskFlags);
+
+  // v2.2 adversarial verifier — only when the provisional overall is above the leadership-
+  // shareable bar. Recomputes the scorecard deterministically from the verifier's verdicts
+  // (via scoreCall, same as everywhere else) and gates leadershipShareable on full confirmation.
+  if (scorecard.overall > LEADERSHIP_CAP_THRESHOLD) {
+    try {
+      const verifyResult = await verifyScorecardForLeadershipCap(env, {
+        profile,
+        scorecard,
+        transcript,
+        userId: input.userId,
+        callId: input.callId,
+      });
+      scorecard = {
+        ...verifyResult.scorecard,
+        leadershipShareable: verifyResult.verified,
+        verifierJustifications: verifyResult.justifications,
+      };
+    } catch {
+      // Fail safe: if the verifier errors, never grant leadership-shareable status — the
+      // rendered UI will clamp to LEADERSHIP_CAP_THRESHOLD via applyLeadershipCap() since
+      // leadershipShareable stays unset.
+      scorecard = { ...scorecard, leadershipShareable: false, verifierJustifications: [] };
+    }
+  }
+
   const output: PostCallScorecardResult = {
     scorecard,
     analysisConfidence,

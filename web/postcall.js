@@ -10,7 +10,7 @@ import {
   legacySubParametersFromLine,
 } from "./shared/qip-scorecard-normalize.js";
 export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
-import { normalizeQualityCoach } from "./quality-score.js";
+import { normalizeQualityCoach, applyLeadershipCap } from "./quality-score.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails, enrichDealOwnerNames, resolveHistoryMatchesForIntake } from "./postcall-contact-resolve.js";
@@ -2348,10 +2348,22 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   if (!normalized.lines?.length && normalized.overall == null) {
     return `<fw-inline-message type="warning" open closable="false">No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())} lines returned.</fw-inline-message>`;
   }
-  const { callType, overall, categoryScores, lines, provisional, confidence } = normalized;
+  const { callType, overall, categoryScores, lines, provisional, confidence, leadershipShareable } =
+    normalized;
   const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
   const confPct = confidence != null ? Math.round(confidence * 100) : null;
-  const overallLabel = overall != null ? `${overall} / 10` : "- / 10";
+  // v2.2 leadership cap — an overall above 8.0 only renders as-is once the adversarial verifier
+  // has confirmed every remaining score-2 sub-parameter (see ./quality-score.js applyLeadershipCap).
+  const leadershipCap = overall != null ? applyLeadershipCap(overall, !!leadershipShareable) : null;
+  const renderedOverall = leadershipCap ? leadershipCap.overall : overall;
+  const wasCapped = !!leadershipCap?.capped;
+  const overallLabel = renderedOverall != null ? `${renderedOverall} / 10` : "- / 10";
+  const leadershipBadgeHtml = leadershipShareable
+    ? '<span class="pill green" title="Adversarial verifier confirmed every top score on this call — safe to share above the 8.0 bar.">Leadership-shareable</span>'
+    : "";
+  const cappedBadgeHtml = wasCapped
+    ? `<span class="pill amber" title="Scores above 8.0 only render as-is once a skeptical-verifier pass confirms every remaining top score — this call did not clear that bar.">Capped at 8.0</span>`
+    : "";
   const { good, bad } = deriveQipInsights(lines);
 
   let profile = null;
@@ -2391,12 +2403,12 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       </div>`;
 
   if (wireframe) {
-    const overallDisplay = overall != null ? esc(String(overall)) : "-";
+    const overallDisplay = renderedOverall != null ? esc(String(renderedOverall)) : "-";
     const callIdAttr = opts.callId ? ` data-call-id="${esc(opts.callId)}"` : "";
     const companyAttr = opts.company ? ` data-company="${esc(opts.company)}"` : "";
     const scoreAttr =
-      overall != null
-        ? ` data-score="${esc(String(overall))}" data-grade="${esc(String(overall))}"`
+      renderedOverall != null
+        ? ` data-score="${esc(String(renderedOverall))}" data-grade="${esc(String(renderedOverall))}"`
         : "";
     const wireActionsHtml = `<div class="qip-wire-actions" aria-label="Score actions">
           <button type="button" class="btn-wire sm score-dispute-trigger"${callIdAttr}${companyAttr}${scoreAttr}>Dispute a score</button>
@@ -2406,7 +2418,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
         <div class="qip-head">
           <div>
-            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}</h2>
           </div>
           <div class="qip-head-meta">
             <span class="qip-weight-key" aria-label="Theme weight">
@@ -2432,7 +2444,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <div class="qip-scorecard-card qip-scorecard-head-card">
         <div class="qip-scorecard-head">
           <div>
-            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}</h2>
             ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
           </div>
           <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
@@ -2442,7 +2454,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
           ${renderQipInsightTileLegacy(bad, "What didn't", "bad")}
         </div>
       </div>
-      ${renderQipRadar(categoryScores, { overallScore: overall, title: "Evaluation signal", animate: true })}
+      ${renderQipRadar(categoryScores, { overallScore: renderedOverall, title: "Evaluation signal", animate: true })}
       <div class="qip-scorecard-card qip-category-card">
         ${categoryRows}
       </div>
