@@ -149,6 +149,7 @@ const CONFIRM_ROLE_TONE = {
 
 let linkedinParsing = false;
 let contextParsing = false;
+let deckPdfParsing = false;
 let generating = false;
 /** Pass 0 (resolve + classify) before confirm gate — blocks resetPostCallView mid-flight. */
 let pass0Busy = false;
@@ -588,7 +589,7 @@ export function computeAnalyzeButtonDisabled(s) {
 function updateAnalyzeButtonState() {
   const btn = $("analyze-call");
   if (!btn) return;
-  const busy = pass0Busy || contextParsing || linkedinParsing || generating;
+  const busy = pass0Busy || contextParsing || linkedinParsing || deckPdfParsing || generating;
   const hasEmail = prospectEmailsPresentSync();
   btn.disabled = computeAnalyzeButtonDisabled({
     busy,
@@ -3888,7 +3889,7 @@ async function confirmAndGenerate(e) {
     companyName,
     prospectEmails: pipelineState.payload.prospectEmails,
     additionalContext,
-    deckLink: pipelineState.payload.deckLink,
+    deckContent: pipelineState.payload.deckContent,
     linkedinProfileExports: pipelineState.payload.linkedinProfileExports,
     confirmed: true,
     callType,
@@ -4485,7 +4486,6 @@ const PC_TEXT_FIELD_IDS = [
   "pc-recording-url",
   "pc-recording-pwd",
   "pc-prospect-emails",
-  "pc-deck-link",
   "pc-additional-context",
   "pc-transcript",
 ];
@@ -4657,6 +4657,12 @@ export function clearPostCallForm() {
   if (ctxList) ctxList.innerHTML = "";
   const ctxErr = $("pc-context-error");
   if (ctxErr) ctxErr.hidden = true;
+  clearDeckPdfContent();
+  renderDeckPdfFileList();
+  const deckErr = $("pc-deck-error");
+  if (deckErr) deckErr.hidden = true;
+  const deckFileInput = $("pc-deck-pdf");
+  if (deckFileInput) deckFileInput.value = "";
   companyNameTouched = false;
   newDealTitleTouched = false;
   pcDraftAccountName = "";
@@ -4741,7 +4747,7 @@ async function collectIntakePayload() {
   const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
   let companyName = await resolveIntakeCompanyName(prospectEmails);
   const transcript = (await readFieldValueAsync($("pc-transcript")))?.trim() || "";
-  const deckLink = (await readFieldValueAsync($("pc-deck-link")))?.trim() || undefined;
+  const deckContent = deckContentForPayload();
   const additionalContextRaw =
     (await readFieldValueAsync($("pc-additional-context")))?.trim() || undefined;
   const contextAttachments = contextAttachmentsForPayload("postcall");
@@ -4802,7 +4808,7 @@ async function collectIntakePayload() {
       companyDomain: prospectDomain && !isFreeMailDomain(prospectDomain) ? prospectDomain : undefined,
       prospectEmails,
       participantEmails: prospectEmails,
-      deckLink,
+      deckContent,
       additionalContext,
       contextAttachments,
       linkedinProfileExports,
@@ -4844,7 +4850,7 @@ function ensureIntakePayloadSynced(payload) {
 
 async function startPipeline(e) {
   e?.preventDefault?.();
-  if (linkedinParsing || contextParsing || pass0Busy || generating) return;
+  if (linkedinParsing || contextParsing || deckPdfParsing || pass0Busy || generating) return;
   const btn = $("analyze-call");
   if (btn?.disabled) return;
   const status = $("postcall-status");
@@ -5012,6 +5018,8 @@ export function onSessionCleared() {
   lastProspectEmailsRaw = "";
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
+  clearDeckPdfContent();
+  renderDeckPdfFileList();
   activePostcallProgress?.hide();
   activePostcallProgress = null;
   show($("postcall-form-view"), true);
@@ -5042,6 +5050,156 @@ export function __resetIntakeDealStateForTests() {
   pcResolvedAccount = null;
   pcDraftAccountName = "";
   if (pipelineState && !pipelineState.resolve) pipelineState = null;
+}
+
+// ---------------------------------------------------------------- deck PDF (single file)
+//
+// Replaces the old free-text "Deck link" field (v2.1) — a bare URL let the scorer
+// invent slide_deck evidence with nothing to ground it. We now parse the deck PDF
+// client-side (text only — bytes never leave the machine) and send the extracted
+// per-slide text to the worker, same "text-only" pattern as the LinkedIn PDF and
+// context-file uploads above.
+
+/** Soft budget — cap total extracted deck text sent to the scorer; later slides are
+ * truncated first so the front of the deck (title, agenda, problem framing) always scores. */
+const MAX_DECK_PDF_TEXT_CHARS = 15_000;
+
+/** @type {Promise<typeof import('pdfjs-dist')>|null} */
+let deckPdfjsLoadPromise = null;
+
+async function loadDeckPdfJs() {
+  if (!deckPdfjsLoadPromise) {
+    deckPdfjsLoadPromise = import(
+      "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.mjs"
+    ).then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc =
+        "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.worker.mjs";
+      return pdfjs;
+    });
+  }
+  return deckPdfjsLoadPromise;
+}
+
+/**
+ * Extract per-page text from a deck PDF.
+ * @param {File} file
+ * @returns {Promise<{ fileName: string, pageCount: number, slides: { page: number, text: string }[] }>}
+ */
+async function extractDeckPdfContent(file) {
+  const pdfjs = await loadDeckPdfJs();
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const rawPages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    rawPages.push({ page: i, text });
+  }
+
+  let budget = MAX_DECK_PDF_TEXT_CHARS;
+  const slides = rawPages.map((p) => {
+    if (budget <= 0) return { page: p.page, text: "" };
+    if (p.text.length <= budget) {
+      budget -= p.text.length;
+      return p;
+    }
+    const trimmed = { page: p.page, text: p.text.slice(0, budget) };
+    budget = 0;
+    return trimmed;
+  });
+
+  return { fileName: file.name || "deck.pdf", pageCount: doc.numPages, slides };
+}
+
+/** @type {{ fileName: string, pageCount: number, slides: { page: number, text: string }[] } | null} */
+let deckPdfContent = null;
+
+/** Deck content for the intake payload / generate body — undefined when nothing is attached. */
+function deckContentForPayload() {
+  return deckPdfContent || undefined;
+}
+
+function clearDeckPdfContent() {
+  deckPdfContent = null;
+}
+
+function renderDeckPdfFileList() {
+  const listEl = $("pc-deck-file-list");
+  if (!listEl) return;
+  listEl.innerHTML = deckPdfContent
+    ? `<li class="prep-linkedin-file-item">
+        <span class="prep-linkedin-file-name" title="${esc(deckPdfContent.fileName)}">${esc(deckPdfContent.fileName)} <span class="prep-linkedin-file-meta">(${deckPdfContent.pageCount} slide${deckPdfContent.pageCount === 1 ? "" : "s"})</span></span>
+        <fw-button type="button" color="secondary" fill="clear" size="small" id="pc-deck-remove-btn">Remove</fw-button>
+      </li>`
+    : "";
+  const removeBtn = $("pc-deck-remove-btn");
+  const removeDeck = () => {
+    clearDeckPdfContent();
+    renderDeckPdfFileList();
+  };
+  removeBtn?.addEventListener("fwClick", removeDeck);
+  removeBtn?.addEventListener("click", removeDeck);
+}
+
+/** Wire the deck PDF upload widget (add + replace + remove). */
+function initDeckPdfUpload() {
+  loadDeckPdfJs().catch(() => {});
+  const fileInput = $("pc-deck-pdf");
+  const addBtn = $("pc-deck-add-btn");
+  const errEl = $("pc-deck-error");
+  const parsingEl = $("pc-deck-parsing");
+
+  addBtn?.addEventListener("fwClick", () => fileInput?.click());
+  addBtn?.addEventListener("click", () => fileInput?.click());
+
+  fileInput?.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!file) return;
+    if (errEl) errEl.hidden = true;
+    const name = file.name || "deck.pdf";
+    if (!/\.pdf$/i.test(name) && file.type !== "application/pdf") {
+      if (errEl) {
+        errEl.textContent = `${name}: not a PDF file.`;
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (parsingEl) parsingEl.hidden = false;
+    deckPdfParsing = true;
+    updateAnalyzeButtonState();
+    if (addBtn) addBtn.disabled = true;
+    try {
+      const content = await extractDeckPdfContent(file);
+      if (!content.slides.some((s) => s.text)) {
+        if (errEl) {
+          errEl.textContent = `${name}: could not extract text (empty or scanned PDF).`;
+          errEl.hidden = false;
+        }
+        return;
+      }
+      // Single-file input — a new pick replaces whatever deck was attached before.
+      deckPdfContent = content;
+      renderDeckPdfFileList();
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = `${name}: ${err?.message || "failed to read PDF"}.`;
+        errEl.hidden = false;
+      }
+    } finally {
+      if (parsingEl) parsingEl.hidden = true;
+      deckPdfParsing = false;
+      updateAnalyzeButtonState();
+      if (addBtn) addBtn.disabled = false;
+    }
+  });
+
+  renderDeckPdfFileList();
 }
 
 export function initPostcall() {
@@ -5131,6 +5289,8 @@ export function initPostcall() {
       if (addBtn) addBtn.disabled = on;
     },
   });
+
+  initDeckPdfUpload();
 
   updateAnalyzeButtonState();
 }

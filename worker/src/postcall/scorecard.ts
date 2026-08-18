@@ -26,6 +26,7 @@ import { trimWords } from "../word-limits";
 import type { DealRiskFlag, ScorecardEvidence, SubParameterLine } from "../domain-model/scorecard";
 import type { VideoFactsDraft } from "../domain-model/video-facts";
 import { aggregateCameraOnPct, curveHasCameraData } from "../video/facts";
+import type { PostCallDeckContent } from "./types";
 
 export type Env = ProviderEnv;
 
@@ -70,7 +71,10 @@ export interface PostCallScorecardInput {
   transcript: string;
   callType: CallType;
   videoAvailable: boolean;
+  /** @deprecated no longer scoring-relevant — see PostCallGenerateInput.deckLink. Kept for historical display. */
   deckLink?: string | null;
+  /** Parsed deck PDF — client-extracted text, capped, per-slide/page. Drives slide_deck scoring. */
+  deckContent?: PostCallDeckContent | null;
   briefContext?: string | null;
   companyName?: string;
   meetingTitle?: string;
@@ -95,6 +99,22 @@ function cloneScorecardResult(result: PostCallScorecardResult): PostCallScorecar
   return JSON.parse(JSON.stringify(result)) as PostCallScorecardResult;
 }
 
+/** FNV-1a — same hashing approach as the fingerprint that wraps this. */
+function fnv1aHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return String(h >>> 0);
+}
+
+/** Hash of the deck PDF's concatenated slide text — deckLink no longer affects scoring. */
+function deckContentFingerprint(deckContent: PostCallDeckContent | null | undefined): string {
+  if (!deckContent?.slides?.length) return "";
+  return fnv1aHash(deckContent.slides.map((s) => s.text).join("\0"));
+}
+
 function scorecardCacheFingerprint(input: PostCallScorecardInput, profile: QipProfile): string {
   const vf = input.videoFacts;
   const vfParts = vf
@@ -111,7 +131,7 @@ function scorecardCacheFingerprint(input: PostCallScorecardInput, profile: QipPr
   const basis = [
     profile.key,
     String(input.videoAvailable),
-    input.deckLink?.trim() ?? "",
+    deckContentFingerprint(input.deckContent),
     input.briefContext?.trim() ?? "",
     input.companyName ?? "",
     input.meetingTitle ?? "",
@@ -247,10 +267,17 @@ RULES (mandatory):
 5. APPLICABILITY:
    - Theme not evidenced on call → score all five sub-parameters 0 (stays in denominator).
    - requires_video theme with no video → set all sub-parameters to 0 AND we will mark evidence_unavailable.
-   - No deck shared → slide_deck: all sub-parameters 0.
+   - No deck content and no video slide evidence → slide_deck: all sub-parameters 0.
 6. dealRiskFlags: separate array for one-off incidents (§6) — factual claims to verify, commitments outside remit, missing stakeholders, process gaps, legal/compliance statements. Does NOT affect the QIP number.
 7. Emit analysisConfidence 0..1 for the whole call.
 8. Respond with JSON only — one line per theme below, every themeKey exactly once.
+9. slide_deck theme: when a "=== DECK ===" section is present below, score its sub-parameters
+   from the ACTUAL deck content (what the slides say/show) plus transcript evidence of how the
+   deck was walked through on the call — never invent slide content that is not in the DECK
+   section. Evidence quoted from the deck section must be tagged source: "artifact" (as opposed
+   to "video" or "transcript"); evidence quoted from the call itself keeps its normal
+   transcript/video source. Do not fabricate deck evidence when no DECK section is present —
+   that case falls back to rule 5's all-zero requirement.
 
 THEMES FOR THIS PROFILE:
 ${themeBlocks.join("\n\n")}`;
@@ -271,11 +298,17 @@ function slideTimeOnDeckSec(facts: VideoFactsDraft | null | undefined): number {
   );
 }
 
+/**
+ * A deck counts as "present" only when we have real content to score it against: a
+ * parsed PDF, or Pass 2 video evidence of slides being shared. A bare deck link (or
+ * URL of any kind — including a YouTube link) is NOT evidence and must never unlock
+ * slide_deck scoring on its own.
+ */
 export function deckPresentForScorecard(
-  deckLink: string | null | undefined,
+  deckContent: PostCallDeckContent | null | undefined,
   videoFacts: VideoFactsDraft | null | undefined,
 ): boolean {
-  if (deckLink?.trim()) return true;
+  if (deckContent?.slides?.some((s) => s.text?.trim())) return true;
   if (!videoFactsReady(videoFacts)) return false;
   if (slideSegmentsFromFacts(videoFacts).length > 0) return true;
   const sharePct = videoFacts!.shareOnPct;
@@ -285,14 +318,15 @@ export function deckPresentForScorecard(
 
 function userPrompt(input: PostCallScorecardInput, profile: QipProfile): string {
   const factsReady = videoFactsReady(input.videoFacts);
-  const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
+  const deckPresent = deckPresentForScorecard(input.deckContent, input.videoFacts);
+  const deckSlideCount = input.deckContent?.slides?.length ?? 0;
   const lines = [
     `Score this ${profile.key} call against the profile above.`,
     "",
     `Video stream available: ${input.videoAvailable ? "yes" : "NO"}`,
     `Pass 2 video facts ready: ${factsReady ? "yes" : "NO"}`,
-    `Deck present (link OR video slides/share): ${deckPresent ? "yes" : "NO — slide_deck scores 0 if in profile"}`,
-    `Deck link provided: ${input.deckLink?.trim() ? "yes" : "no"}`,
+    `Deck present (parsed PDF OR video slides/share): ${deckPresent ? "yes" : "NO — slide_deck scores 0 if in profile"}`,
+    `Deck PDF attached: ${deckSlideCount > 0 ? `yes (${deckSlideCount} slides)` : "no"}`,
   ];
   if (factsReady && input.videoFacts) {
     const vf = input.videoFacts;
@@ -332,6 +366,14 @@ function userPrompt(input: PostCallScorecardInput, profile: QipProfile): string 
   if (input.meetingTitle) lines.push(`Meeting title: ${input.meetingTitle}`);
   if (input.briefContext?.trim()) {
     lines.push("", "=== PRE-CALL BRIEF (answer key for research) ===", input.briefContext.trim());
+  }
+  if (deckSlideCount > 0) {
+    lines.push(
+      "",
+      `=== DECK (extracted from PDF, ${deckSlideCount} slides) ===`,
+      ...input.deckContent!.slides.map((s) => `--- Slide ${s.page} ---\n${s.text || "(no extractable text)"}`),
+      "=== END DECK ===",
+    );
   }
   lines.push(
     "",
@@ -696,7 +738,7 @@ export async function runPostCallScorecard(
   }
 
   const themeKeys = profile.themes.map((t) => t.key);
-  const deckPresent = deckPresentForScorecard(input.deckLink, input.videoFacts);
+  const deckPresent = deckPresentForScorecard(input.deckContent, input.videoFacts);
 
   const provider = getPostCallProvider(env);
   const model = resolvePostCallCacheModel(env);

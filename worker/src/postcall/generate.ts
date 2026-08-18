@@ -65,6 +65,7 @@ export async function runPostCallGenerate(
           callType,
           videoAvailable,
           deckLink: input.deckLink,
+          deckContent: input.deckContent,
           briefContext: input.briefContext,
           companyName: input.companyName,
           meetingTitle: input.meetingTitle,

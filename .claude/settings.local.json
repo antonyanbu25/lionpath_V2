@@ -1,8 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(unzip -q \"lionpath-2.0.7.1-antony-laptop-version.zip\" -d extracted)",
-      "Bash(git config *)"
+      "Bash(git clone *)",
+      "Bash(git -C .tmp_clone status)",
+      "Bash(git -C .tmp_clone branch -vv)",
+      "Bash(git -C .tmp_clone ls-files)",
+      "Bash(mv .tmp_clone/.claude/skills .claude/skills)",
+      "Bash(mv .tmp_clone/.claude/launch.json .claude/launch.json)",
+      "Bash(rm .tmp_clone/.claude/settings.local.json)",
+      "Bash(rmdir .tmp_clone/.claude)",
+      "Bash(cd \"/Users/nivnatarajan/Desktop/Wens 2.1.4\" && mv .tmp_clone/.agents .tmp_clone/.cursor .tmp_clone/.firebaserc.example .tmp_clone/.gcloudignore .tmp_clone/.git .tmp_clone/.gitattributes .tmp_clone/.github .tmp_clone/.gitignore . && rmdir .tmp_clone && echo DONE)",
+      "Bash(git checkout *)",
+      "Bash(git check-ignore *)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

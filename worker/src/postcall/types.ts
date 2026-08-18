@@ -156,6 +156,23 @@ export interface OverrideLogEntry {
   at: number;
 }
 
+/** One page of client-extracted deck PDF text (see `PostCallDeckContent`). */
+export interface PostCallDeckSlideContent {
+  page: number;
+  text: string;
+}
+
+/**
+ * Deck PDF, parsed client-side and sent as text only (bytes never leave the browser).
+ * Replaces the old `deckLink` free-text field as the source of slide_deck scoring
+ * evidence (v2.2) — see `deckPresentForScorecard` in ./scorecard.
+ */
+export interface PostCallDeckContent {
+  fileName: string;
+  pageCount: number;
+  slides: PostCallDeckSlideContent[];
+}
+
 export interface PostCallGenerateInput {
   transcript?: string;
   recordingUrl?: string;
@@ -164,8 +181,15 @@ export interface PostCallGenerateInput {
   meetingTitle?: string;
   meetingDate?: string;
   additionalContext?: string;
-  /** Optional deck URL — stored only; processing deferred (spec §3.4). */
+  /**
+   * @deprecated Legacy free-text deck URL (v2.1). No longer populated by the intake
+   * UI as of the deck-PDF-evaluation change (v2.2) — a bare link let the scorer
+   * invent slide_deck evidence with nothing to ground it. Kept readable so historical
+   * records still display it; use `deckContent` for anything scoring-relevant.
+   */
   deckLink?: string;
+  /** Parsed deck PDF — client-extracted text, capped, per-slide/page. */
+  deckContent?: PostCallDeckContent | null;
   prospectEmails?: string[];
   linkedinProfileExports?: { fileName: string; text: string }[];
   effort?: string;

@@ -568,16 +568,20 @@
                     <p id="pc-account-name-error" class="field-hint warn pc-account-name-error" hidden></p>
                     <div id="pc-crm-matches" class="pc-crm-matches" hidden></div>
                     <details class="prep-enrich-advanced postcall-optional-block">
-                      <summary>Add deck link &amp; LinkedIn profiles <span class="muted">· optional</span></summary>
+                      <summary>Add deck PDF &amp; LinkedIn profiles <span class="muted">· optional</span></summary>
                       <div class="postcall-optional-body">
                       <div class="prep-optional-grid postcall-optional-grid">
-                        <fw-input
-                          id="pc-deck-link"
-                          label="Deck link"
-                          type="text"
-                          placeholder="Google Slides or .pptx"
-                          clear-input
-                        ></fw-input>
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">Deck PDF</span>
+                          <p class="muted prep-linkedin-hint">Export your slides as PDF — we score the deck against the rubric.</p>
+                          <input type="file" id="pc-deck-pdf" accept="application/pdf,.pdf" hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="pc-deck-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add deck PDF</fw-button>
+                            <span id="pc-deck-parsing" class="muted prep-linkedin-parsing" hidden>Parsing deck…</span>
+                          </div>
+                          <ul id="pc-deck-file-list" class="prep-linkedin-file-list" aria-label="Attached deck PDF"></ul>
+                          <p id="pc-deck-error" class="field-hint warn" hidden></p>
+                        </div>
                         <div class="prep-linkedin-upload">
                           <span class="prep-linkedin-label">LinkedIn PDFs</span>
                           <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
