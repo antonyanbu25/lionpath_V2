@@ -4,31 +4,32 @@
 
 | | |
 |---|---|
-| **This branch** | **`2.1.2`** — cut from **`2.1.1`**; **Dispute a score** → **janus.freshdesk.com**, Activities feed, account/deal/call fixes |
-| **Portal build** | `2.1.43` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
+| **This branch** | **`2.1.4`** — active work stream: pre-call autofill, dashboard activity, SSO, post-call latency, **Precall UX bug fixes** |
+| **Portal build** | `2.1.45` (`web/firebase-config.js` `AUTH_BUILD_ID`; cache-busted JS modules) |
 | **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
 | **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
 | **Live app** | [https://lionpath.benjaminsquare.com](https://lionpath.benjaminsquare.com) |
 | **Live API** | [https://lionpathapi.benjaminsquare.com](https://lionpathapi.benjaminsquare.com) |
 | **Upstream repo** | [github.com/skut264/lionpath](https://github.com/skut264/lionpath) |
 | **Production deploy fork** | [github.com/antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2) (VPS pulls from here) |
-| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/2.1.2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.2) |
+| **Branch on GitHub** | [antonyanbu25/lionpath_V2/tree/2.1.4](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.4) |
 
 ---
 
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights (2.1.2)](#release-highlights-212)
-3. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
-4. [Architecture](#architecture)
-5. [Repository layout](#repository-layout)
-6. [Quick start (developers)](#quick-start-developers)
-7. [Demo logins](#demo-logins)
-8. [Testing](#testing)
-9. [Deploy](#deploy)
-10. [Documentation index](#documentation-index)
-11. [Contributing & remotes](#contributing--remotes)
+2. [Release highlights (2.1.4)](#release-highlights-214)
+3. [Release highlights (2.1.2)](#release-highlights-212)
+4. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
+5. [Architecture](#architecture)
+6. [Repository layout](#repository-layout)
+7. [Quick start (developers)](#quick-start-developers)
+8. [Demo logins](#demo-logins)
+9. [Testing](#testing)
+10. [Deploy](#deploy)
+11. [Documentation index](#documentation-index)
+12. [Contributing & remotes](#contributing--remotes)
 
 ---
 
@@ -45,6 +46,37 @@ Lionpath is an internal SE coaching portal with two core workflows plus CRM-styl
 | **Support & disputes** | When scores or product feedback need follow-up | Freshdesk tickets + optional manager email on score disputes |
 
 Both prep and post-call write to the **same domain model** — accounts, contacts, and deals are global entities; prep briefs and post-call artifacts attach to shared lifecycles.
+
+---
+
+## Release highlights (2.1.4)
+
+Branch **`2.1.4`** is an active work stream on [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/2.1.4). Portal auth/module stamp **`2.1.45`**. Full release notes: [docs/RELEASE_2.1.4.md](./docs/RELEASE_2.1.4.md).
+
+### Pre-call / portal fixes (earlier on 2.1.4)
+
+| Area | Fix |
+|------|-----|
+| **Company website autofill** | Shadow-DOM-aware writes via `setFieldValue()` — typing, CRM match, and “New brief” no longer leave a stale or invisible domain |
+| **Dashboard Recent activity** | Subscription builders gated on `fb?.db` so SE sessions fall back to local/worker data instead of staying empty |
+| **Google SSO** | No `await` before `signInWithPopup` — popup opens on first click |
+| **Post-call latency** | Qualify + summarise in parallel; timeline no longer blocked on video pass |
+
+### Precall UX bug fixes (shipped on `2.1.4`)
+
+Five demo-facing fixes in the Know tab and new-brief form:
+
+| # | Fix | Key files |
+|---|-----|-----------|
+| 1 | **Truncation** — long attendee summaries expand via `<details>`; ellipsis hotspots get `title` tooltips (header, assets, brief list, CRM preview) | `web/precall-brief-v9.js`, `web/briefs-list-view.js`, `web/account-deal-preview.js` |
+| 2 | **Generate CTA** — darker `--dew-brand` button (scoped to `.nb-generate-btn`, not global primary) | `web/precall.css` |
+| 3 | **Fish agent count** — billion/trillion suffixes no longer inflate headcount; absurd values hidden client- and worker-side | `web/fish-sizing-buckets.js`, `worker/src/prep/rivals-context.ts`, `worker/src/prep/rivals.ts` |
+| 4 | **Recent news dates** — `publishedAt` preserved from LLM + RSS `<pubDate>`; rendered as `.prep-v9-news-date` | `worker/src/schema.ts`, `worker/src/prep/company-news.ts`, `web/precall-brief-v9.js` |
+| 5 | **Tile interactivity** — Discovery kit + Likely pain points no longer lift on hover (match static `prep-v9-card` feel) | `web/precall.css` |
+
+**Eval:** 48 inline regression cases + 8-suite orchestrator — run `node web/scripts/run-precall-bug-fixes-eval.mjs`. Report: [docs/PRECALL_BUG_FIXES_EVAL.md](./docs/PRECALL_BUG_FIXES_EVAL.md).
+
+**Deploy note:** Web changes apply on portal deploy immediately; worker changes (news dates, fish sanitize at prep time) need a worker redeploy for **new** preps.
 
 ---
 
@@ -253,7 +285,7 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ```bash
 git clone https://github.com/antonyanbu25/lionpath_V2.git
 cd lionpath_V2
-git checkout 2.1.2
+git checkout 2.1.4
 
 cd worker
 cp .dev.vars.example .dev.vars
@@ -347,6 +379,10 @@ npm run test:live-api
 
 # Firestore rules coverage (needs a real JDK)
 npm run test:rules   # from repo root — npm ci in rules-tests/ + node run-all.mjs
+
+# Precall bug-fix eval (2.1.4) — from repo root; 48 inline cases + 8 suites;
+# writes docs/PRECALL_BUG_FIXES_EVAL.md when all pass
+node web/scripts/run-precall-bug-fixes-eval.mjs
 ```
 
 CI (`.github/workflows/ci.yml`) runs all three legs (`worker`, `web`,
@@ -362,32 +398,51 @@ directly on the custom-element host both silently no-op. Use
 for native form association), and click `#login-submit` specifically —
 `button[type="submit"]` matches multiple unrelated buttons app-wide.
 
-Key modules under test: `calls-list-view.js`, `score-disputes.js`, `support-tickets.js`, `product-signal-service.js`, `engagement-entities.js`, `dual-write.js`, `account-service.js`, `org-service.js`, `freshdesk.ts`, `notify-email.ts`.
+Key modules under test: `calls-list-view.js`, `score-disputes.js`, `support-tickets.js`, `product-signal-service.js`, `engagement-entities.js`, `dual-write.js`, `account-service.js`, `org-service.js`, `freshdesk.ts`, `notify-email.ts`, `fish-sizing-buckets.js`, `precall-brief-v9.js`, `rivals-context.ts`, `company-news.ts`.
 
 ---
 
 ## Deploy
 
+### Git workflow (follow every time)
+
+Live branches: **`main`** (source of truth), **`2.1`** (production deploy anchor for Janus — **never rename, force-push, or delete**), **`2.1.4`** / **`2.1.5`** (active work streams).
+
+| You're doing | Branch name | Example |
+|---|---|---|
+| New feature | `feat/<short-name>` | `feat/login-page` |
+| Bug fix | `fix/<short-name>` | `fix/arr-crash` |
+| Tests / housekeeping | `chore/<short-name>` | `chore/precall-eval` |
+| Docs | `docs/<short-name>` | `docs/branching` |
+
+**Daily workflow:** `git checkout main && git pull` → `git checkout -b feat/my-change` → commit → `git push -u origin feat/my-change` → **PR into `main`**.
+
+**Hotfix on production (Janus):** branch off **`2.1`**, PR into **`2.1`**, then cherry-pick onto `main`.
+
+**Work stream (e.g. 2.1.4):** branch off the stream (`git checkout -b chore/precall-eval 2.1.4`), push, **PR into `2.1.4`**.
+
+Full policy: [docs/lionpath-git-workflow-claude.md](https://github.com/antonyanbu25/lionpath_V2/blob/main/docs/lionpath-git-workflow-claude.md) (also `.mdc` for Cursor).
+
 ### VPS production (Tony's fork → live site)
 
 Production VPS deploys from **`antonyanbu25/lionpath_V2`**.
 
-**Release branch `2.1.2`** (sourced from **`2.1.1`** ← **`2.1`**):
+**Work stream `2.1.4`** (Precall fixes + eval):
 
 ```bash
-# Developer machine — push release branch
-git checkout 2.1.2
-git push origin 2.1.2
+# Developer — feature branch → PR → merge into 2.1.4, then:
+git checkout 2.1.4
+git pull origin 2.1.4
 
 # On VPS (after review)
 cd /opt/se-singha-paathai
 git fetch origin
-git checkout 2.1.2
-git pull origin 2.1.2
+git checkout 2.1.4
+git pull origin 2.1.4
 cd deploy/vps && bash upgrade-now.sh
 ```
 
-Stable production line remains **`2.1`** / **`2.1.1`** until **`2.1.2`** is promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
+Stable production line on Janus remains **`2.1`** until promoted. See [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md).
 
 #### Promotion checklist (before pushing a release branch to production)
 
@@ -402,12 +457,15 @@ For Freshdesk on Cloud Run: `FRESHDESK_API_KEY='…' bash deploy/cloudrun/setup-
 
 | Remote | Repo | Branch | Purpose |
 |--------|------|--------|---------|
-| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.2`** | Current release branch (from **`2.1.1`**) — Tony's fork / VPS |
-| **`skut264`** | skut264/lionpath | `2.1` / features | Upstream / team development |
+| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1.4`** | Current work stream — Precall fixes, eval |
+| **`origin`** | antonyanbu25/lionpath_V2 | **`2.1`** | Production deploy anchor (Janus) — hotfixes only |
+| **`origin`** | antonyanbu25/lionpath_V2 | **`main`** | Source of truth |
+| **`skut264`** | skut264/lionpath | features | Upstream / team development |
 
 ```bash
-git checkout 2.1.2
-git push -u origin 2.1.2
+git checkout -b fix/my-bug 2.1.4
+git push -u origin fix/my-bug
+# Open PR → 2.1.4 (or → main for general features)
 ```
 
 ---
@@ -421,6 +479,8 @@ git push -u origin 2.1.2
 | [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md) | Domain entities |
 | [docs/RBAC.md](./docs/RBAC.md) | Roles and visibility |
 | [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARITY.md) | Prep/post-call shared CRM path |
+| [docs/PRECALL_BUG_FIXES_EVAL.md](./docs/PRECALL_BUG_FIXES_EVAL.md) | Precall UX bug-fix eval report (2.1.4) |
+| [docs/RELEASE_2.1.4.md](./docs/RELEASE_2.1.4.md) | 2.1.4 release notes (autofill, SSO, latency) |
 | [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | DISC / enrich API |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | Production deploy |
 | [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
@@ -432,6 +492,8 @@ git push -u origin 2.1.2
 **Fix / review reports (2.1 / 2.1.1 pass):**
 
 - [docs/PRECALL_FIX_REPORT.md](./docs/PRECALL_FIX_REPORT.md)
+- [docs/PRECALL_BUG_FIXES_EVAL.md](./docs/PRECALL_BUG_FIXES_EVAL.md) — Precall UX bug-fix eval (2.1.4)
+- [docs/RELEASE_2.1.4.md](./docs/RELEASE_2.1.4.md)
 - [docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md](./docs/ACCOUNT_DEAL_CONTACT_FIX_REPORT.md)
 - [docs/REVIEW_ROUND2_FIX_REPORT.md](./docs/REVIEW_ROUND2_FIX_REPORT.md)
 - [docs/ULTRA_REVIEW_A.md](./docs/ULTRA_REVIEW_A.md) · [docs/ULTRA_REVIEW_B.md](./docs/ULTRA_REVIEW_B.md)
@@ -444,15 +506,24 @@ git push -u origin 2.1.2
 # Add skut264 upstream (once)
 git remote add skut264 https://github.com/skut264/lionpath.git
 
-# Add production fork (once)
-git remote add antony https://github.com/antonyanbu25/lionpath_V2.git
+# Always start from latest main for new features
+git checkout main
+git pull origin main
+git checkout -b feat/my-change
 
-# Feature workflow
-git checkout -b feature/my-change 2.1.2
 # ... develop, npm test ...
-git push -u skut264 feature/my-change
-# Open PR to 2.1.2 (or 2.1.1 / 2.1) on skut264/lionpath
+git push -u origin feat/my-change
+# Open PR → main on antonyanbu25/lionpath_V2
+
+# Work on the 2.1.4 stream (Precall / portal fixes)
+git checkout 2.1.4
+git pull origin 2.1.4
+git checkout -b fix/precall-something
+git push -u origin fix/precall-something
+# Open PR → 2.1.4
 ```
+
+**Do not:** code directly on `main`, touch `2.1` except hotfixes, or use ad-hoc branch names (`nivi-sunday`, `NEW_FEATURE`). See git workflow doc linked in [Deploy](#deploy).
 
 **Do not commit:** `worker/.dev.vars`, `web/firebase-config.local.js`, `worker/secrets/*` (except README), API keys, `.cursor/` debug logs.
 
