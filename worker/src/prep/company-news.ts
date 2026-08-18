@@ -192,7 +192,12 @@ export function shapeCompanyNews(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    items.push({ headline, detail, sourceLabel: source.label });
+    items.push({
+      headline,
+      detail,
+      sourceLabel: source.label,
+      ...(rawItem?.publishedAt ? { publishedAt: trimWords(rawItem.publishedAt, 6) } : {}),
+    });
     if (items.length >= MAX_NEWS_ITEMS) break;
   }
 
@@ -302,7 +307,7 @@ async function fetchGeminiCompanyNews(
 /** Merge Gemini + DDG (or other) news; Gemini items first, dedupe by headline. */
 export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): CompanyNews | null {
   const dropped: string[] = [];
-  type Raw = { headline: string; detail: string; articleUrl?: string; domain: string; url: string };
+  type Raw = { headline: string; detail: string; articleUrl?: string; publishedAt?: string; domain: string; url: string };
   const merged: Raw[] = [];
   const seenHeadlines = new Set<string>();
 
@@ -318,6 +323,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
         headline: item.headline,
         detail: item.detail,
         articleUrl: item.articleUrl,
+        publishedAt: item.publishedAt,
         domain: src?.domain || "",
         url: item.articleUrl || src?.url || "",
       });
@@ -350,6 +356,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
       detail: row.detail,
       sourceLabel: source.label,
       ...(row.articleUrl || row.url ? { articleUrl: row.articleUrl || row.url } : {}),
+      ...(row.publishedAt ? { publishedAt: row.publishedAt } : {}),
     });
   }
 

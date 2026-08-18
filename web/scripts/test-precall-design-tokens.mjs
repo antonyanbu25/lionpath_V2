@@ -135,12 +135,16 @@ expectDecls(".nb-attach-btn", { height: "38px", "border-radius": "10px", padding
 
 // --- Generate button ---------------------------------------------------------
 expectDecls(".nb-generate-btn", {
-  background: "var(--dew-primary)",
+  background: "var(--dew-brand)",
   height: "50px",
   "border-radius": "12px",
   "font-size": "15px",
   "font-weight": "700",
   gap: "8px",
+});
+expectDecls("#prep-result-view .prep-grid-kit fw-card.prep-card:hover", {
+  transform: "none",
+  "box-shadow": "none",
 });
 
 // --- Recent briefs -----------------------------------------------------------

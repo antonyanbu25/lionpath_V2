@@ -67,6 +67,30 @@ const good = () => ({
   eq(out!.sources.map((s) => s.label), ["N1", "N2"], "only cited sources are returned");
 }
 
+{
+  const raw = {
+    items: [{ headline: "Raised $40M Series B", detail: "Led by investor", sourceDomain: "reuters.com", publishedAt: "March 2026" }],
+  };
+  const out = shapeCompanyNews(raw, CITES);
+  eq(out!.items[0].publishedAt, "March 2026", "preserves LLM publishedAt");
+}
+
+{
+  const merged = mergeCompanyNews(
+    shapeCompanyNews(
+      {
+        items: [{ headline: "Alpha launch", detail: "New product", sourceDomain: "reuters.com", publishedAt: "2026-01-15" }],
+      },
+      CITES,
+    ),
+    companyNewsFromHits([
+      { title: "Beta funding round announced", snippet: "Details", url: "https://techcrunch.com/beta-funding", publishedAt: "2026-02-01" },
+    ]),
+  );
+  ok(merged?.items.some((i) => i.publishedAt === "2026-01-15"), "merge keeps gemini publishedAt");
+  ok(merged?.items.some((i) => i.publishedAt === "2026-02-01"), "merge keeps RSS publishedAt");
+}
+
 // An invented domain cannot launder an item into the panel.
 {
   const raw = good();
