@@ -51,6 +51,24 @@
   color: var(--danger, #b8544a);
 }
 
+/*
+ * Analyse-call submit progress. Same hue as the button's existing primary color
+ * (--dew-primary, consumed by fw-button via --color-fill-brand) — completeness only
+ * varies its opacity, from a faint tint at 0 mandatory fields filled to full-strength
+ * primary at 1. No new color token introduced. --pc-submit-progress is set on the
+ * element by web/postcall.js (0..1); the Crayons disabled affordance (opacity/cursor)
+ * layers on top untouched when the button is disabled.
+ */
+#analyze-call {
+  --pc-submit-progress: 0;
+  --color-fill-brand: color-mix(
+    in srgb,
+    var(--dew-primary) calc(30% + 70% * var(--pc-submit-progress, 0)),
+    transparent
+  );
+  transition: background-color 0.2s ease;
+}
+
 .postcall-intake-card {
   padding: 24px;
 }
@@ -1595,6 +1613,15 @@ button.pc-deal-tile {
   fill: color-mix(in srgb, var(--dew-primary) 22%, transparent);
 }
 
+/* Dark surfaces need a slightly higher floor for the faint/incomplete state to stay legible. */
+[data-theme="dark"] #analyze-call {
+  --color-fill-brand: color-mix(
+    in srgb,
+    var(--dew-primary) calc(38% + 62% * var(--pc-submit-progress, 0)),
+    transparent
+  );
+}
+
 #postcall-result .qc-radar-dot {
   fill: var(--dew-primary);
 }
@@ -2516,6 +2543,10 @@ button.pc-deal-tile {
 @media (prefers-reduced-motion: reduce) {
   #view-postcall fw-card.prep-form-card,
   #view-postcall fw-card.postcall-confirm-card {
+    transition: none;
+  }
+
+  #analyze-call {
     transition: none;
   }
 }

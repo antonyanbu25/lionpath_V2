@@ -535,6 +535,7 @@ async function handleTranscriptFileChange(event) {
       errorEl.hidden = false;
     }
     if (input) input.value = "";
+    updateAnalyzeButtonState();
     return;
   }
 
@@ -545,6 +546,7 @@ async function handleTranscriptFileChange(event) {
     nameEl.hidden = false;
   }
   if (input) input.value = "";
+  updateAnalyzeButtonState();
 }
 
 function parseProspectEmails(raw) {
@@ -591,11 +593,47 @@ function prospectEmailsPresentSync() {
   return filterSessionEmailFromProspects(parseProspectEmails(raw)).length > 0;
 }
 
-/** @param {{ busy?: boolean, hasEmail?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s */
+/** Recording link field has a non-empty value. */
+function recordingLinkPresentSync() {
+  return !!readFieldValue($("pc-recording-url"));
+}
+
+/** Transcript textarea has non-empty text (a parsed/uploaded transcript file lands here too). */
+function transcriptPresentSync() {
+  return !!readFieldValue($("pc-transcript"));
+}
+
+/** Either a recording link or a transcript (pasted or file-loaded) is present. */
+function hasRecordingOrTranscriptSync() {
+  return recordingLinkPresentSync() || transcriptPresentSync();
+}
+
+/**
+ * @param {{ busy?: boolean, hasEmail?: boolean, hasRecordingOrTranscript?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s
+ */
 export function computeAnalyzeButtonDisabled(s) {
   const busy = !!s.busy;
   const hasEmail = !!s.hasEmail;
-  return busy || !hasEmail || !!s.crmResolving || !s.crmPreviewSurfacedOnce;
+  const hasRecordingOrTranscript = !!s.hasRecordingOrTranscript;
+  return (
+    busy ||
+    !hasEmail ||
+    !hasRecordingOrTranscript ||
+    !!s.crmResolving ||
+    !s.crmPreviewSurfacedOnce
+  );
+}
+
+/**
+ * Mandatory-field completeness for the analyse button's visual progress (busy/crmResolving
+ * are transient gates, not part of the "fields filled in" story, so they're excluded here).
+ * @param {{ hasEmail?: boolean, hasRecordingOrTranscript?: boolean, crmPreviewSurfacedOnce?: boolean }} s
+ */
+export function computeAnalyzeButtonProgress(s) {
+  const mandatory = [!!s.hasRecordingOrTranscript, !!s.hasEmail, !!s.crmPreviewSurfacedOnce];
+  const mandatoryCount = mandatory.length;
+  const completedCount = mandatory.filter(Boolean).length;
+  return { completedCount, mandatoryCount, ratio: mandatoryCount ? completedCount / mandatoryCount : 0 };
 }
 
 function updateAnalyzeButtonState() {
@@ -603,12 +641,20 @@ function updateAnalyzeButtonState() {
   if (!btn) return;
   const busy = pass0Busy || contextParsing || linkedinParsing || deckPdfParsing || generating;
   const hasEmail = prospectEmailsPresentSync();
+  const hasRecordingOrTranscript = hasRecordingOrTranscriptSync();
   btn.disabled = computeAnalyzeButtonDisabled({
     busy,
     hasEmail,
+    hasRecordingOrTranscript,
     crmResolving,
     crmPreviewSurfacedOnce,
   });
+  const progress = computeAnalyzeButtonProgress({
+    hasEmail,
+    hasRecordingOrTranscript,
+    crmPreviewSurfacedOnce,
+  });
+  btn.style.setProperty("--pc-submit-progress", String(progress.ratio));
 }
 
 function markCrmPreviewSurfaced() {
@@ -5535,11 +5581,17 @@ export function initPostcall() {
   recordingUrl?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingUrl?.addEventListener("input", syncPasscodeVisibility);
   recordingUrl?.addEventListener("fwBlur", syncPasscodeVisibility);
+  recordingUrl?.addEventListener("fwInput", updateAnalyzeButtonState);
+  recordingUrl?.addEventListener("input", updateAnalyzeButtonState);
   syncPasscodeVisibility();
 
   const recordingPwd = $("pc-recording-pwd");
   recordingPwd?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingPwd?.addEventListener("input", syncPasscodeVisibility);
+
+  const transcriptTextarea = $("pc-transcript");
+  transcriptTextarea?.addEventListener("fwInput", updateAnalyzeButtonState);
+  transcriptTextarea?.addEventListener("input", updateAnalyzeButtonState);
 
   const transcriptFile = $("pc-transcript-file");
   const transcriptFileBtn = $("pc-transcript-file-btn");
