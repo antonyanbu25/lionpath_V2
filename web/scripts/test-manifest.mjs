@@ -609,6 +609,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-room-attribution.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-contact-resolve.mjs",
     "tags": [
       "unit"

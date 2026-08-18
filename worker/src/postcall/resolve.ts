@@ -1,4 +1,4 @@
-import { parseTranscript } from "../transcript";
+import { parseTranscript, parseTranscriptCues } from "../transcript";
 import { fetchRecordingFromShareLink, type ZoomShareResult } from "../zoomShare";
 import { fetchZoomRecordingViaApi, type ZoomApiError } from "../zoom-api";
 import { zoomApiConfigured, type ZoomEnv } from "../zoom";
@@ -277,6 +277,30 @@ function emailsFromKaiaParticipants(
 export interface PostCallResolveOptions {
   /** Server-side Zoom credentials. When present, the account API is tried before scraping. */
   zoomEnv?: ZoomEnv;
+  /**
+   * LLM provider env for the speaker-attribution pass (see ./speaker-attribution). Optional —
+   * when absent, `speakerAttribution` is simply omitted from the result (soft-skip, not a
+   * failure). When present, a failure in the attribution call is also swallowed: resolve must
+   * always succeed on transcript parsing / matching even if this best-effort pass errors.
+   */
+  providerEnv?: import("./speaker-attribution").Env;
+}
+
+/** Soft-fail wrapper — speaker attribution is a suggestion-only pass, never blocks resolve. */
+async function trySpeakerAttribution(
+  providerEnv: import("./speaker-attribution").Env | undefined,
+  transcript: string,
+  participants: string[],
+): Promise<import("./speaker-attribution").SpeakerAttributionResult | undefined> {
+  if (!providerEnv) return undefined;
+  if (!parseTranscriptCues(transcript).length) return undefined; // no timestamps → no room segments possible
+  try {
+    const { runPostCallSpeakerAttribution } = await import("./speaker-attribution");
+    return await runPostCallSpeakerAttribution(providerEnv, { transcript, participants });
+  } catch (err) {
+    console.warn("[postcall/resolve] speaker attribution soft-fail:", (err as Error)?.message || err);
+    return undefined;
+  }
 }
 
 /**
@@ -407,6 +431,19 @@ export async function runPostCallResolve(
     input.ownerDisplayName,
   );
 
+  const attributionParticipants = uniqueLabels(
+    identities.identityOptions,
+    parsed.speakers,
+    identities.seIdentity ? [identities.seIdentity] : [],
+    identities.aeIdentity ? [identities.aeIdentity] : [],
+    identities.customerIdentities,
+  );
+  const speakerAttribution = await trySpeakerAttribution(
+    options.providerEnv,
+    transcript,
+    attributionParticipants,
+  );
+
   return {
     transcript,
     meetingTitle,
@@ -435,5 +472,6 @@ export async function runPostCallResolve(
     account,
     deals: rankedDeals,
     noMatch,
+    speakerAttribution,
   };
 }

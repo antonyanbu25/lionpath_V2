@@ -138,13 +138,25 @@ const VIDEO_THEME_LABELS = {
   customer_engagement: "Customer engagement",
 };
 
-const CONFIRM_ROLE_SET = ["Customer", "Primary SE", "Secondary SE", "AE", "Partner"];
+const CONFIRM_ROLE_SET = [
+  "Customer",
+  "Primary SE",
+  "Secondary SE",
+  "AE",
+  "Partner",
+  "Meeting room",
+  "General Manager",
+  "Executive",
+];
 const CONFIRM_ROLE_TONE = {
   Customer: { bg: "#f4e7df", color: "#b0785b" },
   "Primary SE": { bg: "#e3efec", color: "#2f8a7b" },
   "Secondary SE": { bg: "#dbe8e6", color: "#37746e" },
   AE: { bg: "#f3ecda", color: "#a5883f" },
   Partner: { bg: "#ece8de", color: "#877b63" },
+  "Meeting room": { bg: "#e6e6ec", color: "#585a7a" },
+  "General Manager": { bg: "#eee3d9", color: "#8a5a35" },
+  Executive: { bg: "#e3dbe9", color: "#6b4a8a" },
 };
 
 let linkedinParsing = false;
@@ -3040,6 +3052,7 @@ function personInitials(name) {
 }
 
 function personMonoTone(label, role) {
+  if (CONFIRM_ROLE_TONE[role]) return CONFIRM_ROLE_TONE[role];
   if (role === "Customer" || role === "Partner") {
     return { bg: "#f6e7e1", color: "#c2603f" };
   }
@@ -3058,18 +3071,66 @@ function parseAttendeeIdentity(label) {
   return { name: name || raw || "Attendee", email: email || null, label: raw || name || email };
 }
 
+/** AI speaker-attribution roster suggestion for this label (worker/src/postcall/speaker-attribution.ts), if any. */
+function rosterSuggestedRole(label, resolve) {
+  const roster = resolve?.speakerAttribution?.roster || [];
+  if (!roster.length) return null;
+  const key = normalizePersonKey(label);
+  if (!key) return null;
+  const entry = roster.find(
+    (r) => normalizePersonKey(r.label) === key || normalizePersonKey(r.canonicalName) === key,
+  );
+  return entry?.suggestedRole || null;
+}
+
 function inferAttendeeRole(label, resolve, sessionLabel) {
   const sessionKey = normalizePersonKey(sessionLabel);
   const key = normalizePersonKey(label);
   if (sessionKey && key && sessionKey === key) return "Primary SE";
   if (looksLikeAeIdentity(label)) return "AE";
   if (looksLikeSeIdentity(label)) return "Secondary SE";
+  const rosterRole = rosterSuggestedRole(label, resolve);
+  // Heuristics above have no way to guess these three — defer to the AI roster suggestion.
+  if (rosterRole === "Meeting room" || rosterRole === "General Manager" || rosterRole === "Executive") {
+    return rosterRole;
+  }
   if (isInternalIdentity(label)) {
     return normalizePersonKey(resolve?.seIdentity) === key ? "Primary SE" : "Secondary SE";
   }
   const customers = (resolve?.customerIdentities || []).map(normalizePersonKey);
   if (customers.includes(key)) return "Customer";
+  if (rosterRole && CONFIRM_ROLE_SET.includes(rosterRole)) return rosterRole;
   return "Customer";
+}
+
+/** Group AI-suggested meeting-room segments (worker) by attributed person, for the confirm-page sub-panel. */
+function roomGroupsForLabel(resolve, label) {
+  const segments = resolve?.speakerAttribution?.roomSegments || [];
+  const key = normalizePersonKey(label);
+  if (!key || !segments.length) return [];
+  const matches = segments.filter((seg) => normalizePersonKey(seg.label) === key);
+  if (!matches.length) return [];
+  const byPerson = new Map();
+  matches.forEach((seg, i) => {
+    const personKey = normalizePersonKey(seg.attributedTo) || `unknown_${i}`;
+    if (!byPerson.has(personKey)) {
+      byPerson.set(personKey, { attributedTo: seg.attributedTo || "Unknown", spans: [] });
+    }
+    byPerson.get(personKey).spans.push({
+      startS: Number(seg.startS) || 0,
+      endS: Number(seg.endS) || Number(seg.startS) || 0,
+      quote: seg.quote || "",
+      confidence: typeof seg.confidence === "number" ? seg.confidence : null,
+      reason: seg.reason || "",
+    });
+  });
+  return [...byPerson.values()].map((group, idx) => ({
+    id: `room_${key}_${idx}`,
+    attributedTo: group.attributedTo,
+    persons: group.attributedTo ? [group.attributedTo] : [],
+    showAddPerson: false,
+    spans: group.spans.sort((a, b) => a.startS - b.startS),
+  }));
 }
 
 function contactsForIdentityMerge(resolve) {
@@ -3178,6 +3239,7 @@ export function buildConfirmAttendees(resolve) {
       detail: att.email || att.detail || att.label,
       monoBg: mono.bg,
       monoColor: mono.color,
+      roomGroups: att.role === "Meeting room" ? roomGroupsForLabel(resolve, att.label || att.name) : [],
     };
   });
 }
@@ -3262,7 +3324,83 @@ function renderConfirmAccountDealShowcase(account, selectedDeal, resolve) {
     </div>`;
 }
 
-function renderAttendeeRow(att, index) {
+function formatRoomClock(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * Nested rows beneath a "Meeting room" attendee — one per AI-attributed person, grouping the
+ * suggested segments for that person. Everything here is an editable suggestion: the person
+ * select (multi-select when the current attribution is an SE) or the inline "Add person…" form
+ * update `att.roomGroups` in place; nothing is sent to the worker until the SE hits confirm.
+ */
+function renderRoomGroupPanel(att, attendeeIndex, allAttendees) {
+  if (!att.roomGroups?.length) return "";
+  const others = (allAttendees || []).filter((a) => a !== att && (a.name || a.label));
+
+  const groupsHtml = att.roomGroups
+    .map((group, gIdx) => {
+      const spansHtml = (group.spans || [])
+        .map(
+          (span) => `<p class="postcall-attendee-detail muted postcall-room-span">
+            <span class="postcall-room-span-time">${esc(formatRoomClock(span.startS))}–${esc(formatRoomClock(span.endS))}</span>
+            ${span.quote ? `“${esc(span.quote)}” · ` : ""}${
+              span.confidence != null ? `${Math.round(span.confidence * 100)}% confidence · ` : ""
+            }${esc(span.reason || "")}</p>`,
+        )
+        .join("");
+
+      const matchedAttendee = others.find(
+        (a) =>
+          normalizePersonKey(a.name) === normalizePersonKey(group.attributedTo) ||
+          normalizePersonKey(a.label) === normalizePersonKey(group.attributedTo),
+      );
+      const isSeGroup = matchedAttendee?.role === "Primary SE" || matchedAttendee?.role === "Secondary SE";
+
+      if (group.showAddPerson) {
+        return `<div class="postcall-attendee-row postcall-attendee-row--room-member postcall-attendee-row--manual" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">
+          <div class="postcall-attendee-body">
+            <input type="text" class="postcall-confirm-input postcall-room-person-name" placeholder="Name" value="" />
+            <select class="postcall-room-person-role" aria-label="Role for new person">
+              ${CONFIRM_ROLE_SET.map((r) => `<option value="${esc(r)}"${r === "Customer" ? " selected" : ""}>${esc(r)}</option>`).join("")}
+            </select>
+          </div>
+          <button type="button" class="postcall-room-add-confirm" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">Add</button>
+          <button type="button" class="postcall-attendee-remove postcall-room-add-cancel" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}" aria-label="Cancel add person">×</button>
+        </div>`;
+      }
+
+      const options = others
+        .map(
+          (a) =>
+            `<option value="${esc(a.name || a.label)}"${(group.persons || []).includes(a.name || a.label) ? " selected" : ""}>${esc(a.name || a.label)}</option>`,
+        )
+        .join("");
+
+      return `<div class="postcall-attendee-row postcall-attendee-row--room-member" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">
+        <div class="postcall-attendee-body">
+          <div class="postcall-attendee-text">
+            <span class="postcall-attendee-name">${esc(group.attributedTo || "Unassigned")}</span>
+            <span class="postcall-attendee-detail muted">Attributed from “${esc(att.label || att.name)}”</span>
+            ${spansHtml}
+          </div>
+        </div>
+        <select class="postcall-role-select postcall-room-person-select" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}" aria-label="Attribute this segment to"${isSeGroup ? " multiple" : ""}>
+          <option value="">Unassigned</option>
+          ${options}
+        </select>
+        <button type="button" class="postcall-room-add-person" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">＋ Add person…</button>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="postcall-room-groups" data-attendee-index="${attendeeIndex}">${groupsHtml}</div>`;
+}
+
+function renderAttendeeRow(att, index, allAttendees) {
   const editable = att.manual;
   const body = editable
     ? `<input type="text" class="postcall-confirm-input postcall-attendee-name" placeholder="Name" value="${esc(att.name === "Attendee" ? "" : att.name)}" />
@@ -3280,7 +3418,7 @@ function renderAttendeeRow(att, index) {
     <div class="postcall-attendee-body">${body}</div>
     ${renderRoleSelect(att.role, index)}
     ${editable ? `<button type="button" class="postcall-attendee-remove" data-attendee-index="${index}" aria-label="Remove attendee">×</button>` : ""}
-  </div>`;
+  </div>${att.role === "Meeting room" ? renderRoomGroupPanel(att, index, allAttendees) : ""}`;
 }
 
 function renderAttendeesSection(attendees) {
@@ -3290,7 +3428,7 @@ function renderAttendeesSection(attendees) {
       <span class="postcall-ai-badge"><span class="postcall-ai-dot" aria-hidden="true"></span>AI detected</span>
     </div>
     <p class="muted postcall-attendee-hint">Assign a role to each person on the call.</p>
-    <div id="postcall-attendee-list" class="postcall-attendee-list">${attendees.map(renderAttendeeRow).join("")}</div>
+    <div id="postcall-attendee-list" class="postcall-attendee-list">${attendees.map((att, i) => renderAttendeeRow(att, i, attendees)).join("")}</div>
     <button type="button" id="postcall-add-attendee-btn" class="postcall-add-attendee">＋ Add attendee</button>
   </div>`;
 }
@@ -3364,7 +3502,7 @@ export function renderConfirmationGate(resolve, classify) {
 function syncAttendeeListDom(card) {
   const list = card?.querySelector("#postcall-attendee-list");
   if (!list || !confirmGateAttendees) return;
-  list.innerHTML = confirmGateAttendees.map(renderAttendeeRow).join("");
+  list.innerHTML = confirmGateAttendees.map((att, i) => renderAttendeeRow(att, i, confirmGateAttendees)).join("");
   wireConfirmAttendeeRows(card);
 }
 
@@ -3397,27 +3535,101 @@ function wireConfirmAttendeeRows(card) {
     if (teardown) confirmGateContactLookupTeardowns.push(teardown);
   });
 
-  card.querySelectorAll(".postcall-role-select").forEach((select) => {
+  card.querySelectorAll(".postcall-role-select:not(.postcall-room-person-select)").forEach((select) => {
     select.addEventListener("change", () => {
       const idx = Number(select.dataset.attendeeIndex);
       const att = confirmGateAttendees?.[idx];
       if (!att) return;
       const nextRole = select.value || "Customer";
       att.role = nextRole;
+      if (nextRole === "Meeting room" && !att.roomGroups?.length) {
+        att.roomGroups = roomGroupsForLabel(pipelineState?.resolve, att.label || att.name);
+      }
       if (nextRole === "Primary SE") {
         confirmGateAttendees.forEach((a, i) => {
           if (i !== idx && a.role === "Primary SE") a.role = "Secondary SE";
         });
-        syncAttendeeListDom(card);
       }
+      // Role changes can add/remove the room sub-panel below the row — always re-render.
+      syncAttendeeListDom(card);
     });
   });
 
-  card.querySelectorAll(".postcall-attendee-remove").forEach((btn) => {
+  card.querySelectorAll(".postcall-attendee-remove:not(.postcall-room-add-cancel)").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = Number(btn.dataset.attendeeIndex);
       if (!confirmGateAttendees || idx < 0) return;
       confirmGateAttendees.splice(idx, 1);
+      syncAttendeeListDom(card);
+    });
+  });
+
+  wireRoomGroupControls(card);
+}
+
+/** Beneath-row controls for "Meeting room" attendees — see renderRoomGroupPanel. Suggestions
+ * only; everything here mutates local `confirmGateAttendees[i].roomGroups` state until confirm. */
+function wireRoomGroupControls(card) {
+  card.querySelectorAll(".postcall-room-person-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      const attIdx = Number(select.dataset.attendeeIndex);
+      const groupIdx = Number(select.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      const selected = [...select.selectedOptions].map((o) => o.value).filter(Boolean);
+      group.persons = selected;
+      group.attributedTo = selected[0] || "";
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-person").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      group.showAddPerson = true;
+      syncAttendeeListDom(card);
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-cancel").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      group.showAddPerson = false;
+      syncAttendeeListDom(card);
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-confirm").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const att = confirmGateAttendees?.[attIdx];
+      const group = att?.roomGroups?.[groupIdx];
+      if (!att || !group) return;
+      const row = btn.closest(".postcall-attendee-row--room-member");
+      const name = (row?.querySelector(".postcall-room-person-name")?.value || "").trim();
+      const role = row?.querySelector(".postcall-room-person-role")?.value || "Customer";
+      if (!name) return;
+      const mono = personMonoTone(name, role);
+      confirmGateAttendees.push({
+        id: `manual_room_${Date.now()}_${groupIdx}`,
+        name,
+        email: "",
+        detail: "",
+        role,
+        manual: true,
+        monoBg: mono.bg,
+        monoColor: mono.color,
+        roomGroups: [],
+      });
+      group.persons = [name];
+      group.attributedTo = name;
+      group.showAddPerson = false;
       syncAttendeeListDom(card);
     });
   });
@@ -3453,6 +3665,7 @@ function wireConfirmGateInteractions(card) {
         manual: true,
         monoBg: mono.bg,
         monoColor: mono.color,
+        roomGroups: [],
       });
       syncAttendeeListDom(card);
     });
@@ -3510,8 +3723,39 @@ function showConfirmationGate(resolve, classify) {
   card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
+/** Confirmed meeting-room mic attributions from in-memory confirm-page state (not the DOM —
+ * see renderRoomGroupPanel / wireRoomGroupControls, which mutate `confirmGateAttendees[i].roomGroups`
+ * directly). Shape: [{ roomLabel, spans: [{ startS, endS, person, role }] }]. */
+function readRoomAttributions() {
+  const attributions = [];
+  for (const att of confirmGateAttendees || []) {
+    if (att.role !== "Meeting room" || !att.roomGroups?.length) continue;
+    const spans = [];
+    for (const group of att.roomGroups) {
+      const persons = (group.persons?.length ? group.persons : [group.attributedTo]).filter(Boolean);
+      for (const person of persons) {
+        const personAttendee = (confirmGateAttendees || []).find(
+          (a) =>
+            normalizePersonKey(a.name) === normalizePersonKey(person) ||
+            normalizePersonKey(a.label) === normalizePersonKey(person),
+        );
+        for (const span of group.spans || []) {
+          spans.push({
+            startS: span.startS,
+            endS: span.endS,
+            person,
+            role: personAttendee?.role || null,
+          });
+        }
+      }
+    }
+    if (spans.length) attributions.push({ roomLabel: att.label || att.name, spans });
+  }
+  return attributions;
+}
+
 function readAttendeeSelections() {
-  const rows = document.querySelectorAll(".postcall-attendee-row");
+  const rows = document.querySelectorAll(".postcall-attendee-row:not(.postcall-attendee-row--room-member)");
   /** @type {object[]} */
   const attendees = [];
   let seIdentity = "";
@@ -3522,6 +3766,10 @@ function readAttendeeSelections() {
   const secondarySeIdentities = [];
   /** @type {string[]} */
   const partnerIdentities = [];
+  /** @type {string[]} */
+  const generalManagerIdentities = [];
+  /** @type {string[]} */
+  const executiveIdentities = [];
 
   rows.forEach((row) => {
     const nameInput = row.querySelector("input.postcall-attendee-name");
@@ -3540,6 +3788,8 @@ function readAttendeeSelections() {
     else if (role === "Secondary SE") secondarySeIdentities.push(label);
     else if (role === "AE" && !aeIdentity) aeIdentity = label;
     else if (role === "Partner") partnerIdentities.push(label);
+    else if (role === "General Manager") generalManagerIdentities.push(label);
+    else if (role === "Executive") executiveIdentities.push(label);
     else if (role === "Customer") customerIdentities.push(label);
   });
 
@@ -3555,6 +3805,10 @@ function readAttendeeSelections() {
   const secondarySes = [];
   /** @type {string[]} */
   const partners = [];
+  /** @type {string[]} */
+  const generalManagers = [];
+  /** @type {string[]} */
+  const executives = [];
 
   for (const att of mergedAttendees) {
     const label = att.name || att.email || att.label;
@@ -3563,6 +3817,8 @@ function readAttendeeSelections() {
     else if (att.role === "Secondary SE") secondarySes.push(label);
     else if (att.role === "AE" && !ae) ae = label;
     else if (att.role === "Partner") partners.push(label);
+    else if (att.role === "General Manager") generalManagers.push(label);
+    else if (att.role === "Executive") executives.push(label);
     else if (att.role === "Customer") customers.push(label);
   }
 
@@ -3573,6 +3829,9 @@ function readAttendeeSelections() {
     customerIdentities: customers,
     secondarySeIdentities: secondarySes,
     partnerIdentities: partners,
+    generalManagerIdentities: generalManagers,
+    executiveIdentities: executives,
+    roomAttributions: readRoomAttributions(),
   };
 }
 
@@ -3597,6 +3856,9 @@ function readConfirmationSelections() {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
   } = readAttendeeSelections();
   return {
     callType,
@@ -3608,6 +3870,9 @@ function readConfirmationSelections() {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   };
 }
@@ -3618,6 +3883,9 @@ function formatConfirmedIdentitiesContext({
   customerIdentities,
   secondarySeIdentities,
   partnerIdentities,
+  generalManagerIdentities,
+  executiveIdentities,
+  roomAttributions,
 }) {
   const lines = ["Confirmed call identities (authoritative; use these for attendees/roles):"];
   if (seIdentity) lines.push(`- Primary SE: ${seIdentity}`);
@@ -3632,6 +3900,23 @@ function formatConfirmedIdentitiesContext({
   }
   if (partnerIdentities?.length) {
     lines.push(`- Partner: ${partnerIdentities.join(", ")}`);
+  }
+  if (generalManagerIdentities?.length) {
+    lines.push(`- General Manager: ${generalManagerIdentities.join(", ")}`);
+  }
+  if (executiveIdentities?.length) {
+    lines.push(`- Executive: ${executiveIdentities.join(", ")}`);
+  }
+  if (roomAttributions?.length) {
+    lines.push("", "Meeting-room mic attributions (credit speech in these spans to the named person):");
+    for (const attribution of roomAttributions) {
+      for (const span of attribution.spans || []) {
+        const role = span.role ? ` (${span.role})` : "";
+        lines.push(
+          `- "${attribution.roomLabel}" ${formatRoomClock(span.startS)}–${formatRoomClock(span.endS)} → ${span.person}${role}`,
+        );
+      }
+    }
   }
   return lines.join("\n");
 }
@@ -3664,6 +3949,9 @@ async function confirmAndGenerate(e) {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   } = readConfirmationSelections();
 
@@ -3683,6 +3971,9 @@ async function confirmAndGenerate(e) {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   };
 
@@ -3897,6 +4188,19 @@ async function confirmAndGenerate(e) {
     accountId,
     companyDomain: companyDomain || undefined,
     meetingDate: meetingDateFromResolve(pipelineState.resolve),
+    // Structured identities for identity-aware scoring (worker/src/postcall/generate.ts →
+    // scorecard.ts) — additive to the free-text identities block already folded into
+    // `additionalContext` above for the narrative pass.
+    confirmedIdentities: {
+      seIdentity,
+      aeIdentity,
+      customerIdentities,
+      secondarySeIdentities,
+      partnerIdentities,
+      generalManagerIdentities,
+      executiveIdentities,
+      roomAttributions,
+    },
     resolveSnapshot: {
       ...pipelineState.resolve,
       seIdentity,

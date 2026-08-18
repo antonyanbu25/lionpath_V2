@@ -247,7 +247,7 @@ export interface PostCallAnalysis {
 }
 
 export interface TranscriptMeta {
-  format: "vtt" | "plain";
+  format: "vtt" | "plain" | "kaia";
   speakerCount: number;
   wordCount: number;
   durationMinutes: number | null;

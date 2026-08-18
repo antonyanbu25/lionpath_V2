@@ -475,6 +475,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-transcript-speaker-parse.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-video-facts.ts",
     "tags": [
       "unit"

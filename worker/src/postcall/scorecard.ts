@@ -26,7 +26,7 @@ import { trimWords } from "../word-limits";
 import type { DealRiskFlag, ScorecardEvidence, SubParameterLine } from "../domain-model/scorecard";
 import type { VideoFactsDraft } from "../domain-model/video-facts";
 import { aggregateCameraOnPct, curveHasCameraData } from "../video/facts";
-import type { PostCallDeckContent } from "./types";
+import type { ConfirmedRoomAttribution, PostCallDeckContent } from "./types";
 
 export type Env = ProviderEnv;
 
@@ -76,6 +76,16 @@ export interface PostCallScorecardInput {
   /** Parsed deck PDF — client-extracted text, capped, per-slide/page. Drives slide_deck scoring. */
   deckContent?: PostCallDeckContent | null;
   briefContext?: string | null;
+  /**
+   * Server-built, canonical confirmed-identities block (see generate.ts `buildIdentitiesContext`)
+   * — authoritative for the identity-aware scoring rule in `buildScorecardSystemPrompt`.
+   * `transcript` on this input is expected to already be the identity-rewritten "effective"
+   * transcript (meeting-room spans rewritten to "Person (via meeting room):") when
+   * `roomAttributions` is non-empty — see generate.ts `buildEffectiveTranscriptForScoring`.
+   */
+  identitiesContext?: string | null;
+  /** Confirmed meeting-room mic attributions — folded into the cache fingerprint below. */
+  roomAttributions?: ConfirmedRoomAttribution[] | null;
   companyName?: string;
   meetingTitle?: string;
   videoFacts?: VideoFactsDraft | null;
@@ -133,6 +143,8 @@ function scorecardCacheFingerprint(input: PostCallScorecardInput, profile: QipPr
     String(input.videoAvailable),
     deckContentFingerprint(input.deckContent),
     input.briefContext?.trim() ?? "",
+    input.identitiesContext?.trim() ?? "",
+    JSON.stringify(input.roomAttributions || []),
     input.companyName ?? "",
     input.meetingTitle ?? "",
     vfParts,
@@ -278,6 +290,15 @@ RULES (mandatory):
    to "video" or "transcript"); evidence quoted from the call itself keeps its normal
    transcript/video source. Do not fabricate deck evidence when no DECK section is present —
    that case falls back to rule 5's all-zero requirement.
+10. IDENTITY: when a "=== CONFIRMED IDENTITIES ===" section is present below, it is authoritative
+    — never re-derive who is SE/AE/Customer/GM/Executive from tone or guesswork once it is given.
+    SE-EXECUTION themes (how well the SE ran the call — demo craft, discovery technique, CDE
+    build, slide deck delivery, camera/presence, etc.) must be scored ONLY from speech spoken by
+    the confirmed Primary SE or Secondary SE, including any line tagged "(via meeting room)" that
+    the identities section credits to an SE. Speech from the Customer, AE, General Manager, or
+    Executive is CONTEXT and customer-signal evidence only (e.g. did the SE respond well to it) —
+    it must never itself earn SE-execution credit, even if it happens to describe something the
+    SE also did or should have done.
 
 THEMES FOR THIS PROFILE:
 ${themeBlocks.join("\n\n")}`;
@@ -364,6 +385,9 @@ function userPrompt(input: PostCallScorecardInput, profile: QipProfile): string 
   }
   if (input.companyName) lines.push(`Company: ${input.companyName}`);
   if (input.meetingTitle) lines.push(`Meeting title: ${input.meetingTitle}`);
+  if (input.identitiesContext?.trim()) {
+    lines.push("", "=== CONFIRMED IDENTITIES ===", input.identitiesContext.trim(), "=== END CONFIRMED IDENTITIES ===");
+  }
   if (input.briefContext?.trim()) {
     lines.push("", "=== PRE-CALL BRIEF (answer key for research) ===", input.briefContext.trim());
   }

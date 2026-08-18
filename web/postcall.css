@@ -704,6 +704,57 @@ button.pc-deal-tile {
   padding: 2px 6px;
 }
 
+/* Meeting-room sub-panel — AI-suggested speaker attributions nested beneath a "Meeting room"
+   attendee row (see renderRoomGroupPanel in web/postcall.js). Suggestions only. */
+.postcall-room-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 4px 32px;
+}
+
+.postcall-attendee-row--room-member {
+  padding: 8px 10px;
+  background: var(--dew-surface-subtle, var(--dew-surface));
+  border-style: dashed;
+}
+
+.postcall-room-span {
+  margin: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+  line-height: 1.4;
+}
+
+.postcall-room-span-time {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.postcall-room-add-person {
+  background: none;
+  border: none;
+  color: var(--dew-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 4px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.postcall-room-add-confirm {
+  border: 1px solid var(--dew-border);
+  border-radius: 8px;
+  background: var(--dew-surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 .postcall-attendees-block,
 .postcall-calltype-block {
   border-top: 1px solid var(--dew-hairline);

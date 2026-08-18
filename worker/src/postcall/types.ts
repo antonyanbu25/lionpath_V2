@@ -130,6 +130,12 @@ export interface PostCallResolveResult {
     participantDomains: string[];
     suggestedCompanyName?: string;
   } | null;
+  /**
+   * Speaker roster-merge + meeting-room segment suggestions (see ./speaker-attribution).
+   * Suggestions only, rendered on the confirm page for the SE to accept/edit/reject —
+   * never auto-applied. Omitted when the pass was skipped or failed (soft-fail).
+   */
+  speakerAttribution?: import("./speaker-attribution").SpeakerAttributionResult;
 }
 
 export interface CallTypeMixEntry {
@@ -173,6 +179,25 @@ export interface PostCallDeckContent {
   slides: PostCallDeckSlideContent[];
 }
 
+export type { ConfirmedRoomAttribution, ConfirmedRoomAttributionSpan } from "./speaker-attribution";
+
+/**
+ * SE-confirmed identities from the confirm page (page 2) — structured, in addition to the
+ * free-text `additionalContext` identities block used by the narrative pass. Threaded into
+ * scoring so SE-execution credit is only ever attributed to a confirmed SE (see generate.ts /
+ * scorecard.ts `identitiesContext` + `buildEffectiveTranscriptForScoring`).
+ */
+export interface ConfirmedIdentities {
+  seIdentity?: string;
+  secondarySeIdentities?: string[];
+  aeIdentity?: string;
+  customerIdentities?: string[];
+  partnerIdentities?: string[];
+  generalManagerIdentities?: string[];
+  executiveIdentities?: string[];
+  roomAttributions?: import("./speaker-attribution").ConfirmedRoomAttribution[];
+}
+
 export interface PostCallGenerateInput {
   transcript?: string;
   recordingUrl?: string;
@@ -190,6 +215,12 @@ export interface PostCallGenerateInput {
   deckLink?: string;
   /** Parsed deck PDF — client-extracted text, capped, per-slide/page. */
   deckContent?: PostCallDeckContent | null;
+  /**
+   * SE-confirmed identities + meeting-room attributions from the confirm page — structured
+   * (in addition to the free-text identities block already folded into `additionalContext`).
+   * Drives identity-aware scoring in ./generate.ts → ./scorecard.ts.
+   */
+  confirmedIdentities?: ConfirmedIdentities;
   prospectEmails?: string[];
   linkedinProfileExports?: { fileName: string; text: string }[];
   effort?: string;
