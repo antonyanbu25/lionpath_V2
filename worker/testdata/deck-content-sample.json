@@ -1,0 +1,11 @@
+{
+  "description": "Sample client-extracted deck PDF text — shape matches PostCallDeckContent in worker/src/postcall/types.ts (fileName/pageCount/slides[]). Drives slide_deck scoring via deckPresentForScorecard in worker/src/postcall/scorecard.ts. PDF bytes never leave the browser; only extracted text is sent.",
+  "fileName": "acme-corp-demo-deck.pdf",
+  "pageCount": 4,
+  "slides": [
+    { "page": 1, "text": "Acme Corp x Freshworks — Discovery to Demo\nPresented by Priyal Shah, Solutions Engineer" },
+    { "page": 2, "text": "Agenda\n1. Current support workflow\n2. Ticket routing automation\n3. Reporting & SLAs\n4. Next steps" },
+    { "page": 3, "text": "Ticket Routing Automation\n- Skill-based routing rules\n- Auto-tagging via NLP\n- SLA-aware queue prioritization" },
+    { "page": 4, "text": "Next Steps\n- Trial setup by end of month\n- Security review with IT\n- Pricing proposal follow-up" }
+  ]
+}

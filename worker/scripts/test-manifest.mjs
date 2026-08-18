@@ -481,6 +481,42 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-kaia-numeric-speaker-regression.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-meeting-room-multi-persona.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-deck-present-for-scorecard.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-leadership-cap-parity.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-speaker-attribution-schema.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-video-facts.ts",
     "tags": [
       "unit"
