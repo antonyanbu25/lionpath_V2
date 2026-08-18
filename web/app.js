@@ -35,7 +35,7 @@ import {
   shouldDeferNullAuth,
   shouldLogoutAfterNullCheck,
 } from "./auth-firebase-guards.js";
-import { initDomainStore, getStore } from "./domain/store.js";
+import { initDomainStore, getStore, fbReadyPromise } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=2.1.43";
@@ -789,8 +789,9 @@ function buildSubscribeRemoteCalls() {
 }
 
 function buildSubscribeRemoteDeals() {
-  return (onChange) => {
+  return async (onChange) => {
     if (typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     const ownerId = effectiveSessionUserId(currentSession);
     if (!ownerId || typeof store.subscribeDealsByOwner !== "function") return () => {};
@@ -799,8 +800,9 @@ function buildSubscribeRemoteDeals() {
 }
 
 function buildSubscribeRemoteDealDetail(dealId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!dealId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeDealDetail !== "function") return () => {};
     return store.subscribeDealDetail(dealId, onChange);
@@ -808,8 +810,9 @@ function buildSubscribeRemoteDealDetail(dealId) {
 }
 
 function buildSubscribeRemoteCallDetail(callId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!callId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeCallDetail !== "function") return () => {};
     return store.subscribeCallDetail(callId, onChange);
@@ -817,8 +820,9 @@ function buildSubscribeRemoteCallDetail(callId) {
 }
 
 function buildSubscribeRemoteArrLinesByDeal(dealId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!dealId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeArrLinesByDeal !== "function") return () => {};
     return store.subscribeArrLinesByDeal(dealId, onChange);
@@ -2304,6 +2308,7 @@ async function applyInitialRouteFromHash(enriched) {
 
   const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
   if (lifecycleMatch) {
+    await fbReadyPromise;
     const store = getStore();
     const lc = await store.getLifecycle(lifecycleMatch[1]);
     if (lc?.accountId) {
