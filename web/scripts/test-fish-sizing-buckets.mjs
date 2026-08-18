@@ -63,6 +63,16 @@ assert("format agents strips suffix", formatFishSizingDisplay("supportAgents", "
 assert("format funding 2 million", formatFishSizingDisplay("funding", "2 Million") === "$2M");
 assert("format funding lowercase", formatFishSizingDisplay("funding", "2 million") === "$2M");
 assert("format funding 80M series", formatFishSizingDisplay("funding", "$80M Series C") === "$80M");
+assert("agents reject 4 trillion as 4", parseFishMetricValue("4 trillion", "supportAgents") === 4);
+assert("agents reject raw 4e12", parseFishMetricValue("4000000000000", "supportAgents") === null);
+assert("agents reject 8 billion", parseFishMetricValue("8 billion agents", "supportAgents") === 8);
+assert("agents 8B strips billion suffix", parseFishMetricValue("8B", "supportAgents") === 8);
+assert("format agents 4 trillion shows 4", formatFishSizingDisplay("supportAgents", "4 trillion") === "4");
+assert("format agents absurd shows dash", formatFishSizingDisplay("supportAgents", "4000000000000") === "—");
+assert(
+  "normalize drops absurd agent count",
+  normalizeFishSizingMetrics([{ label: "Support agents", value: "4000000000000" }]).length === 0,
+);
 
 const normalized = normalizeFishSizingMetrics([
   { label: "Employees", value: "50" },

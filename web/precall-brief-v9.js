@@ -17,7 +17,7 @@ import {
 } from "./precall-render.js?v=2.1.14";
 import { resolveCustomerReferenceUrl } from "./customer-reference-links.js";
 import { citationNumber, sourceDisplayName } from "./prep-source-display.js";
-import { fishBucketFromMetric, formatFishSizingDisplay, resolveFishBucketType, FISH_SIZING_LABELS, FISH_SIZING_ORDER } from "./fish-sizing-buckets.js";
+import { fishBucketFromMetric, formatFishSizingDisplay, resolveFishBucketType, FISH_SIZING_LABELS, FISH_SIZING_ORDER } from "./fish-sizing-buckets.js?v=2.1.45";
 import { buildFishContextFromPrep } from "./fish-context-from-prep.js";
 
 const isUnknown = (v) => {
@@ -421,7 +421,14 @@ function resolveFishSizingRows(prep) {
     });
   }
 
-  return FISH_SIZING_ORDER.filter((t) => byType.has(t)).map((t) => byType.get(t));
+  return FISH_SIZING_ORDER.filter((t) => byType.has(t))
+    .map((t) => byType.get(t))
+    .filter((m) => {
+      const type = m.type || resolveFishBucketType(m.label);
+      if (!type) return false;
+      const display = formatFishSizingDisplay(type, m.value);
+      return display && display !== "—";
+    });
 }
 
 function renderFishContextRow(m, sources) {
@@ -508,15 +515,36 @@ function renderRecentNews(recentNews, sources) {
       const linkHtml = articleUrl
         ? `<a class="prep-v9-news-link" href="${esc(articleUrl)}" target="_blank" rel="noopener noreferrer">Read article →</a>`
         : "";
+      const dateLabel = formatNewsDate(n.publishedAt);
+      const dateHtml = dateLabel ? `<span class="prep-v9-news-date muted">${esc(dateLabel)}</span>` : "";
       return `<div class="prep-v9-news-row">
         <span class="prep-v9-news-dot"></span>
         <div>
           <span class="prep-v9-news-title">${esc(n.headline)}</span>
-          <span class="prep-v9-news-meta muted">${srcBadge(n.sourceLabel, sources)} ${linkHtml}</span>
+          <span class="prep-v9-news-meta muted">${dateHtml}${dateHtml ? " · " : ""}${srcBadge(n.sourceLabel, sources)} ${linkHtml}</span>
         </div>
       </div>`;
     })
     .join("");
+}
+
+function formatNewsDate(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = Number(iso[3]);
+    const month = months[Number(iso[2]) - 1];
+    const year = iso[1];
+    if (month && day > 0) return `${day} ${month} ${year}`;
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${parsed.getUTCDate()} ${months[parsed.getUTCMonth()]} ${parsed.getUTCFullYear()}`;
+  }
+  return text;
 }
 
 function discSvg(p) {
@@ -572,7 +600,14 @@ function attendeeRow(p, i, sources, renderOpts) {
     <div class="prep-v9-attendee-main">
       <span class="prep-v9-attendee-name">${esc(name || "Prospect")}</span>
       <p class="muted prep-v9-attendee-role">${esc(role || "—")}</p>
-      ${summary && !isUnknown(summary) ? `<p class="prep-v9-attendee-summary">${esc(summary.slice(0, 220))}${summary.length > 220 ? "…" : ""}</p>` : ""}
+      ${summary && !isUnknown(summary)
+        ? summary.length > 220
+          ? `<details class="prep-prospect-details prep-v9-attendee-summary-details">
+              <summary class="prep-v9-attendee-summary">${esc(summary.slice(0, 220))}…</summary>
+              <p class="prep-v9-attendee-summary-full muted">${esc(summary)}</p>
+            </details>`
+          : `<p class="prep-v9-attendee-summary">${esc(summary)}</p>`
+        : ""}
       ${linkedIn && touchpoints.length ? `<div class="prep-v9-touchpoints"><span class="prep-v9-touch-label">Has used</span>${touchpoints.map((t) => `<span class="prep-v9-touch-chip">${esc(t)}</span>`).join("")}</div>` : ""}
     </div>
     <div class="prep-v9-attendee-behaviour">${
@@ -765,7 +800,7 @@ function assetRows(assets, prep) {
     const ext = String(a.ext || "DOC").toUpperCase();
     return `<a class="prep-v9-asset-row" href="${url && !isUnknown(url) ? esc(url) : "#"}" target="_blank" rel="noopener noreferrer">
       <span class="prep-v9-asset-tag">${esc(ext)}</span>
-      <span class="prep-v9-asset-label">${esc(a.label)}</span>
+      <span class="prep-v9-asset-label" title="${esc(a.label)}">${esc(a.label)}</span>
     </a>`;
   }).join("");
 }

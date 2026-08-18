@@ -71,11 +71,13 @@ export function filterFishContextMetrics(
     if (!label || !value) continue;
     if (REQUIREMENT_RE.test(`${label} ${value}`)) continue;
     if (!isCanonicalFishLabel(label)) continue;
+    const sanitized = sanitizeFishContextMetricValue(label, value);
+    if (!sanitized) continue;
     const canonical = canonicalFishLabel(label);
-    const key = `${canonical.toLowerCase()}|${value.toLowerCase()}`;
+    const key = `${canonical.toLowerCase()}|${sanitized.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: canonical, value });
+    out.push({ label: canonical, value: sanitized });
     if (out.length >= 3) break;
   }
   return out;
@@ -128,6 +130,52 @@ function tokenOverlap(a: string, b: string): number {
 }
 
 const UNKNOWN_VALUES = new Set(["unknown", "n/a", "na", "not found", "unclear", "—", "-"]);
+
+const FISH_METRIC_BOUNDS: Record<string, number> = {
+  employees: 500_000,
+  supportAgents: 50_000,
+  funding: 1e15,
+};
+
+const HEADCOUNT_FORBIDDEN_SUFFIX = /^(?:t|tn|trillion|b|bn|billion)$/i;
+
+function fishMetricTypeFromLabel(label: string): string | null {
+  const l = String(label || "").toLowerCase();
+  if (/\b(employees?|headcount|staff|employee count)\b/.test(l) && !/\bsupport\b/.test(l)) return "employees";
+  if (/\bfunding\b/.test(l)) return "funding";
+  if (/\b(support agents?|support team|agent count|agents?)\b/.test(l)) return "supportAgents";
+  return null;
+}
+
+/** Reject funding-scale magnitudes on headcount fields (e.g. "4 trillion" agents). */
+function sanitizeFishContextMetricValue(label: string, value: string): string | null {
+  const type = fishMetricTypeFromLabel(label);
+  if (!type) return value;
+  const text = String(value || "").trim();
+  const match = text.match(
+    /(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(t|tn|trillion|b|bn|billion|m|mm|mn|million|k|thousand)?/i,
+  );
+  if (!match) return text;
+  const n = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(n)) return text;
+  const suffix = (match[2] || "").trim();
+  let numeric = n;
+  const max = FISH_METRIC_BOUNDS[type];
+  if (suffix) {
+    if ((type === "employees" || type === "supportAgents") && HEADCOUNT_FORBIDDEN_SUFFIX.test(suffix)) {
+      return n <= max ? String(Math.round(n)) : null;
+    }
+    if (/^(?:m|mm|mn|million)$/i.test(suffix)) numeric = n * 1e6;
+    else if (/^(?:k|thousand)$/i.test(suffix)) numeric = n * 1e3;
+    else if (/^(?:b|bn|billion)$/i.test(suffix)) numeric = n * 1e9;
+    else if (/^(?:t|tn|trillion)$/i.test(suffix)) numeric = n * 1e12;
+  }
+  if (numeric > max) {
+    if (suffix && n <= max) return String(Math.round(n));
+    return null;
+  }
+  return text;
+}
 
 /** Map verified research facts to fish INPUT rows (no LLM). */
 const FISH_FACT_LABELS: Record<string, string> = {

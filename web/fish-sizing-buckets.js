@@ -31,6 +31,17 @@ export const FISH_SIZE_BUCKETS = {
   },
 };
 
+/** Sanity caps — headcount must never display funding-scale magnitudes. */
+export const FISH_METRIC_BOUNDS = {
+  employees: 500_000,
+  supportAgents: 50_000,
+  funding: 1e15,
+};
+
+const HEADCOUNT_TYPES = new Set(["employees", "supportAgents"]);
+/** Trillion/billion suffixes on agent/employee counts are almost always mis-extracted funding scale. */
+const HEADCOUNT_FORBIDDEN_SUFFIX = /^(?:t|tn|trillion|b|bn|billion)$/i;
+
 const MAGNITUDE_SUFFIXES = [
   [/^(?:t|tn|trillion)$/i, 1e12],
   [/^(?:b|bn|billion)$/i, 1e9],
@@ -52,7 +63,7 @@ export function resolveFishBucketType(label) {
 }
 
 /** Parse a reported figure into a comparable number (ordering-only). */
-export function parseFishMetricValue(raw) {
+export function parseFishMetricValue(raw, type) {
   const text = String(raw ?? "").trim();
   if (NON_VALUES.test(text)) return null;
 
@@ -65,11 +76,26 @@ export function parseFishMetricValue(raw) {
   if (!Number.isFinite(n)) return null;
 
   const suffix = (match[2] || "").trim();
-  if (!suffix) return n;
-  for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
-    if (pattern.test(suffix)) return n * multiplier;
+  let numeric = n;
+  if (suffix) {
+    if (type && HEADCOUNT_TYPES.has(type) && HEADCOUNT_FORBIDDEN_SUFFIX.test(suffix)) {
+      numeric = n;
+    } else {
+      for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
+        if (pattern.test(suffix)) {
+          numeric = n * multiplier;
+          break;
+        }
+      }
+    }
   }
-  return n;
+
+  const max = type ? FISH_METRIC_BOUNDS[type] : undefined;
+  if (max != null && numeric > max) {
+    if (suffix && n <= max) return n;
+    return null;
+  }
+  return numeric;
 }
 
 /** Normalize funding to millions USD for bucket comparison. */
@@ -122,16 +148,22 @@ export function fishBucketPlacement(type, numeric) {
 export function formatFishSizingDisplay(type, raw) {
   const text = String(raw ?? "").trim();
   if (!text) return text;
-  const numeric = parseFishMetricValue(text);
+  const numeric = parseFishMetricValue(text, type);
 
   if (type === "employees") {
     if (numeric != null) return String(Math.round(numeric));
-    return text.replace(/\s*(employees?|staff|people|headcount)\s*$/i, "").trim() || text;
+    const stripped = text.replace(/\s*(employees?|staff|people|headcount)\s*$/i, "").trim();
+    const retry = parseFishMetricValue(stripped, type);
+    if (retry != null) return String(Math.round(retry));
+    return "—";
   }
 
   if (type === "supportAgents") {
     if (numeric != null) return String(Math.round(numeric));
-    return text.replace(/\s*(support\s*)?agents?\s*$/i, "").trim() || text;
+    const stripped = text.replace(/\s*(support\s*)?agents?\s*$/i, "").trim();
+    const retry = parseFishMetricValue(stripped, type);
+    if (retry != null) return String(Math.round(retry));
+    return "—";
   }
 
   if (type === "funding") {
@@ -166,6 +198,7 @@ export function normalizeFishSizingMetrics(metrics) {
     if (!type || !FISH_SIZING_ORDER.includes(type)) continue;
     const value = String(m.value || "").trim();
     if (!value) continue;
+    if (parseFishMetricValue(value, type) == null && formatFishSizingDisplay(type, value) === "—") continue;
     if (!byType.has(type)) {
       byType.set(type, {
         type,
@@ -181,7 +214,7 @@ export function normalizeFishSizingMetrics(metrics) {
 export function fishBucketFromMetric(label, value) {
   const type = resolveFishBucketType(label);
   if (!type) return null;
-  const numeric = parseFishMetricValue(value);
+  const numeric = parseFishMetricValue(value, type);
   if (numeric == null) return null;
   const placement = fishBucketPlacement(type, numeric);
   if (!placement) return null;

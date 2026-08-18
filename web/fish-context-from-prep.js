@@ -4,7 +4,7 @@
  */
 
 import { resolveDisplayFacts } from "./precall-render.js?v=2.1.14";
-import { normalizeFishSizingMetrics } from "./fish-sizing-buckets.js";
+import { normalizeFishSizingMetrics } from "./fish-sizing-buckets.js?v=2.1.45";
 
 /** Only the three canonical fish-sizing facts — not Industry, Ownership, etc. */
 const FISH_FACT_LABELS = {

@@ -575,6 +575,8 @@ export interface RecentNewsItem {
   sourceLabel: string;
   /** Direct article URL when available (e.g. DDG fallback). */
   articleUrl?: string;
+  /** Publication date when known (e.g. "2026-03", "March 2026", ISO from RSS). */
+  publishedAt?: string;
 }
 
 export interface Prep {

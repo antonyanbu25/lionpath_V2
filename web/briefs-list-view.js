@@ -182,7 +182,7 @@ function renderBriefListItem(row) {
       <span class="brief-list-row-grid">
         <span class="brief-list-col brief-list-col--title">
           <span class="brief-list-mono" aria-hidden="true">${esc(row.companyMono)}</span>
-          <span class="brief-list-row-title">${esc(row.company)}</span>
+          <span class="brief-list-row-title" title="${esc(row.company)}">${esc(row.company)}</span>
         </span>
         <span class="brief-list-col brief-list-col--kind">${esc(row.kind)}</span>
         <span class="brief-list-col brief-list-col--domain muted">${esc(row.domainLabel)}</span>
