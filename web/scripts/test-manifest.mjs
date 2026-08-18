@@ -639,6 +639,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-deck-shape-gate.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-resolve-context.mjs",
     "tags": [
       "unit"

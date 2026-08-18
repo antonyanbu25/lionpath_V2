@@ -177,6 +177,24 @@ export interface PostCallDeckContent {
   fileName: string;
   pageCount: number;
   slides: PostCallDeckSlideContent[];
+  /**
+   * Per-page geometry metrics computed by the client during PDF extraction (v2.3).
+   * Used by the worker-side relevance gate (`deck-validate.ts`) alongside the
+   * LLM validation result to produce the authoritative `deckVerdict`.
+   */
+  shape?: {
+    /** Fraction of pages where width > height (0..1). Decks are overwhelmingly > 0.6. */
+    landscapePct: number;
+    /** Median word count across all pages. Dense prose > 250; slides typically < 150. */
+    medianWordsPerPage: number;
+    /** Total page count — mirrors `pageCount`, convenient for gate checks. */
+    pageCount: number;
+  };
+  /**
+   * Client-side shape verdict based purely on geometry + word density.
+   * Advisory only — the worker's `resolveDeckVerdict` is authoritative.
+   */
+  deckShapeVerdict?: "likely_deck" | "unlikely_deck";
 }
 
 export type { ConfirmedRoomAttribution, ConfirmedRoomAttributionSpan } from "./speaker-attribution";
@@ -269,6 +287,16 @@ export interface PostCallGenerateResult extends PostCallResult {
     rubricVersion?: string;
     videoThemesNotApplicable?: VideoThemeApplicability[];
     deckLink?: string;
+    /**
+     * Three-state deck verdict from the worker-side gate (v2.3).
+     * `deck_valid` — deck accepted for scoring.
+     * `deck_rejected` — upload failed shape/relevance gate (junk upload, wrong doc, etc.).
+     * `deck_absent` — nothing uploaded and no video slide evidence.
+     * Recorded here so the result card can inform the SE when their upload didn't count.
+     */
+    deckVerdict?: "deck_valid" | "deck_rejected" | "deck_absent";
+    /** Human-readable explanation when `deckVerdict === "deck_rejected"` (max 20 words). */
+    deckRejectionReason?: string;
   };
 }
 

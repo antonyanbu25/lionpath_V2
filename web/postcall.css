@@ -2326,6 +2326,16 @@ button.pc-deal-tile {
   padding: 3px 8px;
 }
 
+/* v2.3 — deck-rejection notification chip */
+#view-postcall .qip-deck-rejected-pill {
+  cursor: help; /* tooltip present */
+}
+[data-theme="dark"] #view-postcall .qip-deck-rejected-pill {
+  background: color-mix(in srgb, var(--amber) 15%, transparent);
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+}
+
 #postcall-result .qip-scorecard.qip-provisional .qip-total-score {
   color: var(--dew-text-secondary);
 }

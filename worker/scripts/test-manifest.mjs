@@ -499,6 +499,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-deck-validate.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-leadership-cap-parity.ts",
     "tags": [
       "unit"

@@ -2410,6 +2410,12 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   const cappedBadgeHtml = wasCapped
     ? `<span class="pill amber" title="Scores above 8.0 only render as-is once a skeptical-verifier pass confirms every remaining top score — this call did not clear that bar.">Capped at 8.0</span>`
     : "";
+  // v2.3 deck-validation gate — inform the SE when their upload didn't count.
+  // Silence here is the worst outcome; the chip ensures they know to recheck their PDF.
+  const deckRejectedBadgeHtml =
+    analysisMeta?.deckVerdict === "deck_rejected"
+      ? `<span class="pill amber qip-deck-rejected-pill" title="${esc(analysisMeta.deckRejectionReason || "The uploaded PDF was not recognised as a relevant slide deck — deck scoring was skipped.")}">Deck not scored</span>`
+      : "";
   const { good, bad } = deriveQipInsights(lines);
 
   let profile = null;
@@ -2464,7 +2470,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
         <div class="qip-head">
           <div>
-            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}</h2>
+            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
           </div>
           <div class="qip-head-meta">
             <span class="qip-weight-key" aria-label="Theme weight">
@@ -2490,7 +2496,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <div class="qip-scorecard-card qip-scorecard-head-card">
         <div class="qip-scorecard-head">
           <div>
-            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}</h2>
+            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
             ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
           </div>
           <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
@@ -5447,13 +5453,33 @@ async function loadDeckPdfJs() {
  * @param {File} file
  * @returns {Promise<{ fileName: string, pageCount: number, slides: { page: number, text: string }[] }>}
  */
+/**
+ * Deterministic shape gate — purely geometry + word density, no LLM cost.
+ * Returns `"likely_deck"` when the PDF looks like a slide deck (landscape, sparse text),
+ * `"unlikely_deck"` for portrait/dense documents (reports, contracts, LinkedIn exports).
+ * The server-side relevance check is authoritative; this is a cheap pre-filter only.
+ *
+ * @param {{ landscapePct: number, medianWordsPerPage: number, pageCount: number }} shape
+ * @returns {"likely_deck" | "unlikely_deck"}
+ */
+function computeDeckShapeVerdict(shape) {
+  if (shape.pageCount === 1 || shape.pageCount > 120) return "unlikely_deck";
+  if (shape.landscapePct < 0.6) return "unlikely_deck";
+  if (shape.medianWordsPerPage > 250) return "unlikely_deck";
+  return "likely_deck";
+}
+
 async function extractDeckPdfContent(file) {
   const pdfjs = await loadDeckPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
   const rawPages = [];
+  const geometryPages = []; // { width, height } per page
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
+    // Capture page dimensions at scale 1 for shape analysis.
+    const vp = page.getViewport({ scale: 1 });
+    geometryPages.push({ width: vp.width, height: vp.height });
     const content = await page.getTextContent();
     const text = content.items
       .map((item) => ("str" in item ? item.str : ""))
@@ -5462,6 +5488,21 @@ async function extractDeckPdfContent(file) {
       .trim();
     rawPages.push({ page: i, text });
   }
+
+  // Shape metrics — landscape fraction and median word count per page.
+  const landscapeCount = geometryPages.filter((g) => g.width > g.height).length;
+  const landscapePct = geometryPages.length > 0 ? landscapeCount / geometryPages.length : 0;
+  const wordCounts = rawPages.map((p) => (p.text ? p.text.split(/\s+/).filter(Boolean).length : 0));
+  const sortedWc = [...wordCounts].sort((a, b) => a - b);
+  const mid = Math.floor(sortedWc.length / 2);
+  const medianWordsPerPage =
+    sortedWc.length === 0
+      ? 0
+      : sortedWc.length % 2 === 1
+        ? sortedWc[mid]
+        : (sortedWc[mid - 1] + sortedWc[mid]) / 2;
+  const shape = { landscapePct, medianWordsPerPage, pageCount: doc.numPages };
+  const deckShapeVerdict = computeDeckShapeVerdict(shape);
 
   let budget = MAX_DECK_PDF_TEXT_CHARS;
   const slides = rawPages.map((p) => {
@@ -5475,10 +5516,18 @@ async function extractDeckPdfContent(file) {
     return trimmed;
   });
 
-  return { fileName: file.name || "deck.pdf", pageCount: doc.numPages, slides };
+  return { fileName: file.name || "deck.pdf", pageCount: doc.numPages, slides, shape, deckShapeVerdict };
 }
 
-/** @type {{ fileName: string, pageCount: number, slides: { page: number, text: string }[] } | null} */
+/**
+ * @type {{
+ *   fileName: string,
+ *   pageCount: number,
+ *   slides: { page: number, text: string }[],
+ *   shape: { landscapePct: number, medianWordsPerPage: number, pageCount: number },
+ *   deckShapeVerdict: "likely_deck" | "unlikely_deck"
+ * } | null}
+ */
 let deckPdfContent = null;
 
 /** Deck content for the intake payload / generate body — undefined when nothing is attached. */
@@ -5492,6 +5541,7 @@ function clearDeckPdfContent() {
 
 function renderDeckPdfFileList() {
   const listEl = $("pc-deck-file-list");
+  const shapeWarnEl = $("pc-deck-shape-warn");
   if (!listEl) return;
   listEl.innerHTML = deckPdfContent
     ? `<li class="prep-linkedin-file-item">
@@ -5499,6 +5549,15 @@ function renderDeckPdfFileList() {
         <fw-button type="button" color="secondary" fill="clear" size="small" id="pc-deck-remove-btn">Remove</fw-button>
       </li>`
     : "";
+  // Show shape warning inline under the file row — non-blocking; server decides.
+  if (shapeWarnEl) {
+    const showWarn = !!deckPdfContent && deckPdfContent.deckShapeVerdict === "unlikely_deck";
+    shapeWarnEl.hidden = !showWarn;
+    if (showWarn) {
+      shapeWarnEl.textContent =
+        "This doesn’t look like a slide deck — we’ll only score it if it matches the call.";
+    }
+  }
   const removeBtn = $("pc-deck-remove-btn");
   const removeDeck = () => {
     clearDeckPdfContent();

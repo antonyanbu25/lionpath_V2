@@ -1,0 +1,17 @@
+{
+  "description": "Dense portrait document (A4 report/contract). Shape gate should return unlikely_deck; resolveDeckVerdict with isSlideDeck=false → deck_rejected.",
+  "fileName": "annual-report-2025.pdf",
+  "pageCount": 24,
+  "slides": [
+    { "page": 1, "text": "Rotacloud Annual Report 2025. This report covers the financial performance, operational highlights, strategic initiatives and board governance of Rotacloud Ltd for the fiscal year ending 31 December 2025. The company achieved revenue growth of 34% year-on-year driven by strong enterprise adoption." },
+    { "page": 2, "text": "Chief Executive Officer Statement. Dear shareholders, it is with great pleasure that I present the annual results for Rotacloud. Our continued investment in product innovation has positioned us as a category leader in workforce management. The operational improvements we implemented in Q2 delivered a meaningful reduction in churn and a 22-point improvement in net promoter score." },
+    { "page": 3, "text": "Financial Highlights. Revenue £12.4m (+34% YoY). Gross margin 71%. ARR £14.1m. Headcount 128. Key drivers: enterprise upsell, international expansion, and premium integrations. Operating costs increased by 18% reflecting planned investment in engineering and go-to-market capability." },
+    { "page": 4, "text": "Market Overview. The workforce management software market is estimated at USD 8.4bn globally and growing at a CAGR of 11.2% through 2030. SMB penetration remains low at approximately 23% providing significant greenfield opportunity. Regulatory tailwinds around working-time directives and fair scheduling laws are accelerating adoption in the UK and EU markets." }
+  ],
+  "shape": {
+    "landscapePct": 0.0,
+    "medianWordsPerPage": 110,
+    "pageCount": 24
+  },
+  "deckShapeVerdict": "unlikely_deck"
+}

@@ -6,6 +6,8 @@ import { runPostCallClassify } from "./classify";
 import { runPostCallResolve } from "./resolve";
 import { runPostCallScorecard } from "./scorecard";
 import { buildEffectiveTranscriptForScoring } from "./speaker-attribution";
+import { runDeckValidation } from "./deck-validate";
+import { trimWords } from "../word-limits";
 import type {
   ConfirmedIdentities,
   PostCallGenerateInput,
@@ -124,6 +126,29 @@ export async function runPostCallGenerate(
   // the cache content would still reflect the raw (non-identity-rewritten) text.
   const scorecardTranscriptCaches = transcriptWasRewritten ? undefined : input.transcriptCaches;
 
+  // Deck relevance gate (v2.3) — a cheap LLM call that runs only when a deck PDF was uploaded.
+  // Soft-fail: a validation error never blocks the pipeline (deck is treated as valid on error).
+  // Skip entirely when no deckContent is present (adds zero cost to the common path).
+  let deckValidation = null;
+  if (input.deckContent?.slides?.some((s) => s.text?.trim())) {
+    const transcriptSample = trimWords(effectiveTranscriptForScoring || transcript, 500);
+    try {
+      deckValidation = await runDeckValidation(
+        env,
+        input.deckContent,
+        {
+          companyName: input.companyName,
+          meetingTitle: input.meetingTitle,
+          transcriptSample,
+        },
+        { userId: input.userId, callId: input.callId },
+      );
+    } catch {
+      // Soft-fail — deck treated as valid if the validation pass errors.
+      deckValidation = null;
+    }
+  }
+
   const [narrative, scorecardResult] = await Promise.all([
     analyzePostCall(env, analysisInput),
     transcript
@@ -133,6 +158,7 @@ export async function runPostCallGenerate(
           videoAvailable,
           deckLink: input.deckLink,
           deckContent: input.deckContent,
+          deckValidation,
           briefContext: input.briefContext,
           identitiesContext,
           roomAttributions,
@@ -171,6 +197,10 @@ export async function runPostCallGenerate(
       analysisConfidence: scorecardResult?.analysisConfidence,
       provisional: scorecardResult?.provisional,
       rubricVersion: RUBRIC_VERSION,
+      ...(scorecardResult?.deckVerdict ? { deckVerdict: scorecardResult.deckVerdict } : {}),
+      ...(scorecardResult?.deckRejectionReason
+        ? { deckRejectionReason: scorecardResult.deckRejectionReason }
+        : {}),
     },
   };
 }
