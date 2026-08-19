@@ -10,7 +10,7 @@ import {
   legacySubParametersFromLine,
 } from "./shared/qip-scorecard-normalize.js";
 export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
-import { normalizeQualityCoach } from "./quality-score.js";
+import { normalizeQualityCoach, applyLeadershipCap } from "./quality-score.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails, enrichDealOwnerNames, resolveHistoryMatchesForIntake } from "./postcall-contact-resolve.js";
@@ -138,17 +138,30 @@ const VIDEO_THEME_LABELS = {
   customer_engagement: "Customer engagement",
 };
 
-const CONFIRM_ROLE_SET = ["Customer", "Primary SE", "Secondary SE", "AE", "Partner"];
+const CONFIRM_ROLE_SET = [
+  "Customer",
+  "Primary SE",
+  "Secondary SE",
+  "AE",
+  "Partner",
+  "Meeting room",
+  "General Manager",
+  "Executive",
+];
 const CONFIRM_ROLE_TONE = {
   Customer: { bg: "#f4e7df", color: "#b0785b" },
   "Primary SE": { bg: "#e3efec", color: "#2f8a7b" },
   "Secondary SE": { bg: "#dbe8e6", color: "#37746e" },
   AE: { bg: "#f3ecda", color: "#a5883f" },
   Partner: { bg: "#ece8de", color: "#877b63" },
+  "Meeting room": { bg: "#e6e6ec", color: "#585a7a" },
+  "General Manager": { bg: "#eee3d9", color: "#8a5a35" },
+  Executive: { bg: "#e3dbe9", color: "#6b4a8a" },
 };
 
 let linkedinParsing = false;
 let contextParsing = false;
+let deckPdfParsing = false;
 let generating = false;
 /** Pass 0 (resolve + classify) before confirm gate — blocks resetPostCallView mid-flight. */
 let pass0Busy = false;
@@ -522,6 +535,7 @@ async function handleTranscriptFileChange(event) {
       errorEl.hidden = false;
     }
     if (input) input.value = "";
+    updateAnalyzeButtonState();
     return;
   }
 
@@ -532,6 +546,7 @@ async function handleTranscriptFileChange(event) {
     nameEl.hidden = false;
   }
   if (input) input.value = "";
+  updateAnalyzeButtonState();
 }
 
 function parseProspectEmails(raw) {
@@ -578,24 +593,68 @@ function prospectEmailsPresentSync() {
   return filterSessionEmailFromProspects(parseProspectEmails(raw)).length > 0;
 }
 
-/** @param {{ busy?: boolean, hasEmail?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s */
+/** Recording link field has a non-empty value. */
+function recordingLinkPresentSync() {
+  return !!readFieldValue($("pc-recording-url"));
+}
+
+/** Transcript textarea has non-empty text (a parsed/uploaded transcript file lands here too). */
+function transcriptPresentSync() {
+  return !!readFieldValue($("pc-transcript"));
+}
+
+/** Either a recording link or a transcript (pasted or file-loaded) is present. */
+function hasRecordingOrTranscriptSync() {
+  return recordingLinkPresentSync() || transcriptPresentSync();
+}
+
+/**
+ * @param {{ busy?: boolean, hasEmail?: boolean, hasRecordingOrTranscript?: boolean, crmResolving?: boolean, crmPreviewSurfacedOnce?: boolean }} s
+ */
 export function computeAnalyzeButtonDisabled(s) {
   const busy = !!s.busy;
   const hasEmail = !!s.hasEmail;
-  return busy || !hasEmail || !!s.crmResolving || !s.crmPreviewSurfacedOnce;
+  const hasRecordingOrTranscript = !!s.hasRecordingOrTranscript;
+  return (
+    busy ||
+    !hasEmail ||
+    !hasRecordingOrTranscript ||
+    !!s.crmResolving ||
+    !s.crmPreviewSurfacedOnce
+  );
+}
+
+/**
+ * Mandatory-field completeness for the analyse button's visual progress (busy/crmResolving
+ * are transient gates, not part of the "fields filled in" story, so they're excluded here).
+ * @param {{ hasEmail?: boolean, hasRecordingOrTranscript?: boolean, crmPreviewSurfacedOnce?: boolean }} s
+ */
+export function computeAnalyzeButtonProgress(s) {
+  const mandatory = [!!s.hasRecordingOrTranscript, !!s.hasEmail, !!s.crmPreviewSurfacedOnce];
+  const mandatoryCount = mandatory.length;
+  const completedCount = mandatory.filter(Boolean).length;
+  return { completedCount, mandatoryCount, ratio: mandatoryCount ? completedCount / mandatoryCount : 0 };
 }
 
 function updateAnalyzeButtonState() {
   const btn = $("analyze-call");
   if (!btn) return;
-  const busy = pass0Busy || contextParsing || linkedinParsing || generating;
+  const busy = pass0Busy || contextParsing || linkedinParsing || deckPdfParsing || generating;
   const hasEmail = prospectEmailsPresentSync();
+  const hasRecordingOrTranscript = hasRecordingOrTranscriptSync();
   btn.disabled = computeAnalyzeButtonDisabled({
     busy,
     hasEmail,
+    hasRecordingOrTranscript,
     crmResolving,
     crmPreviewSurfacedOnce,
   });
+  const progress = computeAnalyzeButtonProgress({
+    hasEmail,
+    hasRecordingOrTranscript,
+    crmPreviewSurfacedOnce,
+  });
+  btn.style.setProperty("--pc-submit-progress", String(progress.ratio));
 }
 
 function markCrmPreviewSurfaced() {
@@ -2335,10 +2394,28 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   if (!normalized.lines?.length && normalized.overall == null) {
     return `<fw-inline-message type="warning" open closable="false">No ${esc(CALL_QUALITY_SCORE_LABEL.toLowerCase())} lines returned.</fw-inline-message>`;
   }
-  const { callType, overall, categoryScores, lines, provisional, confidence } = normalized;
+  const { callType, overall, categoryScores, lines, provisional, confidence, leadershipShareable } =
+    normalized;
   const callTypeLabel = CALL_TYPE_LABELS[callType] || callType;
   const confPct = confidence != null ? Math.round(confidence * 100) : null;
-  const overallLabel = overall != null ? `${overall} / 10` : "- / 10";
+  // v2.2 leadership cap — an overall above 8.0 only renders as-is once the adversarial verifier
+  // has confirmed every remaining score-2 sub-parameter (see ./quality-score.js applyLeadershipCap).
+  const leadershipCap = overall != null ? applyLeadershipCap(overall, !!leadershipShareable) : null;
+  const renderedOverall = leadershipCap ? leadershipCap.overall : overall;
+  const wasCapped = !!leadershipCap?.capped;
+  const overallLabel = renderedOverall != null ? `${renderedOverall} / 10` : "- / 10";
+  const leadershipBadgeHtml = leadershipShareable
+    ? '<span class="pill green" title="Adversarial verifier confirmed every top score on this call — safe to share above the 8.0 bar.">Leadership-shareable</span>'
+    : "";
+  const cappedBadgeHtml = wasCapped
+    ? `<span class="pill amber" title="Scores above 8.0 only render as-is once a skeptical-verifier pass confirms every remaining top score — this call did not clear that bar.">Capped at 8.0</span>`
+    : "";
+  // v2.3 deck-validation gate — inform the SE when their upload didn't count.
+  // Silence here is the worst outcome; the chip ensures they know to recheck their PDF.
+  const deckRejectedBadgeHtml =
+    analysisMeta?.deckVerdict === "deck_rejected"
+      ? `<span class="pill amber qip-deck-rejected-pill" title="${esc(analysisMeta.deckRejectionReason || "The uploaded PDF was not recognised as a relevant slide deck — deck scoring was skipped.")}">Deck not scored</span>`
+      : "";
   const { good, bad } = deriveQipInsights(lines);
 
   let profile = null;
@@ -2378,12 +2455,12 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       </div>`;
 
   if (wireframe) {
-    const overallDisplay = overall != null ? esc(String(overall)) : "-";
+    const overallDisplay = renderedOverall != null ? esc(String(renderedOverall)) : "-";
     const callIdAttr = opts.callId ? ` data-call-id="${esc(opts.callId)}"` : "";
     const companyAttr = opts.company ? ` data-company="${esc(opts.company)}"` : "";
     const scoreAttr =
-      overall != null
-        ? ` data-score="${esc(String(overall))}" data-grade="${esc(String(overall))}"`
+      renderedOverall != null
+        ? ` data-score="${esc(String(renderedOverall))}" data-grade="${esc(String(renderedOverall))}"`
         : "";
     const wireActionsHtml = `<div class="qip-wire-actions" aria-label="Score actions">
           <button type="button" class="btn-wire sm score-dispute-trigger"${callIdAttr}${companyAttr}${scoreAttr}>Dispute a score</button>
@@ -2393,7 +2470,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
         <div class="qip-head">
           <div>
-            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
           </div>
           <div class="qip-head-meta">
             <span class="qip-weight-key" aria-label="Theme weight">
@@ -2419,7 +2496,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <div class="qip-scorecard-card qip-scorecard-head-card">
         <div class="qip-scorecard-head">
           <div>
-            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""}</h2>
+            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
             ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
           </div>
           <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
@@ -2429,7 +2506,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
           ${renderQipInsightTileLegacy(bad, "What didn't", "bad")}
         </div>
       </div>
-      ${renderQipRadar(categoryScores, { overallScore: overall, title: "Evaluation signal", animate: true })}
+      ${renderQipRadar(categoryScores, { overallScore: renderedOverall, title: "Evaluation signal", animate: true })}
       <div class="qip-scorecard-card qip-category-card">
         ${categoryRows}
       </div>
@@ -3039,6 +3116,7 @@ function personInitials(name) {
 }
 
 function personMonoTone(label, role) {
+  if (CONFIRM_ROLE_TONE[role]) return CONFIRM_ROLE_TONE[role];
   if (role === "Customer" || role === "Partner") {
     return { bg: "#f6e7e1", color: "#c2603f" };
   }
@@ -3057,18 +3135,66 @@ function parseAttendeeIdentity(label) {
   return { name: name || raw || "Attendee", email: email || null, label: raw || name || email };
 }
 
+/** AI speaker-attribution roster suggestion for this label (worker/src/postcall/speaker-attribution.ts), if any. */
+function rosterSuggestedRole(label, resolve) {
+  const roster = resolve?.speakerAttribution?.roster || [];
+  if (!roster.length) return null;
+  const key = normalizePersonKey(label);
+  if (!key) return null;
+  const entry = roster.find(
+    (r) => normalizePersonKey(r.label) === key || normalizePersonKey(r.canonicalName) === key,
+  );
+  return entry?.suggestedRole || null;
+}
+
 function inferAttendeeRole(label, resolve, sessionLabel) {
   const sessionKey = normalizePersonKey(sessionLabel);
   const key = normalizePersonKey(label);
   if (sessionKey && key && sessionKey === key) return "Primary SE";
   if (looksLikeAeIdentity(label)) return "AE";
   if (looksLikeSeIdentity(label)) return "Secondary SE";
+  const rosterRole = rosterSuggestedRole(label, resolve);
+  // Heuristics above have no way to guess these three — defer to the AI roster suggestion.
+  if (rosterRole === "Meeting room" || rosterRole === "General Manager" || rosterRole === "Executive") {
+    return rosterRole;
+  }
   if (isInternalIdentity(label)) {
     return normalizePersonKey(resolve?.seIdentity) === key ? "Primary SE" : "Secondary SE";
   }
   const customers = (resolve?.customerIdentities || []).map(normalizePersonKey);
   if (customers.includes(key)) return "Customer";
+  if (rosterRole && CONFIRM_ROLE_SET.includes(rosterRole)) return rosterRole;
   return "Customer";
+}
+
+/** Group AI-suggested meeting-room segments (worker) by attributed person, for the confirm-page sub-panel. */
+function roomGroupsForLabel(resolve, label) {
+  const segments = resolve?.speakerAttribution?.roomSegments || [];
+  const key = normalizePersonKey(label);
+  if (!key || !segments.length) return [];
+  const matches = segments.filter((seg) => normalizePersonKey(seg.label) === key);
+  if (!matches.length) return [];
+  const byPerson = new Map();
+  matches.forEach((seg, i) => {
+    const personKey = normalizePersonKey(seg.attributedTo) || `unknown_${i}`;
+    if (!byPerson.has(personKey)) {
+      byPerson.set(personKey, { attributedTo: seg.attributedTo || "Unknown", spans: [] });
+    }
+    byPerson.get(personKey).spans.push({
+      startS: Number(seg.startS) || 0,
+      endS: Number(seg.endS) || Number(seg.startS) || 0,
+      quote: seg.quote || "",
+      confidence: typeof seg.confidence === "number" ? seg.confidence : null,
+      reason: seg.reason || "",
+    });
+  });
+  return [...byPerson.values()].map((group, idx) => ({
+    id: `room_${key}_${idx}`,
+    attributedTo: group.attributedTo,
+    persons: group.attributedTo ? [group.attributedTo] : [],
+    showAddPerson: false,
+    spans: group.spans.sort((a, b) => a.startS - b.startS),
+  }));
 }
 
 function contactsForIdentityMerge(resolve) {
@@ -3177,6 +3303,7 @@ export function buildConfirmAttendees(resolve) {
       detail: att.email || att.detail || att.label,
       monoBg: mono.bg,
       monoColor: mono.color,
+      roomGroups: att.role === "Meeting room" ? roomGroupsForLabel(resolve, att.label || att.name) : [],
     };
   });
 }
@@ -3261,7 +3388,83 @@ function renderConfirmAccountDealShowcase(account, selectedDeal, resolve) {
     </div>`;
 }
 
-function renderAttendeeRow(att, index) {
+function formatRoomClock(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * Nested rows beneath a "Meeting room" attendee — one per AI-attributed person, grouping the
+ * suggested segments for that person. Everything here is an editable suggestion: the person
+ * select (multi-select when the current attribution is an SE) or the inline "Add person…" form
+ * update `att.roomGroups` in place; nothing is sent to the worker until the SE hits confirm.
+ */
+function renderRoomGroupPanel(att, attendeeIndex, allAttendees) {
+  if (!att.roomGroups?.length) return "";
+  const others = (allAttendees || []).filter((a) => a !== att && (a.name || a.label));
+
+  const groupsHtml = att.roomGroups
+    .map((group, gIdx) => {
+      const spansHtml = (group.spans || [])
+        .map(
+          (span) => `<p class="postcall-attendee-detail muted postcall-room-span">
+            <span class="postcall-room-span-time">${esc(formatRoomClock(span.startS))}–${esc(formatRoomClock(span.endS))}</span>
+            ${span.quote ? `“${esc(span.quote)}” · ` : ""}${
+              span.confidence != null ? `${Math.round(span.confidence * 100)}% confidence · ` : ""
+            }${esc(span.reason || "")}</p>`,
+        )
+        .join("");
+
+      const matchedAttendee = others.find(
+        (a) =>
+          normalizePersonKey(a.name) === normalizePersonKey(group.attributedTo) ||
+          normalizePersonKey(a.label) === normalizePersonKey(group.attributedTo),
+      );
+      const isSeGroup = matchedAttendee?.role === "Primary SE" || matchedAttendee?.role === "Secondary SE";
+
+      if (group.showAddPerson) {
+        return `<div class="postcall-attendee-row postcall-attendee-row--room-member postcall-attendee-row--manual" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">
+          <div class="postcall-attendee-body">
+            <input type="text" class="postcall-confirm-input postcall-room-person-name" placeholder="Name" value="" />
+            <select class="postcall-room-person-role" aria-label="Role for new person">
+              ${CONFIRM_ROLE_SET.map((r) => `<option value="${esc(r)}"${r === "Customer" ? " selected" : ""}>${esc(r)}</option>`).join("")}
+            </select>
+          </div>
+          <button type="button" class="postcall-room-add-confirm" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">Add</button>
+          <button type="button" class="postcall-attendee-remove postcall-room-add-cancel" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}" aria-label="Cancel add person">×</button>
+        </div>`;
+      }
+
+      const options = others
+        .map(
+          (a) =>
+            `<option value="${esc(a.name || a.label)}"${(group.persons || []).includes(a.name || a.label) ? " selected" : ""}>${esc(a.name || a.label)}</option>`,
+        )
+        .join("");
+
+      return `<div class="postcall-attendee-row postcall-attendee-row--room-member" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">
+        <div class="postcall-attendee-body">
+          <div class="postcall-attendee-text">
+            <span class="postcall-attendee-name">${esc(group.attributedTo || "Unassigned")}</span>
+            <span class="postcall-attendee-detail muted">Attributed from “${esc(att.label || att.name)}”</span>
+            ${spansHtml}
+          </div>
+        </div>
+        <select class="postcall-role-select postcall-room-person-select" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}" aria-label="Attribute this segment to"${isSeGroup ? " multiple" : ""}>
+          <option value="">Unassigned</option>
+          ${options}
+        </select>
+        <button type="button" class="postcall-room-add-person" data-attendee-index="${attendeeIndex}" data-group-index="${gIdx}">＋ Add person…</button>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="postcall-room-groups" data-attendee-index="${attendeeIndex}">${groupsHtml}</div>`;
+}
+
+function renderAttendeeRow(att, index, allAttendees) {
   const editable = att.manual;
   const body = editable
     ? `<input type="text" class="postcall-confirm-input postcall-attendee-name" placeholder="Name" value="${esc(att.name === "Attendee" ? "" : att.name)}" />
@@ -3279,7 +3482,7 @@ function renderAttendeeRow(att, index) {
     <div class="postcall-attendee-body">${body}</div>
     ${renderRoleSelect(att.role, index)}
     ${editable ? `<button type="button" class="postcall-attendee-remove" data-attendee-index="${index}" aria-label="Remove attendee">×</button>` : ""}
-  </div>`;
+  </div>${att.role === "Meeting room" ? renderRoomGroupPanel(att, index, allAttendees) : ""}`;
 }
 
 function renderAttendeesSection(attendees) {
@@ -3289,7 +3492,7 @@ function renderAttendeesSection(attendees) {
       <span class="postcall-ai-badge"><span class="postcall-ai-dot" aria-hidden="true"></span>AI detected</span>
     </div>
     <p class="muted postcall-attendee-hint">Assign a role to each person on the call.</p>
-    <div id="postcall-attendee-list" class="postcall-attendee-list">${attendees.map(renderAttendeeRow).join("")}</div>
+    <div id="postcall-attendee-list" class="postcall-attendee-list">${attendees.map((att, i) => renderAttendeeRow(att, i, attendees)).join("")}</div>
     <button type="button" id="postcall-add-attendee-btn" class="postcall-add-attendee">＋ Add attendee</button>
   </div>`;
 }
@@ -3363,7 +3566,7 @@ export function renderConfirmationGate(resolve, classify) {
 function syncAttendeeListDom(card) {
   const list = card?.querySelector("#postcall-attendee-list");
   if (!list || !confirmGateAttendees) return;
-  list.innerHTML = confirmGateAttendees.map(renderAttendeeRow).join("");
+  list.innerHTML = confirmGateAttendees.map((att, i) => renderAttendeeRow(att, i, confirmGateAttendees)).join("");
   wireConfirmAttendeeRows(card);
 }
 
@@ -3396,27 +3599,101 @@ function wireConfirmAttendeeRows(card) {
     if (teardown) confirmGateContactLookupTeardowns.push(teardown);
   });
 
-  card.querySelectorAll(".postcall-role-select").forEach((select) => {
+  card.querySelectorAll(".postcall-role-select:not(.postcall-room-person-select)").forEach((select) => {
     select.addEventListener("change", () => {
       const idx = Number(select.dataset.attendeeIndex);
       const att = confirmGateAttendees?.[idx];
       if (!att) return;
       const nextRole = select.value || "Customer";
       att.role = nextRole;
+      if (nextRole === "Meeting room" && !att.roomGroups?.length) {
+        att.roomGroups = roomGroupsForLabel(pipelineState?.resolve, att.label || att.name);
+      }
       if (nextRole === "Primary SE") {
         confirmGateAttendees.forEach((a, i) => {
           if (i !== idx && a.role === "Primary SE") a.role = "Secondary SE";
         });
-        syncAttendeeListDom(card);
       }
+      // Role changes can add/remove the room sub-panel below the row — always re-render.
+      syncAttendeeListDom(card);
     });
   });
 
-  card.querySelectorAll(".postcall-attendee-remove").forEach((btn) => {
+  card.querySelectorAll(".postcall-attendee-remove:not(.postcall-room-add-cancel)").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = Number(btn.dataset.attendeeIndex);
       if (!confirmGateAttendees || idx < 0) return;
       confirmGateAttendees.splice(idx, 1);
+      syncAttendeeListDom(card);
+    });
+  });
+
+  wireRoomGroupControls(card);
+}
+
+/** Beneath-row controls for "Meeting room" attendees — see renderRoomGroupPanel. Suggestions
+ * only; everything here mutates local `confirmGateAttendees[i].roomGroups` state until confirm. */
+function wireRoomGroupControls(card) {
+  card.querySelectorAll(".postcall-room-person-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      const attIdx = Number(select.dataset.attendeeIndex);
+      const groupIdx = Number(select.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      const selected = [...select.selectedOptions].map((o) => o.value).filter(Boolean);
+      group.persons = selected;
+      group.attributedTo = selected[0] || "";
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-person").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      group.showAddPerson = true;
+      syncAttendeeListDom(card);
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-cancel").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const group = confirmGateAttendees?.[attIdx]?.roomGroups?.[groupIdx];
+      if (!group) return;
+      group.showAddPerson = false;
+      syncAttendeeListDom(card);
+    });
+  });
+
+  card.querySelectorAll(".postcall-room-add-confirm").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const attIdx = Number(btn.dataset.attendeeIndex);
+      const groupIdx = Number(btn.dataset.groupIndex);
+      const att = confirmGateAttendees?.[attIdx];
+      const group = att?.roomGroups?.[groupIdx];
+      if (!att || !group) return;
+      const row = btn.closest(".postcall-attendee-row--room-member");
+      const name = (row?.querySelector(".postcall-room-person-name")?.value || "").trim();
+      const role = row?.querySelector(".postcall-room-person-role")?.value || "Customer";
+      if (!name) return;
+      const mono = personMonoTone(name, role);
+      confirmGateAttendees.push({
+        id: `manual_room_${Date.now()}_${groupIdx}`,
+        name,
+        email: "",
+        detail: "",
+        role,
+        manual: true,
+        monoBg: mono.bg,
+        monoColor: mono.color,
+        roomGroups: [],
+      });
+      group.persons = [name];
+      group.attributedTo = name;
+      group.showAddPerson = false;
       syncAttendeeListDom(card);
     });
   });
@@ -3452,6 +3729,7 @@ function wireConfirmGateInteractions(card) {
         manual: true,
         monoBg: mono.bg,
         monoColor: mono.color,
+        roomGroups: [],
       });
       syncAttendeeListDom(card);
     });
@@ -3509,8 +3787,39 @@ function showConfirmationGate(resolve, classify) {
   card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
+/** Confirmed meeting-room mic attributions from in-memory confirm-page state (not the DOM —
+ * see renderRoomGroupPanel / wireRoomGroupControls, which mutate `confirmGateAttendees[i].roomGroups`
+ * directly). Shape: [{ roomLabel, spans: [{ startS, endS, person, role }] }]. */
+function readRoomAttributions() {
+  const attributions = [];
+  for (const att of confirmGateAttendees || []) {
+    if (att.role !== "Meeting room" || !att.roomGroups?.length) continue;
+    const spans = [];
+    for (const group of att.roomGroups) {
+      const persons = (group.persons?.length ? group.persons : [group.attributedTo]).filter(Boolean);
+      for (const person of persons) {
+        const personAttendee = (confirmGateAttendees || []).find(
+          (a) =>
+            normalizePersonKey(a.name) === normalizePersonKey(person) ||
+            normalizePersonKey(a.label) === normalizePersonKey(person),
+        );
+        for (const span of group.spans || []) {
+          spans.push({
+            startS: span.startS,
+            endS: span.endS,
+            person,
+            role: personAttendee?.role || null,
+          });
+        }
+      }
+    }
+    if (spans.length) attributions.push({ roomLabel: att.label || att.name, spans });
+  }
+  return attributions;
+}
+
 function readAttendeeSelections() {
-  const rows = document.querySelectorAll(".postcall-attendee-row");
+  const rows = document.querySelectorAll(".postcall-attendee-row:not(.postcall-attendee-row--room-member)");
   /** @type {object[]} */
   const attendees = [];
   let seIdentity = "";
@@ -3521,6 +3830,10 @@ function readAttendeeSelections() {
   const secondarySeIdentities = [];
   /** @type {string[]} */
   const partnerIdentities = [];
+  /** @type {string[]} */
+  const generalManagerIdentities = [];
+  /** @type {string[]} */
+  const executiveIdentities = [];
 
   rows.forEach((row) => {
     const nameInput = row.querySelector("input.postcall-attendee-name");
@@ -3539,6 +3852,8 @@ function readAttendeeSelections() {
     else if (role === "Secondary SE") secondarySeIdentities.push(label);
     else if (role === "AE" && !aeIdentity) aeIdentity = label;
     else if (role === "Partner") partnerIdentities.push(label);
+    else if (role === "General Manager") generalManagerIdentities.push(label);
+    else if (role === "Executive") executiveIdentities.push(label);
     else if (role === "Customer") customerIdentities.push(label);
   });
 
@@ -3554,6 +3869,10 @@ function readAttendeeSelections() {
   const secondarySes = [];
   /** @type {string[]} */
   const partners = [];
+  /** @type {string[]} */
+  const generalManagers = [];
+  /** @type {string[]} */
+  const executives = [];
 
   for (const att of mergedAttendees) {
     const label = att.name || att.email || att.label;
@@ -3562,6 +3881,8 @@ function readAttendeeSelections() {
     else if (att.role === "Secondary SE") secondarySes.push(label);
     else if (att.role === "AE" && !ae) ae = label;
     else if (att.role === "Partner") partners.push(label);
+    else if (att.role === "General Manager") generalManagers.push(label);
+    else if (att.role === "Executive") executives.push(label);
     else if (att.role === "Customer") customers.push(label);
   }
 
@@ -3572,6 +3893,9 @@ function readAttendeeSelections() {
     customerIdentities: customers,
     secondarySeIdentities: secondarySes,
     partnerIdentities: partners,
+    generalManagerIdentities: generalManagers,
+    executiveIdentities: executives,
+    roomAttributions: readRoomAttributions(),
   };
 }
 
@@ -3596,6 +3920,9 @@ function readConfirmationSelections() {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
   } = readAttendeeSelections();
   return {
     callType,
@@ -3607,6 +3934,9 @@ function readConfirmationSelections() {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   };
 }
@@ -3617,6 +3947,9 @@ function formatConfirmedIdentitiesContext({
   customerIdentities,
   secondarySeIdentities,
   partnerIdentities,
+  generalManagerIdentities,
+  executiveIdentities,
+  roomAttributions,
 }) {
   const lines = ["Confirmed call identities (authoritative; use these for attendees/roles):"];
   if (seIdentity) lines.push(`- Primary SE: ${seIdentity}`);
@@ -3631,6 +3964,23 @@ function formatConfirmedIdentitiesContext({
   }
   if (partnerIdentities?.length) {
     lines.push(`- Partner: ${partnerIdentities.join(", ")}`);
+  }
+  if (generalManagerIdentities?.length) {
+    lines.push(`- General Manager: ${generalManagerIdentities.join(", ")}`);
+  }
+  if (executiveIdentities?.length) {
+    lines.push(`- Executive: ${executiveIdentities.join(", ")}`);
+  }
+  if (roomAttributions?.length) {
+    lines.push("", "Meeting-room mic attributions (credit speech in these spans to the named person):");
+    for (const attribution of roomAttributions) {
+      for (const span of attribution.spans || []) {
+        const role = span.role ? ` (${span.role})` : "";
+        lines.push(
+          `- "${attribution.roomLabel}" ${formatRoomClock(span.startS)}–${formatRoomClock(span.endS)} → ${span.person}${role}`,
+        );
+      }
+    }
   }
   return lines.join("\n");
 }
@@ -3663,6 +4013,9 @@ async function confirmAndGenerate(e) {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   } = readConfirmationSelections();
 
@@ -3682,6 +4035,9 @@ async function confirmAndGenerate(e) {
     customerIdentities,
     secondarySeIdentities,
     partnerIdentities,
+    generalManagerIdentities,
+    executiveIdentities,
+    roomAttributions,
     attendees,
   };
 
@@ -3888,7 +4244,7 @@ async function confirmAndGenerate(e) {
     companyName,
     prospectEmails: pipelineState.payload.prospectEmails,
     additionalContext,
-    deckLink: pipelineState.payload.deckLink,
+    deckContent: pipelineState.payload.deckContent,
     linkedinProfileExports: pipelineState.payload.linkedinProfileExports,
     confirmed: true,
     callType,
@@ -3896,6 +4252,19 @@ async function confirmAndGenerate(e) {
     accountId,
     companyDomain: companyDomain || undefined,
     meetingDate: meetingDateFromResolve(pipelineState.resolve),
+    // Structured identities for identity-aware scoring (worker/src/postcall/generate.ts →
+    // scorecard.ts) — additive to the free-text identities block already folded into
+    // `additionalContext` above for the narrative pass.
+    confirmedIdentities: {
+      seIdentity,
+      aeIdentity,
+      customerIdentities,
+      secondarySeIdentities,
+      partnerIdentities,
+      generalManagerIdentities,
+      executiveIdentities,
+      roomAttributions,
+    },
     resolveSnapshot: {
       ...pipelineState.resolve,
       seIdentity,
@@ -4485,7 +4854,6 @@ const PC_TEXT_FIELD_IDS = [
   "pc-recording-url",
   "pc-recording-pwd",
   "pc-prospect-emails",
-  "pc-deck-link",
   "pc-additional-context",
   "pc-transcript",
 ];
@@ -4657,6 +5025,12 @@ export function clearPostCallForm() {
   if (ctxList) ctxList.innerHTML = "";
   const ctxErr = $("pc-context-error");
   if (ctxErr) ctxErr.hidden = true;
+  clearDeckPdfContent();
+  renderDeckPdfFileList();
+  const deckErr = $("pc-deck-error");
+  if (deckErr) deckErr.hidden = true;
+  const deckFileInput = $("pc-deck-pdf");
+  if (deckFileInput) deckFileInput.value = "";
   companyNameTouched = false;
   newDealTitleTouched = false;
   pcDraftAccountName = "";
@@ -4741,7 +5115,7 @@ async function collectIntakePayload() {
   const prospectEmails = filterSessionEmailFromProspects(allProspectEmails);
   let companyName = await resolveIntakeCompanyName(prospectEmails);
   const transcript = (await readFieldValueAsync($("pc-transcript")))?.trim() || "";
-  const deckLink = (await readFieldValueAsync($("pc-deck-link")))?.trim() || undefined;
+  const deckContent = deckContentForPayload();
   const additionalContextRaw =
     (await readFieldValueAsync($("pc-additional-context")))?.trim() || undefined;
   const contextAttachments = contextAttachmentsForPayload("postcall");
@@ -4802,7 +5176,7 @@ async function collectIntakePayload() {
       companyDomain: prospectDomain && !isFreeMailDomain(prospectDomain) ? prospectDomain : undefined,
       prospectEmails,
       participantEmails: prospectEmails,
-      deckLink,
+      deckContent,
       additionalContext,
       contextAttachments,
       linkedinProfileExports,
@@ -4844,7 +5218,7 @@ function ensureIntakePayloadSynced(payload) {
 
 async function startPipeline(e) {
   e?.preventDefault?.();
-  if (linkedinParsing || contextParsing || pass0Busy || generating) return;
+  if (linkedinParsing || contextParsing || deckPdfParsing || pass0Busy || generating) return;
   const btn = $("analyze-call");
   if (btn?.disabled) return;
   const status = $("postcall-status");
@@ -5012,6 +5386,8 @@ export function onSessionCleared() {
   lastProspectEmailsRaw = "";
   invalidatePostCallResolveContext();
   clearLinkedInAttachments("postcall");
+  clearDeckPdfContent();
+  renderDeckPdfFileList();
   activePostcallProgress?.hide();
   activePostcallProgress = null;
   show($("postcall-form-view"), true);
@@ -5044,6 +5420,209 @@ export function __resetIntakeDealStateForTests() {
   if (pipelineState && !pipelineState.resolve) pipelineState = null;
 }
 
+// ---------------------------------------------------------------- deck PDF (single file)
+//
+// Replaces the old free-text "Deck link" field (v2.1) — a bare URL let the scorer
+// invent slide_deck evidence with nothing to ground it. We now parse the deck PDF
+// client-side (text only — bytes never leave the machine) and send the extracted
+// per-slide text to the worker, same "text-only" pattern as the LinkedIn PDF and
+// context-file uploads above.
+
+/** Soft budget — cap total extracted deck text sent to the scorer; later slides are
+ * truncated first so the front of the deck (title, agenda, problem framing) always scores. */
+const MAX_DECK_PDF_TEXT_CHARS = 15_000;
+
+/** @type {Promise<typeof import('pdfjs-dist')>|null} */
+let deckPdfjsLoadPromise = null;
+
+async function loadDeckPdfJs() {
+  if (!deckPdfjsLoadPromise) {
+    deckPdfjsLoadPromise = import(
+      "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.mjs"
+    ).then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc =
+        "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.worker.mjs";
+      return pdfjs;
+    });
+  }
+  return deckPdfjsLoadPromise;
+}
+
+/**
+ * Extract per-page text from a deck PDF.
+ * @param {File} file
+ * @returns {Promise<{ fileName: string, pageCount: number, slides: { page: number, text: string }[] }>}
+ */
+/**
+ * Deterministic shape gate — purely geometry + word density, no LLM cost.
+ * Returns `"likely_deck"` when the PDF looks like a slide deck (landscape, sparse text),
+ * `"unlikely_deck"` for portrait/dense documents (reports, contracts, LinkedIn exports).
+ * The server-side relevance check is authoritative; this is a cheap pre-filter only.
+ *
+ * @param {{ landscapePct: number, medianWordsPerPage: number, pageCount: number }} shape
+ * @returns {"likely_deck" | "unlikely_deck"}
+ */
+function computeDeckShapeVerdict(shape) {
+  if (shape.pageCount === 1 || shape.pageCount > 120) return "unlikely_deck";
+  if (shape.landscapePct < 0.6) return "unlikely_deck";
+  if (shape.medianWordsPerPage > 250) return "unlikely_deck";
+  return "likely_deck";
+}
+
+async function extractDeckPdfContent(file) {
+  const pdfjs = await loadDeckPdfJs();
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const rawPages = [];
+  const geometryPages = []; // { width, height } per page
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    // Capture page dimensions at scale 1 for shape analysis.
+    const vp = page.getViewport({ scale: 1 });
+    geometryPages.push({ width: vp.width, height: vp.height });
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    rawPages.push({ page: i, text });
+  }
+
+  // Shape metrics — landscape fraction and median word count per page.
+  const landscapeCount = geometryPages.filter((g) => g.width > g.height).length;
+  const landscapePct = geometryPages.length > 0 ? landscapeCount / geometryPages.length : 0;
+  const wordCounts = rawPages.map((p) => (p.text ? p.text.split(/\s+/).filter(Boolean).length : 0));
+  const sortedWc = [...wordCounts].sort((a, b) => a - b);
+  const mid = Math.floor(sortedWc.length / 2);
+  const medianWordsPerPage =
+    sortedWc.length === 0
+      ? 0
+      : sortedWc.length % 2 === 1
+        ? sortedWc[mid]
+        : (sortedWc[mid - 1] + sortedWc[mid]) / 2;
+  const shape = { landscapePct, medianWordsPerPage, pageCount: doc.numPages };
+  const deckShapeVerdict = computeDeckShapeVerdict(shape);
+
+  let budget = MAX_DECK_PDF_TEXT_CHARS;
+  const slides = rawPages.map((p) => {
+    if (budget <= 0) return { page: p.page, text: "" };
+    if (p.text.length <= budget) {
+      budget -= p.text.length;
+      return p;
+    }
+    const trimmed = { page: p.page, text: p.text.slice(0, budget) };
+    budget = 0;
+    return trimmed;
+  });
+
+  return { fileName: file.name || "deck.pdf", pageCount: doc.numPages, slides, shape, deckShapeVerdict };
+}
+
+/**
+ * @type {{
+ *   fileName: string,
+ *   pageCount: number,
+ *   slides: { page: number, text: string }[],
+ *   shape: { landscapePct: number, medianWordsPerPage: number, pageCount: number },
+ *   deckShapeVerdict: "likely_deck" | "unlikely_deck"
+ * } | null}
+ */
+let deckPdfContent = null;
+
+/** Deck content for the intake payload / generate body — undefined when nothing is attached. */
+function deckContentForPayload() {
+  return deckPdfContent || undefined;
+}
+
+function clearDeckPdfContent() {
+  deckPdfContent = null;
+}
+
+function renderDeckPdfFileList() {
+  const listEl = $("pc-deck-file-list");
+  const shapeWarnEl = $("pc-deck-shape-warn");
+  if (!listEl) return;
+  listEl.innerHTML = deckPdfContent
+    ? `<li class="prep-linkedin-file-item">
+        <span class="prep-linkedin-file-name" title="${esc(deckPdfContent.fileName)}">${esc(deckPdfContent.fileName)} <span class="prep-linkedin-file-meta">(${deckPdfContent.pageCount} slide${deckPdfContent.pageCount === 1 ? "" : "s"})</span></span>
+        <fw-button type="button" color="secondary" fill="clear" size="small" id="pc-deck-remove-btn">Remove</fw-button>
+      </li>`
+    : "";
+  // Show shape warning inline under the file row — non-blocking; server decides.
+  if (shapeWarnEl) {
+    const showWarn = !!deckPdfContent && deckPdfContent.deckShapeVerdict === "unlikely_deck";
+    shapeWarnEl.hidden = !showWarn;
+    if (showWarn) {
+      shapeWarnEl.textContent =
+        "This doesn’t look like a slide deck — we’ll only score it if it matches the call.";
+    }
+  }
+  const removeBtn = $("pc-deck-remove-btn");
+  const removeDeck = () => {
+    clearDeckPdfContent();
+    renderDeckPdfFileList();
+  };
+  removeBtn?.addEventListener("fwClick", removeDeck);
+  removeBtn?.addEventListener("click", removeDeck);
+}
+
+/** Wire the deck PDF upload widget (add + replace + remove). */
+function initDeckPdfUpload() {
+  loadDeckPdfJs().catch(() => {});
+  const fileInput = $("pc-deck-pdf");
+  const addBtn = $("pc-deck-add-btn");
+  const errEl = $("pc-deck-error");
+  const parsingEl = $("pc-deck-parsing");
+
+  addBtn?.addEventListener("fwClick", () => fileInput?.click());
+  addBtn?.addEventListener("click", () => fileInput?.click());
+
+  fileInput?.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!file) return;
+    if (errEl) errEl.hidden = true;
+    const name = file.name || "deck.pdf";
+    if (!/\.pdf$/i.test(name) && file.type !== "application/pdf") {
+      if (errEl) {
+        errEl.textContent = `${name}: not a PDF file.`;
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (parsingEl) parsingEl.hidden = false;
+    deckPdfParsing = true;
+    updateAnalyzeButtonState();
+    if (addBtn) addBtn.disabled = true;
+    try {
+      const content = await extractDeckPdfContent(file);
+      if (!content.slides.some((s) => s.text)) {
+        if (errEl) {
+          errEl.textContent = `${name}: could not extract text (empty or scanned PDF).`;
+          errEl.hidden = false;
+        }
+        return;
+      }
+      // Single-file input — a new pick replaces whatever deck was attached before.
+      deckPdfContent = content;
+      renderDeckPdfFileList();
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = `${name}: ${err?.message || "failed to read PDF"}.`;
+        errEl.hidden = false;
+      }
+    } finally {
+      if (parsingEl) parsingEl.hidden = true;
+      deckPdfParsing = false;
+      updateAnalyzeButtonState();
+      if (addBtn) addBtn.disabled = false;
+    }
+  });
+
+  renderDeckPdfFileList();
+}
+
 export function initPostcall() {
   const emailsEl = $("pc-prospect-emails");
   configureProspectEmailAntiAutofill(emailsEl);
@@ -5061,11 +5640,17 @@ export function initPostcall() {
   recordingUrl?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingUrl?.addEventListener("input", syncPasscodeVisibility);
   recordingUrl?.addEventListener("fwBlur", syncPasscodeVisibility);
+  recordingUrl?.addEventListener("fwInput", updateAnalyzeButtonState);
+  recordingUrl?.addEventListener("input", updateAnalyzeButtonState);
   syncPasscodeVisibility();
 
   const recordingPwd = $("pc-recording-pwd");
   recordingPwd?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingPwd?.addEventListener("input", syncPasscodeVisibility);
+
+  const transcriptTextarea = $("pc-transcript");
+  transcriptTextarea?.addEventListener("fwInput", updateAnalyzeButtonState);
+  transcriptTextarea?.addEventListener("input", updateAnalyzeButtonState);
 
   const transcriptFile = $("pc-transcript-file");
   const transcriptFileBtn = $("pc-transcript-file-btn");
@@ -5131,6 +5716,8 @@ export function initPostcall() {
       if (addBtn) addBtn.disabled = on;
     },
   });
+
+  initDeckPdfUpload();
 
   updateAnalyzeButtonState();
 }

@@ -5,7 +5,11 @@ import { RUBRIC_VERSION, type CallType } from "../rubric-profiles";
 import { runPostCallClassify } from "./classify";
 import { runPostCallResolve } from "./resolve";
 import { runPostCallScorecard } from "./scorecard";
+import { buildEffectiveTranscriptForScoring } from "./speaker-attribution";
+import { runDeckValidation } from "./deck-validate";
+import { trimWords } from "../word-limits";
 import type {
+  ConfirmedIdentities,
   PostCallGenerateInput,
   PostCallGenerateResult,
   PostCallResolveInput,
@@ -25,6 +29,52 @@ function stampQipAnalysisVersions<T extends { analysis: { analysisVersion?: numb
   result.analysis.analysisVersion = 2;
   result.analysis.rubricVersion = RUBRIC_VERSION;
   return result;
+}
+
+/**
+ * Server-side, canonical identity-context block for the SCORECARD prompt only — distinct
+ * from the free-text identities block the confirm page already folds into
+ * `additionalContext` for the narrative pass (web/postcall.js `formatConfirmedIdentitiesContext`).
+ * Threaded into `runPostCallScorecard` as `identitiesContext` (see scorecard.ts rule requiring
+ * SE-execution credit come only from a confirmed SE).
+ */
+function buildIdentitiesContext(identities: ConfirmedIdentities | null | undefined): string | null {
+  if (!identities) return null;
+  const lines: string[] = ["Confirmed call identities (authoritative for scoring):"];
+  if (identities.seIdentity) lines.push(`- Primary SE: ${identities.seIdentity}`);
+  if (identities.secondarySeIdentities?.length) {
+    lines.push(`- Secondary SE: ${identities.secondarySeIdentities.join(", ")}`);
+  }
+  if (identities.aeIdentity) lines.push(`- AE: ${identities.aeIdentity}`);
+  if (identities.customerIdentities?.length) {
+    lines.push(`- Customer: ${identities.customerIdentities.join(", ")}`);
+  }
+  if (identities.partnerIdentities?.length) {
+    lines.push(`- Partner: ${identities.partnerIdentities.join(", ")}`);
+  }
+  if (identities.generalManagerIdentities?.length) {
+    lines.push(`- General Manager: ${identities.generalManagerIdentities.join(", ")}`);
+  }
+  if (identities.executiveIdentities?.length) {
+    lines.push(`- Executive: ${identities.executiveIdentities.join(", ")}`);
+  }
+  if (identities.roomAttributions?.length) {
+    lines.push(
+      "",
+      'Meeting-room mic attributions — speech in these spans is credited to the named person ' +
+        '(tagged "(via meeting room)" in the transcript below):',
+    );
+    for (const attribution of identities.roomAttributions) {
+      for (const span of attribution.spans || []) {
+        const role = span.role ? ` (${span.role})` : "";
+        lines.push(
+          `- "${attribution.roomLabel}" ${Math.round(span.startS)}s–${Math.round(span.endS)}s → ${span.person}${role}`,
+        );
+      }
+    }
+  }
+  if (lines.length <= 1) return null;
+  return lines.join("\n");
 }
 
 /** Run narrative analysis + Pass 3 scorecard after SE confirmation (or legacy auto-pick). */
@@ -57,21 +107,67 @@ export async function runPostCallGenerate(
   const transcript = input.transcript?.trim() || "";
   const videoFacts = input.videoFacts ?? null;
 
+  // Identity-aware scoring (v2.2): confirmed identities + meeting-room attributions are
+  // authoritative for the SCORECARD pass only — the narrative pass above keeps using the
+  // original transcript + the free-text identities block already folded into
+  // additionalContext by the confirm page.
+  const roomAttributions = input.confirmedIdentities?.roomAttributions ?? null;
+  const identitiesContext = buildIdentitiesContext(input.confirmedIdentities);
+  const effectiveTranscriptForScoring = transcript
+    ? buildEffectiveTranscriptForScoring(transcript, roomAttributions)
+    : transcript;
+  const transcriptWasRewritten = effectiveTranscriptForScoring !== transcript;
+  // `input.transcriptCaches` (Gemini-side context cache) was prepared from the RAW transcript
+  // by POST /api/postcall/cache/prepare before confirm. It is not consumed as the scorecard
+  // request's own cached transcript content today (only the static rubric prompt is cached
+  // there — see resolvePostCallCacheModel/getStaticCache in scorecard.ts), so this is
+  // defensive rather than a live bug: if a future change starts feeding transcriptCaches into
+  // the scorecard's cachedSystemContent, it must never do so for a rewritten transcript, since
+  // the cache content would still reflect the raw (non-identity-rewritten) text.
+  const scorecardTranscriptCaches = transcriptWasRewritten ? undefined : input.transcriptCaches;
+
+  // Deck relevance gate (v2.3) — a cheap LLM call that runs only when a deck PDF was uploaded.
+  // Soft-fail: a validation error never blocks the pipeline (deck is treated as valid on error).
+  // Skip entirely when no deckContent is present (adds zero cost to the common path).
+  let deckValidation = null;
+  if (input.deckContent?.slides?.some((s) => s.text?.trim())) {
+    const transcriptSample = trimWords(effectiveTranscriptForScoring || transcript, 500);
+    try {
+      deckValidation = await runDeckValidation(
+        env,
+        input.deckContent,
+        {
+          companyName: input.companyName,
+          meetingTitle: input.meetingTitle,
+          transcriptSample,
+        },
+        { userId: input.userId, callId: input.callId },
+      );
+    } catch {
+      // Soft-fail — deck treated as valid if the validation pass errors.
+      deckValidation = null;
+    }
+  }
+
   const [narrative, scorecardResult] = await Promise.all([
     analyzePostCall(env, analysisInput),
     transcript
       ? runPostCallScorecard(env, {
-          transcript,
+          transcript: effectiveTranscriptForScoring,
           callType,
           videoAvailable,
           deckLink: input.deckLink,
+          deckContent: input.deckContent,
+          deckValidation,
           briefContext: input.briefContext,
+          identitiesContext,
+          roomAttributions,
           companyName: input.companyName,
           meetingTitle: input.meetingTitle,
           videoFacts,
           userId: input.userId,
           callId: input.callId,
-          transcriptCaches: input.transcriptCaches,
+          transcriptCaches: scorecardTranscriptCaches,
         })
       : Promise.resolve(null),
   ]);
@@ -101,6 +197,10 @@ export async function runPostCallGenerate(
       analysisConfidence: scorecardResult?.analysisConfidence,
       provisional: scorecardResult?.provisional,
       rubricVersion: RUBRIC_VERSION,
+      ...(scorecardResult?.deckVerdict ? { deckVerdict: scorecardResult.deckVerdict } : {}),
+      ...(scorecardResult?.deckRejectionReason
+        ? { deckRejectionReason: scorecardResult.deckRejectionReason }
+        : {}),
     },
   };
 }
@@ -110,7 +210,7 @@ export async function runPostCallLegacyAnalyze(
   env: Env,
   input: PostCallGenerateInput & PostCallResolveInput,
 ): Promise<PostCallGenerateResult> {
-  const resolveResult = await runPostCallResolve(input, { zoomEnv: env });
+  const resolveResult = await runPostCallResolve(input, { zoomEnv: env, providerEnv: env });
   const classifyResult = await runPostCallClassify(env, {
     transcript: resolveResult.transcript,
     meetingTitle: resolveResult.meetingTitle,
@@ -172,7 +272,7 @@ export async function runPostCallConfirmedPipeline(
   let transcript = input.transcript?.trim();
   let resolveResult = input.resolveSnapshot;
   if (!transcript && input.recordingUrl) {
-    resolveResult = resolveResult || (await runPostCallResolve(input, { zoomEnv: env }));
+    resolveResult = resolveResult || (await runPostCallResolve(input, { zoomEnv: env, providerEnv: env }));
     transcript = resolveResult.transcript;
   }
   if (!transcript) {

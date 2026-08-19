@@ -497,7 +497,7 @@ export async function handlePostCallResolve(
     );
   }
   try {
-    const result = await runPostCallResolve(input as PostCallResolveInput, { zoomEnv: env });
+    const result = await runPostCallResolve(input as PostCallResolveInput, { zoomEnv: env, providerEnv: env });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;

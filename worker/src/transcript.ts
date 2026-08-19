@@ -1,14 +1,124 @@
-// Deterministic transcript parsing — VTT (Zoom default) and plain text paste.
+// Deterministic transcript parsing — VTT (Zoom default), Kaia export, and plain text paste.
 
 export interface ParsedTranscript {
   text: string;
-  format: "vtt" | "plain";
+  format: "vtt" | "plain" | "kaia";
   speakers: string[];
   wordCount: number;
   durationMinutes: number | null;
 }
 
 const SPEAKER_LINE = /^([^\n:]{1,80}):\s*(.+)$/;
+
+/** Bare clock fragment, e.g. "0:12" or "00:12:04" — never a real speaker name. */
+const CLOCK_FRAGMENT = /^\d{1,2}(?::\d{2}){1,2}$/;
+
+/**
+ * Rejects speaker labels that are actually leading timestamp fragments rather than a
+ * real name. Kaia and plain-paste exports sometimes place a clock value (or a bare
+ * numeric device index like "00" / "01") where a speaker label should be — without this
+ * guard those get captured as bogus "speakers". Used at every speaker-detection site in
+ * this file so the behavior is consistent.
+ */
+export function isValidSpeakerLabel(label: string | null | undefined): boolean {
+  const trimmed = (label || "").trim();
+  if (!trimmed) return false;
+  if (/^\d+$/.test(trimmed)) return false; // purely numeric, e.g. "00", "01"
+  if (CLOCK_FRAGMENT.test(trimmed)) return false; // clock fragment, e.g. "00:12:04"
+  if (/^\d+:/.test(trimmed)) return false; // starts with digit immediately followed by ":"
+  return true;
+}
+
+const KAIA_CLOCK = "\\d{1,2}:\\d{2}(?::\\d{2})?";
+const KAIA_NAME = "[A-Za-z][A-Za-z0-9 .'\\-]{0,60}[A-Za-z0-9.]";
+const KAIA_HEADER_CLOCK_FIRST = new RegExp(`^(${KAIA_CLOCK})\\s+(${KAIA_NAME})$`);
+const KAIA_HEADER_NAME_FIRST = new RegExp(`^(${KAIA_NAME})\\s+(${KAIA_CLOCK})$`);
+
+/**
+ * Matches a Kaia-export speaker header line — either "HH:MM:SS Speaker Name" or
+ * "Speaker Name HH:MM:SS" on a line by itself (the utterance text follows on subsequent
+ * lines until the next header). Returns null for anything else, including ordinary
+ * "Speaker: text" lines (which are handled by the VTT/plain paths).
+ */
+function matchKaiaHeader(line: string): { name: string; ts: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.includes(":") === false) return null;
+  if (trimmed.includes("-->")) return null;
+  let m = trimmed.match(KAIA_HEADER_CLOCK_FIRST);
+  if (m) return { ts: m[1], name: m[2].trim() };
+  m = trimmed.match(KAIA_HEADER_NAME_FIRST);
+  if (m) return { ts: m[2], name: m[1].trim() };
+  return null;
+}
+
+/** Heuristic: at least two valid "clock + name" header lines in the opening window. */
+function looksLikeKaiaFormat(input: string): boolean {
+  if (/^WEBVTT/i.test(input)) return false;
+  const lines = input
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 60);
+  let headers = 0;
+  for (const line of lines) {
+    const hit = matchKaiaHeader(line);
+    if (hit && isValidSpeakerLabel(hit.name)) headers++;
+  }
+  return headers >= 2;
+}
+
+/** Cue-level parse of a Kaia-format export (shared by parseTranscript/parseTranscriptCues/formatTimestampedTranscript). */
+function parseKaiaCues(input: string): TranscriptCue[] {
+  const lines = input.split(/\r?\n/);
+  const cues: TranscriptCue[] = [];
+  let current: { start: number; speaker: string; text: string[] } | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    const text = current.text.join(" ").trim();
+    if (text) cues.push({ startS: current.start, endS: null, speaker: current.speaker, text });
+    current = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const header = matchKaiaHeader(line);
+    if (header && isValidSpeakerLabel(header.name)) {
+      flush();
+      const start = parseVttTimestamp(header.ts) ?? 0;
+      current = { start, speaker: header.name, text: [] };
+      continue;
+    }
+    if (current) {
+      current.text.push(line);
+    }
+  }
+  flush();
+  return cues;
+}
+
+function parseKaiaTranscript(input: string): ParsedTranscript {
+  const cues = parseKaiaCues(input);
+  const speakers = new Set<string>();
+  let maxStart = 0;
+  const formatted = cues
+    .map((cue) => {
+      if (cue.speaker) speakers.add(cue.speaker);
+      maxStart = Math.max(maxStart, cue.startS);
+      return cue.speaker ? `${cue.speaker}: ${cue.text}` : cue.text;
+    })
+    .join("\n");
+
+  const wordCount = formatted.split(/\s+/).filter(Boolean).length;
+  return {
+    text: formatted || input,
+    format: "kaia",
+    speakers: [...speakers],
+    wordCount,
+    durationMinutes: maxStart > 0 ? Math.round((maxStart / 60) * 10) / 10 : null,
+  };
+}
 
 function stripVttTags(line: string): string {
   return line
@@ -36,6 +146,9 @@ export function parseTranscript(raw: string): ParsedTranscript {
 
   if (/^WEBVTT/i.test(input) || /-->\s*\d{2}:\d{2}/.test(input.slice(0, 500))) {
     return parseVtt(input);
+  }
+  if (looksLikeKaiaFormat(input)) {
+    return parseKaiaTranscript(input);
   }
   return parsePlain(input);
 }
@@ -76,7 +189,7 @@ function parseVtt(input: string): ParsedTranscript {
   const formatted = cues
     .map((cue) => {
       const speakerMatch = cue.text.match(/^([^:]+):\s*(.+)$/);
-      if (speakerMatch) {
+      if (speakerMatch && isValidSpeakerLabel(speakerMatch[1])) {
         const speaker = speakerMatch[1].trim();
         speakers.add(speaker);
         return `${speaker}: ${speakerMatch[2].trim()}`;
@@ -101,7 +214,7 @@ function parsePlain(input: string): ParsedTranscript {
   const normalized = lines
     .map((line) => {
       const m = line.match(SPEAKER_LINE);
-      if (m) {
+      if (m && isValidSpeakerLabel(m[1])) {
         speakers.add(m[1].trim());
         return `${m[1].trim()}: ${m[2].trim()}`;
       }
@@ -143,11 +256,12 @@ export function parseTranscriptCues(raw: string): TranscriptCue[] {
     const clean = text.trim();
     if (!clean) return;
     const speakerMatch = clean.match(/^([^:]{1,80}):\s*(.+)$/s);
+    const validSpeaker = speakerMatch && isValidSpeakerLabel(speakerMatch[1]);
     cues.push({
       startS,
       endS,
-      speaker: speakerMatch ? speakerMatch[1].trim() : null,
-      text: speakerMatch ? speakerMatch[2].trim() : clean,
+      speaker: validSpeaker ? speakerMatch![1].trim() : null,
+      text: validSpeaker ? speakerMatch![2].trim() : clean,
     });
   };
 
@@ -182,6 +296,10 @@ export function parseTranscriptCues(raw: string): TranscriptCue[] {
       i++;
     }
     return cues;
+  }
+
+  if (looksLikeKaiaFormat(input)) {
+    return parseKaiaCues(input);
   }
 
   for (const line of input.split(/\r?\n/)) {
@@ -232,6 +350,14 @@ export function formatTimestampedTranscript(raw: string, maxWords = 6000): strin
       }
       i++;
     }
+    return trimTranscript(out.join("\n"), maxWords, "tail");
+  }
+
+  if (looksLikeKaiaFormat(input)) {
+    const out = parseKaiaCues(input).map((cue) => {
+      const ts = formatClock(cue.startS);
+      return cue.speaker ? `[${ts}] ${cue.speaker}: ${cue.text}` : `[${ts}] ${cue.text}`;
+    });
     return trimTranscript(out.join("\n"), maxWords, "tail");
   }
 

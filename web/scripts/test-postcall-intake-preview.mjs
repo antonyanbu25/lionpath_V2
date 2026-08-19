@@ -323,24 +323,64 @@ function testNewDealSelectedStateNoExistingDeals() {
 
 function testAnalyzeButtonGating() {
   assert(
-    computeAnalyzeButtonDisabled({ busy: false, hasEmail: false, crmResolving: false, crmPreviewSurfacedOnce: false }),
+    computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: false,
+      hasRecordingOrTranscript: true,
+      crmResolving: false,
+      crmPreviewSurfacedOnce: false,
+    }),
     "disabled with no email on load",
   );
   assert(
-    computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: true, crmPreviewSurfacedOnce: false }),
+    computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: true,
+      hasRecordingOrTranscript: true,
+      crmResolving: true,
+      crmPreviewSurfacedOnce: false,
+    }),
     "disabled while CRM resolving",
   );
   assert(
-    computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: false, crmPreviewSurfacedOnce: false }),
+    computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: true,
+      hasRecordingOrTranscript: true,
+      crmResolving: false,
+      crmPreviewSurfacedOnce: false,
+    }),
     "disabled until CRM preview surfaces",
   );
   assert(
-    !computeAnalyzeButtonDisabled({ busy: false, hasEmail: true, crmResolving: false, crmPreviewSurfacedOnce: true }),
-    "enabled when email present and preview surfaced",
+    !computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: true,
+      hasRecordingOrTranscript: true,
+      crmResolving: false,
+      crmPreviewSurfacedOnce: true,
+    }),
+    "enabled when email present, recording/transcript present, and preview surfaced",
   );
   assert(
-    computeAnalyzeButtonDisabled({ busy: false, hasEmail: false, crmResolving: false, crmPreviewSurfacedOnce: true }),
+    computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: false,
+      hasRecordingOrTranscript: true,
+      crmResolving: false,
+      crmPreviewSurfacedOnce: true,
+    }),
     "still disabled without email even after preview surfaced",
+  );
+  assert(
+    computeAnalyzeButtonDisabled({
+      busy: false,
+      hasEmail: true,
+      hasRecordingOrTranscript: false,
+      crmResolving: false,
+      crmPreviewSurfacedOnce: true,
+    }),
+    "disabled without a recording link or transcript, even with email and preview surfaced",
   );
 }
 
