@@ -181,19 +181,30 @@ Branch **`fix/profile-and-feedback-bugs-2.1`** — cut from **`2.1`** (`62132a6`
 
 - **What was wrong (double ticket):** Submitting the Send-feedback form fired **two**
   ticket-creation requests — the client called `createSupportTicket()` → `POST /api/tickets`
-  **and** `postEntry()` → `POST /api/feedback` (the worker also creates a Freshdesk ticket
+  **and** `postEntry()` → `POST /api/feedback` (the worker also created a Freshdesk ticket
   via `createJanusTicket`). Result: two tickets in janus.freshdesk.com per submission.
 - **What was wrong (duplicate buttons):** The Crayons `fw-modal` auto-rendered its own
   **Cancel / OK** footer on top of the form's own **Cancel / Submit** buttons, so users saw
   two button pairs.
 - **What changed:**
-  - `web/feedback.js` — removed the `createSupportTicket` import/call entirely. The
-    `/api/feedback` path is now the single ticket creator; the returned `ticketId` drives the
-    success message (“Ticket #NNN was created.”). Added an `inFlight` guard so double-clicks
-    can't fire a second request. Optimistic localStorage queue + sync-once behavior preserved.
   - `web/index.html` — added `hide-footer` to `#feedback-modal` so Crayons no longer renders
     the built-in Cancel/OK pair; only the form's own Cancel/Submit remain.
-- **Outcome:** Exactly **one** ticket is created per submission; one button pair in the modal.
+  - `web/feedback.js` — removed the client-side `createSupportTicket` call (which hit the
+    separate `/api/tickets` endpoint). The single `POST /api/feedback` path is now the only
+    ticket creator. Added an `inFlight` guard so double-clicks can't fire a second request.
+    Optimistic localStorage queue + sync-once behavior preserved.
+  - `worker/src/feedback.ts` — re-enabled the server-side ticket creation inside
+    `appendFeedback` (via `createJanusTicket`), so `/api/feedback` is now the single path that
+    both stores feedback **and** creates the Freshdesk ticket. The returned `ticketId` drives
+    the success message (“Ticket #NNN was created.”).
+- **Screenshot restored (single path):** Screenshots on the feedback form are supported again.
+  The client base64-encodes the optional screenshot and sends it in the same `/api/feedback`
+  payload (`web/feedback.js` → `postEntry`); the worker decodes it (`attachmentFromBase64` in
+  `worker/src/routes.ts`) and attaches it to the same single ticket via
+  `createFreshdeskTicket` (multipart) when present (`worker/src/feedback.ts`). Still exactly
+  ONE `/api/feedback` request and ONE ticket. 8MB max enforced on both ends.
+- **Outcome:** Exactly **one** ticket is created per submission (with the screenshot attached
+  when provided); one button pair in the modal.
 
 ### 3. Web build was broken by a duplicate export (pre-existing, unblocked to ship)
 
