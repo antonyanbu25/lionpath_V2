@@ -208,10 +208,6 @@ export function getStore() {
   return storeInstance;
 }
 
-export function isFirestoreStoreReady() {
-  return !!fbReadyResolve && !!storeInstance && !!fbReadyResolve;
-}
-
 export function isDomainStoreReady() {
   return !!storeInstance;
 }
