@@ -112,12 +112,51 @@ function testKaiaHeaderNameFirstVariant() {
     "",
     "Sunil Prasad 00:00:20",
     "Sounds good, looking forward to it.",
+    "",
+    "Priyal Shah 00:00:30",
+    "Great, let's move to pricing next.",
   ].join("\n");
   const parsed = parseTranscript(raw);
   assert.equal(parsed.format, "kaia");
   assert.ok(parsed.speakers.includes("Priyal Shah"));
   assert.ok(parsed.speakers.includes("Ravi Kumar"));
+  assert.ok(parsed.speakers.includes("Sunil Prasad"));
   console.log("testKaiaHeaderNameFirstVariant: ok");
+}
+
+// B2 regression — a plain paste where two unrelated sentences happen to end in a
+// clock-like token used to be misdetected as Kaia's name-first header form, deleting the
+// times and gluing unrelated lines together as speech. Must parse as plain, verbatim.
+function testKaiaFalsePositiveOnProseWithClockLikeEndings() {
+  const raw = [
+    "Let's regroup and follow up at 3:15",
+    "We covered pricing on the call.",
+    "",
+    "I will send the recap by 4:30",
+    "Thanks for joining everyone.",
+  ].join("\n");
+  const parsed = parseTranscript(raw);
+  assert.equal(parsed.format, "plain");
+  assert.equal(parsed.speakers.length, 0);
+  assert.ok(parsed.text.includes("Let's regroup and follow up at 3:15"));
+  assert.ok(parsed.text.includes("I will send the recap by 4:30"));
+  console.log("testKaiaFalsePositiveOnProseWithClockLikeEndings: ok");
+}
+
+// Documented accepted loss: when every candidate speaker label appears only once, the
+// recurrence bar added for the B2 fix means the file is not detected as Kaia format, even
+// though it is a legitimate (if unusually short) single-turn-per-speaker export.
+function testKaiaSingleOccurrenceLabelsAreAcceptedLoss() {
+  const raw = [
+    "00:00:00 Priyal Shah",
+    "Quick round of intros before we start.",
+    "",
+    "00:00:10 Ravi Kumar",
+    "Happy to be here.",
+  ].join("\n");
+  const parsed = parseTranscript(raw);
+  assert.notEqual(parsed.format, "kaia", "single-occurrence labels deliberately do not trigger Kaia detection");
+  console.log("testKaiaSingleOccurrenceLabelsAreAcceptedLoss: ok");
 }
 
 testIsValidSpeakerLabel();
@@ -126,5 +165,7 @@ testKaiaFormatSample();
 testPlainPasteSample();
 testNumericSpeakerBugRegression();
 testKaiaHeaderNameFirstVariant();
+testKaiaFalsePositiveOnProseWithClockLikeEndings();
+testKaiaSingleOccurrenceLabelsAreAcceptedLoss();
 
 console.log("test-transcript-speaker-parse: ok");

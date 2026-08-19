@@ -148,6 +148,7 @@ export async function runDeckValidation(
     effort: env.POSTCALL_EFFORT || env.EFFORT || "low",
     research: false,
     thinkingBudget: 0,
+    temperature: 0,
     jsonSchema: DECK_VALIDATE_SCHEMA as unknown as Record<string, unknown>,
     passName: "deck-validate",
     userId: ids?.userId,

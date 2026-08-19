@@ -209,8 +209,17 @@ export function scoreBand(score) {
   return qipScoreBand(score);
 }
 
+/**
+ * Deterministic downgrade (v2.3, mirrors worker/src/quality-score.ts and the sub-parameter
+ * rule in worker/src/postcall/scorecard.ts): a dimension scored 5 with no specific evidence
+ * quoted is not trustworthy at face value — pull it down to 4.
+ */
+function downgradeUnevidencedFives(dimensions) {
+  return dimensions.map((d) => (d.score === 5 && !d.evidence?.trim() ? { ...d, score: 4 } : d));
+}
+
 export function normalizeQualityCoach(qc) {
-  const dimensions = qc.dimensions || [];
+  const dimensions = downgradeUnevidencedFives(qc.dimensions || []);
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);
   return {

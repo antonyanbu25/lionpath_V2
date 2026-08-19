@@ -115,7 +115,7 @@ function buildIdentitiesContextForFixture(identities) {
     lines.push(`- Partner: ${identities.partnerIdentities.join(", ")}`);
   }
   if (identities.generalManagerIdentities?.length) {
-    lines.push(`- General Manager: ${identities.generalManagerIdentities.join(", ")}`);
+    lines.push(`- Manager: ${identities.generalManagerIdentities.join(", ")}`);
   }
   if (identities.executiveIdentities?.length) {
     lines.push(`- Executive: ${identities.executiveIdentities.join(", ")}`);

@@ -27,7 +27,7 @@ export const SPEAKER_ATTRIBUTION_ROLE_OPTIONS = [
   "AE",
   "Partner",
   "Meeting room",
-  "General Manager",
+  "Manager",
   "Executive",
 ] as const;
 
@@ -120,7 +120,7 @@ person. Use introductions ("Hi, I'm ..."), self-references, and content cues:
   - deep product/technical questions or answers → Secondary SE or Primary SE
   - pricing, contract, next-steps ownership → AE
   - requirements, business pain, budget, approvals → Customer
-  - org-chart / decision-authority language ("I run this team", "I'll need to sign off") → General Manager or Executive
+  - org-chart / decision-authority language ("I run this team", "I'll need to sign off") → Manager or Executive
   - a label that clearly names a physical room or shared device (e.g. "Meeting Room", "Conference Room B",
     "Room 3 Mic") rather than a person → suggestedRole "Meeting room"
 

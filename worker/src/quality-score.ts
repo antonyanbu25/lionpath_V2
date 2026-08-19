@@ -314,8 +314,20 @@ export function applyLeadershipCap(overall: number, verified: boolean): Leadersh
   return { overall, capped: false };
 }
 
+/**
+ * Deterministic downgrade (v2.3, mirrors the sub-parameter rule in scorecard.ts): a dimension
+ * scored 5 with no specific evidence quoted is not trustworthy at face value — pull it down to
+ * 4. This runs before the leadership-cap verifier, so only genuinely-evidenced 5s ever reach
+ * that pass.
+ */
+function downgradeUnevidencedFives<T extends { score: number; evidence?: string | null }>(
+  dimensions: T[],
+): T[] {
+  return dimensions.map((d) => (d.score === 5 && !d.evidence?.trim() ? { ...d, score: 4 } : d));
+}
+
 export function normalizeQualityCoach(qc: QualityCoachInput): QualityCoach {
-  const dimensions = qc.dimensions || [];
+  const dimensions = downgradeUnevidencedFives(qc.dimensions || []);
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);
   return {

@@ -1,10 +1,11 @@
 import { analyzePostCall, type PostCallInput } from "./analyze";
 import type { ProviderEnv } from "../providers/types";
 import type { ZoomEnv } from "../zoom";
-import { RUBRIC_VERSION, type CallType } from "../rubric-profiles";
+import { RUBRIC_VERSION, profileFor, type CallType } from "../rubric-profiles";
 import { runPostCallClassify } from "./classify";
 import { runPostCallResolve } from "./resolve";
 import { runPostCallScorecard } from "./scorecard";
+import { verifyScorecardForLeadershipCap } from "./scorecard-verify";
 import { buildEffectiveTranscriptForScoring } from "./speaker-attribution";
 import { runDeckValidation } from "./deck-validate";
 import { trimWords } from "../word-limits";
@@ -53,7 +54,7 @@ function buildIdentitiesContext(identities: ConfirmedIdentities | null | undefin
     lines.push(`- Partner: ${identities.partnerIdentities.join(", ")}`);
   }
   if (identities.generalManagerIdentities?.length) {
-    lines.push(`- General Manager: ${identities.generalManagerIdentities.join(", ")}`);
+    lines.push(`- Manager: ${identities.generalManagerIdentities.join(", ")}`);
   }
   if (identities.executiveIdentities?.length) {
     lines.push(`- Executive: ${identities.executiveIdentities.join(", ")}`);
@@ -84,6 +85,8 @@ export async function runPostCallGenerate(
     videoAvailable?: boolean;
     briefContext?: string | null;
     videoFacts?: VideoFactsDraft | null;
+    /** v2.3 (Agent 4) — source for kaiaSummary/summaryOnly threaded into the scorecard below. */
+    resolveSnapshot?: import("./types").PostCallResolveResult;
   },
 ): Promise<PostCallGenerateResult> {
   const analysisInput: PostCallInput = {
@@ -129,50 +132,102 @@ export async function runPostCallGenerate(
   // Deck relevance gate (v2.3) — a cheap LLM call that runs only when a deck PDF was uploaded.
   // Soft-fail: a validation error never blocks the pipeline (deck is treated as valid on error).
   // Skip entirely when no deckContent is present (adds zero cost to the common path).
-  let deckValidation = null;
-  if (input.deckContent?.slides?.some((s) => s.text?.trim())) {
-    const transcriptSample = trimWords(effectiveTranscriptForScoring || transcript, 500);
-    try {
-      deckValidation = await runDeckValidation(
+  // Started here but NOT awaited — it has no dependency on the narrative pass, so it runs
+  // concurrently with analyzePostCall below rather than serializing in front of the whole
+  // pipeline. Only the scorecard branch actually needs the result, and awaits it internally.
+  const deckValidationPromise = input.deckContent?.slides?.some((s) => s.text?.trim())
+    ? runDeckValidation(
         env,
         input.deckContent,
         {
           companyName: input.companyName,
           meetingTitle: input.meetingTitle,
-          transcriptSample,
+          transcriptSample: trimWords(effectiveTranscriptForScoring || transcript, 500),
         },
         { userId: input.userId, callId: input.callId },
-      );
-    } catch {
-      // Soft-fail — deck treated as valid if the validation pass errors.
-      deckValidation = null;
-    }
-  }
+      ).catch(() => null) // Soft-fail — deck treated as valid if the validation pass errors.
+    : Promise.resolve(null);
 
   const [narrative, scorecardResult] = await Promise.all([
     analyzePostCall(env, analysisInput),
     transcript
-      ? runPostCallScorecard(env, {
-          transcript: effectiveTranscriptForScoring,
-          callType,
-          videoAvailable,
-          deckLink: input.deckLink,
-          deckContent: input.deckContent,
-          deckValidation,
-          briefContext: input.briefContext,
-          identitiesContext,
-          roomAttributions,
-          companyName: input.companyName,
-          meetingTitle: input.meetingTitle,
-          videoFacts,
-          userId: input.userId,
-          callId: input.callId,
-          transcriptCaches: scorecardTranscriptCaches,
-        })
+      ? deckValidationPromise.then((deckValidation) =>
+          runPostCallScorecard(env, {
+            transcript: effectiveTranscriptForScoring,
+            callType,
+            videoAvailable,
+            deckLink: input.deckLink,
+            deckContent: input.deckContent,
+            deckValidation,
+            briefContext: input.briefContext,
+            // v2.3 (Agent 4) — the same merged SE-notes+attachments string the narrative pass
+            // already gets (analysisInput.additionalContext above), now also reaching the
+            // scorecard as corroborating context (never scoring evidence on its own).
+            additionalContext: input.additionalContext,
+            kaiaSummary: input.resolveSnapshot?.sources?.kaia?.summary,
+            identitiesContext,
+            roomAttributions,
+            companyName: input.companyName,
+            meetingTitle: input.meetingTitle,
+            videoFacts,
+            userId: input.userId,
+            callId: input.callId,
+            transcriptCaches: scorecardTranscriptCaches,
+          }),
+        )
       : Promise.resolve(null),
   ]);
 
   stampQipAnalysisVersions(narrative);
+
+  // v2.3 — a single combined leadership-cap verifier call covers BOTH the QIP scorecard and
+  // the qualityCoach hero-gauge score. Runs on every call, not just ones that provisionally
+  // cross the cap: a falsely-inflated sub-parameter or dimension deserves the same scrutiny
+  // on an otherwise average or low-scoring call, not only when the aggregate happens to land
+  // above 8.0. This is cheap on calls with nothing to challenge — the verifier itself skips
+  // the LLM call entirely when no sub-parameter/dimension scored top marks (see
+  // collectQipCandidates / collectQualityCoachCandidates's vacuous fast path in
+  // scorecard-verify.ts), so cost only scales with calls that actually have a top score to
+  // audit. Note this is a deliberate cost tradeoff, accepted for the correctness gain.
+  let scorecard = scorecardResult?.scorecard;
+  const qualityCoach = narrative.analysis.qualityCoach;
+  const transcriptForVerify = effectiveTranscriptForScoring || transcript;
+
+  if (transcriptForVerify) {
+    try {
+      const verifyResult = await verifyScorecardForLeadershipCap(env, {
+        profile: scorecard ? profileFor(callType) : null,
+        scorecard: scorecard ?? null,
+        qualityCoach,
+        transcript: transcriptForVerify,
+        userId: input.userId,
+        callId: input.callId,
+      });
+      if (scorecard && verifyResult.scorecard) {
+        scorecard = {
+          ...verifyResult.scorecard,
+          leadershipShareable: verifyResult.verified,
+          verifierJustifications: verifyResult.justifications,
+        };
+      }
+      narrative.analysis.qualityCoach = {
+        ...(verifyResult.qualityCoach ?? qualityCoach),
+        leadershipShareable: verifyResult.verified,
+      };
+    } catch {
+      // Fail safe: if the verifier errors, never grant leadership-shareable status on
+      // either score — rendering clamps both to LEADERSHIP_CAP_THRESHOLD via
+      // applyLeadershipCap() since leadershipShareable stays false on both (a no-op for
+      // calls that were never near the cap to begin with).
+      if (scorecard) scorecard = { ...scorecard, leadershipShareable: false, verifierJustifications: [] };
+      narrative.analysis.qualityCoach = { ...qualityCoach, leadershipShareable: false };
+    }
+  } else {
+    // No transcript text available to verify against (e.g. narrative was analyzed from a
+    // fetched recording the outer transcript variable never saw) — fail safe to unverified.
+    if (scorecard) scorecard = { ...scorecard, leadershipShareable: false };
+    narrative.analysis.qualityCoach = { ...qualityCoach, leadershipShareable: false };
+  }
 
   const confirmed = input.confirmed
     ? {
@@ -186,7 +241,7 @@ export async function runPostCallGenerate(
 
   return {
     ...narrative,
-    scorecard: scorecardResult?.scorecard,
+    scorecard,
     videoFacts: videoFacts || undefined,
     confirmed,
     analysisMeta: {
@@ -201,6 +256,7 @@ export async function runPostCallGenerate(
       ...(scorecardResult?.deckRejectionReason
         ? { deckRejectionReason: scorecardResult.deckRejectionReason }
         : {}),
+      ...(input.resolveSnapshot?.summaryOnly ? { summaryOnly: true } : {}),
     },
   };
 }
@@ -232,6 +288,7 @@ export async function runPostCallLegacyAnalyze(
     confirmed: false,
     legacyAutoConfirm: true,
     videoAvailable: resolveResult.videoAvailable,
+    resolveSnapshot: resolveResult,
   });
 
   return {
@@ -315,6 +372,10 @@ export async function runPostCallConfirmedPipeline(
     dealMatchOverride,
     videoAvailable: resolveResult?.videoAvailable ?? false,
     videoFacts: input.videoFacts ?? null,
+    // v2.3 (Agent 4) — explicit, not just `...input`: when the fallback resolve above ran
+    // (client sent recordingUrl only, no resolveSnapshot), `resolveResult` is the freshly
+    // computed one, not whatever (possibly absent) resolveSnapshot input carried.
+    resolveSnapshot: resolveResult,
   });
 
   return {
