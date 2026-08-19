@@ -936,6 +936,9 @@ export async function handleFeedbackPost(
     area?: string;
     priority?: string;
     context?: FeedbackEntry["context"];
+    attachmentBase64?: string;
+    attachmentFilename?: string;
+    attachmentContentType?: string;
   };
   const email = await resolveHistoryEmail(request, env, body.email || body.entry?.email || "");
   const nested = body.entry || {};
@@ -955,7 +958,32 @@ export async function handleFeedbackPost(
     priority: nested.priority || body.priority,
     context: nested.context || body.context,
   };
-  const entries = await appendFeedback(env, email, entry);
+  let attachment: { filename: string; contentType: string; bytes: Uint8Array } | null = null;
+  if (body.attachmentBase64) {
+    try {
+      const decoded = attachmentFromBase64(
+        body.attachmentBase64,
+        body.attachmentFilename || "screenshot.png",
+        body.attachmentContentType || "application/octet-stream",
+      );
+      if (decoded) {
+        if (decoded.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+          return json(
+            {
+              error: `Attachment too large (max ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB).`,
+            },
+            400,
+            cors,
+          );
+        }
+        attachment = decoded;
+      }
+    } catch (err) {
+      const status = (err as { status?: number }).status || 400;
+      return json({ error: (err as Error).message || "Invalid attachment." }, status, cors);
+    }
+  }
+  const entries = await appendFeedback(env, email, entry, attachment);
   console.info(
     `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
   );
