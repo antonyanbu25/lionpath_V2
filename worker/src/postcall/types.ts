@@ -37,8 +37,17 @@ export interface ResolveDealSnapshot {
 
 export type PostCallSourceKind = "zoom" | "kaia" | "transcript";
 
+/** Where the scoring transcript's text actually came from (v2.3 — see PostCallResolveResult.sources). */
+export type TranscriptOrigin = "pasted" | "uploaded" | "zoom" | "kaia_api";
+
 export interface PostCallResolveInput {
   transcript?: string;
+  /**
+   * v2.3 — how `transcript` was entered on the confirm form: typed/pasted into the textarea,
+   * or loaded from a `.vtt`/`.srt`/`.txt` file upload. Defaults to "pasted" when omitted
+   * (older clients, or callers that never had a file-upload UI to begin with).
+   */
+  transcriptOrigin?: "pasted" | "uploaded";
   recordingUrl?: string;
   recordingPassword?: string;
   meetingTitle?: string;
@@ -54,6 +63,8 @@ export interface PostCallResolveInput {
   briefs?: ResolveBriefSnapshot[];
   accounts?: ResolveAccountSnapshot[];
   deals?: ResolveDealSnapshot[];
+  /** v2.3 (Agent 3) — client-extracted LinkedIn "Save to PDF" text, for identity matching only. */
+  linkedinProfileExports?: { fileName: string; text: string }[];
 }
 
 export type MatchSignalRank = 1 | 2 | 3 | 4 | 5;
@@ -89,11 +100,51 @@ export interface VideoThemeApplicability {
   reason: string;
 }
 
+/**
+ * v2.3 — every source the SE actually supplied, fetched independently and kept distinct.
+ * A Kaia link and a pasted/uploaded transcript can both be present at once (the documented
+ * team process); this is what lets resolve keep Kaia's roster/title/startTime even when a
+ * real transcript wins the `transcript` field, and vice versa. See resolve.ts precedence:
+ * a real speaker-tagged transcript (`sources.transcript`) always wins the scoring transcript
+ * over a Kaia summary (`sources.kaia`) — a Kaia summary is NEVER placed in `transcript`.
+ */
+export interface PostCallResolveSources {
+  transcript?: {
+    text: string;
+    origin: TranscriptOrigin;
+    hasTimestamps: boolean;
+    speakers: string[];
+  };
+  kaia?: {
+    summary: string;
+    summaryJson?: string;
+    participants: import("../prep/types").KaiaParticipantMeta[];
+    title?: string;
+    startTime?: string;
+  };
+  zoom?: {
+    transcript: string;
+    media?: ZoomShareMedia;
+    topic?: string;
+    startTime?: string;
+  };
+}
+
 export interface PostCallResolveResult {
   transcript: string;
   meetingTitle?: string;
-  /** How the transcript was obtained. */
+  /** How the transcript was obtained. Kept for back-compat — see `sources`/`sourcesUsed` for the full picture. */
   sourceKind: PostCallSourceKind;
+  /** Every source the SE supplied, fetched independently (v2.3). */
+  sources: PostCallResolveSources;
+  /** Every source actually consumed (transcript origin + any fetched metadata used), e.g. ["pasted", "kaia_api"]. */
+  sourcesUsed: string[];
+  /**
+   * True when only a Kaia summary exists — no real transcript from any source. `transcript`
+   * is "" in this case; callers must surface this state explicitly rather than silently
+   * scoring a summary as if it were a transcript (see Agent 4 — scorecard.ts / postcall.js).
+   */
+  summaryOnly: boolean;
   /** True when a Zoom media stream is available for Pass 2. */
   videoAvailable: boolean;
   /** Call start / time when known from Zoom/Kaia metadata. */
@@ -136,6 +187,13 @@ export interface PostCallResolveResult {
    * never auto-applied. Omitted when the pass was skipped or failed (soft-fail).
    */
   speakerAttribution?: import("./speaker-attribution").SpeakerAttributionResult;
+  /**
+   * v2.3 (Agent 3) — identity extracted from each LinkedIn PDF export, matched by name
+   * against transcript speakers / typed emails where possible. Identity and context only —
+   * never fed to the scorecard as scoring evidence. Suggestions only, same as
+   * speakerAttribution: rendered on the confirm page for the SE to accept/edit/reject.
+   */
+  linkedinIdentities?: import("./linkedin-identity").LinkedInIdentityMatch[];
 }
 
 export interface CallTypeMixEntry {
@@ -171,7 +229,7 @@ export interface PostCallDeckSlideContent {
 /**
  * Deck PDF, parsed client-side and sent as text only (bytes never leave the browser).
  * Replaces the old `deckLink` free-text field as the source of slide_deck scoring
- * evidence (v2.2) — see `deckPresentForScorecard` in ./scorecard.
+ * evidence (v2.2) — see `resolveDeckVerdict` in ./deck-validate.
  */
 export interface PostCallDeckContent {
   fileName: string;
@@ -297,6 +355,14 @@ export interface PostCallGenerateResult extends PostCallResult {
     deckVerdict?: "deck_valid" | "deck_rejected" | "deck_absent";
     /** Human-readable explanation when `deckVerdict === "deck_rejected"` (max 20 words). */
     deckRejectionReason?: string;
+    /**
+     * v2.3 (Agent 4) — true when this call has only a Kaia summary and no real transcript from
+     * any source (see PostCallResolveResult.summaryOnly). No timestamped evidence exists, so
+     * scoring confidence lands well below HIGH_CONFIDENCE_THRESHOLD and the call is already
+     * silently excluded from coaching aggregates — this makes that state visible on the result
+     * card instead, with a prompt to attach the transcript.
+     */
+    summaryOnly?: boolean;
   };
 }
 

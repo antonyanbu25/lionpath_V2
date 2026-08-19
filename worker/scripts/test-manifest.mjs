@@ -229,6 +229,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-linkedin-identity.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-linkedin-pdf-match.ts",
     "tags": [
       "unit"
@@ -315,7 +321,19 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-resolve-dual-source.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-scorecard.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-context-containment.ts",
     "tags": [
       "unit"
     ]
@@ -372,6 +390,12 @@ export const manifest = [
   },
   {
     "file": "test-prospect-emails.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-quality-coach-cap.ts",
     "tags": [
       "unit"
     ]
@@ -493,13 +517,13 @@ export const manifest = [
     ]
   },
   {
-    "file": "test-deck-present-for-scorecard.ts",
+    "file": "test-deck-validate.ts",
     "tags": [
       "unit"
     ]
   },
   {
-    "file": "test-deck-validate.ts",
+    "file": "test-deck-validate-temperature.ts",
     "tags": [
       "unit"
     ]
@@ -512,6 +536,18 @@ export const manifest = [
   },
   {
     "file": "test-scorecard-verify.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify-transcript-window.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify-dual.ts",
     "tags": [
       "unit"
     ]

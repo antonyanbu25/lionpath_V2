@@ -151,4 +151,79 @@ assert.equal(rolesWithSeEmailInProspects.seIdentity, "Sathish Kuttan");
 assert.ok(!rolesWithSeEmailInProspects.customerIdentities.includes("se@freshworks.com"));
 assert.equal(rolesWithSeEmailInProspects.aeIdentity, "Priyal | AE @Freshworks");
 
+// Agent 2 — kaiaHost (isHost mapped to a strong Primary-SE hint). No titled speaker at all
+// (e.g. a Kaia-summary-only call with plain names) — the Kaia host wins seIdentity.
+const rolesWithKaiaHostOnly = inferCallIdentities(
+  ["Priyal Shah", "Harshveer"],
+  ["harshveer@euphotic.io"],
+  undefined,
+  undefined,
+  "Priyal Shah",
+);
+assert.equal(rolesWithKaiaHostOnly.seIdentity, "Priyal Shah", "Kaia host wins with no stronger signal");
+
+// An explicit SE-titled transcript speaker still outranks the Kaia host hint.
+const rolesWithTitledSpeakerOverKaiaHost = inferCallIdentities(
+  ["Sathish Kuttan | SE @Freshworks", "Harshveer"],
+  ["harshveer@euphotic.io"],
+  undefined,
+  undefined,
+  "Priyal Shah",
+);
+assert.equal(
+  rolesWithTitledSpeakerOverKaiaHost.seIdentity,
+  "Sathish Kuttan | SE @Freshworks",
+  "a real SE-titled speaker still beats the Kaia host hint",
+);
+
+// A Kaia host whose display name happens to look AE-titled is never used as the SE hint.
+const rolesWithAeLikeKaiaHost = inferCallIdentities(
+  ["Harshveer"],
+  ["harshveer@euphotic.io"],
+  undefined,
+  undefined,
+  "Priyal | AE @Freshworks",
+);
+assert.notEqual(rolesWithAeLikeKaiaHost.seIdentity, "Priyal | AE @Freshworks");
+
+// B3 — speaker attribution is an LLM call that only the interactive confirm-page flow
+// (options.attributeSpeakers: true) should pay for. The legacy/auto-pick path and any other
+// caller that omits the flag must never reach the network, even with a transcript that has
+// timestamps and a providerEnv configured.
+const timestampedTranscript = [
+  "WEBVTT",
+  "",
+  "00:00:00.000 --> 00:00:05.000",
+  "Meeting Room: Thanks everyone for joining today.",
+  "",
+  "00:00:05.500 --> 00:00:12.000",
+  "Meeting Room: Happy to walk through the demo.",
+].join("\n");
+
+const originalFetch = globalThis.fetch;
+let fetchCalls = 0;
+globalThis.fetch = (async () => {
+  fetchCalls++;
+  throw new Error("must not call the network when attributeSpeakers is not set");
+}) as typeof fetch;
+
+try {
+  const withoutFlag = await runPostCallResolve(
+    {
+      transcript: timestampedTranscript,
+      companyName: "Acme Corp",
+      participantEmails: ["sunil@acme.com"],
+      ownerId,
+      briefs,
+      accounts,
+      deals,
+    },
+    { providerEnv: { GEMINI_API_KEY: "test-key" } as never },
+  );
+  assert.equal(fetchCalls, 0, "no network call without attributeSpeakers");
+  assert.equal(withoutFlag.speakerAttribution, undefined, "no suggestion surfaced without attributeSpeakers");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 console.log("test-postcall-resolve: ok");

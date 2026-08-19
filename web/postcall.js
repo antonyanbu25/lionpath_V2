@@ -10,7 +10,12 @@ import {
   legacySubParametersFromLine,
 } from "./shared/qip-scorecard-normalize.js";
 export { normalizeQipScorecard } from "./shared/qip-scorecard-normalize.js";
-import { normalizeQualityCoach, applyLeadershipCap } from "./quality-score.js";
+import {
+  normalizeQualityCoach,
+  applyLeadershipCap,
+  overallLabelFromScore,
+  LEADERSHIP_CAP_THRESHOLD,
+} from "./quality-score.js";
 import { CATEGORY_KEYS, CATEGORY_LABELS, profileFor, QIP_RADAR_LABELS, RUBRIC_VERSION, effectiveRubricVersion } from "./rubric-profiles.js";
 import { buildPostCallResolveContext, invalidatePostCallResolveContext, enrichResolveDealsForAccount } from "./postcall-resolve-context.js";
 import { resolveContactsForEmails, enrichDealOwnerNames, resolveHistoryMatchesForIntake } from "./postcall-contact-resolve.js";
@@ -145,7 +150,7 @@ const CONFIRM_ROLE_SET = [
   "AE",
   "Partner",
   "Meeting room",
-  "General Manager",
+  "Manager",
   "Executive",
 ];
 const CONFIRM_ROLE_TONE = {
@@ -155,7 +160,7 @@ const CONFIRM_ROLE_TONE = {
   AE: { bg: "#f3ecda", color: "#a5883f" },
   Partner: { bg: "#ece8de", color: "#877b63" },
   "Meeting room": { bg: "#e6e6ec", color: "#585a7a" },
-  "General Manager": { bg: "#eee3d9", color: "#8a5a35" },
+  Manager: { bg: "#eee3d9", color: "#8a5a35" },
   Executive: { bg: "#e3dbe9", color: "#6b4a8a" },
 };
 
@@ -188,6 +193,13 @@ let pcDraftAccountName = "";
 let pcDraftNewDealTitle = "";
 /** After + New deal, focus and select the title input once preview re-renders. */
 let pcFocusNewDealInput = false;
+/**
+ * v2.3 (Agent 1) — how the pc-transcript textarea's current content got there: "uploaded"
+ * right after a successful file load, "pasted" once the SE hand-edits it (or by default).
+ * Sent to resolve as transcriptOrigin for sources.transcript provenance.
+ * @type {'pasted'|'uploaded'}
+ */
+let pcTranscriptOrigin = "pasted";
 /** @type {(() => void) | null} */
 let intakeAccountLookupTeardown = null;
 
@@ -494,6 +506,22 @@ function syncPasscodeVisibility() {
   wrap.hidden = !needsPwd;
 }
 
+/**
+ * v2.3 (Agent 1) — a Kaia link only ever yields a roster + AI summary, never a real
+ * speaker-tagged transcript; pasting/uploading a transcript alongside it is the documented
+ * team process and materially improves scoring accuracy. Nudge the SE toward it by opening
+ * the transcript details as soon as a Kaia URL is detected, without making it mandatory.
+ */
+function syncTranscriptFallbackOpen() {
+  const details = $("pc-transcript-fallback");
+  if (!details) return;
+  const raw = readFieldValue($("pc-recording-url"));
+  const { recordingUrl } = parseRecordingInput(raw, "");
+  if (recordingUrl && isKaiaRecordingUrl(recordingUrl)) {
+    details.open = true;
+  }
+}
+
 const TRANSCRIPT_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
@@ -540,6 +568,7 @@ async function handleTranscriptFileChange(event) {
   }
 
   if (textarea) textarea.value = result.text;
+  pcTranscriptOrigin = "uploaded";
   if (nameEl) {
     const kb = Math.max(1, Math.round(file.size / 1024));
     nameEl.textContent = `${file.name} loaded (${kb} KB)`;
@@ -1693,15 +1722,32 @@ function renderInsightList(items, title, tone) {
   return `<div class="qc-insight qc-insight-${tone}"><h4>${esc(title)}</h4>${html}</div>`;
 }
 
-function renderQualityCoach(qc) {
+export function renderQualityCoach(qc) {
   const normalized = normalizeQualityCoach(qc);
   const dims = normalized.dimensions || [];
+  // v2.3 leadership cap — same rule as the QIP panel (renderQipScorecard) applied to this
+  // hero gauge, which is what SEs actually look at first. An uncapped hero number next to a
+  // "capped at 8.0" QIP panel for the same call reads as a bug, not two different scores.
+  const leadershipCap = applyLeadershipCap(normalized.overallScore, !!normalized.leadershipShareable);
+  const renderedScore = leadershipCap.overall;
+  // v2.3 — the verifier now runs on every call, not just ones above the cap, so a
+  // low-scoring call with nothing to challenge comes back vacuously "verified". Gate the
+  // badge on actually having cleared the 8.0 bar, not just the raw verified flag, or every
+  // average call would misleadingly show "Leadership-shareable".
+  const leadershipBadgeHtml =
+    normalized.leadershipShareable && normalized.overallScore > LEADERSHIP_CAP_THRESHOLD
+      ? '<span class="pill green" title="Adversarial verifier confirmed every top score on this call — safe to share above the 8.0 bar.">Leadership-shareable</span>'
+      : "";
+  const cappedBadgeHtml = leadershipCap.capped
+    ? '<span class="pill amber" title="Scores above 8.0 only render as-is once a skeptical-verifier pass confirms every remaining top score — this call did not clear that bar.">Capped at 8.0</span>'
+    : "";
   return `
     <div class="qc-dashboard">
       <div class="qc-hero">
-        ${renderScoreGauge(normalized.overallScore, 10)}
+        ${renderScoreGauge(renderedScore, 10)}
         <div class="qc-hero-meta">
-          <span class="qc-overall-label">${esc(normalized.overallLabel)}</span>
+          <span class="qc-overall-label">${esc(overallLabelFromScore(renderedScore))}</span>
+          ${leadershipBadgeHtml}${cappedBadgeHtml}
           <p class="muted qc-hero-hint">Quality score (separate from deal momentum above).</p>
         </div>
       </div>
@@ -2404,7 +2450,11 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
   const renderedOverall = leadershipCap ? leadershipCap.overall : overall;
   const wasCapped = !!leadershipCap?.capped;
   const overallLabel = renderedOverall != null ? `${renderedOverall} / 10` : "- / 10";
-  const leadershipBadgeHtml = leadershipShareable
+  // v2.3 — the verifier now runs on every call, not just ones above the cap, so a
+  // low-scoring call with nothing to challenge comes back vacuously "verified". Gate the
+  // badge on actually having cleared the 8.0 bar, or every average call would misleadingly
+  // show "Leadership-shareable".
+  const leadershipBadgeHtml = leadershipShareable && overall != null && overall > LEADERSHIP_CAP_THRESHOLD
     ? '<span class="pill green" title="Adversarial verifier confirmed every top score on this call — safe to share above the 8.0 bar.">Leadership-shareable</span>'
     : "";
   const cappedBadgeHtml = wasCapped
@@ -2416,6 +2466,14 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
     analysisMeta?.deckVerdict === "deck_rejected"
       ? `<span class="pill amber qip-deck-rejected-pill" title="${esc(analysisMeta.deckRejectionReason || "The uploaded PDF was not recognised as a relevant slide deck — deck scoring was skipped.")}">Deck not scored</span>`
       : "";
+  // v2.3 (Agent 4) — a Kaia-summary-only call has no timestamped transcript evidence, so its
+  // confidence lands below the coaching-aggregate threshold and it's already silently excluded
+  // from dashboards. Silence here is the worst outcome — this chip makes that state visible and
+  // prompts the SE toward the fix (attach the transcript) instead of wondering why the score
+  // looks thin.
+  const summaryOnlyBadgeHtml = analysisMeta?.summaryOnly
+    ? '<span class="pill amber qip-summary-only-pill" title="This call has only a Kaia summary, not a real transcript — no timestamped evidence exists, so scoring confidence is low and it won’t count toward coaching aggregates. Attach the transcript and re-analyze for a full score.">Summary only — not fully scored</span>'
+    : "";
   const { good, bad } = deriveQipInsights(lines);
 
   let profile = null;
@@ -2470,7 +2528,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <section class="card qip qip-scorecard qip-scorecard--wireframe${provisional ? " qip-provisional" : ""}">
         <div class="qip-head">
           <div>
-            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
+            <h2>${esc(CALL_QUALITY_SCORE_LABEL)} ${provisional ? '<span class="pill qip-provisional-badge">Provisional</span>' : ""}${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}${summaryOnlyBadgeHtml}</h2>
           </div>
           <div class="qip-head-meta">
             <span class="qip-weight-key" aria-label="Theme weight">
@@ -2486,6 +2544,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
           ${renderQipInsightTile(good, "What worked", "good")}
           ${renderQipInsightTile(bad, "What didn't", "bad")}
         </div>
+        <p class="muted qip-confidence-legend">High / Med / Low = AI confidence in this score, based on how much evidence backs it — not the score itself.</p>
         <div class="cats">${categoryRows}</div>
         ${wireActionsHtml}
       </section>`;
@@ -2496,7 +2555,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       <div class="qip-scorecard-card qip-scorecard-head-card">
         <div class="qip-scorecard-head">
           <div>
-            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}</h2>
+            <h2 class="qip-scorecard-title">${esc(CALL_QUALITY_SCORE_LABEL)} · ${esc(callTypeLabel.toLowerCase())} profile${provisional ? ' <span class="pill qip-provisional-badge">Provisional</span>' : ""} ${leadershipBadgeHtml}${cappedBadgeHtml}${deckRejectedBadgeHtml}${summaryOnlyBadgeHtml}</h2>
             ${confPct != null ? `<p class="sub qip-confidence">Analysis confidence ${esc(confPct)}%</p>` : ""}
           </div>
           <span class="pill qip-overall-pill">${esc(overallLabel)}</span>
@@ -2508,6 +2567,7 @@ export function renderQipScorecard(scorecard, analysisMeta = {}, opts = {}) {
       </div>
       ${renderQipRadar(categoryScores, { overallScore: renderedOverall, title: "Evaluation signal", animate: true })}
       <div class="qip-scorecard-card qip-category-card">
+        <p class="muted qip-confidence-legend">High / Med / Low = AI confidence in this score, based on how much evidence backs it — not the score itself.</p>
         ${categoryRows}
       </div>
       ${actionsHtml}
@@ -3147,6 +3207,20 @@ function rosterSuggestedRole(label, resolve) {
   return entry?.suggestedRole || null;
 }
 
+/** v2.3 (Agent 3) — LinkedIn title seniority (worker/src/postcall/linkedin-identity.ts) suggests GM/Executive. */
+function linkedinSeniorityRoleForLabel(label, resolve) {
+  const identities = resolve?.linkedinIdentities || [];
+  if (!identities.length) return null;
+  const key = normalizePersonKey(label);
+  if (!key) return null;
+  const entry = identities.find(
+    (li) => normalizePersonKey(li.matchedLabel) === key || normalizePersonKey(li.name) === key,
+  );
+  if (entry?.seniorityHint === "executive") return "Executive";
+  if (entry?.seniorityHint === "general_manager") return "Manager";
+  return null;
+}
+
 function inferAttendeeRole(label, resolve, sessionLabel) {
   const sessionKey = normalizePersonKey(sessionLabel);
   const key = normalizePersonKey(label);
@@ -3155,9 +3229,16 @@ function inferAttendeeRole(label, resolve, sessionLabel) {
   if (looksLikeSeIdentity(label)) return "Secondary SE";
   const rosterRole = rosterSuggestedRole(label, resolve);
   // Heuristics above have no way to guess these three — defer to the AI roster suggestion.
-  if (rosterRole === "Meeting room" || rosterRole === "General Manager" || rosterRole === "Executive") {
+  if (rosterRole === "Meeting room" || rosterRole === "Manager" || rosterRole === "Executive") {
     return rosterRole;
   }
+  const linkedinRole = linkedinSeniorityRoleForLabel(label, resolve);
+  if (linkedinRole) return linkedinRole;
+  // v2.3 — resolve.seIdentity is the worker's authoritative best guess (SE-titled speaker,
+  // owner match, or a Kaia meeting-host hint) even when the label itself carries no textual
+  // or email signal — a bare Kaia participant name never satisfies isInternalIdentity below,
+  // so that branch alone would silently drop this person into "Customer".
+  if (key && resolve?.seIdentity && normalizePersonKey(resolve.seIdentity) === key) return "Primary SE";
   if (isInternalIdentity(label)) {
     return normalizePersonKey(resolve?.seIdentity) === key ? "Primary SE" : "Secondary SE";
   }
@@ -3215,11 +3296,51 @@ function contactsForIdentityMerge(resolve) {
   return contacts;
 }
 
+/** v2.3 (Agent 2) — display names from resolve.sources.kaia.participants (KaiaParticipantMeta[]). */
+function kaiaParticipantNamesFromResolve(resolve) {
+  const participants = resolve?.sources?.kaia?.participants || [];
+  return participants.map((p) => String(p?.displayName || "").trim()).filter(Boolean);
+}
+
+/**
+ * v2.3 (Agent 2/3) — which of the identity sources actually produced this attendee, so the SE
+ * can see why someone is listed. Checked post-merge against the merged row's own
+ * name/email/label, since mergeCallIdentities/mergeCluster rebuilds each row from scratch and
+ * would otherwise drop any provenance tagged on the pre-merge candidates.
+ */
+function sourcesForAttendee(att, { speakers, kaiaNames, emails, linkedinNames }) {
+  const keys = [att.name, att.email, att.label].map(normalizePersonKey).filter(Boolean);
+  const matchesAny = (list) => list.some((v) => keys.includes(normalizePersonKey(v)));
+  const out = [];
+  if (matchesAny(speakers)) out.push("transcript");
+  if (matchesAny(kaiaNames)) out.push("kaia");
+  if (matchesAny(emails)) out.push("typed");
+  if (matchesAny(linkedinNames)) out.push("linkedin");
+  return out;
+}
+
+/**
+ * v2.3 (Agent 3) — confirmed title from a matched LinkedIn export, looked up post-merge for
+ * the same reason as sourcesForAttendee: mergeCluster rebuilds each row and drops it otherwise.
+ * Threaded into ensureCustomerContact on confirm so it persists to the CRM contact.
+ */
+function linkedinTitleForAttendee(att, resolve) {
+  const identities = resolve?.linkedinIdentities || [];
+  if (!identities.length) return null;
+  const keys = [att.name, att.email, att.label].map(normalizePersonKey).filter(Boolean);
+  const entry = identities.find(
+    (li) => keys.includes(normalizePersonKey(li.matchedLabel)) || keys.includes(normalizePersonKey(li.name)),
+  );
+  return entry?.title || null;
+}
+
 /** @param {object} resolve */
 export function buildConfirmAttendees(resolve) {
   const speakers = resolve?.transcriptMeta?.speakers || [];
   const emails = resolve?.participantEmails || [];
   const fromResolve = resolve?.identityOptions || [];
+  const kaiaNames = kaiaParticipantNamesFromResolve(resolve);
+  const linkedinNames = (resolve?.linkedinIdentities || []).map((li) => li.name).filter(Boolean);
   const contacts = contactsForIdentityMerge(resolve);
   const sessionLabel =
     currentSession?.name || currentSession?.displayName || currentSession?.email || "se@freshworks.com";
@@ -3230,6 +3351,8 @@ export function buildConfirmAttendees(resolve) {
     ...(resolve?.customerIdentities || []),
     ...fromResolve,
     ...speakers,
+    ...kaiaNames,
+    ...linkedinNames,
   ]).filter(Boolean);
 
   const candidates = labels.map((label) => {
@@ -3298,14 +3421,28 @@ export function buildConfirmAttendees(resolve) {
 
   return merged.map((att) => {
     const mono = personMonoTone(att.name, att.role);
+    const sources = sourcesForAttendee(att, { speakers, kaiaNames, emails, linkedinNames });
+    const title = linkedinTitleForAttendee(att, resolve);
     return {
       ...att,
       detail: att.email || att.detail || att.label,
       monoBg: mono.bg,
       monoColor: mono.color,
       roomGroups: att.role === "Meeting room" ? roomGroupsForLabel(resolve, att.label || att.name) : [],
+      sources,
+      title,
     };
   });
+}
+
+/** v2.3 — friendly labels for the muted "why is this person listed" provenance text. */
+const ATTENDEE_SOURCE_LABELS = { transcript: "transcript", kaia: "Kaia", typed: "typed email", linkedin: "LinkedIn" };
+
+/** e.g. ["transcript", "kaia"] -> "from transcript, Kaia" */
+function formatAttendeeSources(sources) {
+  if (!sources?.length) return "";
+  const labels = sources.map((s) => ATTENDEE_SOURCE_LABELS[s] || s);
+  return `from ${labels.join(", ")}`;
 }
 
 function renderRoleSelect(role, index) {
@@ -3475,6 +3612,11 @@ function renderAttendeeRow(att, index, allAttendees) {
     : `<div class="postcall-attendee-text">
          <span class="postcall-attendee-name">${esc(att.name)}</span>
          <span class="postcall-attendee-detail muted">${esc(att.detail || "")}</span>
+         ${
+           att.sources?.length
+             ? `<span class="postcall-attendee-sources muted">${esc(formatAttendeeSources(att.sources))}</span>`
+             : ""
+         }
        </div>`;
 
   return `<div class="postcall-attendee-row${editable ? " postcall-attendee-row--manual" : ""}" data-attendee-index="${index}"${!editable ? ` data-name="${esc(att.name)}" data-email="${esc(att.email || "")}"` : ""}>
@@ -3852,7 +3994,7 @@ function readAttendeeSelections() {
     else if (role === "Secondary SE") secondarySeIdentities.push(label);
     else if (role === "AE" && !aeIdentity) aeIdentity = label;
     else if (role === "Partner") partnerIdentities.push(label);
-    else if (role === "General Manager") generalManagerIdentities.push(label);
+    else if (role === "Manager") generalManagerIdentities.push(label);
     else if (role === "Executive") executiveIdentities.push(label);
     else if (role === "Customer") customerIdentities.push(label);
   });
@@ -3881,7 +4023,7 @@ function readAttendeeSelections() {
     else if (att.role === "Secondary SE") secondarySes.push(label);
     else if (att.role === "AE" && !ae) ae = label;
     else if (att.role === "Partner") partners.push(label);
-    else if (att.role === "General Manager") generalManagers.push(label);
+    else if (att.role === "Manager") generalManagers.push(label);
     else if (att.role === "Executive") executives.push(label);
     else if (att.role === "Customer") customers.push(label);
   }
@@ -3966,7 +4108,7 @@ function formatConfirmedIdentitiesContext({
     lines.push(`- Partner: ${partnerIdentities.join(", ")}`);
   }
   if (generalManagerIdentities?.length) {
-    lines.push(`- General Manager: ${generalManagerIdentities.join(", ")}`);
+    lines.push(`- Manager: ${generalManagerIdentities.join(", ")}`);
   }
   if (executiveIdentities?.length) {
     lines.push(`- Executive: ${executiveIdentities.join(", ")}`);
@@ -4050,9 +4192,13 @@ async function confirmAndGenerate(e) {
     for (const att of attendees) {
       if (att.role !== "Customer" || !att.email) continue;
       try {
+        // v2.3 (Agent 3) — re-matched against the LinkedIn identities on resolve rather than
+        // threaded through mergeCallIdentities, which rebuilds each attendee row from scratch
+        // (see linkedinTitleForAttendee / sourcesForAttendee) and would otherwise drop it.
+        const title = linkedinTitleForAttendee(att, pipelineState.resolve);
         await ensureCustomerContact(
           accountIdForContacts,
-          { name: att.name, email: att.email },
+          { name: att.name, email: att.email, title: title || undefined },
           { actorId, source: "postcall_confirm" },
         );
       } catch (err) {
@@ -4991,6 +5137,7 @@ export function clearPostCallForm() {
   for (const id of PC_TEXT_FIELD_IDS) {
     clearFwInputField($(id));
   }
+  pcTranscriptOrigin = "pasted";
 
   const suggest = $("pc-company-suggest");
   if (suggest) { suggest.innerHTML = ""; suggest.hidden = true; }
@@ -5172,6 +5319,7 @@ async function collectIntakePayload() {
       recordingUrl: recordingUrl || undefined,
       recordingPassword: recordingUrl ? recordingPassword : undefined,
       transcript: transcript || undefined,
+      transcriptOrigin: transcript ? pcTranscriptOrigin : undefined,
       companyName,
       companyDomain: prospectDomain && !isFreeMailDomain(prospectDomain) ? prospectDomain : undefined,
       prospectEmails,
@@ -5259,6 +5407,7 @@ async function startPipeline(e) {
       {
         email: currentSession?.email || undefined,
         transcript: payload.transcript,
+        transcriptOrigin: payload.transcriptOrigin,
         recordingUrl: payload.recordingUrl,
         recordingPassword: payload.recordingPassword,
         companyName: payload.companyName,
@@ -5271,6 +5420,9 @@ async function startPipeline(e) {
         briefs: domainContext.briefs,
         accounts: domainContext.accounts,
         deals: domainContext.deals,
+        // v2.3 (Agent 3) — LinkedIn identity matching runs at resolve time so it can auto-fill
+        // page-2 attendee rows, same as the Kaia roster and speaker-attribution suggestions.
+        linkedinProfileExports: payload.linkedinProfileExports,
       },
       { signal },
     );
@@ -5468,6 +5620,7 @@ function computeDeckShapeVerdict(shape) {
   if (shape.medianWordsPerPage > 250) return "unlikely_deck";
   return "likely_deck";
 }
+export { computeDeckShapeVerdict };
 
 async function extractDeckPdfContent(file) {
   const pdfjs = await loadDeckPdfJs();
@@ -5640,15 +5793,22 @@ export function initPostcall() {
   recordingUrl?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingUrl?.addEventListener("input", syncPasscodeVisibility);
   recordingUrl?.addEventListener("fwBlur", syncPasscodeVisibility);
+  recordingUrl?.addEventListener("fwInput", syncTranscriptFallbackOpen);
+  recordingUrl?.addEventListener("input", syncTranscriptFallbackOpen);
+  recordingUrl?.addEventListener("fwBlur", syncTranscriptFallbackOpen);
   recordingUrl?.addEventListener("fwInput", updateAnalyzeButtonState);
   recordingUrl?.addEventListener("input", updateAnalyzeButtonState);
   syncPasscodeVisibility();
+  syncTranscriptFallbackOpen();
 
   const recordingPwd = $("pc-recording-pwd");
   recordingPwd?.addEventListener("fwInput", syncPasscodeVisibility);
   recordingPwd?.addEventListener("input", syncPasscodeVisibility);
 
   const transcriptTextarea = $("pc-transcript");
+  const markTranscriptPasted = () => { pcTranscriptOrigin = "pasted"; };
+  transcriptTextarea?.addEventListener("fwInput", markTranscriptPasted);
+  transcriptTextarea?.addEventListener("input", markTranscriptPasted);
   transcriptTextarea?.addEventListener("fwInput", updateAnalyzeButtonState);
   transcriptTextarea?.addEventListener("input", updateAnalyzeButtonState);
 

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": 5190,
+    "title": "Pioneer Metering <> Freshworks Discovery",
+    "meetingSummary": "Discovery call covering current ticket volume, escalation process, and rollout timeline. No transcript was uploaded for this call — this is the AI summary only.",
+    "meetingStartTime": "2026-08-12T09:30:00Z",
+    "participants": [
+      { "displayName": "Harshveer Singh", "derivedGuid": "guid-harshveer" },
+      { "displayName": "Alex SE", "derivedGuid": "guid-alexse" }
+    ],
+    "host": { "derivedGuid": "guid-alexse" }
+  }
+}

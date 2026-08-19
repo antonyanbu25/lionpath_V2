@@ -2330,6 +2330,13 @@ button.pc-deal-tile {
 #view-postcall .qip-deck-rejected-pill {
   cursor: help; /* tooltip present */
 }
+
+/* v2.3 — legend explaining the High/Med/Low confidence pills are not the score itself */
+.qip-confidence-legend {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
 [data-theme="dark"] #view-postcall .qip-deck-rejected-pill {
   background: color-mix(in srgb, var(--amber) 15%, transparent);
   color: var(--amber);

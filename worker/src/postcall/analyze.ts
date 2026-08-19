@@ -172,6 +172,11 @@ export async function analyzePostCall(env: Env, input: PostCallInput): Promise<P
     effort,
     research: false,
     thinkingBudget: 0,
+    // Pinned for run-to-run consistency — without this the pass silently inherited the
+    // provider default (0.2), so re-analyzing the exact same transcript could produce a
+    // different qualityCoach/hero-gauge score each time. scorecard.ts and
+    // scorecard-verify.ts already pin temperature: 0 for the same reason.
+    temperature: 0,
     jsonSchema: POSTCALL_SCHEMA as unknown as Record<string, unknown>,
     passName: "analyze",
     userId: input.userId,

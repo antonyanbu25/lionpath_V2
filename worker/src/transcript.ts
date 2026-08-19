@@ -14,11 +14,25 @@ const SPEAKER_LINE = /^([^\n:]{1,80}):\s*(.+)$/;
 const CLOCK_FRAGMENT = /^\d{1,2}(?::\d{2}){1,2}$/;
 
 /**
- * Rejects speaker labels that are actually leading timestamp fragments rather than a
- * real name. Kaia and plain-paste exports sometimes place a clock value (or a bare
- * numeric device index like "00" / "01") where a speaker label should be — without this
- * guard those get captured as bogus "speakers". Used at every speaker-detection site in
- * this file so the behavior is consistent.
+ * Lowercase function words that start ordinary sentences but never start a real speaker
+ * name — guards against a sentence fragment (often one ending in an embedded clock
+ * reference, e.g. "follow up at 3:15") being misread as a "Speaker: text" or Kaia
+ * name-first header line.
+ */
+const SENTENCE_LEAD_STOPWORDS = new Set([
+  "let's", "lets", "i", "we", "the", "and", "at", "by", "or", "but", "so", "if", "in", "on",
+  "to", "of", "a", "an", "is", "was", "will", "can", "please", "thanks", "thank", "you", "he",
+  "she", "they", "it", "that", "this", "us", "our", "your", "my",
+]);
+
+/**
+ * Rejects speaker labels that are actually leading timestamp fragments or sentence
+ * fragments rather than a real name. Kaia and plain-paste exports sometimes place a clock
+ * value (or a bare numeric device index like "00" / "01") where a speaker label should
+ * be, and prose that happens to end in an embedded time reference ("...follow up at
+ * 3:15") can otherwise be misparsed as "Speaker: text" — without this guard those get
+ * captured as bogus "speakers". Used at every speaker-detection site in this file so the
+ * behavior is consistent.
  */
 export function isValidSpeakerLabel(label: string | null | undefined): boolean {
   const trimmed = (label || "").trim();
@@ -26,6 +40,10 @@ export function isValidSpeakerLabel(label: string | null | undefined): boolean {
   if (/^\d+$/.test(trimmed)) return false; // purely numeric, e.g. "00", "01"
   if (CLOCK_FRAGMENT.test(trimmed)) return false; // clock fragment, e.g. "00:12:04"
   if (/^\d+:/.test(trimmed)) return false; // starts with digit immediately followed by ":"
+  if (/[.,;!?]/.test(trimmed)) return false; // sentence-ending punctuation inside — not a name
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length > 4) return false; // real names run short; a sentence fragment doesn't
+  if (SENTENCE_LEAD_STOPWORDS.has(tokens[0].toLowerCase())) return false;
   return true;
 }
 
@@ -38,7 +56,9 @@ const KAIA_HEADER_NAME_FIRST = new RegExp(`^(${KAIA_NAME})\\s+(${KAIA_CLOCK})$`)
  * Matches a Kaia-export speaker header line — either "HH:MM:SS Speaker Name" or
  * "Speaker Name HH:MM:SS" on a line by itself (the utterance text follows on subsequent
  * lines until the next header). Returns null for anything else, including ordinary
- * "Speaker: text" lines (which are handled by the VTT/plain paths).
+ * "Speaker: text" lines (which are handled by the VTT/plain paths). Callers gate the
+ * result through isValidSpeakerLabel(), which is where the name-vs-sentence heuristics
+ * live so behavior stays consistent across the clock-first and name-first forms.
  */
 function matchKaiaHeader(line: string): { name: string; ts: string } | null {
   const trimmed = line.trim();
@@ -51,7 +71,12 @@ function matchKaiaHeader(line: string): { name: string; ts: string } | null {
   return null;
 }
 
-/** Heuristic: at least two valid "clock + name" header lines in the opening window. */
+/**
+ * Heuristic: at least two valid "clock + name" header lines in the opening window, AND at
+ * least one of those names recurs — real speakers take multiple turns, a sentence fragment
+ * misparsed as a header does not. A speaker label seen only once is a deliberate accepted
+ * loss (see test-transcript-speaker-parse.ts).
+ */
 function looksLikeKaiaFormat(input: string): boolean {
   if (/^WEBVTT/i.test(input)) return false;
   const lines = input
@@ -59,12 +84,17 @@ function looksLikeKaiaFormat(input: string): boolean {
     .map((l) => l.trim())
     .filter(Boolean)
     .slice(0, 60);
+  const nameCounts = new Map<string, number>();
   let headers = 0;
   for (const line of lines) {
     const hit = matchKaiaHeader(line);
-    if (hit && isValidSpeakerLabel(hit.name)) headers++;
+    if (hit && isValidSpeakerLabel(hit.name)) {
+      headers++;
+      nameCounts.set(hit.name, (nameCounts.get(hit.name) || 0) + 1);
+    }
   }
-  return headers >= 2;
+  if (headers < 2) return false;
+  return [...nameCounts.values()].some((count) => count >= 2);
 }
 
 /** Cue-level parse of a Kaia-format export (shared by parseTranscript/parseTranscriptCues/formatTimestampedTranscript). */

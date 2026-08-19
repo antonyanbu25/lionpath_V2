@@ -232,6 +232,12 @@ export interface PostCallAnalysis {
     strengths: string[];
     improvements: string[];
     missedOpportunities: string[];
+    /**
+     * v2.3 leadership cap — mirrors scorecard.leadershipShareable. Set only when overallScore
+     * was above LEADERSHIP_CAP_THRESHOLD and the adversarial verifier confirmed every
+     * remaining score-5 dimension. Additive — absent on analyses that never crossed the cap.
+     */
+    leadershipShareable?: boolean;
   };
   artifacts: {
     suggestedFollowUpEmail: { subject: string; body: string };
