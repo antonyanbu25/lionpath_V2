@@ -2,7 +2,6 @@
 
 import { readFieldValueAsync, setButtonLoading, setFieldError, showInlineStatus } from "./crayons-ui.js";
 import { newId } from "./domain/types.js";
-import { createSupportTicket } from "./support-tickets.js";
 
 const STORAGE_KEY = "lionpath_feedback";
 export const PULSE_COUNT_KEY = "lionpath_feedback_pulse_count";
@@ -176,6 +175,7 @@ export function initFeedback(deps = {}) {
   const closeBtn = document.getElementById("feedback-close");
   const submitBtn = document.getElementById("feedback-submit");
   if (!btn || !modal || !form) return;
+  let inFlight = false;
 
   const showMsg = (text, ok = true) => {
     showInlineStatus(msg, {
@@ -211,80 +211,57 @@ export function initFeedback(deps = {}) {
   const submitFeedback = async (event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    const textEl = document.getElementById("feedback-text");
-    const [categoryKeyRaw, severityKey, areaKey, priorityRaw, rawMessage] = await Promise.all([
-      readFieldValueAsync(document.getElementById("feedback-category")),
-      readFieldValueAsync(document.getElementById("feedback-severity")),
-      readFieldValueAsync(document.getElementById("feedback-area")),
-      readFieldValueAsync(document.getElementById("feedback-priority")),
-      readFieldValueAsync(textEl),
-    ]);
-    const categoryKey = categoryKeyRaw || "idea";
-    const priority = String(priorityRaw || "");
-    const message = String(rawMessage || "").trim();
-    const shotEl = document.getElementById("feedback-screenshot");
-    const file = shotEl?.files?.[0] || null;
-    if (!message) {
-      setFieldError(textEl, "Please enter your feedback.");
-      showMsg("Please enter your feedback.", false);
-      return;
-    }
-    setFieldError(textEl);
-    setButtonLoading(submitBtn, true);
-    const email = feedbackDeps.getEmail() || "anonymous";
-    const context = lastPageContext || capturePageContext();
-    const category = CATEGORY_MAP[categoryKey] || "Idea";
-    const entry = {
-      id: newId("event"),
-      category,
-      severity: SEVERITY_MAP[severityKey] || SEVERITY_MAP.general,
-      area: AREA_MAP[areaKey] || AREA_MAP.other,
-      priority: ["1", "2", "3", "4"].includes(priority) ? priority : "2",
-      message: message.slice(0, 4000),
-      page: context.hash || location.pathname,
-      context,
-      email,
-      createdAt: Date.now(),
-      synced: false,
-    };
-
-    saveQueue([entry, ...loadQueue().filter((item) => item.id !== entry.id)]);
-    form.classList.add("feedback-submit-success");
+    if (inFlight) return;
+    inFlight = true;
 
     try {
-      let ticket = null;
-      if (feedbackDeps.workerUrl && email && email.includes("@")) {
-        ticket = await createSupportTicket({
-          workerUrl: feedbackDeps.workerUrl,
-          getToken: feedbackDeps.getToken,
-          email,
-          kind: "feedback",
-          description: message,
-          category,
-          page: entry.page,
-          link: location.href,
-          callId: context.callId,
-          dealId: context.dealId,
-          accountId: context.accountId,
-          attachment: file,
-        });
-        updateQueuedEntry(entry.id, {
-          freshdeskTicketId: ticket.ticketId,
-          ticketId: ticket.ticketId,
-        });
+      const textEl = document.getElementById("feedback-text");
+      const [categoryKeyRaw, severityKey, areaKey, priorityRaw, rawMessage] = await Promise.all([
+        readFieldValueAsync(document.getElementById("feedback-category")),
+        readFieldValueAsync(document.getElementById("feedback-severity")),
+        readFieldValueAsync(document.getElementById("feedback-area")),
+        readFieldValueAsync(document.getElementById("feedback-priority")),
+        readFieldValueAsync(textEl),
+      ]);
+      const categoryKey = categoryKeyRaw || "idea";
+      const priority = String(priorityRaw || "");
+      const message = String(rawMessage || "").trim();
+      if (!message) {
+        setFieldError(textEl, "Please enter your feedback.");
+        showMsg("Please enter your feedback.", false);
+        return;
       }
-      void postEntry(entry).then((data) => markSynced(entry.id, data)).catch((err) => {
-        console.warn("[feedback] server sync failed:", err?.message || err);
-      });
+      setFieldError(textEl);
+      setButtonLoading(submitBtn, true);
+      const email = feedbackDeps.getEmail() || "anonymous";
+      const context = lastPageContext || capturePageContext();
+      const category = CATEGORY_MAP[categoryKey] || "Idea";
+      const entry = {
+        id: newId("event"),
+        category,
+        severity: SEVERITY_MAP[severityKey] || SEVERITY_MAP.general,
+        area: AREA_MAP[areaKey] || AREA_MAP.other,
+        priority: ["1", "2", "3", "4"].includes(priority) ? priority : "2",
+        message: message.slice(0, 4000),
+        page: context.hash || location.pathname,
+        context,
+        email,
+        createdAt: Date.now(),
+        synced: false,
+      };
+
+      saveQueue([entry, ...loadQueue().filter((item) => item.id !== entry.id)]);
+      form.classList.add("feedback-submit-success");
+
+      const ticket = await postEntry(entry);
+      markSynced(entry.id, ticket);
       showMsg(ticket?.ticketId ? `Thanks. Ticket #${ticket.ticketId} was created.` : "Thanks. Your feedback was saved.");
-      setButtonLoading(submitBtn, false);
       setTimeout(close, ticket?.ticketId ? 1400 : 1200);
     } catch (err) {
-      void postEntry(entry).then((data) => markSynced(entry.id, data)).catch((syncErr) => {
-        console.warn("[feedback] server sync failed:", syncErr?.message || syncErr);
-      });
       showMsg(err?.message || "Could not create ticket. Saved locally.", false);
+    } finally {
       setButtonLoading(submitBtn, false);
+      inFlight = false;
     }
   };
 
