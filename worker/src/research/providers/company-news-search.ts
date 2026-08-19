@@ -79,6 +79,7 @@ export interface DdgNewsHit {
   title: string;
   snippet: string;
   url: string;
+  publishedAt?: string;
 }
 
 /** Parse DuckDuckGo HTML result blocks into news-like hits. Exported for unit tests. */
@@ -215,6 +216,7 @@ export function companyNewsFromHits(hits: DdgNewsHit[]): CompanyNews | null {
       detail,
       sourceLabel: source.label,
       articleUrl: hit.url,
+      ...(hit.publishedAt ? { publishedAt: hit.publishedAt } : {}),
     });
     if (items.length >= MAX_NEWS_ITEMS) break;
   }
@@ -264,10 +266,16 @@ async function fetchGoogleNewsRss(companyName: string): Promise<DdgNewsHit[]> {
       const link = block.match(/<link>([\s\S]*?)<\/link>/i)?.[1]?.trim() || "";
       const desc =
         block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1] || "";
+      const pubDateRaw = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() || "";
       const cleanTitle = cleanDdgText(title);
       const cleanDesc = cleanDdgText(desc);
       if (!cleanTitle || !link || !isNewsLikeUrl(link)) continue;
-      out.push({ title: cleanTitle, snippet: cleanDesc || cleanTitle, url: link });
+      let publishedAt: string | undefined;
+      if (pubDateRaw) {
+        const d = new Date(pubDateRaw);
+        if (!Number.isNaN(d.getTime())) publishedAt = d.toISOString().slice(0, 10);
+      }
+      out.push({ title: cleanTitle, snippet: cleanDesc || cleanTitle, url: link, publishedAt });
     }
     return out;
   } catch {

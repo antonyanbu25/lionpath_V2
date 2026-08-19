@@ -139,4 +139,19 @@ const eq = (a: unknown, b: unknown, m: string) => {
   eq(merged?.metrics.length, 2, "merge keeps distinct labels");
 }
 
+{
+  const out = filterFishContextMetrics([
+    { label: "Support agents", value: "4 trillion", aboutCompany: true },
+  ]);
+  eq(out.length, 1, "keeps sanitized agent count");
+  eq(out[0].value, "4", "strips trillion suffix on agents");
+}
+
+{
+  const out = filterFishContextMetrics([
+    { label: "Support agents", value: "4000000000000", aboutCompany: true },
+  ]);
+  eq(out.length, 0, "drops absurd raw agent count");
+}
+
 console.log(`test-rivals-context.ts: ok (${checks} checks)`);
