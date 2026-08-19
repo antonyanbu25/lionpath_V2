@@ -651,6 +651,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-precall-bug-fixes-eval.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-precall-design-tokens.mjs",
     "tags": [
       "unit"

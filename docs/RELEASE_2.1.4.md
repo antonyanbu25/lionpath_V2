@@ -159,3 +159,9 @@ No live end-to-end verification was possible for the SSO fix (#4) or the post-ca
 - `web/index.html` (build stamp)
 - `web/firebase-config.js` (build stamp)
 - `docs/RELEASE_2.1.4.md` (new)
+
+---
+
+## Precall UX bug fixes (same branch, later commits)
+
+Five additional Know-tab / new-brief fixes (truncation, Generate CTA, fish agent count, news `publishedAt`, tile hover). Shipped on `2.1.4` with portal build **`2.1.45`**. Eval: [docs/PRECALL_BUG_FIXES_EVAL.md](./PRECALL_BUG_FIXES_EVAL.md) — run `node web/scripts/run-precall-bug-fixes-eval.mjs`.
