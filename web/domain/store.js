@@ -17,6 +17,12 @@ let readStoreInstance = null;
 /** @type {ReturnType<createLocalStore>|null} */
 let writeStoreInstance = null;
 
+let fbReadyResolve = null;
+/** Resolves when initDomainStore has been called with a non-null fb.db (Firestore ready). */
+export const fbReadyPromise = new Promise((resolve) => {
+  fbReadyResolve = resolve;
+});
+
 function useFirestore(fb) {
   return !!firebaseConfig.projectId && !!fb?.db;
 }
@@ -179,10 +185,19 @@ export function initDomainStore(fb) {
     writeMode === readMode ? readStoreInstance : createStoreForMode(writeMode, fb);
   storeInstance = createSplitStore(readStoreInstance, writeStoreInstance, readMode, writeMode);
   console.info("[domain] store mode:", readMode, "writes:", writeMode);
+  // Wake up all callers waiting for the store to be Firestore-ready.
+  if (fbReadyResolve && readMode === "firestore") {
+    fbReadyResolve(storeInstance);
+    fbReadyResolve = null;
+  }
   void runMeddpiccDealMigrationIfNeeded(storeInstance).catch((err) => {
     console.warn("[domain] meddpicc deal migration failed:", err.message);
   });
   return storeInstance;
+}
+
+export function isFirestoreStoreReady() {
+  return !!fbReadyResolve && !!storeInstance && !!fbReadyResolve;
 }
 
 /** @returns {ReturnType<createLocalStore>} */

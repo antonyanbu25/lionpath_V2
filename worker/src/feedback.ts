@@ -2,6 +2,7 @@
 
 import { type HistoryBackend, type HistoryEnv, normalizeHistoryEmail } from "./history";
 import {
+  createFreshdeskTicket,
   createTicket,
   FRESHDESK_FIELD_ACCOUNT_ID,
   FRESHDESK_FIELD_AREA,
@@ -9,6 +10,7 @@ import {
   FRESHDESK_FIELD_DEAL_ID,
   FRESHDESK_FIELD_PAGE_CONTEXT,
   FRESHDESK_FIELD_TYPE_SEVERITY,
+  MAX_ATTACHMENT_BYTES,
   type FreshdeskEnv,
 } from "./freshdesk";
 
@@ -36,6 +38,7 @@ export interface FeedbackEntry {
 }
 
 export type FeedbackEnv = HistoryEnv & FreshdeskEnv;
+export type FeedbackAttachment = { filename: string; contentType: string; bytes: Uint8Array };
 
 const MAX_FEEDBACK = 100;
 const MAX_GLOBAL = 500;
@@ -111,6 +114,7 @@ const AREA_KEYS: Record<string, string> = {
 export async function createJanusTicket(
   env: FeedbackEnv,
   entry: FeedbackEntry,
+  attachment?: FeedbackAttachment | null,
 ): Promise<{ ticketId: number | null; error: string | null }> {
   if (!env.FRESHDESK_API_KEY || !env.FRESHDESK_DOMAIN) {
     const error = "not configured";
@@ -118,6 +122,11 @@ export async function createJanusTicket(
     return { ticketId: null, error };
   }
   try {
+    if (attachment && attachment.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      const error = `Attachment too large (max ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB).`;
+      console.warn(`[feedback] Freshdesk ticket skipped: ${error}`);
+      return { ticketId: null, error };
+    }
     const context = entry.context || {};
     const severity = String(entry.severity || "General — improvement");
     const area = String(entry.area || "Other");
@@ -143,21 +152,38 @@ export async function createJanusTicket(
       `Deal ID: ${context.dealId || dash}`,
       `Account ID: ${context.accountId || dash}`,
     ].join("\n");
+    const subject = `Portal Feedback: ${entry.category}`;
+    const tags = ["portal-feedback", severityKey, areaKey];
+    const custom_fields = {
+      [FRESHDESK_FIELD_TYPE_SEVERITY]: severity,
+      [FRESHDESK_FIELD_AREA]: area,
+      [FRESHDESK_FIELD_CALL_ID]: context.callId || "",
+      [FRESHDESK_FIELD_DEAL_ID]: context.dealId || "",
+      [FRESHDESK_FIELD_ACCOUNT_ID]: context.accountId || "",
+      [FRESHDESK_FIELD_PAGE_CONTEXT]: hash,
+    };
+    if (attachment) {
+      const ticket = await createFreshdeskTicket(env, {
+        subject,
+        description,
+        email: entry.email || "",
+        priority,
+        status: 2,
+        type: "",
+        tags,
+        customFields: custom_fields,
+        attachment,
+      });
+      return { ticketId: ticket.id, error: null };
+    }
     const ticket = await createTicket(env, {
-      subject: `Portal Feedback: ${entry.category}`,
+      subject,
       description,
       email: entry.email || "",
       priority,
       status: 2,
-      tags: ["portal-feedback", severityKey, areaKey],
-      custom_fields: {
-        [FRESHDESK_FIELD_TYPE_SEVERITY]: severity,
-        [FRESHDESK_FIELD_AREA]: area,
-        [FRESHDESK_FIELD_CALL_ID]: context.callId || "",
-        [FRESHDESK_FIELD_DEAL_ID]: context.dealId || "",
-        [FRESHDESK_FIELD_ACCOUNT_ID]: context.accountId || "",
-        [FRESHDESK_FIELD_PAGE_CONTEXT]: hash,
-      },
+      tags,
+      custom_fields,
     });
     return { ticketId: typeof ticket.id === "number" ? ticket.id : null, error: null };
   } catch (err) {
@@ -171,12 +197,18 @@ export async function appendFeedback(
   env: FeedbackEnv,
   email: string,
   entry: FeedbackEntry,
+  attachment?: FeedbackAttachment | null,
 ): Promise<FeedbackEntry[]> {
   const backend = resolveBackend(env);
   if (!backend) {
     throw new Error("Feedback storage is not configured (missing HISTORY_KV or HISTORY_FILE_DIR).");
   }
   const withEmail: FeedbackEntry = { ...entry, email: entry.email || email };
+  const ticket = await createJanusTicket(env, withEmail, attachment);
+  withEmail.ticketId = ticket.ticketId;
+  withEmail.ticketError = ticket.error;
+  entry.ticketId = ticket.ticketId;
+  entry.ticketError = ticket.error;
   const list = await loadFeedback(env, email);
   const merged = [withEmail, ...list.filter((e) => e.id !== withEmail.id)].slice(0, MAX_FEEDBACK);
   await backend.put(feedbackKey(email), JSON.stringify(merged));
