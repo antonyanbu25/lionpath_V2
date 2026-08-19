@@ -182,12 +182,7 @@ const VIEW_TITLES = {
   signal: "Product signal",
 };
 
-const COMING_SOON_VIEWS = {
-  deals: { view: "deals", panelId: "deal-panel", navView: "deals", title: "My deals", hash: "deals" },
-  contacts: { view: "contacts", panelId: "contacts-panel", navView: "contacts", title: "My contacts", hash: "contacts" },
-  coaching: { view: "coaching", panelId: "coaching-panel", navView: "coaching", title: "My coaching", hash: "coaching" },
-  accounts: { view: "accounts", panelId: "account-panel", navView: "accounts", title: "Accounts", hash: "accounts" },
-};
+const COMING_SOON_VIEWS = {};
 
 let selectedAccountId = null;
 /** @type {string|null|undefined} undefined = auto-resolve deal on account load */
