@@ -1,9 +1,10 @@
-import { parseTranscript } from "../transcript";
+import { parseTranscript, parseTranscriptCues } from "../transcript";
 import { fetchRecordingFromShareLink, type ZoomShareResult } from "../zoomShare";
 import { fetchZoomRecordingViaApi, type ZoomApiError } from "../zoom-api";
 import { zoomApiConfigured, type ZoomEnv } from "../zoom";
 import { fetchKaiaShareContent } from "../kaia/fetchShareContent";
 import { isKaiaEngageShareUrl } from "../kaia/shareLink";
+import { extractAndMatchLinkedInIdentities } from "./linkedin-identity";
 import {
   analysisConfidenceForVideo,
   QIP_PROFILES,
@@ -24,6 +25,7 @@ import type {
   PostCallResolveInput,
   PostCallResolveResult,
   PostCallSourceKind,
+  TranscriptOrigin,
   VideoThemeApplicability,
 } from "./types";
 import type { VideoFactsDraft } from "../domain-model/video-facts";
@@ -189,6 +191,8 @@ export function inferCallIdentities(
   participantEmails: string[],
   ownerEmail?: string,
   ownerDisplayName?: string,
+  /** v2.3 — Kaia meeting-host display name, a strong (not certain) SE hint. See kaiaHostName(). */
+  kaiaHost?: string,
 ): {
   seIdentity?: string;
   aeIdentity?: string;
@@ -217,10 +221,14 @@ export function inferCallIdentities(
   const sessionFallback =
     (ownerDisplayName?.trim() && !looksLikeAe(ownerDisplayName) ? ownerDisplayName.trim() : undefined) ||
     (ownerEmail?.trim() || undefined);
+  // Structural hint, not a title match — ranked below an explicit SE-titled speaker but
+  // above the generic "any non-AE colleague" guess.
+  const kaiaHostCandidate = kaiaHost && !looksLikeAe(kaiaHost) ? kaiaHost : undefined;
 
   let seIdentity =
     seTitled ||
     ownerSpeaker ||
+    kaiaHostCandidate ||
     seColleague ||
     fwSpeaker ||
     fwEmails[0] ||
@@ -274,9 +282,65 @@ function emailsFromKaiaParticipants(
   );
 }
 
+/**
+ * v2.3 (Agent 2) — Kaia hands over a clean roster of real names, but KaiaParticipantMeta
+ * carries no email field, so emailsFromKaiaParticipants() (a regex over text that happens
+ * to contain no "@") always returns [] for it — 100% of the roster was previously discarded.
+ * This is the name-based counterpart: feeds identityOptions/customerIdentities so Kaia
+ * participants show up as page-2 attendee candidates even when the transcript has none.
+ */
+function namesFromKaiaParticipants(
+  participants: { displayName?: string }[] | undefined,
+): string[] {
+  if (!participants?.length) return [];
+  return participants.map((p) => String(p?.displayName || "").trim()).filter(Boolean);
+}
+
+/** The Kaia meeting host is a strong (not certain) signal for who ran the call as SE. */
+function kaiaHostName(
+  participants: { displayName?: string; isHost?: boolean }[] | undefined,
+): string | undefined {
+  return participants?.find((p) => p?.isHost)?.displayName?.trim() || undefined;
+}
+
 export interface PostCallResolveOptions {
   /** Server-side Zoom credentials. When present, the account API is tried before scraping. */
   zoomEnv?: ZoomEnv;
+  /**
+   * LLM provider env for the speaker-attribution pass (see ./speaker-attribution). Optional —
+   * when absent, `speakerAttribution` is simply omitted from the result (soft-skip, not a
+   * failure). When present, a failure in the attribution call is also swallowed: resolve must
+   * always succeed on transcript parsing / matching even if this best-effort pass errors.
+   */
+  providerEnv?: import("./speaker-attribution").Env;
+  /**
+   * v2.3 — only the interactive confirm-page flow (POST /api/postcall/resolve) ever shows the
+   * speaker-attribution suggestion to a human and lets them act on it, so only that caller
+   * should set this. The legacy/auto-pick path (runPostCallLegacyAnalyze) and the confirmed-
+   * pipeline's defensive re-resolve both call runPostCallResolve without a human ever seeing
+   * this result again, so leaving this unset there skips the LLM call entirely rather than
+   * paying for a suggestion nobody will ever consume.
+   */
+  attributeSpeakers?: boolean;
+}
+
+/** Soft-fail wrapper — speaker attribution is a suggestion-only pass, never blocks resolve. */
+async function trySpeakerAttribution(
+  providerEnv: import("./speaker-attribution").Env | undefined,
+  attributeSpeakers: boolean | undefined,
+  transcript: string,
+  participants: string[],
+): Promise<import("./speaker-attribution").SpeakerAttributionResult | undefined> {
+  if (!providerEnv) return undefined;
+  if (!attributeSpeakers) return undefined; // not the confirm-page flow — nobody will see this suggestion
+  if (!parseTranscriptCues(transcript).length) return undefined; // no timestamps → no room segments possible
+  try {
+    const { runPostCallSpeakerAttribution } = await import("./speaker-attribution");
+    return await runPostCallSpeakerAttribution(providerEnv, { transcript, participants });
+  } catch (err) {
+    console.warn("[postcall/resolve] speaker attribution soft-fail:", (err as Error)?.message || err);
+    return undefined;
+  }
 }
 
 /**
@@ -303,51 +367,139 @@ export async function runPostCallResolve(
   input: PostCallResolveInput,
   options: PostCallResolveOptions = {},
 ): Promise<PostCallResolveResult> {
-  let transcript = input.transcript?.trim() || "";
+  const pastedTranscript = input.transcript?.trim() || "";
   let meetingTitle = input.meetingTitle?.trim();
   let media: PostCallResolveResult["media"];
-  let sourceKind: PostCallSourceKind = transcript ? "transcript" : "zoom";
-  let videoAvailable = false;
-  let callTime: string | undefined;
   let kaiaParticipantEmails: string[] = [];
+  let kaiaParticipantNames: string[] = [];
+  let kaiaHost: string | undefined;
 
-  if (!transcript && input.recordingUrl?.trim()) {
+  // v2.3 (Agent 1) — fetch every source the SE provided, independently, and keep them as
+  // distinct fields. A Kaia link and a pasted/uploaded transcript are NOT alternatives: the
+  // documented team process supplies both, and previously the `!transcript` guard below meant
+  // the link was simply never fetched when a transcript was already present — Kaia's roster,
+  // title, start time and summary were silently thrown away. Now both are always attempted.
+  const sources: PostCallResolveResult["sources"] = {};
+
+  if (input.recordingUrl?.trim()) {
     const url = input.recordingUrl.trim().split(/\s/)[0];
     if (isKaiaEngageShareUrl(url)) {
-      sourceKind = "kaia";
-      const fetched = await fetchKaiaShareContent(url);
-      if (!fetched.ok) {
-        throw Object.assign(new Error(fetched.message || "Could not fetch Kaia recording."), {
-          status: fetched.reason === "not_found" ? 404 : 400,
-        });
+      try {
+        const fetched = await fetchKaiaShareContent(url);
+        if (!fetched.ok) {
+          // A usable transcript exists from elsewhere — soft-fail, log and continue.
+          if (!pastedTranscript) {
+            throw Object.assign(new Error(fetched.message || "Could not fetch Kaia recording."), {
+              status: fetched.reason === "not_found" ? 404 : 400,
+            });
+          }
+          console.warn("[postcall/resolve] Kaia fetch soft-fail (transcript already supplied):", fetched.message);
+        } else {
+          sources.kaia = {
+            summary: fetched.summary,
+            summaryJson: fetched.summaryJson,
+            participants: fetched.participants || [],
+            title: fetched.title,
+            startTime: fetched.startTime,
+          };
+          kaiaParticipantEmails = emailsFromKaiaParticipants(fetched.participants);
+          kaiaParticipantNames = namesFromKaiaParticipants(fetched.participants);
+          kaiaHost = kaiaHostName(fetched.participants);
+          // Rare: some Kaia payloads carry an actual transcript excerpt, not just prose —
+          // this can win the scoring transcript below like any other real transcript source.
+          if (fetched.transcriptExcerpt?.trim() && !pastedTranscript) {
+            sources.transcript = {
+              text: fetched.transcriptExcerpt.trim(),
+              origin: "kaia_api",
+              hasTimestamps: parseTranscriptCues(fetched.transcriptExcerpt).length > 0,
+              speakers: [],
+            };
+          }
+        }
+      } catch (err) {
+        if (!pastedTranscript) throw err;
+        console.warn(
+          "[postcall/resolve] Kaia fetch soft-fail (transcript already supplied):",
+          (err as Error)?.message || err,
+        );
       }
-      transcript = fetched.summary;
-      if (!meetingTitle && fetched.title) meetingTitle = fetched.title;
-      callTime = fetched.startTime;
-      kaiaParticipantEmails = emailsFromKaiaParticipants(fetched.participants);
-      // Kaia public share yields summary text, not Pass 2 video streams.
-      videoAvailable = false;
     } else {
-      sourceKind = "zoom";
-      const fetched = await fetchZoomRecording(
-        input.recordingUrl.trim(),
-        input.recordingPassword?.trim(),
-        options.zoomEnv,
-      );
-      transcript = fetched.transcript;
-      media = fetched.media;
-      if (!meetingTitle && fetched.topic) meetingTitle = fetched.topic;
-      videoAvailable = !!(media?.streams?.length);
-      // Only the API path knows the wall-clock start; the share scrape does not expose it.
-      callTime = fetched.startTime;
+      try {
+        const fetched = await fetchZoomRecording(
+          input.recordingUrl.trim(),
+          input.recordingPassword?.trim(),
+          options.zoomEnv,
+        );
+        sources.zoom = {
+          transcript: fetched.transcript,
+          media: fetched.media,
+          topic: fetched.topic,
+          // Only the API path knows the wall-clock start; the share scrape does not expose it.
+          startTime: fetched.startTime,
+        };
+        media = fetched.media;
+      } catch (err) {
+        if (!pastedTranscript) throw err;
+        console.warn(
+          "[postcall/resolve] Zoom fetch soft-fail (transcript already supplied):",
+          (err as Error)?.message || err,
+        );
+      }
     }
   }
 
-  if (!transcript) {
+  // Precedence for the scoring transcript: a real speaker-tagged transcript ALWAYS wins over
+  // a Kaia summary — pasted/uploaded (what the SE explicitly gave us) beats a fetched Zoom
+  // transcript, which beats the rare Kaia transcript-excerpt path. A Kaia summary is NEVER
+  // placed in `transcript`; when it's all we have, transcript is "" and summaryOnly is true.
+  let transcript = "";
+  let transcriptOrigin: TranscriptOrigin | undefined;
+  if (pastedTranscript) {
+    transcript = pastedTranscript;
+    transcriptOrigin = input.transcriptOrigin === "uploaded" ? "uploaded" : "pasted";
+  } else if (sources.zoom?.transcript) {
+    transcript = sources.zoom.transcript;
+    transcriptOrigin = "zoom";
+  } else if (sources.transcript?.text) {
+    transcript = sources.transcript.text;
+    transcriptOrigin = sources.transcript.origin;
+  }
+
+  const summaryOnly = !transcript && !!sources.kaia;
+  if (!transcript && !summaryOnly) {
     throw new Error("Provide a transcript or a Zoom/Kaia recording link.");
   }
 
-  const parsed = parseTranscript(transcript);
+  const videoAvailable = !!(sources.zoom?.media?.streams?.length);
+  const sourceKind: PostCallSourceKind =
+    transcriptOrigin === "zoom" ? "zoom" : transcriptOrigin === "kaia_api" || summaryOnly ? "kaia" : "transcript";
+
+  // Metadata merge — prefer Kaia title/startTime when the transcript path has none. At most
+  // one of sources.zoom/sources.kaia is ever populated (one recordingUrl, one link type), so
+  // this always resolves to "whichever fetched source has it" without conflicting.
+  if (!meetingTitle) meetingTitle = sources.zoom?.topic || sources.kaia?.title;
+  const callTime = sources.zoom?.startTime || sources.kaia?.startTime;
+
+  const parsed = transcript
+    ? parseTranscript(transcript)
+    : { text: "", format: "plain" as const, speakers: [] as string[], wordCount: 0, durationMinutes: null };
+
+  if (transcript && transcriptOrigin) {
+    sources.transcript = {
+      text: transcript,
+      origin: transcriptOrigin,
+      hasTimestamps: parseTranscriptCues(transcript).length > 0,
+      speakers: parsed.speakers,
+    };
+  }
+  const sourcesUsed = [
+    ...new Set(
+      [sources.transcript?.origin, sources.kaia ? "kaia_api" : null, sources.zoom ? "zoom" : null].filter(
+        (v): v is string => !!v,
+      ),
+    ),
+  ];
+
   const participantEmails = mergeParticipantEmails(
     input.participantEmails,
     kaiaParticipantEmails,
@@ -400,17 +552,55 @@ export async function runPostCallResolve(
             suggestedCompanyName(meetingTitle, participantEmails),
         };
 
+  // v2.3 (Agent 2) — Kaia's roster feeds identity inference alongside transcript speakers, not
+  // instead of them. `parsed.speakers` itself stays transcript-only (transcriptMeta and
+  // sources.transcript.speakers must reflect only what the transcript actually contains);
+  // this merged list is local to identity inference only.
+  const speakersForIdentity = [...parsed.speakers, ...kaiaParticipantNames];
+
   const identities = inferCallIdentities(
-    parsed.speakers,
+    speakersForIdentity,
     participantEmails,
     input.ownerEmail,
     input.ownerDisplayName,
+    kaiaHost,
   );
+
+  const attributionParticipants = uniqueLabels(
+    identities.identityOptions,
+    speakersForIdentity,
+    identities.seIdentity ? [identities.seIdentity] : [],
+    identities.aeIdentity ? [identities.aeIdentity] : [],
+    identities.customerIdentities,
+  );
+  const speakerAttribution = await trySpeakerAttribution(
+    options.providerEnv,
+    options.attributeSpeakers,
+    transcript,
+    attributionParticipants,
+  );
+
+  // v2.3 (Agent 3) — same confirm-page-only gate as speaker attribution: only the interactive
+  // flow ever renders these suggestions, so the legacy/auto path skips the work entirely
+  // (deterministic parsing is cheap, but the rare LLM fallback for an ambiguous export is not
+  // worth paying for on a path that can never show the result to anyone).
+  const linkedinIdentities =
+    options.attributeSpeakers && input.linkedinProfileExports?.length && options.providerEnv
+      ? await extractAndMatchLinkedInIdentities(
+          options.providerEnv,
+          input.linkedinProfileExports,
+          attributionParticipants,
+          { userId: input.ownerId },
+        )
+      : undefined;
 
   return {
     transcript,
     meetingTitle,
     sourceKind,
+    sources,
+    sourcesUsed,
+    summaryOnly,
     videoAvailable,
     callTime,
     durationMinutes,
@@ -435,5 +625,7 @@ export async function runPostCallResolve(
     account,
     deals: rankedDeals,
     noMatch,
+    speakerAttribution,
+    linkedinIdentities,
   };
 }

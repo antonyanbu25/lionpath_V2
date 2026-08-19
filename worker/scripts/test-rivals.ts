@@ -51,6 +51,11 @@ for (const empty of ["", "-", "–", "N/A", "n/a", "unknown", "undisclosed", "TB
 }
 eq(parseMagnitude("several hundred"), null, "prose with no digits cannot be ordered");
 
+eq(parseMagnitude("8 billion", "supportAgents"), 8, "supportAgents ignores billion suffix");
+eq(parseMagnitude("8B", "supportAgents"), 8, "supportAgents ignores B suffix");
+eq(parseMagnitude("4000000000000", "supportAgents"), null, "supportAgents rejects absurd raw count");
+eq(parseMagnitude("$1.2B", "fundingRaised"), 1.2e9, "funding axis still parses billions");
+
 // ---------------------------------------------------------------------------
 // buildRivalSources — the citation set is the ground truth for every claim.
 // ---------------------------------------------------------------------------

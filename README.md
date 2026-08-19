@@ -154,6 +154,68 @@ Removed obsolete: `web/scripts/test-verdict-tension.mjs` (dropped from `web/pack
 
 ---
 
+## Bug fixes (this branch)
+
+Branch **`fix/profile-and-feedback-bugs-2.1`** — cut from **`2.1`** (`62132a6`).
+
+### 1. Profile photo upload crashed with `store.getUser is not a function`
+
+- **What was wrong:** In Profile settings, clicking **Upload photo** / **Remove photo** threw
+  `TypeError: store.getUser is not a function`. The profile write path
+  (`updateProfilePicture`/`updateDisplayName` in `web/domain/profile-service.js`) calls
+  `store.getUser()` / `store.upsertUser()`, but the domain store in **api** mode
+  (the default for SEs) does not expose those methods — only the Firestore store does.
+  The team is mid-migration away from Firebase, and the avatar write path was never
+  wired for the api store.
+- **What changed (temporary disable, per product decision):** `web/profile-settings.js`
+  now disables the **Upload photo** and **Remove photo** buttons and short-circuits their
+  click / file-input handlers so the broken write can never fire. A muted helper note is
+  shown under the avatar row: *“Photo upload is temporarily disabled while we migrate
+  profile data. It will be enabled in the next launch.”* The existing avatar still renders,
+  and **display-name editing keeps working** (`updateDisplayName` path untouched). New
+  disabled styling in `web/styles.css`. Re-enabled in a future launch once the migration
+  lands.
+- **Outcome:** No more `store.getUser is not a function` crash on the Profile settings page.
+
+### 2. Feedback form created TWO Freshdesk tickets + showed duplicate Cancel/OK buttons
+
+- **What was wrong (double ticket):** Submitting the Send-feedback form fired **two**
+  ticket-creation requests — the client called `createSupportTicket()` → `POST /api/tickets`
+  **and** `postEntry()` → `POST /api/feedback` (the worker also created a Freshdesk ticket
+  via `createJanusTicket`). Result: two tickets in janus.freshdesk.com per submission.
+- **What was wrong (duplicate buttons):** The Crayons `fw-modal` auto-rendered its own
+  **Cancel / OK** footer on top of the form's own **Cancel / Submit** buttons, so users saw
+  two button pairs.
+- **What changed:**
+  - `web/index.html` — added `hide-footer` to `#feedback-modal` so Crayons no longer renders
+    the built-in Cancel/OK pair; only the form's own Cancel/Submit remain.
+  - `web/feedback.js` — removed the client-side `createSupportTicket` call (which hit the
+    separate `/api/tickets` endpoint). The single `POST /api/feedback` path is now the only
+    ticket creator. Added an `inFlight` guard so double-clicks can't fire a second request.
+    Optimistic localStorage queue + sync-once behavior preserved.
+  - `worker/src/feedback.ts` — re-enabled the server-side ticket creation inside
+    `appendFeedback` (via `createJanusTicket`), so `/api/feedback` is now the single path that
+    both stores feedback **and** creates the Freshdesk ticket. The returned `ticketId` drives
+    the success message (“Ticket #NNN was created.”).
+- **Screenshot restored (single path):** Screenshots on the feedback form are supported again.
+  The client base64-encodes the optional screenshot and sends it in the same `/api/feedback`
+  payload (`web/feedback.js` → `postEntry`); the worker decodes it (`attachmentFromBase64` in
+  `worker/src/routes.ts`) and attaches it to the same single ticket via
+  `createFreshdeskTicket` (multipart) when present (`worker/src/feedback.ts`). Still exactly
+  ONE `/api/feedback` request and ONE ticket. 8MB max enforced on both ends.
+- **Outcome:** Exactly **one** ticket is created per submission (with the screenshot attached
+  when provided); one button pair in the modal.
+
+### 3. Web build was broken by a duplicate export (pre-existing, unblocked to ship)
+
+- **What was wrong:** `web/domain/store.js` declared `isFirestoreStoreReady` **twice**, which
+  failed the esbuild web build (`Multiple exports with the same name`). This pre-existed on
+  the `2.1` base branch (unrelated to the two fixes above).
+- **What changed:** Removed the duplicate declaration; `node web/scripts/build.mjs` now exits
+  green (110 files / 1.8 MB JS).
+
+---
+
 ## Inherited from 2.1.1 / 2.1
 
 Still true on this branch (shipped in **`2.1.1`** off production **`2.1`**):

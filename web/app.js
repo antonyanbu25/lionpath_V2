@@ -35,7 +35,7 @@ import {
   shouldDeferNullAuth,
   shouldLogoutAfterNullCheck,
 } from "./auth-firebase-guards.js";
-import { initDomainStore, getStore } from "./domain/store.js";
+import { initDomainStore, getStore, fbReadyPromise } from "./domain/store.js";
 import { clearLocalStoreCache } from "./domain/local-store.js";
 import { linkPrepToLifecycle, linkPostCallToLifecycle } from "./domain/dual-write.js";
 import { renderAccountView } from "./account-view.js?v=2.1.43";
@@ -51,6 +51,7 @@ import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
+import { setLocalSyncAuthGetter, autoSyncOnLogin } from "./recovery/local-recovery.js";
 import {
   syncTasksOnLogin,
   syncTasksAfterActivity,
@@ -181,12 +182,7 @@ const VIEW_TITLES = {
   signal: "Product signal",
 };
 
-const COMING_SOON_VIEWS = {
-  deals: { view: "deals", panelId: "deal-panel", navView: "deals", title: "My deals", hash: "deals" },
-  contacts: { view: "contacts", panelId: "contacts-panel", navView: "contacts", title: "My contacts", hash: "contacts" },
-  coaching: { view: "coaching", panelId: "coaching-panel", navView: "coaching", title: "My coaching", hash: "coaching" },
-  accounts: { view: "accounts", panelId: "account-panel", navView: "accounts", title: "Accounts", hash: "accounts" },
-};
+const COMING_SOON_VIEWS = {};
 
 let selectedAccountId = null;
 /** @type {string|null|undefined} undefined = auto-resolve deal on account load */
@@ -792,8 +788,9 @@ function buildSubscribeRemoteCalls() {
 }
 
 function buildSubscribeRemoteDeals() {
-  return (onChange) => {
+  return async (onChange) => {
     if (typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     const ownerId = effectiveSessionUserId(currentSession);
     if (!ownerId || typeof store.subscribeDealsByOwner !== "function") return () => {};
@@ -802,8 +799,9 @@ function buildSubscribeRemoteDeals() {
 }
 
 function buildSubscribeRemoteDealDetail(dealId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!dealId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeDealDetail !== "function") return () => {};
     return store.subscribeDealDetail(dealId, onChange);
@@ -811,8 +809,9 @@ function buildSubscribeRemoteDealDetail(dealId) {
 }
 
 function buildSubscribeRemoteCallDetail(callId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!callId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeCallDetail !== "function") return () => {};
     return store.subscribeCallDetail(callId, onChange);
@@ -820,8 +819,9 @@ function buildSubscribeRemoteCallDetail(callId) {
 }
 
 function buildSubscribeRemoteArrLinesByDeal(dealId) {
-  return (onChange) => {
+  return async (onChange) => {
     if (!dealId || typeof onChange !== "function") return () => {};
+    await fbReadyPromise;
     const store = getStore();
     if (typeof store.subscribeArrLinesByDeal !== "function") return () => {};
     return store.subscribeArrLinesByDeal(dealId, onChange);
@@ -2276,6 +2276,7 @@ function applySessionAuthGetters() {
     ? () => fb.auth.currentUser.getIdToken()
     : null;
   setHistoryAuthGetter(tokenFn);
+  setLocalSyncAuthGetter(tokenFn);
   setTasksAuthGetter(tokenFn);
   setSummariesAuthGetter(tokenFn);
   setCallPayloadAuthGetter(tokenFn);
@@ -2306,6 +2307,7 @@ async function applyInitialRouteFromHash(enriched) {
 
   const lifecycleMatch = /^lifecycles\/(.+)$/.exec(hash);
   if (lifecycleMatch) {
+    await fbReadyPromise;
     const store = getStore();
     const lc = await store.getLifecycle(lifecycleMatch[1]);
     if (lc?.accountId) {
@@ -2539,6 +2541,17 @@ async function showApp(session, opts = {}) {
         }
         applySessionAuthGetters();
         await loadPersistedHistory();
+        if (!sessionStillValid()) return;
+        void autoSyncOnLogin(currentSession, { force: true }).then((result) => {
+          if (!result || !sessionStillValid()) return;
+          refreshSidebarRecentWork();
+          if (
+            !dashboardRenderInFlight &&
+            (currentView === "dashboard" || currentView === "manager" || currentView === "coaching")
+          ) {
+            refreshDashboardFromStorage();
+          }
+        });
         if (!sessionStillValid()) return;
         refreshSidebarRecentWork();
         if (
@@ -2791,9 +2804,11 @@ function ensureFirebaseSdk() {
 
       initDomainStore(fb);
 
-      // Only managers/admins need Firestore — lazy load the SDK to avoid WebChannel transport for SEs.
-      const _bootSession = getSession();
-      if (_bootSession?.role === "manager" || _bootSession?.role === "admin") {
+      // Always load Firestore SDK when Firebase Auth is enabled.
+      // Previously gated on cached session role (manager/admin), causing 0-dashboard
+      // in fresh incognito/private windows when _bootSession was null.
+      // isFirebaseAuthEnabled() guard ensures this only runs in proper environments.
+      if (isFirebaseAuthEnabled()) {
         (async () => {
           try {
             const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");

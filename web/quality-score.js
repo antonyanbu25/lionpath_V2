@@ -4,6 +4,30 @@ import { CATEGORY_KEYS, profileFor, CORE_FOUR_THEME_KEYS } from "./rubric-profil
 
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
+/**
+ * v2.2 leadership cap — mirrors worker/src/quality-score.ts LEADERSHIP_CAP_THRESHOLD. An
+ * overall above this bar is only rendered as-is once the adversarial verifier has confirmed
+ * every sub-parameter still scored 2.
+ */
+export const LEADERSHIP_CAP_THRESHOLD = 8.0;
+
+/**
+ * v2.2 — mirrors worker/src/quality-score.ts applyLeadershipCap() so both render identically.
+ * Pure display transform: never mutates the stored scorecard `overall`.
+ * @param {number} overall
+ * @param {boolean} verified
+ * @returns {{ overall: number, capped: boolean }}
+ */
+export function applyLeadershipCap(overall, verified) {
+  if (typeof overall !== "number" || !Number.isFinite(overall)) {
+    return { overall: 0, capped: false };
+  }
+  if (overall > LEADERSHIP_CAP_THRESHOLD && !verified) {
+    return { overall: LEADERSHIP_CAP_THRESHOLD, capped: true };
+  }
+  return { overall, capped: false };
+}
+
 export function isEligibleForAggregate(scorecard, opts = {}) {
   if (scorecard?.provisional) return false;
   const min =
@@ -185,8 +209,17 @@ export function scoreBand(score) {
   return qipScoreBand(score);
 }
 
+/**
+ * Deterministic downgrade (v2.3, mirrors worker/src/quality-score.ts and the sub-parameter
+ * rule in worker/src/postcall/scorecard.ts): a dimension scored 5 with no specific evidence
+ * quoted is not trustworthy at face value — pull it down to 4.
+ */
+function downgradeUnevidencedFives(dimensions) {
+  return dimensions.map((d) => (d.score === 5 && !d.evidence?.trim() ? { ...d, score: 4 } : d));
+}
+
 export function normalizeQualityCoach(qc) {
-  const dimensions = qc.dimensions || [];
+  const dimensions = downgradeUnevidencedFives(qc.dimensions || []);
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);
   return {

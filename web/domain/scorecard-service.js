@@ -39,6 +39,12 @@ export async function persistScorecardDraft(draft, ctx) {
     confidence: draft.confidence ?? null,
     provisional: !!draft.provisional,
     dealRiskFlags: draft.dealRiskFlags || [],
+    // v2.2 leadership cap — additive fields, see worker/src/postcall/scorecard.ts
+    // ScorecardDraft.leadershipShareable / verifierJustifications. Omitted (false/[]) on
+    // scorecards that never crossed the cap; historical records without these keys are
+    // unaffected (see web/quality-score.js applyLeadershipCap).
+    leadershipShareable: !!draft.leadershipShareable,
+    verifierJustifications: draft.verifierJustifications || [],
     ownerId: ctx.ownerId,
     teamId: ctx.teamId || "",
     orgId: ctx.orgId || "",

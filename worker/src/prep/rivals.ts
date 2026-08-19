@@ -210,6 +210,15 @@ const MAGNITUDE_SUFFIXES: Array<[RegExp, number]> = [
 /** Values that mean "no figure" rather than a figure of zero. */
 const NON_VALUES = /^(?:|-|–|—|n\/?a|unknown|none|tbd|undisclosed|not disclosed|\?)$/i;
 
+const HEADCOUNT_AXIS_IDS = new Set(["employees", "supportAgents"]);
+const HEADCOUNT_FORBIDDEN_SUFFIX = /^(?:t|tn|trillion|b|bn|billion)$/i;
+
+const MAGNITUDE_BOUNDS: Record<string, number> = {
+  employees: 500_000,
+  supportAgents: 50_000,
+  funding: 1e15,
+};
+
 /**
  * Parse a reported figure into a comparable number.
  *
@@ -217,12 +226,10 @@ const NON_VALUES = /^(?:|-|–|—|n\/?a|unknown|none|tbd|undisclosed|not disclo
  * Returns null for anything we cannot read confidently — the value is then dropped rather than
  * guessed at, because a misparsed number would silently reorder the range.
  */
-export function parseMagnitude(raw: string): number | null {
+export function parseMagnitude(raw: string, axisId?: string): number | null {
   const text = String(raw ?? "").trim();
   if (NON_VALUES.test(text)) return null;
 
-  // Take the first number in a range ("1,000-1,200 agents"): averaging would invent a figure
-  // no source states, and the endpoints are what a range is built from anyway.
   const match = text.match(
     /(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(t|tn|trillion|b|bn|billion|m|mm|mn|million|k|thousand)?/i,
   );
@@ -232,11 +239,29 @@ export function parseMagnitude(raw: string): number | null {
   if (!Number.isFinite(n)) return null;
 
   const suffix = (match[2] || "").trim();
-  if (!suffix) return n;
-  for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
-    if (pattern.test(suffix)) return n * multiplier;
+  let numeric = n;
+  if (suffix) {
+    if (axisId && HEADCOUNT_AXIS_IDS.has(axisId) && HEADCOUNT_FORBIDDEN_SUFFIX.test(suffix)) {
+      numeric = n;
+    } else {
+      let matched = false;
+      for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
+        if (pattern.test(suffix)) {
+          numeric = n * multiplier;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) numeric = n;
+    }
   }
-  return n;
+
+  const max = axisId ? MAGNITUDE_BOUNDS[axisId] : undefined;
+  if (max != null && numeric > max) {
+    if (suffix && n <= max) return n;
+    return null;
+  }
+  return numeric;
 }
 
 interface RawValue {
@@ -324,7 +349,7 @@ function normalizeValues(
       dropped.push(`${who} ${axisId}: cited "${value?.sourceDomain || "nothing"}", not in the search results`);
       continue;
     }
-    const numeric = parseMagnitude(display);
+    const numeric = parseMagnitude(display, axisId);
     if (numeric == null) {
       dropped.push(`${who} ${axisId}: "${display}" is not a readable figure`);
       continue;

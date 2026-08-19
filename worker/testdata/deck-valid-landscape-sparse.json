@@ -1,0 +1,25 @@
+{
+  "description": "Valid slide deck: landscape pages, sparse text (typical SE demo deck). Shape gate should return likely_deck; resolveDeckVerdict with matching validation → deck_valid.",
+  "fileName": "freshworks-demo-deck.pdf",
+  "pageCount": 12,
+  "slides": [
+    { "page": 1, "text": "Freshworks · Rotacloud Demo\nAlex Chen, Solutions Engineer" },
+    { "page": 2, "text": "Agenda\n- Current scheduling workflow\n- Ticket automation\n- Reporting & SLAs\n- Pilot next steps" },
+    { "page": 3, "text": "Employee Scheduling Today\n- Manual spreadsheets\n- Last-minute swap chaos\n- No manager visibility" },
+    { "page": 4, "text": "Freshteam Scheduling Module\n- Shift swap approvals\n- Real-time roster view\n- Mobile-first employee UX" },
+    { "page": 5, "text": "Ticket Routing Automation\n- NLP-based tag auto-assign\n- Skill-based queue routing\n- SLA-aware prioritization" },
+    { "page": 6, "text": "Live Demo — Shift Swap Flow" },
+    { "page": 7, "text": "Reporting Dashboard\n- Manager view\n- Absence trend\n- Compliance alerts" },
+    { "page": 8, "text": "Integrations\n- Slack\n- Google Calendar\n- Payroll (ADP, Workday)" },
+    { "page": 9, "text": "Security & Compliance\n- SOC 2 Type II\n- GDPR compliant\n- SSO / SAML 2.0" },
+    { "page": 10, "text": "Pilot Options\n- 30-day full access\n- Dedicated CSM\n- Custom sandbox data" },
+    { "page": 11, "text": "Next Steps\n1. IT security review\n2. Pricing proposal (end of week)\n3. Kickoff call w/ Project team" },
+    { "page": 12, "text": "Thank you!\nQuestions?" }
+  ],
+  "shape": {
+    "landscapePct": 1.0,
+    "medianWordsPerPage": 12,
+    "pageCount": 12
+  },
+  "deckShapeVerdict": "likely_deck"
+}

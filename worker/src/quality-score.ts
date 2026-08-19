@@ -7,6 +7,13 @@ import { CATEGORY_KEYS, profileFor } from "./rubric-profiles";
 /** Spec §9 — only high-confidence calls feed the coaching queue. Mirrored in web. */
 export const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 
+/**
+ * v2.2 leadership cap — an overall above this bar is only ever rendered as-is once the
+ * adversarial verifier (worker/src/postcall/scorecard-verify.ts) has confirmed every
+ * sub-parameter still scored 2. Mirrored in web/quality-score.js.
+ */
+export const LEADERSHIP_CAP_THRESHOLD = 8.0;
+
 type QualityCoach = PostCallAnalysis["qualityCoach"];
 type QualityCoachInput = Omit<QualityCoach, "overallScore" | "overallLabel"> & {
   overallScore?: number;
@@ -283,8 +290,44 @@ export function overallLabelFromScore(score: number): string {
   return "Needs focus";
 }
 
+export interface LeadershipCapResult {
+  /** Number to render — clamped to LEADERSHIP_CAP_THRESHOLD unless `verified` is true. */
+  overall: number;
+  /** True when the true overall was pulled down to the cap for display. */
+  capped: boolean;
+}
+
+/**
+ * v2.2 — an overall above LEADERSHIP_CAP_THRESHOLD is only shown as-is once the adversarial
+ * verifier has confirmed every sub-parameter still scored 2 (`verified`). Otherwise the
+ * rendered number is clamped to the cap so an unverified high score is never treated as
+ * leadership-shareable. Pure display transform — never mutates the stored scorecard `overall`.
+ * Mirrored in web/quality-score.js so both render identically.
+ */
+export function applyLeadershipCap(overall: number, verified: boolean): LeadershipCapResult {
+  if (typeof overall !== "number" || !Number.isFinite(overall)) {
+    return { overall: 0, capped: false };
+  }
+  if (overall > LEADERSHIP_CAP_THRESHOLD && !verified) {
+    return { overall: LEADERSHIP_CAP_THRESHOLD, capped: true };
+  }
+  return { overall, capped: false };
+}
+
+/**
+ * Deterministic downgrade (v2.3, mirrors the sub-parameter rule in scorecard.ts): a dimension
+ * scored 5 with no specific evidence quoted is not trustworthy at face value — pull it down to
+ * 4. This runs before the leadership-cap verifier, so only genuinely-evidenced 5s ever reach
+ * that pass.
+ */
+function downgradeUnevidencedFives<T extends { score: number; evidence?: string | null }>(
+  dimensions: T[],
+): T[] {
+  return dimensions.map((d) => (d.score === 5 && !d.evidence?.trim() ? { ...d, score: 4 } : d));
+}
+
 export function normalizeQualityCoach(qc: QualityCoachInput): QualityCoach {
-  const dimensions = qc.dimensions || [];
+  const dimensions = downgradeUnevidencedFives(qc.dimensions || []);
   const computed = computeOverallScore(dimensions);
   const overallScore = computed ?? (typeof qc.overallScore === "number" ? qc.overallScore : 0);
   return {

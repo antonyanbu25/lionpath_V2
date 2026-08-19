@@ -6,7 +6,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
-import { firestoreAdminBootStatus } from "./data/firestore-admin";
+import { createFirestoreHistoryBackend } from "./history-firestore";
+import { firestoreAdminBootStatus, firestoreAdminReady } from "./data/firestore-admin";
 import { logError, logInfo } from "./logger";
 import { logResolvedModels } from "./providers";
 import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
@@ -103,6 +104,9 @@ function buildEnv(): NodeEnv {
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
   if (historyDir) {
     env.HISTORY_BACKEND = createFileHistoryBackend(historyDir);
+  } else if (firestoreAdminReady(env)) {
+    // Cloud Run: use Firestore as a persistent backend (file storage is ephemeral in containers).
+    env.HISTORY_BACKEND = createFirestoreHistoryBackend();
   }
 
   return env;

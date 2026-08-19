@@ -4,16 +4,12 @@
 
 import {
   updateDisplayName,
-  updateProfilePicture,
   roleLabel,
-  MAX_AVATAR_BYTES,
 } from "./domain/profile-service.js";
 import { setSession } from "./auth.js";
 import { refreshUserMenu } from "./user-menu.js";
 import { readFieldValue } from "./crayons-ui.js";
 import { esc } from "./shared.js";
-
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
 function initialsFromName(name, email) {
   const n = String(name || "").trim();
@@ -72,16 +68,23 @@ export function renderProfileSettings(container, session, opts = {}) {
                   accept="image/jpeg,image/png,image/gif,image/webp"
                   hidden
                 />
-                <fw-button id="profile-avatar-upload-btn" type="button">Upload photo</fw-button>
+                <fw-button
+                  id="profile-avatar-upload-btn"
+                  type="button"
+                  disabled
+                  title="Photo upload is temporarily disabled while we migrate profile data."
+                >Upload photo</fw-button>
                 <fw-button
                   id="profile-avatar-remove-btn"
                   type="button"
                   color="secondary"
-                  ${hasAvatar ? "" : "hidden"}
+                  title="Photo upload is temporarily disabled while we migrate profile data."
+                  ${hasAvatar ? "disabled" : "hidden"}
                 >Remove photo</fw-button>
                 <span class="profile-field-hint muted">JPEG, PNG, GIF, or WebP. Max 2 MB.</span>
               </div>
             </div>
+            <span class="profile-field-hint muted profile-avatar-disabled-note">Photo upload is temporarily disabled while we migrate profile data. It will be enabled in the next launch.</span>
           </div>
           <fw-input
             id="profile-display-name"
@@ -166,52 +169,20 @@ export function renderProfileSettings(container, session, opts = {}) {
     }
   }
 
-  async function saveAvatar(dataUrl) {
-    msgOk.hidden = true;
-    msgErr.hidden = true;
-
-    try {
-      const updated = await updateProfilePicture(
-        currentSession.userId || currentSession.uid,
-        dataUrl
-      );
-      applySession({ ...currentSession, avatarDataUrl: updated.avatarDataUrl || null });
-      showOk(dataUrl ? "Profile photo updated." : "Profile photo removed.");
-    } catch (err) {
-      showErr(err?.message || "Could not update profile photo.");
-    }
-  }
-
   avatarUploadBtn?.addEventListener("fwClick", (e) => {
     e?.preventDefault?.();
+    if (avatarUploadBtn?.disabled) return;
     avatarInput?.click();
   });
 
   avatarInput?.addEventListener("change", () => {
-    const file = avatarInput.files?.[0];
     avatarInput.value = "";
-    if (!file) return;
-
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-      showErr("Use a JPEG, PNG, GIF, or WebP image.");
-      return;
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      showErr("Image must be 2 MB or smaller.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") void saveAvatar(reader.result);
-    };
-    reader.onerror = () => showErr("Could not read the selected image.");
-    reader.readAsDataURL(file);
+    return;
   });
 
   avatarRemoveBtn?.addEventListener("fwClick", (e) => {
     e?.preventDefault?.();
-    void saveAvatar(null);
+    if (avatarRemoveBtn?.disabled) return;
   });
 
   saveBtn?.addEventListener("fwClick", (e) => {
