@@ -5,6 +5,7 @@ import { newId } from "./domain/types.js";
 
 const STORAGE_KEY = "lionpath_feedback";
 export const PULSE_COUNT_KEY = "lionpath_feedback_pulse_count";
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
 const CATEGORY_MAP = { bug: "Bug", idea: "Idea", data: "Data quality", other: "Other" };
 export const SEVERITY_MAP = {
@@ -27,6 +28,21 @@ export const AREA_MAP = {
 
 let feedbackDeps = { workerUrl: "", getEmail: () => "", getToken: async () => null };
 let lastPageContext = null;
+
+async function fileToBase64Payload(file) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return {
+    name: file.name || "screenshot.png",
+    contentType: file.type || "application/octet-stream",
+    base64: btoa(binary),
+  };
+}
 
 function loadQueue() {
   try {
@@ -61,16 +77,22 @@ export function bumpFeedbackPulse() {
   if (next >= 3) document.getElementById("sidebar-feedback")?.classList.add("sidebar-feedback-pulse");
 }
 
-async function postEntry(entry) {
+async function postEntry(entry, attachment = null) {
   if (!feedbackDeps.workerUrl) return null;
   const headers = { "Content-Type": "application/json" };
   const token = await feedbackDeps.getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const email = feedbackDeps.getEmail() || entry.email || "anonymous";
+  const payload = { email, entry };
+  if (attachment) {
+    payload.attachmentBase64 = attachment.base64;
+    payload.attachmentFilename = attachment.name;
+    payload.attachmentContentType = attachment.contentType;
+  }
   const response = await fetch(`${feedbackDeps.workerUrl}/api/feedback`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ email, entry }),
+    body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Server error (${response.status})`);
@@ -232,6 +254,13 @@ export function initFeedback(deps = {}) {
         return;
       }
       setFieldError(textEl);
+      const shotEl = document.getElementById("feedback-screenshot");
+      const file = shotEl?.files?.[0] || null;
+      if (file && file.size > MAX_ATTACHMENT_BYTES) {
+        showMsg("Screenshot is too large (max 8MB).", false);
+        return;
+      }
+      const attachment = file && file.size > 0 ? await fileToBase64Payload(file) : null;
       setButtonLoading(submitBtn, true);
       const email = feedbackDeps.getEmail() || "anonymous";
       const context = lastPageContext || capturePageContext();
@@ -253,7 +282,7 @@ export function initFeedback(deps = {}) {
       saveQueue([entry, ...loadQueue().filter((item) => item.id !== entry.id)]);
       form.classList.add("feedback-submit-success");
 
-      const ticket = await postEntry(entry);
+      const ticket = await postEntry(entry, attachment);
       markSynced(entry.id, ticket);
       showMsg(ticket?.ticketId ? `Thanks. Ticket #${ticket.ticketId} was created.` : "Thanks. Your feedback was saved.");
       setTimeout(close, ticket?.ticketId ? 1400 : 1200);
