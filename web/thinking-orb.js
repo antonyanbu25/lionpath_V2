@@ -341,3 +341,9 @@ export function initThinkingOrbs(root = document) {
 }
 
 export default initThinkingOrbs;
+
+if (typeof document !== "undefined") {
+  const init = () => initThinkingOrbs();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else init();
+}
