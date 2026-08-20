@@ -14,6 +14,7 @@
 -- Phase A extensions (migration hardening)
 \ir 07_grants.sql
 \ir 08_rls_hardening.sql
+\ir 14_rls_owner_write_calls.sql
 \ir 09_id_registry.sql
 \ir 10_shape_version.sql
 
