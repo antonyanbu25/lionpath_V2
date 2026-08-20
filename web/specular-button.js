@@ -56,6 +56,10 @@ function radiusFor(host, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+}
+
 export function applySpecularButton(host, opts = {}) {
   const options = { ...DEFAULTS, ...opts };
   if (!host || options.disabled) return { destroy() {} };
@@ -101,6 +105,13 @@ export function applySpecularButton(host, opts = {}) {
   let mouseY = -Infinity;
   let focus = options.autoAnimate ? 1 : 0;
   let destroyed = false;
+  let visible = false;
+  const isHostVisible = () => {
+    const rect = host.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    return rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < viewportWidth && rect.top < viewportHeight;
+  };
   const resize = () => {
     const rect = host.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -118,7 +129,9 @@ export function applySpecularButton(host, opts = {}) {
     mouseY = -Infinity;
   };
   const render = (now) => {
+    raf = 0;
     if (destroyed) return;
+    if (!visible) return;
     const rect = host.getBoundingClientRect();
     if (Math.round(rect.width) !== width || Math.round(rect.height) !== height) resize();
     const cx = rect.left + rect.width * 0.5;
@@ -142,27 +155,76 @@ export function applySpecularButton(host, opts = {}) {
     gl.uniform1f(loc.shineFade, options.shineFade);
     gl.uniform1f(loc.tintOpacity, options.tintOpacity);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (!prefersReducedMotion()) startLoop();
+  };
+  const stopLoop = () => {
+    if (!raf) return;
+    window.cancelAnimationFrame(raf);
+    raf = 0;
+  };
+  const startLoop = () => {
+    if (destroyed || raf || !visible) return;
+    if (prefersReducedMotion()) {
+      render(performance.now());
+      return;
+    }
     raf = window.requestAnimationFrame(render);
+  };
+  const syncVisibility = (nextVisible = isHostVisible()) => {
+    visible = nextVisible;
+    if (visible) {
+      resize();
+      startLoop();
+    } else {
+      stopLoop();
+    }
   };
 
   const observer = typeof ResizeObserver === "function" ? new ResizeObserver(resize) : null;
+  const intersectionObserver =
+    typeof IntersectionObserver === "function"
+      ? new IntersectionObserver((entries) => {
+          const entry = entries[entries.length - 1];
+          syncVisibility(Boolean(entry?.isIntersecting && entry.boundingClientRect.width > 0 && entry.boundingClientRect.height > 0));
+        })
+      : null;
+  const motionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+  const onMotionChange = () => {
+    if (prefersReducedMotion()) {
+      stopLoop();
+      if (visible) render(performance.now());
+    } else {
+      startLoop();
+    }
+  };
+  const onFallbackVisibilityChange = () => syncVisibility();
   resize();
   observer?.observe(host);
+  intersectionObserver?.observe(host);
   window.addEventListener("resize", resize);
+  motionQuery?.addEventListener?.("change", onMotionChange);
+  if (!intersectionObserver) {
+    window.addEventListener("resize", onFallbackVisibilityChange);
+    window.addEventListener("scroll", onFallbackVisibilityChange, { passive: true });
+  }
   if (options.followMouse) {
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
   }
-  raf = window.requestAnimationFrame(render);
+  syncVisibility();
 
   return {
     destroy() {
       destroyed = true;
       window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onFallbackVisibilityChange);
+      window.removeEventListener("scroll", onFallbackVisibilityChange);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
+      motionQuery?.removeEventListener?.("change", onMotionChange);
       observer?.disconnect();
+      intersectionObserver?.disconnect();
       canvas.remove();
       host.style.position = previousPosition;
       gl.deleteBuffer(buffer);
