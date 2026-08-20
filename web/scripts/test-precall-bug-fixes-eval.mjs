@@ -157,8 +157,8 @@ caseOk(
 );
 caseOk(
   CTA,
-  "box-shadow uses brand tint",
-  decl(css, ".nb-generate-btn", "box-shadow") === "0 2px 8px color-mix(in srgb, var(--dew-brand) 35%, transparent)",
+  "box-shadow uses brand rgba",
+  decl(css, ".nb-generate-btn", "box-shadow") === "0 2px 8px rgba(46, 137, 123, 0.35)",
 );
 caseOk(CTA, "height 50px", decl(css, ".nb-generate-btn", "height") === "50px");
 caseOk(CTA, "not using dew-primary for background", decl(css, ".nb-generate-btn", "background") !== "var(--dew-primary)");

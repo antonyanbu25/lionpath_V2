@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderQipRadar } from "../qip-radar.js";
 import { CATEGORY_KEYS, QIP_RADAR_LABELS } from "../rubric-profiles.js";
 
-const AXIS_COLORS = ["#161513", "#3f3d38", "#6b675e", "#8b867c", "#a39e93"];
+const AXIS_COLORS = ["#4f9d6b", "#2f9aa0", "#dd8a2e", "#d85c4c", "#7d6cc6"];
 
 const sampleScores = {
   discovery_qualification: 8.2,

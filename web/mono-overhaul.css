@@ -1,15 +1,16 @@
 /**
- * MONO OVERHAUL — editorial black & white visual layer (feat/mono-ui-overhaul).
- * Loaded last, after styles/precall/postcall/call-view/lifecycle. UI only:
- * serif display type, hairline rules, flat surfaces, cinema-dark loading moments.
- * Palette lives in dew-theme.css; spinner lives in orbit-spinner.css.
+ * EDITORIAL OVERHAUL — visual layer on top of the classic Dew palette
+ * (feat/mono-ui-overhaul). Loaded last, after styles/precall/postcall/
+ * call-view/lifecycle. UI structure only: serif display type, hairline
+ * rules, flat surfaces, sharper radii. Colors come from dew-theme.css;
+ * spinner lives in orbit-spinner.css.
  */
 
 /* ---------- Base ---------- */
 
 ::selection {
-  background: var(--dew-text);
-  color: var(--dew-bg);
+  background: var(--dew-brand);
+  color: var(--dew-text-inverse);
 }
 
 body {
@@ -18,7 +19,7 @@ body {
 }
 
 :focus-visible {
-  outline: 1.5px solid var(--dew-text);
+  outline: 1.5px solid var(--dew-brand);
   outline-offset: 2px;
 }
 
@@ -63,15 +64,7 @@ body {
   text-transform: uppercase;
 }
 
-/* ---------- Login — grayscale film under a paper card ---------- */
-
-.login-bg-video {
-  filter: grayscale(1) contrast(1.06) brightness(0.9);
-}
-
-[data-theme="dark"] .login-bg-video {
-  filter: grayscale(1) contrast(1.08) brightness(0.6);
-}
+/* ---------- Login — paper card, serif headline ---------- */
 
 .login-card {
   border-radius: 12px;
@@ -87,7 +80,6 @@ body {
 
 .login-brand-logo {
   border-radius: 8px;
-  filter: grayscale(1) contrast(1.05);
 }
 
 .login-google-btn-wrap fw-button.login-google-btn::part(native) {
@@ -95,37 +87,17 @@ body {
   letter-spacing: 0.01em;
 }
 
-.login-google-btn-wrap fw-button.login-google-btn:hover::part(native) {
-  background: var(--dew-brand-hover);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
-}
-
-/* ---------- Splash & app loading — always-dark cinema ---------- */
-
-.lion-splash {
-  background: #0d0d0c;
-}
-
-.lion-splash .dew-orbit-spinner {
-  --orbit-ink: #f4f2ed;
-}
+/* ---------- Splash & app loading ---------- */
 
 .lion-loader {
-  background: #151514;
-  border: 1px solid rgba(244, 242, 237, 0.14);
   border-radius: 12px;
   box-shadow: none;
 }
 
 .lion-title {
-  color: #f4f2ed;
   font-size: 30px;
   font-style: italic;
   font-weight: 500;
-}
-
-.lion-tagline {
-  color: rgba(244, 242, 237, 0.55);
 }
 
 .app-loading-card {
@@ -133,7 +105,7 @@ body {
   box-shadow: var(--dew-shadow-popover);
 }
 
-/* ---------- Sidebar — ink rail, hairline rule, serif wordmark ---------- */
+/* ---------- Sidebar — hairline rule, serif wordmark ---------- */
 
 .sidebar {
   border-right: 1px solid var(--dew-border);
@@ -147,7 +119,6 @@ body {
 
 .sidebar-brand-logo {
   border-radius: 8px;
-  filter: grayscale(1) contrast(1.05);
 }
 
 .sidebar-brand-icon {
@@ -220,41 +191,15 @@ fw-button.nav-item.active {
   background: var(--dew-surface-subtle);
 }
 
-/* ---------- Generation overlay — the Oblik moment: always ink-black ---------- */
-
-.prep-gen-overlay-backdrop {
-  background: rgba(13, 13, 12, 0.94);
-  backdrop-filter: blur(10px);
-}
-
-.prep-gen-overlay-panel {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-.prep-gen-overlay .dew-orbit-spinner {
-  --orbit-ink: #f4f2ed;
-}
-
-.prep-gen-brand {
-  width: 104px;
-  height: 104px;
-}
-
-.prep-gen-eyebrow {
-  color: rgba(244, 242, 237, 0.5);
-}
+/* ---------- Generation overlay — serif title, mono stage, hairline progress ---------- */
 
 .prep-gen-title {
-  color: #f4f2ed;
   font-size: clamp(28px, 3.4vw, 38px);
   font-style: italic;
   font-weight: 500;
 }
 
 .prep-gen-stage {
-  color: rgba(244, 242, 237, 0.66);
   font-family: var(--dew-font-mono);
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -264,16 +209,10 @@ fw-button.nav-item.active {
 .prep-gen-progress-track {
   height: 2px;
   border-radius: 0;
-  background: rgba(244, 242, 237, 0.16);
 }
 
 .prep-gen-progress-bar {
   border-radius: 0;
-  background: #f4f2ed;
-}
-
-.prep-gen-hint {
-  color: rgba(244, 242, 237, 0.45);
 }
 
 /* ---------- Cards & panels — flat, hairline, sharper radius ---------- */
@@ -315,7 +254,7 @@ fw-tabs {
   --fw-tabs-border-color: var(--dew-border);
 }
 
-/* ---------- Scrollbars — quiet monochrome ---------- */
+/* ---------- Scrollbars — quiet, theme-aware ---------- */
 
 * {
   scrollbar-width: thin;

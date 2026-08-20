@@ -65,6 +65,6 @@ body.local-sync-lock {
 
 .local-sync-done {
   margin: 16px 0 0;
-  color: var(--dew-success, #3f3d38);
+  color: var(--dew-success, #0a7);
   font-weight: 600;
 }

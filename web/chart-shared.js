@@ -1,61 +1,60 @@
 import { esc } from "./shared.js";
 
 /**
- * Portal chart palette — monochrome editorial scale (feat/mono-ui-overhaul).
+ * Portal chart palette — from newportalui.html / dew-theme.css (SE Labs Portal).
  * SVG/canvas charts import these; CSS charts should prefer var(--dew-*).
- * Hue families map to ink density: red → ink, amber → mid gray, green → dark gray.
  */
 export const CHART_PALETTE = {
-  brand: "#161513",
-  primary: "#3f3d38",
-  primaryHover: "#57534b",
-  green: "#3f3d38",
-  greenTint: "#eceae4",
-  amber: "#6b675e",
-  amberTint: "#f0eee8",
-  red: "#161513",
-  redTint: "#e9e6df",
-  clay: "#57534b",
-  clayTint: "#eceae4",
-  blue: "#3f3d38",
-  blueTint: "#eceae4",
-  purple: "#161513",
-  purpleTint: "#eceae4",
-  text: "#161513",
-  textSecondary: "#57534b",
-  textMuted: "#7a756b",
-  textFaint: "#a39e93",
-  border: "#e0dcd3",
-  hairline: "#e8e5de",
-  surfaceSubtle: "#f1efe9",
-  brandTint: "#e9e6df",
-  primaryTint: "#efede8",
-  ringStrokes: ["#e8e5de", "#e4e0d7", "#e0dcd3", "#dcd8ce", "#d8d4c9"],
-  scaleLabels: ["#a39e93", "#a8a399", "#ada89e"],
-  spokeStroke: "#e8e5de",
+  brand: "#2e897b",
+  primary: "#6fb8ac",
+  primaryHover: "#5da79a",
+  green: "#4a7a5c",
+  greenTint: "#e9f1e9",
+  amber: "#a5883f",
+  amberTint: "#f3ecda",
+  red: "#b8544a",
+  redTint: "#f4e7df",
+  clay: "#c2603f",
+  clayTint: "#f6ece7",
+  blue: "#4a6fa5",
+  blueTint: "#e7eef7",
+  purple: "#6b5b95",
+  purpleTint: "#eeeaf6",
+  text: "#2b2926",
+  textSecondary: "#3d3a34",
+  textMuted: "#6f6759",
+  textFaint: "#a49a88",
+  border: "#ece7de",
+  hairline: "#f4f0e8",
+  surfaceSubtle: "#faf8f4",
+  brandTint: "#e3efec",
+  primaryTint: "#f0f7f5",
+  ringStrokes: ["#f2ece1", "#eee7db", "#eae2d4", "#e6ddcd", "#dcd1be"],
+  scaleLabels: ["#c9bfab", "#cec5b2", "#d3cab7"],
+  spokeStroke: "#efe8db",
 };
 
-/** Five-axis QIP star radar — grayscale axis steps, ink → faint. */
+/** Five-axis QIP star radar — portal tile accent colors. */
 export const QIP_RADAR_AXIS = {
-  colors: ["#161513", "#3f3d38", "#57534b", "#7a756b", "#a39e93"],
-  strokes: ["#35322c", "#57534b", "#6b675e", "#8b867c", "#b3aea4"],
-  labelScoreColors: ["#161513", "#3f3d38", "#57534b", "#6b675e", "#8b867c"],
+  colors: ["#2e897b", "#4a6fa5", "#4a7a5c", "#a5883f", "#6b5b95"],
+  strokes: ["#3a9a8c", "#5a7fb5", "#5a8a6c", "#b5984f", "#7b6ba5"],
+  labelScoreColors: ["#256f63", "#3d5f8f", "#3d6649", "#8a722f", "#5a4b7f"],
   gradientStops: [
-    ["#161513", "#3f3d38"],
-    ["#3f3d38", "#57534b"],
-    ["#57534b", "#7a756b"],
-    ["#7a756b", "#a39e93"],
-    ["#a39e93", "#161513"],
+    ["#2e897b", "#4a6fa5"],
+    ["#4a6fa5", "#4a7a5c"],
+    ["#4a7a5c", "#a5883f"],
+    ["#a5883f", "#6b5b95"],
+    ["#6b5b95", "#2e897b"],
   ],
 };
 
-/** Score bands for heatmaps — ink density carries severity (dark = needs attention). */
+/** Score bands for heatmaps and inline chart fills. */
 export const CHART_SCORE_BANDS = [
-  { min: 0, max: 55, bg: "#161513", fg: "#f4f2ed" },
-  { min: 55, max: 65, bg: "#57534b", fg: "#f4f2ed" },
-  { min: 65, max: 75, bg: "#e0dcd3", fg: "#161513" },
-  { min: 75, max: 85, bg: "#eceae4", fg: "#161513" },
-  { min: 85, max: 101, bg: "#f5f3ee", fg: "#161513" },
+  { min: 0, max: 55, bg: "#f4e7df", fg: "#b8544a" },
+  { min: 55, max: 65, bg: "#f3ecda", fg: "#a5883f" },
+  { min: 65, max: 75, bg: "#faf8f4", fg: "#6f6759" },
+  { min: 75, max: 85, bg: "#e9f1e9", fg: "#4a7a5c" },
+  { min: 85, max: 101, bg: "#e3efec", fg: "#2e897b" },
 ];
 
 export function heatmapShadeForScore(score) {
@@ -85,25 +84,25 @@ export const TREND_LINE_COLORS = [
 
 /** Call timeline spine segment fills [bg, fg]. */
 export const SPINE_SEGMENT_PALETTE = {
-  slides: ["#eceae4", "#161513"],
-  intro: ["#eceae4", "#161513"],
-  product: ["#e9e6df", "#161513"],
-  cde: ["#e9e6df", "#161513"],
-  demo: ["#eceae4", "#3f3d38"],
-  customer_screen: ["#eceae4", "#3f3d38"],
-  discovery: ["#eceae4", "#3f3d38"],
-  pricing: ["#f0eee8", "#6b675e"],
-  objection_handling: ["#e9e6df", "#161513"],
-  next_steps: ["#e9e6df", "#161513"],
-  none: ["#f5f3ee", "#7a756b"],
-  scene_change: ["#f0eee8", "#6b675e"],
+  slides: ["#eeeaf6", "#6b5b95"],
+  intro: ["#eeeaf6", "#6b5b95"],
+  product: ["#e3efec", "#2e897b"],
+  cde: ["#e3efec", "#2e897b"],
+  demo: ["#e9f1e9", "#4a7a5c"],
+  customer_screen: ["#e7eef7", "#4a6fa5"],
+  discovery: ["#e7eef7", "#4a6fa5"],
+  pricing: ["#f3ecda", "#a5883f"],
+  objection_handling: ["#f4e7df", "#b8544a"],
+  next_steps: ["#e3efec", "#2e897b"],
+  none: ["#faf8f4", "#8a8072"],
+  scene_change: ["#f3ecda", "#a5883f"],
 };
 
 export const TIMELINE_MARKER_COLORS = {
-  gap: "#161513",
-  objection: "#6b675e",
-  win: "#3f3d38",
-  weak_cta: "#57534b",
+  gap: "#b8544a",
+  objection: "#a5883f",
+  win: "#4a7a5c",
+  weak_cta: "#c2603f",
 };
 
 export const RADAR_DIMENSION_LABELS = {

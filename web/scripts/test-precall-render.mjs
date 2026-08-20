@@ -734,7 +734,7 @@ const checks = [
   })()],
   ["icp fitment shows known verdict pill", renderIcpFitment({ product: "Freshdesk", verdict: "Strong", criteria: [] }, []).includes("Strong alignment")],
   ["no unknown alignment string anywhere", !discovery.includes("Unknown alignment") && !renderIcpFitment({ product: "Freshdesk", verdict: "Unknown" }, []).includes("Unknown alignment")],
-  ["know tab maturity pastel band color", discovery.includes("#8b867c") || discovery.includes("#c9c3b7")],
+  ["know tab maturity pastel band color", discovery.includes("#e8c4bd") || discovery.includes("#eddcbb")],
   ["know tab fish benchmark bar", discovery.includes("prep-v9-benchmark-bar")],
   ["know tab kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
   ["know tab DISC svg", discovery.includes("prep-v9-disc")],

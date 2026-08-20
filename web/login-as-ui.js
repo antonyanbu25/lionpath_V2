@@ -89,7 +89,7 @@ function renderSsoList(list, search) {
         style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--dew-border,#ddd);font:inherit;background:var(--dew-surface,#fff);color:inherit;box-sizing:border-box" />
     </div>
     <button type="button" id="login-as-go-btn"
-      style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--dew-brand,#161513);color:#fff;font:inherit;font-weight:500;cursor:pointer">
+      style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--dew-brand,#5a4fcf);color:#fff;font:inherit;font-weight:500;cursor:pointer">
       Impersonate
     </button>
     <div id="login-as-status" style="padding:6px 0 0;font-size:12px;color:var(--dew-text-muted)" hidden></div>`;

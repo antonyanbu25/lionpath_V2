@@ -1,4 +1,4 @@
-﻿/* Post-call wireframe. Dew tokens from dew-theme.css */
+/* Post-call wireframe. Dew tokens from dew-theme.css */
 
 #view-postcall {
   display: flex;
@@ -48,12 +48,12 @@
 }
 
 .postcall-required {
-  color: var(--danger, var(--dew-red));
+  color: var(--danger, #b8544a);
 }
 
 /*
  * Analyse-call submit progress. Same hue as the button's existing primary color
- * (--dew-primary, consumed by fw-button via --color-fill-brand) â€” completeness only
+ * (--dew-primary, consumed by fw-button via --color-fill-brand) — completeness only
  * varies its opacity, from a faint tint at 0 mandatory fields filled to full-strength
  * primary at 1. No new color token introduced. --pc-submit-progress is set on the
  * element by web/postcall.js (0..1); the Crayons disabled affordance (opacity/cursor)
@@ -141,13 +141,13 @@ button.pc-deal-tile {
 }
 
 .pc-deal-tile:hover {
-  border-color: color-mix(in srgb, var(--dew-accent, var(--dew-brand)) 35%, var(--dew-border));
+  border-color: color-mix(in srgb, var(--dew-accent, #2563eb) 35%, var(--dew-border));
 }
 
 .pc-deal-tile.is-selected {
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
-  background: color-mix(in srgb, var(--dew-accent, var(--dew-brand)) 6%, var(--dew-surface-subtle));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
+  background: color-mix(in srgb, var(--dew-accent, #2563eb) 6%, var(--dew-surface-subtle));
 }
 
 .pc-deal-tile--static {
@@ -170,9 +170,9 @@ button.pc-deal-tile {
 }
 
 .pc-new-deal-field.is-selected {
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
-  background: color-mix(in srgb, var(--dew-accent, var(--dew-brand)) 6%, var(--dew-surface-subtle));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
+  background: color-mix(in srgb, var(--dew-accent, #2563eb) 6%, var(--dew-surface-subtle));
 }
 
 .pc-new-deal-title-input {
@@ -192,8 +192,8 @@ button.pc-deal-tile {
 
 .pc-new-deal-title-input:focus {
   outline: none;
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
 }
 
 .pc-new-deal-hint {
@@ -202,8 +202,8 @@ button.pc-deal-tile {
 }
 
 .pc-account-card-editable:focus-within {
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
 }
 
 .pc-account-name-wrap {
@@ -227,8 +227,8 @@ button.pc-deal-tile {
 
 .pc-account-name-input:focus {
   outline: none;
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
 }
 
 .pc-account-name-input::placeholder {
@@ -271,8 +271,8 @@ button.pc-deal-tile {
 }
 
 .pc-deal-pick.is-selected {
-  border-color: var(--dew-accent, var(--dew-brand));
-  box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand));
+  border-color: var(--dew-accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--dew-accent, #2563eb);
   background: var(--dew-surface);
 }
 
@@ -327,9 +327,9 @@ button.pc-deal-tile {
 }
 
 .pc-deal-type-chip.is-selected {
-  border-color: var(--dew-accent, var(--dew-brand));
-  color: var(--dew-accent, var(--dew-brand));
-  background: color-mix(in srgb, var(--dew-accent, var(--dew-brand)) 8%, var(--dew-surface));
+  border-color: var(--dew-accent, #2563eb);
+  color: var(--dew-accent, #2563eb);
+  background: color-mix(in srgb, var(--dew-accent, #2563eb) 8%, var(--dew-surface));
 }
 
 .pc-deal-type-chip:hover {
@@ -341,7 +341,7 @@ button.pc-deal-tile {
 }
 
 #view-postcall .nb-deal-card-icon {
-  color: var(--dew-amber);
+  color: #a5883f;
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -492,8 +492,8 @@ button.pc-deal-tile {
   gap: 6px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--dew-brand);
-  background: var(--dew-brand-tint);
+  color: #2e897b;
+  background: #e3efec;
   border-radius: 8px;
   padding: 5px 9px;
   flex-shrink: 0;
@@ -520,7 +520,7 @@ button.pc-deal-tile {
   font-weight: 600;
   color: var(--dew-text-muted);
   font-size: 10.5px;
-  background: var(--dew-amber-tint);
+  background: #f3ecda;
   border-radius: 6px;
   padding: 2px 7px;
 }
@@ -529,7 +529,7 @@ button.pc-deal-tile {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--dew-amber);
+  background: #a5883f;
 }
 
 .postcall-call-type-chips {
@@ -722,7 +722,7 @@ button.pc-deal-tile {
   padding: 2px 6px;
 }
 
-/* Meeting-room sub-panel â€” AI-suggested speaker attributions nested beneath a "Meeting room"
+/* Meeting-room sub-panel — AI-suggested speaker attributions nested beneath a "Meeting room"
    attendee row (see renderRoomGroupPanel in web/postcall.js). Suggestions only. */
 .postcall-room-groups {
   display: flex;
@@ -1052,11 +1052,11 @@ button.pc-deal-tile {
 }
 
 .postcall-step-done {
-  color: var(--dew-success-text, var(--dew-green));
+  color: var(--dew-success-text, #0d7a4a);
 }
 
 .postcall-step-error {
-  color: var(--dew-danger-text, var(--dew-red));
+  color: var(--dew-danger-text, #b42318);
 }
 
 .postcall-step-icon {
@@ -1198,7 +1198,7 @@ button.pc-deal-tile {
   text-align: left;
 }
 .pc-crm-account:hover { background: var(--dew-surface-hover, rgb(0 0 0 / 4%)); }
-.pc-crm-account--selected { border-color: var(--dew-accent, var(--dew-brand)); box-shadow: 0 0 0 1px var(--dew-accent, var(--dew-brand)); }
+.pc-crm-account--selected { border-color: var(--dew-accent, #2563eb); box-shadow: 0 0 0 1px var(--dew-accent, #2563eb); }
 .pc-crm-account-name { font-weight: 600; color: var(--dew-text-primary); }
 .pc-crm-deals { display: flex; flex-wrap: wrap; gap: 4px; }
 .pc-crm-deal {
@@ -1447,7 +1447,7 @@ button.pc-deal-tile {
   margin: 0 0 12px;
 }
 
-/* This call â†’ Follow-up table */
+/* This call → Follow-up table */
 #postcall-result .prep-compare {
   width: 100%;
   border: 1px solid var(--dew-border);
@@ -1779,11 +1779,11 @@ button.pc-deal-tile {
 }
 
 #postcall-result .qip-insight-col--good .qip-insight-title {
-  color: var(--dew-green);
+  color: #4a7a5c;
 }
 
 #postcall-result .qip-insight-col--bad .qip-insight-title {
-  color: var(--dew-red);
+  color: #b8544a;
 }
 
 #postcall-result .qip-insight-row {
@@ -1802,11 +1802,11 @@ button.pc-deal-tile {
 }
 
 #postcall-result .qip-insight-row--good .qip-insight-icon {
-  color: var(--dew-green);
+  color: #4a7a5c;
 }
 
 #postcall-result .qip-insight-row--bad .qip-insight-icon {
-  color: var(--dew-amber);
+  color: #c56b52;
 }
 
 #postcall-result .star-card,
@@ -1817,7 +1817,7 @@ button.pc-deal-tile {
   border: 1px solid var(--dew-border);
   border-radius: 18px;
   box-shadow:
-    0 12px 34px -18px rgba(22, 21, 19, 0.3),
+    0 12px 34px -18px rgba(58, 38, 24, 0.32),
     0 1px 2px rgba(43, 41, 38, 0.04);
   padding: 26px 30px 24px;
   display: flex;
@@ -2138,7 +2138,7 @@ button.pc-deal-tile {
 }
 
 #postcall-result .qip-sp-bar-seg.is-filled {
-  background: var(--green, var(--dew-brand));
+  background: var(--green, #2e897b);
 }
 
 #postcall-result .qip-sp-credit {
@@ -2326,12 +2326,12 @@ button.pc-deal-tile {
   padding: 3px 8px;
 }
 
-/* v2.3 â€” deck-rejection notification chip */
+/* v2.3 — deck-rejection notification chip */
 #view-postcall .qip-deck-rejected-pill {
   cursor: help; /* tooltip present */
 }
 
-/* v2.3 â€” legend explaining the High/Med/Low confidence pills are not the score itself */
+/* v2.3 — legend explaining the High/Med/Low confidence pills are not the score itself */
 .qip-confidence-legend {
   margin: 4px 0 10px;
   font-size: 12px;
@@ -2434,8 +2434,8 @@ button.pc-deal-tile {
 }
 
 #postcall-result .qip-line-suppressed {
-  border-color: color-mix(in srgb, var(--dew-warning, var(--dew-amber)) 35%, var(--dew-border));
-  box-shadow: inset 3px 0 0 var(--dew-warning, var(--dew-amber));
+  border-color: color-mix(in srgb, var(--dew-warning, #b8860b) 35%, var(--dew-border));
+  box-shadow: inset 3px 0 0 var(--dew-warning, #b8860b);
 }
 
 #postcall-result .qip-suppressed-badge {

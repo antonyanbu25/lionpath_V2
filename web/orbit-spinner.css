@@ -1,7 +1,7 @@
 /**
- * SPINNER ORBITS — monochrome editorial restyle (Alex Warnes / CodePen jXYYKL pattern).
- * Hairline ink rings, solid ink satellites, dashed outer dial. Sizes: small / medium / large.
- * Override --orbit-ink on always-dark surfaces (splash, gen overlay) — see mono-overhaul.css.
+ * SPINNER ORBITS — editorial restyle (Alex Warnes / CodePen jXYYKL pattern).
+ * Hairline brand rings, solid brand satellites, dashed outer dial. Sizes: small / medium / large.
+ * Override --orbit-ink on dark surfaces (splash, gen overlay) if needed.
  */
 
 .dew-orbit-spinner {
@@ -10,7 +10,7 @@
   --orbit-sat-1: 5px;
   --orbit-sat-2: 4px;
   --orbit-sat-3: 3px;
-  --orbit-ink: var(--dew-text, #161513);
+  --orbit-ink: var(--dew-brand);
   position: relative;
   width: var(--orbit-size);
   height: var(--orbit-size);

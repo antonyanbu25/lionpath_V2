@@ -158,11 +158,11 @@ export function logoGradient(name) {
   const hash = String(name || "")
     .split("")
     .reduce((a, c) => a + c.charCodeAt(0), 0);
-  const primary = dewCssVar("--dew-primary", "#161513");
-  const brand = dewCssVar("--dew-brand", "#161513");
-  const green = dewCssVar("--dew-green", "#3f3d38");
-  const amber = dewCssVar("--dew-amber", "#57534b");
-  const red = dewCssVar("--dew-red", "#161513");
+  const primary = dewCssVar("--dew-primary", "#1266f1");
+  const brand = dewCssVar("--dew-brand", "#6747d4");
+  const green = dewCssVar("--dew-green", "#0aa06e");
+  const amber = dewCssVar("--dew-amber", "#f79009");
+  const red = dewCssVar("--dew-red", "#e5484d");
   const hues = [
     `linear-gradient(135deg,${primary},${brand})`,
     `linear-gradient(135deg,${green},${primary})`,
