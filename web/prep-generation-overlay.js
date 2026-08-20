@@ -8,19 +8,19 @@ const FADE_MS = 420;
 const REVEAL_MS = 480;
 
 export const PREP_GEN_THEME = {
-  eyebrow: "SE Labs · Pre-call",
+  eyebrow: "Janus · Pre-call",
   title: "Building your brief",
   hint: "Research, enrichment, and synthesis run in the background — usually under a minute.",
 };
 
 export const POSTCALL_GEN_THEME = {
-  eyebrow: "SE Labs · Post-call",
+  eyebrow: "Janus · Post-call",
   title: "Analysing your call",
   hint: "Transcript analysis, qualification, and scoring run in the background — usually 40–90 seconds.",
 };
 
 export const CALL_LOAD_THEME = {
-  eyebrow: "SE Labs · Call record",
+  eyebrow: "Janus · Call record",
   title: "Loading your call",
   hint: "Fetching analysis, scorecard, and timeline from your workspace — usually a few seconds.",
 };

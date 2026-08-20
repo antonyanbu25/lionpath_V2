@@ -9,7 +9,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>SE Labs | Freshworks</title>
+    <title>Janus | Freshworks</title>
     <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -49,26 +49,16 @@
     <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
       <div class="lion-splash-inner">
         <div class="lion-loader" aria-hidden="true">
-          <div class="dew-orbit-spinner dew-orbit-spinner--medium lion-loader-orbit" aria-hidden="true">
-            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-            <span class="dew-orbit-core"></span>
-          </div>
+          <div class="thinking-orb dew-orbit-spinner dew-orbit-spinner--medium lion-loader-orbit" data-thinking-orb aria-hidden="true"></div>
         </div>
-        <h1 class="lion-title">SE Labs</h1>
+        <h1 class="lion-title">Janus</h1>
         <p class="lion-tagline">Solution Engineering</p>
       </div>
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
       <fw-card class="app-loading-card">
-        <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-          <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-          <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-          <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-          <span class="dew-orbit-core"></span>
-        </div>
+        <div class="thinking-orb dew-orbit-spinner dew-orbit-spinner--medium" data-thinking-orb aria-hidden="true"></div>
         <span id="app-loading-message" class="app-loading-message">Loading your workspace…</span>
       </fw-card>
     </div>
@@ -309,7 +299,7 @@
             <div class="sidebar-brand">
               <img class="sidebar-brand-logo" src="assets/freshworks-logomark.webp" alt="Freshworks" width="38" height="38" />
               <div class="sidebar-brand-copy">
-                <span class="sidebar-brand-text">SE Labs</span>
+                <span class="sidebar-brand-text">Janus</span>
               </div>
             </div>
             <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
@@ -598,12 +588,7 @@
             <div id="prep-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
               <div class="dew-skeleton-loading-head">
-                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-                  <span class="dew-orbit-core"></span>
-                </div>
+                <div class="thinking-orb dew-orbit-spinner dew-orbit-spinner--medium" data-thinking-orb aria-hidden="true"></div>
                 <span class="muted">Generating discovery brief…</span>
               </div>
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
@@ -768,12 +753,7 @@
             <div id="postcall-status" class="dew-status-host postcall-stage-panel" hidden></div>
             <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
               <div class="dew-skeleton-loading-head">
-                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-                  <span class="dew-orbit-core"></span>
-                </div>
+                <div class="thinking-orb dew-orbit-spinner dew-orbit-spinner--medium" data-thinking-orb aria-hidden="true"></div>
                 <span class="muted">Generating analysis…</span>
               </div>
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
@@ -790,14 +770,9 @@
       <div class="prep-gen-overlay-backdrop"></div>
       <div class="prep-gen-overlay-panel">
         <div class="prep-gen-brand" aria-hidden="true">
-          <div class="dew-orbit-spinner dew-orbit-spinner--large prep-gen-orbit" aria-hidden="true">
-            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-            <span class="dew-orbit-core"></span>
-          </div>
+          <div class="thinking-orb dew-orbit-spinner dew-orbit-spinner--large prep-gen-orbit" data-thinking-orb aria-hidden="true"></div>
         </div>
-        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">Janus · Pre-call</p>
         <h2 id="prep-gen-title" class="prep-gen-title">Building your brief</h2>
         <p id="prep-gen-stage" class="prep-gen-stage">Starting…</p>
         <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -1002,6 +977,7 @@
     </script>
     <link rel="stylesheet" href="components/coming-soon.css">
     <script src="components/coming-soon.js"></script>
+    <script type="module" src="./thinking-orb.js"></script>
     <script type="module" src="./specular-button.js"></script>
     <script type="module">
       const PROD_HOST =
