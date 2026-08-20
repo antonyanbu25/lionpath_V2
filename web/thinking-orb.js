@@ -246,8 +246,14 @@ export function createThinkingOrb(host, opts = {}) {
   let size = 0;
   let start = 0;
   let darkMode = false;
+  let visible = false;
   const themeQuery = getThemeQuery();
   const motionQuery = getMotionQuery();
+
+  function hostHasSize() {
+    const rect = host.getBoundingClientRect?.();
+    return Boolean((rect?.width || host.clientWidth || 0) && (rect?.height || host.clientHeight || 0));
+  }
 
   function syncSize() {
     const resolved = resolveSize(host, mergedOpts);
@@ -267,6 +273,7 @@ export function createThinkingOrb(host, opts = {}) {
 
   function render(timeStamp = 0) {
     if (destroyed) return;
+    if (!visible || !hostHasSize()) return;
     if (!start) start = timeStamp;
     syncSize();
     darkMode = resolveDarkMode(host, themeQuery);
@@ -278,45 +285,91 @@ export function createThinkingOrb(host, opts = {}) {
   }
 
   function animate(timeStamp) {
+    if (!hostHasSize()) {
+      setVisible(false);
+      return;
+    }
     render(timeStamp);
-    if (!destroyed && !prefersReducedMotion()) {
+    if (!destroyed && visible && !prefersReducedMotion()) {
       frame = window.requestAnimationFrame(animate);
     }
   }
+
+  function stopLoop() {
+    if (!frame) return;
+    window.cancelAnimationFrame(frame);
+    frame = 0;
+  }
+
+  function startLoop() {
+    if (destroyed || frame || !visible) return;
+    if (prefersReducedMotion()) {
+      render(performance.now());
+      return;
+    }
+    frame = window.requestAnimationFrame(animate);
+  }
+
+  function setVisible(nextVisible) {
+    if (destroyed) return;
+    visible = Boolean(nextVisible && hostHasSize());
+    if (visible) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
+  }
+
+  const intersectionObserver =
+    typeof IntersectionObserver === "function"
+      ? new IntersectionObserver((entries) => {
+          const entry = entries[0];
+          setVisible(Boolean(entry?.isIntersecting));
+        })
+      : null;
+  intersectionObserver?.observe(host);
 
   const resizeObserver =
     typeof ResizeObserver === "function"
       ? new ResizeObserver(() => {
-          render(performance.now());
+          if (!hostHasSize()) {
+            setVisible(false);
+            return;
+          }
+          if (!visible && !intersectionObserver) {
+            setVisible(true);
+            return;
+          }
+          if (visible) render(performance.now());
         })
       : null;
   resizeObserver?.observe(host);
 
-  const repaint = () => render(performance.now());
+  const repaint = () => {
+    if (visible) render(performance.now());
+  };
   themeQuery?.addEventListener?.("change", repaint);
-  motionQuery?.addEventListener?.("change", () => {
+  const handleMotionChange = () => {
     if (prefersReducedMotion()) {
-      window.cancelAnimationFrame(frame);
-      frame = 0;
+      stopLoop();
       repaint();
-    } else if (!frame) {
+    } else if (!frame && visible) {
       start = 0;
-      frame = window.requestAnimationFrame(animate);
+      startLoop();
     }
-  });
+  };
+  motionQuery?.addEventListener?.("change", handleMotionChange);
 
-  if (prefersReducedMotion()) {
-    render(0);
-  } else {
-    frame = window.requestAnimationFrame(animate);
-  }
+  if (!intersectionObserver) setVisible(hostHasSize());
 
   return {
     destroy() {
       destroyed = true;
-      if (frame) window.cancelAnimationFrame(frame);
+      stopLoop();
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
       themeQuery?.removeEventListener?.("change", repaint);
+      motionQuery?.removeEventListener?.("change", handleMotionChange);
       canvas.remove();
     },
   };
