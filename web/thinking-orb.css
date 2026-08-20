@@ -1,0 +1,22 @@
+.thinking-orb {
+  display: inline-block;
+}
+
+.thinking-orb canvas {
+  display: block;
+}
+
+.thinking-orb--sm {
+  width: 32px;
+  height: 32px;
+}
+
+.thinking-orb--md {
+  width: 48px;
+  height: 48px;
+}
+
+.thinking-orb--lg {
+  width: 64px;
+  height: 64px;
+}
