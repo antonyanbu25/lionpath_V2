@@ -253,7 +253,7 @@ export class PostgresRepository implements PersistencePort {
       "activity",
       `INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
          occurred_at = EXCLUDED.occurred_at, updated_at = now()
        RETURNING id`,
@@ -273,7 +273,7 @@ export class PostgresRepository implements PersistencePort {
       "pre_call",
       `INSERT INTO pre_call (public_id, idempotency_key, activity_id, research_brief, input_snapshot, generated_at)
        VALUES ($1, $2, $3, $4, $5, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          research_brief = EXCLUDED.research_brief, input_snapshot = EXCLUDED.input_snapshot
        RETURNING id`,
       [
@@ -293,7 +293,7 @@ export class PostgresRepository implements PersistencePort {
       "post_call",
       `INSERT INTO post_call (public_id, idempotency_key, activity_id, transcript_ref, analysis, detail, pipeline_state, analysis_shape_version, detail_shape_version, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          transcript_ref = EXCLUDED.transcript_ref, analysis = EXCLUDED.analysis,
          detail = EXCLUDED.detail, pipeline_state = EXCLUDED.pipeline_state,
          analysis_shape_version = EXCLUDED.analysis_shape_version,
