@@ -1,52 +1,61 @@
 /**
- * SE Labs theme — warm cream + teal accent (from SE Labs Portal design)
+ * LionPath monochrome theme — editorial black & white (see mono-overhaul.css).
+ * Warm bone canvas + ink accent in light; charcoal canvas + paper ink in dark.
  * App: --bg, --surface, --text, --muted, --accent, --accent-bg, --border, --dew-*
  * Crayons: --fw-primary-color, --fw-primary-color-hover, --fw-theme-mode
  */
 :root,
 [data-theme="light"] {
-  --dew-sidebar-bg: #f2ede3;
-  --dew-brand: #2e897b;
-  --dew-brand-hover: #256f63;
-  --dew-brand-tint: #e3efec;
-  --dew-primary: #6fb8ac;
-  --dew-primary-hover: #5da79a;
-  --dew-primary-tint: #f0f7f5;
-  --dew-text: #2b2926;
-  --dew-text-secondary: #6f6759;
-  --dew-text-muted: #8a8072;
-  --dew-text-faint: #a49a88;
-  --dew-bg: #fdfcfa;
+  --dew-sidebar-bg: #f1efe9;
+  --dew-brand: #161513;
+  --dew-brand-hover: #000000;
+  --dew-brand-tint: #e9e6df;
+  --dew-primary: #161513;
+  --dew-primary-hover: #35322c;
+  --dew-primary-tint: #efede8;
+  --dew-text: #161513;
+  --dew-text-secondary: #57534b;
+  --dew-text-muted: #7a756b;
+  --dew-text-faint: #a39e93;
+  --dew-bg: #f7f6f3;
   --dew-surface: #ffffff;
-  --dew-surface-subtle: #faf8f4;
-  --dew-surface-faint: #f6f3ee;
-  --dew-hairline: #f4f0e8;
-  --dew-border: #ece7de;
-  --dew-input-border: #ddd4c4;
-  --dew-purple: #2e897b;
-  --dew-purple-tint: #e3efec;
-  --dew-green: #4a7a5c;
-  --dew-green-tint: #e9f1e9;
-  --dew-amber: #b5831f;
-  --dew-amber-tint: #f8efdf;
-  --dew-red: #b8544a;
-  --dew-red-tint: #f4e7df;
-  --dew-teal: #2f8a7b;
-  --dew-teal-tint: #e3efec;
-  --dew-sand-tint: #f3ecda;
-  --dew-clay-tint: #f4e7df;
-  --dew-radius-lg: 14px;
-  --dew-shadow-island: 0 1px 2px rgba(43, 41, 38, 0.03);
-  --dew-shadow-card: 0 2px 8px rgba(43, 41, 38, 0.06);
-  --dew-shadow-popover: 0 12px 40px rgba(43, 41, 38, 0.12);
+  --dew-surface-subtle: #f1efe9;
+  --dew-surface-faint: #f5f3ee;
+  --dew-hairline: #e8e5de;
+  --dew-border: #e0dcd3;
+  --dew-input-border: #c9c3b7;
+  --dew-purple: #161513;
+  --dew-purple-tint: #eceae4;
+  --dew-accent: #161513;
+  --dew-green: #3f3d38;
+  --dew-green-tint: #eceae4;
+  --dew-amber: #6b675e;
+  --dew-amber-tint: #f0eee8;
+  --dew-red: #242220;
+  --dew-red-tint: #e9e6df;
+  --dew-teal: #161513;
+  --dew-teal-tint: #eceae4;
+  --dew-sand-tint: #f0eee8;
+  --dew-clay-tint: #eceae4;
+  --dew-radius-lg: 10px;
+  --dew-text-inverse: #ffffff;
+  --dew-shadow-island: 0 1px 2px rgba(22, 21, 19, 0.04);
+  --dew-shadow-card: 0 1px 3px rgba(22, 21, 19, 0.05);
+  --dew-shadow-popover: 0 16px 48px rgba(22, 21, 19, 0.14);
+
+  --dew-font-display: "Playfair Display", "Georgia", "Times New Roman", serif;
+  --dew-font-body: "Figtree", system-ui, -apple-system, sans-serif;
+  --dew-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --bg: var(--dew-bg);
   --bg-gradient: none;
   --surface: var(--dew-surface);
   --surface-elevated: var(--dew-surface-faint);
   --surface-muted: var(--dew-surface-subtle);
+  --surface-hover: #edeae3;
+  --surface-active: #e4e0d7;
   --border: var(--dew-border);
-  --border-soft: #f4f0e8;
+  --border-soft: #e8e5de;
   --text: var(--dew-text);
   --muted: var(--dew-text-secondary);
   --accent: var(--dew-brand);
@@ -56,7 +65,7 @@
   --teal: var(--dew-brand);
   --teal-bg: var(--dew-primary-tint);
   --warm: var(--dew-amber);
-  --warm-hover: #a9782a;
+  --warm-hover: #57534b;
   --warm-bg: var(--dew-amber-tint);
   --green-bg: var(--dew-green-tint);
   --green: var(--dew-green);
@@ -66,12 +75,12 @@
   --danger-bg: var(--dew-red-tint);
   --shadow-sm: var(--dew-shadow-island);
   --shadow-md: var(--dew-shadow-card);
-  --shadow-lift: 0 8px 24px rgba(43, 41, 38, 0.08);
+  --shadow-lift: 0 8px 24px rgba(22, 21, 19, 0.08);
   --input-bg: var(--dew-surface);
   --topbar-bg: var(--dew-surface);
   --footer-bg: var(--dew-bg);
-  --splash-bg: var(--dew-bg);
-  --splash-glow: color-mix(in srgb, var(--dew-brand) 12%, transparent);
+  --splash-bg: #0d0d0c;
+  --splash-glow: rgba(244, 242, 237, 0.07);
   --sidebar-w: 250px;
 
   --fw-primary-color: var(--dew-primary);
@@ -79,12 +88,12 @@
   --fw-theme-mode: light;
 
   /* Crayons fw-button semantic tokens → Dew (Freshdesk / Freshservice) */
-  --dew-btn-radius: 9px;
+  --dew-btn-radius: 6px;
   --color-fill-brand: var(--dew-primary);
   --color-fill-semantic-info-bold: var(--dew-primary-hover);
   --color-text-brand: var(--dew-brand);
   --color-text-primary: var(--dew-text);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --color-fill-surface: var(--dew-surface);
   --color-fill-container: var(--dew-surface-subtle);
   --color-boundary-border-mildest: var(--dew-input-border);
@@ -100,50 +109,51 @@
 }
 
 [data-theme="dark"] {
-  --dew-sidebar-bg: #1e1c19;
-  --dew-brand: #6fb8ac;
-  --dew-brand-hover: #8ecfc4;
-  --dew-brand-tint: rgba(47, 138, 123, 0.18);
-  --dew-primary: #6fb8ac;
-  --dew-primary-hover: #8ecfc4;
-  --dew-primary-tint: rgba(111, 184, 172, 0.14);
-  --dew-text: #f0ebe3;
-  --dew-text-secondary: #b0a898;
-  --dew-text-muted: #8a8072;
-  --dew-text-faint: #6f6759;
-  --dew-bg: #141210;
-  --dew-surface: #1f1c18;
-  --dew-surface-subtle: #252219;
-  --dew-surface-faint: #1a1815;
-  --surface-hover: #2d2a24;
-  --surface-active: #343029;
-  --surface-elevated-2: #28251f;
-  --dew-hairline: rgba(236, 231, 222, 0.08);
-  --dew-border: rgba(236, 231, 222, 0.14);
-  --dew-input-border: rgba(236, 231, 222, 0.22);
-  --dew-purple: #6fb8ac;
-  --dew-purple-tint: rgba(47, 138, 123, 0.16);
-  --dew-green: #6daa7e;
-  --dew-green-tint: rgba(74, 122, 92, 0.16);
-  --dew-amber: #d4a04a;
-  --dew-amber-tint: rgba(181, 131, 31, 0.14);
-  --dew-red: #d46a60;
-  --dew-red-tint: rgba(184, 84, 74, 0.14);
-  --dew-teal: #6fb8ac;
-  --dew-teal-tint: rgba(47, 138, 123, 0.16);
-  --dew-sand-tint: rgba(165, 136, 63, 0.12);
-  --dew-clay-tint: rgba(176, 120, 91, 0.12);
-  --dew-shadow-island: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --dew-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.32);
-  --dew-shadow-popover: 0 12px 40px rgba(0, 0, 0, 0.42);
+  --dew-sidebar-bg: #111110;
+  --dew-brand: #f4f2ed;
+  --dew-brand-hover: #ffffff;
+  --dew-brand-tint: rgba(244, 242, 237, 0.12);
+  --dew-primary: #f4f2ed;
+  --dew-primary-hover: #ffffff;
+  --dew-primary-tint: rgba(244, 242, 237, 0.1);
+  --dew-text: #f4f2ed;
+  --dew-text-secondary: #b3aea4;
+  --dew-text-muted: #8b867c;
+  --dew-text-faint: #6b675e;
+  --dew-bg: #0d0d0c;
+  --dew-surface: #151514;
+  --dew-surface-subtle: #1a1a18;
+  --dew-surface-faint: #121211;
+  --dew-hairline: rgba(244, 242, 237, 0.08);
+  --dew-border: rgba(244, 242, 237, 0.14);
+  --dew-input-border: rgba(244, 242, 237, 0.24);
+  --dew-purple: #f4f2ed;
+  --dew-purple-tint: rgba(244, 242, 237, 0.1);
+  --dew-accent: #f4f2ed;
+  --dew-green: #cfccc4;
+  --dew-green-tint: rgba(244, 242, 237, 0.08);
+  --dew-amber: #a39e93;
+  --dew-amber-tint: rgba(244, 242, 237, 0.07);
+  --dew-red: #e8e5de;
+  --dew-red-tint: rgba(244, 242, 237, 0.12);
+  --dew-teal: #f4f2ed;
+  --dew-teal-tint: rgba(244, 242, 237, 0.1);
+  --dew-sand-tint: rgba(244, 242, 237, 0.06);
+  --dew-clay-tint: rgba(244, 242, 237, 0.08);
+  --dew-text-inverse: #161513;
+  --dew-shadow-island: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --dew-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.36);
+  --dew-shadow-popover: 0 12px 40px rgba(0, 0, 0, 0.46);
 
   --bg: var(--dew-bg);
   --bg-gradient: none;
   --surface: var(--dew-surface);
   --surface-elevated: var(--dew-surface-faint);
   --surface-muted: var(--dew-surface-subtle);
+  --surface-hover: rgba(244, 242, 237, 0.06);
+  --surface-active: rgba(244, 242, 237, 0.11);
   --border: var(--dew-border);
-  --border-soft: rgba(236, 231, 222, 0.1);
+  --border-soft: rgba(244, 242, 237, 0.1);
   --text: var(--dew-text);
   --muted: var(--dew-text-secondary);
   --accent: var(--dew-brand);
@@ -162,23 +172,23 @@
   --danger-bg: var(--dew-red-tint);
   --shadow-sm: var(--dew-shadow-island);
   --shadow-md: var(--dew-shadow-card);
-  --shadow-lift: 0 10px 32px rgba(0, 0, 0, 0.38);
-  --input-bg: #1a1815;
+  --shadow-lift: 0 10px 32px rgba(0, 0, 0, 0.42);
+  --input-bg: #121211;
   --topbar-bg: var(--dew-surface);
   --footer-bg: var(--dew-bg);
-  --splash-bg: var(--dew-bg);
-  --splash-glow: color-mix(in srgb, var(--dew-brand) 16%, transparent);
+  --splash-bg: #0d0d0c;
+  --splash-glow: rgba(244, 242, 237, 0.08);
 
   --fw-primary-color: var(--dew-primary);
   --fw-primary-color-hover: var(--dew-primary-hover);
   --fw-theme-mode: dark;
 
-  --dew-btn-radius: 9px;
+  --dew-btn-radius: 6px;
   --color-fill-brand: var(--dew-primary);
   --color-fill-semantic-info-bold: var(--dew-primary-hover);
   --color-text-brand: var(--dew-brand);
   --color-text-primary: var(--dew-text);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --color-fill-surface: var(--dew-surface);
   --color-fill-container: var(--dew-surface-subtle);
   --color-boundary-border-mildest: var(--dew-input-border);
@@ -189,7 +199,7 @@
   --shadow-xs: none;
   --shadow-clicked-button: none;
   --fw-button-active-box-shadow: none;
-  --fw-button-hover-background-color: var(--surface-hover);
+  --fw-button-hover-background-color: var(--dew-primary-hover);
   --fw-button--lg-focus-border: var(--dew-brand);
 }
 
@@ -197,7 +207,7 @@
 fw-button[color="primary"] {
   --color-fill-brand: var(--dew-primary);
   --fw-button-hover-background-color: var(--dew-primary-hover);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --gradient-fill: none;
   --shadow-xs: none;
 }
@@ -217,7 +227,7 @@ fw-button[color="secondary"][fill="clear"] {
   --color-boundary-border-mildest: transparent;
   --gradient-fill: none;
   --shadow-xs: none;
-  --fw-button-hover-background-color: #ebe5da;
+  --fw-button-hover-background-color: var(--dew-surface-subtle);
 }
 
 fw-button[color="link"] {
@@ -266,17 +276,17 @@ fw-button.sidebar-collapse[color="secondary"][fill="clear"] {
   --color-boundary-border-boldest: var(--dew-border);
   --color-boundary-brand: var(--dew-border);
   --color-text-primary: var(--dew-text-secondary);
-  --fw-button-hover-background-color: #ebe5da;
+  --fw-button-hover-background-color: var(--dew-surface-subtle);
   --fw-button--lg-focus-border: var(--dew-border);
 }
 
 body {
-  font-family: "Figtree", system-ui, -apple-system, sans-serif;
+  font-family: var(--dew-font-body);
   color: var(--dew-text);
 }
 
 .dew-mono-label {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--dew-font-mono);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;

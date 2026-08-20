@@ -23,8 +23,8 @@ const R = 165;
 const PAD = 34;
 const DOT_R = 5.5;
 
-/** Per-axis colors — Discovery · Solutioning · Business value · Objections · Communication. */
-const AXIS_COLORS = ["#4f9d6b", "#2f9aa0", "#dd8a2e", "#d85c4c", "#7d6cc6"];
+/** Per-axis colors — Discovery · Solutioning · Business value · Objections · Communication. Monochrome ink → faint steps. */
+const AXIS_COLORS = ["#161513", "#3f3d38", "#6b675e", "#8b867c", "#a39e93"];
 
 const LABEL_ANCHORS = ["middle", "start", "start", "end", "end"];
 
@@ -124,11 +124,11 @@ export function renderQipRadar(categoryScores, opts = {}) {
     .join("");
 
   const strokeDef = `<linearGradient id="${uid}-stroke" gradientUnits="userSpaceOnUse" x1="${CX - R}" y1="${CY - R}" x2="${CX + R}" y2="${CY + R}">
-      <stop offset="0%" stop-color="#4f9d6b"/>
-      <stop offset="28%" stop-color="#2f9aa0"/>
-      <stop offset="52%" stop-color="#7d6cc6"/>
-      <stop offset="76%" stop-color="#d85c4c"/>
-      <stop offset="100%" stop-color="#dd8a2e"/>
+      <stop offset="0%" stop-color="#161513"/>
+      <stop offset="28%" stop-color="#3f3d38"/>
+      <stop offset="52%" stop-color="#a39e93"/>
+      <stop offset="76%" stop-color="#8b867c"/>
+      <stop offset="100%" stop-color="#6b675e"/>
     </linearGradient>`;
 
   const clipDef = `<clipPath id="${uid}-poly"><polygon points="${dataPoly}"/></clipPath>`;
@@ -140,7 +140,7 @@ export function renderQipRadar(categoryScores, opts = {}) {
       const ringCls = outer
         ? "ring r5 qip-radar-ring qip-radar-ring-outer"
         : `ring r${lv / 2} qip-radar-ring`;
-      const stroke = outer ? "#ddccb6" : "#ece7de";
+      const stroke = outer ? "#d8d4c9" : "#e8e5de";
       const opacity = outer ? "1" : "0.7";
       return `<polygon class="${ringCls}" points="${pts}" fill="none" stroke="${stroke}" stroke-width="1" opacity="${opacity}" style="fill:none;stroke:${stroke}"/>`;
     })
@@ -148,13 +148,13 @@ export function renderQipRadar(categoryScores, opts = {}) {
 
   const spokes = Array.from({ length: N }, (_, i) => {
     const [x, y] = pt(R, i);
-    return `<line class="spoke qip-radar-spoke" x1="${CX}" y1="${CY}" x2="${fmtCoord(x)}" y2="${fmtCoord(y)}" stroke="#ece7de" stroke-width="1" opacity="0.55"/>`;
+    return `<line class="spoke qip-radar-spoke" x1="${CX}" y1="${CY}" x2="${fmtCoord(x)}" y2="${fmtCoord(y)}" stroke="#e8e5de" stroke-width="1" opacity="0.55"/>`;
   }).join("");
 
   const scaleLabels = [2, 4, 6, 8, 10]
     .map((lv) => {
       const y = CY - (lv / MAX) * R;
-      return `<text class="lab qip-radar-scale" x="${CX - 10}" y="${fmtCoord(y + 3)}" text-anchor="end" font-family="${MONO}" font-size="9" fill="#c2b7a6">${lv}</text>`;
+      return `<text class="lab qip-radar-scale" x="${CX - 10}" y="${fmtCoord(y + 3)}" text-anchor="end" font-family="${MONO}" font-size="9" fill="#a39e93">${lv}</text>`;
     })
     .join("");
 
@@ -180,8 +180,8 @@ export function renderQipRadar(categoryScores, opts = {}) {
     const displayScore = formatScore(scores[i]);
     const line1 = lines[0] || "";
     const line2 = lines[1] || "";
-    return `<text class="lab qip-radar-axis-label" x="${fmtCoord(lx)}" y="${fmtCoord(ly - 20)}" text-anchor="${anchor}" font-family="${SANS}" font-size="12.5" font-weight="600" fill="#6f6759">${esc(line1)}</text>
-            <text class="lab qip-radar-axis-label" x="${fmtCoord(lx)}" y="${fmtCoord(ly - 5)}" text-anchor="${anchor}" font-family="${SANS}" font-size="12.5" font-weight="600" fill="#6f6759">${esc(line2)}</text>
+    return `<text class="lab qip-radar-axis-label" x="${fmtCoord(lx)}" y="${fmtCoord(ly - 20)}" text-anchor="${anchor}" font-family="${SANS}" font-size="12.5" font-weight="600" fill="#57534b">${esc(line1)}</text>
+            <text class="lab qip-radar-axis-label" x="${fmtCoord(lx)}" y="${fmtCoord(ly - 5)}" text-anchor="${anchor}" font-family="${SANS}" font-size="12.5" font-weight="600" fill="#57534b">${esc(line2)}</text>
             <text class="lab qip-radar-value" x="${fmtCoord(lx)}" y="${fmtCoord(ly + 17)}" text-anchor="${anchor}" font-family="${MONO}" font-size="18" font-weight="600" fill="${color}" style="font-size:18px;fill:${color}">${esc(displayScore)}</text>`;
   }).join("");
 
@@ -212,7 +212,7 @@ export function renderQipRadar(categoryScores, opts = {}) {
           <g clip-path="url(#${uid}-poly)">${washRects}</g>
           <polygon class="qip-radar-data" points="${dataPoly}" fill="none" stroke="url(#${uid}-stroke)" stroke-width="2.5" stroke-linejoin="round" style="fill:none;stroke-width:2.5"/>
           ${dots}
-          <circle class="qip-radar-center" cx="${CX}" cy="${CY}" r="2.5" fill="#8a8072" opacity="0.4"/>
+          <circle class="qip-radar-center" cx="${CX}" cy="${CY}" r="2.5" fill="#7a756b" opacity="0.4"/>
         </g>
         ${labelMarkup}
       </svg>

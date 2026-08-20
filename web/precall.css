@@ -1,4 +1,4 @@
-/* Pre-call wireframe. uses Dew tokens from dew-theme.css */
+﻿/* Pre-call wireframe. uses Dew tokens from dew-theme.css */
 
 body.prep-gen-lock {
   overflow: hidden;
@@ -191,7 +191,7 @@ body.prep-gen-lock {
 
 /* Precall-only: .prep-form-heading is on the post-call heading too (index.html:450), whose
    subtitle must stay visible. Scoped to .nb-form-heading, which only the precall heading
-   carries — hiding it globally blanked the post-call subtitle. */
+   carries â€” hiding it globally blanked the post-call subtitle. */
 .nb-form-heading p:not(.nb-build-stamp) {
   display: none;
 }
@@ -206,7 +206,7 @@ body.prep-gen-lock {
   color: var(--dew-text-muted);
 }
 
-/* New pre-call brief — SE Labs design */
+/* New pre-call brief â€” SE Labs design */
 .nb-form-card {
   background: var(--dew-surface);
   border: 1px solid var(--dew-border);
@@ -221,7 +221,7 @@ body.prep-gen-lock {
   gap: 18px;
 }
 
-/* styles.css gives #prep-form fw-* a 14px margin — breaks nb-input-shell layout */
+/* styles.css gives #prep-form fw-* a 14px margin â€” breaks nb-input-shell layout */
 #prep-form.nb-form fw-input,
 #prep-form.nb-form fw-textarea,
 #prep-form.nb-form fw-select,
@@ -362,7 +362,7 @@ body.prep-gen-lock {
 
 .nb-account-slot {
   /* this element also carries the legacy .prep-account-card class
-     (styles.css), which sets margin-top: -4px for its old layout — override
+     (styles.css), which sets margin-top: -4px for its old layout â€” override
      so the card sits exactly margin-bottom(7px) below the label, matching
      the deal column next to it. */
   margin-top: 0;
@@ -373,7 +373,7 @@ body.prep-gen-lock {
   flex-direction: column;
   min-width: 0;
   /* this element also carries the legacy .prep-deal-row class (styles.css),
-     which sets gap: 10px and align-items: end for its old grid layout —
+     which sets gap: 10px and align-items: end for its old grid layout â€”
      override both. align-items: end was shrink-wrapping and right-aligning
      the head + card instead of stretching them to the column's full width
      (the account column, with no legacy class, stretches by default). */
@@ -459,7 +459,7 @@ body.prep-gen-lock {
   height: 30px;
   border-radius: 8px;
   background: var(--dew-clay-tint);
-  color: #c2603f;
+  color: var(--dew-amber);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -503,7 +503,7 @@ body.prep-gen-lock {
   height: 20px;
   margin-bottom: 7px;
   /* this div has no font-size of its own, so it inherits the page default
-     line-height (~25px) — taller than its actual content (~19px) — which
+     line-height (~25px) â€” taller than its actual content (~19px) â€” which
      pushed the deal card lower than the account card next to it. Explicit
      height (matching .nb-account-column > .nb-label) forces both header
      rows to the exact same box size regardless of internal font-metric
@@ -543,7 +543,7 @@ body.prep-gen-lock {
 .nb-deal-card-icon {
   width: 30px;
   height: 30px;
-  color: #a5883f;
+  color: var(--dew-amber);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -580,8 +580,8 @@ body.prep-gen-lock {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1.5px dashed #cfe3de;
-  background: #f7fbfa;
+  border: 1.5px dashed var(--dew-border);
+  background: var(--dew-surface-subtle);
   color: var(--dew-brand);
   border-radius: 8px;
   padding: 5px 10px;
@@ -618,11 +618,11 @@ body.prep-gen-lock {
 }
 
 .nb-linkedin-uploaded:hover {
-  background: #d5e8e3;
+  background: var(--dew-green-tint);
 }
 
 .nb-linkedin-row-missing {
-  outline: 1.5px solid #c2603f;
+  outline: 1.5px solid var(--dew-amber);
   outline-offset: 2px;
   border-radius: 8px;
 }
@@ -698,7 +698,7 @@ body.prep-gen-lock {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(46, 137, 123, 0.35);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--dew-brand) 35%, transparent);
   font-family: inherit;
   margin-top: 2px;
 }
@@ -1206,7 +1206,7 @@ body.prep-gen-lock {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--dew-primary-tint, rgba(44, 92, 197, 0.1));
+  background: var(--dew-primary-tint, rgba(22, 21, 19, 0.08));
   color: var(--dew-primary);
 }
 
@@ -1218,17 +1218,17 @@ body.prep-gen-lock {
 }
 
 .prep-icp-pill.good {
-  background: var(--dew-green-tint, rgba(10, 160, 110, 0.12));
+  background: var(--dew-green-tint, rgba(63, 61, 56, 0.1));
   color: var(--dew-green);
 }
 
 .prep-icp-pill.ok {
-  background: var(--dew-amber-tint, rgba(247, 144, 9, 0.12));
+  background: var(--dew-amber-tint);
   color: var(--dew-amber);
 }
 
 .prep-icp-pill.weak {
-  background: var(--dew-red-tint, rgba(229, 72, 77, 0.12));
+  background: var(--dew-red-tint, rgba(22, 21, 19, 0.1));
   color: var(--dew-red);
 }
 
@@ -1325,12 +1325,12 @@ body.prep-gen-lock {
 
 .prep-icp-tick-met .prep-icp-tick-mark {
   color: var(--dew-green);
-  background: var(--dew-green-tint, rgba(10, 160, 110, 0.12));
+  background: var(--dew-green-tint, rgba(63, 61, 56, 0.1));
 }
 
 .prep-icp-tick-unmet .prep-icp-tick-mark {
   color: var(--dew-red);
-  background: var(--dew-red-tint, rgba(229, 72, 77, 0.12));
+  background: var(--dew-red-tint, rgba(22, 21, 19, 0.1));
 }
 
 .prep-icp-tick-unknown .prep-icp-tick-mark {
@@ -1374,12 +1374,12 @@ body.prep-gen-lock {
 }
 
 .prep-signals-details > summary::before {
-  content: "▸ ";
+  content: "â–¸ ";
   color: var(--dew-primary);
 }
 
 .prep-signals-details[open] > summary::before {
-  content: "▾ ";
+  content: "â–¾ ";
 }
 
 .prep-signals-grid {
@@ -1424,8 +1424,8 @@ body.prep-gen-lock {
 
 .prep-trust-notes {
   color: var(--dew-amber);
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: color-mix(in srgb, var(--dew-amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dew-amber) 35%, transparent);
 }
 
 .prep-jd-card {
@@ -1460,12 +1460,12 @@ body.prep-gen-lock {
 }
 
 .prep-research-extras > summary::before {
-  content: "▸ ";
+  content: "â–¸ ";
   color: var(--dew-primary);
 }
 
 .prep-research-extras[open] > summary::before {
-  content: "▾ ";
+  content: "â–¾ ";
 }
 
 .prep-research-extras-body {
@@ -1544,9 +1544,9 @@ body.prep-gen-lock {
   font-weight: 700;
   padding: 4px 10px;
   border-radius: 6px;
-  background: var(--dew-amber-tint, rgba(247, 144, 9, 0.14));
+  background: var(--dew-amber-tint);
   color: var(--dew-text, inherit);
-  border: 1px solid var(--dew-amber, #f79009);
+  border: 1px solid var(--dew-amber, var(--dew-amber));
 }
 
 .prep-disc-chip-sec,
@@ -1647,7 +1647,7 @@ body.prep-gen-lock {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: var(--dew-primary-tint, rgba(44, 92, 197, 0.12));
+  background: var(--dew-primary-tint, rgba(22, 21, 19, 0.1));
   color: var(--dew-primary);
   display: flex;
   align-items: center;
@@ -1719,7 +1719,7 @@ body.prep-gen-lock {
   margin-bottom: 16px;
 }
 
-/* Discovery kit + Likely pain points — match static prep-v9-card hover (no fw-card lift). */
+/* Discovery kit + Likely pain points â€” match static prep-v9-card hover (no fw-card lift). */
 #prep-result-view .prep-grid-kit fw-card.prep-card {
   cursor: default;
   transition: background var(--transition);
@@ -2605,7 +2605,7 @@ body.prep-gen-lock {
   outline-offset: 1px;
 }
 
-/* SE Labs v9 brief — Know your Customer + Demo Prep */
+/* SE Labs v9 brief â€” Know your Customer + Demo Prep */
 .prep-v9 { display: flex; flex-direction: column; gap: 14px; }
 .prep-v9-read-legend {
   display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;
@@ -2620,13 +2620,13 @@ body.prep-gen-lock {
   font-size: 10px; font-weight: 600; font-family: var(--dew-mono, ui-monospace, monospace);
   color: var(--dew-text-secondary); background: var(--dew-surface-faint); border-radius: 5px; padding: 1px 5px;
 }
-.prep-v9-src-input { color: #8a7333; background: #f3ecda; font-family: inherit; letter-spacing: 0.04em; text-transform: uppercase; font-size: 9px; }
-.prep-v9-src-dot { width: 4px; height: 4px; border-radius: 50%; background: #5aa88f; }
-.prep-v9-src-dot-high { background: #5aa88f; }
-.prep-v9-src-dot-medium { background: #d6b678; }
-.prep-v9-src-dot-low { background: #dba79f; }
+.prep-v9-src-input { color: var(--dew-amber); background: var(--dew-amber-tint); font-family: inherit; letter-spacing: 0.04em; text-transform: uppercase; font-size: 9px; }
+.prep-v9-src-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--dew-green); }
+.prep-v9-src-dot-high { background: var(--dew-green); }
+.prep-v9-src-dot-medium { background: var(--dew-amber); }
+.prep-v9-src-dot-low { background: var(--dew-red-tint); }
 .prep-v9-missing-box {
-  width: 16px; height: 11px; border: 1.3px dashed #ccc3b2; border-radius: 3px; display: inline-block;
+  width: 16px; height: 11px; border: 1.3px dashed #c9c3b7; border-radius: 3px; display: inline-block;
 }
 .prep-v9-grid-2 {
   display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start;
@@ -2644,7 +2644,7 @@ body.prep-gen-lock {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--dew-hairline);
 }
-.prep-v9-domain-link { font-size: 13px; font-weight: 600; color: #2e897b; text-decoration: none; }
+.prep-v9-domain-link { font-size: 13px; font-weight: 600; color: var(--dew-brand); text-decoration: none; }
 .prep-v9-tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .prep-v9-tile-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .prep-v9-tile {
@@ -2670,7 +2670,7 @@ body.prep-gen-lock {
   padding: 12px 0; border-top: 1px solid var(--dew-hairline);
 }
 .prep-v9-news-row:hover { background: var(--surface-hover); }
-.prep-v9-news-dot { width: 8px; height: 8px; border-radius: 50%; background: #6fb8ac; margin-top: 5px; }
+.prep-v9-news-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dew-primary); margin-top: 5px; }
 .prep-v9-news-title { display: block; font-size: 13px; font-weight: 600; color: var(--dew-text); line-height: 1.4; }
 .prep-v9-news-date { font-size: 11.5px; color: var(--dew-text-secondary); }
 .prep-v9-news-detail { display: block; font-size: 12px; line-height: 1.45; margin-top: 2px; }
@@ -2678,7 +2678,7 @@ body.prep-gen-lock {
 .prep-v9-news-link {
   margin-left: 8px;
   font-size: 11.5px;
-  color: #2e897b;
+  color: var(--dew-brand);
   text-decoration: none;
 }
 .prep-v9-news-link:hover { text-decoration: underline; }
@@ -2722,7 +2722,7 @@ body.prep-gen-lock {
 .prep-v9-legend-them { background: #2b2926; }
 .prep-v9-legend-norm { background: var(--dew-surface); border: 2px solid var(--dew-text-muted); }
 .prep-v9-seats-pill {
-  font-size: 11.5px; font-weight: 600; color: #a5883f; background: #f3ecda;
+  font-size: 11.5px; font-weight: 600; color: var(--dew-amber); background: var(--dew-amber-tint);
   border-radius: 20px; padding: 4px 10px;
 }
 .prep-v9-attendee {
@@ -2750,11 +2750,11 @@ body.prep-gen-lock {
   color: var(--dew-text-muted); flex-shrink: 0;
 }
 .prep-v9-touch-chip {
-  font-size: 11px; font-weight: 600; color: #a9614f; background: #fdf3ec;
+  font-size: 11px; font-weight: 600; color: var(--dew-amber); background: var(--dew-amber-tint);
   border-radius: 20px; padding: 3px 9px;
 }
 .prep-v9-beh-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 9px; font-size: 12.5px; line-height: 1.5; }
-.prep-v9-beh-verb { font-size: 10.5px; font-weight: 700; color: #2e897b; flex-shrink: 0; width: 38px; margin-top: 2px; }
+.prep-v9-beh-verb { font-size: 10.5px; font-weight: 700; color: var(--dew-brand); flex-shrink: 0; width: 38px; margin-top: 2px; }
 .prep-v9-hero {
   background: #2b2926; border-radius: 14px; padding: 16px 20px; color: #f6f2ea;
 }
@@ -2800,7 +2800,7 @@ body.prep-gen-lock {
 .prep-v9-moment-pains { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 1.45; }
 .prep-v9-moment-values { display: flex; flex-direction: column; gap: 6px; }
 .prep-v9-value-row { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.5; color: var(--dew-text); }
-.prep-v9-value-row span:first-child { width: 5px; height: 5px; border-radius: 50%; background: #4a7a5c; margin-top: 6px; flex-shrink: 0; }
+.prep-v9-value-row span:first-child { width: 5px; height: 5px; border-radius: 50%; background: var(--dew-green); margin-top: 6px; flex-shrink: 0; }
 .prep-v9-sandbox-row {
   display: flex;
   flex-direction: row;
@@ -2847,7 +2847,7 @@ body.prep-gen-lock {
   margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--dew-surface-subtle);
   display: flex; gap: 11px; align-items: flex-start;
 }
-.prep-v9-stack-note-icon { color: #a5883f; font-size: 12px; margin-top: 2px; flex-shrink: 0; }
+.prep-v9-stack-note-icon { color: var(--dew-amber); font-size: 12px; margin-top: 2px; flex-shrink: 0; }
 .prep-v9-stack-note p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--dew-text); }
 .prep-v9-unknowns-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
@@ -2863,7 +2863,7 @@ body.prep-gen-lock {
 }
 .prep-v9-unknown-question { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--dew-text); }
 
-/* Scroll-triggered graph motion — transform/opacity only; one-shot via IntersectionObserver */
+/* Scroll-triggered graph motion â€” transform/opacity only; one-shot via IntersectionObserver */
 .prep-v9 [data-prep-v9-animate="maturity-chart"]:not(.prep-v9-inview) .prep-v9-maturity-rail {
   opacity: 0.35;
 }
@@ -3005,7 +3005,7 @@ body.prep-gen-lock {
   .prep-v9-stack-arrow { transform: rotate(90deg); justify-self: center; }
 }
 
-/* --- "How big is this fish?" — rivals comparison (prep.rivals) ------------------ */
+/* --- "How big is this fish?" â€” rivals comparison (prep.rivals) ------------------ */
 .prep-v9-benchmark-list { display: flex; flex-direction: column; gap: 15px; }
 .prep-v9-benchmark-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
@@ -3045,7 +3045,7 @@ body.prep-gen-lock {
   line-height: 1.3;
 }
 .prep-v9-benchmark-bucket-active {
-  font-weight: 700; color: #a5883f;
+  font-weight: 700; color: var(--dew-amber);
 }
 .prep-v9-benchmark-bucket-meta {
   display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
@@ -3066,7 +3066,7 @@ body.prep-gen-lock {
 }
 .prep-v9-benchmark-bar-dot {
   position: absolute; width: 13px; height: 13px; border-radius: 50%;
-  background: #a58a5c; border: 2.5px solid var(--dew-surface); box-shadow: 0 0 0 1px var(--dew-border);
+  background: var(--dew-amber); border: 2.5px solid var(--dew-surface); box-shadow: 0 0 0 1px var(--dew-border);
   transform: translateX(-50%);
 }
 .prep-v9-benchmark-bar-foot {
@@ -3076,7 +3076,7 @@ body.prep-gen-lock {
 .prep-v9-benchmark-bar-max {
   font-family: var(--dew-mono, ui-monospace, monospace); font-size: 10.5px; color: var(--dew-text-secondary);
 }
-.prep-v9-benchmark-bar-verdict { font-size: 11px; font-weight: 600; color: #a5883f; }
+.prep-v9-benchmark-bar-verdict { font-size: 11px; font-weight: 600; color: var(--dew-amber); }
 .prep-v9-benchmark-note {
   margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--dew-hairline);
   font-size: 12px; line-height: 1.55;
@@ -3092,24 +3092,24 @@ body.prep-gen-lock {
 .prep-v9-benchmark-verdict {
   font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 8px; white-space: nowrap;
 }
-.prep-v9-benchmark-below { color: #a9782a; background: #f3ecda; }
-.prep-v9-benchmark-within { color: #2e897b; background: #e3efec; }
-.prep-v9-benchmark-above { color: #2e897b; background: #e3efec; }
-/* The model's reason for choosing the industry-specific third axis — shown so the choice is
+.prep-v9-benchmark-below { color: var(--dew-amber); background: var(--dew-amber-tint); }
+.prep-v9-benchmark-within { color: var(--dew-brand); background: var(--dew-brand-tint); }
+.prep-v9-benchmark-above { color: var(--dew-brand); background: var(--dew-brand-tint); }
+/* The model's reason for choosing the industry-specific third axis â€” shown so the choice is
    inspectable rather than taken on trust. */
 .prep-v9-benchmark-why { font-size: 11.5px; margin: 4px 0 0; line-height: 1.45; }
 .prep-v9-icp-card .prep-icp-block { margin-top: 0; border-top: none; padding-top: 0; }
 
 /* --- Room: a seat with no LinkedIn profile has no DISC grid to sit beside ------- */
 .prep-v9-attendee-thin { grid-template-columns: minmax(0, 1fr); }
-.prep-v9-beh-do { color: #2e897b; }
-.prep-v9-beh-dont { color: #b8544a; }
+.prep-v9-beh-do { color: var(--dew-brand); }
+.prep-v9-beh-dont { color: var(--dew-red); }
 .prep-v9-beh-empty { font-size: 12px; margin: 0; line-height: 1.45; }
 
 /* --- Gaps already added to the discovery kit ------------------------------------ */
 .prep-v9-unknown-row-added .prep-v9-unknown-question { color: var(--dew-text-secondary); }
 .prep-v9-unknown-added {
-  font-size: 11px; font-weight: 700; color: #2e897b; background: #e3efec;
+  font-size: 11px; font-weight: 700; color: var(--dew-brand); background: var(--dew-brand-tint);
   border-radius: 20px; padding: 3px 9px; white-space: nowrap;
 }
 

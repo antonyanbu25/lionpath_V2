@@ -33,30 +33,30 @@ const MATURITY_LEVELS = ["Manual", "Basic", "Automated", "AI-assisted"];
 // row fell through to `partial` and drew an amber gap on the scale while its pill read "Aligned" —
 // the chart contradicted its own label. small/none/ahead are unreachable from the schema and kept
 // only so a stored brief written against an older enum still renders.
-// Pastel band fills from newportalui.html — gap severity reads from position, not saturated bar color.
+// Grayscale band fills — gap severity reads from position, not saturated bar color.
 const GAP_STYLE = {
-  large: { them: 1.5, norm: 4, label: "Big gap", color: "#e8c4bd", bg: "#f6ece7", text: "#b8544a" },
-  partial: { them: 2.5, norm: 3.5, label: "Gap", color: "#eddcbb", bg: "#f3ecda", text: "#a9782a" },
-  parity: { them: 3.5, norm: 3.5, label: "At par", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
-  small: { them: 3, norm: 3.5, label: "Close", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
-  none: { them: 3.5, norm: 3.5, label: "At par", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
-  ahead: { them: 4, norm: 3, label: "Ahead", color: "#cfe0d9", bg: "#eef3ee", text: "#4a7a5c" },
-  unknown: { them: 1, norm: 3.5, label: "Unknown", color: "transparent", bg: "#f4f0e8", text: "#7c7466" },
+  large: { them: 1.5, norm: 4, label: "Big gap", color: "#8b867c", bg: "#e9e6df", text: "#161513" },
+  partial: { them: 2.5, norm: 3.5, label: "Gap", color: "#c9c3b7", bg: "#f0eee8", text: "#57534b" },
+  parity: { them: 3.5, norm: 3.5, label: "At par", color: "#d8d4c9", bg: "#eceae4", text: "#3f3d38" },
+  small: { them: 3, norm: 3.5, label: "Close", color: "#d8d4c9", bg: "#eceae4", text: "#3f3d38" },
+  none: { them: 3.5, norm: 3.5, label: "At par", color: "#d8d4c9", bg: "#eceae4", text: "#3f3d38" },
+  ahead: { them: 4, norm: 3, label: "Ahead", color: "#d8d4c9", bg: "#eceae4", text: "#3f3d38" },
+  unknown: { them: 1, norm: 3.5, label: "Unknown", color: "transparent", bg: "#f5f3ee", text: "#7a756b" },
 };
 
 const DISC_XY = { D: [34, 26], I: [86, 26], S: [86, 100], C: [34, 100] };
 
 const COVER_PALETTE = [
-  { color: "#b8544a", bg: "#f6ece7" },
-  { color: "#a9782a", bg: "#f3ecda" },
-  { color: "#7c7466", bg: "#f4f0e8" },
+  { color: "#161513", bg: "#e9e6df" },
+  { color: "#57534b", bg: "#f0eee8" },
+  { color: "#7a756b", bg: "#f5f3ee" },
 ];
 
 const RIBBON_TEMPLATE = [
-  { title: "Frame", share: 5, color: "#c9bfa9" },
-  { title: "Discovery", share: 13, color: "#6fb8ac" },
-  { title: "Show", share: 17, color: "#4f9a8e" },
-  { title: "Land it", share: 10, color: "#d6b678" },
+  { title: "Frame", share: 5, color: "#d8d4c9" },
+  { title: "Discovery", share: 13, color: "#3f3d38" },
+  { title: "Show", share: 17, color: "#57534b" },
+  { title: "Land it", share: 10, color: "#a39e93" },
 ];
 
 function posPct(v) {
@@ -98,11 +98,11 @@ function signalByLabel(signals, pattern) {
 }
 
 const STACK_STYLE = {
-  missing: { border: "1.5px dashed #ddd6c7", bg: "#fff", color: "#7c7466", italic: "italic" },
-  teal: { border: "1px solid #cfe3de", bg: "#eef7f5", color: "#2e897b", italic: "normal" },
-  sand: { border: "1px solid #ece0c8", bg: "#f9f4ea", color: "#a5883f", italic: "normal" },
-  platform: { border: "1px solid #f0d9c9", bg: "#fdf3ec", color: "#a9614f", italic: "normal" },
-  platformMissing: { border: "1.5px dashed #ddd6c7", bg: "#fff", color: "#7c7466", italic: "italic" },
+  missing: { border: "1.5px dashed #d8d4c9", bg: "#fff", color: "#7a756b", italic: "italic" },
+  teal: { border: "1px solid #e0dcd3", bg: "#eceae4", color: "#161513", italic: "normal" },
+  sand: { border: "1px solid #e0dcd3", bg: "#f0eee8", color: "#57534b", italic: "normal" },
+  platform: { border: "1px solid #e0dcd3", bg: "#f0eee8", color: "#6b675e", italic: "normal" },
+  platformMissing: { border: "1.5px dashed #d8d4c9", bg: "#fff", color: "#7a756b", italic: "italic" },
 };
 
 function stackChip(label, tone = "teal") {
@@ -555,14 +555,14 @@ function discSvg(p) {
     ? discInferredLabel(p.discHint?.source)
     : "No DISC signal yet — listen for pace and detail in the first five minutes.";
   return `<svg class="prep-v9-disc" viewBox="0 0 120 120" role="img" aria-label="DISC quadrant">
-    <rect x="8" y="8" width="104" height="104" rx="10" fill="#faf8f3" stroke="#ece7de" stroke-width="1.5"/>
-    <line x1="60" y1="8" x2="60" y2="112" stroke="#ece7de" stroke-width="1.5"/>
-    <line x1="8" y1="60" x2="112" y2="60" stroke="#ece7de" stroke-width="1.5"/>
-    <text x="34" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="#b8544a">D</text>
-    <text x="86" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="#7c7466">I</text>
-    <text x="86" y="100" text-anchor="middle" font-size="11" font-weight="700" fill="#7c7466">S</text>
-    <text x="34" y="100" text-anchor="middle" font-size="11" font-weight="700" fill="#a5883f">C</text>
-    <circle cx="${x}" cy="${y}" r="9" fill="#2b2926" opacity="${opacity}"/>
+    <rect x="8" y="8" width="104" height="104" rx="10" fill="#f5f3ee" stroke="#e0dcd3" stroke-width="1.5"/>
+    <line x1="60" y1="8" x2="60" y2="112" stroke="#e0dcd3" stroke-width="1.5"/>
+    <line x1="8" y1="60" x2="112" y2="60" stroke="#e0dcd3" stroke-width="1.5"/>
+    <text x="34" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="#161513">D</text>
+    <text x="86" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="#7a756b">I</text>
+    <text x="86" y="100" text-anchor="middle" font-size="11" font-weight="700" fill="#7a756b">S</text>
+    <text x="34" y="100" text-anchor="middle" font-size="11" font-weight="700" fill="#57534b">C</text>
+    <circle cx="${x}" cy="${y}" r="9" fill="#161513" opacity="${opacity}"/>
   </svg>
   <p class="prep-v9-disc-note muted">${esc(note)}${primary && p.discHint?.confidence ? ` · ${esc(discConfidenceLabel(p.discHint.confidence))}` : ""}</p>`;
 }
@@ -727,27 +727,27 @@ function sixtySeconds(prep, sources) {
   const topGap = prep.fitSnapshot?.find((f) => f.gap === "large")?.label;
   return {
     pct: `${pct}%`,
-    color: thin ? "#dba79f" : "#6fb8ac",
+    color: thin ? "#b3aea4" : "#3f3d38",
     sub: `${sourced} of ${total} facts sourced`,
     tiles: thin
       ? [
-          { label: "The thesis", color: "#dba79f", value: "You're going in with limited data.", sub: "Make this a listening call." },
-          { label: "Biggest gap", color: "#b3ab9c", value: topGap ? `${topGap} is unknown.` : "Benchmarks are thin.", sub: "Ask where they sit today." },
-          { label: "Ask this first", color: "#7fd0c4", value: firstQ || "Walk me through what happens when a customer contacts you.", sub: "One open question fills gaps fast." },
-          { label: "Bring this", color: "#e0bd7e", value: prep.likelyPains?.[0] || "A discovery question bank", sub: "Anchor on their pain, not features." },
+          { label: "The thesis", color: "#b3aea4", value: "You're going in with limited data.", sub: "Make this a listening call." },
+          { label: "Biggest gap", color: "#a39e93", value: topGap ? `${topGap} is unknown.` : "Benchmarks are thin.", sub: "Ask where they sit today." },
+          { label: "Ask this first", color: "#8b867c", value: firstQ || "Walk me through what happens when a customer contacts you.", sub: "One open question fills gaps fast." },
+          { label: "Bring this", color: "#c9c3b7", value: prep.likelyPains?.[0] || "A discovery question bank", sub: "Anchor on their pain, not features." },
         ]
       : [
           {
             label: "The thesis",
-            color: "#dba79f",
+            color: "#b3aea4",
             value: prep.demoThesis?.headline || prep.about?.slice(0, 80) || "Strong fit for Freshdesk.",
             sub:
               prep.demoThesis?.sub ||
               (prep.incumbent?.displacement ? `Displacement: ${prep.incumbent.displacement}` : "Lead with their biggest gap."),
           },
-          { label: "Biggest gap", color: "#b3ab9c", value: topGap || prep.fitSnapshot?.[0]?.label || "Support maturity", sub: prep.fitSnapshot?.[0]?.gapVerdict || "Pitch the shaded distance." },
-          { label: "Ask this first", color: "#7fd0c4", value: firstQ || "What's driving the evaluation now?", sub: "Tie urgency to renewal or growth." },
-          { label: "Bring this", color: "#e0bd7e", value: prep.painCapabilityValue?.[0]?.capability || "Demo storyline", sub: prep.painCapabilityValue?.[0]?.pain || "Match feature to pain." },
+          { label: "Biggest gap", color: "#a39e93", value: topGap || prep.fitSnapshot?.[0]?.label || "Support maturity", sub: prep.fitSnapshot?.[0]?.gapVerdict || "Pitch the shaded distance." },
+          { label: "Ask this first", color: "#8b867c", value: firstQ || "What's driving the evaluation now?", sub: "Tie urgency to renewal or growth." },
+          { label: "Bring this", color: "#c9c3b7", value: prep.painCapabilityValue?.[0]?.capability || "Demo storyline", sub: prep.painCapabilityValue?.[0]?.pain || "Match feature to pain." },
         ],
   };
 }

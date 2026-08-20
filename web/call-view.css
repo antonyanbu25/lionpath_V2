@@ -1,4 +1,4 @@
-/* Call record. wireframe #call, spec §11.4 */
+﻿/* Call record. wireframe #call, spec Â§11.4 */
 
 #view-calls:has(.call-record) {
   max-width: none;
@@ -59,12 +59,12 @@
 }
 
 .call-record-back:hover {
-  color: var(--dew-primary, #2e897b);
-  background: rgba(46, 137, 123, 0.06);
+  color: var(--dew-primary, var(--dew-brand));
+  background: color-mix(in srgb, var(--dew-brand) 6%, transparent);
 }
 
 .call-record-back:focus-visible {
-  outline: 2px solid var(--dew-primary, #2e897b);
+  outline: 2px solid var(--dew-primary, var(--dew-brand));
   outline-offset: 2px;
 }
 
@@ -112,8 +112,8 @@
 }
 
 .call-record-action--deal {
-  color: var(--dew-primary, #2e897b);
-  border-color: #cfe3de;
+  color: var(--dew-primary, var(--dew-brand));
+  border-color: var(--dew-border);
 }
 
 .call-record-hero--compact {
@@ -387,22 +387,22 @@
 
 /* ---------- QIP redesign tokens ---------- */
 .call-record {
-  --teal: #2e897b;
-  --teal-bright: #6fb8ac;
-  --green: #4a7a5c;
-  --amber: #a5883f;
-  --red: #b8544a;
+  --teal: var(--dew-brand);
+  --teal-bright: var(--dew-primary);
+  --green: var(--dew-green);
+  --amber: var(--dew-amber);
+  --red: var(--dew-red);
   --eyebrow: var(--dew-text-muted);
   --line: var(--dew-border);
   --line2: var(--dew-hairline);
   --soft: var(--dew-surface-subtle);
   --shadow: 0 1px 2px rgba(43, 41, 38, 0.03);
-  --conf-high-bg: #e7f0ea;
-  --conf-high-fg: #4a7a5c;
-  --conf-med-bg: #f3ecda;
-  --conf-med-fg: #a5883f;
-  --conf-low-bg: #f6e4de;
-  --conf-low-fg: #b8544a;
+  --conf-high-bg: var(--dew-green-tint);
+  --conf-high-fg: var(--dew-green);
+  --conf-med-bg: var(--dew-amber-tint);
+  --conf-med-fg: var(--dew-amber);
+  --conf-low-bg: var(--dew-red-tint);
+  --conf-low-fg: var(--dew-red);
 }
 
 .call-record .eyebrow {
@@ -534,7 +534,7 @@
   margin-left: 2px;
 }
 
-/* star card — SE labs evaluation radar */
+/* star card â€” SE labs evaluation radar */
 .call-record .star-card,
 .call-record .qip-star-card {
   position: relative;
@@ -543,7 +543,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow:
-    0 12px 34px -18px rgba(58, 38, 24, 0.32),
+    0 12px 34px -18px rgba(22, 21, 19, 0.3),
     0 1px 2px rgba(43, 41, 38, 0.04);
   padding: 26px 30px 24px;
   display: flex;
@@ -654,7 +654,7 @@
   margin: 0;
 }
 
-/* labs radar entrance — series grow from center */
+/* labs radar entrance â€” series grow from center */
 .call-record .qip-star-animated .ring {
   opacity: 0;
   animation: qip-star-fade 0.55s ease forwards;
@@ -1110,7 +1110,7 @@
   background: transparent;
 }
 
-/* QIP scorecard — postcall-qip-redesign.html wireframe */
+/* QIP scorecard â€” postcall-qip-redesign.html wireframe */
 .call-record .qip-scorecard--wireframe.card.qip {
   padding: 20px 22px;
   border: 1px solid var(--line);
@@ -1119,7 +1119,7 @@
   box-shadow: var(--shadow);
 }
 
-/* Product signal — full-width card (matches QIP + timeline) */
+/* Product signal â€” full-width card (matches QIP + timeline) */
 .call-record {
   --ps-sub: var(--dew-surface-subtle);
   --ps-line: var(--dew-border);
@@ -1128,15 +1128,15 @@
   --ps-ink-2: var(--dew-text);
   --ps-muted: var(--dew-text-muted);
   --ps-muted-2: var(--dew-text-muted);
-  --ps-teal: #2e897b;
-  --ps-teal-bg: #e3efec;
-  --ps-green: #4a7a5c;
-  --ps-green-bg: #e7f0ea;
-  --ps-amber: #a5883f;
-  --ps-amber-bg: #f3ecda;
-  --ps-clay: #c2603f;
-  --ps-clay-bg: #f7ece4;
-  --ps-taupe: #877b63;
+  --ps-teal: var(--dew-brand);
+  --ps-teal-bg: var(--dew-brand-tint);
+  --ps-green: var(--dew-green);
+  --ps-green-bg: var(--dew-green-tint);
+  --ps-amber: var(--dew-amber);
+  --ps-amber-bg: var(--dew-amber-tint);
+  --ps-clay: var(--dew-amber);
+  --ps-clay-bg: var(--dew-red-tint);
+  --ps-taupe: var(--dew-amber);
   --ps-taupe-bg: #efeadf;
 }
 
@@ -1149,7 +1149,7 @@
   width: 100%;
 }
 
-/* Minutes of meeting — full-width card (matches QIP + product signal) */
+/* Minutes of meeting â€” full-width card (matches QIP + product signal) */
 .call-record .mom-card--wireframe.card {
   padding: 20px 22px;
   border: 1px solid var(--line);
@@ -1189,7 +1189,7 @@
   align-items: center;
   flex-shrink: 0;
   background: var(--ps-taupe-bg, #efeadf);
-  color: var(--ps-taupe, #877b63);
+  color: var(--ps-taupe, var(--dew-amber));
   font-size: 11.5px;
   font-weight: 600;
   padding: 6px 11px;
@@ -1199,8 +1199,8 @@
 }
 
 .call-record .mom-status--sent {
-  background: var(--ps-green-bg, #e7f0ea);
-  color: var(--ps-green, #4a7a5c);
+  background: var(--ps-green-bg, var(--dew-green-tint));
+  color: var(--ps-green, var(--dew-green));
 }
 
 .call-record .mom-title-row {
@@ -1291,18 +1291,18 @@
 }
 
 .call-record .mom-owner--se {
-  background: var(--ps-teal-bg, #e3efec);
-  color: var(--ps-teal, #2e897b);
+  background: var(--ps-teal-bg, var(--dew-brand-tint));
+  color: var(--ps-teal, var(--dew-brand));
 }
 
 .call-record .mom-owner--ae {
-  background: var(--ps-amber-bg, #f3ecda);
-  color: var(--ps-amber, #a5883f);
+  background: var(--ps-amber-bg, var(--dew-amber-tint));
+  color: var(--ps-amber, var(--dew-amber));
 }
 
 .call-record .mom-owner--customer {
-  background: var(--ps-clay-bg, #f7ece4);
-  color: var(--ps-clay, #c2603f);
+  background: var(--ps-clay-bg, var(--dew-red-tint));
+  color: var(--ps-clay, var(--dew-amber));
 }
 
 .call-record .mom-due {
@@ -1612,11 +1612,11 @@
 }
 
 .call-record .ps-lane.pos .ps-q {
-  border-left-color: #b9d6c5;
+  border-left-color: var(--dew-green-tint);
 }
 
 .call-record .ps-lane.neg .ps-q {
-  border-left-color: #e6bfa9;
+  border-left-color: var(--dew-red-tint);
 }
 
 .call-record .ps-q:last-child {
@@ -1824,7 +1824,7 @@
 }
 
 .call-record .ps-well.voice .ps-well-lbl {
-  color: #b06a4a;
+  color: var(--dew-amber);
 }
 
 .call-record .ps-well.reply {
@@ -1964,12 +1964,12 @@
 }
 
 .call-record .chip.done {
-  background: #e7f0ea;
+  background: var(--dew-green-tint);
   color: var(--green);
 }
 
 .call-record .chip.part {
-  background: #f3ecda;
+  background: var(--dew-amber-tint);
   color: var(--amber);
 }
 
@@ -2045,7 +2045,7 @@
 }
 
 .call-record .wd .good .ic { color: var(--green); }
-.call-record .wd .bad .ic { color: #c56b52; }
+.call-record .wd .bad .ic { color: var(--dew-amber); }
 
 .call-record .cats {
   margin-top: 16px;
@@ -2347,8 +2347,8 @@
   text-transform: uppercase;
 }
 
-.call-record .qip-insight-col--good .qip-insight-title { color: #4a7a5c; }
-.call-record .qip-insight-col--bad .qip-insight-title { color: #b8544a; }
+.call-record .qip-insight-col--good .qip-insight-title { color: var(--dew-green); }
+.call-record .qip-insight-col--bad .qip-insight-title { color: var(--dew-red); }
 
 .call-record .qip-insight-row {
   display: flex;
@@ -2394,7 +2394,7 @@
   margin: 4px auto 0;
 }
 
-/* jewel star shares qip-radar-svg class — must not inherit legacy radar cap */
+/* jewel star shares qip-radar-svg class â€” must not inherit legacy radar cap */
 .call-record .qip-star-card .qip-radar-svg {
   max-width: none;
   margin: 0;
@@ -2646,12 +2646,12 @@
 
 .call-record .ev.good {
   border-left-color: var(--green);
-  background: var(--green-bg, #e3f5ee);
+  background: var(--green-bg, var(--dew-green-tint));
 }
 
 .call-record .ev.bad {
   border-left-color: var(--danger);
-  background: var(--danger-bg, #fdecef);
+  background: var(--danger-bg, var(--dew-red-tint));
 }
 
 .call-record .ev .ts {
@@ -2702,7 +2702,7 @@
 }
 
 .call-record .qip-sp-bar-seg.is-filled {
-  background: var(--green, #2e897b);
+  background: var(--green, var(--dew-brand));
 }
 
 .call-record .qip-sp-evidence-wrap {
@@ -2921,7 +2921,7 @@
 }
 
 .call-health-traction-card--red {
-  border-color: var(--danger-bg, #f5cdd5);
+  border-color: var(--danger-bg, var(--dew-red-tint));
 }
 
 .call-objection-wire-row--border {
@@ -2931,28 +2931,28 @@
 }
 
 .call-record .pill.blue {
-  background: #e8f0fe;
-  color: #1d4fd8;
+  background: var(--dew-primary-tint);
+  color: var(--dew-brand);
 }
 
 .call-record .pill.purple {
-  background: #efebfd;
+  background: var(--dew-purple-tint);
   color: var(--dew-brand);
 }
 
 .call-record .pill.green {
-  background: var(--green-bg, #e3f5ee);
-  color: var(--green, #127a56);
+  background: var(--green-bg, var(--dew-green-tint));
+  color: var(--green, var(--dew-green));
 }
 
 .call-record .pill.amber {
-  background: var(--amber-bg, #fdf3e2);
-  color: var(--amber, #b7791f);
+  background: var(--amber-bg, var(--dew-amber-tint));
+  color: var(--amber, var(--dew-amber));
 }
 
 .call-record .pill.red {
-  background: var(--danger-bg, #fdecef);
-  color: var(--danger, #d6455d);
+  background: var(--danger-bg, var(--dew-red-tint));
+  color: var(--danger, var(--dew-red));
 }
 
 .call-empty {
@@ -3018,7 +3018,7 @@
   }
 }
 
-/* Activities list — SE Labs table layout (#calls / #activities) */
+/* Activities list â€” SE Labs table layout (#calls / #activities) */
 
 .call-list-view,
 .call-list-view--labs,
@@ -3519,16 +3519,16 @@
 }
 .pill--gap,
 .pill--weak_cta {
-  background: #fdecea;
-  color: #a4262c;
+  background: var(--dew-red-tint);
+  color: var(--dew-red);
 }
 .pill--objection {
-  background: #fff4e5;
-  color: #8a5300;
+  background: var(--dew-amber-tint);
+  color: var(--dew-amber);
 }
 .pill--win {
-  background: #e8f5e9;
-  color: #1b6b30;
+  background: var(--dew-green-tint);
+  color: var(--dew-green);
 }
 .call-timeline-note {
   margin: 12px 0 0;
@@ -3747,19 +3747,19 @@
 }
 
 .call-spine .mk--gap {
-  background: #d6455d;
+  background: var(--dew-red);
 }
 
 .call-spine .mk--objection {
-  background: #b7791f;
+  background: var(--dew-amber);
 }
 
 .call-spine .mk--win {
-  background: #127a56;
+  background: var(--dew-green);
 }
 
 .call-spine .mk--weak_cta {
-  background: #a4262c;
+  background: var(--dew-red);
 }
 
 .call-spine .mkl {
@@ -3808,19 +3808,19 @@
 }
 
 .call-spine .mkl--gap {
-  color: #c42d44;
+  color: var(--dew-red);
 }
 
 .call-spine .mkl--objection {
-  color: #9a6410;
+  color: var(--dew-amber);
 }
 
 .call-spine .mkl--win {
-  color: #0f6b4a;
+  color: var(--dew-green);
 }
 
 .call-spine .mkl--weak_cta {
-  color: #922028;
+  color: var(--dew-red);
 }
 
 .call-spine-marker-overflow {
@@ -3953,7 +3953,7 @@
   font-size: 10.5px;
 }
 
-/* Call record data animations — subtle count-up / reveal */
+/* Call record data animations â€” subtle count-up / reveal */
 .call-record .call-count-up {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;

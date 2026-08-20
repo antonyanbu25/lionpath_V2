@@ -154,14 +154,14 @@ const CONFIRM_ROLE_SET = [
   "Executive",
 ];
 const CONFIRM_ROLE_TONE = {
-  Customer: { bg: "#f4e7df", color: "#b0785b" },
-  "Primary SE": { bg: "#e3efec", color: "#2f8a7b" },
-  "Secondary SE": { bg: "#dbe8e6", color: "#37746e" },
-  AE: { bg: "#f3ecda", color: "#a5883f" },
-  Partner: { bg: "#ece8de", color: "#877b63" },
-  "Meeting room": { bg: "#e6e6ec", color: "#585a7a" },
-  Manager: { bg: "#eee3d9", color: "#8a5a35" },
-  Executive: { bg: "#e3dbe9", color: "#6b4a8a" },
+  Customer: { bg: "#f0eee8", color: "#57534b" },
+  "Primary SE": { bg: "#e9e6df", color: "#161513" },
+  "Secondary SE": { bg: "#e0dcd3", color: "#3f3d38" },
+  AE: { bg: "#f0eee8", color: "#57534b" },
+  Partner: { bg: "#eceae4", color: "#6b675e" },
+  "Meeting room": { bg: "#eceae4", color: "#57534b" },
+  Manager: { bg: "#e9e6df", color: "#3f3d38" },
+  Executive: { bg: "#e0dcd3", color: "#161513" },
 };
 
 let linkedinParsing = false;
@@ -2083,9 +2083,9 @@ const QIP_PENTAGON_SVG =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.8 20.2 9.4 16.8 19.6 7.2 19.6 3.8 9.4Z"/></svg>';
 
 function qipScoreHex(score) {
-  if (score >= 8) return "#4a7a5c";
-  if (score >= 6) return "#a5883f";
-  return "#b8544a";
+  if (score >= 8) return "#3f3d38";
+  if (score >= 6) return "#8b867c";
+  return "#161513";
 }
 
 function renderQipSparkline(subParameters) {
@@ -3178,9 +3178,9 @@ function personInitials(name) {
 function personMonoTone(label, role) {
   if (CONFIRM_ROLE_TONE[role]) return CONFIRM_ROLE_TONE[role];
   if (role === "Customer" || role === "Partner") {
-    return { bg: "#f6e7e1", color: "#c2603f" };
+    return { bg: "#f0eee8", color: "#57534b" };
   }
-  return { bg: "#e3efec", color: "#2e897b" };
+  return { bg: "#e9e6df", color: "#161513" };
 }
 
 function parseAttendeeIdentity(label) {

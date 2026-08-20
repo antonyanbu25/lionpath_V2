@@ -35,7 +35,7 @@ assert.match(read("precall-render.js"), /dewCssVar/, "prep avatars should read D
 
 const dewTheme = read("dew-theme.css");
 assert.match(read("orbit-spinner.css"), /dew-orbit-spinner/, "orbit spinner styles must exist");
-assert.match(read("orbit-spinner.css"), /var\(--dew-brand\)/, "orbit spinner must use Dew tokens");
+assert.match(read("orbit-spinner.css"), /--orbit-ink:\s*var\(--dew-text/, "orbit spinner must use Dew tokens");
 assert.match(dewTheme, /--fw-skeleton-background/, "skeleton must use Dew tokens");
 assert.match(dewTheme, /--fw-label-color/, "form labels must use Dew tokens");
 

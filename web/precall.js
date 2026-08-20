@@ -546,10 +546,10 @@ export function renderPrepRecentBriefs() {
     return;
   }
   const monoTints = [
-    { bg: "#f6e7e1", color: "#c2603f" },
-    { bg: "#e7eef7", color: "#4a6fa5" },
-    { bg: "#eeeaf6", color: "#6b5b95" },
-    { bg: "#e9f1e9", color: "#4a7a5c" },
+    { bg: "#e9e6df", color: "#161513" },
+    { bg: "#eceae4", color: "#3f3d38" },
+    { bg: "#f0eee8", color: "#57534b" },
+    { bg: "#f5f3ee", color: "#6b675e" },
   ];
   host.innerHTML = `<div class="nb-recent-label">Recent briefs</div>
     <ul class="nb-recent-list">${briefs

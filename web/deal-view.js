@@ -877,7 +877,7 @@ function renderCustomerVoiceSection(whatWorks, productGaps) {
   if (!landed.length && !missed.length) {
     return `
       <section class="account-record-section deal-record-section account-record-section--card">
-        <div class="deal-dothead"><span class="deal-dot" style="background:#b0785b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
+        <div class="deal-dothead"><span class="deal-dot" style="background:#57534b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
         <p class="muted">Landed themes and doubts appear here after post-call analysis.</p>
       </section>`;
   }
@@ -891,7 +891,7 @@ function renderCustomerVoiceSection(whatWorks, productGaps) {
   };
   return `
     <section class="account-record-section deal-record-section account-record-section--card">
-      <div class="deal-dothead"><span class="deal-dot" style="background:#b0785b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
+      <div class="deal-dothead"><span class="deal-dot" style="background:#57534b"></span><span class="prep-form-eyebrow account-section-eyebrow">Customer voice</span></div>
       <div class="deal-voicegrid">
         <div class="deal-vcol">
           <div class="deal-vh" style="color:var(--dew-green)"><span class="deal-dot" style="background:var(--dew-green)"></span>Landed well</div>
@@ -899,7 +899,7 @@ function renderCustomerVoiceSection(whatWorks, productGaps) {
           ${landed.length ? `<div class="deal-chips">${landed.map((r) => chip(r, "good")).join("")}</div>` : ""}
         </div>
         <div class="deal-vcol">
-          <div class="deal-vh" style="color:#b0785b"><span class="deal-dot" style="background:#b0785b"></span>Doubts &amp; didn’t land</div>
+          <div class="deal-vh" style="color:#57534b"><span class="deal-dot" style="background:#57534b"></span>Doubts &amp; didn’t land</div>
           ${missed.length ? missed.map((r) => quote(r, "neg")).join("") : `<p class="muted">No doubts captured yet.</p>`}
           ${missed.length ? `<div class="deal-chips">${missed.map((r) => chip(r, "bad")).join("")}</div>` : ""}
         </div>

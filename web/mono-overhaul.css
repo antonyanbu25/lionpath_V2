@@ -1,0 +1,345 @@
+/**
+ * MONO OVERHAUL — editorial black & white visual layer (feat/mono-ui-overhaul).
+ * Loaded last, after styles/precall/postcall/call-view/lifecycle. UI only:
+ * serif display type, hairline rules, flat surfaces, cinema-dark loading moments.
+ * Palette lives in dew-theme.css; spinner lives in orbit-spinner.css.
+ */
+
+/* ---------- Base ---------- */
+
+::selection {
+  background: var(--dew-text);
+  color: var(--dew-bg);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--dew-text);
+  outline-offset: 2px;
+}
+
+/* ---------- Display typography — editorial serif, tight tracking ---------- */
+
+.lion-title,
+.login-card-head h1,
+.sidebar-brand-text,
+.main-view-title,
+.prep-form-heading h1,
+.prep-gen-title,
+.about-header h1,
+.about-section h2,
+.main-content h1,
+.main-content h2,
+.main-content .prep-result-header h1,
+.main-content .prep-result-header h2 {
+  font-family: var(--dew-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+.main-content h1 {
+  font-size: clamp(28px, 3vw, 36px);
+}
+
+.main-content h2 {
+  font-size: clamp(20px, 2vw, 24px);
+}
+
+/* Eyebrow / meta labels — mono, uppercase, letterspaced */
+.prep-form-eyebrow,
+.prep-gen-eyebrow,
+.about-kicker,
+.topbar-date-text,
+.lion-tagline {
+  font-family: var(--dew-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---------- Login — grayscale film under a paper card ---------- */
+
+.login-bg-video {
+  filter: grayscale(1) contrast(1.06) brightness(0.9);
+}
+
+[data-theme="dark"] .login-bg-video {
+  filter: grayscale(1) contrast(1.08) brightness(0.6);
+}
+
+.login-card {
+  border-radius: 12px;
+  border: 1px solid var(--dew-border);
+  box-shadow: var(--dew-shadow-popover);
+}
+
+.login-card-head h1 {
+  font-size: clamp(26px, 2.6vw, 30px);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.login-brand-logo {
+  border-radius: 8px;
+  filter: grayscale(1) contrast(1.05);
+}
+
+.login-google-btn-wrap fw-button.login-google-btn::part(native) {
+  border-radius: 6px;
+  letter-spacing: 0.01em;
+}
+
+.login-google-btn-wrap fw-button.login-google-btn:hover::part(native) {
+  background: var(--dew-brand-hover);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+/* ---------- Splash & app loading — always-dark cinema ---------- */
+
+.lion-splash {
+  background: #0d0d0c;
+}
+
+.lion-splash .dew-orbit-spinner {
+  --orbit-ink: #f4f2ed;
+}
+
+.lion-loader {
+  background: #151514;
+  border: 1px solid rgba(244, 242, 237, 0.14);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.lion-title {
+  color: #f4f2ed;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.lion-tagline {
+  color: rgba(244, 242, 237, 0.55);
+}
+
+.app-loading-card {
+  border-radius: 10px;
+  box-shadow: var(--dew-shadow-popover);
+}
+
+/* ---------- Sidebar — ink rail, hairline rule, serif wordmark ---------- */
+
+.sidebar {
+  border-right: 1px solid var(--dew-border);
+}
+
+.sidebar-brand-text {
+  font-size: 21px;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.sidebar-brand-logo {
+  border-radius: 8px;
+  filter: grayscale(1) contrast(1.05);
+}
+
+.sidebar-brand-icon {
+  border-radius: 6px;
+  background: var(--dew-brand);
+  color: var(--dew-text-inverse);
+}
+
+.nav-grp {
+  font-family: var(--dew-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dew-text-faint);
+}
+
+.sidebar-nav-divider {
+  background: var(--dew-border);
+}
+
+fw-button.nav-item {
+  --border-radius-medium: 6px;
+}
+
+fw-button.nav-item.active {
+  --fw-button-color: var(--dew-text);
+}
+
+.sidebar-user-avatar {
+  border-radius: 6px;
+  font-family: var(--dew-font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Topbar — hairline rule, mono date ---------- */
+
+.main-topbar {
+  border-bottom: 1px solid var(--dew-border);
+  padding-bottom: 14px;
+}
+
+.topbar-date-text {
+  color: var(--dew-text-muted);
+}
+
+.topbar-action {
+  border-radius: 6px;
+  letter-spacing: 0.01em;
+}
+
+.topbar-action--primary {
+  background: var(--dew-brand);
+  color: var(--dew-text-inverse);
+  box-shadow: none;
+}
+
+.topbar-action--primary:hover {
+  background: var(--dew-brand-hover);
+  filter: none;
+}
+
+.topbar-action--secondary {
+  border: 1px solid var(--dew-input-border);
+  background: var(--dew-surface);
+  color: var(--dew-text);
+}
+
+.topbar-action--secondary:hover {
+  background: var(--dew-surface-subtle);
+}
+
+/* ---------- Generation overlay — the Oblik moment: always ink-black ---------- */
+
+.prep-gen-overlay-backdrop {
+  background: rgba(13, 13, 12, 0.94);
+  backdrop-filter: blur(10px);
+}
+
+.prep-gen-overlay-panel {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.prep-gen-overlay .dew-orbit-spinner {
+  --orbit-ink: #f4f2ed;
+}
+
+.prep-gen-brand {
+  width: 104px;
+  height: 104px;
+}
+
+.prep-gen-eyebrow {
+  color: rgba(244, 242, 237, 0.5);
+}
+
+.prep-gen-title {
+  color: #f4f2ed;
+  font-size: clamp(28px, 3.4vw, 38px);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.prep-gen-stage {
+  color: rgba(244, 242, 237, 0.66);
+  font-family: var(--dew-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.prep-gen-progress-track {
+  height: 2px;
+  border-radius: 0;
+  background: rgba(244, 242, 237, 0.16);
+}
+
+.prep-gen-progress-bar {
+  border-radius: 0;
+  background: #f4f2ed;
+}
+
+.prep-gen-hint {
+  color: rgba(244, 242, 237, 0.45);
+}
+
+/* ---------- Cards & panels — flat, hairline, sharper radius ---------- */
+
+.dew-loading-panel,
+.dew-skeleton-card,
+.app-loading-card {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+fw-card::part(base),
+fw-card::part(card) {
+  border-radius: 10px;
+}
+
+/* ---------- Crayons refinements ---------- */
+
+fw-button {
+  --border-radius-medium: 6px;
+}
+
+fw-button[color="primary"] {
+  letter-spacing: 0.01em;
+}
+
+fw-input,
+fw-textarea,
+fw-select {
+  --fw-input-border-radius: 6px;
+}
+
+fw-modal::part(dialog),
+fw-modal fw-modal-content {
+  border-radius: 12px;
+}
+
+fw-tabs {
+  --fw-tabs-border-color: var(--dew-border);
+}
+
+/* ---------- Scrollbars — quiet monochrome ---------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dew-input-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--dew-input-border);
+  border-radius: 0;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .login-bg-video {
+    animation: none;
+  }
+}

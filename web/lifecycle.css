@@ -1,4 +1,4 @@
-.lifecycle-list-view h2,
+﻿.lifecycle-list-view h2,
 .lifecycle-empty h2 {
   margin: 0 0 8px;
   font-size: 1.35rem;
@@ -50,7 +50,7 @@
   background: var(--dew-surface-subtle);
 }
 
-/* Activities feed — distinct brief vs call kind chips (not lifecycle stage badges). */
+/* Activities feed â€” distinct brief vs call kind chips (not lifecycle stage badges). */
 .activity-kind-chip {
   display: inline-block;
   padding: 2px 8px;
@@ -64,15 +64,15 @@
 }
 
 .activity-kind-chip--brief {
-  color: #5a4a2e;
-  background: #f3ead6;
-  border: 1px solid #e0d2b4;
+  color: var(--dew-amber);
+  background: var(--dew-amber-tint);
+  border: 1px solid var(--dew-amber-tint);
 }
 
 .activity-kind-chip--call {
-  color: #1a5c52;
-  background: #e4f3ef;
-  border: 1px solid #b8ddd4;
+  color: var(--dew-text);
+  background: var(--dew-green-tint);
+  border: 1px solid var(--dew-green-tint);
 }
 
 .lifecycle-detail-head {
@@ -143,7 +143,7 @@
   border: 1px solid var(--dew-border, #e4e7ec);
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(18, 52, 77, 0.06));
+  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(22, 21, 19, 0.06));
 }
 
 .account-record.account-detail {
@@ -430,7 +430,7 @@
 .account-header-arr-value {
   font-size: 26px;
   font-weight: 700;
-  color: var(--navy, #0f2e4c);
+  color: var(--navy, var(--dew-text));
   font-variant-numeric: tabular-nums;
 }
 
@@ -473,7 +473,7 @@
   font-size: 10px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--ink-3, #93a0b4);
+  color: var(--ink-3, #a39e93);
   font-weight: 700;
   padding: 0 10px 8px;
   border-bottom: 1px solid var(--dew-hairline, rgba(0, 0, 0, 0.06));
@@ -516,7 +516,7 @@
   margin: 10px 0;
   text-align: center;
   font-size: 12.5px;
-  color: var(--ink-2, #5a6b82);
+  color: var(--ink-2, #57534b);
   background: var(--dew-surface-muted, #fafbfc);
 }
 
@@ -577,12 +577,12 @@
 }
 
 .account-attach-cell--attached {
-  color: var(--green, #127a56);
+  color: var(--green, var(--dew-green));
   font-weight: 600;
 }
 
 .account-attach-cell--discussed {
-  color: var(--amber, #b7791f);
+  color: var(--amber, var(--dew-amber));
   font-weight: 700;
 }
 
@@ -780,7 +780,7 @@
 }
 
 .account-pursuit-command__hint {
-  color: var(--dew-text-muted, #6b7785);
+  color: var(--dew-text-muted, #7a756b);
   font-size: 0.8125rem;
   line-height: 1.4;
 }
@@ -871,9 +871,9 @@
 }
 
 .account-contact-row--selected {
-  border-color: var(--dew-brand, #276cf0);
-  background: var(--dew-brand-subtle, rgba(39, 108, 240, 0.08));
-  box-shadow: inset 0 0 0 1px rgba(39, 108, 240, 0.12);
+  border-color: var(--dew-brand, var(--dew-brand));
+  background: var(--dew-brand-subtle, rgba(22, 21, 19, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(22, 21, 19, 0.1);
 }
 
 .account-contact-row-name-text {
@@ -901,7 +901,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dew-text-muted, #6b7785);
+  color: var(--dew-text-muted, #7a756b);
 }
 
 .account-meddpicc-details--expanded .account-meddpicc-summary {
@@ -1101,7 +1101,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--dew-text-muted, var(--fw-color-text-tertiary, #92a2b1));
+  color: var(--dew-text-muted, var(--fw-color-text-tertiary, #a39e93));
   line-height: 1.2;
 }
 
@@ -1125,7 +1125,7 @@
   align-self: center;
 }
 
-/* @deprecated — legacy account opportunity workspace (account-record--opportunity); deal detail uses deal-record--wireframe */
+/* @deprecated â€” legacy account opportunity workspace (account-record--opportunity); deal detail uses deal-record--wireframe */
 .account-command-deck {
   display: grid;
   grid-template-columns: minmax(240px, 0.95fr) minmax(360px, 1.65fr) minmax(260px, 1.05fr);
@@ -1146,7 +1146,7 @@
   border: 1px solid var(--dew-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(18, 52, 77, 0.06));
+  box-shadow: var(--dew-shadow-island, 0 2px 8px rgba(22, 21, 19, 0.06));
 }
 
 .account-command-panel-scroll {
@@ -1198,7 +1198,7 @@
 .contact-tile-account {
   display: block;
   font-size: 12px;
-  color: var(--dew-text-secondary, #667085);
+  color: var(--dew-text-secondary, #7a756b);
 }
 
 .account-contact-row-avatar {
@@ -1363,7 +1363,7 @@
 }
 
 .account-deals-row--selected {
-  background: var(--fw-color-bg-brand-subtle, rgba(74, 144, 217, 0.08));
+  background: var(--fw-color-bg-brand-subtle, rgba(22, 21, 19, 0.06));
 }
 
 .account-contact-name-link {
@@ -1592,18 +1592,18 @@
 }
 
 .contact-meta-abbrev--disc {
-  background: #e8f0fe;
-  color: #1a5a8a;
+  background: var(--dew-primary-tint);
+  color: var(--dew-brand);
 }
 
 .contact-meta-abbrev--influence--high {
-  background: #eef6ee;
-  color: #2d6a2d;
+  background: var(--dew-green-tint);
+  color: var(--dew-green);
 }
 
 .contact-meta-abbrev--influence--medium {
-  background: #fff4e5;
-  color: #8a5a1a;
+  background: var(--dew-amber-tint);
+  color: var(--dew-amber);
 }
 
 .contact-meta-abbrev--influence--low {
@@ -1612,8 +1612,8 @@
 }
 
 .contact-meta-abbrev--primary {
-  background: #e8f0fe;
-  color: var(--dew-brand, #276cf0);
+  background: var(--dew-primary-tint);
+  color: var(--dew-brand, var(--dew-brand));
   font-size: 0.85rem;
 }
 
@@ -1852,7 +1852,7 @@
 
 .lifecycle-pipeline-step--completed + .lifecycle-pipeline-connector,
 .lifecycle-pipeline-step--completed ~ .lifecycle-pipeline-connector {
-  background: var(--dew-brand, #276cf0);
+  background: var(--dew-brand, var(--dew-brand));
   opacity: 0.5;
 }
 
@@ -1916,8 +1916,8 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--dew-brand-subtle, #e8f0fe);
-  color: var(--dew-brand, #276cf0);
+  background: var(--dew-brand-subtle, var(--dew-primary-tint));
+  color: var(--dew-brand, var(--dew-brand));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1988,7 +1988,7 @@
 
 .meddpicc-progress-bar {
   height: 100%;
-  background: var(--dew-brand, #276cf0);
+  background: var(--dew-brand, var(--dew-brand));
   border-radius: 3px;
   transition: width 0.2s ease;
 }
@@ -2302,28 +2302,28 @@
 }
 
 .lifecycle-category-pill--stage {
-  background: #e8f4fd;
-  color: #1a5a8a;
+  background: var(--dew-primary-tint);
+  color: var(--dew-brand);
 }
 
 .lifecycle-category-pill--engagement {
-  background: #eef6ee;
-  color: #2d6a2d;
+  background: var(--dew-green-tint);
+  color: var(--dew-green);
 }
 
 .lifecycle-category-pill--team {
-  background: #f3eef9;
-  color: #5a3d8a;
+  background: var(--dew-purple-tint);
+  color: var(--dew-purple);
 }
 
 .lifecycle-category-pill--tasks {
-  background: #fff4e5;
-  color: #8a5a1a;
+  background: var(--dew-amber-tint);
+  color: var(--dew-amber);
 }
 
 .lifecycle-category-pill--contact {
-  background: #fceef0;
-  color: #8a2d3d;
+  background: var(--dew-red-tint);
+  color: var(--dew-red);
 }
 
 .lifecycle-category-pill--activity {
@@ -2450,7 +2450,7 @@
 }
 
 .account-list-view--compact .account-list-item.account-list-row:focus-visible {
-  outline: 2px solid var(--dew-primary, var(--fw-primary-color, #2c5cc5));
+  outline: 2px solid var(--dew-primary, var(--fw-primary-color, var(--dew-brand)));
   outline-offset: 1px;
 }
 
@@ -2531,13 +2531,13 @@
 }
 
 .account-list-motion-badge--new-business {
-  background: rgba(44, 92, 197, 0.12);
-  color: #1e4fad;
+  background: rgba(22, 21, 19, 0.1);
+  color: var(--dew-brand);
 }
 
 .account-list-motion-badge--expansion {
-  background: rgba(180, 130, 0, 0.15);
-  color: #8a6500;
+  background: rgba(87, 83, 75, 0.14);
+  color: var(--dew-amber);
 }
 
 .account-list-col--stage fw-tag,
@@ -2645,13 +2645,13 @@
 }
 
 .deal-list-money--low-confidence {
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
   font-style: italic;
 }
 
 .deal-list-money-mark {
   margin-left: 2px;
-  color: var(--amber, #f57f17);
+  color: var(--amber, var(--dew-amber));
   font-weight: 700;
   font-style: normal;
 }
@@ -2685,15 +2685,15 @@
 }
 
 .deal-list-silent--cold {
-  color: var(--red, #d92d20);
+  color: var(--red, var(--dew-red));
 }
 
 .deal-list-silent--hot {
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
 }
 
 .deal-list-silent--warm {
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
 }
 
 .deal-list-toolbar--compact {
@@ -2786,7 +2786,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
   border-bottom: 1px solid var(--dew-border);
   margin-bottom: 0;
 }
@@ -2886,7 +2886,7 @@
   }
 }
 
-/* Deal record (spec §11.6) */
+/* Deal record (spec Â§11.6) */
 .deal-record--wireframe .deal-record-top--wireframe {
   border: none;
   box-shadow: none;
@@ -3123,11 +3123,11 @@
 }
 
 .deal-record-velocity--slow .meddpicc-progress-bar {
-  background: var(--fw-color-danger, #c0392b);
+  background: var(--fw-color-danger, var(--dew-red));
 }
 
 .deal-record-velocity--ok .meddpicc-progress-bar {
-  background: var(--fw-color-success, #27ae60);
+  background: var(--fw-color-success, var(--dew-green));
 }
 
 .deal-traction-reasons {
@@ -3219,7 +3219,7 @@
 }
 
 .deal-calls-row:focus-visible {
-  outline: 2px solid var(--fw-color-primary, #2e5bff);
+  outline: 2px solid var(--fw-color-primary, var(--dew-brand));
   outline-offset: -2px;
 }
 
@@ -3294,19 +3294,19 @@
 }
 
 .deal-arr-confidence--high {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--dew-green-tint);
+  color: var(--dew-green);
 }
 
 .deal-arr-confidence--medium {
-  background: #fff8e1;
-  color: #f57f17;
+  background: var(--dew-amber-tint);
+  color: var(--dew-amber);
 }
 
 .deal-arr-confidence--low,
 .deal-arr-confidence--unknown {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--dew-red-tint);
+  color: var(--dew-red);
 }
 
 .deal-arr-version.mono {
@@ -3370,7 +3370,7 @@
 
 .deal-arr-row--conflict .deal-arr-row-label,
 .deal-arr-conflict-badge {
-  color: #c62828;
+  color: var(--dew-red);
 }
 
 .deal-arr-conflict-badge {
@@ -3378,16 +3378,16 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  border: 1px solid #ef9a9a;
+  border: 1px solid var(--dew-red);
   border-radius: 4px;
   padding: 1px 6px;
-  background: #ffebee;
+  background: var(--dew-red-tint);
 }
 
 .deal-arr-assumed-badge {
   font-size: 0.75rem;
   font-weight: 700;
-  color: #e65100;
+  color: var(--dew-amber);
 }
 
 .deal-arr-evidence {
@@ -3531,7 +3531,7 @@
 }
 
 .deal-arr-field-provenance--stated {
-  color: var(--fw-color-success, #0a7a3e);
+  color: var(--fw-color-success, var(--dew-green));
 }
 
 .deal-arr-field-provenance--derived {
@@ -3539,7 +3539,7 @@
 }
 
 .deal-arr-field-provenance--se_override {
-  color: var(--fw-color-primary, #1a6fb0);
+  color: var(--fw-color-primary, var(--dew-brand));
 }
 
 .deal-arr-unit-toggle {
@@ -3559,7 +3559,7 @@
 }
 
 .deal-arr-unit-btn--active {
-  background: var(--fw-color-primary, #1a6fb0);
+  background: var(--fw-color-primary, var(--dew-brand));
   color: var(--color-text-inverse);
 }
 
@@ -3622,7 +3622,7 @@
   gap: 12px;
 }
 
-/* Pipeline review. leadership (spec §11.9) */
+/* Pipeline review. leadership (spec Â§11.9) */
 .pipeline-view {
   font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --pipeline-cols:
@@ -3668,7 +3668,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
 }
 
 .pipeline-filter-select {
@@ -3703,7 +3703,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
   border-bottom: 1px solid var(--dew-border, #e4e7ec);
 }
 
@@ -3749,7 +3749,7 @@
 }
 
 .pipeline-money--low-confidence .pipeline-money-amount {
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
   font-style: italic;
 }
 
@@ -3825,7 +3825,7 @@
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--dew-text-muted, #667085);
+    color: var(--dew-text-muted, #7a756b);
   }
 }
 
@@ -3892,7 +3892,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 12px 12px 0;
-  color: var(--dew-text-muted, #667085);
+  color: var(--dew-text-muted, #7a756b);
 }
 
 .call-product-signal-tab {
@@ -3919,7 +3919,7 @@
   padding: 8px 12px;
   border-left: 3px solid var(--dew-border-strong, #d0d5dd);
   font-size: 13px;
-  color: var(--dew-text-secondary, #344054);
+  color: var(--dew-text-secondary, #57534b);
 }
 
 .call-product-gap-meta {
@@ -3952,11 +3952,11 @@
 }
 
 .ps-stat-warn {
-  color: var(--dew-danger, #d92d20);
+  color: var(--dew-danger, var(--dew-red));
 }
 
 .ps-stat-amber {
-  color: var(--dew-warning, #dc6803);
+  color: var(--dew-warning, var(--dew-amber));
 }
 
 .product-signal-halves {
@@ -4041,11 +4041,11 @@
 }
 
 .ps-bar-opt-in {
-  background: var(--dew-brand, #2e90fa);
+  background: var(--dew-brand, var(--dew-brand));
 }
 
 .ps-bar-decline {
-  background: var(--dew-danger, #d92d20);
+  background: var(--dew-danger, var(--dew-red));
 }
 
 .ps-ai-footnote {
@@ -4600,7 +4600,7 @@
 }
 
 
-/* ── SE Labs deals list + record ─────────────────────────────── */
+/* â”€â”€ SE Labs deals list + record â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .deal-list-view--labs,
 .account-list-view--labs {
   font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -4779,7 +4779,7 @@
   font-size: 0.78125rem;
   font-weight: 700;
   flex-shrink: 0;
-  background: #e7ded1;
+  background: var(--dew-amber-tint);
   color: #6f6759;
 }
 
@@ -4867,8 +4867,8 @@
 }
 
 .deal-pill--neutral {
-  color: #877b63;
-  background: #f1ece3;
+  color: var(--dew-amber);
+  background: var(--dew-amber-tint);
 }
 
 .deal-pill--won {
@@ -5018,7 +5018,7 @@
   width: 54px;
   height: 54px;
   border-radius: 14px;
-  background: linear-gradient(140deg, #f7a81b, #e8542a);
+  background: linear-gradient(140deg, var(--dew-amber), var(--dew-amber));
   color: var(--color-text-inverse);
   display: flex;
   align-items: center;
@@ -5071,12 +5071,12 @@
   border-radius: 12px;
   padding: 13px 16px;
   background: var(--dew-brand-tint);
-  border: 1px solid #cfe3de;
+  border: 1px solid var(--dew-border);
 }
 
 .deal-callout--warn {
   background: var(--dew-amber-tint);
-  border-color: #ecd9b0;
+  border-color: var(--dew-amber-tint);
 }
 
 .deal-callout-k {
@@ -5093,7 +5093,7 @@
   margin: 0;
   font-size: 0.84375rem;
   line-height: 1.5;
-  color: #7c5a1e;
+  color: var(--dew-amber);
 }
 
 .deal-score-strip {
@@ -5191,23 +5191,23 @@
 }
 
 .deal-scard-segbar > i.on {
-  background: #a5883f;
+  background: var(--dew-amber);
 }
 
 .deal-gapline {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fbf7ef;
-  border: 1px solid #efe2c9;
+  background: var(--dew-amber-tint);
+  border: 1px solid var(--dew-amber-tint);
   border-radius: 12px;
   padding: 12px 16px;
   font-size: 0.84375rem;
-  color: #6f5a2f;
+  color: var(--dew-amber);
 }
 
 .deal-gapline b {
-  color: #8a6a24;
+  color: var(--dew-amber);
 }
 
 .deal-summary-bullets {
@@ -5253,7 +5253,7 @@
 
 .deal-record-rec {
   background: linear-gradient(180deg, var(--dew-surface-subtle), var(--dew-surface));
-  border-color: #cfe3de !important;
+  border-color: var(--dew-border) !important;
 }
 
 .deal-rec-title {
@@ -5296,11 +5296,11 @@
 }
 
 .deal-voice-q.pos {
-  border-color: #bcd9c6;
+  border-color: var(--dew-green-tint);
 }
 
 .deal-voice-q.neg {
-  border-color: #e7cdbf;
+  border-color: var(--dew-red-tint);
 }
 
 .deal-chips {
@@ -5322,13 +5322,13 @@
 .deal-chip.good {
   color: var(--dew-green);
   background: var(--dew-green-tint);
-  border-color: #d3e6d8;
+  border-color: var(--dew-green-tint);
 }
 
 .deal-chip.bad {
-  color: #b0785b;
+  color: var(--dew-amber);
   background: #f4e7df;
-  border-color: #ecd7c9;
+  border-color: var(--dew-red-tint);
 }
 
 [data-theme="dark"] .account-record--overview .account-deals-on-account-row:hover,

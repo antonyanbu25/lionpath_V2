@@ -45,19 +45,20 @@ function expectDecls(selector, expected, source = css) {
 }
 
 // --- Design tokens must equal the design's literal hex values -----------------
+// Monochrome editorial palette (feat/mono-ui-overhaul): ink on warm bone.
 const lightTokens = theme.slice(theme.indexOf(":root"), theme.indexOf("}", theme.indexOf(":root")));
 for (const [token, value] of Object.entries({
-  "--dew-primary": "#6fb8ac",
-  "--dew-primary-hover": "#5da79a",
-  "--dew-brand": "#2e897b",
-  "--dew-brand-tint": "#e3efec",
-  "--dew-text": "#2b2926",
-  "--dew-text-muted": "#8a8072",
+  "--dew-primary": "#161513",
+  "--dew-primary-hover": "#35322c",
+  "--dew-brand": "#161513",
+  "--dew-brand-tint": "#e9e6df",
+  "--dew-text": "#161513",
+  "--dew-text-muted": "#7a756b",
   "--dew-surface": "#ffffff",
-  "--dew-surface-subtle": "#faf8f4",
-  "--dew-border": "#ece7de",
-  "--dew-hairline": "#f4f0e8",
-  "--dew-red": "#b8544a",
+  "--dew-surface-subtle": "#f1efe9",
+  "--dew-border": "#e0dcd3",
+  "--dew-hairline": "#e8e5de",
+  "--dew-red": "#242220",
 })) {
   const m = lightTokens.match(new RegExp(`${token}\\s*:\\s*([^;]+)`));
   assert.ok(m, `dew-theme.css light block missing ${token}`);
@@ -120,12 +121,12 @@ expectDecls(".nb-deal-new-link", { "font-size": "11.5px", "font-weight": "600" }
 const dealIcon = rule(css, ".nb-deal-card-icon");
 assert.ok(!/background/.test(dealIcon), ".nb-deal-card-icon must not have a tile background");
 assert.ok(!/border-radius/.test(dealIcon), ".nb-deal-card-icon must not be a rounded tile");
-assert.equal(decl(css, ".nb-deal-card-icon", "color"), "#a5883f");
+assert.equal(decl(css, ".nb-deal-card-icon", "color"), "var(--dew-amber)");
 
 // --- LinkedIn rows -----------------------------------------------------------
 expectDecls(".nb-linkedin-attendees", { gap: "8px" });
 expectDecls(".nb-linkedin-row", { "border-radius": "11px", padding: "9px 12px", gap: "10px" });
-expectDecls(".nb-linkedin-upload-btn", { border: "1.5px dashed #cfe3de", background: "#f7fbfa", padding: "5px 10px" });
+expectDecls(".nb-linkedin-upload-btn", { border: "1.5px dashed var(--dew-border)", background: "var(--dew-surface-subtle)", padding: "5px 10px" });
 expectDecls(".nb-linkedin-uploaded", { padding: "5px 9px", "font-size": "11.5px" });
 
 // --- Context section ---------------------------------------------------------
