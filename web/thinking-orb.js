@@ -247,6 +247,7 @@ export function createThinkingOrb(host, opts = {}) {
   let start = 0;
   let darkMode = false;
   let visible = false;
+  let hadSize = false;
   const themeQuery = getThemeQuery();
   const motionQuery = getMotionQuery();
 
@@ -285,12 +286,11 @@ export function createThinkingOrb(host, opts = {}) {
   }
 
   function animate(timeStamp) {
-    if (!hostHasSize()) {
-      setVisible(false);
-      return;
-    }
+    const hasSize = hostHasSize();
+    hadSize = hasSize;
+    if (hasSize && !visible) visible = true;
     render(timeStamp);
-    if (!destroyed && visible && !prefersReducedMotion()) {
+    if (!destroyed && !prefersReducedMotion()) {
       frame = window.requestAnimationFrame(animate);
     }
   }
@@ -312,7 +312,8 @@ export function createThinkingOrb(host, opts = {}) {
 
   function setVisible(nextVisible) {
     if (destroyed) return;
-    visible = Boolean(nextVisible && hostHasSize());
+    hadSize = hostHasSize();
+    visible = Boolean(nextVisible && hadSize);
     if (visible) {
       startLoop();
     } else {
@@ -332,11 +333,12 @@ export function createThinkingOrb(host, opts = {}) {
   const resizeObserver =
     typeof ResizeObserver === "function"
       ? new ResizeObserver(() => {
-          if (!hostHasSize()) {
+          hadSize = hostHasSize();
+          if (!hadSize) {
             setVisible(false);
             return;
           }
-          if (!visible && !intersectionObserver) {
+          if (!visible || !intersectionObserver) {
             setVisible(true);
             return;
           }
