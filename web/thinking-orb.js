@@ -109,6 +109,17 @@ function readOptionsFromDataset(host) {
     nodeRDepth: readNumber(dataset.nodeRDepth || dataset.orbNodeRDepth, undefined),
     lineW: readNumber(dataset.lineW || dataset.orbLineW, undefined),
     signals: readNumber(dataset.signals || dataset.orbSignals, undefined),
+    speed: readNumber(dataset.speed || dataset.orbSpeed, undefined),
+    count: readNumber(dataset.count || dataset.orbCount, undefined),
+    sizeScale: readNumber(dataset.sizeScale || dataset.orbSizeScale, undefined),
+    moveCount: readNumber(dataset.moveCount || dataset.orbMoveCount, undefined),
+    latRings: readNumber(dataset.latRings || dataset.orbLatRings, undefined),
+    lonDensity: readNumber(dataset.lonDensity || dataset.orbLonDensity, undefined),
+    rBase: readNumber(dataset.rBase || dataset.orbRBase, undefined),
+    rDepth: readNumber(dataset.rDepth || dataset.orbRDepth, undefined),
+    rActive: readNumber(dataset.rActive || dataset.orbRActive, undefined),
+    inkFar: readNumber(dataset.inkFar || dataset.orbInkFar, undefined),
+    inkSpan: readNumber(dataset.inkSpan || dataset.orbInkSpan, undefined),
   };
 }
 
@@ -126,89 +137,108 @@ function resolveSize(host, opts) {
   };
 }
 
+function lt(n, s, t, r) {
+  const a = 2 * s * t + r;
+  const o = n % a;
+  const c = new Array(s).fill(0);
+  let M = -1;
+  if (o < 2 * s * t) {
+    const h = Math.floor(o / t);
+    const m = (o - h * t) / t;
+    const p = 1 - (1 - Math.min(1, m / 0.7)) ** 3;
+    if (h < s) {
+      for (let e = 0; e < h; e += 1) c[e] = 1;
+      c[h] = p;
+      M = h;
+    } else {
+      const e = 2 * s - 1 - h;
+      for (let l = 0; l < e; l += 1) c[l] = 1;
+      c[e] = 1 - p;
+      M = e;
+    }
+  }
+  return { amount: c, active: M };
+}
+
+function pt(n, s, t) {
+  let [r, a, o] = n;
+  let c = false;
+  for (let M = 0; M < s.length; M += 1) {
+    if (t.amount[M] <= 0) continue;
+    const h = s[M];
+    const m = h.axis === 0 ? r : h.axis === 1 ? a : o;
+    if (m < h.lo || m >= h.hi) continue;
+    if (M === t.active) c = true;
+    const D = h.ang * t.amount[M];
+    const p = Math.cos(D);
+    const e = Math.sin(D);
+    if (h.axis === 0) {
+      const l = a * p - o * e;
+      o = a * e + o * p;
+      a = l;
+    } else if (h.axis === 1) {
+      const l = r * p + o * e;
+      o = -r * e + o * p;
+      r = l;
+    } else {
+      const l = r * p - a * e;
+      a = r * e + a * p;
+      r = l;
+    }
+  }
+  return [r, a, o, c];
+}
+
+function ut(n) {
+  const s = [];
+  for (let t = 0; t < n; t += 1) {
+    const r = Math.min(2, Math.floor(E(t, 2.3) * 3));
+    const a = -1 + 0.5 * Math.min(3, Math.floor(E(t, 5.9) * 4));
+    const o = E(t, 7.7) < 0.5 ? 1 : -1;
+    s.push({ axis: r, lo: a, hi: a + 0.5, ang: (o * Math.PI) / 2 });
+  }
+  return s;
+}
+
 function drawConnectingOrb(ctx, size, time, opts, darkMode) {
   const n = size;
   const r = n / 2;
   const a = n / 2;
-  const o = (n / 2) * 0.8 * (opts.spread ?? 1);
-  const proj = rot(time * 0.12, 0.32, r, a, o);
-  const M = scale(n, opts.rsPow ?? 0.6);
-  const h = opts.nodeN ?? 30;
-  const m = opts.thr ?? 0.72;
-  const D = opts.nodeR ?? 1.4;
-  const p = opts.nodeRDepth ?? 1.8;
-
-  const e = [];
-  for (let i = 0; i < h; i += 1) {
-    const u = J(i, h);
-    const y = u[0] + 0.3 * (G(i * 0.31 + 9, time * 0.24) - 0.5) * 2;
-    const b = u[1] + 0.3 * (G(i * 0.53 + 27, time * 0.21) - 0.5) * 2;
-    const f = u[2] + 0.3 * (G(i * 0.77 + 55, time * 0.27) - 0.5) * 2;
-    const P = Math.sqrt(y * y + b * b + f * f);
-    e.push([y / P, b / P, f / P]);
-  }
-
-  const lines = [];
-  for (let i = 0; i < h; i += 1) {
-    for (let u = i + 1; u < h; u += 1) {
-      const y = e[i][0] - e[u][0];
-      const b = e[i][1] - e[u][1];
-      const f = e[i][2] - e[u][2];
-      const P = Math.sqrt(y * y + b * b + f * f);
-      if (P >= m) continue;
-      const [x, g, d] = proj(e[i][0], e[i][1], e[i][2]);
-      const [v, k, N] = proj(e[u][0], e[u][1], e[u][2]);
-      const z = ((d + N) / 2 + 1) / 2;
-      lines.push({
-        x1: x,
-        y1: g,
-        x2: v,
-        y2: k,
-        z,
-        white: 0.42,
-        a: (1 - P / m) * (0.3 + 0.55 * z),
-        w: Math.max(0.6, (opts.lineW ?? 0.8) * M),
+  const speed = opts.speed ?? 1.82;
+  const s = time * speed;
+  const sizeScale = opts.sizeScale ?? opts.spread ?? 1.05;
+  const o = ((n / 2) * 0.82) * sizeScale;
+  const c = rot(s * 0.55, 0.35 + 0.1 * Math.sin(s * 0.9), r, a, o);
+  const M = scale(n, opts.rsPow ?? 0.6) * sizeScale;
+  const h = opts.moveCount ?? 14;
+  const m = ut(h);
+  const D = lt(s, h, 0.42, 1.2);
+  const p = [];
+  const e = opts.latRings ?? 15;
+  const l = opts.lonDensity ?? 40;
+  for (let R = 0; R <= e; R += 1) {
+    const w = -Math.PI / 2 + (R / e) * Math.PI;
+    const i = Math.cos(w);
+    const u = Math.sin(w);
+    const y = Math.max(1, Math.round(Math.abs(i) * l));
+    for (let b = 0; b < y; b += 1) {
+      const f = (b / y) * 2 * Math.PI;
+      const [P, x, g, d] = pt([i * Math.cos(f), u, i * Math.sin(f)], m, D);
+      const [v, k, N] = c(P, x, g);
+      const z = (N + 1) / 2;
+      p.push({
+        x: v,
+        y: k,
+        z: N,
+        r: ((opts.rBase ?? 0.6) + (opts.rDepth ?? 1.7) * z + (d ? opts.rActive ?? 0.3 : 0)) * M,
+        white: (opts.inkFar ?? 0.62) - (opts.inkSpan ?? 0.54) * z - (d ? 0.14 : 0),
       });
     }
   }
 
-  const dots = [];
-  for (let i = 0; i < h; i += 1) {
-    const [u, y, b] = proj(e[i][0], e[i][1], e[i][2]);
-    const f = (b + 1) / 2;
-    const P = 1 + 0.25 * Math.sin(time * 1.4 + i * 2.7);
-    dots.push({ x: u, y, z: b, r: (D + p * f) * P * M, white: 0.55 - 0.45 * f });
-  }
-
-  const w = opts.signals ?? 5;
-  for (let i = 0; i < w; i += 1) {
-    const u = Math.floor(time * 0.55 + i * 7.31);
-    const y = Math.floor(E(u, i * 3.1 + 1.7) * h);
-    const b = Math.floor(E(u, i * 5.7 + 4.2) * h);
-    if (y === b) continue;
-    const f = nt(time * 0.55 + i * 7.31);
-    const P = U(e[y][0], e[b][0], f);
-    const x = U(e[y][1], e[b][1], f);
-    const g = U(e[y][2], e[b][2], f);
-    const d = Math.max(1e-6, Math.sqrt(P * P + x * x + g * g));
-    const [v, k, N] = proj(P / d, x / d, g / d);
-    const z = (N + 1) / 2;
-    dots.push({ x: v, y: k, z: N, r: (D * 1.5 + p * z) * M, white: 0.05, a: 0.5 + 0.5 * z });
-  }
-
-  lines.sort((left, right) => left.z - right.z);
-  for (const line of lines) {
-    ctx.strokeStyle = colorFor(line.white, line.a, darkMode);
-    ctx.lineWidth = line.w;
-    ctx.beginPath();
-    ctx.moveTo(line.x1, line.y1);
-    ctx.lineTo(line.x2, line.y2);
-    ctx.stroke();
-  }
-
-  dots.sort((left, right) => left.z - right.z);
-  for (const dot of dots) {
-    ctx.fillStyle = colorFor(dot.white, dot.a, darkMode);
+  p.sort((left, right) => left.z - right.z);
+  for (const dot of p) {
+    ctx.fillStyle = colorFor(dot.white, 1, darkMode);
     ctx.beginPath();
     ctx.arc(dot.x, dot.y, Math.max(0.3, dot.r), 0, Math.PI * 2);
     ctx.fill();
@@ -357,7 +387,9 @@ export function createThinkingOrb(host, opts = {}) {
 export function initThinkingOrbs(root = document) {
   const run = () => {
     const scope = root || document;
-    const hosts = scope.querySelectorAll?.("[data-thinking-orb]") || [];
+    const hosts = [];
+    if (scope.matches?.("[data-thinking-orb]")) hosts.push(scope);
+    scope.querySelectorAll?.("[data-thinking-orb]")?.forEach((host) => hosts.push(host));
     hosts.forEach((host) => {
       if (host.__thinkingOrb) return;
       host.__thinkingOrb = createThinkingOrb(host);
@@ -374,8 +406,27 @@ export function initThinkingOrbs(root = document) {
 
 export default initThinkingOrbs;
 
+let thinkingOrbBodyObserver = null;
+
+function observeThinkingOrbAdditions() {
+  if (thinkingOrbBodyObserver || typeof document === "undefined" || typeof MutationObserver !== "function") return;
+  if (!document.body) return;
+  thinkingOrbBodyObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes?.forEach((node) => {
+        if (node.nodeType !== 1) return;
+        initThinkingOrbs(node);
+      });
+    }
+  });
+  thinkingOrbBodyObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 if (typeof document !== "undefined") {
-  const init = () => initThinkingOrbs();
+  const init = () => {
+    initThinkingOrbs();
+    observeThinkingOrbAdditions();
+  };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
   else init();
 }
