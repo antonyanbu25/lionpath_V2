@@ -247,7 +247,6 @@ export function createThinkingOrb(host, opts = {}) {
   let start = 0;
   let darkMode = false;
   let visible = false;
-  let hadSize = false;
   const themeQuery = getThemeQuery();
   const motionQuery = getMotionQuery();
 
@@ -287,8 +286,7 @@ export function createThinkingOrb(host, opts = {}) {
 
   function animate(timeStamp) {
     const hasSize = hostHasSize();
-    hadSize = hasSize;
-    if (hasSize && !visible) visible = true;
+    visible = hasSize;
     render(timeStamp);
     if (!destroyed && !prefersReducedMotion()) {
       frame = window.requestAnimationFrame(animate);
@@ -302,47 +300,24 @@ export function createThinkingOrb(host, opts = {}) {
   }
 
   function startLoop() {
-    if (destroyed || frame || !visible) return;
+    if (destroyed || frame || !hostHasSize()) return;
     if (prefersReducedMotion()) {
+      visible = true;
       render(performance.now());
       return;
     }
     frame = window.requestAnimationFrame(animate);
   }
 
-  function setVisible(nextVisible) {
-    if (destroyed) return;
-    hadSize = hostHasSize();
-    visible = Boolean(nextVisible && hadSize);
-    if (visible) {
-      startLoop();
-    } else {
-      stopLoop();
-    }
-  }
-
-  const intersectionObserver =
-    typeof IntersectionObserver === "function"
-      ? new IntersectionObserver((entries) => {
-          const entry = entries[0];
-          setVisible(Boolean(entry?.isIntersecting));
-        })
-      : null;
-  intersectionObserver?.observe(host);
-
   const resizeObserver =
     typeof ResizeObserver === "function"
       ? new ResizeObserver(() => {
-          hadSize = hostHasSize();
-          if (!hadSize) {
-            setVisible(false);
+          if (hostHasSize()) {
+            visible = true;
+            startLoop();
             return;
           }
-          if (!visible || !intersectionObserver) {
-            setVisible(true);
-            return;
-          }
-          if (visible) render(performance.now());
+          visible = false;
         })
       : null;
   resizeObserver?.observe(host);
@@ -362,14 +337,16 @@ export function createThinkingOrb(host, opts = {}) {
   };
   motionQuery?.addEventListener?.("change", handleMotionChange);
 
-  if (!intersectionObserver) setVisible(hostHasSize());
+  if (hostHasSize()) {
+    visible = true;
+    startLoop();
+  }
 
   return {
     destroy() {
       destroyed = true;
       stopLoop();
       resizeObserver?.disconnect();
-      intersectionObserver?.disconnect();
       themeQuery?.removeEventListener?.("change", repaint);
       motionQuery?.removeEventListener?.("change", handleMotionChange);
       canvas.remove();
