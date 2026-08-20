@@ -93,7 +93,8 @@ export async function requireUser(request: Request, env: Env): Promise<VerifiedU
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) throw Object.assign(new Error("Sign-in required."), { status: 401 });
-  const user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
+  const projectId = env.FIREBASE_PROJECT_ID!;
+  const user = await verifyFirebaseToken(token, projectId);
   const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
   if (domain && !user.email.endsWith(`@${domain}`)) {
     throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });

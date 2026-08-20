@@ -29,14 +29,14 @@ async function loadFirestore() {
 }
 
 function segmentForTeam(
-  org: { segments?: { id: string; leaderId: string; teamIds: string[]; name: string }[] },
+  org: { segments?: { id: string; leaderId: string; teamIds: string[]; name?: string }[] },
   teamId: string,
 ) {
   return (org.segments || []).find((s) => s.teamIds?.includes(teamId)) || null;
 }
 
 function segmentForLeader(
-  org: { segments?: { id: string; leaderId: string; teamIds: string[]; name: string }[] },
+  org: { segments?: { id: string; leaderId: string; teamIds: string[]; name?: string }[] },
   userId: string,
 ) {
   return (org.segments || []).find((s) => s.leaderId === userId) || null;
@@ -44,7 +44,7 @@ function segmentForLeader(
 
 function canEditStructure(
   actor: { id: string; role: string; orgId?: string | null },
-  org: { directorId?: string; segments?: { id: string; leaderId: string; teamIds: string[] }[] },
+  org: { directorId?: string; segments?: { id: string; leaderId: string; teamIds: string[]; name?: string }[] },
   change: StructureChange,
 ) {
   if (actor.role === "admin") return true;
@@ -99,14 +99,15 @@ export async function handleOrgStructureGet(
       const team = teamSnap.data() || {};
       const manager = team.managerId ? usersById.get(String(team.managerId)) : null;
       const ics = (team.memberIds || [])
-        .map((id: string) => usersById.get(id))
-        .filter((u) => u && (u.role === "se" || u.role === "admin"))
-        .map((u) => ({
-          id: u.id,
-          email: u.email,
-          displayName: u.displayName,
-          managerId: u.managerId,
-          teamId: u.teamId,
+        .map((id: string) => usersById.get(id) as Record<string, unknown> | undefined)
+        .filter((u: Record<string, unknown> | undefined): u is Record<string, unknown> =>
+          !!u && ((u.role as string) === "se" || (u.role as string) === "admin"))
+        .map((u: Record<string, unknown>) => ({
+          id: String(u.id),
+          email: u.email as string | undefined,
+          displayName: u.displayName as string | undefined,
+          managerId: u.managerId as string | undefined,
+          teamId: u.teamId as string | undefined,
         }));
       teamRows.push({
         id: teamId,
@@ -150,12 +151,15 @@ export async function handleOrgStructurePatch(
   const changes = body.changes || [];
   if (!changes.length) return json({ ok: true, updated: 0 }, 200, cors);
 
+  if (!verified?.email) return json({ error: "Sign-in required." }, 401, cors);
+
   const orgId = process.env.DEFAULT_ORG_ID || "org_freshworks_se";
   const orgSnap = await db.collection("orgs").doc(orgId).get();
   const org = orgSnap.data() || {};
 
   const actorSnap = await db.collection("users").where("email", "==", verified.email).limit(1).get();
-  const actor = actorSnap.empty ? null : actorSnap.docs[0].data();
+  const actorDoc = actorSnap.empty ? null : actorSnap.docs[0];
+  const actor = actorDoc?.data() as { id: string; role: string; orgId?: string | null } | undefined;
   if (!actor) return json({ error: "User profile not found." }, 403, cors);
 
   const ts = new Date().toISOString();

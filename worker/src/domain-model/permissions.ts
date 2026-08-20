@@ -27,6 +27,7 @@ export interface ResourceContext {
   ownerId?: string;
   teamId?: string;
   orgId?: string;
+  segmentId?: string;
   targetRole?: string;
 }
 

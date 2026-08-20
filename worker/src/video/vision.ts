@@ -83,7 +83,7 @@ async function buildImageParts(
       parts.push({
         inlineData: {
           mimeType: "image/jpeg",
-          data: bytes.toString("base64"),
+          data: Buffer.from(bytes).toString("base64"),
         },
       });
     } catch {

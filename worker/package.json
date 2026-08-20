@@ -32,16 +32,24 @@
     "build:benchmark:kb-only": "node scripts/generate-benchmark-kb.mjs",
     "eval:prep-golden": "tsx scripts/eval-prep-golden.mjs",
     "eval:self-consistency": "tsx scripts/self-consistency.mjs",
-    "report:overrides": "tsx scripts/override-report.mjs"
+    "report:overrides": "tsx scripts/override-report.mjs",
+    "verify:db-env": "node scripts/verify-db-env.mjs",
+    "schema:apply": "node scripts/apply-janus-schema.mjs",
+    "test:janus-smoke": "node ../janus/tests/grants_smoke.test.mjs && node ../janus/tests/rls_fails_closed.test.mjs",
+    "test:view-rls": "node ../janus/tests/view_rls.test.mjs",
+    "test:dual-soak": "tsx scripts/dual-write-soak.ts",
+    "test:sql-gates": "node ../janus/tests/grants_smoke.test.mjs && node ../janus/tests/rls_fails_closed.test.mjs && node ../janus/tests/view_rls.test.mjs && tsx scripts/dual-write-soak.ts && tsc --noEmit"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",
     "jsonrepair": "^3.15.0",
+    "pg": "^8.16.0",
     "tsx": "^4.19.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260801.1",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
     "ffmpeg-static": "^5.3.0",
     "firebase-tools": "^15.26.0",
     "typescript": "^5.4.0",

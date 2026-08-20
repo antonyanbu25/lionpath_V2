@@ -8,7 +8,6 @@ import { createFirestoreStore } from "./firestore-store.js";
 import { createApiStore } from "./api-store.js";
 import { isFirebasePermissionError } from "./safe-store.js";
 import { runMeddpiccDealMigrationIfNeeded } from "./migrate-meddpicc-to-deals.js";
-import { getSession } from "../auth.js";
 
 /** @type {ReturnType<createLocalStore>|null} */
 let storeInstance = null;
@@ -53,11 +52,13 @@ function resolveReadMode(fb) {
   if (typeof localStorage !== "undefined") {
     const override = localStorage.getItem("lionpath.readVia");
     if (override === "api") return "api";
+    if (override === "firestore") return "firestore";
   }
-  // Default to firestore for admin/manager, api for SEs (Firestore rules block broad SE reads).
-  const session = getSession();
-  const isManager = session?.role === "manager" || session?.role === "admin";
-  return isManager ? "firestore" : "api";
+  // SQL migration (ADR-008): the worker API is the default read path for all
+  // roles. Direct browser Firestore reads are gated to local development or
+  // an explicit opt-in above; they are retired once PERSISTENCE_MODE=sql.
+  if (isLocalDevHost()) return "firestore";
+  return "api";
 }
 
 /** @returns {"local"|"firestore"|"api"} */

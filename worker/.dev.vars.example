@@ -16,3 +16,9 @@ GEMINI_API_KEY=your-gemini-api-key-from-aistudio
 
 # wrangler secret put APOLLO_API_KEY
 # wrangler secret put FRESHDESK_API_KEY
+
+# Cloud SQL (Janus migration) — wrap URLs in SINGLE QUOTES if password contains ! # ? & etc.
+# Edit this file in the editor; do NOT paste these lines into zsh ( ! triggers history expansion ).
+# DATABASE_URL_MIGRATIONS='postgresql://postgres:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
+# DATABASE_URL='postgresql://janus_app:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
+# PERSISTENCE_MODE=firestore

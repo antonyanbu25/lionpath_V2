@@ -347,7 +347,7 @@ Values max 12 words. Labels max 4 words. No invention.`,
       research: false,
       effort: "low",
       jsonSchema: SIZING_SCHEMA as unknown as Record<string, unknown>,
-      step: "prep/rivals-context",
+      passName: "prep/rivals-context",
     });
   } catch (err) {
     console.warn("prep/rivals-context skipped:", (err as Error).message);
@@ -358,7 +358,7 @@ Values max 12 words. Labels max 4 words. No invention.`,
     const parsed = extractJson<{ metrics?: { label?: string; value?: string; aboutCompany?: boolean }[] }>(
       result.text,
     );
-    const metrics = filterFishContextMetrics(parsed.metrics);
+    const metrics = filterFishContextMetrics(parsed.metrics ?? []);
     if (!metrics.length) return null;
     return { metrics, source: "context" };
   } catch (err) {

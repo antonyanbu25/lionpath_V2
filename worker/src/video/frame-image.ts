@@ -15,6 +15,10 @@ const execFileAsync = promisify(execFile);
 /** Max width/height before Gemini splits an image into multiple billed tiles. */
 export const GEMINI_TILE_MAX_PX = 768;
 
+function readU16BE(buf: Buffer, offset: number): number {
+  return buf[offset] * 256 + buf[offset + 1];
+}
+
 export function readJpegDimensions(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
   let i = 2;
@@ -26,12 +30,12 @@ export function readJpegDimensions(buf: Buffer): { width: number; height: number
     const marker = buf[i + 1];
     if (marker === 0xd9) break;
     if (marker >= 0xc0 && marker <= 0xc3) {
-      const height = buf.readUInt16BE(i + 5);
-      const width = buf.readUInt16BE(i + 7);
+      const height = readU16BE(buf, i + 5);
+      const width = readU16BE(buf, i + 7);
       if (width > 0 && height > 0) return { width, height };
       return null;
     }
-    const segLen = buf.readUInt16BE(i + 2);
+    const segLen = readU16BE(buf, i + 2);
     if (segLen < 2) break;
     i += 2 + segLen;
   }

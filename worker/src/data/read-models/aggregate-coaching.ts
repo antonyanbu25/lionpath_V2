@@ -215,7 +215,7 @@ export interface ManagerViewPayload {
 function companyFromSummary(summary: FirestoreDoc): string {
   const title = summary.title || "Call";
   const parts = String(title).split(/[·|–—-]/);
-  return (parts[0] || title).trim();
+  return (parts[0] || String(title)).trim();
 }
 
 function scorecardsByOwnerId(

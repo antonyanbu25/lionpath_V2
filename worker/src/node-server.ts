@@ -34,6 +34,9 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimi
   DISPUTE_NOTIFY_FROM?: string;
   FRESHDESK_API_KEY?: string;
   FRESHDESK_DOMAIN?: string;
+  DATABASE_URL?: string;
+  PERSISTENCE_MODE?: string;
+  PG_POOL_MAX?: string;
 }
 
 const PORT = Number(process.env.PORT || 8787);
@@ -82,6 +85,9 @@ function buildEnv(): NodeEnv {
     DISPUTE_NOTIFY_FROM: process.env.DISPUTE_NOTIFY_FROM || "",
     FRESHDESK_API_KEY: process.env.FRESHDESK_API_KEY || "",
     FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus.freshdesk.com",
+    DATABASE_URL: process.env.DATABASE_URL || "",
+    PERSISTENCE_MODE: process.env.PERSISTENCE_MODE || "firestore",
+    PG_POOL_MAX: process.env.PG_POOL_MAX || "",
   };
 
   // --- P0 SECURITY: hard-fail boot if Firebase auth is not configured in production.

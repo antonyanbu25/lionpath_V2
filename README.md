@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **This branch** | **`main`** — source of truth (newest stable) |
+| **This branch** | **`feat/sql-foundation`** — Firestore → Cloud SQL (Janus v9.3): schema, dual-write, QA fixes (16/16), gated |
 | **Portal build** | `2.1.42` (`web/index.html` `portal-build`, cache-busted CSS/JS) |
 | **Worker build** | `2.1.30` (`worker/src/build-id.ts`, `GET /api/config`) |
 | **Version file** | [`VERSION`](./VERSION) — build stamp **2.1.30** |
@@ -19,16 +19,17 @@
 ## Table of contents
 
 1. [What it does](#what-it-does)
-2. [Release highlights](#release-highlights)
-3. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
-4. [Architecture](#architecture)
-5. [Repository layout](#repository-layout)
-6. [Quick start (developers)](#quick-start-developers)
-7. [Demo logins](#demo-logins)
-8. [Testing](#testing)
-9. [Deploy](#deploy)
-10. [Documentation index](#documentation-index)
-11. [Contributing & remotes](#contributing--remotes)
+2. [SQL migration (feat/sql-foundation)](#sql-migration-featsql-foundation)
+3. [Release highlights](#release-highlights)
+4. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
+5. [Architecture](#architecture)
+6. [Repository layout](#repository-layout)
+7. [Quick start (developers)](#quick-start-developers)
+8. [Demo logins](#demo-logins)
+9. [Testing](#testing)
+10. [Deploy](#deploy)
+11. [Documentation index](#documentation-index)
+12. [Contributing & remotes](#contributing--remotes)
 
 ---
 
@@ -45,6 +46,137 @@ Lionpath is an internal SE coaching portal with two core workflows plus CRM-styl
 | **Support & disputes** | When scores or product feedback need follow-up | Freshdesk tickets + optional manager email on score disputes |
 
 Both prep and post-call write to the **same domain model** — accounts, contacts, and deals are global entities; prep briefs and post-call artifacts attach to shared lifecycles.
+
+---
+
+## SQL migration (feat/sql-foundation)
+
+Branch **`feat/sql-foundation`** adds **PostgreSQL on Cloud SQL** as the future system of record (Janus v9.3 schema), with a **dual-write transition** path. Firestore remains the default read/write path until `PERSISTENCE_MODE` is flipped.
+
+**Status:** Phase B ops complete; all **16 QA blockers confirmed and fixed** (see [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md)). Fresh schema install, grants, RLS, view RLS, dual-write soak, and TypeScript compile all pass — see [QA gate results](#sql-qa-gate-results-2026-08-20) below.
+
+| Piece | Location |
+|-------|----------|
+| Schema (phases 00–13) | `janus/schema/` |
+| Persistence layer | `worker/src/data/persistence/` |
+| Build plan | [docs/SQL_BUILD_PLAN.md](./docs/SQL_BUILD_PLAN.md) |
+| QA fix plan | [docs/SQL_QA_FIX_PLAN.md](./docs/SQL_QA_FIX_PLAN.md) |
+| QA validation matrix | [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md) |
+| Cutover runbook | [docs/CUTOVER_SQL.md](./docs/CUTOVER_SQL.md) |
+| Security (QA public IP) | [docs/CLOUDSQL_SECURITY.md](./docs/CLOUDSQL_SECURITY.md) |
+| ADR | [docs/adr/008-firestore-to-sql-decision.md](./docs/adr/008-firestore-to-sql-decision.md) |
+
+**`PERSISTENCE_MODE`:** `firestore` (default) → `dual` (SQL primary + outbox projection to Firestore) → `sql` (SQL only).
+
+### Local Cloud SQL setup
+
+1. Copy `worker/.dev.vars.example` → `worker/.dev.vars` (gitignored).
+2. Add **single-quoted** connection strings (never paste URLs into zsh — `!` triggers history expansion):
+
+   ```bash
+   DATABASE_URL_MIGRATIONS='postgresql://postgres:…@HOST:5432/janus?sslmode=require'
+   DATABASE_URL='postgresql://janus_app:…@HOST:5432/janus?sslmode=require'
+   PERSISTENCE_MODE=firestore   # use dual after smoke tests pass
+   ```
+
+3. Verify and apply schema:
+
+   ```bash
+   node worker/scripts/verify-db-env.mjs
+   node worker/scripts/apply-janus-schema.mjs
+   ```
+
+4. **Full QA gate** (must pass before dual mode):
+
+   ```bash
+   cd worker && npm run test:sql-gates
+   ```
+
+   Or run individually — see [SQL QA gate results](#sql-qa-gate-results-2026-08-20).
+
+5. Optional: prove fresh install on empty DB (reproduces QA #1 fix):
+
+   ```bash
+   node worker/scripts/repro-empty-db.mjs
+   ```
+
+### SQL QA gate results (2026-08-20)
+
+All gates run against live Cloud SQL QA (`DATABASE_URL` / `DATABASE_URL_MIGRATIONS` in `worker/.dev.vars`). **30 assertions, 0 failures.**
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Env parse | `node worker/scripts/verify-db-env.mjs` | PASS — vars parsed, no secrets logged |
+| Schema apply | `node worker/scripts/apply-janus-schema.mjs` | PASS — phases 00–13 applied |
+| Fresh install | `node worker/scripts/repro-empty-db.mjs` | PASS — empty `janus_repro` DB, all phases ok |
+| TypeScript | `cd worker && npx tsc --noEmit` | PASS — 0 errors |
+| Grants smoke | `node janus/tests/grants_smoke.test.mjs` | **18/18** — see table below |
+| RLS fails-closed | `node janus/tests/rls_fails_closed.test.mjs` | **8/8** — see table below |
+| View RLS | `node janus/tests/view_rls.test.mjs` | **4/4** — see table below |
+| Dual-write soak | `cd worker && npm run test:dual-soak` | PASS — SQL row + `sync_outbox` entry |
+
+<details>
+<summary><strong>Grants smoke — 18 checks</strong> (<code>janus/tests/grants_smoke.test.mjs</code>)</summary>
+
+| # | Check |
+|---|--------|
+| 1 | connected as `janus_app` |
+| 2–9 | SELECT on account, contact, deal, activity, pre_call, post_call, task, scorecard |
+| 10–11 | INSERT + DELETE org_unit round-trip |
+| 12 | INSERT app_user (identity sequence) |
+| 13–18 | REVOKE holds: deal_stage_history UPDATE/DELETE, audit_log UPDATE/DELETE, score_override UPDATE, contact_merge_log UPDATE |
+
+</details>
+
+<details>
+<summary><strong>RLS fails-closed — 8 checks</strong> (<code>janus/tests/rls_fails_closed.test.mjs</code>)</summary>
+
+| # | Check |
+|---|--------|
+| 1 | No session vars → 0 deals |
+| 2 | Typo `app.org_path` — no cross-org deals |
+| 3 | Typo `app.org_path` — owner sees own deal |
+| 4 | Org path only — sees in-org deal |
+| 5 | Org path only — not cross-org |
+| 6 | SE context sees own org deal |
+| 7 | SE context cannot see other org deal |
+| 8 | Admin sees both fixture deals (2/2) |
+
+</details>
+
+<details>
+<summary><strong>View RLS (security_invoker) — 4 checks</strong> (<code>janus/tests/view_rls.test.mjs</code>)</summary>
+
+| # | Check |
+|---|--------|
+| 1 | Org2 session sees 0 rows for org1 deal in `v_deal_traction` |
+| 2 | Org2 session sees 0 active_deals for org1 in `v_org_metrics` |
+| 3 | Org1 session sees its own deal in `v_deal_traction` |
+| 4 | Admin sees the deal in `v_deal_traction` |
+
+</details>
+
+<details>
+<summary><strong>Dual-write soak</strong> (<code>worker/scripts/dual-write-soak.ts</code>)</summary>
+
+| Step | Check |
+|------|--------|
+| 1 | Upsert account into SQL under system context |
+| 2 | Corresponding `sync_outbox` row created (entity `account`, op `update`, status `pending`) |
+| 3 | Fixture rows cleaned up |
+
+</details>
+
+### Cloud Run (staging)
+
+```bash
+bash deploy/cloudrun/setup-sql-secrets.sh          # store secrets in Secret Manager
+ATTACH=1 bash deploy/cloudrun/setup-sql-secrets.sh # mount DATABASE_URL + PERSISTENCE_MODE=dual
+```
+
+See [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) and [deploy/cloudsql/README.md](./deploy/cloudsql/README.md).
+
+**Do not commit** `worker/.dev.vars` or any connection strings.
 
 ---
 
@@ -250,8 +382,10 @@ See also: [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARI
 ```
 Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (+ google_search)
        │                           │
-  Firebase Auth (optional)     Secrets in worker/.dev.vars
-  localStorage / Firestore     Zoom share → VTT transcript
+  Firebase Auth (optional)     Firestore (legacy / dual projection)
+  localStorage / Firestore     Cloud SQL PostgreSQL (Janus v9.3, dual/sql mode)
+                               Secrets in worker/.dev.vars / Secret Manager
+                               Zoom share → VTT transcript
                                File/KV history (VPS)
 ```
 
@@ -259,7 +393,7 @@ Browser (web/)  ──HTTPS──►  Worker API (worker/)  ──►  Gemini (+
 |-------|------|
 | **`web/`** | Static portal — prep, post-call, Activities feed, dashboard, accounts, deals, org settings, Crayons (Dew) UI |
 | **`web/domain/`** | Client-side domain store — accounts, contacts, deals, lifecycles, dual-write, product signals, RBAC |
-| **`worker/`** | API — prep synthesize, post-call passes, contact enrich, search RAG, org structure, Freshdesk tickets, dispute notify |
+| **`worker/`** | API — prep synthesize, post-call passes, contact enrich, search RAG, org structure, Freshdesk tickets, dispute notify; **persistence layer** for Cloud SQL dual-write |
 | **Production** | Docker Compose + Caddy on VPS — see [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) |
 
 **Domain model (Salesforce-shaped):**
@@ -283,17 +417,23 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 │   ├── calls-list-view.js / qip-radar.js / score-disputes.js / support-tickets.js
 │   ├── scripts/         # Regression tests (npm test)
 │   └── dev-server.mjs   # Local static server :8788
+├── janus/               # Janus v9.3 PostgreSQL schema + smoke tests
+│   ├── schema/          # phases 00–12 (DDL)
+│   ├── scripts/         # manage-partitions.mjs
+│   └── tests/           # grants_smoke, rls_fails_closed
 ├── worker/              # Node API :8787
+│   ├── src/data/persistence/  # Postgres + dual-write + outbox
 │   ├── src/prep/        # Research, synthesize, fish sizing, recent news
 │   ├── src/postcall/    # Multi-pass post-call pipeline
 │   ├── src/freshdesk.ts # Freshdesk ticket create (disputes + feedback)
 │   ├── src/notify-email.ts  # Manager dispute email notify
 │   ├── secrets/         # Local secret files (gitignored except README)
-│   └── scripts/         # Seed Firestore users, worker tests
-├── docs/                # ADRs, RBAC, fix reports, architecture, Firebase setup
+│   └── scripts/         # apply-janus-schema, verify-db-env, dual-write-soak
+├── docs/                # ADRs, RBAC, fix reports, SQL migration runbooks
 ├── firestore.rules      # Security rules (org structure, account team, artifacts)
 ├── deploy/vps/          # Production Docker + Caddy
-├── deploy/cloudrun/     # Cloud Run deploy + Freshdesk secret setup
+├── deploy/cloudrun/     # Cloud Run deploy + Freshdesk/SQL secret setup
+├── deploy/cloudsql/     # Cloud SQL provision + partition cron
 ├── se-labs-*.html       # SE Labs UI prototypes (Activities / deals / radar)
 └── README.md            # This file
 ```
@@ -315,7 +455,7 @@ See [docs/ENTITY_CATALOG.md](./docs/ENTITY_CATALOG.md), [docs/adr/003-account-de
 ```bash
 git clone https://github.com/antonyanbu25/lionpath_V2.git
 cd lionpath_V2
-git checkout main
+git checkout feat/sql-foundation   # or main for stable portal-only work
 
 cd worker
 cp .dev.vars.example .dev.vars
@@ -403,6 +543,21 @@ cd worker && npm test
 # worker — fast/free tests only
 npm run test:fast
 
+# worker — Janus Cloud SQL smoke (grants + RLS; needs DATABASE_URL in .dev.vars)
+npm run test:janus-smoke
+
+# worker — full SQL QA gate (grants + RLS + view RLS + dual soak + tsc)
+cd worker && npm run test:sql-gates
+
+# worker — view RLS only (security_invoker on read-model views)
+node janus/tests/view_rls.test.mjs
+
+# worker — fresh schema install on empty DB (QA #1 repro gate)
+node worker/scripts/repro-empty-db.mjs
+
+# worker — dual-write soak (SQL + sync_outbox; needs DATABASE_URL)
+npm run test:dual-soak
+
 # worker — live-api tests (real GEMINI_API_KEY, costs money — run
 # deliberately, never part of any automated gate)
 npm run test:live-api
@@ -487,9 +642,15 @@ git push -u origin feat/my-change
 | [docs/PRECALL_POSTCALL_CRM_PARITY.md](./docs/PRECALL_POSTCALL_CRM_PARITY.md) | Prep/post-call shared CRM path |
 | [docs/CONTACT_ENRICHMENT.md](./docs/CONTACT_ENRICHMENT.md) | DISC / enrich API |
 | [docs/VPS_DEPLOY.md](./docs/VPS_DEPLOY.md) | Production deploy |
+| [docs/SQL_BUILD_PLAN.md](./docs/SQL_BUILD_PLAN.md) | Cloud SQL migration build plan |
+| [docs/SQL_QA_FIX_PLAN.md](./docs/SQL_QA_FIX_PLAN.md) | QA blocker fix plan (Phases 0–6) |
+| [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md) | QA claim validation matrix (16/16 confirmed) |
+| [docs/CUTOVER_SQL.md](./docs/CUTOVER_SQL.md) | Firestore → SQL cutover stages |
+| [docs/CLOUDSQL_SECURITY.md](./docs/CLOUDSQL_SECURITY.md) | Cloud SQL QA security posture |
 | [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
 | [docs/HARNESS_FINDINGS.md](./docs/HARNESS_FINDINGS.md) | Eval harness working log — real bugs the test suite caught |
-| [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) | Cloud Run + Freshdesk secret |
+| [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) | Cloud Run + Freshdesk/SQL secrets |
+| [deploy/cloudsql/README.md](./deploy/cloudsql/README.md) | Cloud SQL provision + worker wiring |
 | [TEAM_SETUP.md](./TEAM_SETUP.md) | Onboarding & tunnels |
 | [docs/POST_CALL_OVERVIEW.md](./docs/POST_CALL_OVERVIEW.md) | Leadership demo |
 

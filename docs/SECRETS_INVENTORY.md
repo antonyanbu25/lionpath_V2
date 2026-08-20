@@ -28,6 +28,8 @@ is in use (except for firebase-config-local on Cloud Run builds).
 | firebase-config-local | N/A | Secret Manager secret "firebase-config-local" | N/A | Web SSO config. Only secret using Secret Manager today. |
 | GOOGLE_CLOUD_PROJECT | N/A | --set-env-vars | N/A | Non-secret (se-singha-paathi). |
 | VERTEX_LOCATION | N/A | --set-env-vars | N/A | Non-secret (us-central1). |
+| DATABASE_URL | N/A | Secret Manager "janus-database-url-{env}" | N/A | Cloud SQL `janus_app` role (NOT postgres superuser). Created by deploy/cloudsql/provision.sh. |
+| PERSISTENCE_MODE | N/A | --set-env-vars | N/A | Non-secret flag: firestore \| dual \| sql. |
 
 ## Known issues
 

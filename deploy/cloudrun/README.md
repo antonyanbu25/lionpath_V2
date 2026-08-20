@@ -155,6 +155,17 @@ Optional env vars (add to `--set-env-vars` or Secret Manager):
 | `ZOOMINFO_API_KEY` | ZoomInfo research |
 | `FRESHDESK_API_KEY` | Freshdesk API key for dispute/feedback tickets (Secret Manager) |
 | `FRESHDESK_DOMAIN` | Freshdesk domain, e.g. `janus.freshdesk.com` (env var OK) |
+| `DATABASE_URL` | Cloud SQL `janus_app` connection string (Secret Manager — see below) |
+| `PERSISTENCE_MODE` | `firestore` (default) · `dual` (SQL + outbox) · `sql` |
+
+One-time Cloud Run SQL attach (reads `worker/.dev.vars`):
+
+```bash
+bash deploy/cloudrun/setup-sql-secrets.sh          # store secrets only
+ATTACH=1 bash deploy/cloudrun/setup-sql-secrets.sh # mount DATABASE_URL + PERSISTENCE_MODE=dual
+```
+
+Secrets: `janus-database-url-dev` (runtime), `janus-database-url-migrations` (partition cron). See [docs/CLOUDSQL_SECURITY.md](../../docs/CLOUDSQL_SECURITY.md).
 
 One-time Cloud Run attach (same key as local):
 
@@ -292,6 +303,7 @@ powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
 | `first-deploy.ps1` | Deploy API + web from pushed images (Windows; uses your gcloud login) |
 | `setup-gcp.sh` | One-time APIs, Artifact Registry, GCS, IAM |
 | `setup-firebase-secret.sh` | Upload `web/firebase-config.local.js` to Secret Manager |
+| `setup-sql-secrets.sh` | Upload `DATABASE_URL` secrets + optional Cloud Run dual mode |
 | `setup-trigger.sh` | Create/update Cloud Build trigger on branch `2.1` |
 | `first-deploy.sh` | First API deploy with full env vars and GCS volume |
 | `setup-domains.sh` | Map `portal.*` / `portalapi.*` custom domains |
