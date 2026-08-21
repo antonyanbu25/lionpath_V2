@@ -143,16 +143,24 @@ export function mergeHistoryLists(...lists) {
     .slice(0, MAX_ENTRIES);
 }
 
-async function historyHeaders() {
-  const headers = { "content-type": "application/json" };
-  if (getAuthToken) {
-    try {
-      const token = await getAuthToken();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {
-      // demo mode — email in body/query is enough
-    }
+async function resolveHistoryAuthToken(forceRefresh = false) {
+  try {
+    const token = await getAuthToken?.(forceRefresh);
+    if (token) return token;
+  } catch {
+    // demo mode — email in body/query is enough
   }
+  try {
+    return await globalThis.__firebaseAuth?.currentUser?.getIdToken?.(forceRefresh) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function historyHeaders(forceRefresh = false) {
+  const headers = { "content-type": "application/json" };
+  const token = await resolveHistoryAuthToken(forceRefresh);
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
 
@@ -168,6 +176,13 @@ export async function fetchHistoryFromWorker(email) {
       headers: await historyHeaders(),
       signal: AbortSignal.timeout(12000),
     });
+    if (res.status === 401 && await resolveHistoryAuthToken(true)) {
+      res = await fetch(url, {
+        method: "GET",
+        headers: await historyHeaders(true),
+        signal: AbortSignal.timeout(12000),
+      });
+    }
   } catch (err) {
     console.error("[history] GET /api/history network error:", err.message || err);
     throw err;
@@ -190,17 +205,27 @@ export async function fetchHistoryFromWorker(email) {
 async function pushRemoteEntry(email, entry, opts = {}) {
   const normalized = normalizeUserEmail(email);
   if (!normalized || !entry?.id) return false;
-  const res = await fetch(`${WORKER_BASE_URL}/api/history`, {
+  const url = `${WORKER_BASE_URL}/api/history`;
+  const body = JSON.stringify({
+    email: normalized,
+    targetEmail: normalized,
+    proxySeActing: opts.proxySeActing === true,
+    entry,
+  });
+  let res = await fetch(url, {
     method: "POST",
     headers: await historyHeaders(),
-    body: JSON.stringify({
-      email: normalized,
-      targetEmail: normalized,
-      proxySeActing: opts.proxySeActing === true,
-      entry,
-    }),
+    body,
     signal: AbortSignal.timeout(12000),
   });
+  if (res.status === 401 && await resolveHistoryAuthToken(true)) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: await historyHeaders(true),
+      body,
+      signal: AbortSignal.timeout(12000),
+    });
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = err.error || `History save failed (${res.status})`;
@@ -214,12 +239,22 @@ async function pushRemoteEntry(email, entry, opts = {}) {
 export async function pushRemoteEntries(email, entries) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return false;
-  const res = await fetch(`${WORKER_BASE_URL}/api/history`, {
+  const url = `${WORKER_BASE_URL}/api/history`;
+  const body = JSON.stringify({ email: normalized, entries });
+  let res = await fetch(url, {
     method: "POST",
     headers: await historyHeaders(),
-    body: JSON.stringify({ email: normalized, entries }),
+    body,
     signal: AbortSignal.timeout(15000),
   });
+  if (res.status === 401 && await resolveHistoryAuthToken(true)) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: await historyHeaders(true),
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = err.error || `History sync failed (${res.status})`;

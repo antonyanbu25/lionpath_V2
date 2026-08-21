@@ -51,7 +51,6 @@ import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
 import { listPostCallAnalyses, getPostCallAnalysis, syncHistoryOnLogin, setHistoryAuthGetter, clearHistoryAuthGetter } from "./history.js";
-import { setLocalSyncAuthGetter, autoSyncOnLogin } from "./recovery/local-recovery.js";
 import {
   syncTasksOnLogin,
   syncTasksAfterActivity,
@@ -161,6 +160,8 @@ let fb = null;
 let authReadyPromise = Promise.resolve();
 /** @type {Promise<void>} */
 let firebaseBootstrapPromise = Promise.resolve();
+/** @type {Promise<object|null>} */
+let firebaseStoreReadyPromise = Promise.resolve(null);
 
 let currentSession = null;
 let currentView = "dashboard";
@@ -846,7 +847,7 @@ function buildFetchRemoteHistory() {
     const email = currentSession?.email;
     if (!email) return [];
     if (isFirebaseAuthEnabled() && fb?.auth?.currentUser) {
-      setHistoryAuthGetter(() => fb.auth.currentUser.getIdToken());
+      setHistoryAuthGetter(firebaseIdTokenGetter);
     }
     return syncHistoryOnLogin(email);
   };
@@ -2272,12 +2273,29 @@ function showAuthWaiting(message = "Waiting for Google sign-in…") {
   show($("app-loading"), true);
 }
 
+async function currentFirebaseIdToken(forceRefresh = false) {
+  if (!isFirebaseAuthEnabled()) return null;
+  try {
+    await authReadyPromise;
+  } catch {
+    // Continue with the live user check below.
+  }
+  return await fb?.auth?.currentUser?.getIdToken?.(forceRefresh) || null;
+}
+
+function firebaseIdTokenGetter(forceRefresh = false) {
+  return currentFirebaseIdToken(forceRefresh);
+}
+
+function installFirebaseWorkerAuthGetters() {
+  if (!isFirebaseAuthEnabled()) return;
+  setHistoryAuthGetter(firebaseIdTokenGetter);
+  setTasksAuthGetter(firebaseIdTokenGetter);
+}
+
 function applySessionAuthGetters() {
-  const tokenFn = isFirebaseAuthEnabled() && fb?.auth?.currentUser
-    ? () => fb.auth.currentUser.getIdToken()
-    : null;
+  const tokenFn = isFirebaseAuthEnabled() ? firebaseIdTokenGetter : null;
   setHistoryAuthGetter(tokenFn);
-  setLocalSyncAuthGetter(tokenFn);
   setTasksAuthGetter(tokenFn);
   setSummariesAuthGetter(tokenFn);
   setCallPayloadAuthGetter(tokenFn);
@@ -2543,17 +2561,6 @@ async function showApp(session, opts = {}) {
         applySessionAuthGetters();
         await loadPersistedHistory();
         if (!sessionStillValid()) return;
-        void autoSyncOnLogin(currentSession, { force: true }).then((result) => {
-          if (!result || !sessionStillValid()) return;
-          refreshSidebarRecentWork();
-          if (
-            !dashboardRenderInFlight &&
-            (currentView === "dashboard" || currentView === "manager" || currentView === "coaching")
-          ) {
-            refreshDashboardFromStorage();
-          }
-        });
-        if (!sessionStillValid()) return;
         refreshSidebarRecentWork();
         if (
           !dashboardRenderInFlight &&
@@ -2704,6 +2711,8 @@ async function completeFirebaseLogin(user, opts = {}) {
         userId: fallbackId,
         uid: fallbackId,
       };
+      installFirebaseWorkerAuthGetters();
+      await firebaseStoreReadyPromise;
       setSession(quickSession, { freshLogin: opts.freshLogin ?? !hadSession });
 
       try {
@@ -2802,15 +2811,15 @@ function ensureFirebaseSdk() {
       // Expose for login-as-ui.js impersonation flow — AFTER firebaseAuth is assigned
       window.__fb = fb;
       window.__firebaseAuth = firebaseAuth;
-
-      initDomainStore(fb);
+      installFirebaseWorkerAuthGetters();
 
       // Always load Firestore SDK when Firebase Auth is enabled.
-      // Previously gated on cached session role (manager/admin), causing 0-dashboard
-      // in fresh incognito/private windows when _bootSession was null.
-      // isFirebaseAuthEnabled() guard ensures this only runs in proper environments.
+      // Previously gated on manager/admin role from cached session, but that caused
+      // a 0-dashboard bug when sessionStorage was empty (fresh incognito/private window):
+      // _bootSession was null → fb.db stayed null → initDomainStore created a local-only store.
+      // The isFirebaseAuthEnabled() guard already ensures this only runs in proper environments.
       if (isFirebaseAuthEnabled()) {
-        (async () => {
+        firebaseStoreReadyPromise = (async () => {
           try {
             const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
             fb.fsMod = fsMod;
@@ -2832,9 +2841,10 @@ function ensureFirebaseSdk() {
             fb.select = fsMod.select;
             fb.serverTimestamp = fsMod.serverTimestamp;
             fb.writeBatch = fsMod.writeBatch;
-            initDomainStore(fb);
+            return initDomainStore(fb);
           } catch (err) {
             console.warn("[app] Firestore lazy-init failed:", err);
+            return null;
           }
         })();
       }
@@ -3009,15 +3019,17 @@ function startWorkerHealthMonitoring() {
 
 async function boot() {
   restoreAuthenticatedShell();
+  assertThemeScoreSuppressionReady();
+  await loadFirebaseConfig();
   const bootSession = getSession();
   if (bootSession?.email) {
     currentSession = { ...bootSession, email: String(bootSession.email).trim().toLowerCase() };
-    void loadPersistedHistory().catch((err) => {
-      console.warn("[app] boot history prefetch failed:", err?.message || err);
-    });
+    if (authMode() !== "firebase") {
+      void loadPersistedHistory().catch((err) => {
+        console.warn("[app] boot history prefetch failed:", err?.message || err);
+      });
+    }
   }
-  assertThemeScoreSuppressionReady();
-  await loadFirebaseConfig();
   if (authMode() === "firebase") {
     await initFirebase();
     await authReadyPromise;
