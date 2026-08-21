@@ -49,7 +49,7 @@ const checks = [
   ["login centered layout", html.includes('class="login-page-inner"') && !html.includes('class="login-form-panel"') && !html.includes("login-showcase")],
   ["login SSO heading", html.includes("Sign in to your account")],
   ["login google SSO block", html.includes('id="signin-google"') && html.includes('id="firebase-signin-block"')],
-  ["Freshworks sidebar logo", html.includes('class="sidebar-brand-logo"') && html.includes("assets/freshworks-logomark.webp")],
+  ["Janus sidebar logo", html.includes('class="sidebar-brand-logo"') && html.includes("assets/janus-logo.png")],
   ["Freshworks login logo", html.includes('class="login-brand-logo"') && html.includes("assets/freshworks-logomark.webp")],
   ["dashboard nav svg icon", /data-view="dashboard"[\s\S]*?data-nav-icon="dashboard"/.test(html)],
   ["settings nav svg icon", /data-view="profile"[\s\S]*?data-nav-icon="settings"/.test(html)],

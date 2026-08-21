@@ -2730,7 +2730,7 @@ export function renderCallRecordLoadingPanel(record, opts = {}) {
             </div>
           </div>
         </div>
-        ${renderLoadingPanel(opts.message || "Loading activity record…")}
+        ${renderLoadingPanel(opts.message || "Loading activity record…", { size: 64 })}
       </div>
     </div>`;
 }

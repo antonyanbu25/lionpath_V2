@@ -222,12 +222,18 @@ export function hydrateThinkingOrbs(root = document) {
   }
 }
 
-/** Loading panel with thinking orb + message (replaces fw-spinner panels). */
-export function renderLoadingPanel(message = "Loading…") {
+/**
+ * Loading panel with thinking orb + message (replaces fw-spinner panels).
+ * Uses the same "solving" orb visual as the pre/post-call generation overlay;
+ * size is context-appropriate (32 inline default, 64 for full-panel loaders).
+ * @param {string} [message]
+ * @param {{ size?: OrbSize }} [opts]
+ */
+export function renderLoadingPanel(message = "Loading…", opts = {}) {
   const safe = String(message).replace(/[&<>"']/g, (char) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   return `<div class="dew-loading-panel" role="status" aria-live="polite">
-    ${renderThinkingOrb({ state: "working", size: 20 })}
+    ${renderThinkingOrb({ state: "solving", size: opts.size || 32 })}
     <span class="muted" data-decrypt-loop>${safe}</span>
   </div>`;
 }

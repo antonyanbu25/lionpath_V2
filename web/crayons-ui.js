@@ -199,7 +199,7 @@ export function showInlineStatus(host, options = {}) {
   notice.closable = false;
 
   if (loading) {
-    notice.append(createThinkingOrb({ state: "working", size: 20 }));
+    notice.append(createThinkingOrb({ state: "solving", size: 20 }));
   }
   notice.append(document.createTextNode(message));
   host.append(notice);

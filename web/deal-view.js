@@ -1512,7 +1512,7 @@ function renderDealLoadingShell(preview, backOpts = {}) {
           </div>
         </header>
       </div>
-      ${renderLoadingPanel("Loading deal record…")}
+      ${renderLoadingPanel("Loading deal record…", { size: 64 })}
     </div>`;
 }
 

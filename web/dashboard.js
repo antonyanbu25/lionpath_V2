@@ -1718,7 +1718,7 @@ export function renderDashboardLoadingShell(container) {
         <div class="dash-split-main launch-skeleton launch-skeleton--board" aria-hidden="true"></div>
         <aside class="dash-split-side launch-side launch-skeleton launch-skeleton--side" aria-hidden="true"></aside>
       </div>
-      ${renderLoadingPanel("Loading dashboard…")}
+      ${renderLoadingPanel("Loading dashboard…", { size: 64 })}
     </div>`;
 }
 
@@ -1737,7 +1737,7 @@ export function renderManagerDashboardLoadingShell(container) {
         <div class="launch-skeleton launch-skeleton--kpi"></div>
       </div>
       <div class="launch-skeleton launch-skeleton--heatmap" aria-hidden="true"></div>
-      ${renderLoadingPanel("Loading team dashboard…")}
+      ${renderLoadingPanel("Loading team dashboard…", { size: 64 })}
     </div>`;
 }
 

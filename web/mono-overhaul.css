@@ -124,6 +124,16 @@ fw-modal-title {
 .app-loading-card {
   border-radius: 10px;
   box-shadow: var(--dew-shadow-popover);
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 26px 34px;
+}
+
+.app-loading-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
 }
 
 /* ---------- Sidebar — hairline rule, serif wordmark ---------- */
@@ -296,10 +306,52 @@ fw-tabs {
   background: transparent;
 }
 
+/* ---------- Micro-interactions — subtle lift/press, professional ---------- */
+
+fw-button::part(native),
+.topbar-action {
+  transition:
+    transform 140ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+@media (hover: hover) {
+  fw-button::part(native):hover,
+  .topbar-action:hover {
+    transform: translateY(-1px);
+  }
+
+  fw-button[color="primary"]::part(native):hover,
+  .topbar-action--primary:hover {
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--dew-brand) 26%, transparent);
+  }
+}
+
+fw-button::part(native):active,
+.topbar-action:active {
+  transform: translateY(0) scale(0.98);
+}
+
 /* ---------- Reduced motion ---------- */
 
 @media (prefers-reduced-motion: reduce) {
   .login-bg-video {
     animation: none;
+  }
+
+  fw-button::part(native),
+  .topbar-action {
+    transition: none;
+  }
+
+  fw-button::part(native):hover,
+  .topbar-action:hover,
+  fw-button::part(native):active,
+  .topbar-action:active {
+    transform: none;
+    box-shadow: none;
   }
 }

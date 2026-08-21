@@ -1712,7 +1712,7 @@ async function renderCallPanelOnce() {
       <div class="act-header">
         <h1 class="call-list-heading">${VIEW_TITLES.calls || "Activities"}</h1>
       </div>
-      ${renderLoadingPanel("Loading activities…")}
+      ${renderLoadingPanel("Loading activities…", { size: 64 })}
     </div>`;
   }
   let session = currentSession;
