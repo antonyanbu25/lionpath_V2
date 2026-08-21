@@ -228,7 +228,7 @@ export function renderLoadingPanel(message = "Loading…") {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   return `<div class="dew-loading-panel" role="status" aria-live="polite">
     ${renderThinkingOrb({ state: "working", size: 20 })}
-    <span class="muted" data-decrypt>${safe}</span>
+    <span class="muted" data-decrypt-loop>${safe}</span>
   </div>`;
 }
 

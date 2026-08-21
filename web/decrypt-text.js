@@ -13,11 +13,17 @@
  * textContent writes (e.g. stage updates like "Prospects read: 1 of 1")
  * re-trigger the decrypt automatically.
  *
+ * Loop mode (`data-decrypt-loop` or `data-decrypt="loop"`): after the text
+ * resolves, it holds briefly, then glitches and resolves again — Watch Dogs
+ * style — for as long as the loader is on screen. While the element is
+ * hidden the loop idles on a cheap timer; it stops entirely once the
+ * element leaves the DOM.
+ *
  * `prefers-reduced-motion: reduce` → final text is shown immediately.
  */
 
 const DEFAULT_GLYPHS = "!<>-_\\/[]{}—=+*^?#·:;~$%&@";
-const SELECTOR = "[data-decrypt], .decrypt-text";
+const SELECTOR = "[data-decrypt], [data-decrypt-loop], .decrypt-text";
 
 function prefersReducedMotion() {
   return (
@@ -34,15 +40,18 @@ function stopDecrypt(el) {
   const state = el.__decryptState;
   if (state) state.cancelled = true;
   if (state?.raf) cancelAnimationFrame(state.raf);
+  if (state?.timer) clearTimeout(state.timer);
 }
 
 /**
  * Scramble-animate an element's text into its final value.
  * @param {HTMLElement} el
- * @param {{ speed?: number, duration?: number, glyphs?: string, text?: string }} [opts]
+ * @param {{ speed?: number, duration?: number, glyphs?: string, text?: string, loop?: boolean, hold?: number }} [opts]
  *   speed    ms between scramble ticks (default 28)
  *   duration total reveal time in ms (default: 300 + 28/char, capped at 1600)
  *   text     override target text (default: current textContent)
+ *   loop     re-glitch forever while visible (default: element's data-decrypt-loop)
+ *   hold     ms the resolved text stays readable between loop cycles (default 1600)
  * @returns {() => void} cancel function (leaves whatever is currently rendered)
  */
 export function decryptText(el, opts = {}) {
@@ -51,9 +60,11 @@ export function decryptText(el, opts = {}) {
 
   const speed = opts.speed ?? 28;
   const glyphs = opts.glyphs || DEFAULT_GLYPHS;
+  const loop = opts.loop ?? el.__decryptLoop ?? false;
+  const hold = opts.hold ?? 1600;
   const target = String(opts.text ?? el.textContent ?? "");
 
-  const state = { cancelled: false, raf: 0, lastRendered: target };
+  const state = { cancelled: false, raf: 0, timer: 0, lastRendered: target };
   el.__decryptState = state;
 
   const write = (s) => {
@@ -71,8 +82,25 @@ export function decryptText(el, opts = {}) {
   const start = performance.now();
   let lastTick = 0;
 
+  const scheduleNext = () => {
+    state.timer = setTimeout(() => {
+      if (state.cancelled || !el.isConnected) return;
+      // Hidden loader: don't animate — re-check after another hold instead.
+      if (el.closest("[hidden]")) {
+        scheduleNext();
+        return;
+      }
+      decryptText(el, { ...opts, text: target, loop });
+    }, hold);
+  };
+
+  const finish = () => {
+    write(target);
+    if (loop) scheduleNext();
+  };
+
   const frame = (now) => {
-    if (state.cancelled) return;
+    if (state.cancelled || !el.isConnected) return;
     if (el.textContent !== state.lastRendered) {
       // External write landed mid-animation — adopt it and restart.
       decryptText(el, { ...opts, text: el.textContent });
@@ -80,11 +108,16 @@ export function decryptText(el, opts = {}) {
     }
     const progress = Math.min(1, (now - start) / duration);
     if (progress >= 1) {
-      write(target);
+      finish();
       return;
     }
     if (now - lastTick >= speed) {
       lastTick = now;
+      // Loader hidden mid-flight: settle instantly, loop idles until re-shown.
+      if (el.closest("[hidden]")) {
+        finish();
+        return;
+      }
       const revealCount = Math.floor(progress * target.length);
       let out = target.slice(0, revealCount);
       for (let i = revealCount; i < target.length; i++) {
@@ -107,6 +140,8 @@ export function decryptText(el, opts = {}) {
 function mountDecryptText(el) {
   if (el.__decryptMounted) return;
   el.__decryptMounted = true;
+  el.__decryptLoop =
+    el.hasAttribute("data-decrypt-loop") || el.getAttribute("data-decrypt") === "loop";
   decryptText(el);
   if (typeof MutationObserver === "undefined") return;
   const observer = new MutationObserver(() => {

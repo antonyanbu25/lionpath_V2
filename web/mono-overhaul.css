@@ -51,6 +51,27 @@ body {
   font-size: clamp(20px, 2vw, 24px);
 }
 
+/* h3 section titles + modal/overlay titles — same serif voice */
+.main-content h3,
+.prep-dispute-title,
+.local-sync-title,
+.one-pager-title,
+fw-modal-title {
+  font-family: var(--dew-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.main-content h3 {
+  font-size: clamp(18px, 1.8vw, 22px);
+}
+
+/* Italic serif inside overflow:hidden clips its right overhang — give it room. */
+.sidebar-brand-text {
+  padding-right: 0.08em;
+}
+
 /* Eyebrow / meta labels — mono, uppercase, letterspaced */
 .prep-form-eyebrow,
 .prep-gen-eyebrow,

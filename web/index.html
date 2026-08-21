@@ -45,26 +45,28 @@
     ></script>
   </head>
   <body>
-    <!-- Lion splash (index only — see splash.js) -->
-    <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
+    <!-- Lion splash (index only — see splash.js). Visible from first paint as a
+         boot cover so the raw login/app markup never flashes pre-boot. -->
+    <div id="lion-splash" class="lion-splash" aria-live="polite">
       <div class="lion-splash-inner">
         <div class="lion-loader" aria-hidden="true">
           <canvas class="thinking-orb lion-loader-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <h1 class="lion-title" data-decrypt>Janus</h1>
-        <p class="lion-tagline" data-decrypt>Solution Engineering</p>
+        <h1 class="lion-title" data-decrypt-loop>Janus</h1>
+        <p class="lion-tagline" data-decrypt-loop>Solution Engineering</p>
       </div>
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
       <fw-card class="app-loading-card">
         <canvas class="thinking-orb" data-orb-state="working" data-orb-size="64" aria-hidden="true"></canvas>
-        <span id="app-loading-message" class="app-loading-message" data-decrypt>Loading your workspace…</span>
+        <span id="app-loading-message" class="app-loading-message" data-decrypt-loop>Loading your workspace…</span>
       </fw-card>
     </div>
 
-    <!-- Login — full-screen video background, centered card -->
-    <div id="login-view" class="login-page">
+    <!-- Login — full-screen video background, centered card.
+         Hidden until app boot reveals it (showLogin) — prevents unstyled FOUC. -->
+    <div id="login-view" class="login-page" hidden>
       <button type="button" class="login-theme-toggle theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
         <span class="theme-toggle-icon" aria-hidden="true">
           <svg class="theme-moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -589,7 +591,7 @@
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
               <div class="dew-skeleton-loading-head">
                 <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
-                <span class="muted" data-decrypt>Generating discovery brief…</span>
+                <span class="muted" data-decrypt-loop>Generating discovery brief…</span>
               </div>
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
@@ -754,7 +756,7 @@
             <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
               <div class="dew-skeleton-loading-head">
                 <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
-                <span class="muted" data-decrypt>Generating analysis…</span>
+                <span class="muted" data-decrypt-loop>Generating analysis…</span>
               </div>
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
@@ -772,13 +774,13 @@
         <div class="prep-gen-brand" aria-hidden="true">
           <canvas class="thinking-orb prep-gen-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow" data-decrypt>Janus · Pre-call</p>
-        <h2 id="prep-gen-title" class="prep-gen-title" data-decrypt>Building your brief</h2>
-        <p id="prep-gen-stage" class="prep-gen-stage" data-decrypt>Starting…</p>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow" data-decrypt-loop>Janus · Pre-call</p>
+        <h2 id="prep-gen-title" class="prep-gen-title" data-decrypt-loop>Building your brief</h2>
+        <p id="prep-gen-stage" class="prep-gen-stage" data-decrypt-loop>Starting…</p>
         <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span id="prep-gen-bar" class="prep-gen-progress-bar"></span>
         </div>
-        <p id="prep-gen-hint" class="prep-gen-hint muted" data-decrypt>Research, enrichment, and synthesis run in the background — usually under a minute.</p>
+        <p id="prep-gen-hint" class="prep-gen-hint muted" data-decrypt-loop>Research, enrichment, and synthesis run in the background — usually under a minute.</p>
       </div>
     </div>
 
@@ -985,6 +987,11 @@
 
       function showBootError(err) {
         console.error("App boot failed:", err);
+        const splash = document.getElementById("lion-splash");
+        if (splash) splash.hidden = true;
+        document.body.classList.remove("splash-lock");
+        const login = document.getElementById("login-view");
+        if (login) login.hidden = false;
         const el = document.getElementById("login-error");
         if (el) {
           el.textContent =
