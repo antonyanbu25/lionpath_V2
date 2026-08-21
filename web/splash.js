@@ -63,6 +63,7 @@ const SAFETY_MS = 10000;
 function runSplash() {
   const el = document.getElementById("lion-splash");
   if (!el) return;
+  el.querySelector(".lion-title")?.setAttribute("data-decrypt-static", "");
 
   // Splash is visible from markup as a boot cover (prevents unstyled login FOUC).
   // Lift it once the app reveals its first real surface — and, on branded runs,

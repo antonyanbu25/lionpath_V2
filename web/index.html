@@ -38,6 +38,9 @@
       .prep-dispute-overlay .prep-dispute-select,
       .prep-dispute-overlay .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
       .prep-dispute-overlay .prep-dispute-textarea { min-height: 96px !important; }
+      .janus-orb-face-wrap { position: relative; display: grid; place-items: center; width: 88px; height: 88px; }
+      .janus-orb-face-wrap > .thinking-orb { grid-area: 1 / 1; }
+      .janus-orb-face { grid-area: 1 / 1; width: 58px; height: 58px; border-radius: 50%; object-fit: cover; opacity: .85; mix-blend-mode: screen; filter: contrast(1.08) saturate(1.08); pointer-events: none; }
     </style>
     <script
       type="module"
@@ -52,15 +55,17 @@
         <div class="lion-loader" aria-hidden="true">
           <canvas class="thinking-orb lion-loader-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <h1 class="lion-title" data-decrypt-loop>Janus</h1>
+        <h1 class="lion-title" data-decrypt-static>Janus</h1>
         <p class="lion-tagline" data-decrypt-loop>Solution Engineering</p>
       </div>
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
       <fw-card class="app-loading-card">
-        <img class="app-loading-logo" src="assets/janus-logo.png" alt="Janus" width="52" height="52" />
-        <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="64" aria-hidden="true"></canvas>
+        <div class="janus-orb-face-wrap" aria-hidden="true">
+          <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="64"></canvas>
+          <img class="janus-orb-face" src="./janus-face.jpg" alt="" width="58" height="58" />
+        </div>
         <span id="app-loading-message" class="app-loading-message" data-decrypt-loop>Loading your workspace…</span>
       </fw-card>
     </div>
@@ -775,7 +780,7 @@
         <div class="prep-gen-brand" aria-hidden="true">
           <canvas class="thinking-orb prep-gen-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">Janus · Pre-call</p>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow" data-decrypt-static>Janus · Pre-call</p>
         <h2 id="prep-gen-title" class="prep-gen-title">Building your brief</h2>
         <p id="prep-gen-stage" class="prep-gen-stage" data-decrypt>Starting…</p>
         <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">

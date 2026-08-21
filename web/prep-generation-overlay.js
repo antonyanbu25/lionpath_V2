@@ -41,7 +41,10 @@ function applyGenOverlayTheme(theme = PREP_GEN_THEME) {
   const eyebrow = $("prep-gen-eyebrow");
   const title = $("prep-gen-title");
   const hint = $("prep-gen-hint");
-  if (eyebrow) eyebrow.textContent = t.eyebrow;
+  if (eyebrow) {
+    eyebrow.setAttribute("data-decrypt-static", "");
+    eyebrow.textContent = t.eyebrow;
+  }
   if (title) title.textContent = t.title;
   if (hint) hint.textContent = t.hint;
 }

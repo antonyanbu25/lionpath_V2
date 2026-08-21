@@ -7,6 +7,9 @@
  *   import { decryptText } from "./decrypt-text.js";
  *   decryptText(el, { speed: 28 });          // scramble el.textContent into place
  *
+ * Static mode (`data-decrypt-static`): mount without scrambling. This lets
+ * shared markup opt out of eye-catching animation while keeping final text.
+ *
  * Auto-mount: any element with `data-decrypt` (or class `decrypt-text`)
  * is animated on insertion via a MutationObserver — this covers panels
  * rendered through innerHTML strings. After the first pass, external
@@ -23,7 +26,7 @@
  */
 
 const DEFAULT_GLYPHS = "!<>-_\\/[]{}—=+*^?#·:;~$%&@";
-const SELECTOR = "[data-decrypt], [data-decrypt-loop], .decrypt-text";
+const SELECTOR = "[data-decrypt], [data-decrypt-loop], [data-decrypt-static], .decrypt-text";
 
 function prefersReducedMotion() {
   return (
@@ -60,7 +63,8 @@ export function decryptText(el, opts = {}) {
 
   const speed = opts.speed ?? 28;
   const glyphs = opts.glyphs || DEFAULT_GLYPHS;
-  const loop = opts.loop ?? el.__decryptLoop ?? false;
+  const isStatic = opts.static ?? el.__decryptStatic ?? el.hasAttribute("data-decrypt-static");
+  const loop = isStatic ? false : (opts.loop ?? el.__decryptLoop ?? false);
   const hold = opts.hold ?? 1600;
   const target = String(opts.text ?? el.textContent ?? "");
 
@@ -72,7 +76,7 @@ export function decryptText(el, opts = {}) {
     if (el.textContent !== s) el.textContent = s;
   };
 
-  if (prefersReducedMotion() || target.length === 0) {
+  if (isStatic || prefersReducedMotion() || target.length === 0) {
     write(target);
     return () => stopDecrypt(el);
   }
@@ -140,8 +144,10 @@ export function decryptText(el, opts = {}) {
 function mountDecryptText(el) {
   if (el.__decryptMounted) return;
   el.__decryptMounted = true;
+  el.__decryptStatic = el.hasAttribute("data-decrypt-static");
   el.__decryptLoop =
-    el.hasAttribute("data-decrypt-loop") || el.getAttribute("data-decrypt") === "loop";
+    !el.__decryptStatic &&
+    (el.hasAttribute("data-decrypt-loop") || el.getAttribute("data-decrypt") === "loop");
   decryptText(el);
   if (typeof MutationObserver === "undefined") return;
   const observer = new MutationObserver(() => {
