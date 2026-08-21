@@ -210,8 +210,7 @@ body.splash-lock { overflow: hidden; }
   z-index: 180;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--dew-bg) 78%, transparent);
-  backdrop-filter: blur(4px);
+  background: transparent;
 }
 .app-loading-card {
   display: flex;
