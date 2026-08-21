@@ -7,6 +7,8 @@
  * Force replay without clearing cookie: index.html?splash=1
  */
 
+import "./thinking-orb.js";
+
 const COOKIE_NAME = "lionpath_splash_seen";
 const SPLASH_MS = 2000;
 

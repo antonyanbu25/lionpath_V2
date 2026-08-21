@@ -233,12 +233,12 @@ body.splash-lock { overflow: hidden; }
 .dew-status-host fw-inline-message {
   width: 100%;
 }
-.dew-status-host .dew-orbit-spinner {
+.dew-status-host .thinking-orb {
   display: inline-block;
   vertical-align: middle;
   margin-right: 8px;
 }
-fw-inline-message .dew-orbit-spinner {
+fw-inline-message .thinking-orb {
   display: inline-block;
   vertical-align: middle;
   margin-right: 8px;

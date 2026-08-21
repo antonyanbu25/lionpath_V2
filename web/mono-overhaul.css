@@ -3,7 +3,7 @@
  * (feat/mono-ui-overhaul). Loaded last, after styles/precall/postcall/
  * call-view/lifecycle. UI structure only: serif display type, hairline
  * rules, flat surfaces, sharper radii. Colors come from dew-theme.css;
- * spinner lives in orbit-spinner.css.
+ * loading animation is the thinking-orbs canvas (thinking-orb.js, no CSS).
  */
 
 /* ---------- Base ---------- */

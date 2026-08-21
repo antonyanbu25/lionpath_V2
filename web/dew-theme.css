@@ -249,7 +249,7 @@ fw-select {
   --fw-input-border-radius: var(--dew-btn-radius);
 }
 
-/* Crayons loading and feedback — orbit spinner in orbit-spinner.css; fw-button loading uses Crayons default */
+/* Crayons loading and feedback — thinking orb is canvas-based (thinking-orb.js, no CSS); fw-button loading uses Crayons default */
 fw-skeleton {
   --fw-skeleton-background: var(--dew-hairline);
   --fw-skeleton-sheen-color: var(--dew-border);
