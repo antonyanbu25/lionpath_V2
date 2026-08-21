@@ -28,7 +28,6 @@ import { countPrepsGenerated, loadAllLocalBriefs, saveLocalBriefs } from "./prec
 import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
-import { renderLoadingPanel } from "./thinking-orb.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import {
@@ -59,21 +58,6 @@ import {
 } from "./chart-shared.js";
 
 export { radarDimensionLabel } from "./chart-shared.js";
-
-const JANUS_FACE_SRC = "./janus-face.jpg";
-
-function renderLoadingPanel(message = "Loading your workspace…", opts = {}) {
-  const size = Number(opts.size || 64);
-  const wrapSize = Math.max(88, size + 24);
-  const faceSize = Math.max(42, Math.round(size * 0.9));
-  return `<div class="dew-loading-panel" role="status" aria-live="polite" aria-busy="true">
-    <div class="janus-orb-face-wrap" aria-hidden="true" style="position:relative;display:grid;place-items:center;width:${wrapSize}px;height:${wrapSize}px;margin:0 auto 12px;">
-      <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="${size}" style="grid-area:1 / 1;"></canvas>
-      <img class="janus-orb-face" src="${JANUS_FACE_SRC}" alt="" width="${faceSize}" height="${faceSize}" style="grid-area:1 / 1;width:${faceSize}px;height:${faceSize}px;border-radius:50%;object-fit:cover;opacity:.85;mix-blend-mode:screen;filter:contrast(1.08) saturate(1.08);pointer-events:none;" />
-    </div>
-    <p class="dew-loading-message" data-decrypt-loop>${esc(message)}</p>
-  </div>`;
-}
 
 const DIMENSION_ORDER = [
   "discovery",
@@ -1720,13 +1704,39 @@ async function resolveCallRecords(email, opts = {}) {
 /** Instant shell while launchpad metrics resolve. */
 export function renderDashboardLoadingShell(container) {
   if (!container) return;
-  container.innerHTML = renderLoadingPanel("Loading your workspace…", { size: 64 });
+  container.innerHTML = `
+    <div class="dash-one-pager one-pager launchpad launchpad--loading" role="status" aria-live="polite" aria-busy="true">
+      <div class="launch-hero">
+        <div class="launch-skeleton launch-skeleton--title" aria-hidden="true"></div>
+      </div>
+      <div class="launch-kpi-grid launch-kpi-grid--skeleton" aria-hidden="true">
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+      </div>
+      <div class="dash-split launch-split">
+        <div class="dash-split-main launch-skeleton launch-skeleton--board" aria-hidden="true"></div>
+        <aside class="dash-split-side launch-side launch-skeleton launch-skeleton--side" aria-hidden="true"></aside>
+      </div>
+    </div>`;
 }
 
 /** Instant shell while manager team metrics resolve. */
 export function renderManagerDashboardLoadingShell(container) {
   if (!container) return;
-  container.innerHTML = renderLoadingPanel("Loading your workspace…", { size: 64 });
+  container.innerHTML = `
+    <div class="dash-one-pager one-pager manager-view manager-view--loading" role="status" aria-live="polite" aria-busy="true">
+      <div class="head dash-head manager-head">
+        <div class="launch-skeleton launch-skeleton--title" aria-hidden="true"></div>
+        <div class="launch-skeleton launch-skeleton--subtitle" aria-hidden="true"></div>
+      </div>
+      <div class="launch-kpi-grid launch-kpi-grid--skeleton" aria-hidden="true">
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+        <div class="launch-skeleton launch-skeleton--kpi"></div>
+      </div>
+      <div class="launch-skeleton launch-skeleton--heatmap" aria-hidden="true"></div>
+    </div>`;
 }
 
 function recentCallForActivity(rec) {

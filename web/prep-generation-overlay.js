@@ -4,9 +4,12 @@
 
 import { hydrateThinkingOrbs } from "./thinking-orb.js";
 import { $, show } from "./shared.js";
+import { hydrateDecryptTexts } from "./decrypt-text.js";
 
 const FADE_MS = 420;
 const REVEAL_MS = 480;
+let hideSeq = 0;
+let hideTimer = 0;
 
 export const PREP_GEN_THEME = {
   eyebrow: "Janus · Pre-call",
@@ -61,6 +64,31 @@ function setBarPct(pct) {
   track?.setAttribute("aria-valuenow", String(clamped));
 }
 
+function setStageDecryptMode(stage, message, theme) {
+  if (!stage) return;
+  const isPostCall = theme?.eyebrow === POSTCALL_GEN_THEME.eyebrow;
+  const isProspectsRead = /^Prospects read:/i.test(String(message || ""));
+  if (!isPostCall || isProspectsRead) {
+    stage.setAttribute("data-decrypt", isProspectsRead ? "loop" : "");
+    if (isProspectsRead) stage.setAttribute("data-decrypt-loop", "");
+    else stage.removeAttribute("data-decrypt-loop");
+    hydrateDecryptTexts(stage);
+    return;
+  }
+
+  stage.removeAttribute("data-decrypt");
+  stage.removeAttribute("data-decrypt-loop");
+  if (stage.__decryptState) {
+    stage.__decryptState.cancelled = true;
+    if (stage.__decryptState.raf) cancelAnimationFrame(stage.__decryptState.raf);
+    if (stage.__decryptState.timer) clearTimeout(stage.__decryptState.timer);
+  }
+  stage.__decryptObserver?.disconnect?.();
+  stage.__decryptObserver = null;
+  stage.__decryptMounted = false;
+  stage.__decryptLoop = false;
+}
+
 /**
  * Show the generation overlay.
  * @param {{ message?: string, pct?: number, theme?: Partial<typeof PREP_GEN_THEME> }} [opts]
@@ -68,8 +96,14 @@ function setBarPct(pct) {
 export function showPrepGenOverlay(opts = {}) {
   const el = overlayEl();
   if (!el) return;
+  hideSeq += 1;
+  if (hideTimer) {
+    window.clearTimeout(hideTimer);
+    hideTimer = 0;
+  }
   applyGenOverlayTheme(opts.theme);
   const stage = $("prep-gen-stage");
+  setStageDecryptMode(stage, opts.message, opts.theme);
   if (stage && opts.message) stage.textContent = opts.message;
   setBarPct(opts.pct ?? 8);
   hydrateThinkingOrbs(el);
@@ -82,6 +116,9 @@ export function showPrepGenOverlay(opts = {}) {
 /** @param {{ message?: string, pct?: number }} [opts] */
 export function updatePrepGenOverlay(opts = {}) {
   const stage = $("prep-gen-stage");
+  const eyebrow = $("prep-gen-eyebrow");
+  const isPostCall = eyebrow?.textContent === POSTCALL_GEN_THEME.eyebrow;
+  if (stage && opts.message) setStageDecryptMode(stage, opts.message, isPostCall ? POSTCALL_GEN_THEME : PREP_GEN_THEME);
   if (stage && opts.message) stage.textContent = opts.message;
   if (opts.pct != null) setBarPct(opts.pct);
 }
@@ -113,9 +150,15 @@ export function hidePrepGenOverlay(onHidden) {
   }
 
   return new Promise((resolve) => {
+    const seq = ++hideSeq;
     el.classList.add("prep-gen-overlay-exit");
     requestAnimationFrame(() => el.classList.add("prep-gen-overlay-exit-active"));
-    window.setTimeout(() => {
+    hideTimer = window.setTimeout(() => {
+      hideTimer = 0;
+      if (seq !== hideSeq) {
+        resolve();
+        return;
+      }
       show(el, false);
       el.classList.remove(
         "prep-gen-overlay-active",
