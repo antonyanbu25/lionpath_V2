@@ -38,9 +38,6 @@
       .prep-dispute-overlay .prep-dispute-select,
       .prep-dispute-overlay .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
       .prep-dispute-overlay .prep-dispute-textarea { min-height: 96px !important; }
-      .janus-orb-face-wrap { position: relative; display: grid; place-items: center; width: 88px; height: 88px; }
-      .janus-orb-face-wrap > .thinking-orb { grid-area: 1 / 1; }
-      .janus-orb-face { grid-area: 1 / 1; width: 58px; height: 58px; border-radius: 50%; object-fit: cover; opacity: .85; mix-blend-mode: screen; filter: contrast(1.08) saturate(1.08); pointer-events: none; }
     </style>
     <style id="micro-animations">
       @media (prefers-reduced-motion: no-preference) {
@@ -174,13 +171,13 @@
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
-      <fw-card class="app-loading-card">
+      <div class="app-loading-card">
         <div class="janus-orb-face-wrap" aria-hidden="true">
           <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="64"></canvas>
-          <img class="janus-orb-face" src="./janus-face.jpg" alt="" width="58" height="58" />
+          <img class="janus-orb-face" src="./janus-face.png" alt="" width="50" height="50" />
         </div>
         <span id="app-loading-message" class="app-loading-message" data-decrypt-loop>Loading your workspace…</span>
-      </fw-card>
+      </div>
     </div>
 
     <!-- Login — full-screen video background, centered card.

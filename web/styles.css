@@ -217,10 +217,26 @@ body.splash-lock { overflow: hidden; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 22px;
+  padding: 10px 16px;
   color: var(--dew-text);
-  border: 1px solid var(--dew-border);
-  box-shadow: var(--dew-shadow-popover);
+  background: var(--dew-bg);
+  border-radius: 8px;
+}
+.janus-orb-face-wrap {
+  position: relative;
+  display: inline-block;
+}
+.janus-orb-face-wrap .thinking-orb {
+  display: block;
+}
+.janus-orb-face-wrap .janus-orb-face {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: normal;
 }
 .app-loading-message {
   white-space: nowrap;
