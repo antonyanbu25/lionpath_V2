@@ -2191,6 +2191,7 @@ function closeSidebar() {
 
 async function savePrep(input, prep, meta) {
   try {
+    if (!isFirebaseAuthEnabled() || !fb?.auth?.currentUser || !fb?.db) return;
     const user = fb.auth.currentUser;
     await fb.addDoc(fb.collection(fb.db, "preps"), {
       uid: user.uid,
