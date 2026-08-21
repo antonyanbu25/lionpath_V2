@@ -79,12 +79,13 @@ function injectJanusLogoStyles() {
       box-shadow: none !important;
       border-radius: 4px;
       padding: 0;
-      mix-blend-mode: multiply;
+      /* Clean white-logo bg on light sidebar */
+      filter: brightness(0.95);
     }
 
     [data-theme="dark"] .sidebar-brand-logo {
-      filter: invert(1) grayscale(1) contrast(1.12) brightness(1.08);
-      mix-blend-mode: screen;
+      /* On dark sidebar: boost to make white-bg logo visible */
+      filter: brightness(1.4) contrast(1.15);
     }
   `;
   document.head.appendChild(style);
