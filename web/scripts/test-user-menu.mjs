@@ -36,7 +36,7 @@ const checks = [
   ["My deals nav label", html.includes("My deals")],
   ["My contacts nav", html.includes('data-view="contacts"')],
   ["My coaching nav", html.includes('data-view="coaching"')],
-  ["SE Labs brand", html.includes("SE Labs")],
+  ["Janus brand", html.includes("Janus") && !html.includes("SE Labs")],
   ["no capture nav group", !html.includes('<div class="nav-grp">Capture</div>')],
   ["no sidebar recent work", !html.includes('class="sidebar-recent-work"')],
   ["no sidebar logout btn", !html.includes('id="logout-btn"')],

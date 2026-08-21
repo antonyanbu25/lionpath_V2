@@ -8,6 +8,7 @@
  */
 
 import "./thinking-orb.js";
+import "./decrypt-text.js";
 
 const COOKIE_NAME = "lionpath_splash_seen";
 const SPLASH_MS = 2000;

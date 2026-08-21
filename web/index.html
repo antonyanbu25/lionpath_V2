@@ -9,7 +9,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>SE Labs | Freshworks</title>
+    <title>Janus | Freshworks</title>
     <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -51,15 +51,15 @@
         <div class="lion-loader" aria-hidden="true">
           <canvas class="thinking-orb lion-loader-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <h1 class="lion-title">SE Labs</h1>
-        <p class="lion-tagline">Solution Engineering</p>
+        <h1 class="lion-title" data-decrypt>Janus</h1>
+        <p class="lion-tagline" data-decrypt>Solution Engineering</p>
       </div>
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
       <fw-card class="app-loading-card">
         <canvas class="thinking-orb" data-orb-state="working" data-orb-size="64" aria-hidden="true"></canvas>
-        <span id="app-loading-message" class="app-loading-message">Loading your workspace…</span>
+        <span id="app-loading-message" class="app-loading-message" data-decrypt>Loading your workspace…</span>
       </fw-card>
     </div>
 
@@ -299,7 +299,7 @@
             <div class="sidebar-brand">
               <img class="sidebar-brand-logo" src="assets/freshworks-logomark.webp" alt="Freshworks" width="38" height="38" />
               <div class="sidebar-brand-copy">
-                <span class="sidebar-brand-text">SE Labs</span>
+                <span class="sidebar-brand-text">Janus</span>
               </div>
             </div>
             <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
@@ -589,7 +589,7 @@
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
               <div class="dew-skeleton-loading-head">
                 <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
-                <span class="muted">Generating discovery brief…</span>
+                <span class="muted" data-decrypt>Generating discovery brief…</span>
               </div>
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
@@ -754,7 +754,7 @@
             <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
               <div class="dew-skeleton-loading-head">
                 <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
-                <span class="muted">Generating analysis…</span>
+                <span class="muted" data-decrypt>Generating analysis…</span>
               </div>
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
@@ -772,13 +772,13 @@
         <div class="prep-gen-brand" aria-hidden="true">
           <canvas class="thinking-orb prep-gen-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>
-        <h2 id="prep-gen-title" class="prep-gen-title">Building your brief</h2>
-        <p id="prep-gen-stage" class="prep-gen-stage">Starting…</p>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow" data-decrypt>Janus · Pre-call</p>
+        <h2 id="prep-gen-title" class="prep-gen-title" data-decrypt>Building your brief</h2>
+        <p id="prep-gen-stage" class="prep-gen-stage" data-decrypt>Starting…</p>
         <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span id="prep-gen-bar" class="prep-gen-progress-bar"></span>
         </div>
-        <p id="prep-gen-hint" class="prep-gen-hint muted">Research, enrichment, and synthesis run in the background — usually under a minute.</p>
+        <p id="prep-gen-hint" class="prep-gen-hint muted" data-decrypt>Research, enrichment, and synthesis run in the background — usually under a minute.</p>
       </div>
     </div>
 
