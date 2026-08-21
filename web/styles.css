@@ -158,10 +158,17 @@ body.splash-lock { overflow: hidden; }
   align-items: center;
   justify-content: center;
   border-radius: 18px;
-  background: var(--dew-surface);
-  border: 1px solid var(--dew-border);
-  box-shadow: var(--dew-shadow-card);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   animation: splash-logo-breathe 2.8s ease-in-out infinite;
+}
+.lion-loader-logo {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 50%;
 }
 .lion-title {
   margin: 0 0 6px;
