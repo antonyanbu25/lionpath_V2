@@ -23,3 +23,4 @@
 
 -- Phase D extensions
 \ir 12_read_model_views.sql
+\ir 15_id_registry_backfill.sql
