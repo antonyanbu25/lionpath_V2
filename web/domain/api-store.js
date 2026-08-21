@@ -13,6 +13,31 @@ const DEALS_LIST_TTL_MS = 30_000;
 let apiStoreUnavailable = false;
 const deprecatedReadWarnings = new Set();
 
+const API_FIRST_LOOKUP_METHODS = new Set([
+  "findAccountBySlug",
+  "findAccountsByDomain",
+  "findAccountsByName",
+  "findContactsByEmail",
+  "findContactByAccountEmail",
+  "listContactsByAccount",
+  "findDealContact",
+  "listContactsByDeal",
+  "findActiveLifecycle",
+  "findActiveLifecycleByDeal",
+  "findLifecycleByDealAndOwner",
+  "listActiveLifecyclesForAccount",
+  "getLifecycle",
+  "listLifecycleEvents",
+  "listPrepBriefsByLifecycle",
+  "listPostCallsByLifecycle",
+  "listPostCallsByAccount",
+  "findPostCallByIdentity",
+  "listTasksByLifecycle",
+  "findActiveDeal",
+  "findWonNbDealInGrace",
+  "listDealsByAccount",
+]);
+
 /** @typedef {{ value: object, expiresAt: number }} DetailCacheEntry */
 
 /** @param {Map<string, DetailCacheEntry>} cache @param {string} key */
@@ -44,6 +69,35 @@ function warnDeprecatedReadPath(name) {
   if (deprecatedReadWarnings.has(name)) return;
   deprecatedReadWarnings.add(name);
   console.warn(`[api-store] ${name} is deprecated for read views; use Firestore realtime reads.`);
+}
+
+function normalizeDomain(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+}
+
+function normalizeName(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function sortByUpdated(rows) {
+  return [...(rows || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function sortByActivity(rows) {
+  return [...(rows || [])].sort(
+    (a, b) =>
+      (b.lastActivityAt || b.updatedAt || b.createdAt || 0) -
+      (a.lastActivityAt || a.updatedAt || a.createdAt || 0),
+  );
 }
 
 const CALL_DETAIL_WRITE_METHODS = new Set([
@@ -182,6 +236,8 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
   const dealDetailCache = new Map();
   /** @type {{ at: number, deals: object[] } | null} */
   let dealsListCache = null;
+  /** @type {{ at: number, accounts: object[] } | null} */
+  let accountsListCache = null;
 
   async function apiFetch(path, init = {}) {
     if (apiStoreUnavailable) {
@@ -251,6 +307,23 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     const deals = data.deals || [];
     dealsListCache = { at: Date.now(), deals };
     return deals;
+  }
+
+  async function loadAccountsList() {
+    if (accountsListCache && Date.now() - accountsListCache.at < DEALS_LIST_TTL_MS) {
+      return accountsListCache.accounts;
+    }
+    const data = await apiFetch("/api/accounts");
+    const accounts = data.accounts || [];
+    accountsListCache = { at: Date.now(), accounts };
+    return accounts;
+  }
+
+  async function loadCallsList(scope = "own", limit = 200) {
+    const data = await apiFetch(
+      `/api/calls?scope=${encodeURIComponent(scope)}&limit=${encodeURIComponent(String(limit))}`,
+    );
+    return data.calls || [];
   }
 
   async function listDealSignalsByDealApi(dealId, limitCount = 50) {
@@ -395,6 +468,25 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
         : [];
     },
 
+    async findPostCallByIdentity(ownerId, callIdentityKey) {
+      const key = String(callIdentityKey || "");
+      if (!ownerId || !key) return null;
+      const calls = await loadCallsList("own", 200);
+      return calls.find((c) => c.ownerId === ownerId && c.callIdentityKey === key) || null;
+    },
+
+    async listPostCallsByLifecycle(lifecycleId, limit = 200) {
+      if (!lifecycleId) return [];
+      const calls = await loadCallsList("own", limit);
+      return calls.filter((c) => c.lifecycleId === lifecycleId).slice(0, limit);
+    },
+
+    async listPostCallsByAccount(accountId, limit = 80) {
+      if (!accountId) return [];
+      const calls = await loadCallsList("own", Math.max(limit, 200));
+      return calls.filter((c) => c.accountId === accountId).slice(0, limit);
+    },
+
     async getAccount(id) {
       if (isHistoryStubId(id)) return null;
       try {
@@ -413,11 +505,55 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
 
     async listAccounts() {
       try {
-        const data = await apiFetch("/api/accounts");
-        return data.accounts || [];
+        return await loadAccountsList();
       } catch (err) {
         return firestoreDelegate?.listAccounts ? firestoreDelegate.listAccounts() : [];
       }
+    },
+
+    async findAccountBySlug(slug) {
+      const key = String(slug || "").trim();
+      if (!key) return null;
+      const accounts = await loadAccountsList();
+      return (
+        accounts.find((a) => String(a.slug || "").trim() === key) ||
+        accounts.find((a) => (a.metadata?.slugAliases || []).some((alias) => String(alias || "").trim() === key)) ||
+        null
+      );
+    },
+
+    async findAccountsByDomain(domain) {
+      const key = normalizeDomain(domain);
+      if (!key) return [];
+      const accounts = await loadAccountsList();
+      return sortByUpdated(accounts.filter((a) => normalizeDomain(a.domain) === key));
+    },
+
+    async findAccountsByName(nameQuery) {
+      const key = normalizeName(nameQuery);
+      if (!key) return [];
+      const accounts = await loadAccountsList();
+      return sortByUpdated(accounts.filter((a) => normalizeName(a.name) === key));
+    },
+
+    async findContactsByEmail(_email) {
+      return [];
+    },
+
+    async findContactByAccountEmail(_accountId, _email) {
+      return null;
+    },
+
+    async listContactsByAccount(_accountId) {
+      return [];
+    },
+
+    async findDealContact(_dealId, _contactId) {
+      return null;
+    },
+
+    async listContactsByDeal(_dealId) {
+      return [];
     },
 
     async getDeal(id) {
@@ -433,10 +569,6 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
 
     async listDealsByAccount(accountId, ownerId, opts = {}) {
       if (isHistoryStubId(accountId)) return [];
-      // Intake attach: account-scoped deals via client Firestore (global on account, not owner-only).
-      if (firestoreDelegate?.listDealsByAccount) {
-        return firestoreDelegate.listDealsByAccount(accountId, ownerId, opts);
-      }
       const all = await loadDealsList(300);
       const teamId = opts.teamId || null;
       const ownerFilter =
@@ -444,8 +576,50 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       let rows = all.filter((d) => d.accountId === accountId);
       if (ownerFilter) rows = rows.filter((d) => d.ownerId === ownerFilter);
       if (teamId) rows = rows.filter((d) => d.teamId === teamId);
-      rows.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
-      return rows;
+      return sortByActivity(rows);
+    },
+
+    async findActiveDeal(accountId, type, opts = {}) {
+      if (!accountId || !type) return null;
+      const rows = await this.listDealsByAccount(accountId, opts.ownerId || null, opts);
+      const statuses = opts.includeGrace === true ? ["active", "closed_won_grace"] : ["active"];
+      return rows.find((d) => d.type === type && statuses.includes(d.status || "active")) || null;
+    },
+
+    async findWonNbDealInGrace(_accountId, _asOfMs = Date.now()) {
+      return null;
+    },
+
+    async getLifecycle(_id) {
+      return null;
+    },
+
+    async findActiveLifecycle(_ownerId, _accountId) {
+      return null;
+    },
+
+    async findActiveLifecycleByDeal(_ownerId, _accountId, _dealId) {
+      return null;
+    },
+
+    async findLifecycleByDealAndOwner(_dealId, _ownerId) {
+      return null;
+    },
+
+    async listActiveLifecyclesForAccount(_accountId, _opts = {}) {
+      return [];
+    },
+
+    async listLifecycleEvents(_lifecycleId) {
+      return [];
+    },
+
+    async listPrepBriefsByLifecycle(_lifecycleId, _ownerId) {
+      return [];
+    },
+
+    async listTasksByLifecycle(_lifecycleId) {
+      return [];
     },
 
     async listDealsByOwner(_ownerId, limit = 300) {
@@ -611,6 +785,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
         invalidateAfterWrite(method, args, callDetailCache, dealDetailCache);
         if (method.startsWith("create") || method.startsWith("update") || method.startsWith("upsert")) {
           dealsListCache = null;
+          accountsListCache = null;
         }
         return result;
       };
@@ -632,6 +807,7 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
       const value = Reflect.get(target, prop, receiver);
       if (typeof value !== "function") return value;
       const method = String(prop);
+      if (API_FIRST_LOOKUP_METHODS.has(method)) return undefined;
       if (!CALL_DETAIL_WRITE_METHODS.has(method) && !DEAL_DETAIL_WRITE_METHODS.has(method)) {
         return value.bind(target);
       }
