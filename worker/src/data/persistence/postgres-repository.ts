@@ -76,6 +76,25 @@ export class PostgresRepository implements PersistencePort {
 
   async upsertContact(client: PgClient, row: ContactRow): Promise<number> {
     const accountId = await resolveInternalId(client, "account", row.accountPublicId);
+    const email = row.email.toLowerCase();
+    const existing = await client.query(
+      `SELECT id, public_id FROM contact
+       WHERE account_id = $1 AND email = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [accountId, email],
+    );
+    if (existing.rows[0]) {
+      const id = Number((existing.rows[0] as { id: number | string }).id);
+      const oldPublicId = (existing.rows[0] as { public_id: string }).public_id;
+      await registerId(client, "contact", oldPublicId, id);
+      await client.query(
+        `UPDATE contact SET name = $2, title = $3, role = $4, updated_at = now()
+         WHERE id = $1`,
+        [id, row.name ?? null, row.title ?? null, row.role ?? null],
+      );
+      await registerId(client, "contact", row.publicId, id);
+      return id;
+    }
     return upsertReturningId(
       client,
       "contact",
@@ -86,7 +105,7 @@ export class PostgresRepository implements PersistencePort {
          account_id = EXCLUDED.account_id, email = EXCLUDED.email, name = EXCLUDED.name,
          title = EXCLUDED.title, role = EXCLUDED.role, updated_at = now()
        RETURNING id`,
-      [row.publicId, accountId, row.email.toLowerCase(), row.name ?? null, row.title ?? null, row.role ?? null],
+      [row.publicId, accountId, email, row.name ?? null, row.title ?? null, row.role ?? null],
       row.publicId,
     );
   }
