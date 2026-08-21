@@ -21,7 +21,7 @@ const SHAPES: Record<JsonbShape, Record<string, ReadonlySet<string>>> = {
       "followUpTable", "momentum", "nextSteps", "rubricVersion", "signals",
       "summary", "callType", "meddpicc", "arrLines", "arrOverrides",
       "productGaps", "whatLanded", "objections", "commitments",
-      "momDraft", "followUps", "dealSignals", "quality",
+      "momDraft", "followUps", "dealSignals", "quality", "qualityCoach",
     ]),
   },
   "post_call.detail": {
