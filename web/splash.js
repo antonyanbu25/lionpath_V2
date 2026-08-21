@@ -71,9 +71,10 @@ function runSplash() {
   const branded = shouldShowSplash();
   const minMs = branded ? SPLASH_MS : 0;
   const startedAt = performance.now();
-  const targets = ["login-view", "app-shell", "app-loading"]
-    .map((id) => document.getElementById(id))
-    .filter(Boolean);
+  const loginView = document.getElementById("login-view");
+  const appShell = document.getElementById("app-shell");
+  const appLoading = document.getElementById("app-loading");
+  const targets = [loginView, appShell, appLoading].filter(Boolean);
 
   el.hidden = false;
   el.classList.add("lion-splash-active");
@@ -98,7 +99,10 @@ function runSplash() {
 
   const maybeDismiss = () => {
     if (done || scheduled) return;
-    if (!targets.some((t) => !t.hidden)) return;
+    // #lion-splash owns first paint; do not create or reveal loader/card markup here.
+    const readyForHandoff =
+      !loginView?.hidden || (!!appShell && !appShell.hidden && (appLoading?.hidden ?? true));
+    if (!readyForHandoff) return;
     scheduled = true;
     const wait = Math.max(0, minMs - (performance.now() - startedAt));
     window.setTimeout(dismiss, wait);
