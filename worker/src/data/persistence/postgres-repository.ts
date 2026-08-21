@@ -270,12 +270,18 @@ export class PostgresRepository implements PersistencePort {
       client,
       "activity",
       "activity",
-      `INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
-         deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
-         occurred_at = EXCLUDED.occurred_at, updated_at = now()
-       RETURNING id`,
+      `WITH upserted AS (
+         INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
+           deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
+           occurred_at = EXCLUDED.occurred_at, updated_at = now()
+         RETURNING id
+       )
+       SELECT id FROM upserted
+       UNION ALL
+       SELECT id FROM activity WHERE idempotency_key = $2 AND $2 IS NOT NULL
+       LIMIT 1`,
       [
         row.publicId, row.idempotencyKey ?? null, dealId, accountId, ownerId,
         row.orgUnitId, row.activityType, row.subject ?? null, row.occurredAt,

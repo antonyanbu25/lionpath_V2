@@ -45,6 +45,25 @@ export async function registerId(
   publicId: string,
   internalId: number,
 ): Promise<void> {
+  const existingPublicId = await client.query(
+    `SELECT internal_id FROM id_registry
+     WHERE entity_type = $1 AND public_id = $2`,
+    [entityType, publicId],
+  );
+  if (existingPublicId.rows[0]) return;
+
+  const moved = await client.query(
+    `UPDATE id_registry
+     SET public_id = $2
+     WHERE entity_type = $1 AND internal_id = $3
+       AND NOT EXISTS (
+         SELECT 1 FROM id_registry
+         WHERE entity_type = $1 AND public_id = $2
+       )`,
+    [entityType, publicId, internalId],
+  );
+  if ((moved.rowCount ?? 0) > 0) return;
+
   await client.query(`SELECT register_id($1, $2, $3)`, [entityType, publicId, internalId]);
 }
 
