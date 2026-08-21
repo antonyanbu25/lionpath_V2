@@ -42,6 +42,119 @@
       .janus-orb-face-wrap > .thinking-orb { grid-area: 1 / 1; }
       .janus-orb-face { grid-area: 1 / 1; width: 58px; height: 58px; border-radius: 50%; object-fit: cover; opacity: .85; mix-blend-mode: screen; filter: contrast(1.08) saturate(1.08); pointer-events: none; }
     </style>
+    <style id="micro-animations">
+      @media (prefers-reduced-motion: no-preference) {
+        .btn-animate,
+        .tile-animate,
+        .card-animate {
+          transform-origin: center;
+          will-change: transform, box-shadow;
+        }
+
+        .btn-animate {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .btn-animate:hover {
+          transform: scale(1.02);
+          box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
+        }
+
+        .btn-animate:active {
+          transform: scale(0.97);
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        .sidebar-nav .nav-item.btn-animate,
+        .sidebar-foot .nav-item.btn-animate {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .sidebar-nav .nav-item.btn-animate::before,
+        .sidebar-foot .nav-item.btn-animate::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: currentColor;
+          opacity: 0.06;
+          pointer-events: none;
+          transform: translateX(-100%);
+          transition: transform 150ms ease-out;
+        }
+
+        .sidebar-nav .nav-item.btn-animate:hover::before,
+        .sidebar-foot .nav-item.btn-animate:hover::before {
+          transform: translateX(0);
+        }
+
+        .tile-animate {
+          opacity: 1;
+          transform: translateY(0);
+          transition: opacity 300ms ease-out, transform 300ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .card-animate {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.card-animate {
+          transition: opacity 300ms ease-out, transform 300ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .card-animate:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .btn-animate.card-animate:hover {
+          transform: scale(1.02);
+        }
+
+        .btn-animate.card-animate:active {
+          transform: scale(0.97);
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        .tile-animate.btn-animate:hover {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.card-animate:hover {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.btn-animate:active {
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        @starting-style {
+          .tile-animate {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .btn-animate,
+        .tile-animate,
+        .card-animate {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          transition: none !important;
+        }
+
+        .sidebar-nav .nav-item.btn-animate::before,
+        .sidebar-foot .nav-item.btn-animate::before {
+          display: none;
+        }
+      }
+    </style>
     <script
       type="module"
       src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
@@ -105,7 +218,7 @@
                 <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
                 <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
               </svg>
-              <fw-button id="signin-google" class="login-google-btn" color="secondary" fill="outline">Sign in with Google</fw-button>
+              <fw-button id="signin-google" class="login-google-btn btn-animate" color="secondary" fill="outline">Sign in with Google</fw-button>
             </div>
             <fw-inline-message id="signin-error" type="error" closable="false" hidden></fw-inline-message>
           </div>
@@ -129,7 +242,7 @@
               required
               clear-input
             ></fw-input>
-            <fw-button id="login-submit" color="primary" type="button">Sign in</fw-button>
+            <fw-button id="login-submit" class="btn-animate" color="primary" type="button">Sign in</fw-button>
           </form>
           <fw-inline-message id="login-error" type="error" closable="false" hidden></fw-inline-message>
           <details id="login-hint" class="login-hint">
@@ -310,75 +423,75 @@
                 <span class="sidebar-brand-text">Janus</span>
               </div>
             </div>
-            <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
+            <fw-button id="sidebar-collapse" class="sidebar-collapse btn-animate" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
               <span slot="before-label" class="sidebar-collapse-glyph" aria-hidden="true">‹</span>
             </fw-button>
-            <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
+            <fw-button id="sidebar-close" class="sidebar-close btn-animate" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
           </div>
         <nav class="sidebar-nav" role="navigation">
-          <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="Dashboard">
+          <fw-button type="button" class="nav-item btn-animate" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="Dashboard">
             <span slot="before-label" class="nav-icon" data-nav-icon="dashboard" aria-hidden="true"></span>
             <span class="nav-label">Dashboard</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call brief">
+          <fw-button type="button" class="nav-item btn-animate" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call brief">
             <span slot="before-label" class="nav-icon" data-nav-icon="brief" aria-hidden="true"></span>
             <span class="nav-label">Pre-call brief</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call analysis">
+          <fw-button type="button" class="nav-item btn-animate" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call analysis">
             <span slot="before-label" class="nav-icon" data-nav-icon="analysis" aria-hidden="true"></span>
             <span class="nav-label">Post-call analysis</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="Activities">
+          <fw-button type="button" class="nav-item btn-animate" data-view="calls" data-role="se" color="secondary" fill="clear" title="Activities">
             <span slot="before-label" class="nav-icon" data-nav-icon="history" aria-hidden="true"></span>
             <span class="nav-label">Activities</span>
           </fw-button>
           <div class="sidebar-nav-divider" role="separator" aria-hidden="true"></div>
-          <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
+          <fw-button type="button" class="nav-item btn-animate" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
             <span slot="before-label" class="nav-icon" data-nav-icon="building" aria-hidden="true"></span>
             <span class="nav-label">Accounts</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
+          <fw-button type="button" class="nav-item btn-animate" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
             <span slot="before-label" class="nav-icon" data-nav-icon="deal" aria-hidden="true"></span>
             <span class="nav-label">My deals</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="contacts" data-role="se" color="secondary" fill="clear" title="My contacts">
+          <fw-button type="button" class="nav-item btn-animate" data-view="contacts" data-role="se" color="secondary" fill="clear" title="My contacts">
             <span slot="before-label" class="nav-icon" data-nav-icon="contacts" aria-hidden="true"></span>
             <span class="nav-label">My contacts</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
+          <fw-button type="button" class="nav-item btn-animate" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
             <span slot="before-label" class="nav-icon" data-nav-icon="coaching" aria-hidden="true"></span>
             <span class="nav-label">My coaching</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="profile" data-role="se" color="secondary" fill="clear" title="Settings">
+          <fw-button type="button" class="nav-item btn-animate" data-view="profile" data-role="se" color="secondary" fill="clear" title="Settings">
             <span slot="before-label" class="nav-icon" data-nav-icon="settings" aria-hidden="true"></span>
             <span class="nav-label">Settings</span>
           </fw-button>
           <div class="nav-grp nav-grp--rollup" data-role="rollup" hidden>Roll-ups</div>
-          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="building" aria-hidden="true"></span>
             <span class="nav-label">Team</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="deal" aria-hidden="true"></span>
             <span class="nav-label">Pipeline review</span>
           </fw-button>
 
-          <fw-button type="button" class="nav-item" data-view="org-structure" data-role="structure" color="secondary" fill="clear" title="Team structure" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="org-structure" data-role="structure" color="secondary" fill="clear" title="Team structure" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="settings" aria-hidden="true"></span>
             <span class="nav-label">Team structure</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="coaching" aria-hidden="true"></span>
             <span class="nav-label">Product signal</span>
           </fw-button>
         </nav>
         <div class="sidebar-foot">
-          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback btn-animate" color="secondary" fill="clear" title="Feedback">
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
             <span class="nav-label">Feedback</span>
           </fw-button>
           <div class="user-menu user-menu--sidebar" id="user-menu">
-            <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
+            <button type="button" id="sidebar-user" class="sidebar-user btn-animate" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
               <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
               <div class="sidebar-user-text">
                 <span class="sidebar-user-name" id="sidebar-user-name">-</span>
@@ -437,7 +550,7 @@
 
         <main class="main-content">
           <header class="main-topbar">
-            <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
+            <fw-button id="sidebar-toggle" class="sidebar-toggle btn-animate" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
             <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
             <div class="topbar-date" id="topbar-date">
               <span id="topbar-date-text" class="topbar-date-text"></span>
@@ -445,15 +558,15 @@
             <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
             <fw-input id="global-search-input" class="global-search-input" placeholder="Search everything…" clear-input aria-label="Global search"></fw-input>
             <div class="topbar-actions" id="topbar-actions">
-              <button type="button" class="topbar-action topbar-action--primary" id="topbar-new-brief">
+              <button type="button" class="topbar-action topbar-action--primary btn-animate" id="topbar-new-brief">
                 <span class="topbar-action-icon" aria-hidden="true">+</span>
                 New brief
               </button>
-              <button type="button" class="topbar-action topbar-action--secondary" id="topbar-new-call">
+              <button type="button" class="topbar-action topbar-action--secondary btn-animate" id="topbar-new-call">
                 <span class="topbar-action-icon" aria-hidden="true">+</span>
                 New call analysis
               </button>
-              <button type="button" class="topbar-action topbar-action--icon" id="topbar-notifications" aria-label="Notifications" title="Notifications">
+              <button type="button" class="topbar-action topbar-action--icon btn-animate" id="topbar-notifications" aria-label="Notifications" title="Notifications">
                 <span aria-hidden="true">🔔</span>
               </button>
             </div>
