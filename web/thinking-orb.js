@@ -13,14 +13,15 @@
  *   el.append(createThinkingOrb({ state: "solving", size: 64 }));
  *   host.innerHTML = renderThinkingOrb({ state: "working", size: 20 }); // auto-mounted
  *
- * Any <canvas class="thinking-orb"> inserted into the DOM (including static
- * markup in index.html) is mounted automatically via a MutationObserver.
+ * Any [data-thinking-orb] host or <canvas class="thinking-orb"> inserted into
+ * the DOM (including static markup in index.html) is mounted automatically via
+ * a MutationObserver.
  */
 
 import { MODE_DRAWS, resolvePreset } from "./vendor/thinking-orbs-engine.js";
 
 /** @typedef {"working"|"searching"|"solving"|"listening"|"connecting"|"weaving"|"composing"|"breathing"|"shaping"} OrbState */
-/** @typedef {64 | 20} OrbSize */
+/** @typedef {number} OrbSize */
 /** @typedef {"auto" | "dark" | "light"} OrbTheme */
 
 const STATE_LABELS = {
@@ -191,7 +192,7 @@ export function renderThinkingOrb(opts = {}) {
   const extra = opts.className ? ` ${opts.className}` : "";
   const themeAttr = opts.theme && opts.theme !== "auto" ? ` data-orb-theme="${escAttr(opts.theme)}"` : "";
   const label = opts.label || STATE_LABELS[state] || "Loading…";
-  return `<canvas class="thinking-orb${extra}" data-orb-state="${escAttr(state)}" data-orb-size="${size}"${themeAttr} role="img" aria-label="${escAttr(label)}"></canvas>`;
+  return `<canvas class="thinking-orb${extra}" data-thinking-orb data-orb-state="${escAttr(state)}" data-orb-size="${size}"${themeAttr} role="img" aria-label="${escAttr(label)}"></canvas>`;
 }
 
 /**
@@ -210,15 +211,22 @@ export function createThinkingOrb(opts = {}) {
 /** Mount any unmounted orb canvases under a root node. */
 export function hydrateThinkingOrbs(root = document) {
   const list = [];
-  if (root.nodeType === 1 && root.matches?.("canvas.thinking-orb")) list.push(root);
-  list.push(...(root.querySelectorAll?.("canvas.thinking-orb") ?? []));
-  for (const canvas of list) {
+  if (root.nodeType === 1 && root.matches?.("canvas.thinking-orb, [data-thinking-orb]")) {
+    list.push(root);
+  }
+  list.push(...(root.querySelectorAll?.("canvas.thinking-orb, [data-thinking-orb]") ?? []));
+  for (const host of list) {
+    const hostOpts = {
+      state: host.dataset.orbState || "solving",
+      size: Number(host.dataset.orbSize || 64),
+      theme: host.dataset.orbTheme || "auto",
+      label: host.getAttribute?.("aria-label") || undefined,
+    };
+    const canvas = host.matches?.("canvas")
+      ? host
+      : host.querySelector?.("canvas.thinking-orb") || host.appendChild(createThinkingOrb(hostOpts));
     if (canvas.dataset.orbMounted) continue;
-    if (canvas.dataset.orbTheme) {
-      mountThinkingOrb(canvas, { theme: canvas.dataset.orbTheme });
-    } else {
-      mountThinkingOrb(canvas);
-    }
+    mountThinkingOrb(canvas, host.matches?.("canvas") ? {} : hostOpts);
   }
 }
 

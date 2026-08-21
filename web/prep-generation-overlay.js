@@ -1,7 +1,8 @@
 /**
- * Full-page brief / call analysis generation overlay — Dew theme, orbit spinner, stage updates.
+ * Full-page brief / call analysis generation overlay — Dew theme, thinking orb, stage updates.
  */
 
+import { hydrateThinkingOrbs } from "./thinking-orb.js";
 import { $, show } from "./shared.js";
 
 const FADE_MS = 420;
@@ -71,6 +72,7 @@ export function showPrepGenOverlay(opts = {}) {
   const stage = $("prep-gen-stage");
   if (stage && opts.message) stage.textContent = opts.message;
   setBarPct(opts.pct ?? 8);
+  hydrateThinkingOrbs(el);
   el.classList.remove("prep-gen-overlay-exit", "prep-gen-overlay-exit-active");
   show(el, true);
   document.body?.classList.add("prep-gen-lock");

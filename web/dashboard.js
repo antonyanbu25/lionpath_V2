@@ -28,6 +28,7 @@ import { countPrepsGenerated, loadAllLocalBriefs, saveLocalBriefs } from "./prec
 import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
 import { wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
+import { renderLoadingPanel } from "./thinking-orb.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import {
