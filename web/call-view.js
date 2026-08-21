@@ -39,7 +39,12 @@ import { STAGE_LABELS } from "./domain/types.js";
 import { esc, titleCaseDisplayName } from "./shared.js";
 import { themeLabel } from "./theme-library.js";
 import { sanitizeUserFacingCopy } from "./user-facing-copy.js";
-import { hidePrepGenOverlay } from "./prep-generation-overlay.js";
+import {
+  POSTCALL_GEN_THEME,
+  hidePrepGenOverlay,
+  isGenOverlayActive,
+  showPrepGenOverlay,
+} from "./prep-generation-overlay.js";
 import { formatDealTitlePreview, isLegacyDealTitle } from "./domain/deal-service.js";
 import { resolveCallTitleFromRecord, companyFromCallTitle, canonicalCallType, formatProductAreaLabel } from "./call-type-labels.js";
 import { mergeCallIdentities } from "./identity-merge.js";
@@ -2730,7 +2735,7 @@ export function renderCallRecordLoadingPanel(record, opts = {}) {
             </div>
           </div>
         </div>
-        ${renderLoadingPanel(opts.message || "Loading activity record…")}
+        ${renderLoadingPanel(opts.message || "Loading activity record…", { size: 64 })}
       </div>
     </div>`;
 }
@@ -3405,8 +3410,17 @@ export async function renderCallView(container, session, opts = {}) {
   const ownerEmailHint = opts.ownerEmail || session?.email || "";
   const previewRecord =
     ownerEmailHint && targetCallId ? getPostCallAnalysis(ownerEmailHint, targetCallId) : null;
-  container.innerHTML = renderCallRecordLoadingPanel(previewRecord || { id: targetCallId });
-  wireCallRecordBack(container, opts);
+  const postCallGenerationHandoff = isGenOverlayActive();
+  if (postCallGenerationHandoff) {
+    showPrepGenOverlay({
+      message: "Preparing call record…",
+      pct: 96,
+      theme: POSTCALL_GEN_THEME,
+    });
+  } else {
+    container.innerHTML = renderCallRecordLoadingPanel(previewRecord || { id: targetCallId });
+    wireCallRecordBack(container, opts);
+  }
   if (!canApply()) return;
 
   let activeSession = session;
@@ -3423,6 +3437,7 @@ export async function renderCallView(container, session, opts = {}) {
 
   if (!activeSession?.email) {
     container.innerHTML = `<p class="muted">Sign in to view call records.</p>`;
+    if (postCallGenerationHandoff) void hidePrepGenOverlay();
     return;
   }
 
@@ -3440,6 +3455,7 @@ export async function renderCallView(container, session, opts = {}) {
 
     if (!resolvedRecord || resolvedRecord.id !== targetCallId) {
       container.innerHTML = renderCallEmptyState("Call not found. It may have been cleared from this browser.");
+      if (postCallGenerationHandoff) void hidePrepGenOverlay();
       return;
     }
 
@@ -3448,11 +3464,13 @@ export async function renderCallView(container, session, opts = {}) {
       isManagerRole(sessionToUser(activeSession)?.role)
         ? "manager"
         : "se";
-    container.innerHTML = renderCallRecordLoadingPanel(resolvedRecord);
-    wireCallRecordBack(container, opts);
-    if (!canApply() || !callRecordMatches(container, targetCallId)) return;
-    wireCallSpine(container);
-    wireCallViewAnimations(container);
+    if (!postCallGenerationHandoff) {
+      container.innerHTML = renderCallRecordLoadingPanel(resolvedRecord);
+      wireCallRecordBack(container, opts);
+      if (!canApply() || !callRecordMatches(container, targetCallId)) return;
+      wireCallSpine(container);
+      wireCallViewAnimations(container);
+    }
 
     const localHydration = resolveRecordHydration(resolvedRecord);
     const localBundle = buildLocalCallBundle(activeSession, resolvedRecord);

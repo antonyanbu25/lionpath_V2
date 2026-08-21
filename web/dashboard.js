@@ -27,7 +27,7 @@ import { renderTaskBoard, renderTaskCharts, aggregateTaskMetrics, listTasks } fr
 import { countPrepsGenerated, loadAllLocalBriefs, saveLocalBriefs } from "./precall.js?v=2.1.14";
 import { mergeAllBriefs } from "./briefs-list-view.js";
 import { buildLaunchpadCallMetricsFromRecords } from "./calls-list-view.js";
-import { renderLoadingPanel, wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
+import { wireCallLinks as wireCrayonCallLinks } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
 import {
@@ -685,7 +685,7 @@ function renderDimensionBarChart(dimensions, usesLegacyCoach = false) {
   return `
     <section class="dash-section dash-dim-chart">
       <h2 class="dash-section-title">${usesLegacyCoach ? "Dimension averages" : "Theme averages"}</h2>
-      <fw-card class="dash-dim-card">
+      <fw-card class="dash-dim-card card-animate">
         <div class="dash-dim-rows">${rows}</div>
       </fw-card>
     </section>`;
@@ -737,7 +737,7 @@ function renderTrendChart(trend, usesLegacyCoach = false) {
   return `
     <section class="dash-section dash-trend-section">
       <h2 class="dash-section-title">Score trend</h2>
-      <fw-card class="dash-trend-card">
+      <fw-card class="dash-trend-card card-animate">
         <p class="muted dash-chart-sub">Last ${n} call${n === 1 ? "" : "s"} · oldest → newest · per-call type composite</p>
         <svg class="dash-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Score trend over recent calls">
           ${gridLines}
@@ -794,7 +794,7 @@ function renderScoreDistribution(bands, total, usesLegacyCoach = false) {
   return `
     <section class="dash-section dash-distribution-section">
       <h2 class="dash-section-title">Score distribution</h2>
-      <fw-card class="dash-distribution-card">
+      <fw-card class="dash-distribution-card card-animate">
         <div class="dash-distribution">
           <div class="dash-donut-wrap" role="img" aria-label="Call score distribution across ${total} calls">
             <svg class="dash-donut-svg" viewBox="0 0 120 120" aria-hidden="true">
@@ -820,7 +820,7 @@ function renderCoachingPerTypeStats(byType) {
       if (!headline) return "";
       const cls = barClass(t.score, QIP_SCORE_MAX);
       return `
-        <div class="dash-stat prep-action-block coaching-metric-card coaching-type-stat">
+        <div class="dash-stat prep-action-block coaching-metric-card coaching-type-stat tile-animate card-animate">
           <span class="dash-stat-label">${esc(CALL_TYPE_LABELS[t.callType] || t.callType)} average</span>
           <span class="dash-stat-value coaching-metric-num ${cls}">${Math.round(t.score)}</span>
           <span class="dash-stat-sub muted coaching-metric-hint">${esc(headline.sub)} · weighted within type</span>
@@ -832,13 +832,13 @@ function renderCoachingPerTypeStats(byType) {
 function renderCoachingThemeStat(label, dimension, legacy, toneCls) {
   if (!dimension) {
     return `
-      <div class="dash-stat prep-action-block coaching-metric-card">
+      <div class="dash-stat prep-action-block coaching-metric-card tile-animate card-animate">
         <span class="dash-stat-label">${esc(label)}</span>
         <span class="dash-stat-value coaching-metric-theme">-</span>
       </div>`;
   }
   return `
-    <div class="dash-stat prep-action-block coaching-metric-card coaching-theme-metric">
+    <div class="dash-stat prep-action-block coaching-metric-card coaching-theme-metric tile-animate card-animate">
       <span class="dash-stat-label">${esc(label)}</span>
       <span class="dash-stat-value coaching-metric-theme ${toneCls}">${esc(dimensionDisplayLabel(dimension.name, legacy))}</span>
       <span class="dash-stat-sub coaching-metric-hint">${dimension.avgScore.toFixed(0)} · all types</span>
@@ -914,7 +914,7 @@ function renderCoachingTrendByType(trendByType, usesLegacyCoach = false) {
     .join(", ");
 
   return `
-    <div class="coaching-chart-card card-wire card-wire--tight">
+    <div class="coaching-chart-card card-wire card-wire--tight card-animate">
       <h2 class="coaching-card-title">Score trend</h2>
       <p class="muted coaching-card-sub">Last ${n} scored call${n === 1 ? "" : "s"}${typeLegend ? ` · ${typeLegend}` : ""}</p>
       <svg class="dash-trend-svg coaching-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Score trend segmented by call type">
@@ -943,7 +943,7 @@ function renderCoachingThemeBars(dimensions, usesLegacyCoach = false) {
     })
     .join("");
   return `
-    <div class="coaching-chart-card card-wire card-wire--tight">
+    <div class="coaching-chart-card card-wire card-wire--tight card-animate">
       <h2 class="coaching-card-title">Themes</h2>
       <p class="muted coaching-card-sub">Across all call types · comparable because themes are shared</p>
       <div class="dash-dim-rows coaching-theme-rows">${rows}</div>
@@ -953,7 +953,7 @@ function renderCoachingThemeBars(dimensions, usesLegacyCoach = false) {
 function renderCoachingReceipts(worstDimension, receipts, legacy) {
   if (!worstDimension || !receipts?.length) {
     return `
-      <div class="coaching-receipts-card card-wire card-wire--tight">
+      <div class="coaching-receipts-card card-wire card-wire--tight card-animate">
         <h2 class="coaching-card-title">Your weakest theme, with the receipts</h2>
         <p class="muted coaching-card-sub">Analyze more calls with timestamped evidence to unlock coaching receipts.</p>
       </div>`;
@@ -972,17 +972,17 @@ function renderCoachingReceipts(worstDimension, receipts, legacy) {
         : "";
       return `
         <article class="coaching-ev coaching-ev--bad${r.lineScore < 55 ? " coaching-ev--weak" : ""}">
-          <button type="button" class="coaching-receipt-link dash-call-link" data-call-id="${esc(r.callId)}" data-call-tab="qip" data-expand-theme="${esc(r.themeKey)}">
+          <button type="button" class="coaching-receipt-link dash-call-link btn-animate" data-call-id="${esc(r.callId)}" data-call-tab="qip" data-expand-theme="${esc(r.themeKey)}">
             <div class="coaching-ev-ts">${meta}${prov}</div>
             <div class="coaching-ev-body">${esc(r.quote)}</div>
           </button>
-          <button type="button" class="score-dispute-trigger coaching-receipt-dispute" data-call-id="${esc(r.callId)}" data-theme-key="${esc(r.themeKey)}" data-score="${esc(String(r.lineScore))}" data-company="${esc(r.company)}">Dispute</button>
+          <button type="button" class="score-dispute-trigger coaching-receipt-dispute btn-animate" data-call-id="${esc(r.callId)}" data-theme-key="${esc(r.themeKey)}" data-score="${esc(String(r.lineScore))}" data-company="${esc(r.company)}">Dispute</button>
         </article>`;
     })
     .join("");
 
   return `
-    <div class="coaching-receipts-card card-wire card-wire--tight">
+    <div class="coaching-receipts-card card-wire card-wire--tight card-animate">
       <h2 class="coaching-card-title">Your weakest theme, with the receipts</h2>
       <p class="muted coaching-receipts-sub">${esc(label)} · ${worstDimension.avgScore.toFixed(0)} average · scored on ${worstDimension.count} call${worstDimension.count === 1 ? "" : "s"}</p>
       <div class="coaching-receipt-list">${rows}</div>
@@ -1000,7 +1000,7 @@ function renderCoachingScoredCallsTable(scoredCalls) {
       return `
         <tr class="coaching-call-row">
           <td class="coaching-calls-col-call">
-            <button type="button" class="coaching-call-link dash-call-link" data-call-id="${esc(c.id)}" data-call-tab="qip">${esc(c.callTitle || c.company)}</button>
+            <button type="button" class="coaching-call-link dash-call-link btn-animate" data-call-id="${esc(c.id)}" data-call-tab="qip">${esc(c.callTitle || c.company)}</button>
           </td>
           <td>${esc(c.callTypeLabel)}</td>
           <td class="muted">${esc(c.company)}</td>
@@ -1009,14 +1009,14 @@ function renderCoachingScoredCallsTable(scoredCalls) {
           <td>${esc(conf)}</td>
           <td>${scoreCell}</td>
           <td>
-            <button type="button" class="score-dispute-trigger coaching-call-dispute" data-call-id="${esc(c.id)}" data-score="${esc(String(c.score ?? ""))}" data-company="${esc(c.company)}">Dispute</button>
+            <button type="button" class="score-dispute-trigger coaching-call-dispute btn-animate" data-call-id="${esc(c.id)}" data-score="${esc(String(c.score ?? ""))}" data-company="${esc(c.company)}">Dispute</button>
           </td>
         </tr>`;
     })
     .join("");
 
   return `
-    <div class="coaching-calls-card card-wire">
+    <div class="coaching-calls-card card-wire card-animate">
       <div class="prep-form-eyebrow coaching-calls-eyebrow">Your scored calls · every type is scored</div>
       <div class="coaching-calls-table-wrap">
         <table class="coaching-calls-table">
@@ -1041,7 +1041,7 @@ function renderCoachingScoredCallsTable(scoredCalls) {
 export function renderCoachingCharts(metrics) {
   if (!metrics.totalCalls && !metrics.scoredCalls?.length) {
     return `
-      <fw-card class="dash-empty">
+      <fw-card class="dash-empty card-animate">
         <fw-icon class="dash-empty-icon" name="nav-dashboard" size="24" aria-hidden="true"></fw-icon>
         <h2>No coaching data yet</h2>
         <p class="muted">Analyze a few calls to see per-type averages, theme bars, trends, and timestamped receipts.</p>
@@ -1098,9 +1098,9 @@ function renderOverviewEmptyState() {
       <h3>Get started</h3>
       <p class="muted">Run pre-call prep or analyze a recording to populate your task list.</p>
       <p class="task-empty-links">
-        <fw-button color="link" data-action="prep">Pre-call prep</fw-button>
+        <fw-button class="btn-animate" color="link" data-action="prep">Pre-call prep</fw-button>
         ·
-        <fw-button color="link" data-action="analyze">Analyze a recording</fw-button>
+        <fw-button class="btn-animate" color="link" data-action="analyze">Analyze a recording</fw-button>
       </p>
     </fw-card>`;
 }
@@ -1242,7 +1242,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
 
   return `
     <div class="launch-kpi-grid" aria-label="Dashboard summary">
-      <button type="button" class="launch-kpi-card" data-kpi-nav="tasks" aria-label="Open tasks — view task board">
+      <button type="button" class="launch-kpi-card tile-animate btn-animate" data-kpi-nav="tasks" aria-label="Open tasks — view task board">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Open tasks</span>
           <span class="launch-kpi-icon tile-clay" aria-hidden="true">☑</span>
@@ -1252,7 +1252,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
           ${overdueDelta ? `<span class="launch-kpi-delta ${overdueCls}">${esc(overdueDelta)}</span>` : ""}
         </div>
       </button>
-      <button type="button" class="launch-kpi-card" data-kpi-nav="calls" aria-label="Calls analysed — view all calls">
+      <button type="button" class="launch-kpi-card tile-animate btn-animate" data-kpi-nav="calls" aria-label="Calls analysed — view all calls">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Calls analysed</span>
           <span class="launch-kpi-icon tile-teal" aria-hidden="true">☎</span>
@@ -1262,7 +1262,7 @@ function renderLaunchKpis(taskMetrics, callMetrics, prepsCount, kpiOpts = {}) {
           ${callsDelta && !(remotePending.calls && !callMetrics.totalCalls) ? `<span class="launch-kpi-delta ${callsDeltaCls}">${esc(callsDelta)}</span>` : ""}
         </div>
       </button>
-      <button type="button" class="launch-kpi-card" data-kpi-nav="briefs" aria-label="Briefs generated — view pre-call brief">
+      <button type="button" class="launch-kpi-card tile-animate btn-animate" data-kpi-nav="briefs" aria-label="Briefs generated — view pre-call brief">
         <div class="launch-kpi-head">
           <span class="launch-kpi-label">Briefs generated</span>
           <span class="launch-kpi-icon tile-sand" aria-hidden="true">✎</span>
@@ -1296,7 +1296,7 @@ function renderRecentActivityRow(c, usesLegacyCoach = false) {
       : `Analysed · ${esc(c.momentum || "review")}`;
   const statusColor = scoreCls === "good" ? "var(--dew-green)" : "var(--dew-text-secondary)";
   return `
-    <button type="button" class="launch-activity-row dash-call-link" data-call-id="${esc(c.id)}">
+    <button type="button" class="launch-activity-row dash-call-link btn-animate" data-call-id="${esc(c.id)}">
       <span class="launch-activity-inner">
         <span class="launch-activity-icon tile-teal" aria-hidden="true"><fw-icon name="phone" size="18"></fw-icon></span>
         <span class="launch-activity-body">
@@ -1319,7 +1319,7 @@ function renderRecentCallRow(c, { compact = false, usesLegacyCoach = false } = {
     ? ""
     : `<span class="launch-recent-next muted">${esc(c.nextAction)}</span>`;
   return `
-    <fw-button class="launch-recent-row dash-call-link" color="secondary" fill="clear" data-call-id="${esc(c.id)}">
+    <fw-button class="launch-recent-row dash-call-link btn-animate" color="secondary" fill="clear" data-call-id="${esc(c.id)}">
       <span class="launch-recent-inner${innerCls}">
         <span class="launch-recent-company">${esc(c.company)}</span>
         <span class="launch-recent-date muted">${esc(formatShortDate(c.timestamp))}</span>
@@ -1345,7 +1345,7 @@ function renderRecentCallsLaunchpad(recentCalls, usesLegacyCoach = false) {
   return `
     <section class="dash-section launch-recent" aria-labelledby="recent-heading">
       <h2 id="recent-heading" class="dash-section-title">Recent calls</h2>
-      <fw-card class="launch-recent-list">${rows}</fw-card>
+      <fw-card class="launch-recent-list card-animate">${rows}</fw-card>
     </section>`;
 }
 
@@ -1353,7 +1353,7 @@ export function renderCoachingNudgeCard(nudgeText) {
   return `
     <section class="dash-section launch-nudge" aria-labelledby="nudge-heading">
       <h2 id="nudge-heading" class="dash-section-title">Coaching nudge</h2>
-      <fw-card class="launch-nudge-card">
+      <fw-card class="launch-nudge-card card-animate">
         <p class="launch-nudge-text">${esc(nudgeText)}</p>
       </fw-card>
     </section>`;
@@ -1369,19 +1369,19 @@ function renderSideStats(taskMetrics, callMetrics, prepsCount = 0) {
     <section class="dash-section dash-side-stats" aria-labelledby="side-stats-heading">
       <h2 id="side-stats-heading" class="dash-section-title">Snapshot</h2>
       <div class="dash-side-stats-grid">
-        <div class="dash-stat prep-action-block">
+        <div class="dash-stat prep-action-block tile-animate card-animate">
           <span class="dash-stat-label">Open tasks</span>
           <span class="dash-stat-value" data-stat="open">${taskMetrics.openTotal}</span>
         </div>
-        <div class="dash-stat prep-action-block">
+        <div class="dash-stat prep-action-block tile-animate card-animate">
           <span class="dash-stat-label">Preps generated</span>
           <span class="dash-stat-value" data-stat="preps">${prepsCount}</span>
         </div>
-        <div class="dash-stat prep-action-block">
+        <div class="dash-stat prep-action-block tile-animate card-animate">
           <span class="dash-stat-label">Done this week</span>
           <span class="dash-stat-value good" data-stat="done-week">${taskMetrics.completedThisWeek}</span>
         </div>
-        <div class="dash-stat prep-action-block">
+        <div class="dash-stat prep-action-block tile-animate card-animate">
           <span class="dash-stat-label">Calls analyzed</span>
           <span class="dash-stat-value" data-stat="calls">${callMetrics.totalCalls}</span>
           <span class="dash-stat-sub">${esc(avgLabel)}</span>
@@ -1718,7 +1718,6 @@ export function renderDashboardLoadingShell(container) {
         <div class="dash-split-main launch-skeleton launch-skeleton--board" aria-hidden="true"></div>
         <aside class="dash-split-side launch-side launch-skeleton launch-skeleton--side" aria-hidden="true"></aside>
       </div>
-      ${renderLoadingPanel("Loading dashboard…")}
     </div>`;
 }
 
@@ -1737,7 +1736,6 @@ export function renderManagerDashboardLoadingShell(container) {
         <div class="launch-skeleton launch-skeleton--kpi"></div>
       </div>
       <div class="launch-skeleton launch-skeleton--heatmap" aria-hidden="true"></div>
-      ${renderLoadingPanel("Loading team dashboard…")}
     </div>`;
 }
 
@@ -1786,7 +1784,7 @@ function renderRecentBriefRow(brief) {
       ? `${factCount} of ${totalFacts} facts sourced`
       : "Discovery brief ready";
   return `
-    <button type="button" class="launch-activity-row dash-brief-link" data-brief-id="${esc(brief.id)}">
+    <button type="button" class="launch-activity-row dash-brief-link btn-animate" data-brief-id="${esc(brief.id)}">
       <span class="launch-activity-inner">
         <span class="launch-activity-icon tile-sand" aria-hidden="true"><fw-icon name="add-note" size="18"></fw-icon></span>
         <span class="launch-activity-body">
@@ -1861,7 +1859,7 @@ function renderRecentCallsSideWithItems(items, opts = {}) {
   if (!items.length) {
     return `
       <section class="dash-section launch-side dash-side-recent" data-activity-signature="${signature}" aria-labelledby="recent-heading">
-        <fw-card class="launch-activity-card">
+        <fw-card class="launch-activity-card card-animate">
           <div class="launch-activity-head">
             <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
           </div>
@@ -1874,10 +1872,10 @@ function renderRecentCallsSideWithItems(items, opts = {}) {
 
   return `
     <section class="dash-section launch-side dash-side-recent" data-activity-signature="${signature}" aria-labelledby="recent-heading">
-      <fw-card class="launch-activity-card">
+      <fw-card class="launch-activity-card card-animate">
         <div class="launch-activity-head">
           <h2 id="recent-heading" class="dash-section-title">Recent activity</h2>
-          ${opts.onViewAll ? `<button type="button" class="launch-activity-viewall" data-action="view-all-activity">View all</button>` : ""}
+          ${opts.onViewAll ? `<button type="button" class="launch-activity-viewall btn-animate" data-action="view-all-activity">View all</button>` : ""}
         </div>
         ${rows}
       </fw-card>
@@ -2391,7 +2389,7 @@ function renderHeatmapCell(score, opts = {}) {
   if (opts.drill) drillAttrs.push(`data-drill="${esc(opts.drill)}"`);
   const attrStr = drillAttrs.length ? ` ${drillAttrs.join(" ")}` : "";
   if (opts.clickable) {
-    return `<td class="${cls}"><button type="button" class="team-heatmap-score team-heatmap-score-btn dash-drill-link"${attrStr} style="background:${shade.bg};color:${shade.fg}">${esc(shade.label)}</button></td>`;
+    return `<td class="${cls}"><button type="button" class="team-heatmap-score team-heatmap-score-btn dash-drill-link btn-animate"${attrStr} style="background:${shade.bg};color:${shade.fg}">${esc(shade.label)}</button></td>`;
   }
   return `<td class="${cls}"><div class="team-heatmap-score"${attrStr} style="background:${shade.bg};color:${shade.fg}">${esc(shade.label)}</div></td>`;
 }
@@ -2731,7 +2729,7 @@ function renderManagerHeatmap(view, filter) {
       return `
         <tr>
           <th scope="row" class="team-heatmap-se">
-            <button type="button" class="team-heatmap-se-link dash-drill-link" data-drill="se" data-se-email="${esc(se.email)}">${esc(se.name)}</button>
+            <button type="button" class="team-heatmap-se-link dash-drill-link btn-animate" data-drill="se" data-se-email="${esc(se.email)}">${esc(se.name)}</button>
           </th>
           ${cells}
           ${rowAvgCell}
@@ -2775,27 +2773,27 @@ function renderManagerMetricCards(summary, legacy) {
   const aiVal = summary.aiAttachPct != null ? `${summary.aiAttachPct}%` : "-";
   return `
     <div class="dash-stats prep-action-grid manager-stats manager-team-stats manager-metrics-wire">
-      <div class="dash-stat prep-action-block manager-metric-card">
+      <div class="dash-stat prep-action-block manager-metric-card tile-animate card-animate">
         <span class="dash-stat-label">Team average</span>
         <span class="dash-stat-value manager-metric-num ${teamCls}">${teamVal}</span>
         <span class="dash-stat-sub muted manager-metric-hint">weighted by type</span>
       </div>
-      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link" data-drill="deals-cold">
+      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link tile-animate btn-animate card-animate" data-drill="deals-cold">
         <span class="dash-stat-label">Deals cold</span>
         <span class="dash-stat-value manager-metric-num weak">${summary.coldDealCount}</span>
         <span class="dash-stat-sub muted manager-metric-hint">${esc(coldArr)} exposed</span>
       </button>
-      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link" data-drill="calls-no-next-step">
+      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link tile-animate btn-animate card-animate" data-drill="calls-no-next-step">
         <span class="dash-stat-label">No next step</span>
         <span class="dash-stat-value manager-metric-num manager-metric-warn">${summary.noNextStep}</span>
         <span class="dash-stat-sub muted manager-metric-hint">${summary.noNextStepPct}% of calls</span>
       </button>
-      <div class="dash-stat prep-action-block manager-metric-card">
+      <div class="dash-stat prep-action-block manager-metric-card tile-animate card-animate">
         <span class="dash-stat-label">AI attach</span>
         <span class="dash-stat-value manager-metric-num">${esc(aiVal)}</span>
         <span class="dash-stat-sub muted manager-metric-hint">of won deals</span>
       </div>
-      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link" data-drill="calls-scored">
+      <button type="button" class="dash-stat prep-action-block manager-metric-card manager-metric-link dash-drill-link tile-animate btn-animate card-animate" data-drill="calls-scored">
         <span class="dash-stat-label">Calls scored</span>
         <span class="dash-stat-value manager-metric-num">${summary.callsScored}</span>
         <span class="dash-stat-sub muted manager-metric-hint">${summary.provisionalExcluded ? `${summary.provisionalExcluded} provisional excluded` : "all 8 types"}</span>
@@ -2808,7 +2806,7 @@ function renderDealsNeedingAttention(deals) {
     return `
       <section class="dash-section manager-deals-section">
         <h2 class="dash-section-title">Deals needing attention</h2>
-        <fw-card><p class="muted">No cold or stalled deals in scope; sorted by ARR when they appear.</p></fw-card>
+        <fw-card class="card-animate"><p class="muted">No cold or stalled deals in scope; sorted by ARR when they appear.</p></fw-card>
       </section>`;
   }
   const rows = deals
@@ -2835,7 +2833,7 @@ function renderDealsNeedingAttention(deals) {
     <section class="dash-section manager-deals-section">
       <h2 class="dash-section-title">Deals needing attention</h2>
       <p class="muted dash-section-sub">Cold and warm-but-silent deals · sorted by ARR</p>
-      <div class="card-wire manager-table-card">
+      <div class="card-wire manager-table-card card-animate">
         <div class="manager-table-wrap">
           <table class="manager-deals-table">
             <thead>
@@ -2859,7 +2857,7 @@ function renderManagerCoachingQueue(queue) {
     return `
       <section class="dash-section manager-coaching-queue-section">
         <h2 class="dash-section-title">Coaching queue</h2>
-        <div class="card-wire card-wire--tight"><p class="muted">No high-confidence calls below ${COACHING_QUEUE_SCORE_MAX} right now. Low-confidence scores never generate a coaching conversation.</p></div>
+        <div class="card-wire card-wire--tight card-animate"><p class="muted">No high-confidence calls below ${COACHING_QUEUE_SCORE_MAX} right now. Low-confidence scores never generate a coaching conversation.</p></div>
       </section>`;
   }
   const rows = queue
@@ -2872,7 +2870,7 @@ function renderManagerCoachingQueue(queue) {
       return `
         <tr>
           <td>
-            <button type="button" class="coaching-call-link dash-call-link" data-call-id="${esc(item.callId)}" data-call-tab="qip"${item.weakestTheme ? ` data-expand-theme="${esc(item.weakestTheme)}" data-call-owner="${esc(item.seEmail || "")}"` : ""}>${esc(item.company)}</button>
+            <button type="button" class="coaching-call-link dash-call-link btn-animate" data-call-id="${esc(item.callId)}" data-call-tab="qip"${item.weakestTheme ? ` data-expand-theme="${esc(item.weakestTheme)}" data-call-owner="${esc(item.seEmail || "")}"` : ""}>${esc(item.company)}</button>
           </td>
           <td>${esc(item.seName)}</td>
           <td>${esc(item.callTypeLabel)}</td>
@@ -2887,7 +2885,7 @@ function renderManagerCoachingQueue(queue) {
     <section class="dash-section manager-coaching-queue-section">
       <h2 class="dash-section-title">Coaching queue</h2>
       <p class="muted dash-section-sub">High-confidence calls only · composite ≤ ${COACHING_QUEUE_SCORE_MAX}</p>
-      <div class="card-wire manager-table-card">
+      <div class="card-wire manager-table-card card-animate">
         <div class="manager-table-wrap">
           <table class="manager-coaching-queue-table">
             <thead>
@@ -2989,7 +2987,7 @@ function renderManagerSeTable(seRows, isOrgView = false) {
     const overdueCls = se.overdue > 0 ? "weak" : "good";
     return `
       <tr>
-        <td><button type="button" class="manager-se-link dash-drill-link" data-drill="se" data-se-email="${esc(se.email)}">${esc(se.name)}</button></td>
+        <td><button type="button" class="manager-se-link dash-drill-link btn-animate" data-drill="se" data-se-email="${esc(se.email)}">${esc(se.name)}</button></td>
         ${isOrgView ? `<td>${esc(se.teamName || "-")}</td>` : ""}
         <td>${se.calls}</td>
         <td><span class="qc-dim-score ${avgCls}">${esc(avg)}</span></td>
@@ -2999,7 +2997,7 @@ function renderManagerSeTable(seRows, isOrgView = false) {
   }).join("");
 
   return `
-    <div class="card-wire manager-se-table-card">
+    <div class="card-wire manager-se-table-card card-animate">
       <div class="prep-form-eyebrow manager-se-eyebrow">Your SEs</div>
       <div class="manager-table-wrap">
         <table class="manager-se-table">
@@ -3059,7 +3057,7 @@ export async function renderManagerDashboard(container, session, opts = {}) {
       </div>
       ${hasData ? `
         ${renderManagerMetricCards(teamSummary, legacy)}
-        <div class="card-wire manager-heatmap-card">
+        <div class="card-wire manager-heatmap-card card-animate">
           <h2 class="manager-card-title">Where the team is weak</h2>
           ${renderManagerHeatmapFilter(filter)}
           <div id="manager-filter-banner-mount">${renderManagerFilterBanner(filter)}</div>
@@ -3070,7 +3068,7 @@ export async function renderManagerDashboard(container, session, opts = {}) {
           ${renderManagerCoachingQueue(coachingQueue)}
         </div>
       ` : `
-        <fw-card class="dash-empty">
+        <fw-card class="dash-empty card-animate">
           <fw-icon class="dash-empty-icon" name="agent" size="24" aria-hidden="true"></fw-icon>
           <h2>No team data yet</h2>
           <p class="muted">SEs need to analyze calls before team metrics appear here.</p>
