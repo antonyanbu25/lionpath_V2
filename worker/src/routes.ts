@@ -94,7 +94,7 @@ import { validateJsonbShape } from "./data/persistence/shapes";
 import type { AccountRow } from "./data/persistence/types";
 import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
-import { domainReadRoutes } from "./routes/domain-reads";
+import { domainReadRoutes, handleDealsListGet } from "./routes/domain-reads";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -1987,7 +1987,7 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/recovery/upload": { POST: handleRecoveryUpload },
   "/api/recovery/status": { GET: handleRecoveryStatus },
-  "/api/deals": { POST: handleDealsCreate },
+  "/api/deals": { GET: handleDealsListGet, POST: handleDealsCreate },
   "/api/domain-write": { POST: handleDomainWrite },
   "/api/tickets": { POST: handleTicketsPost },
   "/api/disputes/notify": { POST: handleDisputeNotifyPost },
