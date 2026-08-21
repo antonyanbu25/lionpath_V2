@@ -64,6 +64,32 @@ function wireThemeToggles() {
   applyTheme(getTheme());
 }
 
+function injectJanusLogoStyles() {
+  if (document.getElementById("janus-logo-blend-styles")) return;
+  const style = document.createElement("style");
+  style.id = "janus-logo-blend-styles";
+  style.textContent = `
+    .sidebar-brand-logo {
+      width: auto !important;
+      height: 32px !important;
+      max-height: 32px;
+      object-fit: contain;
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      border-radius: 4px;
+      padding: 0;
+      mix-blend-mode: multiply;
+    }
+
+    [data-theme="dark"] .sidebar-brand-logo {
+      filter: invert(1) grayscale(1) contrast(1.12) brightness(1.08);
+      mix-blend-mode: screen;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /** Wire Light/Dark options inside user menu panel. */
 export function wireThemeMenu(root = document) {
   const scope = root instanceof Element ? root : document;
@@ -92,6 +118,7 @@ export function syncThemeMenuState(root = document) {
 }
 
 export function initTheme() {
+  injectJanusLogoStyles();
   applyTheme(preferredTheme());
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", wireThemeToggles);
