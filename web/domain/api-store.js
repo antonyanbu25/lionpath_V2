@@ -3,9 +3,10 @@
  */
 
 import { createFirestoreStore } from "./firestore-store.js";
-import { isHistoryStubId } from "./safe-store.js";
 
-export { isHistoryStubId } from "./safe-store.js";
+export function isHistoryStubId(id) {
+  return String(id || "").startsWith("history:");
+}
 
 const DETAIL_TTL_MS = 30_000;
 const DETAIL_MAX_ENTRIES = 64;
@@ -302,6 +303,14 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     return [];
   }
 
+  async function findContactsByEmailFromFirestore(email) {
+    const key = String(email || "").trim().toLowerCase();
+    if (!key || !fb?.db || !fb?.collection || !fb?.query || !fb?.where || !fb?.getDocs) return [];
+    const q = fb.query(fb.collection(fb.db, "contacts"), fb.where("email", "==", key));
+    const snap = await fb.getDocs(q);
+    return (snap.docs || []).map((d) => ({ id: d.id, ...d.data() }));
+  }
+
   const apiReads = {
     mode: "api",
 
@@ -392,6 +401,24 @@ export function createApiStore({ workerBaseUrl, getToken, fb }) {
     async listCallSummariesByAccount(accountId, limit = 80) {
       return firestoreDelegate?.listCallSummariesByAccount
         ? firestoreDelegate.listCallSummariesByAccount(accountId, limit)
+        : [];
+    },
+
+    async findContactByAccountEmail(accountId, email) {
+      return firestoreDelegate?.findContactByAccountEmail
+        ? firestoreDelegate.findContactByAccountEmail(accountId, email)
+        : null;
+    },
+
+    async findContactsByEmail(email) {
+      return firestoreDelegate?.findContactsByEmail
+        ? firestoreDelegate.findContactsByEmail(email)
+        : findContactsByEmailFromFirestore(email);
+    },
+
+    async listContactsByAccount(accountId) {
+      return firestoreDelegate?.listContactsByAccount
+        ? firestoreDelegate.listContactsByAccount(accountId)
         : [];
     },
 
