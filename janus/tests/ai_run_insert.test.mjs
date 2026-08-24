@@ -15,6 +15,11 @@
  *   instead uses an id outside the activity sequence — exactly the failure
  *   mode of the original bug (a post_call.id used where activity(id) was
  *   expected), and deterministic regardless of sequence state.
+ * - 18_ai_run_rls.sql puts ai_run under FORCE RLS (admin write / owner read).
+ *   The read-back and FK probe below therefore run inside a transaction with
+ *   app.is_admin set — without it the SELECT sees 0 rows and the probe INSERT
+ *   is denied with 42501 before the FK fires. A non-admin read assertion
+ *   verifies the RLS policy actually engages (fails closed).
  * - ai_run cleanup rides the activity ON DELETE CASCADE (RI actions execute as
  *   the table owner, so the append-only REVOKE on ai_run does not block it).
  */
@@ -122,36 +127,57 @@ async function main() {
     );
     check("insertAiRun harness exit 0", harness.status === 0, `status=${harness.status}`);
 
-    const row = await client.query(
-      `SELECT activity_id, pass_name, model, input_tokens, output_tokens, cost_usd, run_type, error_code
-       FROM ai_run WHERE pass_name = 'analyze' AND model = 'gemini-3.5-flash'
-       ORDER BY id DESC LIMIT 1`,
+    // 18_ai_run_rls.sql: ai_run is under FORCE RLS (admin write / owner read).
+    // The harness row has user_id=NULL (sentinel), so only an admin session can
+    // see it. First assert the policy fails closed for a plain janus_app
+    // session, then re-read as admin for the row assertions.
+    const nonAdminRead = await client.query(
+      `SELECT COUNT(*)::int AS n FROM ai_run WHERE pass_name = 'analyze' AND model = 'gemini-3.5-flash'`,
     );
-    check("ai_run row inserted", row.rows.length === 1);
-    if (row.rows.length === 1) {
-      const r = row.rows[0];
-      check("activity_id resolves via act_{callId}", String(r.activity_id) === String(activityId),
-        `activity_id=${r.activity_id} expected=${activityId}`);
-      check("run_type mapped from passName", r.run_type === "analysis", `run_type=${r.run_type}`);
-      check("cost_usd persisted", r.cost_usd != null, `cost_usd=${r.cost_usd}`);
-    }
+    check("ai_run RLS fails closed for non-admin", nonAdminRead.rows[0].n === 0,
+      `visible=${nonAdminRead.rows[0].n}`);
 
-    // FK probe: an id outside the activity sequence must be rejected (23503).
-    // This is the original bug's failure mode — a post_call.id (separate
-    // identity sequence) used where ai_run.activity_id expects activity(id).
-    const maxAct = await client.query(`SELECT COALESCE(max(id), 0) + 1000 AS probe FROM activity`);
-    const invalidActivityId = maxAct.rows[0].probe;
-    let fkFailed = false;
+    await client.query("BEGIN");
     try {
-      await client.query(
-        `INSERT INTO ai_run (activity_id, pass_name, model, input_tokens, output_tokens)
-         VALUES ($1, 'fk-bug-doc', 'test-model', 1, 1)`,
-        [invalidActivityId],
+      await client.query(`SELECT set_config('app.is_admin', 'true', true)`);
+
+      const row = await client.query(
+        `SELECT activity_id, pass_name, model, input_tokens, output_tokens, cost_usd, run_type, error_code
+         FROM ai_run WHERE pass_name = 'analyze' AND model = 'gemini-3.5-flash'
+         ORDER BY id DESC LIMIT 1`,
       );
-    } catch (err) {
-      fkFailed = err.code === "23503";
+      check("ai_run row inserted", row.rows.length === 1);
+      if (row.rows.length === 1) {
+        const r = row.rows[0];
+        check("activity_id resolves via act_{callId}", String(r.activity_id) === String(activityId),
+          `activity_id=${r.activity_id} expected=${activityId}`);
+        check("run_type mapped from passName", r.run_type === "analysis", `run_type=${r.run_type}`);
+        check("cost_usd persisted", r.cost_usd != null, `cost_usd=${r.cost_usd}`);
+      }
+
+      // FK probe: an id outside the activity sequence must be rejected (23503).
+      // This is the original bug's failure mode — a post_call.id (separate
+      // identity sequence) used where ai_run.activity_id expects activity(id).
+      // Runs as admin so RLS WITH CHECK passes and the FK constraint fires.
+      const maxAct = await client.query(`SELECT COALESCE(max(id), 0) + 1000 AS probe FROM activity`);
+      const invalidActivityId = maxAct.rows[0].probe;
+      let fkFailed = false;
+      try {
+        await client.query(
+          `INSERT INTO ai_run (activity_id, pass_name, model, input_tokens, output_tokens)
+           VALUES ($1, 'fk-bug-doc', 'test-model', 1, 1)`,
+          [invalidActivityId],
+        );
+      } catch (err) {
+        fkFailed = err.code === "23503";
+      }
+      check("non-activity id FK rejected", fkFailed, "documents activity_id must be activity.id, not post_call.id");
+
+      await client.query("COMMIT");
+    } catch (assertErr) {
+      await client.query("ROLLBACK");
+      throw assertErr;
     }
-    check("non-activity id FK rejected", fkFailed, "documents activity_id must be activity.id, not post_call.id");
 
     // Cleanup. ai_run test rows ride the activity ON DELETE CASCADE (RI actions
     // run as the table owner, so the append-only REVOKE on ai_run does not

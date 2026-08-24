@@ -79,7 +79,7 @@ import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { firestoreAdminReady, getDb, getDoc } from "./data/firestore-admin";
-import { resolveRequestContext } from "./data/scope";
+import { resolveRequestContext, assertCanReadResource, type RequestContext } from "./data/scope";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
 import { handleOutboxProjectPost } from "./routes/internal-outbox";
 import type { VerifiedUser } from "./auth";
@@ -94,7 +94,7 @@ import { validateJsonbShape } from "./data/persistence/shapes";
 import type { AccountRow } from "./data/persistence/types";
 import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
-import { domainReadRoutes } from "./routes/domain-reads";
+import { domainReadRoutes, handleDealsListGet } from "./routes/domain-reads";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -1628,6 +1628,24 @@ export async function handleDomainWrite(
   return json({ result }, 200, cors);
 }
 
+function canWriteUnscopedResource(
+  ctx: RequestContext | null,
+  operation: "create" | "update",
+): boolean {
+  if (!ctx) return false;
+  if (ctx.role === "admin") return true;
+  if (operation === "create") {
+    // canCreateAccount: admin, or manager with org, or SE with org+team.
+    return (ctx.role === "manager" && !!ctx.orgId) ||
+      (ctx.role === "se" && !!ctx.orgId && !!ctx.teamId);
+  }
+  // update: admin or manager (SEs can update accounts they can read, but
+  // without a SQL query to check the account's SE team we restrict to
+  // manager+ on the SQL path; SEs fall through to Firestore which has
+  // the onAccountSeTeam check).
+  return ctx.role === "manager";
+}
+
 /**
  * Route CRM domain writes through the persistence port when PERSISTENCE_MODE
  * is dual/sql. Returns { handled: false } for non-CRM methods, firestore
@@ -1651,6 +1669,28 @@ async function trySqlDomainWrite(
   }
 
   const doc = (args[0] || {}) as Record<string, unknown>;
+
+  // M1 fix: for un-RLS'd tables (account, contact), resolve the Firestore-based
+  // RequestContext and check app-layer authorization before the SQL write.
+  // If the check fails, fall through to Firestore (which has security rules).
+  const UNSCOPED_METHODS = new Set([
+    "createAccount", "updateAccount", "createContact", "updateContact",
+  ]);
+  if (UNSCOPED_METHODS.has(method)) {
+    let ctx: RequestContext | null = null;
+    try {
+      ctx = await resolveRequestContext(verified, env);
+    } catch {
+      // If we can't resolve the context (authIndex missing), fall through to
+      // Firestore rather than blocking the write.
+      return { handled: false };
+    }
+    const op = method.startsWith("update") ? "update" : "create";
+    if (!canWriteUnscopedResource(ctx, op)) {
+      return { handled: false };
+    }
+  }
+
   const handled = await withSessionContext(session, async (client) => {
     switch (method) {
       case "createAccount": {
@@ -1921,6 +1961,20 @@ export async function handleDealsCreate(
     return json({ error: "Account not found." }, 404, cors);
   }
 
+  // NEW-3 fix: verify the caller is authorized to create deals for this
+  // account. The old code had no check — any authenticated user could
+  // create deals on any account (IDOR). Mirrors Firestore canCreateAccount:
+  // admin sees all, manager checks team/org, SE checks team.
+  try {
+    assertCanReadResource(ctx, {
+      ownerId: stringField(account.primarySeUserId) || undefined,
+      teamId: typeof account.teamId === "string" ? account.teamId : undefined,
+      orgId: typeof account.orgId === "string" ? account.orgId : undefined,
+    });
+  } catch {
+    return json({ error: "You are not authorized to create deals for this account." }, 403, cors);
+  }
+
   const actorId = ctx.userId;
   const ownerId = stringField(account.primarySeUserId) || actorId;
   const teamId = primaryTeamIdFromAccount(account, ownerId) || stringField(body.teamId);
@@ -1956,7 +2010,10 @@ export async function handleDealsCreate(
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
-  // Domain read routes (Firestore list endpoints — /api/accounts, /api/calls, /api/deals GET)
+  // Domain read routes (Firestore list endpoints — /api/accounts, /api/calls, /api/deals GET).
+  // The explicit /api/deals entry below shadows the spread's GET-only entry and
+  // re-includes GET so both methods are served (previously the POST-only entry
+  // shadowed the spread and GET /api/deals was unreachable).
   ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
@@ -1987,7 +2044,7 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/recovery/upload": { POST: handleRecoveryUpload },
   "/api/recovery/status": { GET: handleRecoveryStatus },
-  "/api/deals": { POST: handleDealsCreate },
+  "/api/deals": { GET: handleDealsListGet, POST: handleDealsCreate },
   "/api/domain-write": { POST: handleDomainWrite },
   "/api/tickets": { POST: handleTicketsPost },
   "/api/disputes/notify": { POST: handleDisputeNotifyPost },

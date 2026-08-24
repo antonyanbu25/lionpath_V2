@@ -251,7 +251,13 @@ RETURNS int LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_redacted_count int := 0;
 BEGIN
-    -- 1. Anonymize post_call for lost deals older than 12 months
+    -- 1. Anonymize post_call for lost deals older than 12 months.
+    -- H2 fix: the old version only redacted {callNotes} and
+    -- {artifacts,suggestedFollowUpEmail}, leaving the transcript, MEDDPICC,
+    -- ARR, objections, commitments, MoM drafts, and deal signals intact —
+    -- a false compliance signal. Now NULLs out analysis and detail entirely
+    -- (the most sensitive blobs in the CRM) and tombstones transcript_ref.
+    -- The pipeline_state is preserved for operational visibility.
     WITH lost_deals AS (
         SELECT d.id FROM deal d 
         WHERE d.status = 'lost' 
@@ -264,10 +270,9 @@ BEGIN
         JOIN lost_deals ld ON ld.id = a.deal_id
     )
     UPDATE post_call pc
-    SET analysis = jsonb_set(
-            jsonb_set(pc.analysis, '{callNotes}', '"[REDACTED]"'::jsonb),
-            '{artifacts,suggestedFollowUpEmail}', '"[REDACTED]"'::jsonb, true
-        ),
+    SET analysis = NULL,
+        detail = NULL,
+        transcript_ref = NULL,
         updated_at = now()
     FROM target_posts tp
     WHERE pc.id = tp.id;

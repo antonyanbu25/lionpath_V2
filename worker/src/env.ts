@@ -24,6 +24,10 @@ export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateL
   CALL_PAYLOAD_BUCKET?: string;
   /** Shared secret for Cloud Scheduler / VPS cron internal endpoints. */
   INTERNAL_CRON_SECRET?: string;
+  /** Shared secret for the impersonation endpoint (non-production only). */
+  IMPERSONATE_SECRET?: string;
+  /** When "1", disables TLS cert verification on Postgres connections (QA only; refused at boot in production). */
+  PG_SSL_INSECURE?: string;
   /** Score-dispute manager email — off unless "1"/"true". */
   DISPUTE_NOTIFY_ENABLED?: string;
   /** Resend (or compatible) API key — server-side only; never expose to browser. */

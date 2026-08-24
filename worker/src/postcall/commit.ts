@@ -14,6 +14,7 @@ import type { LlmProvider, LlmResult, ProviderEnv } from "../providers/types";
 import { logInfo } from "../logger";
 import type { PostCallTranscriptCacheBundle } from "../providers/gemini-cache";
 import { jsonrepair } from "jsonrepair";
+import { redactTranscriptPii } from "../data/transcript-redaction";
 import {
   TC_SLOT_KEYS,
   TC_STATUSES,
@@ -120,16 +121,19 @@ function safeParseJson<T>(text: string): T {
     return parse(text);
   } catch (firstErr) {
     try {
-      return parse(jsonrepair(text));
+      // NEW-9: cap the input to jsonrepair to prevent DoS via oversized
+      // LLM output. 256KB is generous for any structured JSON response.
+      const capped = text.length > 256 * 1024 ? text.slice(0, 256 * 1024) : text;
+      return parse(jsonrepair(capped));
     } catch {
       throw firstErr;
     }
   }
 }
 
-function retryPrompt(input: PostCallCommitInput, parsed: ReturnType<typeof parseTranscript>, omitTranscript: boolean): string {
+function retryPrompt(input: PostCallCommitInput, parsed: ReturnType<typeof parseTranscript>, omitTranscript: boolean, env?: Env): string {
   return [
-    userPrompt(input, parsed, omitTranscript),
+    userPrompt(input, parsed, omitTranscript, env),
     "",
     "Your previous response was truncated. Produce the COMPLETE JSON in a single response. Keep the justification field under 150 words. Do not include any text outside the JSON object.",
   ].join("\n");
@@ -326,6 +330,7 @@ function userPrompt(
   input: PostCallCommitInput,
   parsed: ReturnType<typeof parseTranscript>,
   omitTranscript = false,
+  env?: Env,
 ): string {
   const lines = ["Extract the technical commit state from this call.", "", `Word count: ${parsed.wordCount}`];
   if (input.companyName) lines.push(`Company: ${input.companyName}`);
@@ -355,7 +360,10 @@ function userPrompt(
     lines.push("", "Additional SE context:", input.additionalContext.trim());
   }
   if (!omitTranscript) {
-    lines.push("", "=== TRANSCRIPT ===", trimTranscript(parsed.text, 6000, "tail"), "=== END TRANSCRIPT ===");
+    // NEW-4: redact PII (emails/phones/CCs) from the transcript before
+    // sending to the LLM when LLM_TRANSCRIPT_REDACTION=1.
+    const transcriptText = redactTranscriptPii(trimTranscript(parsed.text, 6000, "tail"), env);
+    lines.push("", "=== TRANSCRIPT ===", transcriptText, "=== END TRANSCRIPT ===");
   }
   return lines.join("\n");
 }
@@ -384,7 +392,7 @@ export async function runPostCallCommitWithProvider(
   let result = await provider.generate({
     maxTokens: 4000,
     system: systemPrompt(),
-    user: userPrompt(input, parsed, !!transcriptCache),
+    user: userPrompt(input, parsed, !!transcriptCache, env),
     effort,
     research: false,
     thinkingBudget: 0,
@@ -403,7 +411,7 @@ export async function runPostCallCommitWithProvider(
     result = await provider.generate({
       maxTokens: 6000,
       system: systemPrompt(),
-      user: retryPrompt(input, parsed, !!transcriptCache),
+      user: retryPrompt(input, parsed, !!transcriptCache, env),
       effort,
       research: false,
       thinkingBudget: 0,

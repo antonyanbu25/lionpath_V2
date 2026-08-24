@@ -36,9 +36,20 @@ export interface SqlSession {
  * fall back to Firestore in dual mode.
  */
 // Short-TTL per-process cache: resolveSqlSession ran a round-trip on every
-// mutation. Sessions change rarely; 60s staleness is acceptable for RLS vars.
-const SESSION_CACHE_TTL_MS = 60_000;
+// mutation. NEW-7 fix: TTL dropped from 60s to 5s — a revoked admin role or
+// deactivated user must stop passing RLS within seconds, not a minute.
+// Call invalidateSqlSession() on role/deactivation mutations for instant effect.
+const SESSION_CACHE_TTL_MS = 5_000;
 const sessionCache = new Map<string, { session: SqlSession | null; at: number }>();
+
+/**
+ * NEW-7 fix: drop the cached SQL session for a Firebase UID so the next
+ * request re-resolves roles/status from the database. Call this after any
+ * mutation to user_role or app_user.status for the target user.
+ */
+export function invalidateSqlSession(authUid: string): void {
+  sessionCache.delete(authUid);
+}
 
 export async function resolveSqlSession(
   authUid: string,
@@ -114,8 +125,11 @@ export async function withSessionContext<T>(
  * System-context variant for internal jobs (outbox projector, read-model
  * rebuilds): runs as the usr_janus_ai sentinel with admin scope. Use only
  * from trusted server code paths — never from request handlers.
+ *
+ * M3 fix: renamed withSystemContext -> withUnrestrictedSystemContext so the
+ * RLS bypass is explicit at every call site.
  */
-export async function withSystemContext<T>(
+export async function withUnrestrictedSystemContext<T>(
   fn: (client: PgClient) => Promise<T>,
   env?: PostgresEnv,
 ): Promise<T> {
@@ -131,3 +145,6 @@ export async function withSystemContext<T>(
     pool,
   );
 }
+
+/** @deprecated Use withUnrestrictedSystemContext — the name makes the RLS bypass explicit. */
+export const withSystemContext = withUnrestrictedSystemContext;

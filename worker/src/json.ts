@@ -18,14 +18,26 @@ function repairJson(text: string): string {
     .replace(/\u2018|\u2019/g, "'");
 }
 
+// NEW-9 fix: cap the input size for JSON repair/parsing to prevent
+// resource exhaustion if an LLM returns an unexpectedly large response.
+// 256KB is generous for any structured JSON the model should produce;
+// responses larger than this are likely malformed or adversarial.
+const MAX_JSON_PARSE_BYTES = 256 * 1024;
+
 export function extractJson<T>(text: string): T {
   const trimmed = (text || "").trim();
   if (!trimmed) throw new Error("Model returned no text content to parse.");
 
+  // NEW-9: cap the input before parsing/repairing to prevent DoS via
+  // oversized LLM output (jsonrepair is O(n) regex work).
+  const capped = trimmed.length > MAX_JSON_PARSE_BYTES
+    ? trimmed.slice(0, MAX_JSON_PARSE_BYTES)
+    : trimmed;
+
   const candidates = [
-    trimmed,
-    stripMarkdownFences(trimmed),
-    isolateJsonObject(stripMarkdownFences(trimmed)),
+    capped,
+    stripMarkdownFences(capped),
+    isolateJsonObject(stripMarkdownFences(capped)),
   ];
   const unique = [...new Set(candidates.filter(Boolean))];
 
@@ -40,7 +52,7 @@ export function extractJson<T>(text: string): T {
     }
   }
 
-  const preview = trimmed.length > 240 ? `${trimmed.slice(0, 120)}…${trimmed.slice(-120)}` : trimmed;
+  const preview = capped.length > 240 ? `${capped.slice(0, 120)}…${capped.slice(-120)}` : capped;
   throw new Error(
     `Could not parse JSON from model output: ${lastError?.message ?? "unknown error"}. Preview: ${preview}`,
   );

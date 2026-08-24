@@ -57,8 +57,36 @@ function cronSecret(env: Env): string {
 export function verifyInternalCronAuth(request: Request, env: Env): boolean {
   const secret = cronSecret(env);
   if (!secret) return false;
-  const header = request.headers.get("X-Cron-Secret") || request.headers.get("x-cron-secret");
-  return header === secret;
+  const header = request.headers.get("X-Cron-Secret") || request.headers.get("x-cron-secret") || "";
+  // M4 fix: constant-time comparison to prevent timing side-channel leakage
+  // of the cron secret. Uses crypto.timingSafeEqual when available (Node);
+  // falls back to a manual constant-time compare for edge runtimes.
+  return timingSafeEqualString(header, secret);
+}
+
+/**
+ * Constant-time string comparison. Returns true iff a === b, but takes time
+ * proportional to max(len(a), len(b)) regardless of where the first
+ * difference is. Prevents timing side-channels on secret comparisons.
+ */
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still hash both to keep the timing similar; the length mismatch already
+    // tells the attacker the secret length, but not the content.
+    let dummy = 0;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) dummy |= 1;
+    return false;
+  }
+  // Node.js crypto.timingSafeEqual requires Buffer inputs.
+  try {
+    const { timingSafeEqual } = require("crypto") as typeof import("crypto");
+    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    // Fallback: manual constant-time compare (XOR all bytes).
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return diff === 0;
+  }
 }
 
 function unauthorized(cors: Record<string, string>): Response {

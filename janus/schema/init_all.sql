@@ -16,9 +16,19 @@
 \ir 08_rls_hardening.sql
 \ir 09_id_registry.sql
 \ir 10_shape_version.sql
+\ir 10b_integration_enum.sql
+\ir 10c_run_type_enum_widen.sql
 
 -- Phase B extensions
 \ir 11_deal_contact.sql
 
 -- Phase D extensions
 \ir 12_read_model_views.sql
+
+-- Phase E extensions (RLS round 2, owner-write, id_registry backfill)
+\ir 13_rls_hardening_round2.sql
+\ir 14_rls_owner_write_calls.sql
+\ir 15_id_registry_backfill.sql
+\ir 16_ai_run_telemetry.sql
+\ir 17_rls_role_defaults.sql
+\ir 18_ai_run_rls.sql

@@ -21,6 +21,8 @@ let poolPromise: Promise<PgPool> | null = null;
 export interface PostgresEnv {
   DATABASE_URL?: string;
   PG_POOL_MAX?: string;
+  /** When "1", disables TLS cert verification (QA public-IP only; refused at boot in production). */
+  PG_SSL_INSECURE?: string;
 }
 
 export function postgresReady(env?: PostgresEnv): boolean {
@@ -50,18 +52,34 @@ export function assertPostgresAvailable(env?: PostgresEnv): void {
   }
 }
 
-function pgPoolOptions(connectionString: string) {
-  // SSL is driven by sslmode in the connection string, not a hardcoded IP.
-  // rejectUnauthorized: false is the public-IP QA path only; production uses
-  // the Auth Proxy / private IP with a proper CA (see pg-client-config.mjs).
+function pgPoolOptions(connectionString: string, env?: PostgresEnv) {
+  // C2 fix: TLS cert verification must be correct per sslmode.
+  //   sslmode=verify-ca / verify-full  -> rejectUnauthorized: true (cert validated)
+  //   sslmode=require / prefer         -> rejectUnauthorized: false (encrypted, no validation)
+  //   PG_SSL_INSECURE=1                -> forces rejectUnauthorized: false regardless of sslmode
+  //     (QA public-IP path only; the boot guard in node-server.ts hard-fails
+  //     if PG_SSL_INSECURE=1 and NODE_ENV=production)
+  //
+  // The old code set rejectUnauthorized: false for ALL ssl modes including
+  // verify-full, silently downgrading cert-authenticated connections to
+  // encryption-only (MITM-vulnerable).
   const wantsSsl = /sslmode=(require|verify-ca|verify-full|prefer)/i.test(connectionString);
+  if (!wantsSsl) return { connectionString, ssl: undefined };
+
+  const sslInsecure = (env?.PG_SSL_INSECURE || process.env.PG_SSL_INSECURE || "")
+    .trim()
+    .toLowerCase();
+  const forceInsecure = sslInsecure === "1" || sslInsecure === "true";
+
+  const verifyCert = !forceInsecure && /sslmode=(verify-ca|verify-full)/i.test(connectionString);
+
   let cs = connectionString;
-  if (wantsSsl && !/uselibpqcompat=/i.test(cs)) {
+  if (!/uselibpqcompat=/i.test(cs)) {
     cs += `${cs.includes("?") ? "&" : "?"}uselibpqcompat=true`;
   }
   return {
     connectionString: cs,
-    ssl: wantsSsl ? ({ rejectUnauthorized: false } as const) : undefined,
+    ssl: { rejectUnauthorized: verifyCert } as unknown as import("pg").PoolConfig["ssl"],
   };
 }
 
@@ -75,7 +93,7 @@ export async function getPool(env?: Env | PostgresEnv): Promise<PgPool> {
     const maxRaw = (env as PostgresEnv)?.PG_POOL_MAX || process.env.PG_POOL_MAX || "10";
     const max = parseInt(maxRaw, 10);
     const instance = new pg.Pool({
-      ...pgPoolOptions(connectionString),
+      ...pgPoolOptions(connectionString, env as PostgresEnv),
       max: Number.isFinite(max) && max > 0 ? max : 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,

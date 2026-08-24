@@ -180,6 +180,65 @@ See [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) and [deploy/cloudsq
 
 ---
 
+## Security hardening (feat/security-fixes)
+
+Branch **`feat/security-fixes`** (stacked on `feat/ai-run-cost-tracking`) merges the two security fix drops — `feat/security-hardening` + `feat/vuln-fixes` — that address the [security & vulnerability review](./janus_security_vuln_review.pdf) of the SQL migration surface.
+
+### Addressed
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| C1 | Critical | Impersonation endpoint mints tokens for anyone, auto-creates users | `routes/impersonate.ts` — hard-gated to non-production, requires `X-Impersonate-Secret` header, no user auto-create, structured audit log |
+| C2 | Critical | Postgres TLS `rejectUnauthorized: false` for **all** sslmodes (MITM) | `persistence/postgres-pool.ts` — verify-cert for `verify-ca`/`verify-full`; `PG_SSL_INSECURE=1` escape hatch refused at boot in production (`node-server.ts`) |
+| H1 | High | RLS session-var bypass: direct `janus_app` connection + `set_config('app.is_admin','true')` | `janus/schema/17_rls_role_defaults.sql` — `ALTER ROLE janus_app` fail-closed defaults (`is_admin=false`, empty user/org) |
+| H2 | High | `redact_pii()` left transcript/MEDDPICC/ARR intact — false compliance signal | `06_phase6_outbox_integrations_pii.sql` — NULLs `analysis`/`detail`, tombstones `transcript_ref` |
+| H3 | High | `ai_run` had no RLS — any `janus_app` query reads all token/cost data | `janus/schema/18_ai_run_rls.sql` — FORCE RLS, owner-read/admin-write policies (encryption posture documented, CMEK still open) |
+| M1 | Medium | SQL domain-write path skipped app-layer authz for un-RLS'd tables (account/contact) | `routes.ts` — `canWriteUnscopedResource` gate in `trySqlDomainWrite`; failures fall through to Firestore rules |
+| M3 | Medium | `withSystemContext` name hid the RLS bypass | Renamed `withUnrestrictedSystemContext` (alias kept) in `persistence/session-context.ts` |
+| M4 | Medium | Cron secret compared with `!==` (timing attack) | `routes/internal-batch.ts` — `timingSafeEqualString` |
+| L3 | Low | `FIREBASE_AUTH_ENFORCED=0` in production silently disabled token verification | Boot guard in `node-server.ts` refuses to boot |
+| NEW-1 | High | Manager proxy-write (`targetEmail`) honored for any authenticated caller | `auth.ts` — `isManagerOrAdmin` DB role check in `resolveHistoryEmailForWrite` + `assertManagerProxyOwnerEmail` |
+| NEW-2 | Medium | 5xx error handler leaked internals (SQL table names, paths) | `index.ts` — generic `"Internal error."` for 5xx, detail logged server-side |
+| NEW-3 | High | `POST /api/deals` had no authorization check (IDOR) | `routes.ts` — `assertCanReadResource` on the parent account |
+| NEW-4 | Medium | Transcripts sent to LLM with PII unredacted | `data/transcript-redaction.ts` + `postcall/commit.ts` — opt-in `LLM_TRANSCRIPT_REDACTION=1` regex redaction (email/phone/CC) |
+| NEW-5 | Medium | Health readiness leaked env names / Firestore errors | `routes/health.ts` — `checks` detail only for admin or local probe |
+| NEW-6 | Medium | Rate limit keyed on unverified JWT payload (spoofable uid) | `rate-limit.ts` — falls back to IP key when no verified uid |
+| NEW-7 | Medium | 60s SQL session cache delayed role-revocation effect | `session-context.ts` — 5s TTL + `invalidateSqlSession()` |
+| NEW-8 | Medium | `ALLOWED_ORIGINS=*` with credentials | Boot guard in `node-server.ts` refuses wildcard in production |
+| NEW-9 | Medium | `jsonrepair` on unbounded LLM output (DoS) | 256KB cap in `json.ts` + `postcall/commit.ts` |
+
+Also pulled in from the drops (correctness, not findings):
+
+- **`14_rls_owner_write_calls.sql`** — `pre_call`/`post_call` owner-write RLS policies; fixes the silent dual-write denial where a normal SE's insert was rejected and the worker fell back to Firestore.
+- **`15_id_registry_backfill.sql`** — idempotent `id_registry` backfill so `resolveInternalId()` stops 500ing on migrated parents (`\echo` psql lines stripped for the pg-client applier).
+- **Route shadowing** — explicit `POST /api/deals` entry shadowed the `domainReadRoutes` GET entry; merged into `{ GET, POST }`.
+- **`init_all.sql`** — was stale (stopped at phase 12); now lists all 21 phase files.
+
+### Still open
+
+| Finding | Status |
+|---------|--------|
+| Prompt-injection hardening on LLM prompts (transcript/brief content is attacker-influenceable) | Not addressed in either drop — needs prompt isolation / output validation work |
+| Hardcoded demo password / demo auth path | Not addressed — demo mode remains for local dev |
+| CORS fallback default origins in non-production | Partially mitigated by NEW-8 (production guard only) |
+| No request body size limit on JSON endpoints | Not addressed |
+| CMEK / column-level encryption for `post_call.analysis`/`detail` + GCS call-payload bucket | Documented in `18_ai_run_rls.sql` header; infra work, not code |
+| `audit_log` table is dead — impersonation audit events go to `console.error` only | Queued behind audit_log operationalization |
+| `routes/health.ts` not registered in the route table | Pre-existing dead module; NEW-5 hardens it for when it is wired |
+
+### Not ported (non-security changes in the drops)
+
+- `history-firestore.ts` chunked-blob storage (feature)
+- `postgres-repository.ts` contact email-dedup upsert (feature, from `origin/2.1`)
+- `shapes.ts` expanded JSONB shape key lists (schema drift)
+- `createPrepBrief` `doc.prep` field fallback (robustness)
+
+### Verification
+
+`npx tsc --noEmit` clean; `apply-janus-schema.mjs --dry-run` lists 21 phases in order (14/15 after 13, 17/18 after 16 — 18 depends on `ai_run.user_id` from 16); `node --check` on changed scripts. `janus/tests/ai_run_insert.test.mjs` updated for the new `ai_run` RLS (asserts non-admin reads fail closed, then reads/probes as admin). Live DB gates (`npm run test:sql-gates`) require Cloud SQL access.
+
+---
+
 ## Release highlights
 
 Build **`2.1.2`** is on **`main`** at [antonyanbu25/lionpath_V2](https://github.com/antonyanbu25/lionpath_V2/tree/main). Build stamps: portal **`2.1.42`**, worker / `VERSION` **`2.1.30`**.

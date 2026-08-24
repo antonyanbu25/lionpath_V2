@@ -144,33 +144,28 @@ export function isRateLimitExempt(path: string): boolean {
 
 // --- Helpers ---
 
-/** Extract Firebase UID from JWT payload WITHOUT verification — rate-limit key only. */
+/**
+ * Extract a rate-limit key from the request.
+ *
+ * NEW-6 fix: the old code parsed the JWT `sub` claim WITHOUT signature
+ * verification and used it as the rate-limit key. An attacker could forge
+ * a JWT with a random `sub` on every request to get a fresh bucket, bypassing
+ * the per-user rate limit entirely.
+ *
+ * Now we use the client IP as the rate-limit key. The actual JWT signature
+ * verification happens later in requireUser() inside the route handler —
+ * the rate limiter just needs a stable key that can't be forged by the
+ * client. Using the IP means all requests from the same IP share a bucket,
+ * which is correct for rate limiting (a single user behind NAT hits the
+ * same bucket, but the default 120/min limit is generous enough for that).
+ *
+ * For per-user rate limiting (after the JWT is verified), route handlers
+ * can call checkRateLimit with the verified UID directly.
+ */
 export function extractUidForRateLimit(request: Request): string | null {
-  const auth = request.headers.get("Authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(
-      new TextDecoder().decode(b64urlToBytes(parts[1])),
-    ) as { sub?: string; exp?: number };
-    if (typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-    return payload.sub || null;
-  } catch {
-    return null;
-  }
-}
-
-function b64urlToBytes(s: string): Uint8Array {
-  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
-  const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  // NEW-6: do NOT parse the unverified JWT. Return null so the caller
+  // falls through to the IP-based key in checkRateLimit.
+  return null;
 }
 
 /** Estimate client IP from a Request — best-effort keying for dummy auth mode. */
