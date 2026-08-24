@@ -12,7 +12,6 @@ export function recordResearchCacheHit(
   env: (ProviderEnv & FirestoreEnv) | undefined,
   ctx: { userId?: string; callId?: string },
 ): void {
-  if (!ctx.userId?.trim()) return;
   recordLlmUsage(env, {
     userId: ctx.userId,
     callId: ctx.callId,

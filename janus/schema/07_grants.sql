@@ -43,6 +43,7 @@ REVOKE UPDATE, DELETE ON deal_stage_history FROM janus_app;
 REVOKE UPDATE, DELETE ON audit_log FROM janus_app;
 REVOKE UPDATE, DELETE ON score_override FROM janus_app;
 REVOKE UPDATE, DELETE ON contact_merge_log FROM janus_app;
+REVOKE UPDATE, DELETE ON ai_run FROM janus_app;
 
 -- janus_redactor keeps its scoped grants from 03/06 phase files
 -- (SELECT, UPDATE(payload) ON audit_log; EXECUTE ON redact_pii()).

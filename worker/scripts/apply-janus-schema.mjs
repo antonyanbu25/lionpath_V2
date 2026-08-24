@@ -34,9 +34,11 @@ const PHASE_FILES = [
   "09_id_registry.sql",
   "10_shape_version.sql",
   "10b_integration_enum.sql",
+  "10c_run_type_enum_widen.sql",
   "11_deal_contact.sql",
   "12_read_model_views.sql",
   "13_rls_hardening_round2.sql",
+  "16_ai_run_telemetry.sql",
 ];
 
 loadDevVars();

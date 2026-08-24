@@ -19,6 +19,8 @@ export { applyLifecycleEvent } from "./lifecycle-events";
 export type { LifecycleEventInput } from "./lifecycle-events";
 export { validateJsonbShape, ShapeValidationError, CURRENT_SHAPE_VERSION } from "./shapes";
 export type { JsonbShape } from "./shapes";
+export { insertAiRun, mapPassNameToRunType } from "./ai-run";
+export type { AiRunRow, RunType } from "./ai-run";
 export { resolvePersistenceMode } from "./types";
 export type {
   PersistenceMode,
