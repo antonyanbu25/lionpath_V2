@@ -100,10 +100,13 @@ _resetRateLimits();
 }
 
 // --- extractUidForRateLimit ---
+// NEW-6 contract: the limiter must NEVER key on an unverified JWT `sub`
+// (forgeable → fresh bucket per request). Every token shape returns null so
+// the caller falls through to the IP-based key.
 {
   const validToken = fakeJwt({ sub: "usr_g", exp: Math.floor(Date.now() / 1000) + 3600 });
   const req1 = new Request("http://x", { headers: { Authorization: `Bearer ${validToken}` } });
-  assert.equal(extractUidForRateLimit(req1), "usr_g");
+  assert.equal(extractUidForRateLimit(req1), null, "well-formed JWT must NOT yield a uid (unverified = forgeable)");
 
   const expiredToken = fakeJwt({ sub: "usr_h", exp: Math.floor(Date.now() / 1000) - 10 });
   const req2 = new Request("http://x", { headers: { Authorization: `Bearer ${expiredToken}` } });
@@ -114,7 +117,7 @@ _resetRateLimits();
 
   const req4 = new Request("http://x");
   assert.equal(extractUidForRateLimit(req4), null, "missing Authorization header returns null");
-  console.log("PASS: extractUidForRateLimit handles valid/expired/malformed/missing tokens");
+  console.log("PASS: extractUidForRateLimit never trusts unverified JWTs (null for all shapes)");
 }
 
 // --- clientIpFromRequest header precedence ---

@@ -1828,7 +1828,7 @@ async function trySqlDomainWrite(
         const ownerId = stringField(doc.ownerId);
         const orgUnitId = stringField(doc.teamId) || stringField(doc.orgId);
         if (!id || !accountId || !ownerId || !orgUnitId) return { handled: false as const };
-        const brief = (doc.brief as Record<string, unknown>) ?? null;
+        const brief = (doc.prep as Record<string, unknown>) ?? (doc.brief as Record<string, unknown>) ?? null;
         const input = (doc.input as Record<string, unknown>) ?? null;
         // QA #10: an unknown shape must not 500 the request — fall through to
         // the legacy Firestore path so the write still lands.

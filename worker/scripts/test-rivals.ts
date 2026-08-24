@@ -314,5 +314,72 @@ eq(shapeRivalComparison({}, CITES), null, "an empty answer yields no section");
   eq(out!.rivals.length, 2, "a repeated rival name is collapsed case-insensitively");
 }
 
+// ---------------------------------------------------------------------------
+// T2.1 claim-in-source: a figure must appear in the citation's snippet text.
+// The CITES fixture above carries no snippets, so the gate's `if (snippet &&...)`
+// guard short-circuits and only domain-resolves is exercised. These tests use
+// snippet-bearing citations to actually reach the claim-to-citation text check.
+// ---------------------------------------------------------------------------
+{
+  const SNIPPET_CITES: Citation[] = [
+    { uri: "https://www.reuters.com/tech/a", title: "Reuters", snippet: "Alpha Co has 300 support agents across three regions." },
+    { uri: "https://techcrunch.com/b", title: "TechCrunch", snippet: "Beta Co runs a 900-seat support operation." },
+    { uri: "https://crunchbase.com/d", title: "Crunchbase", snippet: "Alpha Co raised $120M; Beta Co raised $450M in Series D." },
+  ];
+  const snippetGood = {
+    rivals: [
+      {
+        name: "Alpha Co",
+        why: "same segment",
+        sourceDomain: "reuters.com",
+        values: [
+          { axisId: "supportAgents", display: "300", sourceDomain: "reuters.com" },
+          { axisId: "fundingRaised", display: "$120M", sourceDomain: "crunchbase.com" },
+        ],
+      },
+      {
+        name: "Beta Co",
+        why: "same segment",
+        sourceDomain: "techcrunch.com",
+        values: [
+          { axisId: "supportAgents", display: "900", sourceDomain: "techcrunch.com" },
+          { axisId: "fundingRaised", display: "$450M", sourceDomain: "crunchbase.com" },
+        ],
+      },
+    ],
+  };
+  // Happy path: figures literally appear in the snippets -> both axes survive.
+  {
+    const out = shapeRivalComparison(snippetGood, SNIPPET_CITES);
+    ok(out, "a fully snippet-supported result survives");
+    eq(out!.axes.length, 2, "both axes cleared the claim-in-source gate");
+    eq(out!.rivals.length, 2, "both rivals kept");
+  }
+  // A fabricated figure attached to a real domain whose snippet does NOT
+  // contain it -> dropped. This is the FM-12 vector the gate closes.
+  {
+    const raw = JSON.parse(JSON.stringify(snippetGood)) as typeof snippetGood;
+    // Alpha's supportAgents: real domain (reuters) but an invented number the
+    // reuters snippet never states.
+    raw.rivals[0].values[0].display = "5000";
+    const out = shapeRivalComparison(raw, SNIPPET_CITES);
+    // supportAgents now has only Beta's value -> below the 2-value bar -> axis omitted.
+    eq(out!.axes.find((a) => a.id === "supportAgents"), undefined, "fabricated figure drops the axis");
+    ok(
+      out!.dropped.some((d) => d.includes("5000") && d.includes("reuters")),
+      "the fabricated figure is named in dropped",
+    );
+  }
+  // A figure whose number IS in the snippet and which also shares a content
+  // token survives (the number is the falsifiable content; the label may be
+  // rephrased as long as a content word overlaps).
+  {
+    const raw = JSON.parse(JSON.stringify(snippetGood)) as typeof snippetGood;
+    raw.rivals[0].values[0].display = "300 across regions"; // 300 + "regions" both in snippet
+    const out = shapeRivalComparison(raw, SNIPPET_CITES);
+    ok(out!.axes.some((a) => a.id === "supportAgents"), "a figure whose number + a content token is in the snippet survives");
+  }
+}
+
 console.warn = origWarn;
 console.log(`test-rivals.ts: ok (${checks} checks)`);

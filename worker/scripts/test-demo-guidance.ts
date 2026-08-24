@@ -300,6 +300,7 @@ assert.equal(shapeGuidance({}, [profile("a@co.com", "A", "D")], ASSETS), null);
     scenario: [
       "Retail partners query mismatched redemption totals when a promotion ends.",
       "Each dispute spans finance and support and arrives in five languages.",
+      "Disputes land in the Zendesk queue with per-retailer tagging today.",
     ],
   };
   const generic = {
@@ -309,9 +310,48 @@ assert.equal(shapeGuidance({}, [profile("a@co.com", "A", "D")], ASSETS), null);
       "The team has more requests than it can handle.",
     ],
   };
-  assert.equal(isGroundedUseCase(grounded, ANCHORS), true, "account-specific case is grounded");
+  assert.equal(isGroundedUseCase(grounded, ANCHORS), true, "account-specific case is grounded (2+ anchors)");
   assert.equal(isGroundedUseCase(generic, ANCHORS), false, "case that fits any company is not");
   assert.equal(isGroundedUseCase(grounded, []), false, "no anchors -> nothing can be grounded");
+
+  // A single anchor alone is no longer enough (T2.5): one industry word plus
+  // fabricated detail used to pass. Now it needs >=2 anchors, or 1 anchor plus
+  // a number literal that also appears in the research facts.
+  const oneAnchorOnly = {
+    name: "Retail returns handling",
+    scenario: [
+      "Retail partners send return requests in bulk after campaigns.",
+      "Each request is triaged manually by a small team today.",
+    ],
+  };
+  assert.equal(
+    isGroundedUseCase(oneAnchorOnly, ANCHORS),
+    false,
+    "one anchor alone is too weak — invented detail rides on it",
+  );
+  // One anchor plus a number from the research facts IS specific enough.
+  assert.equal(
+    isGroundedUseCase(oneAnchorOnly, ANCHORS, ["500", "120"]),
+    false,
+    "the number must appear in the scenario text, not just the facts",
+  );
+  const oneAnchorPlusFactNumber = {
+    name: "Retail returns handling",
+    scenario: [
+      "Retail partners send about 500 return requests after each campaign.",
+      "Each request is triaged manually by a small team today.",
+    ],
+  };
+  assert.equal(
+    isGroundedUseCase(oneAnchorPlusFactNumber, ANCHORS, ["500", "120"]),
+    true,
+    "one anchor plus a number from the research facts is grounded",
+  );
+  assert.equal(
+    isGroundedUseCase(oneAnchorPlusFactNumber, ANCHORS, ["120"]),
+    false,
+    "an invented number not in the research facts does not count",
+  );
 
   // --- shapeUseCases: the generic one is dropped, the specific ones survive ---
   const shaped = shapeUseCases(
@@ -370,7 +410,7 @@ assert.equal(shapeGuidance({}, [profile("a@co.com", "A", "D")], ASSETS), null);
     name: `Zendesk case ${i}`,
     scenario: [
       "Retail partners raise redemption queries every campaign cycle.",
-      "Volumes concentrate in the days after a promotion closes.",
+      "Zendesk queues the disputes with no per-retailer tagging today.",
     ],
   }));
   assert.equal(shapeUseCases(many, ANCHORS).length, 3, "capped at 3");

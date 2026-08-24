@@ -372,7 +372,7 @@ function fallbackPcvForIndex(index: number): Omit<PainCapabilityValueRow, "pain"
   return DEFAULT_PCV_FALLBACKS[index % DEFAULT_PCV_FALLBACKS.length];
 }
 
-function normalizePainCapabilityValue(
+export function normalizePainCapabilityValue(
   raw: Prep,
   likelyPains: string[],
 ): PainCapabilityValueRow[] {
@@ -587,9 +587,25 @@ function legacyVerdict(stored: unknown): IcpFit["verdict"] {
   return "Unknown";
 }
 
+/**
+ * Honest-degradation gate (T1.4). Mirrors demo-thesis.isThinBrief: a brief with
+ * fewer than 40% sourced facts is too thin to support a confident description,
+ * so the synthesizer's prose for those fields is replaced rather than trusted.
+ * A sourced fact is one whose value does not read as "unknown"/absent.
+ */
+function thinBriefDegraded(raw: Pick<Prep, "facts">): boolean {
+  const facts = raw.facts || [];
+  const total = Math.max(facts.length, 1);
+  const sourced = facts.filter((f) => {
+    const s = String((f as { value?: unknown }).value ?? "").trim().toLowerCase();
+    return !!s && s !== "unknown" && s !== "-";
+  }).length;
+  return Math.round((sourced / total) * 100) < 40;
+}
+
 export function normalizePrepOutput(
   raw: Prep,
-  opts: { authoritative?: PrepSource[] } = {},
+  opts: { authoritative?: PrepSource[]; companyName?: string } = {},
 ): Prep {
   const bc = raw.businessContext || ({} as Prep["businessContext"]);
   // Keyed by axis, not by position. Exactly one row per FIT_LABEL, in FIT_LABELS order, whether
@@ -606,13 +622,18 @@ export function normalizePrepOutput(
     if (byLabel.has(label)) return;
     const gap =
       row.gap === "large" || row.gap === "partial" || row.gap === "parity" ? row.gap : "partial";
-    byLabel.set(label, {
+    const entry: Prep["fitSnapshot"][number] = {
       label,
       thisCompany: trimCell(row.thisCompany),
       industryNorm: trimCell(row.industryNorm),
       gap,
       gapVerdict: trimGapVerdict(row.gapVerdict, gap),
-    });
+    };
+    // Carry the optional source pointer through so validate-prep can blank
+    // unsourced rows. A row that arrives without one is treated as unsourced.
+    const sl = String(row?.sourceLabel ?? "").trim();
+    if (sl) entry.sourceLabel = sl;
+    byLabel.set(label, entry);
   });
   const fitRows = FIT_LABELS.map(
     (label) =>
@@ -627,9 +648,20 @@ export function normalizePrepOutput(
 
   const sources = normalizeSources(raw, opts.authoritative);
   const likelyPains = trimBullets(raw.likelyPains, 5).map((p) => trimWords(p, 12)).filter(Boolean);
+  // Honest degradation (T1.4): when research is thin, the model still fills
+  // description/about with confident prose. Detect thinness the same way
+  // demo-thesis does (<40% sourced facts) and replace those fields with a
+  // templated "we don't know" — never pass fabricated filler through.
+  const companyName = opts.companyName || "";
+  const description = thinBriefDegraded(raw)
+    ? `Limited public information found for ${companyName || "this account"}.`
+    : trimDescription(raw.description);
+  const about = thinBriefDegraded(raw)
+    ? `Confirm company details on the call.`
+    : trimWords(String(raw.about ?? raw.description ?? ""), 60) || trimDescription(raw.description);
   const normalized: Prep = {
-    description: trimDescription(raw.description),
-    about: trimWords(String(raw.about ?? raw.description ?? ""), 60) || trimDescription(raw.description),
+    description,
+    about,
     incumbent: {
       incumbent_name: trimCell(raw.incumbent?.incumbent_name),
       displacement: trimDisplacement(raw.incumbent?.displacement),

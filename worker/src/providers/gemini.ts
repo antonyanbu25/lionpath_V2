@@ -290,6 +290,21 @@ function parseGeminiResponse(
   const out: LlmResult = { text, finishReason: cand.finishReason };
   const meta = cand.groundingMetadata;
   const citations = extractCitations(meta);
+  // T2.7 — the trust root. Every downstream grounding gate (extract-facts
+  // claim-to-snippet, rivals/company-news domain verification, the confidence
+  // gate) treats LlmResult.citations as ground truth the model cannot control.
+  // That assumption holds ONLY because extractCitations reads exclusively from
+  // `groundingMetadata.groundingChunks` — retrieval-derived, not model text.
+  // If citations ever arrive without groundingMetadata, the trust root has
+  // silently broken (a provider/config change let the model emit URLs it did
+  // not visit). Surface it loudly rather than letting the whole verify-against-
+  // citation-set regime degrade to trusting the model's own echo.
+  if (citations.length && !meta?.groundingChunks?.length) {
+    console.warn(
+      `[gemini] citations returned without groundingMetadata.groundingChunks — ` +
+        `the citation set is NOT retrieval-derived; grounding gates are compromised.`,
+    );
+  }
   if (citations.length) out.citations = citations;
   if (meta?.webSearchQueries?.length) out.searchQueries = meta.webSearchQueries;
   const entryPoint = meta?.searchEntryPoint?.renderedContent;

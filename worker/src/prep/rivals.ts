@@ -27,6 +27,7 @@
 
 import { extractJson } from "../json";
 import { getProviderForPass } from "../providers";
+import { claimSupportedByText } from "./claim-verify";
 import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import type { Citation } from "../providers/types";
 import type { Env } from "./types";
@@ -287,10 +288,13 @@ interface RawRivals {
 export function buildRivalSources(citations: Citation[] | undefined): {
   byDomain: Map<string, RivalSource>;
   sources: RivalSource[];
+  /** Publisher-domain -> citation snippet text (the page content the model read). */
+  snippetByDomain: Map<string, string | undefined>;
 } {
   const byDomain = new Map<string, RivalSource>();
+  const snippetByDomain = new Map<string, string | undefined>();
   const sources: RivalSource[] = [];
-  for (const cite of dedupeCitations(normalizeCitations(citations))) {
+  for (const cite of dedupeCitations(normalizeCitations(citations)) as import("./citations").VerifiedCitation[]) {
     // normalizeCitations already prefers the resolved publisher URL and falls back to Gemini's
     // title for the domain when the URI is still a grounding redirect. An entry with no readable
     // domain is unusable here, because the domain IS the identity we verify claims against.
@@ -303,9 +307,18 @@ export function buildRivalSources(citations: Citation[] | undefined): {
       title: cite.title || domain,
     };
     byDomain.set(domain, source);
+    // Citation snippets are the supporting text segments Gemini returned for this
+    // page; they are the ground truth a figure must appear in. Keep the longest
+    // snippet per domain (multiple supports may attach to one chunk).
+    snippetByDomain.set(
+      domain,
+      cite.snippet && cite.snippet.length > (snippetByDomain.get(domain)?.length || 0)
+        ? cite.snippet
+        : snippetByDomain.get(domain),
+    );
     sources.push(source);
   }
-  return { byDomain, sources };
+  return { byDomain, sources, snippetByDomain };
 }
 
 /** Match a model-claimed domain against a real one, tolerating a `www.` or subdomain prefix. */
@@ -333,6 +346,7 @@ function normalizeValues(
   raw: RawValue[] | undefined,
   allowedAxisIds: Set<string>,
   byDomain: Map<string, RivalSource>,
+  snippetByDomain: Map<string, string | undefined>,
   dropped: string[],
   who: string,
 ): Record<string, RivalValue> {
@@ -347,6 +361,17 @@ function normalizeValues(
     const source = resolveDomain(value?.sourceDomain, byDomain);
     if (!source) {
       dropped.push(`${who} ${axisId}: cited "${value?.sourceDomain || "nothing"}", not in the search results`);
+      continue;
+    }
+    // Claim-to-citation text check (T2.1): a figure must appear in the snippet
+    // text of the page it is attributed to. A real domain + an invented figure
+    // (the model's training-data prior attached to a retrieved page) fails here.
+    // A bare number that parses still must be present in the snippet; when the
+    // citation has no snippet text we fall back to accepting the figure (the
+    // domain-resolves check remains), so this only tightens, never loosens.
+    const snippet = snippetByDomain.get(source.domain);
+    if (snippet && !claimSupportedByText(display, snippet)) {
+      dropped.push(`${who} ${axisId}: "${display}" not supported by ${source.domain} snippet`);
       continue;
     }
     const numeric = parseMagnitude(display, axisId);
@@ -368,7 +393,7 @@ export function shapeRivalComparison(
   citations: Citation[] | undefined,
 ): RivalComparison | null {
   const dropped: string[] = [];
-  const { byDomain, sources } = buildRivalSources(citations);
+  const { byDomain, sources, snippetByDomain } = buildRivalSources(citations);
   if (!byDomain.size) {
     console.warn("[prep/rivals] no grounded citations returned — nothing can be sourced");
     return null;
@@ -407,7 +432,7 @@ export function shapeRivalComparison(
       name,
       why: String(rawRival?.why || "").trim(),
       sourceLabel: source.label,
-      values: normalizeValues(rawRival?.values, allowedAxisIds, byDomain, dropped, `rival "${name}"`),
+      values: normalizeValues(rawRival?.values, allowedAxisIds, byDomain, snippetByDomain, dropped, `rival "${name}"`),
     });
   }
 
@@ -418,7 +443,7 @@ export function shapeRivalComparison(
     return null;
   }
 
-  const prospectValues = normalizeValues(raw?.prospectValues, allowedAxisIds, byDomain, dropped, "prospect");
+  const prospectValues = normalizeValues(raw?.prospectValues, allowedAxisIds, byDomain, snippetByDomain, dropped, "prospect");
 
   const axes: RivalAxis[] = [];
   for (const def of axisDefs) {

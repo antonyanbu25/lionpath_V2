@@ -1,4 +1,6 @@
 import type { IcpFit, Prep } from "../schema";
+import { normalizePainCapabilityValue } from "../word-limits";
+import { anchorTokens, anchorHitCount } from "./claim-verify";
 import { placeAccount } from "./icp-criteria";
 import type { ResearchFact } from "./types";
 
@@ -61,6 +63,24 @@ export function validatePrep(prep: Prep): { prep: Prep; lowConfidence: string[] 
     return s;
   });
 
+  // incumbent.incumbent_name cross-check (T2.3): the headline incumbent is a
+  // free-prose field with no sourceLabel, so a model could write "Intercom" while
+  // the sourced "Incumbent tool" signal says "Zendesk" — the SE then sees two
+  // different incumbents in the same brief. The signal is the grounded value
+  // (it cleared the source gate above); when the two disagree, the sourced
+  // signal wins and the model's free-prose value is replaced. When the signal
+  // is unknown/unsourced, the model's value stands but is flagged low-confidence
+  // so the UI does not present two equally-confident incumbents.
+  let incumbent = prep.incumbent;
+  const incumbentSignal = signals.find((s) => s.label === "Incumbent tool");
+  if (incumbent && incumbentSignal && !isUnknown(incumbentSignal.value)) {
+    const model = String(incumbent.incumbent_name || "").trim();
+    if (model && !isUnknown(model) && model.toLowerCase() !== String(incumbentSignal.value).toLowerCase()) {
+      lowConfidence.push(`incumbent:incumbent_name "${model}" replaced by sourced signal "${incumbentSignal.value}"`);
+      incumbent = { ...incumbent, incumbent_name: incumbentSignal.value };
+    }
+  }
+
   // supportJD was the one claim that escaped this gate entirely — it is not research-
   // derived unless it traces to a real job posting, so blank it when the label does not
   // resolve to a usable source rather than presenting invented responsibilities.
@@ -118,6 +138,31 @@ export function validatePrep(prep: Prep): { prep: Prep; lowConfidence: string[] 
     return row;
   });
 
+  // fitSnapshot grounding gate (T1.2): thisCompany is the most-read claim in the
+  // brief, so it must trace to a source the way facts/signals do. A row whose
+  // sourceLabel is missing or low-confidence has its thisCompany/industryNorm
+  // blanked to "unknown" and its gap forced to parity/Aligned — never passed
+  // through on prose. The schema now carries an optional sourceLabel on fitRow;
+  // rows produced before it have none and are treated as unsourced (honest:
+  // we cannot verify a claim we have no pointer for, so we degrade it).
+  const groundedFit = fitSnapshot.map((row) => {
+    const src = srcByLabel.get(row.sourceLabel || "");
+    if (!row.sourceLabel || isLowConfidenceSource(src)) {
+      if (!isUnknown(row.thisCompany) || !isUnknown(row.industryNorm)) {
+        lowConfidence.push(`fit:${row.label}:unsourced`);
+      }
+      return {
+        ...row,
+        thisCompany: UNKNOWN,
+        industryNorm: UNKNOWN,
+        gap: "parity" as const,
+        gapVerdict: "Aligned",
+        sourceLabel: undefined,
+      };
+    }
+    return row;
+  });
+
   const prospects = (prep.prospects || []).map((p) => {
     const src = srcByLabel.get(p.sourceLabel);
     if (!p.sourceLabel || isLowConfidenceSource(src)) {
@@ -137,19 +182,53 @@ export function validatePrep(prep: Prep): { prep: Prep; lowConfidence: string[] 
     url: isUnknown(s.url) ? UNKNOWN : s.url,
   }));
 
-  return {
-    prep: {
-      ...prep,
-      facts,
-      signals,
-      fitSnapshot,
-      prospects,
-      sources,
-      ...(supportJD ? { supportJD } : {}),
-      ...(icpFit ? { icpFit } : {}),
-    },
-    lowConfidence,
-  };
+  // likelyPains grounding gate (T1.5): a pain must reference a token from the
+  // research facts, the SE context, the incumbent, or the industry — otherwise
+  // it is generic filler the model wrote when it had nothing to say. Drop
+  // unanchored pains. An empty result is honest ("no pains identified yet")
+  // and is much better than plausible-sounding filler that propagates into
+  // painCapabilityValue (the demo script) and demoThesis (the hero tile).
+  const painAnchors = anchorTokens([
+    ...(prep.facts || []).map((f) => `${f.key} ${f.value}`),
+    ...(prep.signals || []).map((s) => `${s.label} ${s.value}`),
+    prep.incumbent?.incumbent_name,
+    prep.businessContext?.market,
+    prep.businessContext?.model,
+  ]);
+  const gatedPains = (prep.likelyPains || []).filter((p) => {
+    if (isUnknown(p)) return false;
+    if (!painAnchors.length) return false; // nothing to anchor against → all filler
+    return anchorHitCount(p, painAnchors) >= 1;
+  });
+  if (gatedPains.length !== (prep.likelyPains || []).length) {
+    lowConfidence.push(
+      `likelyPains:${(prep.likelyPains || []).length - gatedPains.length} unanchored`,
+    );
+  }
+
+  // Re-derive painCapabilityValue against the gated pains, because
+  // normalizePrepOutput built it from the pre-gate likelyPains. A demo script
+  // row whose pain was just dropped must not survive. This re-derives ONLY the
+  // pcv rows from the gated pains + the existing incoming rows, without
+  // re-normalizing the whole prep (which is already normalized).
+  const gatedPcv = normalizePainCapabilityValue(prep, gatedPains);
+
+    return {
+      prep: {
+        ...prep,
+        facts,
+        signals,
+        ...(incumbent ? { incumbent } : {}),
+        fitSnapshot: groundedFit,
+        likelyPains: gatedPains,
+        painCapabilityValue: gatedPcv,
+        prospects,
+        sources,
+        ...(supportJD ? { supportJD } : {}),
+        ...(icpFit ? { icpFit } : {}),
+      },
+      lowConfidence,
+    };
 }
 
 /** Collect keys/labels with low confidence for UI highlighting. */

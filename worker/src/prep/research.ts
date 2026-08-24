@@ -1,6 +1,7 @@
 import { getResearchProvider } from "../providers";
 import type { UsageTracking } from "../data/llm-usage";
 import { withUsageTracking } from "../data/llm-usage";
+import { looksInjected, UNTRUSTED_CONTENT_CLAUSE } from "./claim-verify";
 import type { LlmProvider } from "../providers/types";
 import type { Env, ResearchSnippet } from "./types";
 import { buildPlaybookQueries } from "./playbook";
@@ -11,8 +12,9 @@ import {
   type VerifiedCitation,
 } from "./citations";
 
-const SEARCH_SYSTEM =
-  "You are a research assistant. Run the web search implied by the user query and return a concise factual summary (max 400 words). Include specific URLs when found. If nothing useful is found, say so plainly.";
+const SEARCH_SYSTEM = `You are a research assistant. Run the web search implied by the user query and return a concise factual summary (max 400 words). Include specific URLs when found. If nothing useful is found, say so plainly — do not pad. Quote the source page where you can.
+
+${UNTRUSTED_CONTENT_CLAUSE}`;
 
 const PLAYBOOK_QUERY_CONCURRENCY = 4;
 
@@ -82,7 +84,19 @@ export async function runResilientResearchQueries(
     }
   });
 
-  const kept = results.filter((r) => r.snippet.length > 0);
+  const kept = results.filter((r) => {
+    if (!r.snippet.length) return false;
+    // A research summary that echoes extraction/synthesis instructions is a
+    // prompt-injection vector: the page the search retrieved tried to make the
+    // model emit instructions rather than facts. Drop it before it reaches
+    // extraction. An empty snippet is already dropped; this drops the malicious
+    // one so it cannot poison the synthesizer downstream.
+    if (looksInjected(r.snippet)) {
+      console.warn(`[prep/research] dropped injected snippet for query: ${r.query.slice(0, 80)}`);
+      return false;
+    }
+    return true;
+  });
 
   // Redirect links are short-lived, so resolve them now rather than storing
   // grounding redirects in a bundle that is cached for 30 days.

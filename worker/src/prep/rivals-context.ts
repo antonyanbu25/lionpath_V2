@@ -5,11 +5,20 @@
 
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
+import { claimNumbersInSource } from "./claim-verify";
 import type { Env, ResearchFact } from "./types";
 
 export interface FishContextMetric {
   label: string;
   value: string;
+  /**
+   * How this metric reached us. "se-stated" = a value the SE wrote literally;
+   * "se-extracted" = a value an LLM extracted from SE notes (and whose leading
+   * number was re-verified to appear in those notes). The UI/render can show
+   * the latter as lower-confidence ("est.") since it is a model extraction, not
+   * a verbatim SE statement.
+   */
+  provenance?: "se-stated" | "se-extracted";
 }
 
 export interface FishContextSizing {
@@ -271,7 +280,9 @@ export function fishSizingFromResearchFacts(facts: ResearchFact[] | undefined): 
     const key = `${label.toLowerCase()}|${value.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    metrics.push({ label, value });
+    // Research facts are SE-stated (regex-derived) or web-sourced; both are
+    // faithful values, not LLM extractions, so mark them se-stated.
+    metrics.push({ label, value, provenance: "se-stated" });
     if (metrics.length >= 3) break;
   }
   if (!metrics.length) return null;
@@ -358,7 +369,23 @@ Values max 12 words. Labels max 4 words. No invention.`,
     const parsed = extractJson<{ metrics?: { label?: string; value?: string; aboutCompany?: boolean }[] }>(
       result.text,
     );
-    const metrics = filterFishContextMetrics(parsed.metrics ?? []);
+    const candidates = filterFishContextMetrics(parsed.metrics ?? []);
+    // Re-verify each LLM-extracted metric against the raw SE text (T2.2): a
+    // metric whose leading number does not appear literally in the notes is a
+    // model invention (or a mis-paraphrase) and is dropped, exactly the way
+    // extract-facts verifies a fact's value against its snippet. We check the
+    // number, not the whole value, because the LLM is allowed to rephrase the
+    // label ("around 50 agents") but the figure itself must be the SE's.
+    const metrics: FishContextMetric[] = [];
+    for (const m of candidates) {
+      if (!claimNumbersInSource(m.value, text)) {
+        console.warn(
+          `[prep/rivals-context] dropped metric "${m.label}: ${m.value}" — leading number not in SE context`,
+        );
+        continue;
+      }
+      metrics.push({ label: m.label, value: m.value, provenance: "se-extracted" });
+    }
     if (!metrics.length) return null;
     return { metrics, source: "context" };
   } catch (err) {

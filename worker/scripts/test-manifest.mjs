@@ -370,6 +370,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-precall-grounding.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-prep-normalize.ts",
     "tags": [
       "unit"
