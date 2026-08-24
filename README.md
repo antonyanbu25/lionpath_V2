@@ -20,16 +20,18 @@
 
 1. [What it does](#what-it-does)
 2. [SQL migration (feat/sql-foundation)](#sql-migration-featsql-foundation)
-3. [Release highlights](#release-highlights)
-4. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
-5. [Architecture](#architecture)
-6. [Repository layout](#repository-layout)
-7. [Quick start (developers)](#quick-start-developers)
-8. [Demo logins](#demo-logins)
-9. [Testing](#testing)
-10. [Deploy](#deploy)
-11. [Documentation index](#documentation-index)
-12. [Contributing & remotes](#contributing--remotes)
+3. [Security hardening (feat/security-fixes)](#security-hardening-featsecurity-fixes)
+4. [Pre-call grounding (feat/precall-grounding)](#pre-call-grounding-featprecall-grounding)
+5. [Release highlights](#release-highlights)
+6. [Inherited from 2.1.1 / 2.1](#inherited-from-211--21)
+7. [Architecture](#architecture)
+8. [Repository layout](#repository-layout)
+9. [Quick start (developers)](#quick-start-developers)
+10. [Demo logins](#demo-logins)
+11. [Testing](#testing)
+12. [Deploy](#deploy)
+13. [Documentation index](#documentation-index)
+14. [Contributing & remotes](#contributing--remotes)
 
 ---
 
@@ -236,6 +238,25 @@ Also pulled in from the drops (correctness, not findings):
 ### Verification
 
 `npx tsc --noEmit` clean; `apply-janus-schema.mjs --dry-run` lists 21 phases in order (14/15 after 13, 17/18 after 16 — 18 depends on `ai_run.user_id` from 16); `node --check` on changed scripts. `janus/tests/ai_run_insert.test.mjs` updated for the new `ai_run` RLS (asserts non-admin reads fail closed, then reads/probes as admin). Live DB gates (`npm run test:sql-gates`) require Cloud SQL access.
+
+---
+
+## Pre-call grounding (feat/precall-grounding)
+
+Branch **`feat/precall-grounding`** (stacked on `feat/security-fixes`) makes pre-call briefs **reliably grounded**: every claim must be traceable to the text of the specific source it names, and anything unverifiable is dropped or degraded to `unknown`/`[]` — never passed on faith.
+
+**Why:** an SE repeats whatever the brief says to the customer. Two review passes found the free-prose half of the brief (description, fitSnapshot, likelyPains, discoveryKit) was prompt-only, and even the "grounded" structured fields only checked that a *label resolves* — not that the *claim is in the named source*.
+
+**How:** `prep/claim-verify.ts` gates claims on content-token overlap + literal number match against the named source's snippet; `<untrusted_web_content>` delimiters + `looksInjected` defend against prompt injection; unverifiable fields degrade honestly; `prep/synthesize-repair.ts` recovers truncated sections field-by-field so repairs can't rewrite survivors.
+
+| | |
+|---|---|
+| Why / goal / status | [docs/PRECALL_GROUNDING.md](./docs/PRECALL_GROUNDING.md) |
+| Per-item build detail (Tier 1 + Tier 2) | [docs/PRECALL_GROUNDING_BUILD.md](./docs/PRECALL_GROUNDING_BUILD.md) |
+| Core gate | `worker/src/prep/claim-verify.ts` |
+| Tests | `worker/scripts/test-precall-grounding.ts` (61 checks) + rivals/news/icp/normalize suites |
+
+**Status:** Tier 1 + Tier 2 complete and verified (`tsc` clean; grounding suites pass with source-branch check counts; full unit suite **85/85**). **Tier 3** (per-section grounding report, research age, label disambiguation, unknown-sentinel collision, SE-context PII) is documented and explicitly not started — optional hardening, not required for trustworthiness.
 
 ---
 
@@ -706,6 +727,8 @@ git push -u origin feat/my-change
 | [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md) | QA claim validation matrix (16/16 confirmed) |
 | [docs/CUTOVER_SQL.md](./docs/CUTOVER_SQL.md) | Firestore → SQL cutover stages |
 | [docs/CLOUDSQL_SECURITY.md](./docs/CLOUDSQL_SECURITY.md) | Cloud SQL QA security posture |
+| [docs/PRECALL_GROUNDING.md](./docs/PRECALL_GROUNDING.md) | Pre-call grounding goal/status + Tier 3 backlog |
+| [docs/PRECALL_GROUNDING_BUILD.md](./docs/PRECALL_GROUNDING_BUILD.md) | Grounding Tier 1/2 per-item build detail |
 | [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
 | [docs/HARNESS_FINDINGS.md](./docs/HARNESS_FINDINGS.md) | Eval harness working log — real bugs the test suite caught |
 | [deploy/cloudrun/README.md](./deploy/cloudrun/README.md) | Cloud Run + Freshdesk/SQL secrets |
