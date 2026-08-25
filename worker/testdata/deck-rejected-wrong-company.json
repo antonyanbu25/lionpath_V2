@@ -1,0 +1,24 @@
+{
+  "description": "Landscape sparse deck (correct shape) but wrong company — completely unrelated to the call (relevanceToCall=none). Shape gate says likely_deck but resolveDeckVerdict should return deck_rejected once the LLM validation sees relevanceToCall=none.",
+  "fileName": "contoso-banking-deck.pdf",
+  "pageCount": 10,
+  "slides": [
+    { "page": 1, "text": "Contoso Banking Solutions · Q4 Roadmap Review\nPresented to Tier-1 Banking Partners" },
+    { "page": 2, "text": "Core Banking Modernisation\n- Mainframe migration\n- API banking layer\n- ISO 20022 compliance" },
+    { "page": 3, "text": "Regulatory Compliance\n- Basel IV capital adequacy\n- PSD2 open banking\n- AML transaction monitoring" },
+    { "page": 4, "text": "Digital Onboarding\n- eKYC\n- Biometric auth\n- Mobile-first account opening" },
+    { "page": 5, "text": "Partnership Tiers\n- Platinum: white-label\n- Gold: co-sell\n- Silver: referral" },
+    { "page": 6, "text": "Security Architecture\n- Zero-trust network\n- HSM key management\n- SOC monitoring 24/7" },
+    { "page": 7, "text": "Implementation Timeline\n- Phase 1: Core ledger (6 mo)\n- Phase 2: Channels (3 mo)\n- Phase 3: Analytics (4 mo)" },
+    { "page": 8, "text": "Commercial Model\n- Per-account pricing\n- Transaction volume tiers\n- Annual commitment discount" },
+    { "page": 9, "text": "Case Study: First National Bank\n- 40% cost reduction\n- 99.99% uptime\n- 2.3M accounts migrated" },
+    { "page": 10, "text": "Next Steps\n- Proof of concept scoping\n- Legal NDA\n- Technical workshop" }
+  ],
+  "shape": {
+    "landscapePct": 1.0,
+    "medianWordsPerPage": 14,
+    "pageCount": 10
+  },
+  "deckShapeVerdict": "likely_deck",
+  "_testNote": "Shape is fine (likely_deck) but LLM validation returns relevanceToCall=none for a Freshworks/Rotacloud call. resolveDeckVerdict must return deck_rejected."
+}

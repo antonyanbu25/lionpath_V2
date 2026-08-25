@@ -126,7 +126,7 @@ const sampleV8 = {
     { label: "S3", title: "Job posting", url: "unknown", confidence: 45 },
   ],
   recentNews: [
-    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "N1", articleUrl: "https://techcrunch.com/acme-series-b" },
+    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "N1", articleUrl: "https://techcrunch.com/acme-series-b", publishedAt: "2026-03-12" },
     { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "N2" },
   ],
   newsSources: [
@@ -194,6 +194,35 @@ const discoveryFishBuckets = renderKnowTab(
         { label: "Support agents", value: "3" },
       ],
     },
+  },
+  false,
+);
+const discoveryFishAbsurdAgents = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Employees", value: "11" },
+        { label: "Support agents", value: "4000000000000" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryNewsWithDate = renderKnowTab(
+  {
+    ...sampleV8,
+    recentNews: [
+      {
+        headline: "Series B funding",
+        detail: "Raised $45M led by Accel",
+        sourceLabel: "N1",
+        articleUrl: "https://techcrunch.com/acme-series-b",
+        publishedAt: "2026-03-12",
+      },
+    ],
   },
   false,
 );
@@ -308,6 +337,21 @@ const discoveryMultiTab1 = renderKnowTab(
   { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
   false,
   { peopleProspectTab: "prospect-1" },
+);
+const longAttendeeSummary = `${"Experienced support operator. ".repeat(18).trim()}`;
+const discoveryLongAttendee = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        summary: longAttendeeSummary,
+        email: "jane@endurancedoors.com",
+      },
+    ],
+  },
+  false,
+  { linkedinMatchedEmails: ["jane@endurancedoors.com"], prospectEmails: ["jane@endurancedoors.com"] },
 );
 const demo = renderDemoPrepTab(sampleV8, {}, "endurance-doors");
 const header = renderResultHeader(sampleV8, meta);
@@ -457,6 +501,7 @@ const checks = [
   ["know tab about text", discovery.includes("prep-v9-about")],
   ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
   ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
+  ["know tab recent news shows published date", discoveryNewsWithDate.includes("prep-v9-news-date") && discoveryNewsWithDate.includes("12 Mar 2026")],
   [
     "know tab recent news hides html garbage detail",
     discoveryNewsHtmlGarbage.includes("Freshworks to Deepen") &&
@@ -489,6 +534,12 @@ const checks = [
     "know tab fish bucket dot positions",
     discoveryFishBuckets.includes('style="left:16.67%"') &&
       discoveryFishBuckets.includes('style="left:50.00%"'),
+  ],
+  [
+    "know tab fish hides absurd agent count",
+    discoveryFishAbsurdAgents.includes("Employee count") &&
+      !discoveryFishAbsurdAgents.includes("4000000000000") &&
+      !discoveryFishAbsurdAgents.includes("Agent count"),
   ],
   ["know tab fish excludes non-canonical metrics", (() => {
     const html = renderKnowTab({
@@ -533,6 +584,16 @@ const checks = [
     return html.includes("500 employees");
   })()],
   ["know tab attendee summary", discovery.includes("Seasoned support leader")],
+  [
+    "know tab long attendee summary expands in details",
+    discoveryLongAttendee.includes("prep-v9-attendee-summary-details") &&
+      discoveryLongAttendee.includes("prep-v9-attendee-summary-full") &&
+      discoveryLongAttendee.includes(longAttendeeSummary.slice(0, 40)),
+  ],
+  [
+    "header prep-desc title carries full description",
+    header.includes('class="prep-desc muted" title="B2B SaaS customer support platform"'),
+  ],
   ["know tab single prospect", !discovery.includes("prep-people-tabs")],
   ["demo has checklist", demo.includes("Sandbox setup")],
   ["demo has call plan", demo.includes("Your call plan")],

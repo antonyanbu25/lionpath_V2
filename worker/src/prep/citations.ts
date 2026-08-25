@@ -53,6 +53,16 @@ export function citationDomain(uri: string, fallbackTitle?: string): string {
 /** Shape provider citations for use as sources. Does not hit the network. */
 export function normalizeCitations(raw: Citation[] | undefined): VerifiedCitation[] {
   if (!raw?.length) return [];
+  // T2.7 — the consumer-side mirror of the gemini.ts trust-root check. The
+  // whole verify-against-citation-set regime (extract-facts, rivals,
+  // company-news) treats this set as ground truth the model cannot control.
+  // A provider that returned citations it generated rather than retrieved
+  // collapses the regime. This guard flags the case where a provider emits a
+  // Citation[] but the raw result carried no `groundingChunks`-style marker
+  // (signalled here by every citation lacking both a resolvedUrl and a
+  // snippet — the two fields Gemini's groundingMetadata populates). Pure, so
+  // the trust-root check is unit-testable without a provider.
+  assertRetrievalDerivedCitations(raw);
   const out: VerifiedCitation[] = [];
   for (const c of raw) {
     const uri = String(c?.uri || "").trim();
@@ -68,6 +78,26 @@ export function normalizeCitations(raw: Citation[] | undefined): VerifiedCitatio
     });
   }
   return out;
+}
+
+/**
+ * Warn (do not throw — a warn is the right posture for a config regression,
+ * since throwing would drop a whole research round) when citations look
+ * model-generated rather than retrieval-derived. Gemini's groundingMetadata
+ * populates at least one of `resolvedUrl` / `snippet` per citation; a bare
+ * uri+title pair with neither is the shape a model-emit URL would take.
+ */
+export function assertRetrievalDerivedCitations(raw: Citation[] | undefined): void {
+  if (!raw?.length) return;
+  const suspicious = raw.filter(
+    (c) => !c?.resolvedUrl && !c?.snippet && !!c?.uri,
+  );
+  if (suspicious.length) {
+    console.warn(
+      `[prep/citations] ${suspicious.length}/${raw.length} citation(s) lack ` +
+        `resolvedUrl/snippet — may not be retrieval-derived; grounding gates compromised.`,
+    );
+  }
 }
 
 /**

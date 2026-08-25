@@ -200,6 +200,11 @@ export function normalizeQipScorecard(scorecard, analysisMeta = {}) {
     overall,
     categoryScores: categoryScores || {},
     callId: scorecard.callId || analysisMeta.callId || null,
+    // v2.2 leadership cap — additive passthrough, see worker/src/postcall/scorecard.ts
+    // ScorecardDraft.leadershipShareable / verifierJustifications and applyLeadershipCap()
+    // in ../quality-score.js.
+    leadershipShareable: !!scorecard.leadershipShareable,
+    verifierJustifications: scorecard.verifierJustifications || [],
     lines: lines.map((line) => ({
       ...line,
       id: line.id || stableScorecardLineId(scorecard.callId || analysisMeta.callId, line.themeKey),

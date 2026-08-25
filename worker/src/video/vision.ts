@@ -83,7 +83,7 @@ async function buildImageParts(
       parts.push({
         inlineData: {
           mimeType: "image/jpeg",
-          data: bytes.toString("base64"),
+          data: Buffer.from(bytes).toString("base64"),
         },
       });
     } catch {
@@ -145,20 +145,18 @@ async function callGeminiJson(
     const outputTokens = body.usageMetadata?.candidatesTokenCount ?? 0;
     await settleBudget(totalTokens(promptTokens, outputTokens));
 
-    if (opts?.userId) {
-      recordLlmUsage(env, {
-        userId: opts.userId,
-        callId: opts.callId,
-        passName: "video/vision",
-        model,
-        promptTokens,
-        outputTokens,
-        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
-        groundingQueries: body.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0,
-        latencyMs: Date.now() - started,
-        retryCount,
-      });
-    }
+    recordLlmUsage(env, {
+      userId: opts?.userId,
+      callId: opts?.callId,
+      passName: "video/vision",
+      model,
+      promptTokens,
+      outputTokens,
+      cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+      groundingQueries: body.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0,
+      latencyMs: Date.now() - started,
+      retryCount,
+    });
     const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
     if (!text.trim()) return null;
     try {

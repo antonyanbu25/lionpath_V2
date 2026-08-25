@@ -229,6 +229,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-linkedin-identity.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-linkedin-pdf-match.ts",
     "tags": [
       "unit"
@@ -315,7 +321,19 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-resolve-dual-source.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-scorecard.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-context-containment.ts",
     "tags": [
       "unit"
     ]
@@ -352,6 +370,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-precall-grounding.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-prep-normalize.ts",
     "tags": [
       "unit"
@@ -372,6 +396,12 @@ export const manifest = [
   },
   {
     "file": "test-prospect-emails.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-quality-coach-cap.ts",
     "tags": [
       "unit"
     ]
@@ -470,6 +500,66 @@ export const manifest = [
   },
   {
     "file": "test-transcript-infer.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-transcript-speaker-parse.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-kaia-numeric-speaker-regression.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-meeting-room-multi-persona.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-deck-validate.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-deck-validate-temperature.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-leadership-cap-parity.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify-transcript-window.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-scorecard-verify-dual.ts",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-speaker-attribution-schema.ts",
     "tags": [
       "unit"
     ]

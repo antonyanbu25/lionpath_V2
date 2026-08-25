@@ -1,0 +1,18 @@
+{
+  "data": {
+    "id": 4821,
+    "title": "Acme Corp <> Freshworks Demo",
+    "meetingSummary": "Team walked through the ticketing workflow and discussed pricing tiers for the enterprise plan.",
+    "meetingStartTime": "2026-08-10T15:00:00Z",
+    "structuredSummary": {
+      "summary": "Priyal walked Acme through the CDE build and Ravi covered pricing.",
+      "keyPoints": ["Customer wants SSO by Q4", "Follow up with security questionnaire"]
+    },
+    "participants": [
+      { "displayName": "Priyal Shah", "derivedGuid": "guid-priyal" },
+      { "displayName": "Ravi Kumar", "derivedGuid": "guid-ravi" },
+      { "displayName": "Sunil Prasad", "derivedGuid": "guid-sunil" }
+    ],
+    "host": { "derivedGuid": "guid-priyal" }
+  }
+}

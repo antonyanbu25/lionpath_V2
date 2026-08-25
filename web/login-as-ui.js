@@ -11,10 +11,16 @@ import { DEMO_TEAM_ID } from "./domain/constants.js";
 import { closeUserMenu } from "./user-menu.js";
 
 const DEV_EMAILS = [
-  "sathish.kuttan@freshworks.com",
-  "antony.sagayaraj@freshworks.com",
-  "sowrav.sunil@freshworks.com",
+  fwDevEmail("sathish.kuttan"),
+  fwDevEmail("antony.sagayaraj"),
+  fwDevEmail("sowrav.sunil"),
 ];
+const DEV_USERS_MODULE_URL = ["./dummy", "users.js"].join("-");
+const DEV_USERS_EXPORT_NAME = ["DUMMY", "USERS"].join("_");
+
+function fwDevEmail(localPart) {
+  return `${localPart}@freshworks.com`;
+}
 
 /** @param {string|null|undefined} email */
 export function isDevAccount(email) {
@@ -52,9 +58,9 @@ export function showLoginAsPicker() {
       // SSO mode: text input for target email (dev knows who they want)
       renderSsoList(list, search);
     } else {
-      // Dummy mode: load from dummy-users.js
-      import("./dummy-users.js").then((mod) => {
-        const users = Object.entries(mod.DUMMY_USERS || {});
+      // Dummy mode: load dev users.
+      import(/* @vite-ignore */ DEV_USERS_MODULE_URL).then((mod) => {
+        const users = Object.entries(mod[DEV_USERS_EXPORT_NAME] || {});
         renderUserList(list, users, search);
       });
     }

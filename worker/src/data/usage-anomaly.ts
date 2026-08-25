@@ -204,7 +204,8 @@ export function checkPass7UsageAnomaly(
   if (!anomalyActive(env)) return;
   if (record.passName !== PASS7_PASS_NAME) return;
   const callId = record.callId?.trim();
-  if (!callId || !record.userId?.trim()) return;
+  const userId = record.userId?.trim();
+  if (!callId || !userId) return;
 
   void (async () => {
     try {
@@ -221,7 +222,7 @@ export function checkPass7UsageAnomaly(
 
       await emitSummariseAnomalyAlert(env!, {
         callId,
-        userId: record.userId,
+        userId,
         tokensTotal,
         p95Baseline: baseline.p95TokensPerCall,
         threshold,

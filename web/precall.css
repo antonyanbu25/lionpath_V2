@@ -690,7 +690,7 @@ body.prep-gen-lock {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  background: var(--dew-primary);
+  background: var(--dew-brand);
   color: var(--color-text-inverse);
   border: none;
   border-radius: 12px;
@@ -698,13 +698,18 @@ body.prep-gen-lock {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(43, 41, 38, 0.08);
+  box-shadow: 0 2px 8px rgba(46, 137, 123, 0.35);
   font-family: inherit;
   margin-top: 2px;
 }
 
 .nb-generate-btn:hover:not(:disabled) {
-  background: var(--dew-primary-hover);
+  background: var(--dew-brand-hover);
+}
+
+.nb-generate-btn:focus-visible {
+  outline: 2px solid var(--dew-brand);
+  outline-offset: 2px;
 }
 
 .nb-generate-btn:disabled {
@@ -1714,6 +1719,17 @@ body.prep-gen-lock {
   margin-bottom: 16px;
 }
 
+/* Discovery kit + Likely pain points — match static prep-v9-card hover (no fw-card lift). */
+#prep-result-view .prep-grid-kit fw-card.prep-card {
+  cursor: default;
+  transition: background var(--transition);
+}
+#prep-result-view .prep-grid-kit fw-card.prep-card:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--surface-hover);
+}
+
 .prep-grid-demo {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -2656,6 +2672,7 @@ body.prep-gen-lock {
 .prep-v9-news-row:hover { background: var(--surface-hover); }
 .prep-v9-news-dot { width: 8px; height: 8px; border-radius: 50%; background: #6fb8ac; margin-top: 5px; }
 .prep-v9-news-title { display: block; font-size: 13px; font-weight: 600; color: var(--dew-text); line-height: 1.4; }
+.prep-v9-news-date { font-size: 11.5px; color: var(--dew-text-secondary); }
 .prep-v9-news-detail { display: block; font-size: 12px; line-height: 1.45; margin-top: 2px; }
 .prep-v9-news-meta { display: block; margin-top: 3px; font-size: 11.5px; color: var(--dew-text-secondary); }
 .prep-v9-news-link {
@@ -2717,6 +2734,16 @@ body.prep-gen-lock {
 .prep-v9-attendee-name { font-size: 15.5px; font-weight: 700; letter-spacing: -0.02em; }
 .prep-v9-attendee-role { margin: 1px 0 0; font-size: 12.5px; }
 .prep-v9-attendee-summary { margin: 10px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--dew-text); }
+.prep-v9-attendee-summary-details { margin: 10px 0 0; }
+.prep-v9-attendee-summary-details summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--dew-text);
+  list-style: none;
+}
+.prep-v9-attendee-summary-details summary::-webkit-details-marker { display: none; }
+.prep-v9-attendee-summary-full { margin: 8px 0 0; font-size: 12.5px; line-height: 1.55; }
 .prep-v9-touchpoints { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
 .prep-v9-touch-label {
   font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
@@ -2825,11 +2852,6 @@ body.prep-gen-lock {
 .prep-v9-unknowns-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
 }
-.prep-v9-unknown-add-all {
-  flex-shrink: 0; background: var(--dew-surface); color: #2e897b; border: 1px solid var(--dew-border);
-  border-radius: 9px; height: 32px; padding: 0 11px; font-size: 11.5px; font-weight: 600; cursor: pointer;
-}
-.prep-v9-unknown-add-all:hover { background: var(--surface-hover); }
 .prep-v9-unknown-list { display: flex; flex-direction: column; gap: 2px; }
 .prep-v9-unknown-row {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
@@ -2840,12 +2862,6 @@ body.prep-gen-lock {
   color: var(--dew-text-secondary); margin-bottom: 3px;
 }
 .prep-v9-unknown-question { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--dew-text); }
-.prep-v9-unknown-add {
-  flex-shrink: 0; width: 32px; height: 32px; border: 1px solid var(--dew-border); border-radius: 9px;
-  background: var(--dew-surface); color: var(--dew-text-secondary); font-size: 14px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.prep-v9-unknown-add:hover { background: var(--surface-hover); color: #2e897b; }
 
 /* Scroll-triggered graph motion — transform/opacity only; one-shot via IntersectionObserver */
 .prep-v9 [data-prep-v9-animate="maturity-chart"]:not(.prep-v9-inview) .prep-v9-maturity-rail {

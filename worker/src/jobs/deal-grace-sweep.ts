@@ -40,8 +40,8 @@ export async function runDealGraceSweep(env: FirestoreEnv, now = Date.now()): Pr
           { field: "type", op: "==", value: "new_business" },
           { field: "status", op: "==", value: "active" },
         ],
-        1,
         undefined,
+        1,
         env,
       );
       if (!activeNb.length) {

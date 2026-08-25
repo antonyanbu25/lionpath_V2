@@ -147,11 +147,15 @@ export default {
         return withCorrelationHeader(json({ error: "Not found." }, 404, cors), correlationId);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unexpected error.";
-        const status =
-          (err as { status?: number }).status ??
-          (/sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500);
+        const errStatus = (err as { status?: number }).status;
+        const status = errStatus ?? (/sign-in|token|audience|issuer|expired|verified/i.test(message) ? 401 : 500);
+        // NEW-2 fix: for 5xx errors, return a generic message to the client —
+        // the real error may leak SQL table names, file paths, or internal
+        // architecture. Log the full detail server-side; return only a
+        // safe message to the caller.
         logError("request failed", { path, status, error: message });
-        return withCorrelationHeader(json({ error: message }, status, cors), correlationId);
+        const clientMessage = status >= 500 ? "Internal error." : message;
+        return withCorrelationHeader(json({ error: clientMessage }, status, cors), correlationId);
       }
     });
   },

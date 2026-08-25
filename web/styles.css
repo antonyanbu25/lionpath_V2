@@ -1835,6 +1835,17 @@ fw-button.sidebar-history-item.active {
   align-items: flex-start;
   gap: 8px;
 }
+.profile-avatar-actions fw-button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  --fw-button-background-color: var(--dew-surface-subtle);
+  --fw-button-border-color: var(--dew-border);
+  --fw-button-color: var(--dew-text-secondary);
+}
+.profile-avatar-disabled-note {
+  color: var(--muted);
+  max-width: 420px;
+}
 .global-search-backdrop {
   position: fixed;
   inset: 0;

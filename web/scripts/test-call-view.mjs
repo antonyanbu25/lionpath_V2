@@ -537,4 +537,43 @@ Object.defineProperty(objectLinesContainer, "querySelectorAll", { value: () => [
 await renderCallView(objectLinesContainer, firebaseSession, { callId: objectLinesSaved.id });
 assert(!objectLinesContainer.innerHTML.includes("Could not load this call"), "object-map scorecard lines must not break call record");
 
+// ARR compute failure is optional — must not replace deal context or hide the rest of the record.
+const arrFailSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/arr-fail" },
+  {
+    analysis: {
+      callHeader: { title: "Proxymity · Demo", duration: "30 min" },
+      callNotes: "- Demo went well.\n- Pricing discussed.",
+      momentum: { status: "Advancing" },
+    },
+    scorecard: {
+      callType: "demo",
+      overall: 7.2,
+      confidence: 0.8,
+      categoryScores: { discovery_qualification: 7, solution_technical_fit: 7 },
+      lines: [{ themeKey: "call_flow", grade: 7.2, applicable: true, subParameters: [] }],
+    },
+    hydration: {
+      pending: [],
+      errors: { arr: "ARR estimate could not be computed." },
+    },
+  },
+);
+const arrFailContainer = { innerHTML: "" };
+Object.defineProperty(arrFailContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(arrFailContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(arrFailContainer, firebaseSession, { callId: arrFailSaved.id });
+assert(arrFailContainer.innerHTML.includes("call-deal-context"), "deal context strip still renders when ARR fails");
+assert(arrFailContainer.innerHTML.includes("call-postcall-summary-row"), "KPI row still renders when ARR fails");
+assert(arrFailContainer.innerHTML.includes("call-notes-bullets"), "call notes still render when ARR fails");
+assert(
+  !arrFailContainer.innerHTML.includes("ARR estimate could not be computed"),
+  "legacy ARR hydration errors must not surface in the call record UI",
+);
+assert(
+  !arrFailContainer.innerHTML.includes('class="call-section-retry card-wire"'),
+  "ARR failure must not show full-page retry card",
+);
+
 console.log("test-call-view: ok");

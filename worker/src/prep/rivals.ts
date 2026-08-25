@@ -27,6 +27,7 @@
 
 import { extractJson } from "../json";
 import { getProviderForPass } from "../providers";
+import { claimSupportedByText } from "./claim-verify";
 import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import type { Citation } from "../providers/types";
 import type { Env } from "./types";
@@ -210,6 +211,15 @@ const MAGNITUDE_SUFFIXES: Array<[RegExp, number]> = [
 /** Values that mean "no figure" rather than a figure of zero. */
 const NON_VALUES = /^(?:|-|–|—|n\/?a|unknown|none|tbd|undisclosed|not disclosed|\?)$/i;
 
+const HEADCOUNT_AXIS_IDS = new Set(["employees", "supportAgents"]);
+const HEADCOUNT_FORBIDDEN_SUFFIX = /^(?:t|tn|trillion|b|bn|billion)$/i;
+
+const MAGNITUDE_BOUNDS: Record<string, number> = {
+  employees: 500_000,
+  supportAgents: 50_000,
+  funding: 1e15,
+};
+
 /**
  * Parse a reported figure into a comparable number.
  *
@@ -217,12 +227,10 @@ const NON_VALUES = /^(?:|-|–|—|n\/?a|unknown|none|tbd|undisclosed|not disclo
  * Returns null for anything we cannot read confidently — the value is then dropped rather than
  * guessed at, because a misparsed number would silently reorder the range.
  */
-export function parseMagnitude(raw: string): number | null {
+export function parseMagnitude(raw: string, axisId?: string): number | null {
   const text = String(raw ?? "").trim();
   if (NON_VALUES.test(text)) return null;
 
-  // Take the first number in a range ("1,000-1,200 agents"): averaging would invent a figure
-  // no source states, and the endpoints are what a range is built from anyway.
   const match = text.match(
     /(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(t|tn|trillion|b|bn|billion|m|mm|mn|million|k|thousand)?/i,
   );
@@ -232,11 +240,29 @@ export function parseMagnitude(raw: string): number | null {
   if (!Number.isFinite(n)) return null;
 
   const suffix = (match[2] || "").trim();
-  if (!suffix) return n;
-  for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
-    if (pattern.test(suffix)) return n * multiplier;
+  let numeric = n;
+  if (suffix) {
+    if (axisId && HEADCOUNT_AXIS_IDS.has(axisId) && HEADCOUNT_FORBIDDEN_SUFFIX.test(suffix)) {
+      numeric = n;
+    } else {
+      let matched = false;
+      for (const [pattern, multiplier] of MAGNITUDE_SUFFIXES) {
+        if (pattern.test(suffix)) {
+          numeric = n * multiplier;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) numeric = n;
+    }
   }
-  return n;
+
+  const max = axisId ? MAGNITUDE_BOUNDS[axisId] : undefined;
+  if (max != null && numeric > max) {
+    if (suffix && n <= max) return n;
+    return null;
+  }
+  return numeric;
 }
 
 interface RawValue {
@@ -262,10 +288,13 @@ interface RawRivals {
 export function buildRivalSources(citations: Citation[] | undefined): {
   byDomain: Map<string, RivalSource>;
   sources: RivalSource[];
+  /** Publisher-domain -> citation snippet text (the page content the model read). */
+  snippetByDomain: Map<string, string | undefined>;
 } {
   const byDomain = new Map<string, RivalSource>();
+  const snippetByDomain = new Map<string, string | undefined>();
   const sources: RivalSource[] = [];
-  for (const cite of dedupeCitations(normalizeCitations(citations))) {
+  for (const cite of dedupeCitations(normalizeCitations(citations)) as import("./citations").VerifiedCitation[]) {
     // normalizeCitations already prefers the resolved publisher URL and falls back to Gemini's
     // title for the domain when the URI is still a grounding redirect. An entry with no readable
     // domain is unusable here, because the domain IS the identity we verify claims against.
@@ -278,9 +307,18 @@ export function buildRivalSources(citations: Citation[] | undefined): {
       title: cite.title || domain,
     };
     byDomain.set(domain, source);
+    // Citation snippets are the supporting text segments Gemini returned for this
+    // page; they are the ground truth a figure must appear in. Keep the longest
+    // snippet per domain (multiple supports may attach to one chunk).
+    snippetByDomain.set(
+      domain,
+      cite.snippet && cite.snippet.length > (snippetByDomain.get(domain)?.length || 0)
+        ? cite.snippet
+        : snippetByDomain.get(domain),
+    );
     sources.push(source);
   }
-  return { byDomain, sources };
+  return { byDomain, sources, snippetByDomain };
 }
 
 /** Match a model-claimed domain against a real one, tolerating a `www.` or subdomain prefix. */
@@ -308,6 +346,7 @@ function normalizeValues(
   raw: RawValue[] | undefined,
   allowedAxisIds: Set<string>,
   byDomain: Map<string, RivalSource>,
+  snippetByDomain: Map<string, string | undefined>,
   dropped: string[],
   who: string,
 ): Record<string, RivalValue> {
@@ -324,7 +363,18 @@ function normalizeValues(
       dropped.push(`${who} ${axisId}: cited "${value?.sourceDomain || "nothing"}", not in the search results`);
       continue;
     }
-    const numeric = parseMagnitude(display);
+    // Claim-to-citation text check (T2.1): a figure must appear in the snippet
+    // text of the page it is attributed to. A real domain + an invented figure
+    // (the model's training-data prior attached to a retrieved page) fails here.
+    // A bare number that parses still must be present in the snippet; when the
+    // citation has no snippet text we fall back to accepting the figure (the
+    // domain-resolves check remains), so this only tightens, never loosens.
+    const snippet = snippetByDomain.get(source.domain);
+    if (snippet && !claimSupportedByText(display, snippet)) {
+      dropped.push(`${who} ${axisId}: "${display}" not supported by ${source.domain} snippet`);
+      continue;
+    }
+    const numeric = parseMagnitude(display, axisId);
     if (numeric == null) {
       dropped.push(`${who} ${axisId}: "${display}" is not a readable figure`);
       continue;
@@ -343,7 +393,7 @@ export function shapeRivalComparison(
   citations: Citation[] | undefined,
 ): RivalComparison | null {
   const dropped: string[] = [];
-  const { byDomain, sources } = buildRivalSources(citations);
+  const { byDomain, sources, snippetByDomain } = buildRivalSources(citations);
   if (!byDomain.size) {
     console.warn("[prep/rivals] no grounded citations returned — nothing can be sourced");
     return null;
@@ -382,7 +432,7 @@ export function shapeRivalComparison(
       name,
       why: String(rawRival?.why || "").trim(),
       sourceLabel: source.label,
-      values: normalizeValues(rawRival?.values, allowedAxisIds, byDomain, dropped, `rival "${name}"`),
+      values: normalizeValues(rawRival?.values, allowedAxisIds, byDomain, snippetByDomain, dropped, `rival "${name}"`),
     });
   }
 
@@ -393,7 +443,7 @@ export function shapeRivalComparison(
     return null;
   }
 
-  const prospectValues = normalizeValues(raw?.prospectValues, allowedAxisIds, byDomain, dropped, "prospect");
+  const prospectValues = normalizeValues(raw?.prospectValues, allowedAxisIds, byDomain, snippetByDomain, dropped, "prospect");
 
   const axes: RivalAxis[] = [];
   for (const def of axisDefs) {

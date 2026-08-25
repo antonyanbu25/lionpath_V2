@@ -93,7 +93,8 @@ export async function requireUser(request: Request, env: Env): Promise<VerifiedU
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) throw Object.assign(new Error("Sign-in required."), { status: 401 });
-  const user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID);
+  const projectId = env.FIREBASE_PROJECT_ID!;
+  const user = await verifyFirebaseToken(token, projectId);
   const domain = (env.ALLOWED_EMAIL_DOMAIN || "").trim().toLowerCase();
   if (domain && !user.email.endsWith(`@${domain}`)) {
     throw Object.assign(new Error(`Access limited to @${domain} accounts.`), { status: 403 });
@@ -136,6 +137,30 @@ function isDemoManagerEmail(email: string): boolean {
   return e.startsWith("manager@") || /^ajay\.|^antony\.|^vipin\./.test(e.split("@")[0] || "");
 }
 
+/**
+ * NEW-1 fix: resolve the caller's role from the DB/Firestore user profile.
+ * In Firebase auth mode, the token proves *who* the caller is, not *that
+ * they're a manager* — the role check must query the user profile. Uses a
+ * dynamic import of resolveRequestContext to avoid a circular dependency
+ * (scope.ts imports type { VerifiedUser } from auth.ts).
+ *
+ * Returns true if the caller is a manager or admin, false otherwise.
+ * Throws with status 403 if the user profile is not found.
+ */
+async function isManagerOrAdmin(
+  verified: { uid: string; email: string } | null,
+  env: Env,
+): Promise<boolean> {
+  if (!verified) return false;
+  try {
+    const { resolveRequestContext } = await import("./data/scope");
+    const ctx = await resolveRequestContext(verified, env);
+    return ctx.role === "manager" || ctx.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
 /** History write target — supports manager proxy to team SE email. */
 export async function resolveHistoryEmailForWrite(
   request: Request,
@@ -158,6 +183,16 @@ export async function resolveHistoryEmailForWrite(
   }
 
   if (firebaseAuthEnforced(env)) {
+    // NEW-1 fix: in Firebase auth mode, verify the caller is actually a
+    // manager/admin via the user profile. The old code returned target
+    // with no role check — any authenticated user could proxy-write as
+    // any other user.
+    const verified = await requireUser(request, env);
+    if (!await isManagerOrAdmin(verified, env)) {
+      throw Object.assign(new Error("Only managers may write history on behalf of another SE."), {
+        status: 403,
+      });
+    }
     return target;
   }
 
@@ -169,7 +204,7 @@ export async function resolveHistoryEmailForWrite(
   return target;
 }
 
-/** Reject cross-user proxy on post-call resolve when caller is not a manager (demo mode). */
+/** Reject cross-user proxy on post-call resolve when caller is not a manager. */
 export async function assertManagerProxyOwnerEmail(
   request: Request,
   env: Env,
@@ -180,7 +215,17 @@ export async function assertManagerProxyOwnerEmail(
   if (!normalized) return;
   const callerEmail = await resolveHistoryEmail(request, env, callerEmailFallback || "");
   if (normalized === callerEmail) return;
-  if (firebaseAuthEnforced(env)) return;
+  if (firebaseAuthEnforced(env)) {
+    // NEW-1 fix: same pattern — verify the caller is a manager/admin via
+    // the user profile, not just that they have a valid Firebase token.
+    const verified = await requireUser(request, env);
+    if (!await isManagerOrAdmin(verified, env)) {
+      throw Object.assign(new Error("Only managers may act on behalf of another SE."), {
+        status: 403,
+      });
+    }
+    return;
+  }
   if (!isDemoManagerEmail(callerEmail)) {
     throw Object.assign(new Error("Only managers may act on behalf of another SE."), {
       status: 403,

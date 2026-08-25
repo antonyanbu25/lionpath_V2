@@ -102,19 +102,45 @@ assert.ok(!buildSourceTable([]).byLabel.has("SE"), "no SE source without context
 assert.match(formatSnippetSources(["S1", "S2"], table), /S1 = acme\.com \| S2 = wikipedia\.org/);
 assert.match(formatSnippetSources([], table), /none/, "empty label list warns the model off");
 
-// --- attachVerifiedSources: the sourceUrl:"unknown" fix ---
+// --- attachVerifiedSources: label resolution + sourceUrl:"unknown" fix ---
+// Snippet bodies now must actually contain a fact's value, because the gate
+// verifies the claim is in the named source's text (not just that the label
+// resolves). The snippets below carry the values the facts assert.
+const attachSnippets: ResearchSnippet[] = [
+  {
+    query: "q1",
+    snippet: "Acme is a SaaS company; head office in London.",
+    fetchedAt: t,
+    origin: "grounded",
+    citations: [
+      { uri: "https://acme.com/about", title: "acme.com", domain: "acme.com", confidence: 70 },
+      { uri: "https://wikipedia.org/acme", title: "wikipedia.org", domain: "wikipedia.org", confidence: 70 },
+    ],
+  },
+  {
+    query: "q2",
+    snippet: "Acme has about 500 employees; head office in London across regions.",
+    fetchedAt: t,
+    origin: "grounded",
+    citations: [{ uri: "https://acme.com/careers", title: "acme.com", domain: "acme.com", confidence: 70 }],
+  },
+];
+const attachTable = buildSourceTable(attachSnippets);
 const facts: ResearchFact[] = [
   { key: "Industry", value: "SaaS", sourceLabel: "S1", sourceUrl: "unknown", confidence: 90, category: "account" },
   { key: "Head office", value: "London", sourceLabel: "S3", sourceUrl: "https://hallucinated.example", confidence: 80, category: "account" },
   // Label the model invented — must be dropped, not silently kept.
   { key: "Company size", value: "500", sourceLabel: "S9", confidence: 70, category: "account" },
+  // Valid label but the value is fabricated (not in S1's snippet) — must be
+  // dropped by the claim-to-snippet check, the central new grounding gate.
+  { key: "Industry", value: "Fintech", sourceLabel: "S1", confidence: 80, category: "account" },
 ];
 const origWarn = console.warn;
 console.warn = () => {};
-const attached = attachVerifiedSources(facts, table);
+const attached = attachVerifiedSources(facts, attachTable, attachSnippets);
 console.warn = origWarn;
 
-assert.equal(attached.length, 2, "fact with an unknown label is dropped");
+assert.equal(attached.length, 2, "fact with unknown label OR unsupported claim is dropped");
 assert.equal(attached[0].sourceUrl, "https://acme.com/about", '"unknown" is overwritten from the table');
 assert.equal(
   attached[1].sourceUrl,
@@ -125,7 +151,11 @@ assert.ok(
   attached.every((f) => f.sourceUrl && f.sourceUrl !== "unknown"),
   "no fact survives with an unknown sourceUrl",
 );
-assert.deepEqual(attachVerifiedSources([], table), []);
+assert.ok(
+  !attached.some((f) => f.value === "Fintech"),
+  "a fabricated value attached to a real label is dropped (claim-to-snippet gate)",
+);
+assert.deepEqual(attachVerifiedSources([], attachTable, attachSnippets), []);
 
 // --- padSources: PREP_SCHEMA.sources minItems 3 ---
 const padded = padSources([{ label: "S1", title: "acme.com", url: "https://acme.com/a", confidence: 70 }], {

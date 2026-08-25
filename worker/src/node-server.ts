@@ -27,6 +27,8 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimi
   FIREBASE_AUTH_ENFORCED?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   INTERNAL_CRON_SECRET?: string;
+  IMPERSONATE_SECRET?: string;
+  PG_SSL_INSECURE?: string;
   VIDEO_PASS_ENABLED?: string;
   VIDEO_DATA_DIR?: string;
   DISPUTE_NOTIFY_ENABLED?: string;
@@ -34,6 +36,9 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimi
   DISPUTE_NOTIFY_FROM?: string;
   FRESHDESK_API_KEY?: string;
   FRESHDESK_DOMAIN?: string;
+  DATABASE_URL?: string;
+  PERSISTENCE_MODE?: string;
+  PG_POOL_MAX?: string;
 }
 
 const PORT = Number(process.env.PORT || 8787);
@@ -59,6 +64,8 @@ function buildEnv(): NodeEnv {
     FIREBASE_AUTH_ENFORCED: process.env.FIREBASE_AUTH_ENFORCED || "",
     FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
     INTERNAL_CRON_SECRET: process.env.INTERNAL_CRON_SECRET || "",
+    IMPERSONATE_SECRET: process.env.IMPERSONATE_SECRET || "",
+    PG_SSL_INSECURE: process.env.PG_SSL_INSECURE || "",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     ZOOM_ACCOUNT_ID: process.env.ZOOM_ACCOUNT_ID,
@@ -82,6 +89,9 @@ function buildEnv(): NodeEnv {
     DISPUTE_NOTIFY_FROM: process.env.DISPUTE_NOTIFY_FROM || "",
     FRESHDESK_API_KEY: process.env.FRESHDESK_API_KEY || "",
     FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus.freshdesk.com",
+    DATABASE_URL: process.env.DATABASE_URL || "",
+    PERSISTENCE_MODE: process.env.PERSISTENCE_MODE || "firestore",
+    PG_POOL_MAX: process.env.PG_POOL_MAX || "",
   };
 
   // --- P0 SECURITY: hard-fail boot if Firebase auth is not configured in production.
@@ -96,6 +106,42 @@ function buildEnv(): NodeEnv {
         "Set FIREBASE_PROJECT_ID=se-singha-paathi in deploy/vps/.env or Cloud Run --set-env-vars, " +
         "or run with NODE_ENV unset for local dev. Refusing to boot — dummy auth is a " +
         "security hole in production (client-claimed identity is trusted without verification).";
+      console.error(msg);
+      throw new Error(msg);
+    }
+    // L3 fix: FIREBASE_AUTH_ENFORCED=0 also disables token verification (dummy
+    // auth). The boot guard must catch this in production too, not just a
+    // missing FIREBASE_PROJECT_ID.
+    const authEnforced = (env.FIREBASE_AUTH_ENFORCED || "1").trim().toLowerCase();
+    const authDisabled = authEnforced === "0" || authEnforced === "false" || authEnforced === "no";
+    if (isProduction && firebaseProjectId && authDisabled) {
+      const msg =
+        "[worker] FATAL: FIREBASE_AUTH_ENFORCED=0 in a production environment (NODE_ENV=production). " +
+        "This disables Firebase token verification and trusts client-claimed identity. " +
+        "Remove FIREBASE_AUTH_ENFORCED or set it to 1. Refusing to boot.";
+      console.error(msg);
+      throw new Error(msg);
+    }
+    // C2 fix: PG_SSL_INSECURE=1 disables TLS certificate verification on the
+    // Postgres connection. This is only acceptable for the QA public-IP path;
+    // production must use verify-full with a real CA.
+    const pgSslInsecure = (env.PG_SSL_INSECURE || "").trim().toLowerCase();
+    if (isProduction && (pgSslInsecure === "1" || pgSslInsecure === "true")) {
+      const msg =
+        "[worker] FATAL: PG_SSL_INSECURE=1 in a production environment (NODE_ENV=production). " +
+        "This disables TLS certificate verification on the database connection (MITM-vulnerable). " +
+        "Remove PG_SSL_INSECURE and use sslmode=verify-full with a real CA. Refusing to boot.";
+      console.error(msg);
+      throw new Error(msg);
+    }
+    // NEW-8 fix: a wildcard CORS origin combined with credentialed requests
+    // lets any website make authenticated cross-origin calls. Refuse to boot.
+    const allowedOrigins = (env.ALLOWED_ORIGINS || "").split(",").map((o) => o.trim());
+    if (isProduction && allowedOrigins.includes("*")) {
+      const msg =
+        "[worker] FATAL: ALLOWED_ORIGINS contains '*' in a production environment (NODE_ENV=production). " +
+        "Wildcard CORS with credentialed requests allows any origin to make authenticated calls. " +
+        "Set ALLOWED_ORIGINS to an explicit comma-separated origin list. Refusing to boot.";
       console.error(msg);
       throw new Error(msg);
     }

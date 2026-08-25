@@ -182,7 +182,7 @@ export async function generateDemoThesis(
       research: false,
       effort: "low",
       jsonSchema: THESIS_SCHEMA as unknown as Record<string, unknown>,
-      step: "prep/demo-thesis",
+      passName: "prep/demo-thesis",
     });
   } catch (err) {
     console.warn("prep/demo-thesis skipped:", (err as Error).message);

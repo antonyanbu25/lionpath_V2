@@ -5,11 +5,20 @@
 
 import { extractJson } from "../json";
 import { getProvider } from "../providers";
+import { claimNumbersInSource } from "./claim-verify";
 import type { Env, ResearchFact } from "./types";
 
 export interface FishContextMetric {
   label: string;
   value: string;
+  /**
+   * How this metric reached us. "se-stated" = a value the SE wrote literally;
+   * "se-extracted" = a value an LLM extracted from SE notes (and whose leading
+   * number was re-verified to appear in those notes). The UI/render can show
+   * the latter as lower-confidence ("est.") since it is a model extraction, not
+   * a verbatim SE statement.
+   */
+  provenance?: "se-stated" | "se-extracted";
 }
 
 export interface FishContextSizing {
@@ -71,11 +80,13 @@ export function filterFishContextMetrics(
     if (!label || !value) continue;
     if (REQUIREMENT_RE.test(`${label} ${value}`)) continue;
     if (!isCanonicalFishLabel(label)) continue;
+    const sanitized = sanitizeFishContextMetricValue(label, value);
+    if (!sanitized) continue;
     const canonical = canonicalFishLabel(label);
-    const key = `${canonical.toLowerCase()}|${value.toLowerCase()}`;
+    const key = `${canonical.toLowerCase()}|${sanitized.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: canonical, value });
+    out.push({ label: canonical, value: sanitized });
     if (out.length >= 3) break;
   }
   return out;
@@ -128,6 +139,52 @@ function tokenOverlap(a: string, b: string): number {
 }
 
 const UNKNOWN_VALUES = new Set(["unknown", "n/a", "na", "not found", "unclear", "—", "-"]);
+
+const FISH_METRIC_BOUNDS: Record<string, number> = {
+  employees: 500_000,
+  supportAgents: 50_000,
+  funding: 1e15,
+};
+
+const HEADCOUNT_FORBIDDEN_SUFFIX = /^(?:t|tn|trillion|b|bn|billion)$/i;
+
+function fishMetricTypeFromLabel(label: string): string | null {
+  const l = String(label || "").toLowerCase();
+  if (/\b(employees?|headcount|staff|employee count)\b/.test(l) && !/\bsupport\b/.test(l)) return "employees";
+  if (/\bfunding\b/.test(l)) return "funding";
+  if (/\b(support agents?|support team|agent count|agents?)\b/.test(l)) return "supportAgents";
+  return null;
+}
+
+/** Reject funding-scale magnitudes on headcount fields (e.g. "4 trillion" agents). */
+function sanitizeFishContextMetricValue(label: string, value: string): string | null {
+  const type = fishMetricTypeFromLabel(label);
+  if (!type) return value;
+  const text = String(value || "").trim();
+  const match = text.match(
+    /(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(t|tn|trillion|b|bn|billion|m|mm|mn|million|k|thousand)?/i,
+  );
+  if (!match) return text;
+  const n = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(n)) return text;
+  const suffix = (match[2] || "").trim();
+  let numeric = n;
+  const max = FISH_METRIC_BOUNDS[type];
+  if (suffix) {
+    if ((type === "employees" || type === "supportAgents") && HEADCOUNT_FORBIDDEN_SUFFIX.test(suffix)) {
+      return n <= max ? String(Math.round(n)) : null;
+    }
+    if (/^(?:m|mm|mn|million)$/i.test(suffix)) numeric = n * 1e6;
+    else if (/^(?:k|thousand)$/i.test(suffix)) numeric = n * 1e3;
+    else if (/^(?:b|bn|billion)$/i.test(suffix)) numeric = n * 1e9;
+    else if (/^(?:t|tn|trillion)$/i.test(suffix)) numeric = n * 1e12;
+  }
+  if (numeric > max) {
+    if (suffix && n <= max) return String(Math.round(n));
+    return null;
+  }
+  return text;
+}
 
 /** Map verified research facts to fish INPUT rows (no LLM). */
 const FISH_FACT_LABELS: Record<string, string> = {
@@ -223,7 +280,9 @@ export function fishSizingFromResearchFacts(facts: ResearchFact[] | undefined): 
     const key = `${label.toLowerCase()}|${value.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    metrics.push({ label, value });
+    // Research facts are SE-stated (regex-derived) or web-sourced; both are
+    // faithful values, not LLM extractions, so mark them se-stated.
+    metrics.push({ label, value, provenance: "se-stated" });
     if (metrics.length >= 3) break;
   }
   if (!metrics.length) return null;
@@ -299,7 +358,7 @@ Values max 12 words. Labels max 4 words. No invention.`,
       research: false,
       effort: "low",
       jsonSchema: SIZING_SCHEMA as unknown as Record<string, unknown>,
-      step: "prep/rivals-context",
+      passName: "prep/rivals-context",
     });
   } catch (err) {
     console.warn("prep/rivals-context skipped:", (err as Error).message);
@@ -310,7 +369,23 @@ Values max 12 words. Labels max 4 words. No invention.`,
     const parsed = extractJson<{ metrics?: { label?: string; value?: string; aboutCompany?: boolean }[] }>(
       result.text,
     );
-    const metrics = filterFishContextMetrics(parsed.metrics);
+    const candidates = filterFishContextMetrics(parsed.metrics ?? []);
+    // Re-verify each LLM-extracted metric against the raw SE text (T2.2): a
+    // metric whose leading number does not appear literally in the notes is a
+    // model invention (or a mis-paraphrase) and is dropped, exactly the way
+    // extract-facts verifies a fact's value against its snippet. We check the
+    // number, not the whole value, because the LLM is allowed to rephrase the
+    // label ("around 50 agents") but the figure itself must be the SE's.
+    const metrics: FishContextMetric[] = [];
+    for (const m of candidates) {
+      if (!claimNumbersInSource(m.value, text)) {
+        console.warn(
+          `[prep/rivals-context] dropped metric "${m.label}: ${m.value}" — leading number not in SE context`,
+        );
+        continue;
+      }
+      metrics.push({ label: m.label, value: m.value, provenance: "se-extracted" });
+    }
     if (!metrics.length) return null;
     return { metrics, source: "context" };
   } catch (err) {

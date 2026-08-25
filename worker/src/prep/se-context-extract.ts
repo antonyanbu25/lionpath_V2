@@ -1,8 +1,17 @@
 import { extractJson } from "../json";
 import { getProviderForPass } from "../providers";
 import { FACT_KEYS, SIGNAL_LABELS } from "../schema";
+import { claimNumbersInSource, UNTRUSTED_CONTENT_CLAUSE, wrapUntrusted } from "./claim-verify";
 import { SE_SOURCE } from "./se-context-facts";
 import type { Env, ResearchFact, SourceRef } from "./types";
+
+/**
+ * Confidence stamped on every LLM-extracted SE-context fact. Historically 88,
+ * which let a model paraphrase count as strongly as a verbatim SE statement.
+ * Dropped to 60: still above the 55 source-gate (so it can back a claim) but
+ * clearly "medium" — an LLM extraction is not an attested SE statement.
+ */
+const SE_EXTRACT_CONFIDENCE = 60;
 
 const SE_EXTRACT_SCHEMA = {
   type: "object",
@@ -73,6 +82,7 @@ export async function extractSeContextFacts(
   try {
     result = await provider.generate({
       system: `Extract structured facts from SE additional context only.
+${UNTRUSTED_CONTENT_CLAUSE}
 Emit facts the SE stated explicitly — do NOT invent.
 Use sourceLabel "SE" mentally; output key/value/category only.
 For canonical signals use exact keys: ${[...CANONICAL_SIGNALS].join(", ")}.
@@ -81,7 +91,7 @@ Company size = employee headcount ONLY. Support team = support agents/users/seat
 Other keys: Champion, Timeline, Budget, Pain, Meeting type, etc. (max 4 words).
 Values max 12 words. categories: account | signal | prospect | support.
 OUTPUT: JSON matching schema. No markdown.`,
-      user: `SE notes:\n${text.slice(0, 4000)}`,
+      user: `SE notes:\n${wrapUntrusted("se", text.slice(0, 4000))}`,
       maxTokens: 1500,
       temperature: 0,
       research: false,
@@ -103,12 +113,19 @@ OUTPUT: JSON matching schema. No markdown.`,
     );
     const facts: ResearchFact[] = (parsed.facts || [])
       .filter((f) => f.key && f.value && f.value.toLowerCase() !== "unknown")
+      // T2.4 re-verification: an LLM-extracted fact whose leading number is not
+      // literally in the SE notes is a model invention (or a mis-paraphrase). The
+      // number is the most falsifiable content, so it is verified first; the
+      // label/value may be rephrased but the figure must be the SE's own. Same
+      // discipline as extract-facts / rivals-context so the SE-context path does
+      // not become the one path that lets a fabricated number through.
+      .filter((f) => claimNumbersInSource(f.value, text))
       .map((f) => ({
         key: f.key.trim(),
         value: trimWords(f.value),
         sourceLabel: "SE",
         sourceUrl: "se-context",
-        confidence: 88,
+        confidence: SE_EXTRACT_CONFIDENCE,
         category: (f.category || "signal") as ResearchFact["category"],
       }));
 

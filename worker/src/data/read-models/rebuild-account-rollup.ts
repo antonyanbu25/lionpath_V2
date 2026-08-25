@@ -120,11 +120,11 @@ export async function rebuildAccountRollup(
       const tc = await getTechnicalCommitByDeal(String(deal.id), env);
       if (!reasonForEvaluation && tc?.reasonForEvaluation) {
         const rfe = tc.reasonForEvaluation as { value?: unknown } | string;
-        reasonForEvaluation = typeof rfe === "object" && rfe && "value" in rfe ? rfe.value : rfe;
+        reasonForEvaluation = typeof rfe === "object" && rfe && "value" in rfe ? (rfe.value as {} | null) : (rfe as {} | null);
       }
       if (!whyAi && tc?.whyAi) {
         const wa = tc.whyAi as { value?: unknown } | string;
-        whyAi = typeof wa === "object" && wa && "value" in wa ? wa.value : wa;
+        whyAi = typeof wa === "object" && wa && "value" in wa ? (wa.value as {} | null) : (wa as {} | null);
       }
       if (reasonForEvaluation && whyAi) break;
     }

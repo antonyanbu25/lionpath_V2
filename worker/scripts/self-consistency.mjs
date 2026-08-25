@@ -26,6 +26,7 @@ import {
   snapshotFromScorecardResult,
   THRESHOLDS,
 } from "../src/consistency-lib.ts";
+import { buildEffectiveTranscriptForScoring } from "../src/postcall/speaker-attribution.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -92,6 +93,86 @@ function formatRunError(err) {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Mirrors worker/src/postcall/generate.ts's buildIdentitiesContext (private there — this
+ * harness calls runPostCallScorecard directly rather than the full runPostCallGenerate
+ * pipeline, so a fixture's `confirmedIdentities` needs the same server-built, canonical
+ * text block that PostCallScorecardInput.identitiesContext expects). Keep in sync with
+ * generate.ts if that function's rules change.
+ */
+function buildIdentitiesContextForFixture(identities) {
+  if (!identities) return null;
+  const lines = ["Confirmed call identities (authoritative for scoring):"];
+  if (identities.seIdentity) lines.push(`- Primary SE: ${identities.seIdentity}`);
+  if (identities.secondarySeIdentities?.length) {
+    lines.push(`- Secondary SE: ${identities.secondarySeIdentities.join(", ")}`);
+  }
+  if (identities.aeIdentity) lines.push(`- AE: ${identities.aeIdentity}`);
+  if (identities.customerIdentities?.length) {
+    lines.push(`- Customer: ${identities.customerIdentities.join(", ")}`);
+  }
+  if (identities.partnerIdentities?.length) {
+    lines.push(`- Partner: ${identities.partnerIdentities.join(", ")}`);
+  }
+  if (identities.generalManagerIdentities?.length) {
+    lines.push(`- Manager: ${identities.generalManagerIdentities.join(", ")}`);
+  }
+  if (identities.executiveIdentities?.length) {
+    lines.push(`- Executive: ${identities.executiveIdentities.join(", ")}`);
+  }
+  if (identities.roomAttributions?.length) {
+    lines.push(
+      "",
+      'Meeting-room mic attributions — speech in these spans is credited to the named person ' +
+        '(tagged "(via meeting room)" in the transcript below):',
+    );
+    for (const attribution of identities.roomAttributions) {
+      for (const span of attribution.spans || []) {
+        const role = span.role ? ` (${span.role})` : "";
+        lines.push(
+          `- "${attribution.roomLabel}" ${Math.round(span.startS)}s–${Math.round(span.endS)}s → ${span.person}${role}`,
+        );
+      }
+    }
+  }
+  if (lines.length <= 1) return null;
+  return lines.join("\n");
+}
+
+/**
+ * A fixture's `roomAttributions` (top-level convenience) wins if set; otherwise falls back
+ * to `confirmedIdentities.roomAttributions` (the shape a real confirm-page submission sends).
+ */
+function roomAttributionsForFixture(fx) {
+  return fx.roomAttributions ?? fx.confirmedIdentities?.roomAttributions ?? null;
+}
+
+/**
+ * Threads a fixture's optional identity-aware-scoring (v2.2) fields through the exact same
+ * transform generate.ts applies before calling runPostCallScorecard: the transcript is
+ * rewritten via buildEffectiveTranscriptForScoring (real production function) when room
+ * attributions are present, and identitiesContext/deckContent/roomAttributions are passed
+ * straight through to the real scoring pass — never silently dropped.
+ */
+function scorecardInputForFixture(fx) {
+  const roomAttributions = roomAttributionsForFixture(fx);
+  const transcript = roomAttributions?.length
+    ? buildEffectiveTranscriptForScoring(fx.transcript, roomAttributions)
+    : fx.transcript;
+  return {
+    transcript,
+    callType: fx.callType,
+    videoAvailable: false,
+    deckLink: fx.deckLink ?? null,
+    deckContent: fx.deckContent ?? null,
+    briefContext: fx.briefContext ?? null,
+    identitiesContext: buildIdentitiesContextForFixture(fx.confirmedIdentities),
+    roomAttributions,
+    companyName: fx.companyName ?? undefined,
+    meetingTitle: fx.meetingTitle ?? undefined,
+  };
+}
+
 async function main() {
   await loadEnv();
 
@@ -147,15 +228,7 @@ async function main() {
     for (let r = 0; r < runsPerCall; r++) {
       runsAttempted += 1;
       try {
-        const result = await runPostCallScorecard(env, {
-          transcript: fx.transcript,
-          callType: fx.callType,
-          videoAvailable: false,
-          deckLink: fx.deckLink ?? null,
-          briefContext: fx.briefContext ?? null,
-          companyName: fx.companyName ?? undefined,
-          meetingTitle: fx.meetingTitle ?? undefined,
-        });
+        const result = await runPostCallScorecard(env, scorecardInputForFixture(fx));
 
         const snap = snapshotFromScorecardResult(
           fx.id,

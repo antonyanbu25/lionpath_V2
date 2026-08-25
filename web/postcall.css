@@ -51,6 +51,24 @@
   color: var(--danger, #b8544a);
 }
 
+/*
+ * Analyse-call submit progress. Same hue as the button's existing primary color
+ * (--dew-primary, consumed by fw-button via --color-fill-brand) — completeness only
+ * varies its opacity, from a faint tint at 0 mandatory fields filled to full-strength
+ * primary at 1. No new color token introduced. --pc-submit-progress is set on the
+ * element by web/postcall.js (0..1); the Crayons disabled affordance (opacity/cursor)
+ * layers on top untouched when the button is disabled.
+ */
+#analyze-call {
+  --pc-submit-progress: 0;
+  --color-fill-brand: color-mix(
+    in srgb,
+    var(--dew-primary) calc(30% + 70% * var(--pc-submit-progress, 0)),
+    transparent
+  );
+  transition: background-color 0.2s ease;
+}
+
 .postcall-intake-card {
   padding: 24px;
 }
@@ -702,6 +720,57 @@ button.pc-deal-tile {
   line-height: 1;
   color: var(--dew-text-muted);
   padding: 2px 6px;
+}
+
+/* Meeting-room sub-panel — AI-suggested speaker attributions nested beneath a "Meeting room"
+   attendee row (see renderRoomGroupPanel in web/postcall.js). Suggestions only. */
+.postcall-room-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 4px 32px;
+}
+
+.postcall-attendee-row--room-member {
+  padding: 8px 10px;
+  background: var(--dew-surface-subtle, var(--dew-surface));
+  border-style: dashed;
+}
+
+.postcall-room-span {
+  margin: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+  line-height: 1.4;
+}
+
+.postcall-room-span-time {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.postcall-room-add-person {
+  background: none;
+  border: none;
+  color: var(--dew-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 4px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.postcall-room-add-confirm {
+  border: 1px solid var(--dew-border);
+  border-radius: 8px;
+  background: var(--dew-surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
 }
 
 .postcall-attendees-block,
@@ -1544,6 +1613,15 @@ button.pc-deal-tile {
   fill: color-mix(in srgb, var(--dew-primary) 22%, transparent);
 }
 
+/* Dark surfaces need a slightly higher floor for the faint/incomplete state to stay legible. */
+[data-theme="dark"] #analyze-call {
+  --color-fill-brand: color-mix(
+    in srgb,
+    var(--dew-primary) calc(38% + 62% * var(--pc-submit-progress, 0)),
+    transparent
+  );
+}
+
 #postcall-result .qc-radar-dot {
   fill: var(--dew-primary);
 }
@@ -2248,6 +2326,23 @@ button.pc-deal-tile {
   padding: 3px 8px;
 }
 
+/* v2.3 — deck-rejection notification chip */
+#view-postcall .qip-deck-rejected-pill {
+  cursor: help; /* tooltip present */
+}
+
+/* v2.3 — legend explaining the High/Med/Low confidence pills are not the score itself */
+.qip-confidence-legend {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+[data-theme="dark"] #view-postcall .qip-deck-rejected-pill {
+  background: color-mix(in srgb, var(--amber) 15%, transparent);
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+}
+
 #postcall-result .qip-scorecard.qip-provisional .qip-total-score {
   color: var(--dew-text-secondary);
 }
@@ -2465,6 +2560,10 @@ button.pc-deal-tile {
 @media (prefers-reduced-motion: reduce) {
   #view-postcall fw-card.prep-form-card,
   #view-postcall fw-card.postcall-confirm-card {
+    transition: none;
+  }
+
+  #analyze-call {
     transition: none;
   }
 }

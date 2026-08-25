@@ -2,6 +2,8 @@
 
 Lifecycle-centric domain model for account engagement tracking, team-scoped RBAC, and Firestore persistence.
 
+> **Migration status (2026-08-20):** This document describes the Firestore model. Per [ADR-008](./adr/008-firestore-to-sql-decision.md), the system of record is moving to PostgreSQL (Cloud SQL, Janus v9.3 schema in `janus/schema/`). During the dual-write window, writes go SQL-primary with Firestore projected via `sync_outbox`; the `PERSISTENCE_MODE` env flag (`firestore` | `dual` | `sql`) controls routing. Schema-gap decisions (deal_contact, lifecycleEvents folding, read-model views) are in [ADR-007](./adr/007-sql-schema-gaps.md). The Lifecycle aggregate below maps to `deal` + `activity` + `deal_stage_history` in SQL.
+
 **Architecture docs:** [ARCHITECTURE.md](./ARCHITECTURE.md) · [ENTITY_CATALOG.md](./ENTITY_CATALOG.md) · [ID_STANDARDS.md](./ID_STANDARDS.md) · [RELATIONSHIPS.md](./RELATIONSHIPS.md) · [RBAC.md](./RBAC.md) · [adr/001-user-identity.md](./adr/001-user-identity.md)
 
 ## Entity relationship

@@ -14,6 +14,7 @@
 
 import { extractJson } from "../json";
 import { getProviderForPass } from "../providers";
+import { claimSupportedByText } from "./claim-verify";
 import type { RecentNewsItem } from "../schema";
 import { dedupeCitations, normalizeCitations, resolveRedirectUrls } from "./citations";
 import {
@@ -111,10 +112,13 @@ interface RawNewsItem {
 export function buildNewsSources(citations: Citation[] | undefined): {
   byDomain: Map<string, NewsSource>;
   sources: NewsSource[];
+  /** Publisher-domain -> citation snippet text (the page content the model read). */
+  snippetByDomain: Map<string, string | undefined>;
 } {
   const byDomain = new Map<string, NewsSource>();
+  const snippetByDomain = new Map<string, string | undefined>();
   const sources: NewsSource[] = [];
-  for (const cite of dedupeCitations(normalizeCitations(citations))) {
+  for (const cite of dedupeCitations(normalizeCitations(citations)) as import("./citations").VerifiedCitation[]) {
     // normalizeCitations already prefers the resolved publisher URL and falls back to Gemini's
     // title for the domain when the URI is still a grounding redirect. No domain means no
     // identity to verify a claim against, so the entry is unusable here.
@@ -127,9 +131,17 @@ export function buildNewsSources(citations: Citation[] | undefined): {
       title: cite.title || domain,
     };
     byDomain.set(domain, source);
+    // The supporting text Gemini returned for this page — the ground truth a
+    // headline/detail must appear in. Keep the longest per domain.
+    snippetByDomain.set(
+      domain,
+      cite.snippet && cite.snippet.length > (snippetByDomain.get(domain)?.length || 0)
+        ? cite.snippet
+        : snippetByDomain.get(domain),
+    );
     sources.push(source);
   }
-  return { byDomain, sources };
+  return { byDomain, sources, snippetByDomain };
 }
 
 /** Match a model-claimed domain against a real one, tolerating a `www.` or subdomain prefix. */
@@ -170,7 +182,7 @@ export function shapeCompanyNews(
   citations: Citation[] | undefined,
 ): CompanyNews | null {
   const dropped: string[] = [];
-  const { byDomain, sources } = buildNewsSources(citations);
+  const { byDomain, sources, snippetByDomain } = buildNewsSources(citations);
   if (!byDomain.size) {
     console.warn("[prep/company-news] no grounded citations returned — nothing can be sourced");
     return null;
@@ -188,11 +200,25 @@ export function shapeCompanyNews(
       dropped.push(`"${headline}": cited "${rawItem?.sourceDomain || "nothing"}", not in the search results`);
       continue;
     }
+    // Claim-to-citation text check (T2.1): a headline+detail must appear in the
+    // snippet text of the page it is attributed to. A real domain + an invented
+    // event attached to it fails here. Falls back to accepting when the
+    // citation has no snippet (older recordings), so this only tightens.
+    const snippet = snippetByDomain.get(source.domain);
+    if (snippet && !claimSupportedByText(`${headline} ${detail}`, snippet)) {
+      dropped.push(`"${headline}": not supported by ${source.domain} snippet`);
+      continue;
+    }
     const key = headline.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
 
-    items.push({ headline, detail, sourceLabel: source.label });
+    items.push({
+      headline,
+      detail,
+      sourceLabel: source.label,
+      ...(rawItem?.publishedAt ? { publishedAt: trimWords(rawItem.publishedAt, 6) } : {}),
+    });
     if (items.length >= MAX_NEWS_ITEMS) break;
   }
 
@@ -302,7 +328,7 @@ async function fetchGeminiCompanyNews(
 /** Merge Gemini + DDG (or other) news; Gemini items first, dedupe by headline. */
 export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): CompanyNews | null {
   const dropped: string[] = [];
-  type Raw = { headline: string; detail: string; articleUrl?: string; domain: string; url: string };
+  type Raw = { headline: string; detail: string; articleUrl?: string; publishedAt?: string; domain: string; url: string };
   const merged: Raw[] = [];
   const seenHeadlines = new Set<string>();
 
@@ -318,6 +344,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
         headline: item.headline,
         detail: item.detail,
         articleUrl: item.articleUrl,
+        publishedAt: item.publishedAt,
         domain: src?.domain || "",
         url: item.articleUrl || src?.url || "",
       });
@@ -350,6 +377,7 @@ export function mergeCompanyNews(...parts: (CompanyNews | null | undefined)[]): 
       detail: row.detail,
       sourceLabel: source.label,
       ...(row.articleUrl || row.url ? { articleUrl: row.articleUrl || row.url } : {}),
+      ...(row.publishedAt ? { publishedAt: row.publishedAt } : {}),
     });
   }
 

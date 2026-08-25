@@ -17,8 +17,8 @@ function bucketName(env?: FirestoreEnv): string {
 }
 
 async function getStorage() {
-  const mod = await import("@google-cloud/storage");
-  return mod.default ?? mod;
+  const { Storage } = await import("@google-cloud/storage");
+  return new Storage();
 }
 
 function analysisObjectPath(callId: string): string {
@@ -124,19 +124,19 @@ export async function downloadCallPayload(
   if (analysisUri?.startsWith(`gs://${bucket}/`)) {
     const path = analysisUri.slice(`gs://${bucket}/`.length);
     const [buf] = await b.file(path).download();
-    out.analysis = JSON.parse(buf.toString("utf8"));
+    out.analysis = JSON.parse(Buffer.from(buf).toString("utf8"));
   }
 
   if (transcriptUri?.startsWith(`gs://${bucket}/`)) {
     const path = transcriptUri.slice(`gs://${bucket}/`.length);
     const [buf] = await b.file(path).download();
-    out.transcriptMeta = JSON.parse(buf.toString("utf8"));
+    out.transcriptMeta = JSON.parse(Buffer.from(buf).toString("utf8"));
   }
 
   if (detailUri?.startsWith(`gs://${bucket}/`)) {
     const path = detailUri.slice(`gs://${bucket}/`.length);
     const [buf] = await b.file(path).download();
-    out.detail = JSON.parse(buf.toString("utf8"));
+    out.detail = JSON.parse(Buffer.from(buf).toString("utf8"));
   }
 
   return out;

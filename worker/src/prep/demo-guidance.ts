@@ -17,6 +17,7 @@
 
 import { extractJson } from "../json";
 import { getProviderForPass } from "../providers";
+import { numberLiterals } from "./claim-verify";
 import type { Prep } from "../schema";
 import type { ConfirmedProspectProfile } from "./merge-enrichment";
 import type { Env } from "./types";
@@ -320,6 +321,22 @@ export async function generateDemoGuidance(
     incumbentName: input.incumbent?.incumbent_name,
     companyName: input.companyName,
   });
+  // Number literals drawn from the same seeds as the anchors — the account's
+  // own figures (team sizes, funding, volumes) that an isGroundedUseCase
+  // scenario may cite. A number in the use case that matches one of these is
+  // specific to this account; an invented statistic is not. De-duplicated so
+  // a number repeated across seeds is not double-counted.
+  const factNumbers = [
+    ...new Set(
+      [
+        input.industry,
+        input.incumbent?.incumbent_name,
+        input.companyName,
+        ...(input.likelyPains || []),
+        ...(input.signals || []),
+      ].flatMap((s) => numberLiterals(s)),
+    ),
+  ];
   const provider = getProviderForPass("demo-guidance", env);
 
   let result;
@@ -345,7 +362,7 @@ export async function generateDemoGuidance(
   }
 
   try {
-    return shapeGuidance(extractJson<RawGuidance>(result.text), usable, assetLabels, anchors);
+    return shapeGuidance(extractJson<RawGuidance>(result.text), usable, assetLabels, anchors, factNumbers);
   } catch (err) {
     console.warn("prep/demo-guidance unparsable:", (err as Error).message);
     return null;
@@ -462,11 +479,36 @@ export function isScenarioLine(line: string): boolean {
   return true;
 }
 
-/** True when name+scenario mention at least one anchor token from this account. */
-export function isGroundedUseCase(uc: DemoUseCase, anchors: string[]): boolean {
+/**
+ * True when name+scenario are grounded in THIS account. A single anchor token
+ * let a 90%-invented scenario through (one industry word plus fabricated
+ * detail), so the bar is now: at least TWO distinct anchor tokens, OR one
+ * anchor token AND a number literal that also appears in the research facts
+ * (the account's own figures, not a model-invented statistic). Either way the
+ * line must say something specific to this account that generic filler could
+ * not produce.
+ */
+export function isGroundedUseCase(
+  uc: DemoUseCase,
+  anchors: string[],
+  factNumbers: string[] = [],
+): boolean {
   if (!anchors.length) return false;
   const haystack = `${uc.name} ${uc.scenario.join(" ")}`.toLowerCase();
-  return anchors.some((a) => haystack.includes(a));
+  const anchorHits = new Set<string>();
+  for (const a of anchors) {
+    if (a && haystack.includes(a)) anchorHits.add(a);
+  }
+  if (anchorHits.size >= 2) return true;
+  if (anchorHits.size === 1 && factNumbers.length) {
+    // One anchor is not enough on its own, but one anchor plus a number that
+    // appears verbatim in the research facts is specific to this account.
+    const factNumSet = new Set(factNumbers);
+    for (const n of numberLiterals(haystack)) {
+      if (factNumSet.has(n)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -480,6 +522,7 @@ export function isGroundedUseCase(uc: DemoUseCase, anchors: string[]): boolean {
 export function shapeUseCases(
   raw: Array<{ name?: string; scenario?: unknown }> | undefined,
   anchors: string[],
+  factNumbers: string[] = [],
 ): DemoUseCase[] {
   if (!Array.isArray(raw)) return [];
   const out: DemoUseCase[] = [];
@@ -500,7 +543,7 @@ export function shapeUseCases(
     if (scenario.length < 2) continue;
 
     const candidate: DemoUseCase = { name, scenario };
-    if (!isGroundedUseCase(candidate, anchors)) continue;
+    if (!isGroundedUseCase(candidate, anchors, factNumbers)) continue;
 
     seen.add(key);
     out.push(candidate);
@@ -519,6 +562,7 @@ export function shapeGuidance(
   profiles: ConfirmedProspectProfile[],
   assetLabels: string[],
   useCaseAnchors: string[] = [],
+  factNumbers: string[] = [],
 ): DemoGuidance | null {
   const byEmail = new Map(
     (raw.perProspect || []).map((p) => [String(p.email || "").toLowerCase(), p]),
@@ -560,7 +604,7 @@ export function shapeGuidance(
       ? { read: String(raw.room.read).trim(), sequence: String(raw.room.sequence).trim() }
       : undefined;
 
-  const useCases = shapeUseCases(raw.useCases, useCaseAnchors);
+  const useCases = shapeUseCases(raw.useCases, useCaseAnchors, factNumbers);
 
   return {
     perProspect,

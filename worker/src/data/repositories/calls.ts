@@ -157,12 +157,14 @@ export async function getPostCallDetail(id: string, env?: FirestoreEnv): Promise
   if (!raw) return null;
   const postCall = await hydratePostCallDoc(raw, env);
 
+  const postCallDoc = postCall as FirestoreDoc;
+
   const [scorecards, arrLines] = await Promise.all([
     listScorecardsByCall(id, env),
     listArrLinesByCall(id, env),
   ]);
 
-  const embedded = hasEmbeddedDetail(postCall);
+  const embedded = hasEmbeddedDetail(postCallDoc);
   const [
     legacyVideoFacts,
     legacyTimelineSegments,
@@ -188,18 +190,18 @@ export async function getPostCallDetail(id: string, env?: FirestoreEnv): Promise
       ]);
 
   return {
-    postCall,
+    postCall: postCallDoc,
     scorecards,
-    videoFacts: embeddedOrLegacy(detailArray(postCall, "videoFacts"), legacyVideoFacts),
-    timelineSegments: embeddedOrLegacy(detailArray(postCall, "timelineSegments"), legacyTimelineSegments),
-    timelineMarkers: embeddedOrLegacy(detailArray(postCall, "timelineMarkers"), legacyTimelineMarkers),
-    followUps: embeddedOrLegacy(detailArray(postCall, "followUps"), legacyFollowUps),
-    objections: embeddedOrLegacy(detailArray(postCall, "objections"), legacyObjections),
-    momDrafts: embeddedOrLegacy(detailArray(postCall, "momDrafts"), legacyMomDrafts),
-    meddpiccDeltas: embeddedOrLegacy(detailArray(postCall, "meddpiccDeltas"), legacyMeddpiccDeltas),
-    tcDeltas: embeddedOrLegacy(detailArray(postCall, "tcDeltas"), legacyTcDeltas),
+    videoFacts: embeddedOrLegacy(detailArray(postCallDoc, "videoFacts"), legacyVideoFacts),
+    timelineSegments: embeddedOrLegacy(detailArray(postCallDoc, "timelineSegments"), legacyTimelineSegments),
+    timelineMarkers: embeddedOrLegacy(detailArray(postCallDoc, "timelineMarkers"), legacyTimelineMarkers),
+    followUps: embeddedOrLegacy(detailArray(postCallDoc, "followUps"), legacyFollowUps),
+    objections: embeddedOrLegacy(detailArray(postCallDoc, "objections"), legacyObjections),
+    momDrafts: embeddedOrLegacy(detailArray(postCallDoc, "momDrafts"), legacyMomDrafts),
+    meddpiccDeltas: embeddedOrLegacy(detailArray(postCallDoc, "meddpiccDeltas"), legacyMeddpiccDeltas),
+    tcDeltas: embeddedOrLegacy(detailArray(postCallDoc, "tcDeltas"), legacyTcDeltas),
     arrLines,
-    dealSignals: embeddedOrLegacy(detailArray(postCall, "dealSignals"), legacyDealSignals),
+    dealSignals: embeddedOrLegacy(detailArray(postCallDoc, "dealSignals"), legacyDealSignals),
   };
 }
 

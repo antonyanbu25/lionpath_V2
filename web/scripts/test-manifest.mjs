@@ -209,6 +209,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-linkedin-title-contact.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-context-attach-wiring.mjs",
     "tags": [
       "unit"
@@ -609,6 +615,18 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-confirm-kaia-roster.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-postcall-room-attribution.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-contact-resolve.mjs",
     "tags": [
       "unit"
@@ -633,6 +651,24 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-deck-shape-gate.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-postcall-summary-only-chip.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-leadership-badge-gate.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-resolve-context.mjs",
     "tags": [
       "unit"
@@ -646,6 +682,12 @@ export const manifest = [
   },
   {
     "file": "test-precall-brief-storage.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-precall-bug-fixes-eval.mjs",
     "tags": [
       "unit"
     ]
@@ -823,6 +865,12 @@ export const manifest = [
   },
   {
     "file": "test-qip-radar.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
+    "file": "test-quality-coach-cap.mjs",
     "tags": [
       "unit"
     ]

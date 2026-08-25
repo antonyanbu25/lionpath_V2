@@ -62,7 +62,7 @@ function recordBatchItemUsage(
   usage?: { promptTokens: number; outputTokens: number },
 ): void {
   const userId = job.context.userId || job.context.ownerId;
-  if (!userId || !usage) return;
+  if (!usage) return;
   recordLlmUsage(env, {
     userId,
     callId: undefined,

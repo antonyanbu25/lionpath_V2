@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="portal-build" content="2.1.42" />
+    <meta name="portal-build" content="2.1.45" />
     <link rel="icon" href="assets/freshworks-logomark.webp" type="image/webp" />
     <link rel="apple-touch-icon" href="assets/freshworks-logomark.webp" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
@@ -25,9 +25,9 @@
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
     <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.17" />
     <link rel="stylesheet" href="./styles.css?v=2.1.41" />
-    <link rel="stylesheet" href="./precall.css?v=2.1.42" />
-    <link rel="stylesheet" href="./postcall.css?v=2.1.42" />
-    <link rel="stylesheet" href="./call-view.css?v=2.1.39" />
+    <link rel="stylesheet" href="./precall.css?v=2.1.45" />
+    <link rel="stylesheet" href="./postcall.css?v=2.1.45" />
+    <link rel="stylesheet" href="./call-view.css?v=2.1.45" />
     <link rel="stylesheet" href="./lifecycle.css?v=2.1.14" />
     <style id="prep-dispute-critical-css">
       .prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
@@ -666,7 +666,7 @@
                       </div>
                     </div>
                     <details class="prep-enrich-advanced postcall-transcript-fallback" id="pc-transcript-fallback">
-                      <summary>No recording? Paste or upload a transcript</summary>
+                      <summary>Transcript (recommended — improves scoring accuracy)</summary>
                       <div class="prep-linkedin-upload">
                         <span class="prep-linkedin-label">Transcript file</span>
                         <p class="muted prep-linkedin-hint">In Zoom: open the recording → Audio Transcript → Download. Drop the .vtt here.</p>
@@ -683,7 +683,7 @@
                         rows="6"
                         placeholder="Paste the full call transcript here…"
                       ></fw-textarea>
-                      <p class="muted postcall-transcript-note">A recording or transcript is required — whichever you have.</p>
+                      <p class="muted postcall-transcript-note">A recording or transcript is required — add both when you have them, we score off the transcript and pull the recording's roster and title in alongside it.</p>
                     </details>
                     <div class="prep-email-field postcall-contact-field">
                       <div class="postcall-autofill-decoys" aria-hidden="true">
@@ -708,16 +708,21 @@
                     <p id="pc-account-name-error" class="field-hint warn pc-account-name-error" hidden></p>
                     <div id="pc-crm-matches" class="pc-crm-matches" hidden></div>
                     <details class="prep-enrich-advanced postcall-optional-block">
-                      <summary>Add deck link &amp; LinkedIn profiles <span class="muted">· optional</span></summary>
+                      <summary>Add deck PDF &amp; LinkedIn profiles <span class="muted">· optional</span></summary>
                       <div class="postcall-optional-body">
                       <div class="prep-optional-grid postcall-optional-grid">
-                        <fw-input
-                          id="pc-deck-link"
-                          label="Deck link"
-                          type="text"
-                          placeholder="Google Slides or .pptx"
-                          clear-input
-                        ></fw-input>
+                        <div class="prep-linkedin-upload">
+                          <span class="prep-linkedin-label">Deck PDF</span>
+                          <p class="muted prep-linkedin-hint">Export your slides as PDF — we score the deck against the rubric.</p>
+                          <input type="file" id="pc-deck-pdf" accept="application/pdf,.pdf" hidden />
+                          <div class="prep-linkedin-actions">
+                            <fw-button id="pc-deck-add-btn" type="button" color="secondary" fill="outline" size="small" style="width:100%">Add deck PDF</fw-button>
+                            <span id="pc-deck-parsing" class="muted prep-linkedin-parsing" hidden>Parsing deck…</span>
+                          </div>
+                          <ul id="pc-deck-file-list" class="prep-linkedin-file-list" aria-label="Attached deck PDF"></ul>
+                          <p id="pc-deck-shape-warn" class="field-hint warn" hidden></p>
+                          <p id="pc-deck-error" class="field-hint warn" hidden></p>
+                        </div>
                         <div class="prep-linkedin-upload">
                           <span class="prep-linkedin-label">LinkedIn PDFs</span>
                           <p class="muted prep-linkedin-hint">On LinkedIn: profile → More → Save to PDF. Attach exports for people on the call.</p>
@@ -834,7 +839,7 @@
       </div>
     </div>
 
-    <fw-modal id="feedback-modal" title-text="Send feedback" is-open="false">
+    <fw-modal id="feedback-modal" title-text="Send feedback" is-open="false" hide-footer>
       <fw-modal-content>
         <form id="feedback-form" class="feedback-form">
           <fw-select id="feedback-category" label="Category" value="idea">

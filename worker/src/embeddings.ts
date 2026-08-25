@@ -70,19 +70,17 @@ export async function embedVerbatim(
     }
     const values = data.embedding?.values;
     const usageMs = Date.now() - started;
-    if (opts?.userId) {
-      recordLlmUsage(env, {
-        userId: opts.userId,
-        callId: opts.callId,
-        passName: opts.passName || "embeddings",
-        model,
-        promptTokens: data.usageMetadata?.promptTokenCount ?? data.usageMetadata?.totalTokenCount ?? 0,
-        outputTokens: 0,
-        cachedTokens: 0,
-        groundingQueries: 0,
-        latencyMs: usageMs,
-      });
-    }
+    recordLlmUsage(env, {
+      userId: opts?.userId,
+      callId: opts?.callId,
+      passName: opts?.passName || "embeddings",
+      model,
+      promptTokens: data.usageMetadata?.promptTokenCount ?? data.usageMetadata?.totalTokenCount ?? 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      groundingQueries: 0,
+      latencyMs: usageMs,
+    });
     return Array.isArray(values) ? values : [];
   } catch (err) {
     console.warn("[embeddings] embed failed:", err instanceof Error ? err.message : err);

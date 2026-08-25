@@ -2,34 +2,15 @@
  * Start the Node worker (8787) with vars from .dev.vars — no wrangler bundler.
  */
 
-import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { WORKER_ROOT, loadDevVars } from "./lib/load-dev-vars.mjs";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const devVarsPath = join(ROOT, ".dev.vars");
-
-if (existsSync(devVarsPath)) {
-  for (const line of readFileSync(devVarsPath, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!(key in process.env)) process.env[key] = value;
-  }
-}
+loadDevVars();
 
 // Auto-wire service account when dropped into worker/secrets/ (gitignored).
-const secretsDir = join(ROOT, "secrets");
+const secretsDir = join(WORKER_ROOT, "secrets");
 if (
   !process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() &&
   !process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() &&
@@ -48,7 +29,7 @@ if (
 await import("./check-local-firebase.mjs");
 
 const child = spawn("npx", ["tsx", "src/node-server.ts"], {
-  cwd: ROOT,
+  cwd: WORKER_ROOT,
   stdio: "inherit",
   shell: true,
   env: process.env,

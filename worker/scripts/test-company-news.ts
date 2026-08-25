@@ -67,6 +67,30 @@ const good = () => ({
   eq(out!.sources.map((s) => s.label), ["N1", "N2"], "only cited sources are returned");
 }
 
+{
+  const raw = {
+    items: [{ headline: "Raised $40M Series B", detail: "Led by investor", sourceDomain: "reuters.com", publishedAt: "March 2026" }],
+  };
+  const out = shapeCompanyNews(raw, CITES);
+  eq(out!.items[0].publishedAt, "March 2026", "preserves LLM publishedAt");
+}
+
+{
+  const merged = mergeCompanyNews(
+    shapeCompanyNews(
+      {
+        items: [{ headline: "Alpha launch", detail: "New product", sourceDomain: "reuters.com", publishedAt: "2026-01-15" }],
+      },
+      CITES,
+    ),
+    companyNewsFromHits([
+      { title: "Beta funding round announced", snippet: "Details", url: "https://techcrunch.com/beta-funding", publishedAt: "2026-02-01" },
+    ]),
+  );
+  ok(merged?.items.some((i) => i.publishedAt === "2026-01-15"), "merge keeps gemini publishedAt");
+  ok(merged?.items.some((i) => i.publishedAt === "2026-02-01"), "merge keeps RSS publishedAt");
+}
+
 // An invented domain cannot launder an item into the panel.
 {
   const raw = good();
@@ -206,6 +230,52 @@ eq(shapeCompanyNews(null, CITES), null, "an unparsable answer yields no panel");
   ]);
   ok(shaped?.items[0].headline, "headline kept");
   eq(shaped!.items[0].detail, "", "RSS duplicate snippet yields empty detail");
+}
+
+// ---------------------------------------------------------------------------
+// T2.1 claim-in-source: a headline/detail must appear in the citation's snippet.
+// The base CITES fixture carries no snippets, so the gate's `if (snippet &&...)`
+// guard short-circuits and only domain-resolves is exercised. These use
+// snippet-bearing citations to reach the claim-to-citation text check.
+{
+  const SNIPPET_CITES: Citation[] = [
+    { uri: "https://www.reuters.com/business/a", title: "Reuters", snippet: "Acme raised $40M in a Series B round led by an existing investor." },
+    { uri: "https://techcrunch.com/b", title: "TechCrunch", snippet: "Acme opened its second European office in Berlin this quarter." },
+  ];
+  // Happy path: headline content is in the snippet -> kept.
+  {
+    const out = shapeCompanyNews(
+      {
+        items: [
+          { headline: "Raised $40M Series B", detail: "Led by an existing investor", sourceDomain: "reuters.com" },
+          { headline: "Opened Berlin office", detail: "Second European site", sourceDomain: "techcrunch.com" },
+        ],
+      },
+      SNIPPET_CITES,
+    );
+    ok(out, "snippet-supported news survives");
+    eq(out!.items.length, 2, "both items kept — content is in their snippets");
+  }
+  // A real domain + an invented event the snippet never mentions -> dropped.
+  {
+    const out = shapeCompanyNews(
+      {
+        items: [{ headline: "Acquired rival Globex", detail: "All-stock deal", sourceDomain: "reuters.com" }],
+      },
+      SNIPPET_CITES,
+    );
+    eq(out, null, "a fabricated event on a real domain is dropped (no snippet support)");
+  }
+  // A headline whose figure IS in the snippet survives even if rephrased.
+  {
+    const out = shapeCompanyNews(
+      {
+        items: [{ headline: "$40M funding round", detail: "Series B led by an existing investor", sourceDomain: "reuters.com" }],
+      },
+      SNIPPET_CITES,
+    );
+    ok(out?.items.length === 1, "a figure present in the snippet survives rephrasing");
+  }
 }
 
 console.warn = origWarn;

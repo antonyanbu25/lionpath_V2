@@ -79,11 +79,22 @@ import { zoomAuthUrl, zoomConfigured } from "./zoom";
 import { ffmpegAvailable, isNodeRuntime, videoPassEnvEnabled } from "./video/capability";
 import { WORKER_BUILD, GEMINI_SCHEMA_ENUM_FIX } from "./build-id";
 import { firestoreAdminReady, getDb, getDoc } from "./data/firestore-admin";
-import { resolveRequestContext } from "./data/scope";
+import { resolveRequestContext, assertCanReadResource, type RequestContext } from "./data/scope";
 import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure";
+import { handleOutboxProjectPost } from "./routes/internal-outbox";
+import type { VerifiedUser } from "./auth";
+import {
+  postgresReady,
+  resolvePersistencePort,
+  resolveSqlSession,
+  withSessionContext,
+} from "./data/persistence";
+import { applyLifecycleEvent, type LifecycleEventInput } from "./data/persistence/lifecycle-events";
+import { validateJsonbShape } from "./data/persistence/shapes";
+import type { AccountRow } from "./data/persistence/types";
 import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
-import { domainReadRoutes } from "./routes/domain-reads";
+import { domainReadRoutes, handleDealsListGet } from "./routes/domain-reads";
 import type { Env } from "./env";
 
 export type RouteHandler = (
@@ -497,7 +508,13 @@ export async function handlePostCallResolve(
     );
   }
   try {
-    const result = await runPostCallResolve(input as PostCallResolveInput, { zoomEnv: env });
+    const result = await runPostCallResolve(input as PostCallResolveInput, {
+      zoomEnv: env,
+      providerEnv: env,
+      // Only this interactive confirm-page flow ever shows the speaker-attribution
+      // suggestion to a human — see PostCallResolveOptions.attributeSpeakers.
+      attributeSpeakers: true,
+    });
     return json(result, 200, cors);
   } catch (err) {
     const status = (err as { status?: number }).status;
@@ -936,6 +953,9 @@ export async function handleFeedbackPost(
     area?: string;
     priority?: string;
     context?: FeedbackEntry["context"];
+    attachmentBase64?: string;
+    attachmentFilename?: string;
+    attachmentContentType?: string;
   };
   const email = await resolveHistoryEmail(request, env, body.email || body.entry?.email || "");
   const nested = body.entry || {};
@@ -955,7 +975,32 @@ export async function handleFeedbackPost(
     priority: nested.priority || body.priority,
     context: nested.context || body.context,
   };
-  const entries = await appendFeedback(env, email, entry);
+  let attachment: { filename: string; contentType: string; bytes: Uint8Array } | null = null;
+  if (body.attachmentBase64) {
+    try {
+      const decoded = attachmentFromBase64(
+        body.attachmentBase64,
+        body.attachmentFilename || "screenshot.png",
+        body.attachmentContentType || "application/octet-stream",
+      );
+      if (decoded) {
+        if (decoded.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+          return json(
+            {
+              error: `Attachment too large (max ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))}MB).`,
+            },
+            400,
+            cors,
+          );
+        }
+        attachment = decoded;
+      }
+    } catch (err) {
+      const status = (err as { status?: number }).status || 400;
+      return json({ error: (err as Error).message || "Invalid attachment." }, status, cors);
+    }
+  }
+  const entries = await appendFeedback(env, email, entry, attachment);
   console.info(
     `[feedback] ${entry.category} from ${email}: ${entry.message.slice(0, 80)}${entry.message.length > 80 ? "…" : ""}`,
   );
@@ -1560,15 +1605,320 @@ export async function handleDomainWrite(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  if (!firestoreAdminReady(env)) {
+  const mode = (env.PERSISTENCE_MODE || "").trim();
+  // QA #15: pure sql mode must not require Firestore admin. dual mode still
+  // needs it (outbox projects to Firestore); firestore mode obviously does.
+  if (mode !== "sql" && !firestoreAdminReady(env)) {
     return json({ error: "Firestore admin is not configured for domain writes." }, 503, cors);
   }
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
   const body = (await request.json()) as { method?: string; args?: unknown[] };
   const method = stringField(body.method);
   if (!method) return json({ error: "method is required." }, 400, cors);
-  const result = await applyDomainWrite(env, method, Array.isArray(body.args) ? body.args : []);
+  const args = Array.isArray(body.args) ? body.args : [];
+
+  // SQL-primary path (dual/sql mode): CRM writes go to Postgres inside an
+  // RLS-scoped transaction; Firestore is projected via sync_outbox.
+  const sqlResult = await trySqlDomainWrite(env, verified, method, args);
+  if (sqlResult.handled) {
+    return json({ result: sqlResult.result }, 200, cors);
+  }
+
+  const result = await applyDomainWrite(env, method, args);
   return json({ result }, 200, cors);
+}
+
+function canWriteUnscopedResource(
+  ctx: RequestContext | null,
+  operation: "create" | "update",
+): boolean {
+  if (!ctx) return false;
+  if (ctx.role === "admin") return true;
+  if (operation === "create") {
+    // canCreateAccount: admin, or manager with org, or SE with org+team.
+    return (ctx.role === "manager" && !!ctx.orgId) ||
+      (ctx.role === "se" && !!ctx.orgId && !!ctx.teamId);
+  }
+  // update: admin or manager (SEs can update accounts they can read, but
+  // without a SQL query to check the account's SE team we restrict to
+  // manager+ on the SQL path; SEs fall through to Firestore which has
+  // the onAccountSeTeam check).
+  return ctx.role === "manager";
+}
+
+/**
+ * Route CRM domain writes through the persistence port when PERSISTENCE_MODE
+ * is dual/sql. Returns { handled: false } for non-CRM methods, firestore
+ * mode, or when the caller has no SQL session yet (pre-migration user) — the
+ * caller falls through to the legacy Firestore path.
+ */
+async function trySqlDomainWrite(
+  env: Env,
+  verified: VerifiedUser | null,
+  method: string,
+  args: unknown[],
+): Promise<{ handled: boolean; result?: unknown }> {
+  const port = resolvePersistencePort(env);
+  if (!port || !postgresReady(env)) return { handled: false };
+  if (!verified?.uid) return { handled: false };
+
+  const session = await resolveSqlSession(verified.uid, env);
+  if (!session) {
+    console.warn(`domain-write: no SQL session for uid (pre-migration user) — Firestore fallback`);
+    return { handled: false };
+  }
+
+  const doc = (args[0] || {}) as Record<string, unknown>;
+
+  // M1 fix: for un-RLS'd tables (account, contact), resolve the Firestore-based
+  // RequestContext and check app-layer authorization before the SQL write.
+  // If the check fails, fall through to Firestore (which has security rules).
+  const UNSCOPED_METHODS = new Set([
+    "createAccount", "updateAccount", "createContact", "updateContact",
+  ]);
+  if (UNSCOPED_METHODS.has(method)) {
+    let ctx: RequestContext | null = null;
+    try {
+      ctx = await resolveRequestContext(verified, env);
+    } catch {
+      // If we can't resolve the context (authIndex missing), fall through to
+      // Firestore rather than blocking the write.
+      return { handled: false };
+    }
+    const op = method.startsWith("update") ? "update" : "create";
+    if (!canWriteUnscopedResource(ctx, op)) {
+      return { handled: false };
+    }
+  }
+
+  const handled = await withSessionContext(session, async (client) => {
+    switch (method) {
+      case "createAccount": {
+        const id = stringField(doc.id);
+        if (!id) return { handled: false as const };
+        await port.upsertAccount(client, {
+          publicId: id,
+          name: stringField(doc.name) || "Unknown",
+          domain: nullableString(doc.domain),
+          slug: nullableString(doc.slug),
+          industry: nullableString(doc.industry),
+          healthData: (doc.health as Record<string, unknown>) ?? null,
+          externalRef: nullableString(doc.externalRef),
+        });
+        return { handled: true as const, result: doc };
+      }
+      case "updateAccount": {
+        // Legacy signature: updateAccount(id, patch). args[0] is the id.
+        const id = stringField(args[0]);
+        if (!id) return { handled: false as const };
+        const patch = (args[1] || {}) as Record<string, unknown>;
+        const fields: Partial<Omit<AccountRow, "publicId">> = {};
+        if ("name" in patch) fields.name = stringField(patch.name) || "Unknown";
+        if ("domain" in patch) fields.domain = nullableString(patch.domain);
+        if ("slug" in patch) fields.slug = nullableString(patch.slug);
+        if ("industry" in patch) fields.industry = nullableString(patch.industry);
+        if ("health" in patch) fields.healthData = (patch.health as Record<string, unknown>) ?? null;
+        if ("externalRef" in patch) fields.externalRef = nullableString(patch.externalRef);
+        await port.patchAccount(client, id, fields);
+        return { handled: true as const, result: { id, ...patch } };
+      }
+      case "createContact": {
+        const id = stringField(doc.id);
+        const accountId = stringField(doc.accountId);
+        if (!id || !accountId) return { handled: false as const };
+        await port.upsertContact(client, {
+          publicId: id,
+          accountPublicId: accountId,
+          email: stringField(doc.email),
+          name: nullableString(doc.name),
+          title: nullableString(doc.title),
+          role: nullableString(doc.role),
+        });
+        return { handled: true as const, result: doc };
+      }
+      case "updateContact": {
+        // Legacy signature: updateContact(id, patch).
+        const id = stringField(args[0]);
+        if (!id) return { handled: false as const };
+        const patch = (args[1] || {}) as Record<string, unknown>;
+        await port.patchContact(client, id, {
+          ...(patch.accountId !== undefined ? { accountPublicId: stringField(patch.accountId) } : {}),
+          ...(patch.email !== undefined ? { email: stringField(patch.email) } : {}),
+          ...(patch.name !== undefined ? { name: nullableString(patch.name) } : {}),
+          ...(patch.title !== undefined ? { title: nullableString(patch.title) } : {}),
+          ...(patch.role !== undefined ? { role: nullableString(patch.role) } : {}),
+        });
+        return { handled: true as const, result: { id, ...patch } };
+      }
+      case "createDeal": {
+        const id = stringField(doc.id);
+        const accountId = stringField(doc.accountId);
+        const ownerId = stringField(doc.ownerId);
+        const orgUnitId = stringField(doc.teamId) || stringField(doc.orgId);
+        if (!id || !accountId || !ownerId || !orgUnitId) return { handled: false as const };
+        await port.upsertDeal(client, {
+          publicId: id,
+          accountPublicId: accountId,
+          ownerPublicId: ownerId,
+          orgUnitId,
+          name: stringField(doc.title) || stringField(doc.name) || "Untitled deal",
+          stage: stringField(doc.stage) || "prospecting",
+          status: nullableString(doc.status) ?? "active",
+          amount: typeof doc.amount === "number" ? doc.amount : null,
+          currencyCode: stringField(doc.currency) || "USD",
+        });
+        return { handled: true as const, result: doc };
+      }
+      case "updateDeal": {
+        // Legacy signature: updateDeal(id, patch).
+        const id = stringField(args[0]);
+        if (!id) return { handled: false as const };
+        const patch = (args[1] || {}) as Record<string, unknown>;
+        await port.patchDeal(client, id, {
+          ...(patch.accountId !== undefined ? { accountPublicId: stringField(patch.accountId) } : {}),
+          ...(patch.ownerId !== undefined ? { ownerPublicId: stringField(patch.ownerId) } : {}),
+          ...(patch.teamId !== undefined || patch.orgId !== undefined
+            ? { orgUnitId: stringField(patch.teamId) || stringField(patch.orgId) }
+            : {}),
+          ...(patch.title !== undefined || patch.name !== undefined
+            ? { name: stringField(patch.title) || stringField(patch.name) || "Untitled deal" }
+            : {}),
+          ...(patch.stage !== undefined ? { stage: stringField(patch.stage) } : {}),
+          ...(patch.status !== undefined ? { status: nullableString(patch.status) ?? "active" } : {}),
+          ...(patch.amount !== undefined ? { amount: typeof patch.amount === "number" ? patch.amount : null } : {}),
+          ...(patch.currency !== undefined ? { currencyCode: stringField(patch.currency) || "USD" } : {}),
+        });
+        return { handled: true as const, result: { id, ...patch } };
+      }
+      case "createDealContact": {
+        const dealId = stringField(doc.dealId);
+        const contactId = stringField(doc.contactId);
+        if (!dealId || !contactId) return { handled: false as const };
+        const id = dealContactId(dealId, contactId);
+        await port.upsertDealContact(client, {
+          publicId: id,
+          dealPublicId: dealId,
+          contactPublicId: contactId,
+          role: nullableString(doc.role),
+          isPrimary: doc.isPrimary === true,
+        });
+        return { handled: true as const, result: { ...doc, id } };
+      }
+      case "setPrimaryDealContact": {
+        const dealId = stringField(args[0]);
+        const contactId = stringField(args[1]);
+        if (!dealId || !contactId) return { handled: false as const };
+        await port.setPrimaryDealContact(client, dealId, contactId);
+        return { handled: true as const, result: { dealId, contactId, isPrimary: true } };
+      }
+      case "removeDealContact": {
+        const dealId = stringField(args[0]);
+        const contactId = stringField(args[1]);
+        if (!dealId || !contactId) return { handled: false as const };
+        await port.removeDealContact(client, dealId, contactId);
+        return { handled: true as const, result: null };
+      }
+      case "addLifecycleEvent": {
+        const mapped = await applyLifecycleEvent(client, doc as LifecycleEventInput);
+        return { handled: true as const, result: { mapped } };
+      }
+      case "createPrepBrief": {
+        const id = stringField(doc.id);
+        const accountId = stringField(doc.accountId);
+        const ownerId = stringField(doc.ownerId);
+        const orgUnitId = stringField(doc.teamId) || stringField(doc.orgId);
+        if (!id || !accountId || !ownerId || !orgUnitId) return { handled: false as const };
+        const brief = (doc.prep as Record<string, unknown>) ?? (doc.brief as Record<string, unknown>) ?? null;
+        const input = (doc.input as Record<string, unknown>) ?? null;
+        // QA #10: an unknown shape must not 500 the request — fall through to
+        // the legacy Firestore path so the write still lands.
+        try {
+          validateJsonbShape("pre_call.research_brief", brief);
+          validateJsonbShape("pre_call.input_snapshot", input);
+        } catch (shapeErr) {
+          console.warn("createPrepBrief: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
+          return { handled: false as const };
+        }
+        const activityPublicId = `act_${id}`;
+        await port.upsertActivity(client, {
+          publicId: activityPublicId,
+          idempotencyKey: `prep_${id}`,
+          dealPublicId: nullableString(doc.dealId),
+          accountPublicId: accountId,
+          ownerPublicId: ownerId,
+          orgUnitId,
+          activityType: "meeting",
+          subject: nullableString(doc.title) ?? "Prep",
+          occurredAt: toIso(doc.createdAt) ?? new Date().toISOString(),
+        });
+        await port.upsertPreCall(client, {
+          publicId: id,
+          idempotencyKey: `prep_${id}`,
+          activityPublicId,
+          researchBrief: brief,
+          inputSnapshot: input,
+        });
+        return { handled: true as const, result: doc };
+      }
+      case "upsertPostCallWithSummary": {
+        const postCall = doc;
+        const id = stringField(postCall.id);
+        const accountId = stringField(postCall.accountId);
+        const ownerId = stringField(postCall.ownerId);
+        const orgUnitId = stringField(postCall.teamId) || stringField(postCall.orgId);
+        if (!id || !accountId || !ownerId || !orgUnitId) return { handled: false as const };
+        const analysis = (postCall.analysis as Record<string, unknown>) ?? null;
+        const detail = (postCall.detail as Record<string, unknown>) ?? null;
+        let analysisShapeVersion: string;
+        let detailShapeVersion: string;
+        try {
+          analysisShapeVersion = validateJsonbShape("post_call.analysis", analysis);
+          detailShapeVersion = validateJsonbShape("post_call.detail", detail);
+        } catch (shapeErr) {
+          console.warn("upsertPostCallWithSummary: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
+          return { handled: false as const };
+        }
+        const activityPublicId = `act_${id}`;
+        await port.upsertActivity(client, {
+          publicId: activityPublicId,
+          idempotencyKey: `call_${stringField(postCall.callIdentityKey) || id}`,
+          dealPublicId: nullableString(postCall.dealId),
+          accountPublicId: accountId,
+          ownerPublicId: ownerId,
+          orgUnitId,
+          activityType: "call",
+          subject: nullableString(postCall.title) ?? "Call",
+          occurredAt: toIso(postCall.timestamp ?? postCall.createdAt) ?? new Date().toISOString(),
+        });
+        await port.upsertPostCall(client, {
+          publicId: id,
+          idempotencyKey: `call_${stringField(postCall.callIdentityKey) || id}`,
+          activityPublicId,
+          transcriptRef: nullableString(postCall.detailGcsUri) ?? nullableString(postCall.transcriptRef),
+          analysis,
+          detail,
+          pipelineState: "analysis_done",
+          analysisShapeVersion,
+          detailShapeVersion,
+        });
+        return { handled: true as const, result: postCall };
+      }
+      default:
+        return { handled: false as const };
+    }
+  }, env);
+  return handled;
+}
+
+function toIso(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(value).toISOString();
+  if (typeof value === "string" && value) return value;
+  return null;
+}
+
+function nullableString(value: unknown): string | null {
+  const s = stringField(value);
+  return s || null;
 }
 
 function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {
@@ -1611,6 +1961,20 @@ export async function handleDealsCreate(
     return json({ error: "Account not found." }, 404, cors);
   }
 
+  // NEW-3 fix: verify the caller is authorized to create deals for this
+  // account. The old code had no check — any authenticated user could
+  // create deals on any account (IDOR). Mirrors Firestore canCreateAccount:
+  // admin sees all, manager checks team/org, SE checks team.
+  try {
+    assertCanReadResource(ctx, {
+      ownerId: stringField(account.primarySeUserId) || undefined,
+      teamId: typeof account.teamId === "string" ? account.teamId : undefined,
+      orgId: typeof account.orgId === "string" ? account.orgId : undefined,
+    });
+  } catch {
+    return json({ error: "You are not authorized to create deals for this account." }, 403, cors);
+  }
+
   const actorId = ctx.userId;
   const ownerId = stringField(account.primarySeUserId) || actorId;
   const teamId = primaryTeamIdFromAccount(account, ownerId) || stringField(body.teamId);
@@ -1646,7 +2010,10 @@ export async function handleDealsCreate(
 }
 
 export const routes: Record<string, Record<string, RouteHandler>> = {
-  // Domain read routes (Firestore list endpoints — /api/accounts, /api/calls, /api/deals GET)
+  // Domain read routes (Firestore list endpoints — /api/accounts, /api/calls, /api/deals GET).
+  // The explicit /api/deals entry below shadows the spread's GET-only entry and
+  // re-includes GET so both methods are served (previously the POST-only entry
+  // shadowed the spread and GET /api/deals was unreachable).
   ...domainReadRoutes,
   "/api/zoom/status": { GET: handleZoomStatus },
   "/api/config": { GET: handleConfig },
@@ -1677,10 +2044,11 @@ export const routes: Record<string, Record<string, RouteHandler>> = {
   "/api/feedback": { GET: handleFeedbackGet, POST: handleFeedbackPost },
   "/api/recovery/upload": { POST: handleRecoveryUpload },
   "/api/recovery/status": { GET: handleRecoveryStatus },
-  "/api/deals": { POST: handleDealsCreate },
+  "/api/deals": { GET: handleDealsListGet, POST: handleDealsCreate },
   "/api/domain-write": { POST: handleDomainWrite },
   "/api/tickets": { POST: handleTicketsPost },
   "/api/disputes/notify": { POST: handleDisputeNotifyPost },
   "/api/search/rag": { POST: handleSearchRag },
   "/api/org/structure": { GET: handleOrgStructureGet, PATCH: handleOrgStructurePatch },
+  "/api/internal/outbox/project": { POST: handleOutboxProjectPost },
 };

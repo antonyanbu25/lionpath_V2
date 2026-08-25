@@ -28,17 +28,24 @@ const fitRow = {
     // stripSchemaDescriptions (gemini-schema.ts), so a described-only label reached the model as
     // an unconstrained string. GEMINI_RESPONSE_SCHEMA_KEYS keeps `enum`, so this one sticks.
     label: { type: "string", enum: FIT_LABELS },
-    thisCompany: { type: "string", description: "Max 8 words." },
-    industryNorm: { type: "string", description: "Max 8 words." },
+    thisCompany: { type: "string", description: "Max 8 words. 'unknown' when no research fact supports it — never invent." },
+    industryNorm: { type: "string", description: "Max 8 words. 'unknown' unless a fact or the BENCHMARK KB states it — never infer." },
     gap: {
       type: "string",
       enum: ["large", "partial", "parity"],
-      description: "large=red dot, partial=amber, parity=green",
+      description: "large=red dot, partial=amber, parity=green. parity when either cell is unknown.",
     },
     gapVerdict: {
       type: "string",
-      description: "One-word GAP verdict shown with dot (e.g. Behind, Partial, Aligned).",
+      description: "One-word GAP verdict shown with dot (e.g. Behind, Partial, Aligned). Aligned when either cell is unknown.",
     },
+    /**
+     * Optional source pointer for the thisCompany claim. When absent or pointing
+     * at a low-confidence source, validate-prep blanks thisCompany/industryNorm
+     * and forces gap:parity — so a fabricated fit claim cannot pass on prose
+     * alone. Optional (not required) so legacy briefs without it still load.
+     */
+    sourceLabel: { type: "string", description: "Optional: sources[].label backing thisCompany. Omit when unknown." },
   },
 } as const;
 
@@ -309,11 +316,11 @@ export const PREP_SCHEMA = {
     },
     fitSnapshot: {
       type: "array",
-      minItems: 4,
+      minItems: 1,
       maxItems: 4,
       items: fitRow,
       description:
-        "FIT section — exactly one row per label in the label enum, in that order. Max 8 words per cell.",
+        "FIT section — up to one row per label in the label enum, in that order. Max 8 words per cell. Omit a row entirely when no fact supports it rather than padding with invented content.",
     },
     facts: {
       type: "array",
@@ -453,6 +460,8 @@ export interface FitSnapshotRow {
   industryNorm: string;
   gap: "large" | "partial" | "parity";
   gapVerdict: string;
+  /** Optional source pointer backing thisCompany; validated by validate-prep. */
+  sourceLabel?: string;
 }
 
 export interface DiscoveryKitItem {
@@ -575,6 +584,8 @@ export interface RecentNewsItem {
   sourceLabel: string;
   /** Direct article URL when available (e.g. DDG fallback). */
   articleUrl?: string;
+  /** Publication date when known (e.g. "2026-03", "March 2026", ISO from RSS). */
+  publishedAt?: string;
 }
 
 export interface Prep {

@@ -23,7 +23,7 @@ export function renderDealTile(d, selected, index = 0) {
   return `<button type="button" class="nb-deal-card pc-deal-tile${selected ? " is-selected" : ""}" data-action="pick-deal" data-deal-id="${esc(d.id)}">
       <span class="nb-deal-card-icon" aria-hidden="true">◆</span>
       <div class="nb-deal-card-body">
-        <span class="nb-deal-card-title">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>
+        <span class="nb-deal-card-title" title="${esc(titleCaseDisplayName(d.title || "Deal"))}">${esc(titleCaseDisplayName(d.title || "Deal"))}</span>
         <span class="nb-deal-card-stage">${esc(meta)}</span>
       </div>
     </button>`;
@@ -135,7 +135,7 @@ export function renderAccountDealPreviewHtml(opts) {
             value="${esc(displayName)}" placeholder="Account name" autocomplete="off" aria-label="Account name" />
           <div class="pc-account-suggest pc-lookup-menu" role="listbox" hidden></div>
         </div>`
-    : `<span class="nb-account-card-name">${esc(displayName)}</span>`;
+    : `<span class="nb-account-card-name" title="${esc(displayName)}">${esc(displayName)}</span>`;
 
   return `<div class="nb-account-column">
     <span class="nb-label">Account</span>

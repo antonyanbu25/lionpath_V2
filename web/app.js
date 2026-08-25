@@ -42,7 +42,11 @@ import { renderAccountView } from "./account-view.js?v=2.1.43";
 import { renderDealView, isDealListCacheFresh } from "./deal-view.js?v=2.1.43";
 import { getCachedAccountListRows } from "./domain/session-list-cache.js";
 import { renderContactsView } from "./contacts-view.js?v=2.1.14";
-import { renderCallView, renderCallRecordLoadingPanel, resolveEffectiveHydrationPending } from "./call-view.js";
+import {
+  renderCallView,
+  renderCallRecordLoadingPanel,
+  resolveEffectiveHydrationPending,
+} from "./call-view.js?v=2.1.43";
 import { renderCallsListView } from "./calls-list-view.js";
 import { renderBriefsListView, normalizeRemoteBrief } from "./briefs-list-view.js";
 import { initGlobalSearch, invalidateSearchIndex, warmSearchIndex } from "./global-search.js?v=2.1.14";
@@ -178,12 +182,7 @@ const VIEW_TITLES = {
   signal: "Product signal",
 };
 
-const COMING_SOON_VIEWS = {
-  deals: { view: "deals", panelId: "deal-panel", navView: "deals", title: "My deals", hash: "deals" },
-  contacts: { view: "contacts", panelId: "contacts-panel", navView: "contacts", title: "My contacts", hash: "contacts" },
-  coaching: { view: "coaching", panelId: "coaching-panel", navView: "coaching", title: "My coaching", hash: "coaching" },
-  accounts: { view: "accounts", panelId: "account-panel", navView: "accounts", title: "Accounts", hash: "accounts" },
-};
+const COMING_SOON_VIEWS = {};
 
 let selectedAccountId = null;
 /** @type {string|null|undefined} undefined = auto-resolve deal on account load */

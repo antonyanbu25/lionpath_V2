@@ -359,19 +359,17 @@ export async function inferSummaryPhaseTimeline(
         cachedContentTokenCount?: number;
       };
     };
-    if (input.userId) {
-      recordLlmUsage(env, {
-        userId: input.userId,
-        callId: input.callId,
-        passName: "video/summary-timeline",
-        model,
-        promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
-        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
-        groundingQueries: 0,
-        latencyMs: Date.now() - started,
-      });
-    }
+    recordLlmUsage(env, {
+      userId: input.userId,
+      callId: input.callId,
+      passName: "video/summary-timeline",
+      model,
+      promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+      cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+      groundingQueries: 0,
+      latencyMs: Date.now() - started,
+    });
     const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
     let parsed: Record<string, unknown> | null = null;
     try {
@@ -493,20 +491,19 @@ export async function inferVideoFactsFromTranscript(
         cachedContentTokenCount?: number;
       };
     };
-    if (input.userId) {
-      recordLlmUsage(env, {
-        userId: input.userId,
-        callId: input.callId,
-        passName: "video/transcript-infer",
-        model,
-        promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
-        cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
-        groundingQueries: 0,
-        latencyMs: Date.now() - started,
-      });
-    }
-    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";    let parsed: Record<string, unknown> | null = null;
+    recordLlmUsage(env, {
+      userId: input.userId,
+      callId: input.callId,
+      passName: "video/transcript-infer",
+      model,
+      promptTokens: body.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+      cachedTokens: body.usageMetadata?.cachedContentTokenCount ?? 0,
+      groundingQueries: 0,
+      latencyMs: Date.now() - started,
+    });
+    const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    let parsed: Record<string, unknown> | null = null;
     try {
       parsed = JSON.parse(text) as Record<string, unknown>;
     } catch {

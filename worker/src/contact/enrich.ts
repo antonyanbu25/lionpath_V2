@@ -329,6 +329,7 @@ Output JSON only.`,
     research: false,
     effort: "low" as const,
     jsonSchema: ENRICH_SCHEMA as unknown as Record<string, unknown>,
+    passName: "contact/enrich",
   };
 
   let result = await provider.generate(enrichPrompt);
