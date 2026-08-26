@@ -25,6 +25,42 @@ import type {
 
 export class PostgresRepository implements PersistencePort {
   async upsertAccount(client: PgClient, row: AccountRow): Promise<number> {
+    // Slug is globally unique among active accounts (idx_account_slug_active,
+    // WHERE deleted_at IS NULL). A Firestore-primary caller mints its OWN
+    // public_id, but the same company may already exist in Postgres — e.g. from
+    // the initial migration — under a DIFFERENT public_id but the SAME slug.
+    // A plain ON CONFLICT (public_id) upsert would then raise a unique violation
+    // on the slug index and 500 the whole save (this was the staging blocker).
+    // When the incoming public_id is new AND its slug already belongs to another
+    // active account, reuse that row: update it in place and register the
+    // incoming public_id -> existing internal id so every downstream FK
+    // resolution (activity, post_call, scorecard, ...) lines up. The public_id
+    // guard prevents wrongly merging on a slug rename of an already-mapped row.
+    if (row.slug) {
+      const byPub = await client.query(`SELECT id FROM account WHERE public_id = $1`, [row.publicId]);
+      if (byPub.rows.length === 0) {
+        const bySlug = await client.query(
+          `SELECT id FROM account WHERE slug = $1 AND deleted_at IS NULL LIMIT 1`,
+          [row.slug],
+        );
+        const hit = bySlug.rows[0];
+        if (hit?.id != null) {
+          const id = Number(hit.id);
+          await client.query(
+            `UPDATE account SET name = $2, domain = $3, industry = $4,
+                                health_data = $5, external_ref = $6, updated_at = now()
+               WHERE id = $1`,
+            [
+              id, row.name, row.domain ?? null, row.industry ?? null,
+              row.healthData ? JSON.stringify(row.healthData) : null,
+              row.externalRef ?? null,
+            ],
+          );
+          await registerId(client, "account", row.publicId, id);
+          return id;
+        }
+      }
+    }
     return upsertReturningId(
       client,
       "account",
