@@ -87,7 +87,16 @@ const result = await esbuild.build({
   chunkNames: "chunks/[name]-[hash]",
   assetNames: "assets/[name]-[hash]",
   metafile: true,
-  sourcemap: true,
+  // Minify the production bundle unconditionally. The dist/* graph is loaded
+  // ONLY by prod hosts (index.html boot loader) — dev serves raw modules — so
+  // minifying here never affects local debugging. Cloud Run's Dockerfile.web
+  // runs `npm run build` WITHOUT PRODUCTION_BUILD=1, so this must NOT be gated
+  // on productionBuild or the deployed bundle would ship unminified.
+  minify: true,
+  // Linked source maps have no load-time cost (only fetched when devtools are
+  // open) but ship ~3.8 MB of JS source to a public host. Drop them from the
+  // prod artifact; dev debugging uses the unbundled original sources.
+  sourcemap: false,
   target: ["es2020"],
   legalComments: "none",
   logLevel: "info",
