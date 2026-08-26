@@ -91,7 +91,8 @@ import {
 } from "./data/persistence";
 import { applyLifecycleEvent, type LifecycleEventInput } from "./data/persistence/lifecycle-events";
 import { validateJsonbShape } from "./data/persistence/shapes";
-import type { AccountRow } from "./data/persistence/types";
+import type { AccountRow, PersistencePort } from "./data/persistence/types";
+import type { PgClient } from "./data/persistence/postgres-pool";
 import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import { domainReadRoutes, handleDealsListGet } from "./routes/domain-reads";
@@ -1850,6 +1851,19 @@ async function trySqlDomainWrite(
           console.warn("createPrepBrief: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
           return { handled: false as const };
         }
+        // Provision the account if it lives only in Firestore, so the pre_call
+        // FK resolves instead of 500-ing the prep dual-write (mirrors the
+        // history/post-call path — this is why pre_call was frozen).
+        {
+          const inputSnap = (input as Record<string, unknown>) ?? {};
+          await ensureAccountProvisioned(
+            client,
+            port,
+            accountId,
+            stringField(doc.accountName) || stringField(doc.company) || stringField(inputSnap.companyName) || stringField(doc.title),
+            nullableString(doc.accountDomain) ?? nullableString(inputSnap.companyDomain),
+          );
+        }
         const activityPublicId = `act_${id}`;
         await port.upsertActivity(client, {
           publicId: activityPublicId,
@@ -1888,6 +1902,18 @@ async function trySqlDomainWrite(
         } catch (shapeErr) {
           console.warn("upsertPostCallWithSummary: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
           return { handled: false as const };
+        }
+        // Provision the account if it lives only in Firestore, so the
+        // activity/post_call FK resolves instead of aborting the dual-write.
+        {
+          const hdr = (analysis?.callHeader as Record<string, unknown>) ?? {};
+          await ensureAccountProvisioned(
+            client,
+            port,
+            accountId,
+            stringField(postCall.accountName) || stringField(hdr.company) || stringField(hdr.account) || stringField(postCall.title),
+            nullableString(postCall.accountDomain) ?? nullableString(hdr.domain),
+          );
         }
         const activityPublicId = `act_${id}`;
         await port.upsertActivity(client, {
@@ -1930,6 +1956,37 @@ function toIso(value: unknown): string | null {
 function nullableString(value: unknown): string | null {
   const s = stringField(value);
   return s || null;
+}
+
+/**
+ * Ensure an account exists in Postgres before attaching child rows (activity,
+ * pre_call, post_call, …) to it. SEs routinely pick account ids that were only
+ * ever written to Firestore, so the FK resolution ("id_registry: no mapping
+ * for account/…") would otherwise throw and abort the whole dual-write. account
+ * is un-RLS'd and the slug-dedup fix keeps the upsert collision-safe; we only
+ * create when the id_registry mapping is genuinely absent, so a routine write
+ * never clobbers an existing account's fields.
+ */
+async function ensureAccountProvisioned(
+  client: PgClient,
+  port: PersistencePort,
+  accountId: string,
+  fallbackName: string,
+  domain?: string | null,
+): Promise<void> {
+  const mapped = await client.query(`SELECT resolve_internal_id('account', $1) AS id`, [accountId]);
+  if (mapped.rows[0]?.id != null) return;
+  const name = fallbackName || "Unknown";
+  await port.upsertAccount(client, {
+    publicId: accountId,
+    name,
+    domain: domain ?? null,
+    slug: null,
+    industry: null,
+    healthData: null,
+    externalRef: null,
+  });
+  console.info(`[dual-write] provisioned missing account ${accountId} ("${name}") in Postgres`);
 }
 
 /**
@@ -1987,31 +2044,16 @@ async function tryHistoryPostCallSqlWrite(
       return;
     }
 
-    // Auto-provision the account when it exists only in Firestore. SEs pick
-    // account ids that were never created through the domain-write path, so the
-    // activity/post_call FK would otherwise fail ("no mapping for account/…").
-    // account is un-RLS'd and the slug-dedup fix makes upsertAccount collision-
-    // safe; we only create when the mapping is genuinely absent so we never
-    // clobber an existing account's fields on a routine call save.
-    const mapped = await client.query(`SELECT resolve_internal_id('account', $1) AS id`, [accountId]);
-    if (mapped.rows[0]?.id == null) {
-      const header = (analysis.callHeader as Record<string, unknown>) ?? {};
-      const accountName =
-        stringField(rec.accountName) ||
-        stringField(header.company) ||
-        stringField(header.account) ||
-        "Unknown";
-      await port.upsertAccount(client, {
-        publicId: accountId,
-        name: accountName,
-        domain: nullableString(rec.accountDomain) ?? nullableString(header.domain),
-        slug: null,
-        industry: null,
-        healthData: null,
-        externalRef: null,
-      });
-      console.info(`[history] provisioned missing account ${accountId} ("${accountName}") in Postgres`);
-    }
+    // Auto-provision the account when it exists only in Firestore, so the
+    // activity/post_call FK resolves instead of aborting the dual-write.
+    const header = (analysis.callHeader as Record<string, unknown>) ?? {};
+    await ensureAccountProvisioned(
+      client,
+      port,
+      accountId,
+      stringField(rec.accountName) || stringField(header.company) || stringField(header.account),
+      nullableString(rec.accountDomain) ?? nullableString(header.domain),
+    );
 
     let analysisShapeVersion: string;
     let detailShapeVersion: string;
