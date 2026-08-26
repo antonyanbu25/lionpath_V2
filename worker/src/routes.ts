@@ -1363,6 +1363,17 @@ export async function handleHistoryPost(
     return json({ error: "entry with id and timestamp is required." }, 400, cors);
   }
   const entries = await saveHistoryEntry(env, email, body.entry);
+  // Option 2 — best-effort Postgres dual-write. The history blob write above is
+  // the primary, user-facing persistence path; a PG failure must NEVER change
+  // the 200 we return here, so the entire dual-write is wrapped + logged and
+  // never re-thrown. resolveHistoryEmailForWrite already verified the token;
+  // we re-resolve the user here only to obtain the owning identity.
+  try {
+    const verified = await requireUser(request, env);
+    await tryHistoryPostCallSqlWrite(env, verified, body.entry);
+  } catch (err) {
+    console.warn("[history] postgres dual-write skipped:", err instanceof Error ? err.message : err);
+  }
   return json({ email, entry: body.entry, count: entries.length }, 200, cors);
 }
 
@@ -1919,6 +1930,102 @@ function toIso(value: unknown): string | null {
 function nullableString(value: unknown): string | null {
   const s = stringField(value);
   return s || null;
+}
+
+/**
+ * Option 2 — best-effort Postgres dual-write for the post-call history save.
+ *
+ * The staging post-call flow persists every save via POST /api/history, which
+ * writes a JSON blob (KV/file/Firestore) and never touches /api/domain-write —
+ * so the relational CRM tables never saw post-call data. This shreds the same
+ * history entry into activity + post_call inside the writer's RLS session,
+ * reusing the exact machinery the domain-write "upsertPostCallWithSummary"
+ * case uses.
+ *
+ * Contract: this is layered ON TOP of the (already-succeeded) history blob
+ * write. It must NEVER throw to the caller and must NEVER change the response —
+ * every failure path returns quietly (with a loud console warn). Owner + org
+ * are resolved server-side from the authenticated writer's app_user row, since
+ * a history entry carries neither. Needs id + accountId on the entry, an
+ * existing PG account, and analysis that passes the shape contract; anything
+ * missing means we skip (Firestore blob remains the source of truth).
+ */
+async function tryHistoryPostCallSqlWrite(
+  env: Env,
+  verified: VerifiedUser | null,
+  entry: HistoryEntry | undefined,
+): Promise<void> {
+  const port = resolvePersistencePort(env);
+  if (!port || !postgresReady(env)) return;
+  if (!verified?.uid) return;
+
+  const rec = (entry ?? {}) as Record<string, unknown>;
+  const id = stringField(rec.id);
+  const accountId = stringField(rec.accountId);
+  const analysis = (rec.analysis as Record<string, unknown>) ?? null;
+  // Need a stable id, a PG-resolvable account, and an analysis payload to
+  // shred. Without all three there is nothing meaningful to land relationally.
+  if (!id || !accountId || !analysis) return;
+
+  const session = await resolveSqlSession(verified.uid, env);
+  if (!session) {
+    console.warn("[history] no SQL session for uid (pre-migration user) — Firestore-only history");
+    return;
+  }
+
+  await withSessionContext(session, async (client) => {
+    // Resolve the writer's owner public_id + org unit (text FK) — a history
+    // entry carries neither, but the authenticated writer IS the call owner.
+    const who = await client.query(
+      `SELECT public_id, org_unit_id FROM app_user WHERE id = $1`,
+      [session.userId],
+    );
+    const ownerId = stringField(who.rows[0]?.public_id);
+    const orgUnitId = stringField(who.rows[0]?.org_unit_id);
+    if (!ownerId || !orgUnitId) {
+      console.warn("[history] writer has no owner/org unit in SQL — skipping post_call dual-write");
+      return;
+    }
+
+    let analysisShapeVersion: string;
+    let detailShapeVersion: string;
+    try {
+      analysisShapeVersion = validateJsonbShape("post_call.analysis", analysis);
+      detailShapeVersion = validateJsonbShape("post_call.detail", null);
+    } catch (shapeErr) {
+      console.warn(
+        "[history] post_call analysis shape validation failed, Firestore-only:",
+        shapeErr instanceof Error ? shapeErr.message : shapeErr,
+      );
+      return;
+    }
+
+    const idempotencyKey = `call_${stringField(rec.callIdentityKey) || id}`;
+    const activityPublicId = `act_${id}`;
+    await port.upsertActivity(client, {
+      publicId: activityPublicId,
+      idempotencyKey,
+      dealPublicId: nullableString(rec.dealId),
+      accountPublicId: accountId,
+      ownerPublicId: ownerId,
+      orgUnitId,
+      activityType: "call",
+      subject: nullableString(rec.title) ?? "Call",
+      occurredAt: toIso(rec.timestamp ?? rec.createdAt) ?? new Date().toISOString(),
+    });
+    await port.upsertPostCall(client, {
+      publicId: id,
+      idempotencyKey,
+      activityPublicId,
+      transcriptRef: nullableString(rec.detailGcsUri) ?? nullableString(rec.transcriptRef),
+      analysis,
+      detail: null,
+      pipelineState: "analysis_done",
+      analysisShapeVersion,
+      detailShapeVersion,
+    });
+    console.info(`[history] dual-wrote post_call ${id} → Postgres (account ${accountId}, owner ${ownerId})`);
+  }, env);
 }
 
 function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {
