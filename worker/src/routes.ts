@@ -1987,6 +1987,32 @@ async function tryHistoryPostCallSqlWrite(
       return;
     }
 
+    // Auto-provision the account when it exists only in Firestore. SEs pick
+    // account ids that were never created through the domain-write path, so the
+    // activity/post_call FK would otherwise fail ("no mapping for account/…").
+    // account is un-RLS'd and the slug-dedup fix makes upsertAccount collision-
+    // safe; we only create when the mapping is genuinely absent so we never
+    // clobber an existing account's fields on a routine call save.
+    const mapped = await client.query(`SELECT resolve_internal_id('account', $1) AS id`, [accountId]);
+    if (mapped.rows[0]?.id == null) {
+      const header = (analysis.callHeader as Record<string, unknown>) ?? {};
+      const accountName =
+        stringField(rec.accountName) ||
+        stringField(header.company) ||
+        stringField(header.account) ||
+        "Unknown";
+      await port.upsertAccount(client, {
+        publicId: accountId,
+        name: accountName,
+        domain: nullableString(rec.accountDomain) ?? nullableString(header.domain),
+        slug: null,
+        industry: null,
+        healthData: null,
+        externalRef: null,
+      });
+      console.info(`[history] provisioned missing account ${accountId} ("${accountName}") in Postgres`);
+    }
+
     let analysisShapeVersion: string;
     let detailShapeVersion: string;
     try {
