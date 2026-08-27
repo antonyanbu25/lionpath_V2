@@ -1881,7 +1881,10 @@ async function trySqlDomainWrite(
           );
         }
         const activityPublicId = `act_${id}`;
-        const prepDealRef = await dealRefIfMapped(client, nullableString(doc.dealId));
+        const prepDealRef = await ensureDealRef(
+          client, port, nullableString(doc.dealId),
+          accountId, ownerId, orgUnitId, nullableString(doc.title) ?? "Untitled deal",
+        );
         await port.upsertActivity(client, {
           publicId: activityPublicId,
           idempotencyKey: `prep_${id}`,
@@ -1933,7 +1936,10 @@ async function trySqlDomainWrite(
           );
         }
         const activityPublicId = `act_${id}`;
-        const postDealRef = await dealRefIfMapped(client, nullableString(postCall.dealId));
+        const postDealRef = await ensureDealRef(
+          client, port, nullableString(postCall.dealId),
+          accountId, ownerId, orgUnitId, nullableString(postCall.title) ?? "Untitled deal",
+        );
         await port.upsertActivity(client, {
           publicId: activityPublicId,
           idempotencyKey: `call_${stringField(postCall.callIdentityKey) || id}`,
@@ -2008,24 +2014,65 @@ async function ensureAccountProvisioned(
 }
 
 /**
- * Best-effort deal reference for a dual-write activity. upsertActivity hard-
- * resolves dealPublicId through the id_registry and THROWS ("no mapping for
- * deal/…") when the deal exists only in Firestore — which would abort an
- * otherwise-landable activity/post_call/pre_call write. Deals are not required
- * for an activity (the column is nullable), so we degrade gracefully: keep the
- * ref only when it already maps in Postgres, otherwise null it and move on. The
- * Firestore blob still carries the original dealId for later backfill.
+ * Resolve — and, when necessary, AUTO-PROVISION — a dual-write activity's deal
+ * reference. upsertActivity hard-resolves dealPublicId through the id_registry
+ * and THROWS ("no mapping for deal/…") when the deal exists only in Firestore.
+ *
+ * Rather than dropping the link (which left activity.deal_id null and forced a
+ * manual backfill nobody would notice until they went looking), we mint a
+ * minimal placeholder deal — mirroring ensureAccountProvisioned — so the FK
+ * links immediately and automatically. A later real createDeal upserts the same
+ * public_id (ON CONFLICT public_id DO UPDATE) and overwrites name/stage/amount,
+ * so the placeholder never clobbers real data.
+ *
+ * Safety: the enclosing dual-write runs inside a single BEGIN…COMMIT
+ * (withSessionContext), so a failed INSERT would poison the whole transaction
+ * and take the pre_call/post_call row down with it. We isolate the provision in
+ * a SAVEPOINT: on success the deal links; on any failure (e.g. an RLS insert
+ * policy rejection) we roll back just this attempt and land the activity
+ * without the deal ref — the original dealId is still preserved in the row's
+ * input_snapshot/analysis JSON for later reconciliation.
+ *
+ * Returns the deal public_id to link, or null when there is no deal at all or
+ * provisioning was rejected.
  */
-async function dealRefIfMapped(
+async function ensureDealRef(
   client: PgClient,
+  port: PersistencePort,
   dealId: string | null | undefined,
+  accountPublicId: string,
+  ownerPublicId: string,
+  orgUnitId: string,
+  fallbackName: string,
 ): Promise<string | null> {
   const id = nullableString(dealId);
   if (!id) return null;
   const mapped = await client.query(`SELECT resolve_internal_id('deal', $1) AS id`, [id]);
   if (mapped.rows[0]?.id != null) return id;
-  console.info(`[dual-write] deal ${id} unmapped in Postgres — landing activity without deal ref`);
-  return null;
+
+  const name = fallbackName || "Untitled deal";
+  await client.query("SAVEPOINT dual_write_deal");
+  try {
+    await port.upsertDeal(client, {
+      publicId: id,
+      accountPublicId,
+      ownerPublicId,
+      orgUnitId,
+      name,
+      stage: "prospecting",
+      status: "active",
+    });
+    await client.query("RELEASE SAVEPOINT dual_write_deal");
+    console.info(`[dual-write] provisioned missing deal ${id} ("${name}") in Postgres`);
+    return id;
+  } catch (err) {
+    await client.query("ROLLBACK TO SAVEPOINT dual_write_deal").catch(() => undefined);
+    console.warn(
+      `[dual-write] could not provision deal ${id}, landing activity without deal ref:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
 }
 
 /**
@@ -2109,7 +2156,10 @@ async function tryHistoryPostCallSqlWrite(
 
     const idempotencyKey = `call_${stringField(rec.callIdentityKey) || id}`;
     const activityPublicId = `act_${id}`;
-    const dealRef = await dealRefIfMapped(client, nullableString(rec.dealId));
+    const dealRef = await ensureDealRef(
+      client, port, nullableString(rec.dealId),
+      accountId, ownerId, orgUnitId, nullableString(rec.title) ?? "Untitled deal",
+    );
     await port.upsertActivity(client, {
       publicId: activityPublicId,
       idempotencyKey,
@@ -2230,7 +2280,10 @@ async function tryPrepSynthesizeSqlWrite(
     const prepId = nullableString(input.callId) ?? `prep_synth_${session.userId}_${domainSlug}`;
     const idempotencyKey = `prep_${prepId}`;
     const activityPublicId = `act_${prepId}`;
-    const dealRef = await dealRefIfMapped(client, nullableString(input.dealId));
+    const dealRef = await ensureDealRef(
+      client, port, nullableString(input.dealId),
+      accountId, ownerId, orgUnitId, stringField(input.companyName) || companyDomain || "Untitled deal",
+    );
     await port.upsertActivity(client, {
       publicId: activityPublicId,
       idempotencyKey,
