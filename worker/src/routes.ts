@@ -1389,7 +1389,15 @@ export async function handleHistoryPost(
     const verified = await requireUser(request, env);
     await tryHistoryPostCallSqlWrite(env, verified, body.entry);
   } catch (err) {
-    console.warn("[history] postgres dual-write skipped:", err instanceof Error ? err.message : err);
+    // Best-effort contract: never change the 200, never rethrow. But a failure
+    // here means a post_call did NOT reach Postgres while the Firestore blob
+    // DID — a real dual-write divergence, not a benign skip. Log LOUD (error)
+    // with a stable tag + the entry id so it is greppable, alertable, and
+    // replayable, instead of the old whisper-level "skipped" warn.
+    console.error(
+      `[history][dual-write-DROPPED] post_call ${body.entry?.id ?? "?"} NOT persisted to Postgres (Firestore blob OK):`,
+      err instanceof Error ? err.stack || err.message : err,
+    );
   }
   return json({ email, entry: body.entry, count: entries.length }, 200, cors);
 }
@@ -2116,7 +2124,7 @@ async function tryHistoryPostCallSqlWrite(
     return;
   }
 
-  await withSessionContext(session, async (client) => {
+  const outcome = await withSessionContext(session, async (client) => {
     // Resolve the writer's owner public_id + org unit (text FK) — a history
     // entry carries neither, but the authenticated writer IS the call owner.
     const who = await client.query(
@@ -2127,7 +2135,7 @@ async function tryHistoryPostCallSqlWrite(
     const orgUnitId = stringField(who.rows[0]?.org_unit_id);
     if (!ownerId || !orgUnitId) {
       console.warn("[history] writer has no owner/org unit in SQL — skipping post_call dual-write");
-      return;
+      return null;
     }
 
     // Auto-provision the account when it exists only in Firestore, so the
@@ -2151,7 +2159,7 @@ async function tryHistoryPostCallSqlWrite(
         "[history] post_call analysis shape validation failed, Firestore-only:",
         shapeErr instanceof Error ? shapeErr.message : shapeErr,
       );
-      return;
+      return null;
     }
 
     const idempotencyKey = `call_${stringField(rec.callIdentityKey) || id}`;
@@ -2182,8 +2190,16 @@ async function tryHistoryPostCallSqlWrite(
       analysisShapeVersion,
       detailShapeVersion,
     });
-    console.info(`[history] dual-wrote post_call ${id} → Postgres (account ${accountId}, owner ${ownerId})`);
+    // Return a summary; the success log is emitted by the caller AFTER COMMIT
+    // (withSessionContext resolves) so it can never claim a write that a later
+    // ROLLBACK/connection failure actually discarded.
+    return { id, accountId, ownerId };
   }, env);
+  if (outcome) {
+    console.info(
+      `[history] dual-wrote post_call ${outcome.id} → Postgres (account ${outcome.accountId}, owner ${outcome.ownerId})`,
+    );
+  }
 }
 
 /**
@@ -2220,7 +2236,7 @@ async function tryPrepSynthesizeSqlWrite(
     return;
   }
 
-  await withSessionContext(session, async (client) => {
+  const outcome = await withSessionContext(session, async (client) => {
     // A synthesize call carries no owner/org, but the authenticated writer IS
     // the prep owner — resolve their public_id + org unit from app_user.
     const who = await client.query(
@@ -2231,7 +2247,7 @@ async function tryPrepSynthesizeSqlWrite(
     const orgUnitId = stringField(who.rows[0]?.org_unit_id);
     if (!ownerId || !orgUnitId) {
       console.warn("[prep] writer has no owner/org unit in SQL — skipping pre_call dual-write");
-      return;
+      return null;
     }
 
     // Explicit account when the client supplied one, else a deterministic
@@ -2270,7 +2286,7 @@ async function tryPrepSynthesizeSqlWrite(
         "[prep] pre_call shape validation failed, Firestore-only:",
         shapeErr instanceof Error ? shapeErr.message : shapeErr,
       );
-      return;
+      return null;
     }
     void briefShapeVersion;
     void snapshotShapeVersion;
@@ -2302,8 +2318,14 @@ async function tryPrepSynthesizeSqlWrite(
       researchBrief: prep,
       inputSnapshot: snapshot,
     });
-    console.info(`[prep] dual-wrote pre_call ${prepId} → Postgres (account ${accountId}, owner ${ownerId})`);
+    // Success log emitted by the caller AFTER COMMIT (see tryHistoryPostCallSqlWrite).
+    return { prepId, accountId, ownerId };
   }, env);
+  if (outcome) {
+    console.info(
+      `[prep] dual-wrote pre_call ${outcome.prepId} → Postgres (account ${outcome.accountId}, owner ${outcome.ownerId})`,
+    );
+  }
 }
 
 function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {

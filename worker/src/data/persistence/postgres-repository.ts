@@ -112,6 +112,25 @@ export class PostgresRepository implements PersistencePort {
 
   async upsertContact(client: PgClient, row: ContactRow): Promise<number> {
     const accountId = await resolveInternalId(client, "account", row.accountPublicId);
+    const email = row.email.toLowerCase();
+    const existing = await client.query(
+      `SELECT id, public_id FROM contact
+       WHERE account_id = $1 AND email = $2 AND deleted_at IS NULL
+       LIMIT 1`,
+      [accountId, email],
+    );
+    if (existing.rows[0]) {
+      const id = Number((existing.rows[0] as { id: number | string }).id);
+      const oldPublicId = (existing.rows[0] as { public_id: string }).public_id;
+      await registerId(client, "contact", oldPublicId, id);
+      await client.query(
+        `UPDATE contact SET name = $2, title = $3, role = $4, updated_at = now()
+         WHERE id = $1`,
+        [id, row.name ?? null, row.title ?? null, row.role ?? null],
+      );
+      await registerId(client, "contact", row.publicId, id);
+      return id;
+    }
     return upsertReturningId(
       client,
       "contact",
@@ -122,7 +141,7 @@ export class PostgresRepository implements PersistencePort {
          account_id = EXCLUDED.account_id, email = EXCLUDED.email, name = EXCLUDED.name,
          title = EXCLUDED.title, role = EXCLUDED.role, updated_at = now()
        RETURNING id`,
-      [row.publicId, accountId, row.email.toLowerCase(), row.name ?? null, row.title ?? null, row.role ?? null],
+      [row.publicId, accountId, email, row.name ?? null, row.title ?? null, row.role ?? null],
       row.publicId,
     );
   }
@@ -287,12 +306,38 @@ export class PostgresRepository implements PersistencePort {
       client,
       "activity",
       "activity",
-      `INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
-         deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
-         occurred_at = EXCLUDED.occurred_at, updated_at = now()
-       RETURNING id`,
+      `WITH existing AS (
+         SELECT id
+         FROM activity
+         WHERE public_id = $1
+            OR ($2::text IS NOT NULL AND idempotency_key = $2)
+         ORDER BY CASE WHEN public_id = $1 THEN 0 ELSE 1 END
+         LIMIT 1
+         FOR UPDATE
+       ),
+       updated AS (
+         UPDATE activity
+         SET deal_id = $3, subject = $8, occurred_at = $9, updated_at = now()
+         WHERE id = (SELECT id FROM existing)
+         RETURNING id
+       ),
+       inserted AS (
+         INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, now()
+         WHERE NOT EXISTS (SELECT 1 FROM existing)
+         ON CONFLICT (public_id) DO UPDATE SET
+           deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
+           occurred_at = EXCLUDED.occurred_at, updated_at = now()
+         RETURNING id
+       )
+       SELECT id FROM updated
+       UNION ALL
+       SELECT id FROM inserted
+       UNION ALL
+       SELECT id FROM activity WHERE public_id = $1
+       UNION ALL
+       SELECT id FROM activity WHERE idempotency_key = $2 AND $2 IS NOT NULL
+       LIMIT 1`,
       [
         row.publicId, row.idempotencyKey ?? null, dealId, accountId, ownerId,
         row.orgUnitId, row.activityType, row.subject ?? null, row.occurredAt,
@@ -309,7 +354,7 @@ export class PostgresRepository implements PersistencePort {
       "pre_call",
       `INSERT INTO pre_call (public_id, idempotency_key, activity_id, research_brief, input_snapshot, generated_at)
        VALUES ($1, $2, $3, $4, $5, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          research_brief = EXCLUDED.research_brief, input_snapshot = EXCLUDED.input_snapshot
        RETURNING id`,
       [
@@ -329,7 +374,7 @@ export class PostgresRepository implements PersistencePort {
       "post_call",
       `INSERT INTO post_call (public_id, idempotency_key, activity_id, transcript_ref, analysis, detail, pipeline_state, analysis_shape_version, detail_shape_version, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          transcript_ref = EXCLUDED.transcript_ref, analysis = EXCLUDED.analysis,
          detail = EXCLUDED.detail, pipeline_state = EXCLUDED.pipeline_state,
          analysis_shape_version = EXCLUDED.analysis_shape_version,

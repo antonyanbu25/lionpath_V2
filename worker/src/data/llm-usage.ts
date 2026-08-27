@@ -13,7 +13,7 @@ import { firestoreAdminReady, getDb, type FirestoreEnv } from "./firestore-admin
 import { checkPass7UsageAnomaly } from "./usage-anomaly";
 import type { CostControlEnv } from "../cost-control-config";
 import { estimateTokenCostUsd } from "../cost-rates";
-import { insertAiRun } from "./persistence/ai-run";
+import { aiRunRepository } from "./persistence/ai-run";
 import type { PostgresEnv } from "./persistence/postgres-pool";
 import { postgresReady } from "./persistence/postgres-pool";
 
@@ -58,7 +58,7 @@ export function recordLlmUsage(
   });
 
   if (postgresReady(env)) {
-    void insertAiRun(env, {
+    void aiRunRepository.insert(env, {
       callId: record.callId ?? null,
       passName: record.passName,
       userId: userId ?? null,

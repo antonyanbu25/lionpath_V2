@@ -87,6 +87,29 @@ export async function resolveSqlSession(
   return session;
 }
 
+// Transient connection failures (stale cross-region socket, pool connect
+// timeout) surface with these signatures. Acquiring a client has no side
+// effects, so retrying pool.connect() is always safe — it can never
+// double-apply a write. We do NOT retry once fn() has begun.
+const TRANSIENT_CONNECT_RE =
+  /timeout|terminated|reset|ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|EHOSTUNREACH/i;
+
+async function connectWithRetry(pool: PgPool, attempts = 3): Promise<PgClient> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await pool.connect();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i === attempts - 1 || !TRANSIENT_CONNECT_RE.test(msg)) throw err;
+      console.warn(`[pg] transient connect failure (attempt ${i + 1}/${attempts}): ${msg} — retrying`);
+      await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Run `fn` inside a transaction with RLS session vars applied.
  * The client is released back to the pool afterwards; never hold it.
@@ -98,7 +121,7 @@ export async function withSessionContext<T>(
   poolOverride?: PgPool,
 ): Promise<T> {
   const pool = poolOverride ?? (await getPool(env));
-  const client = await pool.connect();
+  const client = await connectWithRetry(pool);
   try {
     await client.query("BEGIN");
     // set_config(name, value, is_local=true) — parameterized; never interpolate
