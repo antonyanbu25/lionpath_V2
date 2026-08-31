@@ -25,6 +25,42 @@ import type {
 
 export class PostgresRepository implements PersistencePort {
   async upsertAccount(client: PgClient, row: AccountRow): Promise<number> {
+    // Slug is globally unique among active accounts (idx_account_slug_active,
+    // WHERE deleted_at IS NULL). A Firestore-primary caller mints its OWN
+    // public_id, but the same company may already exist in Postgres — e.g. from
+    // the initial migration — under a DIFFERENT public_id but the SAME slug.
+    // A plain ON CONFLICT (public_id) upsert would then raise a unique violation
+    // on the slug index and 500 the whole save (this was the staging blocker).
+    // When the incoming public_id is new AND its slug already belongs to another
+    // active account, reuse that row: update it in place and register the
+    // incoming public_id -> existing internal id so every downstream FK
+    // resolution (activity, post_call, scorecard, ...) lines up. The public_id
+    // guard prevents wrongly merging on a slug rename of an already-mapped row.
+    if (row.slug) {
+      const byPub = await client.query(`SELECT id FROM account WHERE public_id = $1`, [row.publicId]);
+      if (byPub.rows.length === 0) {
+        const bySlug = await client.query(
+          `SELECT id FROM account WHERE slug = $1 AND deleted_at IS NULL LIMIT 1`,
+          [row.slug],
+        );
+        const hit = bySlug.rows[0];
+        if (hit?.id != null) {
+          const id = Number(hit.id);
+          await client.query(
+            `UPDATE account SET name = $2, domain = $3, industry = $4,
+                                health_data = $5, external_ref = $6, updated_at = now()
+               WHERE id = $1`,
+            [
+              id, row.name, row.domain ?? null, row.industry ?? null,
+              row.healthData ? JSON.stringify(row.healthData) : null,
+              row.externalRef ?? null,
+            ],
+          );
+          await registerId(client, "account", row.publicId, id);
+          return id;
+        }
+      }
+    }
     return upsertReturningId(
       client,
       "account",
@@ -253,7 +289,7 @@ export class PostgresRepository implements PersistencePort {
       "activity",
       `INSERT INTO activity (public_id, idempotency_key, deal_id, account_id, owner_user_id, org_unit_id, activity_type, subject, occurred_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          deal_id = EXCLUDED.deal_id, subject = EXCLUDED.subject,
          occurred_at = EXCLUDED.occurred_at, updated_at = now()
        RETURNING id`,
@@ -273,7 +309,7 @@ export class PostgresRepository implements PersistencePort {
       "pre_call",
       `INSERT INTO pre_call (public_id, idempotency_key, activity_id, research_brief, input_snapshot, generated_at)
        VALUES ($1, $2, $3, $4, $5, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          research_brief = EXCLUDED.research_brief, input_snapshot = EXCLUDED.input_snapshot
        RETURNING id`,
       [
@@ -293,7 +329,7 @@ export class PostgresRepository implements PersistencePort {
       "post_call",
       `INSERT INTO post_call (public_id, idempotency_key, activity_id, transcript_ref, analysis, detail, pipeline_state, analysis_shape_version, detail_shape_version, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-       ON CONFLICT (idempotency_key) DO UPDATE SET
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET
          transcript_ref = EXCLUDED.transcript_ref, analysis = EXCLUDED.analysis,
          detail = EXCLUDED.detail, pipeline_state = EXCLUDED.pipeline_state,
          analysis_shape_version = EXCLUDED.analysis_shape_version,
@@ -332,6 +368,16 @@ export class PostgresRepository implements PersistencePort {
       row.publicId,
     );
     for (const line of row.lines) {
+      // Auto-provision the referenced rubric_parameter so the scorecard_line FK
+      // always resolves. AI dimension names are free-form (not a fixed rubric),
+      // so we mint a parameter on first sighting — mirroring the account/deal
+      // auto-provision pattern. Idempotent; never clobbers an existing param.
+      await client.query(
+        `INSERT INTO rubric_parameter (id, rubric_id, name, weight, is_locked)
+         VALUES ($1, $2, $3, $4, false)
+         ON CONFLICT (id) DO NOTHING`,
+        [line.rubricParameterId, row.rubricId, line.paramNameSnapshot, line.paramWeightSnapshot],
+      );
       await client.query(
         `INSERT INTO scorecard_line (scorecard_id, rubric_parameter_id, rubric_theme_id, score, param_name_snapshot, param_weight_snapshot, evidence)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
