@@ -99,6 +99,49 @@ function isWriteMethod(prop) {
   );
 }
 
+function isWorkerPreferredLookup(prop) {
+  const name = String(prop || "");
+  return (
+    name === "findAccountBySlug" ||
+    name === "findAccountsByDomain" ||
+    name === "findAccountsByName" ||
+    name === "findContactsByEmail" ||
+    name === "findContactByAccountEmail" ||
+    name === "listContactsByAccount" ||
+    name === "findDealContact" ||
+    name === "listContactsByDeal" ||
+    name === "getDeal" ||
+    name === "getDealDetail" ||
+    name === "listDealsByAccount" ||
+    name === "findActiveDeal" ||
+    name === "findWonNbDealInGrace" ||
+    name === "getLifecycle" ||
+    name === "findActiveLifecycle" ||
+    name === "findActiveLifecycleByDeal" ||
+    name === "findLifecycleByDealAndOwner" ||
+    name === "listActiveLifecyclesForAccount" ||
+    name === "listLifecycleEvents" ||
+    name === "listPrepBriefsByLifecycle" ||
+    name === "listPostCallsByLifecycle" ||
+    name === "listPostCallsByAccount" ||
+    name === "findPostCallByIdentity" ||
+    name === "listTasksByLifecycle"
+  );
+}
+
+function fallbackForLookup(prop) {
+  const name = String(prop || "");
+  if (
+    name.startsWith("list") ||
+    name === "findAccountsByDomain" ||
+    name === "findAccountsByName" ||
+    name === "findContactsByEmail"
+  ) {
+    return [];
+  }
+  return null;
+}
+
 function createApiFallbackStore(fb) {
   return createApiStore({
     workerBaseUrl: WORKER_BASE_URL,
@@ -162,12 +205,32 @@ function createSplitStore(readStore, writeStore, readMode, writeMode) {
       if (prop === "mode") return readMode;
       if (prop === "readMode") return readMode;
       if (prop === "writeMode") return writeMode;
-      const source = isWriteMethod(prop) && prop in writeStore ? writeStore : target;
+      const useWorkerLookup = writeMode === "api" && isWorkerPreferredLookup(prop) && prop in writeStore;
+      const source = (isWriteMethod(prop) || useWorkerLookup) && prop in writeStore ? writeStore : target;
       const value = Reflect.get(source, prop, source === target ? receiver : source);
-      return typeof value === "function" ? value.bind(source) : value;
+      if (typeof value !== "function") return value;
+      if (!useWorkerLookup || source === target) return value.bind(source);
+      const readValue = Reflect.get(target, prop, receiver);
+      return async (...args) => {
+        try {
+          return await value.apply(source, args);
+        } catch (apiErr) {
+          if (typeof readValue !== "function") throw apiErr;
+          try {
+            return await readValue.apply(target, args);
+          } catch (readErr) {
+            if (isFirebasePermissionError(readErr)) {
+              console.warn(`[domain] ${String(prop)} permission denied after worker lookup failed; continuing`);
+              return fallbackForLookup(prop);
+            }
+            throw readErr;
+          }
+        }
+      };
     },
     set(target, prop, value, receiver) {
-      const source = isWriteMethod(prop) && prop in writeStore ? writeStore : target;
+      const useWorkerLookup = writeMode === "api" && isWorkerPreferredLookup(prop) && prop in writeStore;
+      const source = (isWriteMethod(prop) || useWorkerLookup) && prop in writeStore ? writeStore : target;
       return Reflect.set(source, prop, value, source === target ? receiver : source);
     },
     has(target, prop) {
