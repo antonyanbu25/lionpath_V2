@@ -43,5 +43,6 @@ if (!ok) {
 }
 
 console.log("\nOK — env vars parsed. Next:");
+console.log("  node worker/scripts/verify-sql-network.mjs   # network + auth gate (run first)");
 console.log("  node worker/scripts/apply-janus-schema.mjs");
 console.log("  node janus/tests/grants_smoke.test.mjs");

@@ -65,6 +65,7 @@ Branch **`feat/sql-foundation`** adds **PostgreSQL on Cloud SQL** as the future 
 | QA fix plan | [docs/SQL_QA_FIX_PLAN.md](./docs/SQL_QA_FIX_PLAN.md) |
 | QA validation matrix | [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md) |
 | Cutover runbook | [docs/CUTOVER_SQL.md](./docs/CUTOVER_SQL.md) |
+| **Agent SQL verification** | [docs/SQL_AGENT_VERIFICATION.md](./docs/SQL_AGENT_VERIFICATION.md) |
 | Security (QA public IP) | [docs/CLOUDSQL_SECURITY.md](./docs/CLOUDSQL_SECURITY.md) |
 | ADR | [docs/adr/008-firestore-to-sql-decision.md](./docs/adr/008-firestore-to-sql-decision.md) |
 
@@ -81,12 +82,15 @@ Branch **`feat/sql-foundation`** adds **PostgreSQL on Cloud SQL** as the future 
    PERSISTENCE_MODE=firestore   # use dual after smoke tests pass
    ```
 
-3. Verify and apply schema:
+3. Verify network, then apply schema:
 
    ```bash
    node worker/scripts/verify-db-env.mjs
+   node worker/scripts/verify-sql-network.mjs   # TCP + SELECT 1 — must pass before SQL claims
    node worker/scripts/apply-janus-schema.mjs
    ```
+
+   See [SQL Agent Verification](./docs/SQL_AGENT_VERIFICATION.md) if the network gate fails (`ETIMEDOUT`).
 
 4. **Full QA gate** (must pass before dual mode):
 
@@ -727,6 +731,7 @@ git push -u origin feat/my-change
 | [docs/SQL_QA_VALIDATION.md](./docs/SQL_QA_VALIDATION.md) | QA claim validation matrix (16/16 confirmed) |
 | [docs/CUTOVER_SQL.md](./docs/CUTOVER_SQL.md) | Firestore → SQL cutover stages |
 | [docs/CLOUDSQL_SECURITY.md](./docs/CLOUDSQL_SECURITY.md) | Cloud SQL QA security posture |
+| [docs/SQL_AGENT_VERIFICATION.md](./docs/SQL_AGENT_VERIFICATION.md) | Agent runbook: network gate, SQL write proof, silent Firestore fallback |
 | [docs/PRECALL_GROUNDING.md](./docs/PRECALL_GROUNDING.md) | Pre-call grounding goal/status + Tier 3 backlog |
 | [docs/PRECALL_GROUNDING_BUILD.md](./docs/PRECALL_GROUNDING_BUILD.md) | Grounding Tier 1/2 per-item build detail |
 | [docs/FIREBASE_SETUP.md](./docs/FIREBASE_SETUP.md) | Firebase / production-like local |
