@@ -63,7 +63,12 @@ function resolveReadMode(fb) {
 
 /** @returns {"local"|"firestore"|"api"} */
 export function resolveWriteMode(fb) {
-  if (!useFirestore(fb)) return "local";
+  if (!useFirestore(fb)) {
+    // Firebase configured but db not yet initialized (or direct browser reads are unavailable):
+    // still send writes through the worker so dual-write reaches PostgreSQL.
+    if (!!firebaseConfig.projectId) return "api";
+    return "local";
+  }
   // Localhost: use browser Firestore SDK directly (worker Admin often lacks GCP creds).
   if (isLocalDevHost()) return "firestore";
   return "api";
