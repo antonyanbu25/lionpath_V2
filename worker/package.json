@@ -38,7 +38,8 @@
     "test:janus-smoke": "node ../janus/tests/grants_smoke.test.mjs && node ../janus/tests/rls_fails_closed.test.mjs",
     "test:view-rls": "node ../janus/tests/view_rls.test.mjs",
     "test:dual-soak": "tsx scripts/dual-write-soak.ts",
-    "test:sql-gates": "node ../janus/tests/grants_smoke.test.mjs && node ../janus/tests/rls_fails_closed.test.mjs && node ../janus/tests/view_rls.test.mjs && node ../janus/tests/ai_run_insert.test.mjs && tsx scripts/dual-write-soak.ts && tsc --noEmit"
+    "test:sql-gates": "node ../janus/tests/grants_smoke.test.mjs && node ../janus/tests/rls_fails_closed.test.mjs && node ../janus/tests/view_rls.test.mjs && node ../janus/tests/ai_run_insert.test.mjs && tsx scripts/dual-write-soak.ts && tsc --noEmit",
+    "test:sql-network": "node scripts/verify-sql-network.mjs"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",

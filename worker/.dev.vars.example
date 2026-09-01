@@ -21,4 +21,8 @@ GEMINI_API_KEY=your-gemini-api-key-from-aistudio
 # Edit this file in the editor; do NOT paste these lines into zsh ( ! triggers history expansion ).
 # DATABASE_URL_MIGRATIONS='postgresql://postgres:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
 # DATABASE_URL='postgresql://janus_app:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
-# PERSISTENCE_MODE=firestore
+# PERSISTENCE_MODE=firestore   # use dual after verify-sql-network + test:sql-gates pass
+#
+# Agent/CI: prove network before claiming SQL works:
+#   node worker/scripts/verify-sql-network.mjs
+# See docs/SQL_AGENT_VERIFICATION.md
