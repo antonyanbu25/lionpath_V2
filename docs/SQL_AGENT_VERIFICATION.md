@@ -29,6 +29,7 @@ Agents often conclude "SQL write succeeded" when:
 | **2. Grants** | `node janus/tests/grants_smoke.test.mjs` | `janus_app` can read/write allowed tables | Permission or connection failure |
 | **3. RLS fails-closed** | `node janus/tests/rls_fails_closed.test.mjs` | Missing session vars deny access | RLS misconfigured |
 | **4. Write proof** | `cd worker && npx tsx scripts/dual-write-soak.ts` | Real `INSERT` into `account` + `sync_outbox` | Write path broken |
+| **4b. Table audit** | `node worker/scripts/audit-sql-tables.mjs` | Row counts per table; `sync_outbox` / recent `ai_run` | See which tables are populated vs empty |
 | **5. Full gate** | `cd worker && npm run test:sql-gates` | All of the above + view RLS + `ai_run` insert + `tsc` | Any step failed |
 
 **One-liner (after `.dev.vars` is set):**
@@ -36,6 +37,7 @@ Agents often conclude "SQL write succeeded" when:
 ```bash
 node worker/scripts/verify-db-env.mjs && \
 node worker/scripts/verify-sql-network.mjs && \
+node worker/scripts/audit-sql-tables.mjs && \
 cd worker && npm run test:sql-gates
 ```
 
