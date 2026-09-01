@@ -20,11 +20,15 @@ export interface Task {
   completedAt?: number;
 }
 
-export type TasksEnv = HistoryEnv;
+export type TasksEnv = HistoryEnv & {
+  /** VPS / Node: injected by node-server when HISTORY_BACKEND_MODE or PERSISTENCE_READ_MODE is pg. */
+  TASKS_BACKEND?: HistoryBackend;
+};
 
 const MAX_TASKS = 200;
 
 function resolveBackend(env: TasksEnv): HistoryBackend | null {
+  if (env.TASKS_BACKEND) return env.TASKS_BACKEND;
   if (env.HISTORY_BACKEND) return env.HISTORY_BACKEND;
   if (env.HISTORY_KV) return env.HISTORY_KV;
   return null;

@@ -27,6 +27,12 @@ import {
   projectAccountListRow,
 } from "../data/repositories/accounts";
 import { getDealDetail, listDealsForScope } from "../data/repositories/deals";
+import {
+  createPostgresReadRepository,
+  getPool,
+  persistenceReadReady,
+  resolveSqlSession,
+} from "../data/persistence";
 
 type RouteHandler = (
   request: Request,
@@ -58,6 +64,14 @@ async function authContext(request: Request, env: Env) {
   return ctx;
 }
 
+async function pgReadRepositoryFor(ctx: Awaited<ReturnType<typeof authContext>>, env: Env) {
+  if (!persistenceReadReady(env)) return null;
+  const session = await resolveSqlSession(ctx.authUid, env);
+  if (!session) return null;
+  const pool = await getPool(env);
+  return createPostgresReadRepository(pool, session, env);
+}
+
 function resourceFromRow(row: Record<string, unknown>) {
   return {
     ownerId: typeof row.ownerId === "string" ? row.ownerId : undefined,
@@ -76,7 +90,10 @@ export async function handleCallsListGet(
   const scope = parseScopeParam(url.searchParams.get("scope"));
   const limit = parseLimitParam(url.searchParams.get("limit"), 200);
   const listScope = resolveListScope(ctx, scope);
-  const rows = await listCallSummariesForScope(listScope, limit, fsEnv(env));
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const rows = repo
+    ? await repo.listCallSummariesForScope(listScope, limit)
+    : await listCallSummariesForScope(listScope, limit, fsEnv(env));
   const filtered = rows.filter((row) => canReadResource(ctx, resourceFromRow(row)));
   return json({ scope, limit, calls: filtered }, 200, cors);
 }
@@ -89,7 +106,8 @@ export async function handleCallGetById(
   id: string,
 ): Promise<Response> {
   const ctx = await authContext(request, env);
-  const detail = await getPostCallDetail(id, fsEnv(env));
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const detail = repo ? await repo.getPostCallDetail(id) : await getPostCallDetail(id, fsEnv(env));
   if (!detail) return json({ error: "Call not found." }, 404, cors);
   assertCanReadResource(ctx, resourceFromRow(detail.postCall));
   return json(detail, 200, cors);
@@ -123,7 +141,10 @@ export async function handleCallPayloadGet(
   id: string,
 ): Promise<Response> {
   const ctx = await authContext(request, env);
-  const postCall = await getPostCall(id, fsEnv(env));
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const postCall = repo
+    ? await repo.getPostCallDetail(id).then((detail) => detail?.postCall ?? null)
+    : await getPostCall(id, fsEnv(env));
   if (!postCall) return json({ error: "Call not found." }, 404, cors);
   assertCanReadResource(ctx, resourceFromRow(postCall));
 
@@ -137,8 +158,9 @@ export async function handleAccountsListGet(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await authContext(request, env);
-  const rows = await listAccounts(fsEnv(env));
+  const ctx = await authContext(request, env);
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const rows = repo ? await repo.listAccounts() : await listAccounts(fsEnv(env));
   return json({ accounts: rows.map(projectAccountListRow) }, 200, cors);
 }
 
@@ -149,10 +171,11 @@ export async function handleAccountGetById(
   cors: Record<string, string>,
   id: string,
 ): Promise<Response> {
-  await authContext(request, env);
-  const account = await getAccount(id, fsEnv(env));
+  const ctx = await authContext(request, env);
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const account = repo ? await repo.getAccount(id) : await getAccount(id, fsEnv(env));
   if (!account) return json({ error: "Account not found." }, 404, cors);
-  const summary = await getAccountSummaryByAccount(id, fsEnv(env));
+  const summary = repo ? null : await getAccountSummaryByAccount(id, fsEnv(env));
   return json({ account, summary }, 200, cors);
 }
 
@@ -166,7 +189,10 @@ export async function handleDealsListGet(
   const scope = parseScopeParam(url.searchParams.get("scope"));
   const limit = parseLimitParam(url.searchParams.get("limit"), 300);
   const listScope = resolveListScope(ctx, scope);
-  const rows = await listDealsForScope(listScope, limit, fsEnv(env));
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const rows = repo
+    ? await repo.listDealsForScope(listScope, limit)
+    : await listDealsForScope(listScope, limit, fsEnv(env));
   const filtered = rows.filter((row) => canReadResource(ctx, resourceFromRow(row)));
   return json({ scope, limit, deals: filtered }, 200, cors);
 }
@@ -179,7 +205,8 @@ export async function handleDealGetById(
   id: string,
 ): Promise<Response> {
   const ctx = await authContext(request, env);
-  const detail = await getDealDetail(id, fsEnv(env));
+  const repo = await pgReadRepositoryFor(ctx, env);
+  const detail = repo ? await repo.getDealDetail(id) : await getDealDetail(id, fsEnv(env));
   if (!detail) return json({ error: "Deal not found." }, 404, cors);
   assertCanReadResource(ctx, resourceFromRow(detail.deal));
   return json(detail, 200, cors);
@@ -193,6 +220,14 @@ export async function handleBriefsListGet(
 ): Promise<Response> {
   const ctx = await authContext(request, env);
   const userId = ctx.userId;
+  const repo = await pgReadRepositoryFor(ctx, env);
+  if (repo) {
+    const deals = await repo.listDealsForScope({ ownerId: userId }, 300);
+    const briefs = (
+      await Promise.all(deals.map((deal) => repo.listPrepBriefsByLifecycle(String(deal.id || ""))))
+    ).flat();
+    return json({ briefs }, 200, cors);
+  }
   const db = await getDb(fsEnv(env));
   const [prepsSnap, briefsSnap] = await Promise.all([
     db.collection("preps").where("uid", "==", userId).get(),

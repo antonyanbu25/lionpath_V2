@@ -43,6 +43,7 @@ const PHASE_FILES = [
   "16_ai_run_telemetry.sql",
   "17_rls_role_defaults.sql",
   "18_ai_run_rls.sql",
+  "19_history_tasks_feedback.sql",
 ];
 
 loadDevVars();
