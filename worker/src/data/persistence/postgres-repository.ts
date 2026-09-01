@@ -413,6 +413,16 @@ export class PostgresRepository implements PersistencePort {
       row.publicId,
     );
     for (const line of row.lines) {
+      // Auto-provision the referenced rubric_parameter so the scorecard_line FK
+      // always resolves. AI dimension names are free-form (not a fixed rubric),
+      // so we mint a parameter on first sighting — mirroring the account/deal
+      // auto-provision pattern. Idempotent; never clobbers an existing param.
+      await client.query(
+        `INSERT INTO rubric_parameter (id, rubric_id, name, weight, is_locked)
+         VALUES ($1, $2, $3, $4, false)
+         ON CONFLICT (id) DO NOTHING`,
+        [line.rubricParameterId, row.rubricId, line.paramNameSnapshot, line.paramWeightSnapshot],
+      );
       await client.query(
         `INSERT INTO scorecard_line (scorecard_id, rubric_parameter_id, rubric_theme_id, score, param_name_snapshot, param_weight_snapshot, evidence)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
