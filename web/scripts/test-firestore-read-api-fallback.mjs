@@ -4,25 +4,21 @@ import { initDomainStore } from "../domain/store.js";
 
 firebaseConfig.projectId = "test-project";
 globalThis.location = { hostname: "portal.test", search: "" };
-// resolveReadMode() (domain/store.js) now branches on session role — added
-// as part of today's SE-Firestore-permission-denied-loop fix, so it isn't a
-// scenario this test anticipated when written. A session-less mock (as this
-// was) resolves straight to api mode for every read, never exercising the
-// firestore-primary + api-fallback path this file exists to test. Managers
-// still default to firestore-primary (rules allow their broader reads), so
-// mocking a manager session is what actually reaches the fallback wrapper —
-// confirmed by tracing resolveReadMode()/createReadFallbackStore() directly.
-const SESSION_JSON = JSON.stringify({
-  email: "manager@freshworks.com",
-  role: "manager",
-  name: "Test Manager",
-});
+// resolveReadMode() (domain/store.js) — since the Janus SQL migration
+// (ADR-008), the worker API is the default read path for ALL roles;
+// direct browser Firestore reads (firestore-primary + api-fallback) are only
+// reachable via an explicit `lionpath.readVia=firestore` opt-in or a local
+// dev host. This test targets that firestore-primary + api-fallback wrapper
+// (createReadFallbackStore's special subscribeDealDetail handling), so we
+// force the firestore opt-in while keeping the non-local host — which keeps
+// writeMode=api — to reproduce exactly the split read/write fallback path.
+// Confirmed by tracing resolveReadMode()/resolveWriteMode() directly.
 globalThis.sessionStorage = {
-  getItem: (key) => (key === "se-sp-session" ? SESSION_JSON : null),
+  getItem: () => null,
   setItem: () => {},
 };
 globalThis.localStorage = {
-  getItem: () => null,
+  getItem: (key) => (key === "lionpath.readVia" ? "firestore" : null),
   setItem: () => {},
   removeItem: () => {},
 };
