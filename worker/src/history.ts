@@ -49,7 +49,6 @@ export function historyKvAvailable(env: HistoryEnv): boolean {
 
 export function historyStorageKind(env: HistoryEnv): "kv" | "file" | "firestore" | "none" {
   if (env.HISTORY_BACKEND) {
-    // Distinguish Firestore from file at runtime via the constructor name baked in.
     const name = (env.HISTORY_BACKEND as unknown as { name?: string }).name ?? "";
     if (name === "FirestoreHistoryBackend") return "firestore";
     return "file";

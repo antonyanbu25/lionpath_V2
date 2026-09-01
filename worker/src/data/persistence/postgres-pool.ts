@@ -97,6 +97,13 @@ export async function getPool(env?: Env | PostgresEnv): Promise<PgPool> {
       max: Number.isFinite(max) && max > 0 ? max : 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
+      // Cross-region hops (worker us-central1 ↔ Cloud SQL asia-south1) let idle
+      // TCP sockets get silently reaped by NAT/proxy before pg notices, which
+      // surfaced as "Connection terminated due to connection timeout" and
+      // dropped the odd dual-write. TCP keepalive probes keep the socket live
+      // and detect a dead peer early so a stale conn is discarded, not handed out.
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
       // PgBouncer transaction mode: no session state may leak between clients.
       // All RLS-scoped work goes through withSessionContext (BEGIN/COMMIT).
       allowExitOnIdle: false,

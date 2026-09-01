@@ -91,7 +91,8 @@ import {
 } from "./data/persistence";
 import { applyLifecycleEvent, type LifecycleEventInput } from "./data/persistence/lifecycle-events";
 import { validateJsonbShape } from "./data/persistence/shapes";
-import type { AccountRow } from "./data/persistence/types";
+import type { AccountRow, PersistencePort } from "./data/persistence/types";
+import type { PgClient } from "./data/persistence/postgres-pool";
 import { handleRecoveryStatus, handleRecoveryUpload } from "./routes/recovery";
 import { rerankWithEmbeddings, type RagCandidate } from "./search/rag-search";
 import { domainReadRoutes, handleDealsListGet } from "./routes/domain-reads";
@@ -307,7 +308,7 @@ export async function handlePrepSynthesize(
   _url: URL,
   cors: Record<string, string>,
 ): Promise<Response> {
-  await requireUser(request, env);
+  const verified = await requireUser(request, env);
   const input = (await request.json()) as Partial<PrepInput> & {
     confirmedFacts?: unknown[];
     researchBundle?: unknown;
@@ -332,6 +333,22 @@ export async function handlePrepSynthesize(
     researchBundle: input.researchBundle as import("./prep/types").ResearchBundle | undefined,
     confirmedProspectProfiles: (input as PrepInput).confirmedProspectProfiles,
   });
+  // Option 2 — best-effort pre_call dual-write. Layered on top of the computed
+  // brief; never throws to the caller, never changes the 200 (mirrors the
+  // post-call /api/history path). Uses the normalized domain we just validated.
+  try {
+    await tryPrepSynthesizeSqlWrite(
+      env,
+      verified,
+      { ...(input as Record<string, unknown>), companyDomain },
+      (result.prep as unknown as Record<string, unknown>) ?? null,
+    );
+  } catch (err) {
+    console.warn(
+      "[prep] pre_call dual-write failed (Firestore remains source of truth):",
+      err instanceof Error ? err.message : err,
+    );
+  }
   return json(
     {
       prep: result.prep,
@@ -1363,6 +1380,25 @@ export async function handleHistoryPost(
     return json({ error: "entry with id and timestamp is required." }, 400, cors);
   }
   const entries = await saveHistoryEntry(env, email, body.entry);
+  // Option 2 — best-effort Postgres dual-write. The history blob write above is
+  // the primary, user-facing persistence path; a PG failure must NEVER change
+  // the 200 we return here, so the entire dual-write is wrapped + logged and
+  // never re-thrown. resolveHistoryEmailForWrite already verified the token;
+  // we re-resolve the user here only to obtain the owning identity.
+  try {
+    const verified = await requireUser(request, env);
+    await tryHistoryPostCallSqlWrite(env, verified, body.entry);
+  } catch (err) {
+    // Best-effort contract: never change the 200, never rethrow. But a failure
+    // here means a post_call did NOT reach Postgres while the Firestore blob
+    // DID — a real dual-write divergence, not a benign skip. Log LOUD (error)
+    // with a stable tag + the entry id so it is greppable, alertable, and
+    // replayable, instead of the old whisper-level "skipped" warn.
+    console.error(
+      `[history][dual-write-DROPPED] post_call ${body.entry?.id ?? "?"} NOT persisted to Postgres (Firestore blob OK):`,
+      err instanceof Error ? err.stack || err.message : err,
+    );
+  }
   return json({ email, entry: body.entry, count: entries.length }, 200, cors);
 }
 
@@ -1839,11 +1875,28 @@ async function trySqlDomainWrite(
           console.warn("createPrepBrief: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
           return { handled: false as const };
         }
+        // Provision the account if it lives only in Firestore, so the pre_call
+        // FK resolves instead of 500-ing the prep dual-write (mirrors the
+        // history/post-call path — this is why pre_call was frozen).
+        {
+          const inputSnap = (input as Record<string, unknown>) ?? {};
+          await ensureAccountProvisioned(
+            client,
+            port,
+            accountId,
+            stringField(doc.accountName) || stringField(doc.company) || stringField(inputSnap.companyName) || stringField(doc.title),
+            nullableString(doc.accountDomain) ?? nullableString(inputSnap.companyDomain),
+          );
+        }
         const activityPublicId = `act_${id}`;
+        const prepDealRef = await ensureDealRef(
+          client, port, nullableString(doc.dealId),
+          accountId, ownerId, orgUnitId, nullableString(doc.title) ?? "Untitled deal",
+        );
         await port.upsertActivity(client, {
           publicId: activityPublicId,
           idempotencyKey: `prep_${id}`,
-          dealPublicId: nullableString(doc.dealId),
+          dealPublicId: prepDealRef,
           accountPublicId: accountId,
           ownerPublicId: ownerId,
           orgUnitId,
@@ -1878,11 +1931,27 @@ async function trySqlDomainWrite(
           console.warn("upsertPostCallWithSummary: shape validation failed, Firestore fallback:", shapeErr instanceof Error ? shapeErr.message : shapeErr);
           return { handled: false as const };
         }
+        // Provision the account if it lives only in Firestore, so the
+        // activity/post_call FK resolves instead of aborting the dual-write.
+        {
+          const hdr = (analysis?.callHeader as Record<string, unknown>) ?? {};
+          await ensureAccountProvisioned(
+            client,
+            port,
+            accountId,
+            stringField(postCall.accountName) || stringField(hdr.company) || stringField(hdr.account) || stringField(postCall.title),
+            nullableString(postCall.accountDomain) ?? nullableString(hdr.domain),
+          );
+        }
         const activityPublicId = `act_${id}`;
+        const postDealRef = await ensureDealRef(
+          client, port, nullableString(postCall.dealId),
+          accountId, ownerId, orgUnitId, nullableString(postCall.title) ?? "Untitled deal",
+        );
         await port.upsertActivity(client, {
           publicId: activityPublicId,
           idempotencyKey: `call_${stringField(postCall.callIdentityKey) || id}`,
-          dealPublicId: nullableString(postCall.dealId),
+          dealPublicId: postDealRef,
           accountPublicId: accountId,
           ownerPublicId: ownerId,
           orgUnitId,
@@ -1919,6 +1988,344 @@ function toIso(value: unknown): string | null {
 function nullableString(value: unknown): string | null {
   const s = stringField(value);
   return s || null;
+}
+
+/**
+ * Ensure an account exists in Postgres before attaching child rows (activity,
+ * pre_call, post_call, …) to it. SEs routinely pick account ids that were only
+ * ever written to Firestore, so the FK resolution ("id_registry: no mapping
+ * for account/…") would otherwise throw and abort the whole dual-write. account
+ * is un-RLS'd and the slug-dedup fix keeps the upsert collision-safe; we only
+ * create when the id_registry mapping is genuinely absent, so a routine write
+ * never clobbers an existing account's fields.
+ */
+async function ensureAccountProvisioned(
+  client: PgClient,
+  port: PersistencePort,
+  accountId: string,
+  fallbackName: string,
+  domain?: string | null,
+): Promise<void> {
+  const mapped = await client.query(`SELECT resolve_internal_id('account', $1) AS id`, [accountId]);
+  if (mapped.rows[0]?.id != null) return;
+  const name = fallbackName || "Unknown";
+  await port.upsertAccount(client, {
+    publicId: accountId,
+    name,
+    domain: domain ?? null,
+    slug: null,
+    industry: null,
+    healthData: null,
+    externalRef: null,
+  });
+  console.info(`[dual-write] provisioned missing account ${accountId} ("${name}") in Postgres`);
+}
+
+/**
+ * Resolve — and, when necessary, AUTO-PROVISION — a dual-write activity's deal
+ * reference. upsertActivity hard-resolves dealPublicId through the id_registry
+ * and THROWS ("no mapping for deal/…") when the deal exists only in Firestore.
+ *
+ * Rather than dropping the link (which left activity.deal_id null and forced a
+ * manual backfill nobody would notice until they went looking), we mint a
+ * minimal placeholder deal — mirroring ensureAccountProvisioned — so the FK
+ * links immediately and automatically. A later real createDeal upserts the same
+ * public_id (ON CONFLICT public_id DO UPDATE) and overwrites name/stage/amount,
+ * so the placeholder never clobbers real data.
+ *
+ * Safety: the enclosing dual-write runs inside a single BEGIN…COMMIT
+ * (withSessionContext), so a failed INSERT would poison the whole transaction
+ * and take the pre_call/post_call row down with it. We isolate the provision in
+ * a SAVEPOINT: on success the deal links; on any failure (e.g. an RLS insert
+ * policy rejection) we roll back just this attempt and land the activity
+ * without the deal ref — the original dealId is still preserved in the row's
+ * input_snapshot/analysis JSON for later reconciliation.
+ *
+ * Returns the deal public_id to link, or null when there is no deal at all or
+ * provisioning was rejected.
+ */
+async function ensureDealRef(
+  client: PgClient,
+  port: PersistencePort,
+  dealId: string | null | undefined,
+  accountPublicId: string,
+  ownerPublicId: string,
+  orgUnitId: string,
+  fallbackName: string,
+): Promise<string | null> {
+  const id = nullableString(dealId);
+  if (!id) return null;
+  const mapped = await client.query(`SELECT resolve_internal_id('deal', $1) AS id`, [id]);
+  if (mapped.rows[0]?.id != null) return id;
+
+  const name = fallbackName || "Untitled deal";
+  await client.query("SAVEPOINT dual_write_deal");
+  try {
+    await port.upsertDeal(client, {
+      publicId: id,
+      accountPublicId,
+      ownerPublicId,
+      orgUnitId,
+      name,
+      stage: "prospecting",
+      status: "active",
+    });
+    await client.query("RELEASE SAVEPOINT dual_write_deal");
+    console.info(`[dual-write] provisioned missing deal ${id} ("${name}") in Postgres`);
+    return id;
+  } catch (err) {
+    await client.query("ROLLBACK TO SAVEPOINT dual_write_deal").catch(() => undefined);
+    console.warn(
+      `[dual-write] could not provision deal ${id}, landing activity without deal ref:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Option 2 — best-effort Postgres dual-write for the post-call history save.
+ *
+ * The staging post-call flow persists every save via POST /api/history, which
+ * writes a JSON blob (KV/file/Firestore) and never touches /api/domain-write —
+ * so the relational CRM tables never saw post-call data. This shreds the same
+ * history entry into activity + post_call inside the writer's RLS session,
+ * reusing the exact machinery the domain-write "upsertPostCallWithSummary"
+ * case uses.
+ *
+ * Contract: this is layered ON TOP of the (already-succeeded) history blob
+ * write. It must NEVER throw to the caller and must NEVER change the response —
+ * every failure path returns quietly (with a loud console warn). Owner + org
+ * are resolved server-side from the authenticated writer's app_user row, since
+ * a history entry carries neither. Needs id + accountId on the entry, an
+ * existing PG account, and analysis that passes the shape contract; anything
+ * missing means we skip (Firestore blob remains the source of truth).
+ */
+async function tryHistoryPostCallSqlWrite(
+  env: Env,
+  verified: VerifiedUser | null,
+  entry: HistoryEntry | undefined,
+): Promise<void> {
+  const port = resolvePersistencePort(env);
+  if (!port || !postgresReady(env)) return;
+  if (!verified?.uid) return;
+
+  const rec = (entry ?? {}) as Record<string, unknown>;
+  const id = stringField(rec.id);
+  const accountId = stringField(rec.accountId);
+  const analysis = (rec.analysis as Record<string, unknown>) ?? null;
+  // Need a stable id, a PG-resolvable account, and an analysis payload to
+  // shred. Without all three there is nothing meaningful to land relationally.
+  if (!id || !accountId || !analysis) return;
+
+  const session = await resolveSqlSession(verified.uid, env);
+  if (!session) {
+    console.warn("[history] no SQL session for uid (pre-migration user) — Firestore-only history");
+    return;
+  }
+
+  const outcome = await withSessionContext(session, async (client) => {
+    // Resolve the writer's owner public_id + org unit (text FK) — a history
+    // entry carries neither, but the authenticated writer IS the call owner.
+    const who = await client.query(
+      `SELECT public_id, org_unit_id FROM app_user WHERE id = $1`,
+      [session.userId],
+    );
+    const ownerId = stringField(who.rows[0]?.public_id);
+    const orgUnitId = stringField(who.rows[0]?.org_unit_id);
+    if (!ownerId || !orgUnitId) {
+      console.warn("[history] writer has no owner/org unit in SQL — skipping post_call dual-write");
+      return null;
+    }
+
+    // Auto-provision the account when it exists only in Firestore, so the
+    // activity/post_call FK resolves instead of aborting the dual-write.
+    const header = (analysis.callHeader as Record<string, unknown>) ?? {};
+    await ensureAccountProvisioned(
+      client,
+      port,
+      accountId,
+      stringField(rec.accountName) || stringField(header.company) || stringField(header.account),
+      nullableString(rec.accountDomain) ?? nullableString(header.domain),
+    );
+
+    let analysisShapeVersion: string;
+    let detailShapeVersion: string;
+    try {
+      analysisShapeVersion = validateJsonbShape("post_call.analysis", analysis);
+      detailShapeVersion = validateJsonbShape("post_call.detail", null);
+    } catch (shapeErr) {
+      console.warn(
+        "[history] post_call analysis shape validation failed, Firestore-only:",
+        shapeErr instanceof Error ? shapeErr.message : shapeErr,
+      );
+      return null;
+    }
+
+    const idempotencyKey = `call_${stringField(rec.callIdentityKey) || id}`;
+    const activityPublicId = `act_${id}`;
+    const dealRef = await ensureDealRef(
+      client, port, nullableString(rec.dealId),
+      accountId, ownerId, orgUnitId, nullableString(rec.title) ?? "Untitled deal",
+    );
+    await port.upsertActivity(client, {
+      publicId: activityPublicId,
+      idempotencyKey,
+      dealPublicId: dealRef,
+      accountPublicId: accountId,
+      ownerPublicId: ownerId,
+      orgUnitId,
+      activityType: "call",
+      subject: nullableString(rec.title) ?? "Call",
+      occurredAt: toIso(rec.timestamp ?? rec.createdAt) ?? new Date().toISOString(),
+    });
+    await port.upsertPostCall(client, {
+      publicId: id,
+      idempotencyKey,
+      activityPublicId,
+      transcriptRef: nullableString(rec.detailGcsUri) ?? nullableString(rec.transcriptRef),
+      analysis,
+      detail: null,
+      pipelineState: "analysis_done",
+      analysisShapeVersion,
+      detailShapeVersion,
+    });
+    // Return a summary; the success log is emitted by the caller AFTER COMMIT
+    // (withSessionContext resolves) so it can never claim a write that a later
+    // ROLLBACK/connection failure actually discarded.
+    return { id, accountId, ownerId };
+  }, env);
+  if (outcome) {
+    console.info(
+      `[history] dual-wrote post_call ${outcome.id} → Postgres (account ${outcome.accountId}, owner ${outcome.ownerId})`,
+    );
+  }
+}
+
+/**
+ * Pre-call mirror of tryHistoryPostCallSqlWrite. The staging prep flow computes
+ * via /api/prep/research + /api/prep/synthesize, then writes the brief straight
+ * to Firestore; its createPrepBrief dual-write short-circuits client-side and
+ * never reaches /api/domain-write, so pre_call stayed frozen. This lands the
+ * synthesized brief into activity(meeting) + pre_call server-side, guaranteed,
+ * right after synthesize succeeds.
+ *
+ * Contract: layered on top of the (already-computed) synthesize response — it
+ * must NEVER throw to the caller and must NEVER change the 200. Owner + org come
+ * from the authenticated writer's app_user row. The account is taken from an
+ * explicit input.accountId when present, otherwise a deterministic placeholder
+ * keyed on the company domain (so re-synth upserts the same rows rather than
+ * piling up duplicates). Deal refs are best-effort (nulled when unmapped).
+ */
+async function tryPrepSynthesizeSqlWrite(
+  env: Env,
+  verified: VerifiedUser | null,
+  input: Record<string, unknown>,
+  prep: Record<string, unknown> | null,
+): Promise<void> {
+  const port = resolvePersistencePort(env);
+  if (!port || !postgresReady(env)) return;
+  if (!verified?.uid || !prep) return;
+
+  const companyDomain = nullableString(input.companyDomain);
+  if (!companyDomain) return;
+
+  const session = await resolveSqlSession(verified.uid, env);
+  if (!session) {
+    console.warn("[prep] no SQL session for uid (pre-migration user) — Firestore-only prep");
+    return;
+  }
+
+  const outcome = await withSessionContext(session, async (client) => {
+    // A synthesize call carries no owner/org, but the authenticated writer IS
+    // the prep owner — resolve their public_id + org unit from app_user.
+    const who = await client.query(
+      `SELECT public_id, org_unit_id FROM app_user WHERE id = $1`,
+      [session.userId],
+    );
+    const ownerId = stringField(who.rows[0]?.public_id);
+    const orgUnitId = stringField(who.rows[0]?.org_unit_id);
+    if (!ownerId || !orgUnitId) {
+      console.warn("[prep] writer has no owner/org unit in SQL — skipping pre_call dual-write");
+      return null;
+    }
+
+    // Explicit account when the client supplied one, else a deterministic
+    // placeholder from the domain so repeated synths dedupe to one account.
+    const domainSlug = companyDomain.replace(/[^a-z0-9]+/gi, "_").toLowerCase();
+    const accountId = nullableString(input.accountId) ?? `acct_synth_${domainSlug}`;
+    await ensureAccountProvisioned(
+      client,
+      port,
+      accountId,
+      stringField(input.companyName) || companyDomain,
+      companyDomain,
+    );
+
+    // input_snapshot is shape-validated on allowed top-level keys — build it
+    // from the request input, dropping compute-only fields (researchBundle,
+    // cachedResearch payloads) that would trip the validator.
+    const snapshot: Record<string, unknown> = {};
+    for (const key of [
+      "companyName", "companyDomain", "prospectEmail", "prospectEmails",
+      "prospectName", "additionalContext", "ae", "effort", "prepType",
+      "confirmedFacts", "confirmedProspectProfiles", "meetingType", "notes",
+      "accountId", "dealId", "contactIds", "callId", "userId",
+      "requestedAt", "requestedBy",
+    ]) {
+      if (input[key] !== undefined) snapshot[key] = input[key];
+    }
+
+    let briefShapeVersion: string;
+    let snapshotShapeVersion: string;
+    try {
+      briefShapeVersion = validateJsonbShape("pre_call.research_brief", prep);
+      snapshotShapeVersion = validateJsonbShape("pre_call.input_snapshot", snapshot);
+    } catch (shapeErr) {
+      console.warn(
+        "[prep] pre_call shape validation failed, Firestore-only:",
+        shapeErr instanceof Error ? shapeErr.message : shapeErr,
+      );
+      return null;
+    }
+    void briefShapeVersion;
+    void snapshotShapeVersion;
+
+    // Deterministic id per writer+company (unless the client passed a callId),
+    // so a re-synthesized brief updates the same pre_call instead of duplicating.
+    const prepId = nullableString(input.callId) ?? `prep_synth_${session.userId}_${domainSlug}`;
+    const idempotencyKey = `prep_${prepId}`;
+    const activityPublicId = `act_${prepId}`;
+    const dealRef = await ensureDealRef(
+      client, port, nullableString(input.dealId),
+      accountId, ownerId, orgUnitId, stringField(input.companyName) || companyDomain || "Untitled deal",
+    );
+    await port.upsertActivity(client, {
+      publicId: activityPublicId,
+      idempotencyKey,
+      dealPublicId: dealRef,
+      accountPublicId: accountId,
+      ownerPublicId: ownerId,
+      orgUnitId,
+      activityType: "meeting",
+      subject: stringField(input.companyName) || companyDomain || "Prep",
+      occurredAt: new Date().toISOString(),
+    });
+    await port.upsertPreCall(client, {
+      publicId: prepId,
+      idempotencyKey,
+      activityPublicId,
+      researchBrief: prep,
+      inputSnapshot: snapshot,
+    });
+    // Success log emitted by the caller AFTER COMMIT (see tryHistoryPostCallSqlWrite).
+    return { prepId, accountId, ownerId };
+  }, env);
+  if (outcome) {
+    console.info(
+      `[prep] dual-wrote pre_call ${outcome.prepId} → Postgres (account ${outcome.accountId}, owner ${outcome.ownerId})`,
+    );
+  }
 }
 
 function primaryTeamIdFromAccount(account: Record<string, unknown>, ownerId: string): string {

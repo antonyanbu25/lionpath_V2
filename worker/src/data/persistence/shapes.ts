@@ -17,13 +17,19 @@ export type JsonbShape = "post_call.analysis" | "post_call.detail" | "pre_call.r
 const SHAPES: Record<JsonbShape, Record<string, ReadonlySet<string>>> = {
   "post_call.analysis": {
     "1": new Set([
+      "analysisVersion", "artifacts", "callHeader", "callNotes",
+      "followUpTable", "momentum", "nextSteps", "rubricVersion", "signals",
       "summary", "callType", "meddpicc", "arrLines", "arrOverrides",
       "productGaps", "whatLanded", "objections", "commitments",
-      "momDraft", "followUps", "dealSignals", "quality",
+      "momDraft", "followUps", "dealSignals", "quality", "qualityCoach",
     ]),
   },
   "post_call.detail": {
     "1": new Set([
+      "analysis", "analysisMeta", "arrCompute", "arrInputs", "classify",
+      "confirmed", "framework", "pass6", "qualification", "resolve",
+      "scorecard", "summarise", "tcDeltas", "technicalCommit", "timeline",
+      "transcriptMeta",
       "transcript", "videoFacts", "timelineSegments", "timelineMarkers",
       "momDrafts", "followUps", "objections", "meddpiccDeltas", "tcDeltas",
       "dealSignals", "dealSummaries", "accountSummaries", "arrLines",
@@ -32,12 +38,24 @@ const SHAPES: Record<JsonbShape, Record<string, ReadonlySet<string>>> = {
   },
   "pre_call.research_brief": {
     "1": new Set([
+      "description", "about", "incumbent", "fitSnapshot", "facts",
+      "signals", "supportJD", "likelyPains", "industryUseCases",
+      "checklist", "companySizeAgents", "businessContext", "discoveryKit",
+      "painCapabilityValue", "attendees", "prospects", "icpFit", "recentNews",
+      "newsSources", "assets", "meddpiccHints", "demoGuidance", "demoThesis",
+      "rivals", "fishContext",
       "accountOverview", "stakeholders", "hypotheses", "questions",
       "competitiveContext", "recentSignals", "talkTracks", "sources",
     ]),
   },
   "pre_call.input_snapshot": {
     "1": new Set([
+      "companyName", "companyDomain", "prospectEmail", "prospectEmails",
+      "prospectName", "additionalContext", "ae", "effort", "prepType",
+      "forceRefresh", "cachedResearch", "confirmedFacts",
+      "linkedinProfileExports", "contextAttachments", "confirmedProspectProfiles",
+      "meetingZoomUrl", "meetingZoomPasscode", "kaiaMeetingUrl", "kaiaSummary",
+      "kaiaContent", "lifecycleId", "userId", "callId",
       "accountId", "dealId", "contactIds", "meetingType", "notes",
       "requestedAt", "requestedBy",
     ]),

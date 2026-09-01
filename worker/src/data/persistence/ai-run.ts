@@ -204,3 +204,7 @@ export async function insertAiRun(
     return false;
   }
 }
+
+export const aiRunRepository = {
+  insert: insertAiRun,
+};

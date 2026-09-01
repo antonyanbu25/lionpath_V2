@@ -1215,11 +1215,23 @@ fw-button.sidebar-history-item.active {
 }
 .launch-kpi-card[data-kpi-nav] {
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  /* Adds a gentle transform lift on top of the existing colour transition;
+     transform is composited so there's no layout reflow or geometry change. */
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.18s ease, box-shadow 0.22s ease;
 }
 .launch-kpi-card[data-kpi-nav]:hover {
-  border-color: #d8d0c4;
-  box-shadow: 0 2px 8px rgba(43, 41, 38, 0.06);
+  transform: translateY(-2px);
+  /* Palette-locked: brand-teal tinted edge + soft brand shadow instead of the
+     old flat grey, so the hover reads as on-theme without changing the resting
+     look. */
+  border-color: color-mix(in srgb, var(--dew-brand) 34%, var(--dew-border));
+  box-shadow: 0 7px 20px -9px color-mix(in srgb, var(--dew-brand) 26%, transparent),
+              0 2px 8px rgba(43, 41, 38, 0.05);
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-kpi-card[data-kpi-nav] { transition: border-color 0.18s ease, box-shadow 0.22s ease; }
+  .launch-kpi-card[data-kpi-nav]:hover { transform: none; }
 }
 .launch-kpi-card[data-kpi-nav]:focus-visible {
   outline: 2px solid var(--dew-brand);
@@ -4375,7 +4387,48 @@ a { color: var(--accent); }
 .launch-split.dash-split {
   max-width: 100%;
 }
-.launch-hero { margin-bottom: 20px; }
+.launch-hero {
+  margin-bottom: 20px;
+  /* Anchor + isolate so the ambient aurora sits strictly behind the greeting
+     and can bleed into the surrounding padding without escaping (.launchpad
+     already clips overflow-x). */
+  position: relative;
+  isolation: isolate;
+}
+/* Ambient dew aurora behind the greeting — a single tasteful hero accent.
+   Two soft radial washes in the locked palette (brand teal + amber gold) that
+   drift slowly and dissolve downward into the cream before the KPI cards. Pure
+   CSS: no JS, no bundle weight, and it survives the dashboard's re-renders. */
+.launch-hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -20px -22px -6px -22px;
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 150% at 6% 0%,
+      color-mix(in srgb, var(--dew-brand) 24%, transparent) 0%, transparent 56%),
+    radial-gradient(95% 135% at 94% 18%,
+      color-mix(in srgb, var(--dew-amber) 20%, transparent) 0%, transparent 60%);
+  filter: blur(7px) saturate(1.04);
+  opacity: 0.85;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%);
+  animation: launch-hero-drift 18s ease-in-out infinite alternate;
+  pointer-events: none;
+  will-change: transform;
+}
+[data-theme="dark"] .launch-hero::before {
+  opacity: 0.6;
+  filter: blur(8px) saturate(1.1);
+}
+@keyframes launch-hero-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(2%, -3%, 0) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-hero::before { animation: none; }
+}
 .launch-greeting {
   margin: 0 0 6px;
   font-size: 29px;
@@ -6199,4 +6252,22 @@ fw-card.about-section {
 }
 [data-theme="dark"] .login-as-close:hover {
   background: rgba(255,255,255,0.06);
+}
+
+/* ---------- Button focus ring — quiet neutral, no brand green ----------
+   Parity with SE-Labs. Two sources produce the teal "green border" on click:
+   (1) the native :focus-visible outline, and (2) Crayons fw-button's OWN focus
+   ring, drawn inside its shadow DOM via custom properties the Dew theme maps to
+   brand teal. Custom properties inherit into the shadow DOM, so retint them on
+   the host. Result: a click shows a quiet neutral ink ring, never green;
+   keyboard focus stays visible; nothing changes at rest. */
+button:focus-visible,
+fw-button:focus-visible,
+[role="button"]:focus-visible {
+  outline-color: color-mix(in srgb, var(--dew-text) 42%, transparent);
+}
+fw-button {
+  --fw-button--lg-focus-border: color-mix(in srgb, var(--dew-text) 42%, transparent);
+  --color-boundary-brand: color-mix(in srgb, var(--dew-text) 42%, transparent);
+  --color-boundary-border-boldest: color-mix(in srgb, var(--dew-text) 42%, transparent);
 }
