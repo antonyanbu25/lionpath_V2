@@ -14,6 +14,7 @@
 import type { PgClient } from "./postgres-pool";
 
 export type PersistenceMode = "firestore" | "dual" | "sql";
+export type PersistenceReadMode = "firestore" | "pg";
 
 export function resolvePersistenceMode(env?: {
   PERSISTENCE_MODE?: string;
@@ -123,6 +124,68 @@ export interface ProductSignalRow {
   title: string;
   description?: string | null;
   evidence?: string | null;
+}
+
+export type DomainReadDoc = Record<string, unknown> & { id: string };
+
+export interface DomainListScope {
+  ownerId?: string;
+  teamId?: string;
+  orgId?: string;
+}
+
+export interface DealReadDetail {
+  deal: DomainReadDoc;
+  summary: DomainReadDoc | null;
+  technicalCommit: DomainReadDoc | null;
+  dealSignals: DomainReadDoc[];
+  arrLines: DomainReadDoc[];
+  productGaps: DomainReadDoc[];
+  whatWorks: DomainReadDoc[];
+}
+
+export interface PostCallReadDetail {
+  postCall: DomainReadDoc;
+  scorecards: DomainReadDoc[];
+  videoFacts: DomainReadDoc[];
+  timelineSegments: DomainReadDoc[];
+  timelineMarkers: DomainReadDoc[];
+  followUps: DomainReadDoc[];
+  objections: DomainReadDoc[];
+  momDrafts: DomainReadDoc[];
+  meddpiccDeltas: DomainReadDoc[];
+  tcDeltas: DomainReadDoc[];
+  arrLines: DomainReadDoc[];
+  dealSignals: DomainReadDoc[];
+}
+
+export interface PersistenceReadPort {
+  listAccounts(): Promise<DomainReadDoc[]>;
+  getAccount(id: string): Promise<DomainReadDoc | null>;
+  findAccountBySlug(slug: string): Promise<DomainReadDoc | null>;
+  findAccountsByDomain(domain: string): Promise<DomainReadDoc[]>;
+  findAccountByDomain(domain: string): Promise<DomainReadDoc | null>;
+  findAccountByName(name: string): Promise<DomainReadDoc | null>;
+  listContactsByAccount(accountId: string): Promise<DomainReadDoc[]>;
+  findContactsByEmail(email: string): Promise<DomainReadDoc[]>;
+  findContactByAccountEmail(accountId: string, email: string): Promise<DomainReadDoc | null>;
+  listDeals(limitCount?: number): Promise<DomainReadDoc[]>;
+  getDeal(id: string): Promise<DomainReadDoc | null>;
+  getDealDetail(id: string): Promise<DealReadDetail | null>;
+  listDealsByAccount(accountId: string, ownerId?: string): Promise<DomainReadDoc[]>;
+  listDealsForScope(scope: DomainListScope, limitCount: number): Promise<DomainReadDoc[]>;
+  findActiveDeal(accountId: string, type: string): Promise<DomainReadDoc | null>;
+  getLifecycle(id: string): Promise<DomainReadDoc | null>;
+  findActiveLifecycle(accountId: string, type?: string): Promise<DomainReadDoc | null>;
+  listLifecycleEvents(lifecycleId: string): Promise<DomainReadDoc[]>;
+  listPrepBriefsByLifecycle(lifecycleId: string): Promise<DomainReadDoc[]>;
+  listPostCallsByLifecycle(lifecycleId: string, limitCount?: number): Promise<DomainReadDoc[]>;
+  listPostCallsByAccount(accountId: string, limitCount?: number): Promise<DomainReadDoc[]>;
+  findPostCallByIdentity(ownerId: string, callIdentityKey: string): Promise<DomainReadDoc | null>;
+  listTasksByLifecycle(lifecycleId: string): Promise<DomainReadDoc[]>;
+  listTasks(limitCount?: number): Promise<DomainReadDoc[]>;
+  listPostCalls(limitCount?: number): Promise<DomainReadDoc[]>;
+  getPostCallDetail(id: string): Promise<PostCallReadDetail | null>;
 }
 
 /**

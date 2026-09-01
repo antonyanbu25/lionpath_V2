@@ -12,6 +12,7 @@ export type { SqlSession } from "./session-context";
 export { resolveInternalId, registerId, upsertReturningId } from "./id-registry";
 export type { EntityType } from "./id-registry";
 export { PostgresRepository, upsertAppUser, upsertOrgUnit } from "./postgres-repository";
+export { PostgresReadRepository, createPostgresReadRepository, persistenceReadReady } from "./read-repository";
 export { FirestoreRepository } from "./firestore-repository";
 export { DualWriteRepository, resolvePersistencePort } from "./dual-write-repository";
 export { projectOutboxBatch, getFirestoreProjectionIntegrationId } from "./outbox";
@@ -24,7 +25,13 @@ export type { AiRunRow, RunType } from "./ai-run";
 export { resolvePersistenceMode } from "./types";
 export type {
   PersistenceMode,
+  PersistenceReadMode,
   PersistencePort,
+  PersistenceReadPort,
+  DomainReadDoc,
+  DomainListScope,
+  DealReadDetail,
+  PostCallReadDetail,
   AccountRow,
   ContactRow,
   DealRow,

@@ -84,6 +84,9 @@ import { handleOrgStructureGet, handleOrgStructurePatch } from "./org-structure"
 import { handleOutboxProjectPost } from "./routes/internal-outbox";
 import type { VerifiedUser } from "./auth";
 import {
+  createPostgresReadRepository,
+  getPool,
+  persistenceReadReady,
   postgresReady,
   resolvePersistencePort,
   resolveSqlSession,
@@ -2363,7 +2366,18 @@ export async function handleDealsCreate(
     return json({ error: "accountId is required." }, 400, cors);
   }
 
-  const account = await getDoc("accounts", accountId, env);
+  let account: Record<string, unknown> | null = null;
+  if (persistenceReadReady(env)) {
+    const session = await resolveSqlSession(verified.uid, env);
+    if (session) {
+      const pool = await getPool(env);
+      const repo = createPostgresReadRepository(pool, session, env);
+      account = await repo.getAccount(accountId);
+    }
+  }
+  if (!account) {
+    account = await getDoc("accounts", accountId, env);
+  }
   if (!account) {
     return json({ error: "Account not found." }, 404, cors);
   }

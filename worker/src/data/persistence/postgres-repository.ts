@@ -7,9 +7,11 @@
  *   - is idempotent via ON CONFLICT (public_id) / idempotency keys
  */
 
-import type { PgClient } from "./postgres-pool";
+import type { PgClient, PgPool, PostgresEnv } from "./postgres-pool";
 import { registerId, resolveInternalId, upsertReturningId } from "./id-registry";
 import { getFirestoreProjectionIntegrationId } from "./outbox";
+import { createPostgresReadRepository, type PostgresReadRepository } from "./read-repository";
+import type { SqlSession } from "./session-context";
 import type {
   AccountRow,
   ActivityRow,
@@ -24,6 +26,10 @@ import type {
 } from "./types";
 
 export class PostgresRepository implements PersistencePort {
+  readRepository(pool: PgPool, session: SqlSession, env?: PostgresEnv): PostgresReadRepository {
+    return createPostgresReadRepository(pool, session, env);
+  }
+
   async upsertAccount(client: PgClient, row: AccountRow): Promise<number> {
     // Slug is globally unique among active accounts (idx_account_slug_active,
     // WHERE deleted_at IS NULL). A Firestore-primary caller mints its OWN

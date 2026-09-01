@@ -32,3 +32,4 @@
 \ir 16_ai_run_telemetry.sql
 \ir 17_rls_role_defaults.sql
 \ir 18_ai_run_rls.sql
+\ir 19_history_tasks_feedback.sql

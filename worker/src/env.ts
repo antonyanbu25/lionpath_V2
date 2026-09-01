@@ -2,9 +2,10 @@ import type { CostControlEnv } from "./cost-control-config";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
 import type { HistoryEnv } from "./history";
+import type { TasksEnv } from "./tasks";
 import type { RateLimitEnv } from "./rate-limit";
 
-export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimitEnv {
+export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, TasksEnv, CostControlEnv, RateLimitEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -15,6 +16,10 @@ export interface Env extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateL
   DATABASE_URL?: string;
   /** firestore | dual | sql — read/write routing for the persistence layer. */
   PERSISTENCE_MODE?: string;
+  /** firestore | pg — opt-in domain read routing. Default behavior is Firestore. */
+  PERSISTENCE_READ_MODE?: string;
+  /** firestore | pg — optional override for history/tasks blob backend. */
+  HISTORY_BACKEND_MODE?: string;
   /** pg Pool max connections (default 10). Keep max_instances x pool < Cloud SQL max_connections. */
   PG_POOL_MAX?: string;
   APOLLO_API_KEY?: string;

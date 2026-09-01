@@ -47,9 +47,10 @@ export function historyKvAvailable(env: HistoryEnv): boolean {
   return historyStorageAvailable(env);
 }
 
-export function historyStorageKind(env: HistoryEnv): "kv" | "file" | "firestore" | "none" {
+export function historyStorageKind(env: HistoryEnv): "kv" | "file" | "firestore" | "pg" | "none" {
   if (env.HISTORY_BACKEND) {
     const name = (env.HISTORY_BACKEND as unknown as { name?: string }).name ?? "";
+    if (name === "PostgresHistoryBackend" || name === "PostgresTasksBackend") return "pg";
     if (name === "FirestoreHistoryBackend") return "firestore";
     return "file";
   }

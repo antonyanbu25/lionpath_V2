@@ -8,19 +8,23 @@ import worker from "./index";
 import { createFileHistoryBackend } from "./history-file";
 import { createFirestoreHistoryBackend } from "./history-firestore";
 import { firestoreAdminBootStatus, firestoreAdminReady } from "./data/firestore-admin";
+import { getPool, postgresReady, type PgPool } from "./data/persistence";
+import { createPostgresHistoryBackend } from "./history-pg";
+import { createPostgresTasksBackend } from "./tasks-pg";
 import { logError, logInfo } from "./logger";
 import { logResolvedModels } from "./providers";
 import { ffmpegAvailable, videoPassEnvEnabled } from "./video/capability";
 import { sweepStaleVideoJobs } from "./video/job-sweep";
 import { ffmpegMaxConcurrent } from "./video/ffmpeg-semaphore";
 import type { HistoryEnv } from "./history";
+import type { TasksEnv } from "./tasks";
 import type { Env as PrepEnv } from "./prep";
 import type { ZoomEnv } from "./zoom";
 
 import type { CostControlEnv } from "./cost-control-config";
 import type { RateLimitEnv } from "./rate-limit";
 
-interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimitEnv {
+interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, TasksEnv, CostControlEnv, RateLimitEnv {
   ALLOWED_ORIGINS?: string;
   ALLOWED_EMAIL_DOMAIN?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -38,6 +42,8 @@ interface NodeEnv extends PrepEnv, ZoomEnv, HistoryEnv, CostControlEnv, RateLimi
   FRESHDESK_DOMAIN?: string;
   DATABASE_URL?: string;
   PERSISTENCE_MODE?: string;
+  PERSISTENCE_READ_MODE?: string;
+  HISTORY_BACKEND_MODE?: string;
   PG_POOL_MAX?: string;
 }
 
@@ -91,6 +97,8 @@ function buildEnv(): NodeEnv {
     FRESHDESK_DOMAIN: process.env.FRESHDESK_DOMAIN || "janus.freshdesk.com",
     DATABASE_URL: process.env.DATABASE_URL || "",
     PERSISTENCE_MODE: process.env.PERSISTENCE_MODE || "firestore",
+    PERSISTENCE_READ_MODE: process.env.PERSISTENCE_READ_MODE || "",
+    HISTORY_BACKEND_MODE: process.env.HISTORY_BACKEND_MODE || "",
     PG_POOL_MAX: process.env.PG_POOL_MAX || "",
   };
 
@@ -148,7 +156,17 @@ function buildEnv(): NodeEnv {
   }
 
   const historyDir = (process.env.HISTORY_FILE_DIR || "").trim();
-  if (historyDir) {
+  const historyBackendMode = (env.HISTORY_BACKEND_MODE || env.PERSISTENCE_READ_MODE || "")
+    .trim()
+    .toLowerCase();
+  if (historyBackendMode === "pg" && postgresReady(env)) {
+    const lazyPool = {
+      connect: async () => (await getPool(env)).connect(),
+      query: async (sql: string, params?: unknown[]) => (await getPool(env)).query(sql, params),
+    } as unknown as PgPool;
+    env.HISTORY_BACKEND = createPostgresHistoryBackend(lazyPool);
+    env.TASKS_BACKEND = createPostgresTasksBackend(lazyPool);
+  } else if (historyDir) {
     env.HISTORY_BACKEND = createFileHistoryBackend(historyDir);
   } else if (firestoreAdminReady(env)) {
     // Cloud Run: use Firestore as a persistent backend (file storage is ephemeral in containers).
