@@ -3228,40 +3228,31 @@ async function boot() {
     } catch (err) {
       console.warn("[postcall] session sync before dual-write failed:", err?.message || err);
     }
-    if (sessionUserId(session)) {
-      try {
-        linked = await linkPostCallToLifecycle(session, payload, data, record);
-      } catch (err) {
-        console.warn("Lifecycle dual-write (post-call) failed:", err);
-      }
+    if (!sessionUserId(session)) {
+      throw new Error("Could not resolve signed-in user for post-call save.");
+    }
+    linked = await linkPostCallToLifecycle(session, payload, data, record);
+    if (!linked?.postCall?.id) {
+      throw new Error("Post-call domain write did not return a saved call.");
     }
     // Dual-write may create the deal when confirm had none — stamp it onto history
     // so Open deal / deal strip work on the call view that opens next.
     const linkedDealId = linked?.lifecycle?.dealId || linked?.postCall?.dealId || null;
-    if (linkedDealId && currentSession?.email && record?.id) {
-      try {
-        const { updatePostCallAnalysis } = await import("./history.js");
-        await updatePostCallAnalysis(currentSession.email, record.id, (rec) => {
-          rec.dealId = linkedDealId;
-          if (linked?.accountId) rec.accountId = linked.accountId;
-          if (data?.scorecard?.lines?.length && !rec.scorecard?.lines?.length) {
-            rec.scorecard = data.scorecard;
-          }
-          if (rec.result) {
-            rec.result = {
-              ...rec.result,
-              confirmed: {
-                ...(rec.result.confirmed || {}),
-                dealId: linkedDealId,
-                accountId: linked?.accountId || rec.result.confirmed?.accountId || null,
-              },
-            };
-          }
-          return rec;
-        });
-        record.dealId = linkedDealId;
-      } catch (err) {
-        console.warn("[app] dealId write-back failed:", err?.message || err);
+    if (linkedDealId && record) {
+      record.dealId = linkedDealId;
+      if (linked?.accountId) record.accountId = linked.accountId;
+      if (data?.scorecard?.lines?.length && !record.scorecard?.lines?.length) {
+        record.scorecard = data.scorecard;
+      }
+      if (record.result) {
+        record.result = {
+          ...record.result,
+          confirmed: {
+            ...(record.result.confirmed || {}),
+            dealId: linkedDealId,
+            accountId: linked?.accountId || record.result.confirmed?.accountId || null,
+          },
+        };
       }
     }
     // Paint sidebar immediately — do not wait for remote history sync.
@@ -3288,6 +3279,7 @@ async function boot() {
       refreshSidebarRecentWork();
     }
     bumpFeedbackPulse();
+    return linked;
   });
 
   if (authMode() === "firebase") {

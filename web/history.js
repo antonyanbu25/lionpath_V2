@@ -7,18 +7,40 @@ import { WORKER_BASE_URL } from "./firebase-config.js";
 import { newId } from "./domain/types.js";
 import { normalizeUserEmail } from "./shared.js";
 import { resolveCallTitleFromRecord } from "./call-type-labels.js";
+import { callIdentityKey } from "./call-identity.js";
 
 export { normalizeUserEmail };
 
 export const STORAGE_PREFIX = "se-singha-history:";
 const LEGACY_PREFIX = "se-sp-postcalls:";
 const EMERGENCY_PREFIX = "lionpath:emergency-call:";
+const PENDING_PREFIX = "lionpath:pending-call:";
 const MAX_ENTRIES = 100;
 // localStorage is ~5MB; keep history under ~4MB so writes never hit the quota.
 const MAX_HISTORY_BYTES = 4 * 1024 * 1024;
 
 function emergencyKey(email, id) {
   return `${EMERGENCY_PREFIX}${normalizeUserEmail(email)}:${id}`;
+}
+
+function pendingKey(email, id) {
+  return `${PENDING_PREFIX}${normalizeUserEmail(email)}:${id}`;
+}
+
+function stashPendingRecord(email, record, err) {
+  if (!email || !record?.id) return;
+  try {
+    const pending = {
+      ...record,
+      syncStatus: "pending_domain_write",
+      completed: false,
+      pendingError: String(err?.message || err || "Domain write failed").slice(0, 500),
+      pendingAt: Date.now(),
+    };
+    localStorage.setItem(pendingKey(email, record.id), JSON.stringify(pending));
+  } catch (stashErr) {
+    console.warn("[history] pending stash failed:", stashErr?.message || stashErr);
+  }
 }
 
 function stashEmergencyRecord(email, record) {
@@ -201,6 +223,14 @@ export async function fetchHistoryFromWorker(email) {
   return Array.isArray(data.entries) ? data.entries : [];
 }
 
+function isCompletedPostCallRecord(entry) {
+  return !!(entry?.id && (entry.analysis || entry.result?.analysis));
+}
+
+function localOnlyCompletedEntries(local, remoteIds) {
+  return (local || []).filter((r) => isCompletedPostCallRecord(r) && !remoteIds.has(r.id));
+}
+
 /** @param {string} email @param {object} entry @param {{ proxySeActing?: boolean }} [opts] */
 async function pushRemoteEntry(email, entry, opts = {}) {
   const normalized = normalizeUserEmail(email);
@@ -301,11 +331,18 @@ export async function syncHistoryOnLogin(email, opts = {}) {
     writeAll(normalized, merged);
 
     const remoteIds = new Set(remote.map((r) => r.id));
-    const hasLocalOnly = merged.some((r) => !remoteIds.has(r.id));
-    if (hasLocalOnly || merged.length !== remote.length) {
+    const localOnlyCompleted = localOnlyCompletedEntries(local, remoteIds);
+    if (localOnlyCompleted.length) {
+      console.warn(
+        `[history] skipped server blob upload for ${localOnlyCompleted.length} local-only completed post-call record(s); domain write must reconcile first`,
+      );
+    }
+    const uploadableMerged = merged.filter((r) => remoteIds.has(r.id) || !isCompletedPostCallRecord(r));
+    const hasUploadableLocalOnly = uploadableMerged.some((r) => !remoteIds.has(r.id));
+    if (hasUploadableLocalOnly || uploadableMerged.length !== remote.length) {
       try {
-        await pushRemoteEntries(normalized, merged);
-        console.info(`[history] synced ${merged.length} record(s) to server for ${normalized}`);
+        await pushRemoteEntries(normalized, uploadableMerged);
+        console.info(`[history] synced ${uploadableMerged.length} record(s) to server for ${normalized}`);
       } catch (err) {
         console.warn("[history] remote merge sync failed:", err.message || err);
       }
@@ -326,19 +363,12 @@ export async function syncHistoryOnLogin(email, opts = {}) {
 }
 
 /**
- * @param {string} email
+ * @param {string} normalized
  * @param {{ recordingUrl?: string, recordingPassword?: string }} input
- * @param {object} result — full API response { analysis, transcriptMeta }
- * @param {{ proxySeActing?: boolean, createdByUserId?: string }} [opts]
- * @returns {object} saved record
+ * @param {object} result
+ * @param {{ createdByUserId?: string }} [opts]
  */
-export async function savePostCallAnalysis(email, input, result, opts = {}) {
-  const normalized = normalizeUserEmail(email);
-  if (!normalized) {
-    console.warn("[history] save skipped. missing email");
-    return null;
-  }
-
+function buildPostCallRecord(normalized, input, result, opts = {}) {
   const analysis = result?.analysis;
   const callType = input?.callType || result?.analysisMeta?.callType || result?.confirmed?.callType || null;
   const accountName =
@@ -356,8 +386,8 @@ export async function savePostCallAnalysis(email, input, result, opts = {}) {
     newDealType: input?.newDealType || null,
   };
   const record = {
-    id: newId("postCall"),
-    timestamp: Date.now(),
+    id: opts.id || newId("postCall"),
+    timestamp: opts.timestamp || Date.now(),
     zoomLink: input?.recordingUrl || "",
     title: resolveCallTitleFromRecord(
       {
@@ -385,7 +415,67 @@ export async function savePostCallAnalysis(email, input, result, opts = {}) {
     result: { ...result, confirmed },
     createdByUserId: opts.createdByUserId || null,
   };
+  record.callIdentityKey = callIdentityKey(record);
+  return record;
+}
+
+const saveInflight = new Map();
+
+function defaultSaveKey(email, input, result) {
+  const record = buildPostCallRecord(email, input, result);
+  return `${email}:${record.callIdentityKey || record.id}`;
+}
+
+/**
+ * @param {string} email
+ * @param {{ recordingUrl?: string, recordingPassword?: string }} input
+ * @param {object} result — full API response { analysis, transcriptMeta }
+ * @param {{ proxySeActing?: boolean, createdByUserId?: string }} [opts]
+ * @returns {object} saved record
+ */
+export async function savePostCallAnalysis(email, input, result, opts = {}) {
+  const normalized = normalizeUserEmail(email);
+  if (!normalized) {
+    console.warn("[history] save skipped. missing email");
+    return null;
+  }
+
+  const saveKey = opts.idempotencyKey || defaultSaveKey(normalized, input, result);
+  if (saveKey && saveInflight.has(saveKey)) return saveInflight.get(saveKey);
+
+  const promise = (async () => {
+    const record = buildPostCallRecord(normalized, input, result, {
+      createdByUserId: opts.createdByUserId,
+    });
+
+    if (typeof opts.beforePersist === "function") {
+      try {
+        const linked = await opts.beforePersist(record);
+        const postCall = linked?.postCall || linked;
+        if (postCall?.id) record.id = postCall.id;
+        if (postCall?.dealId) record.dealId = postCall.dealId;
+        if (linked?.accountId || postCall?.accountId) record.accountId = linked?.accountId || postCall?.accountId;
+        if (record.result) {
+          record.result = {
+            ...record.result,
+            confirmed: {
+              ...(record.result.confirmed || {}),
+              dealId: record.dealId || record.result.confirmed?.dealId || null,
+              accountId: record.accountId || record.result.confirmed?.accountId || null,
+            },
+          };
+        }
+      } catch (err) {
+        stashPendingRecord(normalized, record, err);
+        throw err;
+      }
+    }
+
   const list = readAll(normalized);
+  const existingIdx = list.findIndex(
+    (r) => r?.id === record.id || (record.callIdentityKey && r?.callIdentityKey === record.callIdentityKey),
+  );
+  if (existingIdx >= 0) list.splice(existingIdx, 1);
   list.unshift(record);
   const trimmed = list.slice(0, MAX_ENTRIES);
   const ok = writeAll(normalized, trimmed);
@@ -403,6 +493,14 @@ export async function savePostCallAnalysis(email, input, result, opts = {}) {
     console.warn("[history] remote save failed (local copy kept):", err.message || err);
   }
   return record;
+  })();
+
+  if (saveKey) saveInflight.set(saveKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (saveKey && saveInflight.get(saveKey) === promise) saveInflight.delete(saveKey);
+  }
 }
 
 /** Alias used by postcall flow and tests. */

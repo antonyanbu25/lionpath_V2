@@ -14,6 +14,9 @@ import {
 } from "../history.js";
 import { TASKS_STORAGE_PREFIX } from "../tasks.js";
 import { linkPostCallToLifecycle } from "../domain/dual-write.js";
+import { getStore } from "../domain/store.js";
+import { sessionUserId } from "../domain/session.js";
+import { callIdentityKey } from "../call-identity.js";
 import { syncSessionWithDomainStore } from "../auth.js";
 
 export const SYNC_VERSION = "1";
@@ -246,6 +249,32 @@ async function backfillFirestoreForRecord(session, record) {
   }
 }
 
+async function ensureDomainBackedRecord(session, record) {
+  if (!record?.analysis && !record?.result?.analysis) return { skipped: true, recordId: record?.id };
+  let activeSession = session;
+  try {
+    activeSession = (await syncSessionWithDomainStore(session)) || session;
+  } catch (err) {
+    console.warn("[local-sync] session enrich before domain check failed:", err?.message || err);
+  }
+
+  const ownerId = sessionUserId(activeSession);
+  const identityKey = record.callIdentityKey || callIdentityKey(record);
+  if (ownerId && identityKey) {
+    try {
+      const store = getStore();
+      const existing = await store.findPostCallByIdentity?.(ownerId, identityKey);
+      if (existing?.id) {
+        return { linked: true, existing: true, recordId: record.id, postCallId: existing.id };
+      }
+    } catch (err) {
+      console.warn("[local-sync] domain identity check failed for", record.id, err?.message || err);
+    }
+  }
+
+  return backfillFirestoreForRecord(activeSession, record);
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -286,11 +315,31 @@ export async function runLocalSync(session, opts = {}) {
   }
 
   const localOnly = diffAgainstRemote(bundle.postCalls, remote);
-  const toUpload = opts.force
+  const uploadCandidates = opts.force
     ? bundle.postCalls
     : localOnly.length
       ? localOnly
       : [];
+
+  const domainResults = new Map();
+  const toUpload = [];
+  if (uploadCandidates.length) {
+    onProgress(`Reconciling your summaries… (0/${uploadCandidates.length})`);
+    for (const record of uploadCandidates) {
+      const domain = await ensureDomainBackedRecord(session, record);
+      domainResults.set(record.id, domain);
+      if (domain.existing) {
+        result.uploadedIds.push(record.id);
+      } else if (domain.linked) {
+        toUpload.push(record);
+        result.firestoreLinked += 1;
+      } else if (!domain.skipped) {
+        result.ok = false;
+        result.firestoreFailed += 1;
+        result.failedIds.push(record.id);
+      }
+    }
+  }
 
   if (toUpload.length) {
     onProgress(`Saving your summaries… (0/${toUpload.length})`);
@@ -351,7 +400,9 @@ export async function runLocalSync(session, opts = {}) {
     }
   }
 
-  const forFirestore = toUpload.filter((r) => r?.analysis || r?.result?.analysis);
+  const forFirestore = toUpload.filter(
+    (r) => (r?.analysis || r?.result?.analysis) && !domainResults.get(r.id)?.linked && !domainResults.get(r.id)?.existing,
+  );
   if (forFirestore.length) {
     onProgress("Finishing up…");
     for (const record of forFirestore) {
