@@ -1,5 +1,7 @@
 /**
  * SE Labs theme — warm cream + teal accent (from SE Labs Portal design)
+ * Editorial overhaul layer (mono-overhaul.css) adds serif display type,
+ * hairlines and sharper radii on top of this palette.
  * App: --bg, --surface, --text, --muted, --accent, --accent-bg, --border, --dew-*
  * Crayons: --fw-primary-color, --fw-primary-color-hover, --fw-theme-mode
  */
@@ -25,6 +27,7 @@
   --dew-input-border: #ddd4c4;
   --dew-purple: #2e897b;
   --dew-purple-tint: #e3efec;
+  --dew-accent: #2e897b;
   --dew-green: #4a7a5c;
   --dew-green-tint: #e9f1e9;
   --dew-amber: #b5831f;
@@ -35,16 +38,23 @@
   --dew-teal-tint: #e3efec;
   --dew-sand-tint: #f3ecda;
   --dew-clay-tint: #f4e7df;
-  --dew-radius-lg: 14px;
-  --dew-shadow-island: 0 1px 2px rgba(43, 41, 38, 0.03);
-  --dew-shadow-card: 0 2px 8px rgba(43, 41, 38, 0.06);
-  --dew-shadow-popover: 0 12px 40px rgba(43, 41, 38, 0.12);
+  --dew-radius-lg: 10px;
+  --dew-text-inverse: #ffffff;
+  --dew-shadow-island: 0 1px 2px rgba(43, 41, 38, 0.04);
+  --dew-shadow-card: 0 1px 3px rgba(43, 41, 38, 0.05);
+  --dew-shadow-popover: 0 16px 48px rgba(43, 41, 38, 0.14);
+
+  --dew-font-display: "Playfair Display", "Georgia", "Times New Roman", serif;
+  --dew-font-body: "Figtree", system-ui, -apple-system, sans-serif;
+  --dew-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --bg: var(--dew-bg);
   --bg-gradient: none;
   --surface: var(--dew-surface);
   --surface-elevated: var(--dew-surface-faint);
   --surface-muted: var(--dew-surface-subtle);
+  --surface-hover: #f3efe7;
+  --surface-active: #ece7dc;
   --border: var(--dew-border);
   --border-soft: #f4f0e8;
   --text: var(--dew-text);
@@ -79,12 +89,12 @@
   --fw-theme-mode: light;
 
   /* Crayons fw-button semantic tokens → Dew (Freshdesk / Freshservice) */
-  --dew-btn-radius: 9px;
+  --dew-btn-radius: 6px;
   --color-fill-brand: var(--dew-primary);
   --color-fill-semantic-info-bold: var(--dew-primary-hover);
   --color-text-brand: var(--dew-brand);
   --color-text-primary: var(--dew-text);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --color-fill-surface: var(--dew-surface);
   --color-fill-container: var(--dew-surface-subtle);
   --color-boundary-border-mildest: var(--dew-input-border);
@@ -123,6 +133,7 @@
   --dew-input-border: rgba(236, 231, 222, 0.22);
   --dew-purple: #6fb8ac;
   --dew-purple-tint: rgba(47, 138, 123, 0.16);
+  --dew-accent: #6fb8ac;
   --dew-green: #6daa7e;
   --dew-green-tint: rgba(74, 122, 92, 0.16);
   --dew-amber: #d4a04a;
@@ -133,6 +144,7 @@
   --dew-teal-tint: rgba(47, 138, 123, 0.16);
   --dew-sand-tint: rgba(165, 136, 63, 0.12);
   --dew-clay-tint: rgba(176, 120, 91, 0.12);
+  --dew-text-inverse: #ffffff;
   --dew-shadow-island: 0 1px 2px rgba(0, 0, 0, 0.28);
   --dew-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.32);
   --dew-shadow-popover: 0 12px 40px rgba(0, 0, 0, 0.42);
@@ -173,12 +185,12 @@
   --fw-primary-color-hover: var(--dew-primary-hover);
   --fw-theme-mode: dark;
 
-  --dew-btn-radius: 9px;
+  --dew-btn-radius: 6px;
   --color-fill-brand: var(--dew-primary);
   --color-fill-semantic-info-bold: var(--dew-primary-hover);
   --color-text-brand: var(--dew-brand);
   --color-text-primary: var(--dew-text);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --color-fill-surface: var(--dew-surface);
   --color-fill-container: var(--dew-surface-subtle);
   --color-boundary-border-mildest: var(--dew-input-border);
@@ -197,7 +209,7 @@
 fw-button[color="primary"] {
   --color-fill-brand: var(--dew-primary);
   --fw-button-hover-background-color: var(--dew-primary-hover);
-  --color-text-inverse: #ffffff;
+  --color-text-inverse: var(--dew-text-inverse);
   --gradient-fill: none;
   --shadow-xs: none;
 }
@@ -237,7 +249,7 @@ fw-select {
   --fw-input-border-radius: var(--dew-btn-radius);
 }
 
-/* Crayons loading and feedback — orbit spinner in orbit-spinner.css; fw-button loading uses Crayons default */
+/* Crayons loading and feedback — thinking orb is canvas-based (thinking-orb.js, no CSS); fw-button loading uses Crayons default */
 fw-skeleton {
   --fw-skeleton-background: var(--dew-hairline);
   --fw-skeleton-sheen-color: var(--dew-border);
@@ -271,12 +283,12 @@ fw-button.sidebar-collapse[color="secondary"][fill="clear"] {
 }
 
 body {
-  font-family: "Figtree", system-ui, -apple-system, sans-serif;
+  font-family: var(--dew-font-body);
   color: var(--dew-text);
 }
 
 .dew-mono-label {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--dew-font-mono);
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;

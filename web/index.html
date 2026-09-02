@@ -9,12 +9,12 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>SE Labs | Freshworks</title>
+    <title>Janus | Freshworks</title>
     <!-- Dew head — see web/partials/head-dew.html (@freshworks/crayons@4.3.0-dew.14) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap"
       rel="stylesheet"
     />
     <link
@@ -23,12 +23,12 @@
       crossorigin="anonymous"
     />
     <link rel="stylesheet" href="./dew-theme.css?v=2.1.14" />
-    <link rel="stylesheet" href="./orbit-spinner.css?v=2.1.17" />
-    <link rel="stylesheet" href="./styles.css?v=2.1.49" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.41" />
     <link rel="stylesheet" href="./precall.css?v=2.1.45" />
     <link rel="stylesheet" href="./postcall.css?v=2.1.45" />
     <link rel="stylesheet" href="./call-view.css?v=2.1.45" />
     <link rel="stylesheet" href="./lifecycle.css?v=2.1.14" />
+    <link rel="stylesheet" href="./mono-overhaul.css?v=2.1.45" />
     <style id="prep-dispute-critical-css">
       .prep-dispute-backdrop { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.45); }
       .prep-dispute-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 24px 16px; pointer-events: none; }
@@ -39,42 +39,148 @@
       .prep-dispute-overlay .prep-dispute-textarea { display: block !important; width: 100% !important; min-height: 42px !important; box-sizing: border-box; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
       .prep-dispute-overlay .prep-dispute-textarea { min-height: 96px !important; }
     </style>
+    <style id="micro-animations">
+      @media (prefers-reduced-motion: no-preference) {
+        .btn-animate,
+        .tile-animate,
+        .card-animate {
+          transform-origin: center;
+          will-change: transform, box-shadow;
+        }
+
+        .btn-animate {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .btn-animate:hover {
+          transform: scale(1.02);
+          box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
+        }
+
+        .btn-animate:active {
+          transform: scale(0.97);
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        .sidebar-nav .nav-item.btn-animate,
+        .sidebar-foot .nav-item.btn-animate {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .sidebar-nav .nav-item.btn-animate::before,
+        .sidebar-foot .nav-item.btn-animate::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: currentColor;
+          opacity: 0.06;
+          pointer-events: none;
+          transform: translateX(-100%);
+          transition: transform 150ms ease-out;
+        }
+
+        .sidebar-nav .nav-item.btn-animate:hover::before,
+        .sidebar-foot .nav-item.btn-animate:hover::before {
+          transform: translateX(0);
+        }
+
+        .tile-animate {
+          opacity: 1;
+          transform: translateY(0);
+          transition: opacity 300ms ease-out, transform 300ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .card-animate {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.card-animate {
+          transition: opacity 300ms ease-out, transform 300ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .card-animate:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .btn-animate.card-animate:hover {
+          transform: scale(1.02);
+        }
+
+        .btn-animate.card-animate:active {
+          transform: scale(0.97);
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        .tile-animate.btn-animate:hover {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.card-animate:hover {
+          transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+        }
+
+        .tile-animate.btn-animate:active {
+          transition-duration: 80ms;
+          transition-timing-function: ease-in;
+        }
+
+        @starting-style {
+          .tile-animate {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .btn-animate,
+        .tile-animate,
+        .card-animate {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          transition: none !important;
+        }
+
+        .sidebar-nav .nav-item.btn-animate::before,
+        .sidebar-foot .nav-item.btn-animate::before {
+          display: none;
+        }
+      }
+    </style>
     <script
       type="module"
       src="https://cdn.jsdelivr.net/npm/@freshworks/crayons@4.3.0-dew.14/dist/crayons/crayons.esm.js"
     ></script>
   </head>
   <body>
-    <!-- Lion splash (index only — see splash.js) -->
-    <div id="lion-splash" class="lion-splash" hidden aria-live="polite">
+    <!-- Lion splash (index only — see splash.js). Visible from first paint as a
+         boot cover so the raw login/app markup never flashes pre-boot. -->
+    <div id="lion-splash" class="lion-splash" aria-live="polite">
       <div class="lion-splash-inner">
-        <div class="lion-loader" aria-hidden="true">
-          <div class="dew-orbit-spinner dew-orbit-spinner--medium lion-loader-orbit" aria-hidden="true">
-            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-            <span class="dew-orbit-core"></span>
-          </div>
-        </div>
-        <h1 class="lion-title">SE Labs</h1>
-        <p class="lion-tagline">Solution Engineering</p>
+        <div class="lion-loader" aria-hidden="true"><img class="lion-loader-logo" src="./assets/janus-logo.png" alt="" width="64" height="64" /></div>
+        <h1 class="lion-title" data-decrypt-static>Janus</h1>
+        <p class="lion-tagline" data-decrypt-loop>Solution Engineering</p>
       </div>
     </div>
 
     <div id="app-loading" class="app-loading" hidden role="status" aria-live="polite">
-      <fw-card class="app-loading-card">
-        <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-          <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-          <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-          <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-          <span class="dew-orbit-core"></span>
+      <div class="app-loading-card">
+        <div class="janus-orb-face-wrap" aria-hidden="true">
+          <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="64"></canvas>
+          <img class="janus-orb-face" src="./janus-face.png" alt="" width="50" height="50" />
         </div>
-        <span id="app-loading-message" class="app-loading-message">Loading your workspace…</span>
-      </fw-card>
+        <span id="app-loading-message" class="app-loading-message" data-decrypt-loop>Loading your workspace…</span>
+      </div>
     </div>
 
-    <!-- Login — full-screen video background, centered card -->
-    <div id="login-view" class="login-page">
+    <!-- Login — full-screen video background, centered card.
+         Hidden until app boot reveals it (showLogin) — prevents unstyled FOUC. -->
+    <div id="login-view" class="login-page" hidden>
       <button type="button" class="login-theme-toggle theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
         <span class="theme-toggle-icon" aria-hidden="true">
           <svg class="theme-moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -107,7 +213,7 @@
                 <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
                 <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
               </svg>
-              <fw-button id="signin-google" class="login-google-btn" color="secondary" fill="outline">Sign in with Google</fw-button>
+              <fw-button id="signin-google" class="login-google-btn btn-animate" color="secondary" fill="outline">Sign in with Google</fw-button>
             </div>
             <fw-inline-message id="signin-error" type="error" closable="false" hidden></fw-inline-message>
           </div>
@@ -131,7 +237,7 @@
               required
               clear-input
             ></fw-input>
-            <fw-button id="login-submit" color="primary" type="button">Sign in</fw-button>
+            <fw-button id="login-submit" class="btn-animate" color="primary" type="button">Sign in</fw-button>
           </form>
           <fw-inline-message id="login-error" type="error" closable="false" hidden></fw-inline-message>
           <details id="login-hint" class="login-hint">
@@ -307,80 +413,80 @@
         <div class="sidebar-inner">
           <div class="sidebar-head">
             <div class="sidebar-brand">
-              <img class="sidebar-brand-logo" src="assets/freshworks-logomark.webp" alt="Freshworks" width="38" height="38" />
+              <img class="sidebar-brand-logo" src="/janus-logo.png" alt="Janus" width="32" height="32" />
               <div class="sidebar-brand-copy">
-                <span class="sidebar-brand-text">SE Labs</span>
+                <span class="sidebar-brand-text">Janus</span>
               </div>
             </div>
-            <fw-button id="sidebar-collapse" class="sidebar-collapse" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
+            <fw-button id="sidebar-collapse" class="sidebar-collapse btn-animate" color="secondary" fill="clear" aria-label="Collapse sidebar" aria-expanded="true">
               <span slot="before-label" class="sidebar-collapse-glyph" aria-hidden="true">‹</span>
             </fw-button>
-            <fw-button id="sidebar-close" class="sidebar-close" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
+            <fw-button id="sidebar-close" class="sidebar-close btn-animate" color="secondary" fill="clear" aria-label="Close menu">×</fw-button>
           </div>
         <nav class="sidebar-nav" role="navigation">
-          <fw-button type="button" class="nav-item" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="Dashboard">
+          <fw-button type="button" class="nav-item btn-animate" data-view="dashboard" data-role="se" color="secondary" fill="clear" title="Dashboard">
             <span slot="before-label" class="nav-icon" data-nav-icon="dashboard" aria-hidden="true"></span>
             <span class="nav-label">Dashboard</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call brief">
+          <fw-button type="button" class="nav-item btn-animate" data-view="precall" data-role="se" color="secondary" fill="clear" title="Pre-call brief">
             <span slot="before-label" class="nav-icon" data-nav-icon="brief" aria-hidden="true"></span>
             <span class="nav-label">Pre-call brief</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call analysis">
+          <fw-button type="button" class="nav-item btn-animate" data-view="postcall" data-role="se" color="secondary" fill="clear" title="Post-call analysis">
             <span slot="before-label" class="nav-icon" data-nav-icon="analysis" aria-hidden="true"></span>
             <span class="nav-label">Post-call analysis</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="calls" data-role="se" color="secondary" fill="clear" title="Activities">
+          <fw-button type="button" class="nav-item btn-animate" data-view="calls" data-role="se" color="secondary" fill="clear" title="Activities">
             <span slot="before-label" class="nav-icon" data-nav-icon="history" aria-hidden="true"></span>
             <span class="nav-label">Activities</span>
           </fw-button>
           <div class="sidebar-nav-divider" role="separator" aria-hidden="true"></div>
-          <fw-button type="button" class="nav-item" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
+          <fw-button type="button" class="nav-item btn-animate" data-view="accounts" data-role="se" color="secondary" fill="clear" title="Accounts">
             <span slot="before-label" class="nav-icon" data-nav-icon="building" aria-hidden="true"></span>
             <span class="nav-label">Accounts</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
+          <fw-button type="button" class="nav-item btn-animate" data-view="deals" data-role="se" color="secondary" fill="clear" title="My deals">
             <span slot="before-label" class="nav-icon" data-nav-icon="deal" aria-hidden="true"></span>
             <span class="nav-label">My deals</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="contacts" data-role="se" color="secondary" fill="clear" title="My contacts">
+          <fw-button type="button" class="nav-item btn-animate" data-view="contacts" data-role="se" color="secondary" fill="clear" title="My contacts">
             <span slot="before-label" class="nav-icon" data-nav-icon="contacts" aria-hidden="true"></span>
             <span class="nav-label">My contacts</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
+          <fw-button type="button" class="nav-item btn-animate" data-view="coaching" data-role="se" color="secondary" fill="clear" title="My coaching">
             <span slot="before-label" class="nav-icon" data-nav-icon="coaching" aria-hidden="true"></span>
             <span class="nav-label">My coaching</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="profile" data-role="se" color="secondary" fill="clear" title="Settings">
+          <fw-button type="button" class="nav-item btn-animate" data-view="profile" data-role="se" color="secondary" fill="clear" title="Settings">
             <span slot="before-label" class="nav-icon" data-nav-icon="settings" aria-hidden="true"></span>
             <span class="nav-label">Settings</span>
           </fw-button>
           <div class="nav-grp nav-grp--rollup" data-role="rollup" hidden>Roll-ups</div>
-          <fw-button type="button" class="nav-item" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="manager" data-role="manager" color="secondary" fill="clear" title="Team" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="building" aria-hidden="true"></span>
             <span class="nav-label">Team</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="pipeline" data-role="leader" color="secondary" fill="clear" title="Pipeline review" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="deal" aria-hidden="true"></span>
             <span class="nav-label">Pipeline review</span>
           </fw-button>
 
-          <fw-button type="button" class="nav-item" data-view="org-structure" data-role="structure" color="secondary" fill="clear" title="Team structure" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="org-structure" data-role="structure" color="secondary" fill="clear" title="Team structure" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="settings" aria-hidden="true"></span>
             <span class="nav-label">Team structure</span>
           </fw-button>
-          <fw-button type="button" class="nav-item" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
+          <fw-button type="button" class="nav-item btn-animate" data-view="signal" data-role="curator" color="secondary" fill="clear" title="Product signal" hidden>
             <span slot="before-label" class="nav-icon" data-nav-icon="coaching" aria-hidden="true"></span>
             <span class="nav-label">Product signal</span>
           </fw-button>
         </nav>
         <div class="sidebar-foot">
-          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback" color="secondary" fill="clear" title="Feedback">
+          <fw-button id="sidebar-feedback" class="nav-item sidebar-feedback btn-animate" color="secondary" fill="clear" title="Feedback">
             <fw-icon slot="before-label" class="nav-icon" name="add-note" size="18"></fw-icon>
             <span class="nav-label">Feedback</span>
           </fw-button>
           <div class="user-menu user-menu--sidebar" id="user-menu">
-            <button type="button" id="sidebar-user" class="sidebar-user" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
+            <button type="button" id="sidebar-user" class="sidebar-user btn-animate" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel" aria-label="Account menu">
               <span class="sidebar-user-avatar" id="sidebar-user-avatar" aria-hidden="true">SP</span>
               <div class="sidebar-user-text">
                 <span class="sidebar-user-name" id="sidebar-user-name">-</span>
@@ -439,7 +545,7 @@
 
         <main class="main-content">
           <header class="main-topbar">
-            <fw-button id="sidebar-toggle" class="sidebar-toggle" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
+            <fw-button id="sidebar-toggle" class="sidebar-toggle btn-animate" color="secondary" fill="clear" aria-label="Open menu">☰</fw-button>
             <span id="signin-lion-pulse" class="signin-lion-pulse" hidden aria-hidden="true"></span>
             <div class="topbar-date" id="topbar-date">
               <span id="topbar-date-text" class="topbar-date-text"></span>
@@ -447,15 +553,15 @@
             <span id="main-view-title" class="main-view-title" hidden aria-hidden="true">My dashboard</span>
             <fw-input id="global-search-input" class="global-search-input" placeholder="Search everything…" clear-input aria-label="Global search"></fw-input>
             <div class="topbar-actions" id="topbar-actions">
-              <button type="button" class="topbar-action topbar-action--primary" id="topbar-new-brief">
+              <button type="button" class="topbar-action topbar-action--primary btn-animate" id="topbar-new-brief">
                 <span class="topbar-action-icon" aria-hidden="true">+</span>
                 New brief
               </button>
-              <button type="button" class="topbar-action topbar-action--secondary" id="topbar-new-call">
+              <button type="button" class="topbar-action topbar-action--secondary btn-animate" id="topbar-new-call">
                 <span class="topbar-action-icon" aria-hidden="true">+</span>
                 New call analysis
               </button>
-              <button type="button" class="topbar-action topbar-action--icon" id="topbar-notifications" aria-label="Notifications" title="Notifications">
+              <button type="button" class="topbar-action topbar-action--icon btn-animate" id="topbar-notifications" aria-label="Notifications" title="Notifications">
                 <span aria-hidden="true">🔔</span>
               </button>
             </div>
@@ -598,13 +704,8 @@
             <div id="prep-progress" class="postcall-progress postcall-stage-panel" hidden aria-live="polite"></div>
             <fw-card id="prep-loading" class="dew-skeleton-card" hidden aria-label="Generating discovery brief">
               <div class="dew-skeleton-loading-head">
-                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-                  <span class="dew-orbit-core"></span>
-                </div>
-                <span class="muted">Generating discovery brief…</span>
+                <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
+                <span class="muted" data-decrypt-loop>Generating discovery brief…</span>
               </div>
               <fw-skeleton variant="text" width="42%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="4" effect="sheen"></fw-skeleton>
@@ -768,13 +869,8 @@
             <div id="postcall-status" class="dew-status-host postcall-stage-panel" hidden></div>
             <fw-card id="postcall-loading" class="dew-skeleton-card" hidden aria-label="Generating analysis">
               <div class="dew-skeleton-loading-head">
-                <div class="dew-orbit-spinner dew-orbit-spinner--medium" aria-hidden="true">
-                  <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-                  <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-                  <span class="dew-orbit-core"></span>
-                </div>
-                <span class="muted">Generating analysis…</span>
+                <canvas class="thinking-orb" data-orb-state="solving" data-orb-size="20" aria-hidden="true"></canvas>
+                <span class="muted" data-decrypt-loop>Generating analysis…</span>
               </div>
               <fw-skeleton variant="text" width="36%" effect="sheen"></fw-skeleton>
               <fw-skeleton variant="text" count="3" effect="sheen"></fw-skeleton>
@@ -790,20 +886,15 @@
       <div class="prep-gen-overlay-backdrop"></div>
       <div class="prep-gen-overlay-panel">
         <div class="prep-gen-brand" aria-hidden="true">
-          <div class="dew-orbit-spinner dew-orbit-spinner--large prep-gen-orbit" aria-hidden="true">
-            <div class="dew-orbit-ring dew-orbit-ring--1"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--2"><span class="dew-orbit-sat"></span></div>
-            <div class="dew-orbit-ring dew-orbit-ring--3"><span class="dew-orbit-sat"></span></div>
-            <span class="dew-orbit-core"></span>
-          </div>
+          <canvas class="thinking-orb prep-gen-orb" data-orb-state="solving" data-orb-size="64"></canvas>
         </div>
-        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow">SE Labs · Pre-call</p>
+        <p id="prep-gen-eyebrow" class="prep-form-eyebrow prep-gen-eyebrow" data-decrypt-static>Janus · Pre-call</p>
         <h2 id="prep-gen-title" class="prep-gen-title">Building your brief</h2>
-        <p id="prep-gen-stage" class="prep-gen-stage">Starting…</p>
+        <p id="prep-gen-stage" class="prep-gen-stage" data-decrypt>Starting…</p>
         <div class="prep-gen-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span id="prep-gen-bar" class="prep-gen-progress-bar"></span>
         </div>
-        <p id="prep-gen-hint" class="prep-gen-hint muted">Research, enrichment, and synthesis run in the background — usually under a minute.</p>
+        <p id="prep-gen-hint" class="prep-gen-hint muted" data-decrypt-loop>Research, enrichment, and synthesis run in the background — usually under a minute.</p>
       </div>
     </div>
 
@@ -1010,6 +1101,11 @@
 
       function showBootError(err) {
         console.error("App boot failed:", err);
+        const splash = document.getElementById("lion-splash");
+        if (splash) splash.hidden = true;
+        document.body.classList.remove("splash-lock");
+        const login = document.getElementById("login-view");
+        if (login) login.hidden = false;
         const el = document.getElementById("login-error");
         if (el) {
           el.textContent =

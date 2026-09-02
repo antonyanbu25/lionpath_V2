@@ -7,6 +7,9 @@
  * Force replay without clearing cookie: index.html?splash=1
  */
 
+import "./thinking-orb.js";
+import "./decrypt-text.js";
+
 const COOKIE_NAME = "lionpath_splash_seen";
 const SPLASH_MS = 2000;
 
@@ -54,23 +57,63 @@ function shouldShowSplash() {
   return getCookie(COOKIE_NAME) !== "1";
 }
 
+/** Force-hide fallback so a stalled boot never traps the user behind the splash. */
+const SAFETY_MS = 10000;
+
 function runSplash() {
   const el = document.getElementById("lion-splash");
-  if (!el || !shouldShowSplash()) return;
+  if (!el) return;
+  el.querySelector(".lion-title")?.setAttribute("data-decrypt-static", "");
+
+  // Splash is visible from markup as a boot cover (prevents unstyled login FOUC).
+  // Lift it once the app reveals its first real surface — and, on branded runs,
+  // only after the minimum display time has elapsed.
+  const branded = shouldShowSplash();
+  const minMs = branded ? SPLASH_MS : 0;
+  const startedAt = performance.now();
+  const loginView = document.getElementById("login-view");
+  const appShell = document.getElementById("app-shell");
+  const appLoading = document.getElementById("app-loading");
+  const targets = [loginView, appShell, appLoading].filter(Boolean);
 
   el.hidden = false;
   el.classList.add("lion-splash-active");
   document.body.classList.add("splash-lock");
 
-  window.setTimeout(() => {
+  let done = false;
+  let scheduled = false;
+  let mo = null;
+
+  const dismiss = () => {
+    if (done) return;
+    done = true;
+    if (mo) mo.disconnect();
     el.classList.add("lion-splash-fade");
     window.setTimeout(() => {
       el.hidden = true;
       el.classList.remove("lion-splash-active", "lion-splash-fade");
       document.body.classList.remove("splash-lock");
-      setCookie(COOKIE_NAME, "1");
+      if (branded) setCookie(COOKIE_NAME, "1");
     }, 700);
-  }, SPLASH_MS);
+  };
+
+  const maybeDismiss = () => {
+    if (done || scheduled) return;
+    // #lion-splash owns first paint; do not create or reveal loader/card markup here.
+    const readyForHandoff =
+      !loginView?.hidden || (!!appShell && !appShell.hidden && (appLoading?.hidden ?? true));
+    if (!readyForHandoff) return;
+    scheduled = true;
+    const wait = Math.max(0, minMs - (performance.now() - startedAt));
+    window.setTimeout(dismiss, wait);
+  };
+
+  if (targets.length) {
+    mo = new MutationObserver(maybeDismiss);
+    for (const t of targets) mo.observe(t, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  maybeDismiss();
+  window.setTimeout(dismiss, SAFETY_MS);
 }
 
 if (document.readyState === "loading") {

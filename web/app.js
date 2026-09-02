@@ -1712,7 +1712,7 @@ async function renderCallPanelOnce() {
       <div class="act-header">
         <h1 class="call-list-heading">${VIEW_TITLES.calls || "Activities"}</h1>
       </div>
-      ${renderLoadingPanel("Loading activities…")}
+      ${renderLoadingPanel("Loading activities…", { size: 64 })}
     </div>`;
   }
   let session = currentSession;
@@ -2100,7 +2100,7 @@ async function refreshSidebarRecentWork() {
       prepList.innerHTML = briefs
         .map(
           (b) => `<li>
-        <fw-button class="sidebar-history-item sidebar-prep-item" color="secondary" fill="clear" data-id="${esc(b.id)}" title="${esc(b.company || "Brief")}">
+        <fw-button class="sidebar-history-item sidebar-prep-item btn-animate" color="secondary" fill="clear" data-id="${esc(b.id)}" title="${esc(b.company || "Brief")}">
           <span class="hist-title">${esc(b.company || "Account")}</span>
           <span class="hist-meta"><span class="hist-kind">${esc(b.kind || "Discovery")}</span><span class="hist-when">${esc(formatSidebarDate(b.when))}</span></span>
         </fw-button>
@@ -2123,7 +2123,7 @@ async function refreshSidebarRecentWork() {
           const score = qc ? normalizeQualityCoach(qc).overallScore : null;
           const scoreBadge = score != null ? `<span class="hist-score">${score}/10</span>` : "";
           return `<li>
-        <fw-button class="sidebar-history-item sidebar-call-item" color="secondary" fill="clear" data-id="${esc(r.id)}" title="${esc(r.title)}">
+        <fw-button class="sidebar-history-item sidebar-call-item btn-animate" color="secondary" fill="clear" data-id="${esc(r.id)}" title="${esc(r.title)}">
           <span class="hist-title">${esc(r.title)}</span>
           <span class="hist-meta">${scoreBadge}<span class="hist-when">${esc(when)}</span></span>
         </fw-button>
