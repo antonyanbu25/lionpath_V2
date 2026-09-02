@@ -1,8 +1,8 @@
 /** Shared Freshworks Crayons helpers for the SE portal. */
 
-import { createThinkingOrb, renderLoadingPanel as renderOrbLoadingPanel } from "./thinking-orb.js";
+import { createOrbitSpinner, renderLoadingPanel as renderOrbitLoadingPanel } from "./orbit-spinner.js";
 
-export { renderOrbLoadingPanel as renderLoadingPanel };
+export { renderOrbitLoadingPanel as renderLoadingPanel };
 
 /**
  * fw-input/fw-textarea's internal .field-control is display:block sized to
@@ -199,7 +199,7 @@ export function showInlineStatus(host, options = {}) {
   notice.closable = false;
 
   if (loading) {
-    notice.append(createThinkingOrb({ state: "solving", size: 20 }));
+    notice.append(createOrbitSpinner("small"));
   }
   notice.append(document.createTextNode(message));
   host.append(notice);

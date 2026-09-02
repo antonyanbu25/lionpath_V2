@@ -64,33 +64,6 @@ function wireThemeToggles() {
   applyTheme(getTheme());
 }
 
-function injectJanusLogoStyles() {
-  if (document.getElementById("janus-logo-blend-styles")) return;
-  const style = document.createElement("style");
-  style.id = "janus-logo-blend-styles";
-  style.textContent = `
-    .sidebar-brand-logo {
-      width: auto !important;
-      height: 32px !important;
-      max-height: 32px;
-      object-fit: contain;
-      background: transparent !important;
-      border: 0 !important;
-      box-shadow: none !important;
-      border-radius: 4px;
-      padding: 0;
-      /* Clean white-logo bg on light sidebar */
-      filter: brightness(0.95);
-    }
-
-    [data-theme="dark"] .sidebar-brand-logo {
-      /* On dark sidebar: boost to make white-bg logo visible */
-      filter: brightness(1.4) contrast(1.15);
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 /** Wire Light/Dark options inside user menu panel. */
 export function wireThemeMenu(root = document) {
   const scope = root instanceof Element ? root : document;
@@ -119,7 +92,6 @@ export function syncThemeMenuState(root = document) {
 }
 
 export function initTheme() {
-  injectJanusLogoStyles();
   applyTheme(preferredTheme());
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", wireThemeToggles);

@@ -158,17 +158,10 @@ body.splash-lock { overflow: hidden; }
   align-items: center;
   justify-content: center;
   border-radius: 18px;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+  background: var(--dew-surface);
+  border: 1px solid var(--dew-border);
+  box-shadow: var(--dew-shadow-card);
   animation: splash-logo-breathe 2.8s ease-in-out infinite;
-}
-.lion-loader-logo {
-  display: block;
-  width: 64px;
-  height: 64px;
-  object-fit: contain;
-  border-radius: 50%;
 }
 .lion-title {
   margin: 0 0 6px;
@@ -217,32 +210,17 @@ body.splash-lock { overflow: hidden; }
   z-index: 180;
   display: grid;
   place-items: center;
-  background: transparent;
+  background: color-mix(in srgb, var(--dew-bg) 78%, transparent);
+  backdrop-filter: blur(4px);
 }
 .app-loading-card {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 18px 22px;
   color: var(--dew-text);
-  background: var(--dew-bg);
-  border-radius: 8px;
-}
-.janus-orb-face-wrap {
-  position: relative;
-  display: inline-block;
-}
-.janus-orb-face-wrap .thinking-orb {
-  display: block;
-}
-.janus-orb-face-wrap .janus-orb-face {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  pointer-events: none;
-  mix-blend-mode: normal;
+  border: 1px solid var(--dew-border);
+  box-shadow: var(--dew-shadow-popover);
 }
 .app-loading-message {
   white-space: nowrap;
@@ -255,12 +233,12 @@ body.splash-lock { overflow: hidden; }
 .dew-status-host fw-inline-message {
   width: 100%;
 }
-.dew-status-host .thinking-orb {
+.dew-status-host .dew-orbit-spinner {
   display: inline-block;
   vertical-align: middle;
   margin-right: 8px;
 }
-fw-inline-message .thinking-orb {
+fw-inline-message .dew-orbit-spinner {
   display: inline-block;
   vertical-align: middle;
   margin-right: 8px;
@@ -634,7 +612,7 @@ fw-inline-message .thinking-orb {
   align-self: flex-start;
   overflow: hidden;
   box-shadow: none;
-  transition: width 340ms cubic-bezier(0.22, 1, 0.36, 1), background var(--transition);
+  transition: width 280ms ease, background var(--transition);
 }
 .sidebar-inner {
   display: flex;
@@ -704,7 +682,7 @@ fw-inline-message .thinking-orb {
   font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  transition: opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 250ms ease, max-width 250ms ease;
 }
 fw-button.sidebar-collapse {
   position: static;
@@ -808,7 +786,7 @@ fw-button.sidebar-collapse:focus-visible {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  transition: opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 250ms ease, max-width 250ms ease;
   max-width: 200px;
   opacity: 1;
 }
@@ -834,7 +812,7 @@ fw-button.sidebar-collapse:focus-visible {
   color: #7c7466;
   font-size: 12px;
   line-height: 1;
-  transition: transform 150ms ease, opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 150ms ease;
 }
 .sidebar-user[aria-expanded="true"] .sidebar-user-chevron {
   transform: rotate(180deg);
@@ -864,10 +842,6 @@ fw-button.sidebar-collapse:focus-visible {
   color: var(--dew-text-muted);
   font-weight: 700;
   padding: 12px 12px 5px;
-  overflow: hidden;
-  white-space: nowrap;
-  transition: opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 340ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .nav-grp--rollup[hidden] {
   display: none;
@@ -936,7 +910,7 @@ fw-button.nav-item.active .nav-icon-text {
   overflow: hidden;
   opacity: 1;
   max-width: 180px;
-  transition: opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 250ms ease, max-width 250ms ease;
 }
 .nav-item:hover {
   background: #ebe5da;
@@ -1015,7 +989,7 @@ fw-button.nav-item.active .nav-icon-text {
   overflow: hidden;
   opacity: 1;
   max-width: 120px;
-  transition: opacity 200ms ease, max-width 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 250ms ease, max-width 250ms ease;
 }
 .sidebar-history-list {
   list-style: none;
@@ -1328,19 +1302,10 @@ fw-button.sidebar-history-item.active {
     display: none !important;
   }
 }
-/* Fade + collapse in sync with the width animation — display:none would snap. */
 .sidebar-collapsed .nav-label,
 .sidebar-collapsed .sidebar-user-text,
 .sidebar-collapsed .sidebar-user-chevron {
-  opacity: 0;
-  max-width: 0;
-  min-width: 0;
-  width: 0;
-  padding: 0;
-  margin: 0;
-  overflow: hidden;
-  flex-shrink: 0;
-  pointer-events: none;
+  display: none;
 }
 .sidebar-collapsed .sidebar-brand-text,
 .sidebar-collapsed .nav-grp,
@@ -3806,7 +3771,7 @@ a { color: var(--accent); }
     z-index: 100;
     width: var(--sidebar-w) !important;
     transform: translateX(-100%);
-    transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 280ms ease;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
   }
   .sidebar.open { transform: translateX(0); }

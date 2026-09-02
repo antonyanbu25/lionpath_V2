@@ -1,30 +1,26 @@
 /**
- * Full-page brief / call analysis generation overlay — Dew theme, thinking orb, stage updates.
+ * Full-page brief / call analysis generation overlay — Dew theme, orbit spinner, stage updates.
  */
 
-import { hydrateThinkingOrbs } from "./thinking-orb.js";
 import { $, show } from "./shared.js";
-import { hydrateDecryptTexts } from "./decrypt-text.js";
 
 const FADE_MS = 420;
 const REVEAL_MS = 480;
-let hideSeq = 0;
-let hideTimer = 0;
 
 export const PREP_GEN_THEME = {
-  eyebrow: "Janus · Pre-call",
+  eyebrow: "SE Labs · Pre-call",
   title: "Building your brief",
   hint: "Research, enrichment, and synthesis run in the background — usually under a minute.",
 };
 
 export const POSTCALL_GEN_THEME = {
-  eyebrow: "Janus · Post-call",
+  eyebrow: "SE Labs · Post-call",
   title: "Analysing your call",
   hint: "Transcript analysis, qualification, and scoring run in the background — usually 40–90 seconds.",
 };
 
 export const CALL_LOAD_THEME = {
-  eyebrow: "Janus · Call record",
+  eyebrow: "SE Labs · Call record",
   title: "Loading your call",
   hint: "Fetching analysis, scorecard, and timeline from your workspace — usually a few seconds.",
 };
@@ -45,10 +41,7 @@ function applyGenOverlayTheme(theme = PREP_GEN_THEME) {
   const eyebrow = $("prep-gen-eyebrow");
   const title = $("prep-gen-title");
   const hint = $("prep-gen-hint");
-  if (eyebrow) {
-    eyebrow.setAttribute("data-decrypt-static", "");
-    eyebrow.textContent = t.eyebrow;
-  }
+  if (eyebrow) eyebrow.textContent = t.eyebrow;
   if (title) title.textContent = t.title;
   if (hint) hint.textContent = t.hint;
 }
@@ -64,31 +57,6 @@ function setBarPct(pct) {
   track?.setAttribute("aria-valuenow", String(clamped));
 }
 
-function setStageDecryptMode(stage, message, theme) {
-  if (!stage) return;
-  const isPostCall = theme?.eyebrow === POSTCALL_GEN_THEME.eyebrow;
-  const isProspectsRead = /^Prospects read:/i.test(String(message || ""));
-  if (!isPostCall || isProspectsRead) {
-    stage.setAttribute("data-decrypt", isProspectsRead ? "loop" : "");
-    if (isProspectsRead) stage.setAttribute("data-decrypt-loop", "");
-    else stage.removeAttribute("data-decrypt-loop");
-    hydrateDecryptTexts(stage);
-    return;
-  }
-
-  stage.removeAttribute("data-decrypt");
-  stage.removeAttribute("data-decrypt-loop");
-  if (stage.__decryptState) {
-    stage.__decryptState.cancelled = true;
-    if (stage.__decryptState.raf) cancelAnimationFrame(stage.__decryptState.raf);
-    if (stage.__decryptState.timer) clearTimeout(stage.__decryptState.timer);
-  }
-  stage.__decryptObserver?.disconnect?.();
-  stage.__decryptObserver = null;
-  stage.__decryptMounted = false;
-  stage.__decryptLoop = false;
-}
-
 /**
  * Show the generation overlay.
  * @param {{ message?: string, pct?: number, theme?: Partial<typeof PREP_GEN_THEME> }} [opts]
@@ -96,17 +64,10 @@ function setStageDecryptMode(stage, message, theme) {
 export function showPrepGenOverlay(opts = {}) {
   const el = overlayEl();
   if (!el) return;
-  hideSeq += 1;
-  if (hideTimer) {
-    window.clearTimeout(hideTimer);
-    hideTimer = 0;
-  }
   applyGenOverlayTheme(opts.theme);
   const stage = $("prep-gen-stage");
-  setStageDecryptMode(stage, opts.message, opts.theme);
   if (stage && opts.message) stage.textContent = opts.message;
   setBarPct(opts.pct ?? 8);
-  hydrateThinkingOrbs(el);
   el.classList.remove("prep-gen-overlay-exit", "prep-gen-overlay-exit-active");
   show(el, true);
   document.body?.classList.add("prep-gen-lock");
@@ -116,9 +77,6 @@ export function showPrepGenOverlay(opts = {}) {
 /** @param {{ message?: string, pct?: number }} [opts] */
 export function updatePrepGenOverlay(opts = {}) {
   const stage = $("prep-gen-stage");
-  const eyebrow = $("prep-gen-eyebrow");
-  const isPostCall = eyebrow?.textContent === POSTCALL_GEN_THEME.eyebrow;
-  if (stage && opts.message) setStageDecryptMode(stage, opts.message, isPostCall ? POSTCALL_GEN_THEME : PREP_GEN_THEME);
   if (stage && opts.message) stage.textContent = opts.message;
   if (opts.pct != null) setBarPct(opts.pct);
 }
@@ -150,15 +108,9 @@ export function hidePrepGenOverlay(onHidden) {
   }
 
   return new Promise((resolve) => {
-    const seq = ++hideSeq;
     el.classList.add("prep-gen-overlay-exit");
     requestAnimationFrame(() => el.classList.add("prep-gen-overlay-exit-active"));
-    hideTimer = window.setTimeout(() => {
-      hideTimer = 0;
-      if (seq !== hideSeq) {
-        resolve();
-        return;
-      }
+    window.setTimeout(() => {
       show(el, false);
       el.classList.remove(
         "prep-gen-overlay-active",

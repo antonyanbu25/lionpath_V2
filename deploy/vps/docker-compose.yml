@@ -22,11 +22,6 @@ services:
       RATE_LIMIT_ENABLED: "1"
       RATE_LIMIT_PER_MINUTE: "120"
       RATE_LIMIT_BURST: "600"
-      # Janus SQL migration (dual-write): set DATABASE_URL in the VPS .env.
-      # PERSISTENCE_MODE=dual routes CRM writes to Postgres with Firestore
-      # projected via sync_outbox; firestore (default) keeps current behavior.
-      DATABASE_URL: "${DATABASE_URL:-}"
-      PERSISTENCE_MODE: "${PERSISTENCE_MODE:-firestore}"
     volumes:
       - /var/lib/se-paathai/history:/data/history
       - /var/lib/se-paathai/video:/data/video

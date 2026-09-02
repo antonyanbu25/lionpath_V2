@@ -17,8 +17,7 @@ import { sessionUserId, withEffectiveUserId } from "./domain/session.js";
 import { syncSessionWithDomainStore } from "./auth.js";
 import { STAGE_LABELS, CONTACT_EVENT_LABELS } from "./domain/types.js";
 import { filterAccountRows } from "./search-service.js?v=2.1.14";
-import { readFieldValueAsync } from "./crayons-ui.js";
-import { renderLoadingPanel } from "./thinking-orb.js";
+import { readFieldValueAsync, renderLoadingPanel } from "./crayons-ui.js";
 import { esc } from "./shared.js";
 import { CALL_QUALITY_SCORE_LABEL } from "./user-facing-copy.js";
 import { formatCompactUsd, formatDealListMoneyBand } from "./deal-view.js";
@@ -1219,3 +1218,4 @@ export async function renderAccountView(container, session, opts = {}) {
     );
   }
 }
+
