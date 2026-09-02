@@ -621,6 +621,12 @@ export const manifest = [
     ]
   },
   {
+    "file": "test-postcall-dedupe.mjs",
+    "tags": [
+      "unit"
+    ]
+  },
+  {
     "file": "test-postcall-room-attribution.mjs",
     "tags": [
       "unit"

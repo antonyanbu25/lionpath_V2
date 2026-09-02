@@ -1,6 +1,7 @@
 import { WORKER_BASE_URL } from "./firebase-config.js";
 import { isFirebaseAuthEnabled, getSession } from "./auth.js";
 import { savePostCallHistory, getPostCallAnalysis, normalizeUserEmail } from "./history.js";
+import { callIdentityKey } from "./call-identity.js";
 import {
   normalizeQipScorecard,
   coerceScorecardLines,
@@ -4171,6 +4172,7 @@ async function confirmAndGenerate(e) {
     return;
   }
 
+  generating = true;
   pipelineState.confirmedIdentities = {
     seIdentity,
     aeIdentity,
@@ -4219,7 +4221,6 @@ async function confirmAndGenerate(e) {
       ? { from: preselectedId, to: dealId, at: Date.now() }
       : undefined;
 
-  generating = true;
   const { signal, gen } = beginPostcallPipeline();
   setButtonLoading(btn, true);
   show($("postcall-confirm-view"), false);
@@ -4461,6 +4462,11 @@ async function confirmAndGenerate(e) {
         },
       };
       const pending = defaultHydrationPending(dealId, accountId);
+      const saveKey = `${sessionEmail}:${callIdentityKey({
+        zoomLink: savePayload.recordingUrl,
+        analysis: data.analysis,
+        title: pipelineState.payload.meetingTitle || companyName,
+      })}`;
       record = await savePostCallHistory(sessionEmail, savePayload, {
         ...data,
         hydration: {
@@ -4473,18 +4479,18 @@ async function confirmAndGenerate(e) {
           ...(data.analysisMeta || {}),
           pass2Debug: pipelineState.pass2Debug || data.analysisMeta?.pass2Debug || null,
         },
+      }, {
+        idempotencyKey: saveKey,
+        beforePersist: onAnalysisSaved
+          ? async (draftRecord) => onAnalysisSaved(draftRecord, savePayload, data)
+          : undefined,
+        proxySeActing: currentSession?.proxySeActing === true,
+        createdByUserId: currentSession?.userId || currentSession?.uid || null,
       });
       if (record?.id) {
         pipelineState.recordId = record.id;
         invalidatePostCallResolveContext();
         invalidateDealListCache();
-        if (onAnalysisSaved) {
-          try {
-            await onAnalysisSaved(record, savePayload, data);
-          } catch (err) {
-            console.warn("[postcall] analysis-saved hook failed:", err?.message || err);
-          }
-        }
         hidePostCallLegacyResult();
         show($("postcall-form-view"), false);
         show($("postcall-confirm-view"), false);

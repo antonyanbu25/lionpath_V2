@@ -194,6 +194,7 @@ export async function attachPostCall(lifecycleId, postCall, actorId, callSummary
     const merged = {
       ...existing,
       ...postCall,
+      id: existing.id,
       lifecycleId,
       dealId: postCall.dealId || existing.dealId || lifecycle?.dealId || null,
       updatedAt: ts,

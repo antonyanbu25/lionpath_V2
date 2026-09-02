@@ -46,7 +46,7 @@ const fetchCalls = [];
 let remoteEntries = [sampleRecord(REMOTE_ID, "Remote call")];
 
 globalThis.fetch = async (url, init) => {
-  fetchCalls.push({ url, init });
+  fetchCalls.push({ url: String(url), init });
   const u = String(url);
   if (u.includes("/api/history?")) {
     return {
@@ -64,12 +64,22 @@ globalThis.fetch = async (url, init) => {
     return {
       ok: true,
       json: async () => ({ email: body.email, count: body.entries?.length || 0 }),
+      text: async () => JSON.stringify({ email: body.email, count: body.entries?.length || 0 }),
     };
   }
   if (u.includes("/api/recovery/upload")) {
-    return { ok: true, json: async () => ({ counts: {}, recordIds: [] }) };
+    return {
+      ok: true,
+      json: async () => ({ counts: {}, recordIds: [] }),
+      text: async () => JSON.stringify({ counts: {}, recordIds: [] }),
+    };
   }
-  return { ok: false, status: 404, json: async () => ({ error: "not found" }) };
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ error: "not found" }),
+    text: async () => JSON.stringify({ error: "not found" }),
+  };
 };
 
 globalThis.AbortSignal = {
@@ -102,7 +112,7 @@ if (!needed) {
   process.exit(1);
 }
 
-const session = { email: EMAIL, name: "Test SE", role: "se" };
+const session = { email: EMAIL, name: "Test SE", role: "se", userId: "usr_test_se", uid: "usr_test_se", teamId: "team_test" };
 const result = await runLocalSync(session, {
   onProgress: () => {},
 });
