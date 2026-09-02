@@ -30,6 +30,7 @@ export function isProductionHost(host) {
     host === "portal.benjaminsquare.com" ||
     host === "janus.benjaminsquare.com" ||
     host === "yonus.benjaminsquare.com" ||
+    host === "staging.benjaminsquare.com" ||
     host.endsWith(".run.app")
   );
 }
@@ -113,6 +114,9 @@ function workerBaseUrl() {
     if (host === "yonus.benjaminsquare.com") {
       return "https://yonus-api.benjaminsquare.com";
     }
+    if (host === "staging.benjaminsquare.com") {
+  return "https://staging-api.benjaminsquare.com";
+}
     if (host.endsWith(".run.app")) {
       return "https://prep-portal-api-781846715448.us-central1.run.app";
     }

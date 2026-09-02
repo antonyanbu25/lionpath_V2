@@ -69,16 +69,24 @@ export function mergeTaskLists(...lists) {
     .slice(0, MAX_TASKS);
 }
 
-async function taskHeaders() {
-  const headers = { "content-type": "application/json" };
-  if (getAuthToken) {
-    try {
-      const token = await getAuthToken();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-    } catch {
-      // demo mode
-    }
+async function resolveTaskAuthToken(forceRefresh = false) {
+  try {
+    const token = await getAuthToken?.(forceRefresh);
+    if (token) return token;
+  } catch {
+    // demo mode
   }
+  try {
+    return await globalThis.__firebaseAuth?.currentUser?.getIdToken?.(forceRefresh) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function taskHeaders(forceRefresh = false) {
+  const headers = { "content-type": "application/json" };
+  const token = await resolveTaskAuthToken(forceRefresh);
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
 
@@ -87,11 +95,18 @@ export async function fetchTasksFromWorker(email) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return [];
   const url = `${WORKER_BASE_URL}/api/tasks?email=${encodeURIComponent(normalized)}`;
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     method: "GET",
     headers: await taskHeaders(),
     signal: AbortSignal.timeout(12000),
   });
+  if (res.status === 401 && await resolveTaskAuthToken(true)) {
+    res = await fetch(url, {
+      method: "GET",
+      headers: await taskHeaders(true),
+      signal: AbortSignal.timeout(12000),
+    });
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Tasks fetch failed (${res.status})`);
@@ -104,12 +119,22 @@ export async function fetchTasksFromWorker(email) {
 async function pushRemoteTasks(email, tasks) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return false;
-  const res = await fetch(`${WORKER_BASE_URL}/api/tasks`, {
+  const url = `${WORKER_BASE_URL}/api/tasks`;
+  const body = JSON.stringify({ email: normalized, tasks });
+  let res = await fetch(url, {
     method: "POST",
     headers: await taskHeaders(),
-    body: JSON.stringify({ email: normalized, tasks }),
+    body,
     signal: AbortSignal.timeout(15000),
   });
+  if (res.status === 401 && await resolveTaskAuthToken(true)) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: await taskHeaders(true),
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Tasks sync failed (${res.status})`);
@@ -121,12 +146,22 @@ async function pushRemoteTasks(email, tasks) {
 async function patchRemoteTask(email, id, patch) {
   const normalized = normalizeUserEmail(email);
   if (!normalized) return null;
-  const res = await fetch(`${WORKER_BASE_URL}/api/tasks/${encodeURIComponent(id)}`, {
+  const url = `${WORKER_BASE_URL}/api/tasks/${encodeURIComponent(id)}`;
+  const body = JSON.stringify({ email: normalized, ...patch });
+  let res = await fetch(url, {
     method: "PATCH",
     headers: await taskHeaders(),
-    body: JSON.stringify({ email: normalized, ...patch }),
+    body,
     signal: AbortSignal.timeout(12000),
   });
+  if (res.status === 401 && await resolveTaskAuthToken(true)) {
+    res = await fetch(url, {
+      method: "PATCH",
+      headers: await taskHeaders(true),
+      body,
+      signal: AbortSignal.timeout(12000),
+    });
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Task update failed (${res.status})`);
