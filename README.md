@@ -750,6 +750,41 @@ git push -u origin feat/my-change
 
 ---
 
+## Merge history: pre-merge changes to `main` (for AI IDEs & reviewers)
+
+When asking an AI IDE to fix or modify this repo, reference this section first: it explains
+**why `main` contains commits that are not a straight line from any single branch**, and what
+constraints were honored while merging. Written 2026-09-07 by the Gideon agent session; verify
+against `git log` if anything looks stale.
+
+1. **Merged, never force-pushed.** When `main` diverged mid-flight (PR #5, 10 commits incl. the
+   account slug-collision fix and history dual-writes), the incoming work was merged instead of
+   force-pushed. *Why: rewriting history would have destroyed others' merged work.*
+2. **Parity port from SE-Labs (`6ada2e3`).** staging.benjaminsquare.com API routing in
+   `web/firebase-config.js`, auth-token resolvers in `web/history.js`/`web/tasks.js`, extended
+   `test-api-store-admin-writes.mjs`, worker build stamp 2.1.42. *Why: keeps both repos'
+   functional code converging.*
+3. **UI revert (`323a93f`).** `feat/mono-ui-overhaul` was briefly merged, then reverted at the
+   owner's call: portal serves the OLD UI (orbit spinner, Dew palette). The branch itself
+   (`eaa6196`, Janus rebrand + thinking-orbs loader + mono editorial styles) is UNTOUCHED on
+   origin, parked for a later merge. *Why: boss chose old UI for now; the work is preserved.*
+4. **Ongrid duplicate fix (`69bac97`/`1492dce`) + root cause doc (`7c56770`).** Post-call
+   double-submit guard, history appended only after a successful domain write, login recovery
+   reconciles against Postgres by `callIdentityKey`, plus `worker/scripts/dedupe-history-blob.mjs`
+   (dry-run first). Root cause: `docs/plans/2026-09-02-ongrid-duplicate-root-cause.md`.
+   *Why: same Zoom call double-confirmed minted two callIds; one orphaned in the history blob.*
+5. **staging host allowlist (`dfd7554`).** `staging.benjaminsquare.com` added to the login-shell
+   host allowlist in `web/index.html`. *Why: parity with SE-Labs main's login shell.*
+6. **UI divergence is intentional.** As of 2026-09-07: this repo's `main` and SE-Labs `main`
+   both serve the OLD UI; the new UI lives only on `feat/mono-ui-overhaul`. Do not port UI files
+   in either direction without checking which side is supposed to have which.
+7. **Known gap (2026-09-07):** SE-Labs `main` has since added the SQL-only cutover (schemas 19-31,
+   50/50 write paths, `PERSISTENCE_MODE=sql` default) which is NOT here yet, while this repo's
+   Ongrid fix is NOT on SE-Labs yet. One sync pass is owed — check `git log` both sides before
+   starting new work.
+
+---
+
 ## Contributing & remotes
 
 ```bash
