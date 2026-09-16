@@ -1,0 +1,768 @@
+import {
+  isV8Prep,
+  isV7Prep,
+  renderResultHeader,
+  confidenceMeta,
+  confidenceMetaForSource,
+  discInferredLabel,
+  discConfidenceLabel,
+  SIGNAL_TOOLTIPS,
+  isSeNotesSource,
+  countPopulatedSignals,
+  resolveDisplayFacts,
+  isLinkedInEnrichedProspect,
+  renderIcpFitment,
+} from "../precall-render.js";
+import { renderKnowTab, renderDemoPrepTab } from "../precall-brief-v9.js";
+import { CUSTOMER_REFERENCE_BY_INDUSTRY } from "../customer-reference-links.js";
+
+const sampleV8 = {
+  description: "B2B SaaS customer support platform",
+  about: "Endurance Doors manufactures commercial door systems for healthcare and education facilities across North America.",
+  incumbent: { incumbent_name: "Zendesk", displacement: "entrenched" },
+  // The four fixed axes, in FIT_LABELS order. thisCompany is still in the payload (other
+  // consumers keyword-match on it) but must never reach the chart as a sublabel.
+  fitSnapshot: [
+    { label: "Channel coverage", thisCompany: "Email only", industryNorm: "Omnichannel", gap: "large", gapVerdict: "Behind" },
+    { label: "Routing", thisCompany: "Manual triage", industryNorm: "Skill-based", gap: "large", gapVerdict: "Behind" },
+    { label: "Reporting & analytics", thisCompany: "Spreadsheets", industryNorm: "Dashboards", gap: "partial", gapVerdict: "Partial" },
+    { label: "AI adoption", thisCompany: "None", industryNorm: "Copilot tools", gap: "parity", gapVerdict: "Aligned" },
+  ],
+  facts: [
+    { key: "Industry", value: "Manufacturing", sourceLabel: "S1" },
+    { key: "Head office", value: "Chicago, IL", sourceLabel: "S2" },
+  ],
+  signals: [
+    { label: "Incumbent tool", value: "Zendesk Suite", sourceLabel: "S1" },
+    { label: "Integrations", value: "Salesforce CRM", sourceLabel: "S2" },
+    { label: "Web chat widget", value: "Live chat enabled", sourceLabel: "S1" },
+    { label: "AI in their current tech stack", value: "No public AI", sourceLabel: "S3" },
+    { label: "Support portal", value: "Zendesk Help Center", sourceLabel: "S1" },
+    { label: "Hiring support roles", value: "3 open roles", sourceLabel: "S4" },
+  ],
+  supportJD: { title: "Customer Support Specialist", sourceLabel: "S4", bullets: ["Handle tier-1 tickets", "Update KB articles"] },
+  likelyPains: ["Slow ticket routing", "No self-service deflection", "Fragmented installer comms"],
+  industryUseCases: [
+    { name: "Order status", steps: ["Open portal", "Search order", "Escalate if delayed"] },
+  ],
+  checklist: ["Create demo account", "Load sample tickets"],
+  companySizeAgents: { agents: "25 agents", estimated: true },
+  businessContext: {
+    market: "Manufacturing",
+    model: "B2B direct",
+    users: "Enterprise buyers",
+    uptimeNeed: "Business hours",
+    fundingParent: "Private equity",
+    headOffice: "Chicago IL",
+    languages: "English Spanish",
+  },
+  discoveryKit: [{ question: "How do you route urgent tickets?", because: "Routing gaps drive SLA misses" }],
+  painCapabilityValue: [
+    {
+      pain: "Slow ticket routing",
+      capability: "Auto-routing",
+      values: ["Faster resolution", "Less manual routing"],
+    },
+    {
+      pain: "No self-service deflection",
+      capability: "KB widget",
+      values: ["Fewer repeat contacts", "Higher deflection"],
+    },
+    {
+      pain: "Fragmented installer comms",
+      capability: "Omnichannel inbox",
+      values: ["Single thread view", "Faster partner response"],
+    },
+  ],
+  attendees: [{ name: "Jane Doe", role: "Support Director", decisionPower: "decision_maker" }],
+  prospects: [
+    {
+      name: "Jane Doe",
+      role: "Support Director",
+      totalExperience: "12 years",
+      priorEmployers: ["Globex", "Initech"],
+      competitorTouchpoints: ["Zendesk admin"],
+      sourceLabel: "LinkedIn PDF",
+      summary: "Seasoned support leader with multi-site operations experience.",
+      skills: ["Leadership", "Zendesk"],
+      discHint: {
+        primary: "D",
+        confidence: "medium",
+        evidence: ["Led regional turnaround"],
+        inferred: true,
+        source: "linkedin_pdf",
+        dos: [
+          "Lead with outcomes, not process",
+          "Open with their CX metrics",
+          "Confirm decision timeline early",
+        ],
+        donts: [
+          "Overwhelm with feature lists",
+          "Skip the business case",
+          "Rush past their BPO concerns",
+        ],
+      },
+    },
+    {
+      name: "John Smith",
+      role: "VP Customer Success",
+      totalExperience: "18 years",
+      priorEmployers: ["Acme Corp"],
+      competitorTouchpoints: ["Intercom trials"],
+      sourceLabel: "S3",
+    },
+  ],
+  icpFit: {
+    product: "Freshdesk Omni",
+    verdict: "Moderate",
+    score: 62,
+    highlights: ["Multi-channel growth planned", "25+ agent team"],
+    gaps: ["Confirm voice channel timeline", "Validate AI budget"],
+    frameworkRefs: ["Winning Zone"],
+  },
+  sources: [
+    { label: "S1", title: "Company website", url: "https://example.com", confidence: 85 },
+    { label: "S2", title: "LinkedIn company", url: "https://linkedin.com", confidence: 72 },
+    { label: "S3", title: "Job posting", url: "unknown", confidence: 45 },
+  ],
+  recentNews: [
+    { headline: "Series B funding", detail: "Raised $45M led by Accel", sourceLabel: "N1", articleUrl: "https://techcrunch.com/acme-series-b", publishedAt: "2026-03-12" },
+    { headline: "Plant expansion", detail: "Opened a second Midwest facility", sourceLabel: "N2" },
+  ],
+  newsSources: [
+    { label: "N1", domain: "techcrunch.com", url: "https://techcrunch.com/acme-series-b", title: "TechCrunch" },
+    { label: "N2", domain: "reuters.com", url: "https://reuters.com/acme-plant", title: "Reuters" },
+  ],
+  rivals: {
+    rivals: [
+      { name: "Alpha Co", why: "same segment", sourceLabel: "R1", values: {} },
+      { name: "Beta Co", why: "same segment", sourceLabel: "R2", values: {} },
+    ],
+    axes: [
+      {
+        id: "supportAgents",
+        label: "Support agents",
+        min: { numeric: 300, display: "300", rivalName: "Alpha Co" },
+        max: { numeric: 900, display: "900", rivalName: "Beta Co" },
+        prospect: { display: "500", numeric: 500, sourceLabel: "S1" },
+        verdict: "within",
+        sourcedCount: 2,
+      },
+      {
+        id: "fundingRaised",
+        label: "Funding raised",
+        min: { numeric: 120, display: "$120M", rivalName: "Alpha Co" },
+        max: { numeric: 450, display: "$450M", rivalName: "Beta Co" },
+        sourcedCount: 2,
+      },
+    ],
+    sources: [{ label: "R1", domain: "reuters.com", url: "https://reuters.com", title: "Reuters" }],
+    dropped: [],
+  },
+  assets: [
+    { label: "Demo script", ext: "SHEET", url: "https://example.com/sheet" },
+    { label: "Customer reference", ext: "PPT", url: "https://example.com/old-customer-ref" },
+    { label: "Slide pack", ext: "PPT", url: "https://example.com/slides" },
+  ],
+};
+
+const meta = { company: "Endurance Doors", domain: "endurancedoors.com" };
+
+const discovery = renderKnowTab(sampleV8, false);
+const discoveryFishCombined = renderKnowTab(
+  {
+    ...sampleV8,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Customer base", value: "2M users" },
+        { label: "Support agents", value: "120 agents" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryFishBuckets = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Employees", value: "50" },
+        { label: "Funding raised", value: "2 Million" },
+        { label: "Support agents", value: "3" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryFishAbsurdAgents = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Employees", value: "11" },
+        { label: "Support agents", value: "4000000000000" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryNewsWithDate = renderKnowTab(
+  {
+    ...sampleV8,
+    recentNews: [
+      {
+        headline: "Series B funding",
+        detail: "Raised $45M led by Accel",
+        sourceLabel: "N1",
+        articleUrl: "https://techcrunch.com/acme-series-b",
+        publishedAt: "2026-03-12",
+      },
+    ],
+  },
+  false,
+);
+const discoveryFishFromFacts = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: {
+      axes: [
+        {
+          label: "Employees",
+          min: { display: "10", numeric: 10 },
+          max: { display: "1000", numeric: 1000 },
+          prospect: null,
+        },
+      ],
+      rivals: [{ name: "Rival Co" }],
+      sources: [],
+    },
+    fishContext: undefined,
+    facts: [
+      { key: "Company size", value: "50", sourceLabel: "SE" },
+      { key: "Support team", value: "3 agents", sourceLabel: "SE" },
+    ],
+    companySizeAgents: { agents: "3 agents", estimated: false },
+    businessContext: { users: "50" },
+  },
+  false,
+);
+const discoveryFishContext = renderKnowTab(
+  {
+    ...sampleV8,
+    rivals: undefined,
+    fishContext: {
+      source: "context",
+      metrics: [
+        { label: "Support agents", value: "120 agents" },
+        { label: "Funding raised", value: "$80M Series C" },
+      ],
+    },
+  },
+  false,
+);
+const discoveryNewsHtmlGarbage = renderKnowTab(
+  {
+    ...sampleV8,
+    recentNews: [
+      {
+        headline: "Freshworks to Deepen its IT Service",
+        detail:
+          '&lt;a href="" target="_blank"&gt;Freshworks to Deepen its IT Service&lt;/a&gt; nbsp; &lt;font color="#6f6f6f"&gt;GlobeNewswire&lt;/font&gt;',
+        sourceLabel: "N1",
+        articleUrl: "https://news.google.com/rss/articles/example",
+      },
+    ],
+    newsSources: [
+      { label: "N1", domain: "news.google.com", url: "https://news.google.com/rss/articles/example", title: "Google News" },
+    ],
+  },
+  false,
+);
+const discoveryWithSeSignal = renderKnowTab(
+  {
+    ...sampleV8,
+    signals: [
+      { label: "Incumbent tool", value: "Zendesk", sourceLabel: "SE" },
+      ...sampleV8.signals.slice(1),
+    ],
+  },
+  false,
+);
+const discoveryWithUnverifiedSignal = renderKnowTab(
+  {
+    ...sampleV8,
+    signals: [{ label: "Incumbent tool", value: "Made Up CRM", sourceLabel: "S3" }, ...sampleV8.signals.slice(1)],
+  },
+  false,
+);
+const discoveryWithEmptySignal = renderKnowTab(
+  {
+    ...sampleV8,
+    signals: [{ label: "Incumbent tool", value: "—", sourceLabel: "S1" }, ...sampleV8.signals.slice(1)],
+  },
+  false,
+);
+const discoveryWithSeSource = renderKnowTab(
+  {
+    ...sampleV8,
+    sources: [
+      { label: "SE", title: "SE additional context", url: "se-context", confidence: 70 },
+      ...sampleV8.sources,
+    ],
+  },
+  true,
+);
+const discoverySourcesOpen = renderKnowTab(sampleV8, true);
+const discoveryLinkedInSource = renderKnowTab(
+  {
+    ...sampleV8,
+    sources: [
+      { label: "S1", title: "Company website", url: "https://example.com", confidence: 85 },
+      { label: "LinkedIn PDF", title: "LinkedIn PDF export", url: "linkedin-pdf:upload", confidence: 90 },
+      { label: "S2", title: "LinkedIn company", url: "https://linkedin.com", confidence: 72 },
+    ],
+  },
+  true,
+);
+const discoveryMulti = renderKnowTab(
+  { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
+  false,
+);
+const discoveryMultiTab1 = renderKnowTab(
+  { ...sampleV8, prospects: [...sampleV8.prospects, sampleV8.prospects[1]] },
+  false,
+  { peopleProspectTab: "prospect-1" },
+);
+const longAttendeeSummary = `${"Experienced support operator. ".repeat(18).trim()}`;
+const discoveryLongAttendee = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        summary: longAttendeeSummary,
+        email: "jane@endurancedoors.com",
+      },
+    ],
+  },
+  false,
+  { linkedinMatchedEmails: ["jane@endurancedoors.com"], prospectEmails: ["jane@endurancedoors.com"] },
+);
+const demo = renderDemoPrepTab(sampleV8, {}, "endurance-doors");
+const header = renderResultHeader(sampleV8, meta);
+
+const discoveryKaia = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "Kaia",
+        discHint: {
+          primary: "I",
+          confidence: "medium",
+          evidence: ["Asked detailed questions in meeting"],
+          inferred: true,
+          source: "kaia",
+        },
+      },
+    ],
+  },
+  false,
+  { kaiaFetched: true },
+);
+const discoveryMerged = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "LinkedIn + Kaia",
+        discHint: {
+          primary: "D",
+          confidence: "medium",
+          evidence: ["Direct tone in Kaia call", "Leadership on LinkedIn"],
+          inferred: true,
+          source: "merged",
+        },
+      },
+    ],
+  },
+  false,
+);
+const discoveryLinkedInProspect = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "LinkedIn PDF",
+        competitorTouchpoints: ["Zendesk admin"],
+        discHint: {
+          primary: "D",
+          confidence: "medium",
+          evidence: ["Leadership"],
+          inferred: true,
+          source: "linkedin_pdf",
+        },
+      },
+    ],
+  },
+  false,
+);
+const discoveryLlmCompetitorHidden = renderKnowTab(
+  {
+    ...sampleV8,
+    prospects: [
+      {
+        ...sampleV8.prospects[0],
+        sourceLabel: "S2",
+        competitorTouchpoints: ["Hallucinated Vendor"],
+        discHint: { primary: "D", confidence: "medium", evidence: ["Guess"], inferred: true },
+      },
+    ],
+  },
+  false,
+);
+
+const checks = [
+  ["isV8Prep accepts v8 shape", isV8Prep(sampleV8)],
+  ["isV7Prep accepts v8 shape", isV7Prep(sampleV8)],
+  ["header has company name", header.includes("Endurance Doors")],
+  ["header no prospect chip", !header.includes("prep-contact-chip")],
+  ["know tab has About the company", discovery.includes("About the company")],
+  ["know tab has maturity chart", discovery.includes("Where they sit versus their industry")],
+  ["know tab maturity axis labels", discovery.includes("Manual") && discovery.includes("AI-assisted")],
+  ["know tab has support stack", discovery.includes("Their support stack")],
+  ["know tab has unknowns gaps", discovery.includes("What we could not find")],
+  ["know tab has Who is in the room", discovery.includes("Who is in the room")],
+  ["know tab has no signals accordion", !discovery.includes("prep-signals-details") && !discovery.includes("Tech stack &amp; signals")],
+  ["know tab 2-column grid", discovery.includes("prep-v9-grid-2")],
+  [
+    "know tab section order stack unknowns attendees",
+    discovery.indexOf("Their support stack") >= 0 &&
+      discovery.indexOf("What we could not find") >= 0 &&
+      discovery.indexOf("Who is in the room") >= 0 &&
+      discovery.indexOf("Their support stack") < discovery.indexOf("Who is in the room") &&
+      discovery.indexOf("What we could not find") < discovery.indexOf("Who is in the room"),
+  ],
+  [
+    "know tab three paired grid rows",
+    (discovery.match(/prep-v9-grid-2/g) || []).length === 3,
+  ],
+  [
+    "know tab fish before support stack",
+    discovery.indexOf("How big is this fish?") >= 0 &&
+      discovery.indexOf("Their support stack") > discovery.indexOf("How big is this fish?"),
+  ],
+  [
+    "know tab maturity before discovery kit",
+    discovery.indexOf("Where they sit versus their industry") >= 0 &&
+      discovery.indexOf("Discovery kit") >= 0 &&
+      discovery.indexOf("Where they sit versus their industry") < discovery.indexOf("Discovery kit"),
+  ],
+  ["know tab renders Do/Dont for linkedin prospect", discovery.includes("prep-v9-beh-do") && discovery.includes("prep-v9-beh-dont")],
+  ["know tab renders three dos and three donts", (discovery.match(/prep-v9-beh-do/g) || []).length >= 3 && (discovery.match(/prep-v9-beh-dont/g) || []).length >= 3],
+  ["know tab Has used label uses touch-label class", discovery.includes("prep-v9-touch-label") && discovery.includes("Has used")],
+  ["know tab thin attendee without linkedin", discovery.includes("prep-v9-attendee-thin")],
+  ["know tab kaia-only prospect has no disc grid", !discoveryKaia.includes("prep-v9-disc") && discoveryKaia.includes("prep-v9-attendee-thin")],
+  [
+    "know tab section order jd kit extras",
+    discovery.indexOf("prep-jd-full") < discovery.indexOf("Discovery kit") &&
+      discovery.indexOf("Discovery kit") < discovery.indexOf("prep-research-extras") &&
+      discovery.indexOf("Their support stack") < discovery.indexOf("prep-jd-full"),
+  ],
+  ["know tab support JD present", discovery.includes("prep-jd-full")],
+  ["know tab research extras collapsed", discovery.includes("prep-research-extras") && !discovery.includes('class="prep-research-extras" open')],
+  ["know tab research extras open when requested", discoverySourcesOpen.includes('class="prep-research-extras" open')],
+  [
+    "know tab research extras linkedin pdf row",
+    discoveryLinkedInSource.includes('class="prep-source-label">LinkedIn PDF</span>') &&
+      discoveryLinkedInSource.includes('class="prep-source-title">LinkedIn PDF export</span>'),
+  ],
+  [
+    "know tab research extras SE high confidence",
+    discoveryWithSeSource.includes('class="prep-source-label">SE</span>') &&
+      discoveryWithSeSource.includes("prep-conf-text-high") &&
+      discoveryWithSeSource.includes("High ·"),
+  ],
+  [
+    "know tab SE signal INPUT badge",
+    discoveryWithSeSignal.includes("prep-v9-src-input") &&
+      discoveryWithSeSignal.includes("Zendesk"),
+  ],
+  ["know tab no verbatim notes card", !renderKnowTab(sampleV8, false, { additionalContext: "AE says Zendesk incumbent" }).includes("prep-se-notes-card")],
+  ["know tab no standalone sources accordion", !discovery.includes("prep-sources-card")],
+  ["know tab about text", discovery.includes("prep-v9-about")],
+  ["know tab recent news from research", discovery.includes("Series B funding") && discovery.includes("Plant expansion")],
+  ["know tab recent news article link", discovery.includes('class="prep-v9-news-link"') && discovery.includes("techcrunch.com/acme-series-b")],
+  ["know tab recent news shows published date", discoveryNewsWithDate.includes("prep-v9-news-date") && discoveryNewsWithDate.includes("12 Mar 2026")],
+  [
+    "know tab recent news hides html garbage detail",
+    discoveryNewsHtmlGarbage.includes("Freshworks to Deepen") &&
+      !discoveryNewsHtmlGarbage.includes("prep-v9-news-detail") &&
+      !discoveryNewsHtmlGarbage.includes("&lt;a href"),
+  ],
+  ["know tab fish context from ae notes", discoveryFishContext.includes(">120<") && discoveryFishContext.includes("$80M") && discoveryFishContext.includes("prep-v9-benchmark-bar") && discoveryFishContext.includes("prep-v9-src-input")],
+  [
+    "know tab fish builds from prep facts when fishContext missing",
+    discoveryFishFromFacts.includes("How big is this fish?") &&
+      discoveryFishFromFacts.includes("Agent count") &&
+      discoveryFishFromFacts.includes(">3<") &&
+      discoveryFishFromFacts.includes("prep-v9-src-input"),
+  ],
+  [
+    "know tab fish keeps INPUT when rival axis lacks prospect",
+    discoveryFishFromFacts.includes("Employee count") && discoveryFishFromFacts.includes("50"),
+  ],
+  [
+    "know tab fish bucket labels for recognized metrics",
+    discoveryFishBuckets.includes("prep-v9-benchmark-buckets") &&
+      discoveryFishBuckets.includes("0–50") &&
+      discoveryFishBuckets.includes("$1–10M") &&
+      discoveryFishBuckets.includes("1–25") &&
+      discoveryFishBuckets.includes("prep-v9-benchmark-bucket-active") &&
+      discoveryFishBuckets.includes("$2M") &&
+      !discoveryFishBuckets.includes("millions USD"),
+  ],
+  [
+    "know tab fish bucket dot positions",
+    discoveryFishBuckets.includes('style="left:16.67%"') &&
+      discoveryFishBuckets.includes('style="left:50.00%"'),
+  ],
+  [
+    "know tab fish hides absurd agent count",
+    discoveryFishAbsurdAgents.includes("Employee count") &&
+      !discoveryFishAbsurdAgents.includes("4000000000000") &&
+      !discoveryFishAbsurdAgents.includes("Agent count"),
+  ],
+  ["know tab fish excludes non-canonical metrics", (() => {
+    const html = renderKnowTab({
+      facts: [],
+      businessContext: {},
+      fishContext: {
+        source: "context",
+        metrics: [
+          { label: "Employees", value: "50" },
+          { label: "Industry", value: "Software licenses" },
+          { label: "Support agents", value: "3 agents" },
+          { label: "Funding raised", value: "2 Million" },
+        ],
+      },
+    }, false);
+    return html.includes("Employee count") &&
+      html.includes("Agent count") &&
+      html.includes("Funding") &&
+      !html.includes("Software licenses") &&
+      (html.match(/prep-v9-benchmark-bucketed/g) || []).length === 3;
+  })()],
+  ["know tab fish omits non-canonical supplemental metric", (() => {
+    const html = renderKnowTab({
+      ...sampleV8,
+      fishContext: {
+        source: "context",
+        metrics: [
+          { label: "Customer base", value: "2M users" },
+          { label: "Support agents", value: "120 agents" },
+        ],
+      },
+    }, false);
+    return html.includes("500") && !html.includes("2M users");
+  })()],
+  ["know tab recent news not signals", !discovery.includes("Incumbent tool:") || !discovery.match(/Recent news[\s\S]*Incumbent tool:/i)],
+  ["know tab fact fallback from businessContext", (() => {
+    const html = renderKnowTab({
+      ...sampleV8,
+      facts: [{ key: "Company size", value: "unknown", sourceLabel: "S1" }],
+      businessContext: { ...sampleV8.businessContext, users: "500 employees" },
+    }, false);
+    return html.includes("500 employees");
+  })()],
+  ["know tab attendee summary", discovery.includes("Seasoned support leader")],
+  [
+    "know tab long attendee summary expands in details",
+    discoveryLongAttendee.includes("prep-v9-attendee-summary-details") &&
+      discoveryLongAttendee.includes("prep-v9-attendee-summary-full") &&
+      discoveryLongAttendee.includes(longAttendeeSummary.slice(0, 40)),
+  ],
+  [
+    "header prep-desc title carries full description",
+    header.includes('class="prep-desc muted" title="B2B SaaS customer support platform"'),
+  ],
+  ["know tab single prospect", !discovery.includes("prep-people-tabs")],
+  ["demo has checklist", demo.includes("Sandbox setup")],
+  ["demo has call plan", demo.includes("Your call plan")],
+  ["know tab maturity chart animate hook", discovery.includes('data-prep-v9-animate="maturity-chart"')],
+  // Fixed axes: all four render, every brief, so two briefs compare like for like.
+  ["know tab renders all four fixed axes", ["Channel coverage", "Routing", "Reporting &amp; analytics", "AI adoption"].every((a) => discovery.includes(a))],
+  // The GAP column is gone. Asserting its absence, because nothing asserted its presence and its
+  // removal was therefore invisible to this suite.
+  ["know tab has no GAP column", !discovery.includes("prep-v9-gap-pill") && !discovery.includes("prep-v9-maturity-gap-label")],
+  // No free-text sublabel under an axis — that is what drifted to "Digital banking".
+  ["know tab axis has no prose sublabel", !discovery.includes("prep-v9-maturity-them ")],
+  ["know tab axis sublabel text absent", !discovery.includes("Manual triage") && !discovery.includes("Spreadsheets")],
+  // Fixed channel vocabulary: the six always render, and nothing that is not a channel does.
+  ["support stack renders the six fixed channels", ["Email", "Chat", "Voice", "Social", "WhatsApp", "Self-serve"].every((c) => discovery.includes(`>${c}</div>`))],
+  // Scoped to stack-box chips. These signal VALUES legitimately appear in the tech-stack
+  // accordion as <div class="prep-signal-val">, so a bare `>text</div>` check would match there
+  // too — the point is only that they must never become channel chips, as "Live chat active" did.
+  ["support stack invents no channel chips", !/prep-v9-stack-box[^>]*>Live chat enabled</.test(discovery) && !/prep-v9-stack-box[^>]*>Zendesk Help Center</.test(discovery)],
+  // The fixed Freshworks pitch is gone; only the actionable thin-incumbent prompt may remain.
+  ["support stack drops the consolidation pitch", !discovery.includes("a consolidation story, not an add-on")],
+  ["demo hero animate hook", demo.includes('data-prep-v9-animate="hero-panel"')],
+  ["demo call plan animate hook", demo.includes('data-prep-v9-animate="call-plan"')],
+  ["know tab disc animate hook", discovery.includes('data-prep-v9-animate="disc-chart"')],
+  ["demo has demo moments", demo.includes("prep-v9-moment")],
+  ["demo has sixty second hero", demo.includes("Sixty seconds before the call")],
+  [
+    "demo thesis uses theme headline when demoThesis present",
+    renderDemoPrepTab(
+      {
+        ...sampleV8,
+        demoThesis: {
+          headline: "Email inbox → structured ticketing platform",
+          sub: "Zendesk entrenched — lead with routing + omnichannel",
+        },
+      },
+      {},
+      "endurance-doors",
+    ).includes("Email inbox → structured ticketing platform") &&
+      !renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Email inbox → structured ticketing platform",
+            sub: "Zendesk entrenched — lead with routing + omnichannel",
+          },
+        },
+        {},
+        "endurance-doors",
+      ).includes("Endurance Doors manufactures"),
+  ],
+  [
+    "demo legacy thesis uses about slice without demoThesis",
+    demo.includes("Endurance Doors manufactures"),
+  ],
+  [
+    "demo thesis sub uses demoThesis.sub not displacement",
+    (() => {
+      const withThesis = renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Email inbox → structured ticketing platform",
+            sub: "Zendesk entrenched — lead with routing + omnichannel",
+          },
+        },
+        {},
+        "endurance-doors",
+      );
+      return (
+        withThesis.includes("Zendesk entrenched — lead with routing + omnichannel") &&
+        !withThesis.includes("Displacement: entrenched")
+      );
+    })(),
+  ],
+  [
+    "demo thin brief keeps listening thesis",
+    (() => {
+      const thinDemo = renderDemoPrepTab(
+        {
+          ...sampleV8,
+          demoThesis: {
+            headline: "Should not show",
+            sub: "Should not show sub",
+          },
+          facts: [
+            { key: "Industry", value: "unknown", sourceLabel: "S1" },
+            { key: "Head office", value: "—", sourceLabel: "S2" },
+            { key: "Company size", value: "unknown", sourceLabel: "S3" },
+          ],
+          businessContext: {
+            market: "",
+            model: "",
+            users: "",
+            uptimeNeed: "",
+            fundingParent: "",
+            headOffice: "",
+            languages: "",
+          },
+          companySizeAgents: { agents: "unknown", estimated: true },
+        },
+        {},
+        "endurance-doors",
+      );
+      return thinDemo.includes("going in with limited data") && !thinDemo.includes("Should not show");
+    })(),
+  ],
+  ["demo rows match pcv count", (demo.match(/class="prep-v9-moment"/g) || []).length === sampleV8.painCapabilityValue.length],
+  ["demo value bullets", demo.includes("prep-v9-value-row")],
+  ["demo no use cases", !demo.includes("prep-uc-grid")],
+  ["demo assets title", demo.includes("Assets")],
+  ["isLinkedInEnrichedProspect matched email", isLinkedInEnrichedProspect(
+    { sourceLabel: "S6" },
+    { linkedinMatchedEmails: ["pat@acme.com"], prospectEmails: ["pat@acme.com"] },
+    0,
+  )],
+  ["resolveDisplayFacts fills company size", resolveDisplayFacts({
+    facts: [{ key: "Company size", value: "unknown" }],
+    businessContext: { users: "200 employees" },
+  })[0].value === "200 employees"],
+  ["know tab linkedin-only disc count", (discovery.match(/class="prep-v9-disc"/g) || []).length === 1 && (discovery.match(/prep-v9-attendee-thin/g) || []).length === 1],
+  ["know tab linkedin competitor touchpoints shown", discoveryLinkedInProspect.includes("Zendesk admin")],
+  ["know tab llm competitor touchpoints hidden", !discoveryLlmCompetitorHidden.includes("Hallucinated Vendor")],
+  ["isSeNotesSource SE", isSeNotesSource("SE")],
+  ["countPopulatedSignals", countPopulatedSignals(sampleV8.signals, sampleV8.sources) === 4],
+  ["know tab AI banner absent", !discovery.includes("prep-ai-banner")],
+  ["know tab ICP fitment absent", !discovery.includes("ICP fitment") && !discovery.includes("prep-v9-icp-card")],
+  ["icp fitment hides unknown empty verdict", renderIcpFitment({ product: "Freshdesk", verdict: "Unknown" }, []) === ""],
+  ["icp fitment hides unknown verdict pill with criteria", (() => {
+    const html = renderIcpFitment(
+      {
+        product: "Freshdesk",
+        verdict: "Unknown",
+        criteria: [{ id: "agents", label: "Agent count", state: "unknown" }],
+      },
+      [],
+    );
+    return html.includes("Agent count") && !html.includes("Unknown alignment") && !html.includes(" alignment");
+  })()],
+  ["icp fitment shows known verdict pill", renderIcpFitment({ product: "Freshdesk", verdict: "Strong", criteria: [] }, []).includes("Strong alignment")],
+  ["no unknown alignment string anywhere", !discovery.includes("Unknown alignment") && !renderIcpFitment({ product: "Freshdesk", verdict: "Unknown" }, []).includes("Unknown alignment")],
+  ["know tab maturity pastel band color", discovery.includes("#e8c4bd") || discovery.includes("#eddcbb")],
+  ["know tab fish benchmark bar", discovery.includes("prep-v9-benchmark-bar")],
+  ["know tab kaia section note", discoveryKaia.includes("prep-kaia-result-note")],
+  ["know tab DISC svg", discovery.includes("prep-v9-disc")],
+  ["discConfidenceLabel low", discConfidenceLabel("low") === "Confident - Low"],
+  ["discInferredLabel linkedin_pdf", discInferredLabel("linkedin_pdf").includes("LinkedIn PDF")],
+  [
+    "demo customer reference industry url",
+    demo.includes(encodeURI(CUSTOMER_REFERENCE_BY_INDUSTRY.manufacturing)) ||
+      demo.includes(CUSTOMER_REFERENCE_BY_INDUSTRY.manufacturing),
+  ],
+  ["confidence high band", confidenceMeta(85).word === "High"],
+  ["confidence low band", confidenceMeta(40).word === "Low"],
+  [
+    "confidenceMetaForSource SE",
+    confidenceMetaForSource({ label: "SE", url: "se-context", confidence: 70 }).word === "High" &&
+      confidenceMetaForSource({ label: "SE", url: "se-context", confidence: 70 }).tier === "high",
+  ],
+  ["signal tooltips map complete", Object.keys(SIGNAL_TOOLTIPS).length === 6],
+];
+
+let failed = 0;
+for (const [name, ok] of checks) {
+  if (!ok) {
+    console.error("FAIL:", name);
+    failed++;
+  } else {
+    console.log("ok:", name);
+  }
+}
+if (failed) process.exit(1);
+console.log(`\n${checks.length} precall render checks passed.`);

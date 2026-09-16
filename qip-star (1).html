@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QIP star — evaluation signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#fdfcfa; --ink:#2b2926; --muted:#6f6759; --eyebrow:#a49a88;
+    --line:#ece7de; --line2:#f4f0e8; --soft:#faf8f4;
+    --h0:#17a086; --h1:#16b5b8; --h2:#eaa62c; --h3:#e5795d; --h4:#8079d8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:Figtree,system-ui,sans-serif;background:
+        radial-gradient(1200px 700px at 50% -10%, #fffdf9 0%, #fdfcfa 60%);
+        color:var(--ink);-webkit-font-smoothing:antialiased;min-height:100vh;
+        display:flex;align-items:center;justify-content:center;padding:40px 20px}
+
+  .panel{width:100%;max-width:600px;background:#fff;border:1px solid var(--line);
+         border-radius:20px;box-shadow:0 10px 40px rgba(43,41,38,.06),0 2px 6px rgba(43,41,38,.04);
+         padding:22px 24px 14px;position:relative;overflow:hidden}
+  .panel::before{content:"";position:absolute;inset:0;pointer-events:none;
+         background:radial-gradient(420px 300px at 50% 44%, rgba(23,160,134,.04), transparent 70%)}
+  .phead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;position:relative;z-index:1}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--eyebrow)}
+  .hint{font-size:11.5px;color:var(--muted)}
+  .star{width:100%;display:block;position:relative;z-index:1;margin-top:6px}
+
+  /* ---- animation ---- */
+  .ring{opacity:0;animation:fade .5s ease forwards}
+  .ring.r1{animation-delay:.05s}.ring.r2{animation-delay:.11s}.ring.r3{animation-delay:.17s}
+  .ring.r4{animation-delay:.23s}.ring.r5{animation-delay:.29s}
+  .spoke{opacity:0;animation:fade .5s ease forwards;animation-delay:.22s}
+  .wedgebg{opacity:0;animation:fadeW .6s ease forwards;animation-delay:.30s}
+  #dataGroup{opacity:0;transform:scale(.62);transform-box:view-box;transform-origin:330px 255px;
+             animation:pop .8s cubic-bezier(.2,.85,.25,1.12) forwards;animation-delay:.34s}
+  .gem,.halo{opacity:0;transform-box:view-box;transform-origin:center;animation:gem .5s cubic-bezier(.2,.9,.3,1.3) forwards}
+  .g0{animation-delay:.78s}.g1{animation-delay:.86s}.g2{animation-delay:.94s}.g3{animation-delay:1.02s}.g4{animation-delay:1.10s}
+  #centerGroup{opacity:0;transform:scale(.7);transform-box:view-box;transform-origin:330px 255px;
+               animation:pop .6s cubic-bezier(.2,.85,.25,1.1) forwards;animation-delay:.62s}
+  .lab{opacity:0;animation:fade .6s ease forwards;animation-delay:.9s}
+  .aura{animation:breathe 4.6s ease-in-out infinite;animation-delay:1.3s}
+  @keyframes fade{to{opacity:1}}
+  @keyframes fadeW{to{opacity:.14}}
+  @keyframes pop{to{opacity:1;transform:scale(1)}}
+  @keyframes gem{to{opacity:1}}
+  @keyframes breathe{0%,100%{opacity:.30}50%{opacity:.52}}
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important}
+    #dataGroup,#centerGroup{opacity:1;transform:none}
+    .ring,.spoke,.gem,.halo,.lab{opacity:1}.wedgebg{opacity:.14}.aura{opacity:.4}
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <div class="phead">
+      <span class="eyebrow">Evaluation signal</span>
+      <span class="hint">Five categories · scored out of 10</span>
+    </div>
+
+    <!-- geometry: centre (330,255); radius 152 = value 10; ring step 15.2/pt -->
+    <svg class="star" viewBox="0 0 660 468" role="img"
+         aria-label="QIP star: Discovery 4.8, Solutioning 9.3, Business value 4.8, Objections 9.0, Communication 7.8; overall 7.3 out of 10">
+      <defs>
+        <!-- soft central spotlight -->
+        <radialGradient id="bgGlow" cx="50%" cy="47%" r="55%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity=".65"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <!-- per-sector conic-blend gradients (Pi -> Pi+1) -->
+        <linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="330" y1="103" x2="474.561" y2="208.029"><stop offset="0" stop-color="#17a086"/><stop offset="1" stop-color="#16b5b8"/></linearGradient>
+        <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="474.561" y1="208.029" x2="419.344" y2="377.971"><stop offset="0" stop-color="#16b5b8"/><stop offset="1" stop-color="#eaa62c"/></linearGradient>
+        <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="419.344" y1="377.971" x2="240.656" y2="377.971"><stop offset="0" stop-color="#eaa62c"/><stop offset="1" stop-color="#e5795d"/></linearGradient>
+        <linearGradient id="g3" gradientUnits="userSpaceOnUse" x1="240.656" y1="377.971" x2="185.439" y2="208.029"><stop offset="0" stop-color="#e5795d"/><stop offset="1" stop-color="#8079d8"/></linearGradient>
+        <linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="185.439" y1="208.029" x2="330" y2="103"><stop offset="0" stop-color="#8079d8"/><stop offset="1" stop-color="#17a086"/></linearGradient>
+        <!-- colour-shifting edge strokes (Vi -> Vi+1) -->
+        <linearGradient id="s0" gradientUnits="userSpaceOnUse" x1="330" y1="182.04" x2="464.462" y2="211.317"><stop offset="0" stop-color="#17a086"/><stop offset="1" stop-color="#16b5b8"/></linearGradient>
+        <linearGradient id="s1" gradientUnits="userSpaceOnUse" x1="464.462" y1="211.317" x2="372.885" y2="314.026"><stop offset="0" stop-color="#16b5b8"/><stop offset="1" stop-color="#eaa62c"/></linearGradient>
+        <linearGradient id="s2" gradientUnits="userSpaceOnUse" x1="372.885" y1="314.026" x2="249.59" y2="365.674"><stop offset="0" stop-color="#eaa62c"/><stop offset="1" stop-color="#e5795d"/></linearGradient>
+        <linearGradient id="s3" gradientUnits="userSpaceOnUse" x1="249.59" y1="365.674" x2="217.242" y2="218.363"><stop offset="0" stop-color="#e5795d"/><stop offset="1" stop-color="#8079d8"/></linearGradient>
+        <linearGradient id="s4" gradientUnits="userSpaceOnUse" x1="217.242" y1="218.363" x2="330" y2="182.04"><stop offset="0" stop-color="#8079d8"/><stop offset="1" stop-color="#17a086"/></linearGradient>
+        <!-- glossy sheen over the fill -->
+        <radialGradient id="sheen" cx="46%" cy="30%" r="60%"><stop offset="0" stop-color="#ffffff" stop-opacity=".34"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+        <!-- centre number gradient -->
+        <linearGradient id="ctr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17a086"/><stop offset="1" stop-color="#16b5b8"/></linearGradient>
+        <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="7"/></filter>
+        <filter id="soft2" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="4"/></filter>
+        <clipPath id="dataClip"><polygon points="330,182.04 464.462,211.317 372.885,314.026 249.59,365.674 217.242,218.363"/></clipPath>
+      </defs>
+
+      <!-- spotlight -->
+      <circle cx="330" cy="255" r="210" fill="url(#bgGlow)"/>
+
+      <!-- faint stained-glass sector tints -->
+      <g>
+        <polygon class="wedgebg" points="330,255 330,103 474.561,208.029" fill="url(#g0)"/>
+        <polygon class="wedgebg" points="330,255 474.561,208.029 419.344,377.971" fill="url(#g1)"/>
+        <polygon class="wedgebg" points="330,255 419.344,377.971 240.656,377.971" fill="url(#g2)"/>
+        <polygon class="wedgebg" points="330,255 240.656,377.971 185.439,208.029" fill="url(#g3)"/>
+        <polygon class="wedgebg" points="330,255 185.439,208.029 330,103" fill="url(#g4)"/>
+      </g>
+
+      <!-- concentric pentagon web -->
+      <polygon class="ring r1" points="330,224.6 358.912,245.606 347.869,279.594 312.131,279.594 301.088,245.606" fill="none" stroke="#efe7d7" stroke-width="1"/>
+      <polygon class="ring r2" points="330,194.2 387.824,236.212 365.738,304.189 294.262,304.189 272.176,236.212" fill="none" stroke="#ece4d4" stroke-width="1"/>
+      <polygon class="ring r3" points="330,163.8 416.737,226.817 383.606,328.783 276.394,328.783 243.263,226.817" fill="none" stroke="#ece4d4" stroke-width="1"/>
+      <polygon class="ring r4" points="330,133.4 445.649,217.423 401.475,353.377 258.525,353.377 214.351,217.423" fill="none" stroke="#e8dfce" stroke-width="1"/>
+      <polygon class="ring r5" points="330,103 474.561,208.029 419.344,377.971 240.656,377.971 185.439,208.029" fill="#fdfbf7" stroke="#e2d9c8" stroke-width="1.4"/>
+
+      <!-- spokes -->
+      <g stroke="#e7dfce" stroke-width="1">
+        <line class="spoke" x1="330" y1="255" x2="330" y2="103"/>
+        <line class="spoke" x1="330" y1="255" x2="474.561" y2="208.029"/>
+        <line class="spoke" x1="330" y1="255" x2="419.344" y2="377.971"/>
+        <line class="spoke" x1="330" y1="255" x2="240.656" y2="377.971"/>
+        <line class="spoke" x1="330" y1="255" x2="185.439" y2="208.029"/>
+      </g>
+
+      <!-- faint scale marks up the top spoke (above the shape) -->
+      <text class="lab" x="322" y="107" text-anchor="end" font-size="8.5" font-weight="700" fill="#c9bfab">10</text>
+      <text class="lab" x="322" y="137" text-anchor="end" font-size="8.5" font-weight="700" fill="#cec5b2">8</text>
+      <text class="lab" x="322" y="167" text-anchor="end" font-size="8.5" font-weight="700" fill="#d3cab7">6</text>
+
+      <!-- ============ DATA ============ -->
+      <g id="dataGroup">
+        <!-- luminous aura -->
+        <polygon class="aura" points="330,182.04 464.462,211.317 372.885,314.026 249.59,365.674 217.242,218.363"
+                 fill="#5fe0cf" filter="url(#soft)" opacity=".4"/>
+        <!-- conic fill via clipped sector fan -->
+        <g clip-path="url(#dataClip)" opacity=".62">
+          <polygon points="330,255 330,103 474.561,208.029" fill="url(#g0)"/>
+          <polygon points="330,255 474.561,208.029 419.344,377.971" fill="url(#g1)"/>
+          <polygon points="330,255 419.344,377.971 240.656,377.971" fill="url(#g2)"/>
+          <polygon points="330,255 240.656,377.971 185.439,208.029" fill="url(#g3)"/>
+          <polygon points="330,255 185.439,208.029 330,103" fill="url(#g4)"/>
+        </g>
+        <!-- gloss -->
+        <g clip-path="url(#dataClip)"><rect x="180" y="100" width="300" height="290" fill="url(#sheen)"/></g>
+        <!-- colour-shifting edges -->
+        <g fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M330,182.04 L464.462,211.317" stroke="url(#s0)"/>
+          <path d="M464.462,211.317 L372.885,314.026" stroke="url(#s1)"/>
+          <path d="M372.885,314.026 L249.59,365.674" stroke="url(#s2)"/>
+          <path d="M249.59,365.674 L217.242,218.363" stroke="url(#s3)"/>
+          <path d="M217.242,218.363 L330,182.04" stroke="url(#s4)"/>
+        </g>
+        <!-- vertex halos -->
+        <circle class="halo g0" cx="330"     cy="182.04"  r="11" fill="#17a086" filter="url(#soft2)" opacity=".55"/>
+        <circle class="halo g1" cx="464.462" cy="211.317" r="11" fill="#16b5b8" filter="url(#soft2)" opacity=".55"/>
+        <circle class="halo g2" cx="372.885" cy="314.026" r="11" fill="#eaa62c" filter="url(#soft2)" opacity=".55"/>
+        <circle class="halo g3" cx="249.59"  cy="365.674" r="11" fill="#e5795d" filter="url(#soft2)" opacity=".55"/>
+        <circle class="halo g4" cx="217.242" cy="218.363" r="11" fill="#8079d8" filter="url(#soft2)" opacity=".55"/>
+        <!-- vertex gems -->
+        <circle class="gem g0" cx="330"     cy="182.04"  r="5.4" fill="#17a086" stroke="#fff" stroke-width="2.1"/>
+        <circle class="gem g1" cx="464.462" cy="211.317" r="5.4" fill="#16b5b8" stroke="#fff" stroke-width="2.1"/>
+        <circle class="gem g2" cx="372.885" cy="314.026" r="5.4" fill="#eaa62c" stroke="#fff" stroke-width="2.1"/>
+        <circle class="gem g3" cx="249.59"  cy="365.674" r="5.4" fill="#e5795d" stroke="#fff" stroke-width="2.1"/>
+        <circle class="gem g4" cx="217.242" cy="218.363" r="5.4" fill="#8079d8" stroke="#fff" stroke-width="2.1"/>
+      </g>
+
+      <!-- ============ CENTRE MEDALLION ============ -->
+      <g id="centerGroup">
+        <circle cx="330" cy="255" r="40" fill="#fff" filter="url(#soft2)" opacity=".85"/>
+        <circle cx="330" cy="255" r="33" fill="#fffdf9" stroke="#ece2d1" stroke-width="1"/>
+        <circle cx="330" cy="255" r="33" fill="none" stroke="url(#ctr)" stroke-width="1.4" opacity=".55"/>
+        <text x="330" y="240" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="8" font-weight="600" letter-spacing="1.4" fill="#a49a88">OVERALL</text>
+        <text x="330" y="263" text-anchor="middle" font-size="29" font-weight="800" letter-spacing="-1" fill="url(#ctr)">7.3</text>
+        <text x="330" y="278" text-anchor="middle" font-size="10.5" font-weight="600" fill="#8a8072">/ 10</text>
+      </g>
+
+      <!-- ============ LABELS + VALUES ============ -->
+      <!-- Discovery (top) -->
+      <text class="lab" x="330" y="56"  text-anchor="middle" font-size="12" font-weight="700" fill="#3d3a34">Discovery &amp;</text>
+      <text class="lab" x="330" y="71"  text-anchor="middle" font-size="12" font-weight="700" fill="#3d3a34">qualification</text>
+      <text class="lab" x="330" y="92"  text-anchor="middle" font-size="17" font-weight="800" fill="#17a086">4.8</text>
+      <!-- Solutioning (upper right) -->
+      <text class="lab" x="497" y="190" text-anchor="start"  font-size="12" font-weight="700" fill="#3d3a34">Solutioning &amp;</text>
+      <text class="lab" x="497" y="205" text-anchor="start"  font-size="12" font-weight="700" fill="#3d3a34">technical fit</text>
+      <text class="lab" x="497" y="227" text-anchor="start"  font-size="17" font-weight="800" fill="#16b5b8">9.3</text>
+      <!-- Business value (lower right) -->
+      <text class="lab" x="446" y="372" text-anchor="start"  font-size="12" font-weight="700" fill="#3d3a34">Business value &amp;</text>
+      <text class="lab" x="446" y="387" text-anchor="start"  font-size="12" font-weight="700" fill="#3d3a34">articulation</text>
+      <text class="lab" x="446" y="409" text-anchor="start"  font-size="17" font-weight="800" fill="#eaa62c">4.8</text>
+      <!-- Objections (lower left) -->
+      <text class="lab" x="214" y="372" text-anchor="end"    font-size="12" font-weight="700" fill="#3d3a34">Objections &amp;</text>
+      <text class="lab" x="214" y="387" text-anchor="end"    font-size="12" font-weight="700" fill="#3d3a34">credibility</text>
+      <text class="lab" x="214" y="409" text-anchor="end"    font-size="17" font-weight="800" fill="#e5795d">9.0</text>
+      <!-- Communication (upper left) -->
+      <text class="lab" x="163" y="190" text-anchor="end"    font-size="12" font-weight="700" fill="#3d3a34">Communication &amp;</text>
+      <text class="lab" x="163" y="205" text-anchor="end"    font-size="12" font-weight="700" fill="#3d3a34">engagement</text>
+      <text class="lab" x="163" y="227" text-anchor="end"    font-size="17" font-weight="800" fill="#8079d8">7.8</text>
+    </svg>
+  </div>
+</body>
+</html>

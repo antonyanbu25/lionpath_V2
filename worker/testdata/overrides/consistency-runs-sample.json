@@ -1,0 +1,41 @@
+[
+  {
+    "callId": "demo-fixture",
+    "callType": "demo",
+    "runIndex": 0,
+    "compositeScore": 80,
+    "applicableWeight": 90,
+    "lines": [
+      { "themeKey": "storytelling", "score": 70, "applicable": true, "weight": 5, "evidence": [{ "atS": 1, "quote": "a" }] },
+      { "themeKey": "objections", "score": 72, "applicable": true, "weight": 5, "evidence": [{ "atS": 2, "quote": "b" }] },
+      { "themeKey": "value", "score": 80, "applicable": true, "weight": 10, "evidence": [{ "atS": 3, "quote": "c" }] },
+      { "themeKey": "questions", "score": 85, "applicable": true, "weight": 5, "evidence": [{ "atS": 4, "quote": "d" }] }
+    ]
+  },
+  {
+    "callId": "demo-fixture",
+    "callType": "demo",
+    "runIndex": 1,
+    "compositeScore": 82,
+    "applicableWeight": 90,
+    "lines": [
+      { "themeKey": "storytelling", "score": 95, "applicable": true, "weight": 5, "evidence": [{ "atS": 500, "quote": "other" }] },
+      { "themeKey": "objections", "score": 74, "applicable": true, "weight": 5, "evidence": [{ "atS": 2, "quote": "b" }] },
+      { "themeKey": "value", "score": 81, "applicable": true, "weight": 10, "evidence": [{ "atS": 3, "quote": "c" }] },
+      { "themeKey": "questions", "score": 86, "applicable": true, "weight": 5, "evidence": [{ "atS": 4, "quote": "d" }] }
+    ]
+  },
+  {
+    "callId": "demo-fixture",
+    "callType": "demo",
+    "runIndex": 2,
+    "compositeScore": 78,
+    "applicableWeight": 90,
+    "lines": [
+      { "themeKey": "storytelling", "score": 60, "applicable": true, "weight": 5, "evidence": [{ "atS": 10, "quote": "c" }] },
+      { "themeKey": "objections", "score": 73, "applicable": true, "weight": 5, "evidence": [{ "atS": 2, "quote": "b" }] },
+      { "themeKey": "value", "score": 79, "applicable": true, "weight": 10, "evidence": [{ "atS": 3, "quote": "c" }] },
+      { "themeKey": "questions", "score": 84, "applicable": true, "weight": 5, "evidence": [{ "atS": 4, "quote": "d" }] }
+    ]
+  }
+]

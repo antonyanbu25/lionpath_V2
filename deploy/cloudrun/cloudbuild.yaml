@@ -1,0 +1,86 @@
+# Build + push prep-portal-api + prep-portal-web images for Cloud Run (no deploy).
+# Manual:  gcloud builds submit . --config deploy/cloudrun/cloudbuild.yaml
+# Deploy:   powershell -ExecutionPolicy Bypass -File deploy/cloudrun/first-deploy.ps1
+# Git trigger: push to branch main on Antony-sagayaraj/SE-Labs
+#   Set trigger substitution _TAG=$SHORT_SHA (manual submit defaults _TAG to latest).
+#
+# Prerequisites:
+#   - Secret Manager secret "firebase-config-local" (web SSO, git-trigger builds only)
+#   - Cloud Build SA: Artifact Registry Writer (push); secretAccessor if trigger fetches SSO secret
+# Dockerfile.web runs npm run build inside the image; no local web/dist/ required.
+
+substitutions:
+  _REGION: us-central1
+  _PROJECT: se-singha-paathi
+  _REPO: prep-portal
+  _TAG: latest
+
+steps:
+  # Inject gitignored Firebase SSO config before web Docker build.
+  # Manual submit: upload web/firebase-config.local.js (see .gcloudignore) — no Secret Manager call.
+  # Git trigger: file absent from repo — fetch via gcloud (Cloud Build SA needs secretAccessor).
+  - name: gcr.io/cloud-builders/gcloud
+    id: firebase-config
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if [ -f web/firebase-config.local.js ]; then
+          echo "web/firebase-config.local.js already present in build workspace; skipping Secret Manager fetch."
+          exit 0
+        fi
+        echo "web/firebase-config.local.js missing; fetching from Secret Manager..."
+        gcloud secrets versions access latest \
+          --secret=firebase-config-local \
+          --project="${_PROJECT}" \
+          > web/firebase-config.local.js
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-api
+    waitFor:
+      - "-"
+    args:
+      - build
+      - -f=deploy/cloudrun/Dockerfile.api
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+      - worker
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-web
+    waitFor:
+      - firebase-config
+    args:
+      - build
+      - -f=deploy/cloudrun/Dockerfile.web
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
+      - -t=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-api
+    waitFor:
+      - build-api
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-web
+    waitFor:
+      - build-web
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web
+
+images:
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-api:latest
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/prep-portal-web:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

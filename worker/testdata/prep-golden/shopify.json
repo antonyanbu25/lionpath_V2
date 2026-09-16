@@ -1,0 +1,11 @@
+{
+  "id": "shopify",
+  "input": {
+    "companyName": "Shopify",
+    "companyDomain": "shopify.com",
+    "prospectEmail": "merchant@shopify.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

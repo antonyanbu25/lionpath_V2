@@ -1,0 +1,44 @@
+# Copy to worker/.dev.vars (gitignored) for local wrangler dev / npm run dev:node.
+# Required for pre-call prep and post-call analysis locally.
+GEMINI_API_KEY=your-gemini-api-key-from-aistudio
+
+# Zoom Server-to-Server OAuth — required for Freshworks rec/share links (they force
+# reCAPTCHA on the public scrape path). GEMINI_API_KEY alone cannot fetch Zoom recordings.
+# Create the app at marketplace.zoom.us → Develop → Server-to-Server OAuth.
+# ZOOM_ACCOUNT_ID=
+# ZOOM_CLIENT_ID=
+# ZOOM_CLIENT_SECRET=
+# Without these, paste/upload the VTT transcript instead of the share link.
+
+# Third QIP pass — human golden-set calibration after the verifier. Default on. Set 0 to skip.
+# SCORECARD_GOLDEN_PASS=1
+
+# Firebase project — Firestore admin + token verification (when auth enforced).
+# FIREBASE_PROJECT_ID=your-firebase-project-id
+# Dummy-auth local dev (no web/firebase-config.local.js): keep project id, disable Bearer checks:
+# FIREBASE_AUTH_ENFORCED=0
+
+# Local-only legacy impersonate (POST /api/admin/impersonate-token). Requires IMPERSONATE_SECRET.
+# ALLOW_DEV_IMPERSONATE=1
+
+# Optional — Apollo enrichment (Phase 2). Never commit real keys.
+# APOLLO_API_KEY=your-apollo-api-key
+
+# Freshdesk tickets (dispute score + product feedback). Never commit real keys.
+# FRESHDESK_DOMAIN=janus.freshdesk.com
+# FRESHDESK_API_KEY=your-freshdesk-api-key
+
+# wrangler secret put APOLLO_API_KEY
+# wrangler secret put FRESHDESK_API_KEY
+
+# Cloud SQL (Janus migration) — wrap URLs in SINGLE QUOTES if password contains ! # ? & etc.
+# Edit this file in the editor; do NOT paste these lines into zsh ( ! triggers history expansion ).
+# DATABASE_URL_MIGRATIONS='postgresql://postgres:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
+# DATABASE_URL='postgresql://janus_app:YOUR_PASSWORD@8.231.110.188:5432/janus?sslmode=require'
+# PERSISTENCE_MODE=firestore   # use dual after verify-sql-network + test:sql-gates pass
+# PERSISTENCE_READ_MODE=firestore
+# HISTORY_BACKEND_MODE=firestore
+#
+# Agent/CI: prove network before claiming SQL works:
+#   node worker/scripts/verify-sql-network.mjs
+# See docs/SQL_AGENT_VERIFICATION.md

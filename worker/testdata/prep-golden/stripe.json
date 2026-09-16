@@ -1,0 +1,11 @@
+{
+  "id": "stripe",
+  "input": {
+    "companyName": "Stripe",
+    "companyDomain": "stripe.com",
+    "prospectEmail": "support@stripe.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

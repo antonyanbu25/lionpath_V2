@@ -1,0 +1,135 @@
+{
+  "scorecardLines": [
+    { "id": "scl_1", "themeKey": "storytelling", "applicable": true, "ownerId": "usr_a" },
+    { "id": "scl_2", "themeKey": "storytelling", "applicable": true, "ownerId": "usr_b" },
+    { "id": "scl_3", "themeKey": "storytelling", "applicable": true, "ownerId": "usr_a" },
+    { "id": "scl_4", "themeKey": "objections", "applicable": true, "ownerId": "usr_a" },
+    { "id": "scl_5", "themeKey": "objections", "applicable": true, "ownerId": "usr_b" },
+    { "id": "scl_6", "themeKey": "value", "applicable": true, "ownerId": "usr_a" },
+    { "id": "scl_7", "themeKey": "value", "applicable": true, "ownerId": "usr_b" },
+    { "id": "scl_8", "themeKey": "questions", "applicable": true, "ownerId": "usr_c" },
+    { "id": "scl_9", "themeKey": "questions", "applicable": true, "ownerId": "usr_c" }
+  ],
+  "scoreOverrides": [
+    {
+      "id": "sov_1",
+      "scorecardLineId": "scl_1",
+      "scorecardId": "sc_1",
+      "callId": "pc_1",
+      "original": 85,
+      "override": 55,
+      "userId": "usr_a",
+      "reason": "Feature tour, no narrative thread",
+      "createdAt": 1
+    },
+    {
+      "id": "sov_2",
+      "scorecardLineId": "scl_2",
+      "scorecardId": "sc_2",
+      "callId": "pc_2",
+      "original": 80,
+      "override": 50,
+      "userId": "usr_b",
+      "reason": "Feature tour, no narrative thread",
+      "createdAt": 2
+    },
+    {
+      "id": "sov_3",
+      "scorecardLineId": "scl_3",
+      "scorecardId": "sc_3",
+      "callId": "pc_3",
+      "original": 78,
+      "override": 48,
+      "userId": "usr_a",
+      "reason": "Generic personas only",
+      "createdAt": 3
+    },
+    {
+      "id": "sov_4",
+      "scorecardLineId": "scl_4",
+      "scorecardId": "sc_4",
+      "callId": "pc_4",
+      "original": 40,
+      "override": 65,
+      "userId": "usr_a",
+      "reason": "Handled pricing pushback well",
+      "createdAt": 4
+    },
+    {
+      "id": "sov_5",
+      "scorecardLineId": "scl_5",
+      "scorecardId": "sc_5",
+      "callId": "pc_5",
+      "original": 42,
+      "override": 68,
+      "userId": "usr_b",
+      "reason": "Handled pricing pushback well",
+      "createdAt": 5
+    },
+    {
+      "id": "sov_6",
+      "scorecardLineId": "scl_8",
+      "scorecardId": "sc_6",
+      "callId": "pc_6",
+      "original": 90,
+      "override": 50,
+      "userId": "usr_c",
+      "reason": "Only one discovery question",
+      "createdAt": 6
+    },
+    {
+      "id": "sov_7",
+      "scorecardLineId": "scl_9",
+      "scorecardId": "sc_7",
+      "callId": "pc_7",
+      "original": 88,
+      "override": 52,
+      "userId": "usr_c",
+      "reason": "Only one discovery question",
+      "createdAt": 7
+    }
+  ],
+  "arrOverrides": [
+    {
+      "id": "aov_1",
+      "dealId": "deal_1",
+      "field": "aiSessionRate",
+      "action": "edit",
+      "original": 0.5,
+      "override": 0.7,
+      "userId": "usr_a",
+      "reason": "Customer said most tickets will use AI agent",
+      "ownerId": "usr_a",
+      "createdAt": 1
+    },
+    {
+      "id": "aov_2",
+      "dealId": "deal_2",
+      "field": "aiSessionRate",
+      "action": "edit",
+      "original": 0.5,
+      "override": 0.75,
+      "userId": "usr_b",
+      "reason": "Pilot is AI-first for L1",
+      "ownerId": "usr_b",
+      "createdAt": 2
+    },
+    {
+      "id": "aov_3",
+      "dealId": "deal_3",
+      "field": "aiSessionRate",
+      "action": "edit",
+      "original": 0.5,
+      "override": 0.65,
+      "userId": "usr_a",
+      "reason": "Customer said most tickets will use AI agent",
+      "ownerId": "usr_a",
+      "createdAt": 3
+    }
+  ],
+  "users": [
+    { "id": "usr_a", "email": "se-a@example.com" },
+    { "id": "usr_b", "email": "se-b@example.com" },
+    { "id": "usr_c", "email": "se-c@example.com" }
+  ]
+}

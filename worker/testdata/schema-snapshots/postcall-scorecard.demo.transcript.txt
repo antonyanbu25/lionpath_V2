@@ -1,0 +1,19 @@
+[00:00] SE (Alex Kim): Thanks for making time today — I know Q3 planning is keeping you busy.
+[00:04] Prospect (Jamie Torres, VP Support Ops): Happy to be here. We're evaluating a few
+platforms before budget closes end of quarter.
+[00:12] SE: Understood. Last time we spoke you flagged ticket routing accuracy as the top pain —
+your team was manually re-triaging about 30% of inbound tickets. Has that changed?
+[00:20] Prospect: Still true. It's costing us roughly two FTEs worth of time a week. Our CFO,
+Maria Chen, is the one who ultimately signs off on anything over $50k, and she wants a clear
+ROI story before Q3 close.
+[00:35] SE: That timeline works with what we discussed. Let me walk through the AI routing demo
+and how it handles the ticket types you flagged.
+[00:40] Prospect: This looks close to what we need. One concern — we evaluated a competitor,
+HelpStack, last quarter and their routing accuracy claims didn't hold up in our pilot.
+[00:55] SE: Good to know. I'll send over a case study from a support team our size with real
+routing accuracy numbers, not just the pilot-stage claims.
+[01:05] Prospect: Appreciated. Next step on our side is getting Maria on a call before we can
+move to a POC — she'll want the ROI numbers in front of her directly.
+[01:12] SE: I'll set that up. I'll also send the follow-up email today with next steps and the
+case study attached.
+[01:15] Prospect: Sounds good. Let's plan to reconnect by end of next week.

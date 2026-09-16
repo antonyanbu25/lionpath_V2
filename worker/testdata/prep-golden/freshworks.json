@@ -1,0 +1,11 @@
+{
+  "id": "freshworks",
+  "input": {
+    "companyName": "Freshworks",
+    "companyDomain": "freshworks.com",
+    "prospectEmail": "info@freshworks.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

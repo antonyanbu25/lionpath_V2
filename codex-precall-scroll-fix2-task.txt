@@ -1,0 +1,62 @@
+You are implementing a FAILPROOF fix for the pre-call brief scroll bug on the Lionpath SE portal (branch 2.1, repo /root/lionpath_V2).
+
+Read the authoritative plan FIRST and follow it EXACTLY:
+  /root/lionpath_V2/docs/plans/2026-08-08-precall-scroll-fix2-analysis.md  (analysis/context)
+
+GLM-5.2 has decided the approach (Approach 1, surgical CSS fix). This is the implementation plan:
+
+## THE EXACT EDIT — file `web/precall.css`
+
+Locate the `#prep-tabs` rule (immediately before the `#prep-tabs fw-tab-panel` rule at precall.css:1097). It currently is:
+
+```css
+#prep-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+```
+
+Replace it with:
+
+```css
+#prep-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;            /* NEW — computed height becomes 100% (not auto), so shadow .tabs height:inherit resolves to a definite value */
+  --fw-tabs-height: 100%;  /* NEW — directly sets shadow .tabs height via Crayons custom property, bypassing inherit as a backup path */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+```
+
+That is the ONLY edit. Do NOT change:
+- `web/styles.css` (the :has chain at 2097-2122 must stay untouched).
+- `#prep-tabs fw-tab-panel` rule (precall.css:1097-1103).
+- `.prep-tab-panel-wrap` rule (precall.css:1105-1111).
+- Any JS/TSX.
+
+## Anti-regression checklist (run ALL, report each)
+1. Build: `cd /root/lionpath_V2 && npm run build` — must exit 0.
+2. Grep guard: `grep -n "height: 100%" web/precall.css` shows the new line inside the `#prep-tabs` block; `grep -n -- "--fw-tabs-height" web/precall.css` shows the custom property.
+3. No collateral edits: `git diff --stat` must show exactly ONE file changed (web/precall.css), exactly TWO lines added.
+4. Commit: ONE commit, stage only web/precall.css, message:
+   ```
+   fix(precall): bound #prep-tabs height so shadow .tabs inherits definite height, enabling inner scroll
+
+   The Crayons fw-tabs shadow .tabs container uses height: var(--fw-tabs-height, inherit).
+   Since --fw-tabs-height was never set and #prep-tabs had computed height:auto (flex
+   gives used height, not computed), .tabs resolved to height:auto → unbounded → inner
+   .prep-tab-panel-wrap overflow-y:auto never activated, while the :has chain clipped
+   the overflow. Fix: set height:100% and --fw-tabs-height:100% on #prep-tabs so the
+   shadow .tabs inherits a definite height, activating the inner scroll region.
+
+   Root cause and fix verified against Crayons 4.3.0-dew source.
+   Fixes the recurring 'stuck below How big is this fish?' symptom (FIX D follow-up).
+   ```
+5. Push to origin/2.1.
+
+When finished, report: the commit SHA, each grep guard result, git diff --stat, the build result, and the push result. If anything is ambiguous, make the minimal correct change and note it.

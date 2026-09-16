@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SE Singha Paathai — post-call wireframe v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brand:#6B4EE6; --brand-soft:#F3F1FD; --brand-line:#E3DEFA;
+  --blue:#2563EB; --navy:#0F2E4C;
+  --canvas:#EDEFF3; --card:#FFFFFF;
+  --ink:#12213A; --ink-2:#5A6B82; --ink-3:#93A0B4;
+  --line:#E6E9EF; --line-2:#D6DBE4;
+  --red:#D6455D; --red-bg:#FDECEF; --red-line:#F5CDD5;
+  --amber:#B7791F; --amber-bg:#FDF3E2;
+  --green:#127A56; --green-bg:#E3F5EE;
+  --r:10px;
+  --f:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --m:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--f);background:var(--canvas);color:var(--ink);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.app{display:flex;min-height:100vh}
+
+.side{width:250px;flex-shrink:0;background:var(--brand-soft);border-right:1px solid var(--brand-line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{display:flex;align-items:center;gap:9px;padding:18px 20px 14px}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700}
+.brand .name{color:var(--brand);font-weight:700;font-size:14.5px}
+.who{padding:0 20px 14px;border-bottom:1px solid var(--brand-line)}
+.who .n{font-weight:700;font-size:14px}
+.who .r{font-size:12px;color:var(--ink-2)}
+.nav{padding:10px 12px 0;display:flex;flex-direction:column;gap:2px}
+.nav .grp{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:700;padding:12px 12px 5px}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);font-size:13.5px;font-weight:500;color:var(--ink);border:1px solid transparent}
+.nav button:hover{background:#EAE6FA}
+.nav button.on{background:#fff;border-color:var(--brand-line);font-weight:700;color:var(--brand)}
+.nav button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.nav .ico{width:15px;text-align:center;opacity:.7;font-size:12px}
+.side .foot{margin-top:auto;padding:14px 20px;border-top:1px solid var(--brand-line);font-size:11.5px;color:var(--ink-3);line-height:1.5}
+
+.main{flex:1;min-width:0}
+.top{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+.crumb{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--ink-3)}
+.crumb .bk{cursor:pointer;font-size:17px;color:var(--ink-3);margin-right:3px}
+.crumb .bk:hover{color:var(--ink)}
+.crumb a{color:var(--ink-2);text-decoration:none;cursor:pointer}
+.crumb a:hover{color:var(--blue);text-decoration:underline}
+.crumb .cur{font-weight:700;font-size:15px;color:var(--navy)}
+.top .tools{display:flex;gap:8px;align-items:center}
+.pagepad{padding:24px 28px 70px;max-width:1400px}
+.screen{display:none}
+.screen.on{display:block}
+h1{font-size:22px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+h2{font-size:15px;font-weight:700;color:var(--navy)}
+.sub{color:var(--ink-2);font-size:13px}
+.eyebrow{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.card.tight{padding:14px 16px}
+.grid{display:grid;gap:14px}
+.btn{all:unset;cursor:pointer;font-family:var(--f);font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid var(--line-2);color:var(--ink);background:#fff;text-align:center}
+.btn:hover{background:#F6F7F9}
+.btn:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.pri:hover{background:#1D4FD8}
+.btn.sm{padding:5px 10px;font-size:12px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:#F1F3F7;color:var(--ink-2);white-space:nowrap}
+.pill.red{background:var(--red-bg);color:var(--red)}
+.pill.amber{background:var(--amber-bg);color:var(--amber)}
+.pill.green{background:var(--green-bg);color:var(--green)}
+.pill.blue{background:#E8F0FE;color:#1D4FD8}
+.pill.purple{background:#EFEBFD;color:var(--brand)}
+.metric{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.metric.clik{cursor:pointer}
+.metric.clik:hover{border-color:var(--blue)}
+.metric .l{font-size:12px;color:var(--ink-2);font-weight:500}
+.metric .v{font-size:26px;font-weight:700;letter-spacing:-.02em;color:var(--navy);margin-top:2px}
+.metric .h{font-size:11.5px;color:var(--ink-3);font-family:var(--m)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:700;padding:0 12px 9px;border-bottom:1px solid var(--line)}
+td{padding:11px 12px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+tr.clik{cursor:pointer}
+tr.clik:hover{background:#F8F9FC}
+.mono{font-family:var(--m);font-size:12px}
+.num{font-family:var(--m);font-variant-numeric:tabular-nums}
+.bar{height:5px;background:#EEF0F4;border-radius:3px;overflow:hidden}
+.bar span{display:block;height:100%;border-radius:3px}
+.empty{border:1px dashed var(--line-2);border-radius:12px;padding:20px;text-align:center;color:var(--ink-2);font-size:13px}
+input,textarea,select{font-family:var(--f);font-size:13px;border:1px solid var(--line-2);border-radius:8px;padding:8px 11px;width:100%;color:var(--ink);background:#fff}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+label.fl{font-size:12.5px;font-weight:600;display:block;margin-bottom:5px}
+.note{background:#FBFCFD;border:1px dashed var(--line-2);border-radius:10px;padding:11px 14px;font-size:12px;color:var(--ink-2);line-height:1.6}
+.note b{color:var(--navy)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tabs button{all:unset;cursor:pointer;padding:9px 15px;font-size:13.5px;font-weight:600;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button:hover{color:var(--ink)}
+.tabs button.on{color:var(--blue);border-bottom-color:var(--blue)}
+.tabs button:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.tabpane{display:none}
+.tabpane.on{display:block}
+.srow{border-bottom:1px solid var(--line)}
+.srow .hd{display:grid;grid-template-columns:1fr 78px 120px 74px 20px;gap:12px;align-items:center;padding:11px 4px;cursor:pointer}
+.srow .hd:hover{background:#F8F9FC}
+.srow .bd{display:none;padding:2px 4px 15px}
+.srow.open .bd{display:block}
+.srow .chev{color:var(--ink-3);font-size:11px;transition:transform .15s}
+.srow.open .chev{transform:rotate(90deg)}
+.ev{border-left:3px solid var(--line-2);background:#FAFBFC;padding:9px 13px;border-radius:0 8px 8px 0;margin-top:7px;font-size:13px;line-height:1.6}
+.ev.bad{border-left-color:var(--red);background:#FDF7F8}
+.ev.good{border-left-color:var(--green);background:#F5FBF8}
+.ev .ts{font-family:var(--m);font-size:10.5px;color:var(--ink-3);margin-bottom:3px}
+.spine{position:relative;height:56px;border-radius:10px;overflow:visible;margin-bottom:6px}
+.spine .seg{position:absolute;top:16px;height:24px;display:grid;place-items:center;font-size:10.5px;font-weight:600}
+.spine .mk{position:absolute;top:0;width:2px;height:14px;background:var(--ink-3)}
+.spine .mkl{position:absolute;top:44px;font-size:10px;color:var(--ink-3);font-family:var(--m);transform:translateX(-50%);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="side">
+  <div class="brand"><div class="mark">SP</div><div class="name">SE Singha Paathai</div></div>
+  <div class="who"><div class="n">NIVEDHA Natarajan</div><div class="r">Solution Engineer · APMEA</div></div>
+  <nav class="nav" aria-label="Main">
+    <div class="grp">Capture</div>
+    <button data-go="precall"><span class="ico">◱</span>Pre-call</button>
+    <button data-go="intake"><span class="ico">↑</span>Add a call</button>
+    <div class="grp">Mine</div>
+    <button data-go="calls"><span class="ico">◷</span>All calls</button>
+    <button data-go="accounts"><span class="ico">▣</span>Accounts</button>
+    <button class="on" data-go="deals"><span class="ico">◆</span>Your deals</button>
+    <button data-go="coaching"><span class="ico">◈</span>Your coaching</button>
+    <div class="grp">Roll-ups</div>
+    <button data-go="team"><span class="ico">▦</span>Team</button>
+    <button data-go="pipeline"><span class="ico">▤</span>Pipeline review</button>
+    <button data-go="signal"><span class="ico">◉</span>Product signal</button>
+  </nav>
+  <div class="foot">Wireframe · sample data</div>
+</aside>
+
+<main class="main">
+<header class="top">
+  <div class="crumb"><span class="bk" id="bk">‹</span><span id="trail"></span></div>
+  <div class="tools"><button class="btn sm pri" data-go="intake">Add a call</button></div>
+</header>
+<div class="pagepad">
+
+<!-- ===== PRE-CALL ===== -->
+<section class="screen" id="precall">
+<div style="max-width:660px;margin:12px auto">
+  <div style="text-align:center;margin-bottom:20px">
+    <h1 style="font-size:26px">Pre-call brief</h1>
+    <p class="sub" style="margin-top:5px">Research the account and the room before you walk in. The brief becomes the answer key the post-call scorecard grades against.</p>
+  </div>
+  <div class="card" style="padding:22px">
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+      <div><label class="fl">Company <span style="color:var(--red)">*</span></label><input placeholder="Company name"></div>
+      <div><label class="fl">Company domain <span style="color:var(--red)">*</span></label><input placeholder="company.com"></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label class="fl">Prospect emails <span style="color:var(--red)">*</span></label>
+      <input placeholder="name@company.com, name2@company.com">
+      <p class="sub" style="font-size:11.5px;margin-top:5px">Comma-separated. Each contact is researched, and these emails match the call after.</p>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:16px;margin-bottom:16px">
+      <div class="eyebrow" style="margin-bottom:9px">Optional</div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div><label class="fl">LinkedIn profiles</label><button class="btn" style="width:100%">Add PDFs</button></div>
+        <div><label class="fl">Meeting link</label><input placeholder="Paste Zoom or Kaia link"></div>
+      </div>
+      <div style="margin-top:12px"><label class="fl">Additional context</label><textarea rows="2" placeholder="AE notes, meeting type, anything research will miss"></textarea></div>
+    </div>
+    <button class="btn pri" style="width:100%;padding:11px">Generate brief</button>
+    <p class="sub" style="text-align:center;font-size:11.5px;margin-top:11px">Signals from website, funding records, traffic estimates and LinkedIn exports.</p>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <div class="eyebrow" style="margin-bottom:10px">What the brief produces — and what post-call grades against it</div>
+    <div style="display:grid;gap:9px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)"><span>Suggested agenda</span><span class="pill purple">→ Research &amp; agenda</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)"><span>Discovery questions to ask</span><span class="pill purple">→ Questions</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)"><span>Likely incumbent and competitor</span><span class="pill purple">→ Incumbent &amp; competition</span></div>
+      <div style="display:flex;justify-content:space-between;gap:12px"><span>Stakeholder profiles and likely roles</span><span class="pill purple">→ MEDPICC · champion &amp; economic buyer</span></div>
+    </div>
+    <p class="sub" style="font-size:12px;margin-top:12px">This is the loop nothing else closes. Research &amp; agenda is the weakest theme to score from a transcript alone — with a brief on file it becomes a diff against a document we already wrote.</p>
+  </div>
+</div>
+</section>
+
+<!-- ===== INTAKE ===== -->
+<section class="screen" id="intake">
+<div style="max-width:660px;margin:12px auto">
+  <div style="text-align:center;margin-bottom:20px">
+    <h1 style="font-size:26px">Post-call analysis</h1>
+    <p class="sub" style="margin-top:5px">Paste the recording. We pull transcript and video, match the deal, and score the call — after you confirm the call type.</p>
+  </div>
+  <div class="card" style="padding:22px">
+    <div style="margin-bottom:16px">
+      <label class="fl">Recording link <span style="color:var(--red)">*</span></label>
+      <input placeholder="https://freshworks.zoom.us/rec/share/…  Passcode: abc123">
+      <p class="sub" style="font-size:11.5px;margin-top:5px">Zoom or Kaia. Passcode can go on the same line.</p>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+      <div><label class="fl">Company <span style="color:var(--red)">*</span></label><input value="Pioneer Metering"></div>
+      <div><label class="fl">Prospect emails <span style="color:var(--red)">*</span></label><input value="sunil@pioneermetering.co.za"></div>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:16px;margin-bottom:16px">
+      <div class="eyebrow" style="margin-bottom:9px">Optional</div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div><label class="fl">Deck link</label><input placeholder="Google Slides or .pptx link"></div>
+        <div><label class="fl">LinkedIn PDFs</label><button class="btn" style="width:100%">Add PDFs</button></div>
+      </div>
+      <div style="margin-top:12px"><label class="fl">Additional context</label><textarea rows="2" placeholder="AE notes, anything the recording won't show"></textarea></div>
+    </div>
+    <div style="background:#F5FBF8;border:1px solid #C9E7DA;border-radius:11px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="eyebrow">Deal matched</div><span class="pill green">Confident</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-weight:700">Pioneer Metering · FD Omni · Solutioning</div>
+        <div class="sub" style="font-size:12px">Matched on <b>sunil@pioneermetering.co.za</b>, present in the pre-call brief of 22 Apr</div></div>
+        <button class="btn sm">Change deal</button>
+      </div>
+    </div>
+    <div style="background:#FDF3E2;border:1px solid #F0DDB8;border-radius:11px;padding:14px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="eyebrow">Call type · confirm before we score</div><span class="pill amber">61% likely</span></div>
+      <select style="margin-bottom:7px">
+        <option>Demo</option><option>Discovery</option>
+        <option>Technical deep dive</option><option>Reverse demo</option>
+        <option>Use case discussion</option><option>Trial setup</option>
+        <option>Troubleshooting</option><option>Q&amp;A session</option>
+      </select>
+      <p class="sub" style="font-size:12px">Reads as discovery that turned into a demo around 18:00. Pick the primary — the rubric and its weights follow from this.</p>
+    </div>
+    <button class="btn pri" style="width:100%;padding:11px" data-go="call">Confirm and analyse</button>
+    <p class="sub" style="text-align:center;font-size:11.5px;margin-top:11px">Analysis takes 40 to 90 seconds.</p>
+  </div>
+  <div class="card" style="margin-top:14px;border-style:dashed">
+    <div class="eyebrow" style="margin-bottom:10px">Alternate · free-mail domain</div>
+    <div style="background:#FDF3E2;border:1px solid #F0DDB8;border-radius:11px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="eyebrow">Free-mail domain · needs the real one</div><span class="pill amber">Blocked</span></div>
+      <p style="font-size:13px;margin-bottom:10px">Matched on <b>gmail.com</b> — that is a free-mail domain, not the company. Enter the real company domain before this becomes an account.</p>
+      <button class="btn sm pri">Enter company domain</button>
+    </div>
+    <div class="empty" style="margin-top:12px;text-align:left">No deal matched these emails. Search for the deal, or create one from this call.<br><span style="display:inline-flex;gap:8px;margin-top:10px"><button class="btn sm">Search deals</button><button class="btn sm pri">Create deal</button></span></div>
+  </div>
+</div>
+</section>
+
+<!-- ===== CALL (redesigned) ===== -->
+<section class="screen" id="call">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:16px">
+    <div>
+      <div style="display:flex;align-items:center;gap:9px">
+        <h1>FD Omni with Copilot</h1><span class="pill blue">Demo</span>
+      </div>
+      <p class="sub"><a data-go="account" style="color:var(--blue);cursor:pointer">Pioneer Metering</a> · 29 Apr 2026 · 48 min · Pavithra Velkannan · 3 participants</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0"><button class="btn sm">Re-analyse</button><button class="btn sm" data-go="deal">Open deal</button></div>
+  </div>
+
+  <!-- deal context strip -->
+  <div class="card" style="padding:12px 18px;margin-bottom:14px;background:#FBFCFD">
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;font-size:13px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="eyebrow">Deal</span>
+        <a data-go="deal" style="color:var(--blue);cursor:pointer;font-weight:700">Pioneer Metering — FD Omni</a>
+      </div>
+      <div><span class="eyebrow">Stage</span> <span class="pill">Solutioning</span></div>
+      <div><span class="eyebrow">ARR</span> <span class="num" style="font-weight:700">$15K–$20K</span></div>
+      <div><span class="eyebrow">TC</span> <span class="pill green">Yes</span></div>
+      <div><span class="eyebrow">AI attach</span> <span class="pill purple">Copilot 14/14</span></div>
+      <div><span class="eyebrow">Traction</span> <span class="pill red">Cold</span></div>
+      <div style="margin-left:auto"><span class="sub" style="font-size:12px">Call 3 of 3 on this deal</span></div>
+    </div>
+  </div>
+
+  <!-- verdict strip -->
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr)">
+      <div style="padding:16px 20px;border-right:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:5px">QIP · the SE</div>
+        <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:30px;font-weight:700;color:var(--green)" class="num">86</span><span class="sub">/ 100</span><span class="pill green" style="margin-left:2px">+8 vs avg</span></div>
+        <div class="mono" style="font-size:10.5px;color:var(--ink-3);margin-top:2px">Demo profile · v1.2</div>
+      </div>
+      <div style="padding:16px 20px;border-right:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:5px">MEDPICC · the deal</div>
+        <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:30px;font-weight:700;color:var(--amber)" class="num">42</span><span class="sub">/ 100</span></div>
+        <div class="mono" style="font-size:10.5px;color:var(--ink-3);margin-top:2px">4 of 8 surfaced</div>
+      </div>
+      <div style="padding:16px 20px;border-right:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:5px">Traction</div>
+        <div style="font-size:26px;font-weight:700;color:var(--amber);line-height:1.3">Warm</div>
+        <div class="mono" style="font-size:10.5px;color:var(--ink-3)">No next step owned by the customer</div>
+      </div>
+      <div style="padding:16px 20px">
+        <div class="eyebrow" style="margin-bottom:5px">Confidence</div>
+        <div style="font-size:26px;font-weight:700;line-height:1.3">High</div>
+        <div class="mono" style="font-size:10.5px;color:var(--ink-3)">91% of signals are clean</div>
+      </div>
+    </div>
+    <div style="background:#FBFCFD;border-top:1px solid var(--line);padding:11px 20px;font-size:13px">
+      <b style="color:var(--navy)">Flawless call, weak deal.</b> 86 on execution against 42 on qualification means the problem here isn't how it was run. No economic buyer has appeared in three calls.
+    </div>
+  </div>
+
+  <!-- call notes + stakeholders -->
+  <div class="grid" style="grid-template-columns:1fr 340px;align-items:start;margin-bottom:16px">
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:8px">Call notes · what happened in this call</div>
+      <p style="line-height:1.7">Second technical session, first with the product in front of them. Ran the agenda from the brief almost intact — four of five items, plus an unprompted probe on the WhatsApp incumbent. Copilot was the moment the room changed: Sunil described the reply-drafting flow back to us at 31:20 without being asked to, which is the strongest signal this account has produced.<br><br>Two things went unresolved. The WhatsApp template approval blocker resurfaced and was deflected to roadmap rather than being scoped, and "we've been burned by a bot before" was acknowledged at 33:10 and never actually answered. The call ended without a customer-owned next step, which is what turned a good demo into 60 days of silence.</p>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn sm">Edit notes</button><button class="btn sm">Regenerate notes</button></div>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:11px">Who was in the room</div>
+      <div id="stake"></div>
+      <div class="empty" style="margin-top:12px;padding:13px;font-size:12.5px;text-align:left">Alternate · no video<br><span style="color:var(--ink-2)">No video on this recording. Camera and talk-time stay empty until you analyse a recording that includes video.</span></div>
+    </div>
+  </div>
+
+  <!-- timeline spine -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+      <h2>How the 48 minutes went</h2>
+      <span class="sub" style="font-size:12px">From the screen-share track — used for call-flow scoring</span>
+    </div>
+    <div class="spine" id="spine"></div>
+    <div style="display:flex;justify-content:space-between;font-family:var(--m);font-size:10.5px;color:var(--ink-3);margin-top:24px;border-top:1px solid var(--line);padding-top:9px"><span>0:00</span><span>12:00</span><span>24:00</span><span>36:00</span><span>48:00</span></div>
+    <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+      <div><div class="sub" style="font-size:12px">SE talk ratio</div><div style="font-weight:700;font-size:18px" class="num">71%</div></div>
+      <div><div class="sub" style="font-size:12px">Customer questions</div><div style="font-weight:700;font-size:18px" class="num">9</div></div>
+      <div><div class="sub" style="font-size:12px">Longest monologue</div><div style="font-weight:700;font-size:18px;color:var(--amber)" class="num">6m 40s</div></div>
+      <div><div class="sub" style="font-size:12px">SE camera on</div><div style="font-weight:700;font-size:18px" class="num">100%</div></div>
+      <div><div class="sub" style="font-size:12px">Customer cameras</div><div style="font-weight:700;font-size:18px" class="num">1 of 2</div></div>
+    </div>
+    <div class="empty" style="margin-top:14px;text-align:left">Alternate · no screen-share track<br><span style="color:var(--ink-2)">No screen-share track on this recording. Call-flow uses the transcript only. Analyse a recording with video to fill this timeline.</span></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="on" data-tab="t-score">QIP scorecard</button>
+    <button data-tab="t-tc">Technical commit</button>
+    <button data-tab="t-deal">Deal health</button>
+    <button data-tab="t-prod">Product signal</button>
+    <button data-tab="t-mom">Minutes</button>
+  </div>
+
+  <div class="tabpane" id="t-tc">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <h2>Technical commit</h2><span class="pill green">Yes · unchanged</span>
+        </div>
+        <p class="sub" style="margin-bottom:14px">What this call contributed to the commit. Deltas from the previous call are marked.</p>
+        <div style="display:grid;gap:0;font-size:13px">
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:3px">Incumbent</div>Email and WhatsApp, no helpdesk. Confirmed again at 04:20.</div>
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:3px">Competitor</div><span style="color:var(--ink-3)">None named across three calls.</span> <span class="pill amber" style="margin-left:4px">Still unknown</span></div>
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:3px">Identified risk</div>WhatsApp template approval is a hard blocker and was deflected to roadmap rather than scoped. <span class="pill red" style="margin-left:4px">New this call</span></div>
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:3px">Timeline for closure</div>Customer restated Jun 2026 go-live at 42:10. No procurement step has ever been described.</div>
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="eyebrow" style="margin-bottom:3px">Reason for evaluation</div>Support headcount frozen for FY27 while meter installs grow ~30%. Absorb volume without hiring.</div>
+          <div style="padding:10px 0"><div class="eyebrow" style="margin-bottom:3px">AI attach</div>Copilot for all 14 agents. Opted in <b>after</b> being shown, not before — customer did not arrive asking for AI.</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card tight">
+          <div class="eyebrow" style="margin-bottom:10px">Pending action items</div>
+          <div style="display:grid;gap:9px;font-size:13px">
+            <div style="display:flex;justify-content:space-between;gap:9px"><span>Send SLA config guide</span><span class="pill">SE · 2 May</span></div>
+            <div style="display:flex;justify-content:space-between;gap:9px"><span>Confirm WhatsApp blocker</span><span class="pill amber">Customer</span></div>
+            <div style="display:flex;justify-content:space-between;gap:9px"><span>Commercials call</span><span class="pill red">No date</span></div>
+          </div>
+        </div>
+        <div class="card tight">
+          <div class="eyebrow" style="margin-bottom:10px">What's working</div>
+          <div class="ev good" style="margin-top:0"><div class="ts">31:20</div>"That would save my team the whole morning" — Copilot reply drafting.</div>
+          <div class="ev good"><div class="ts">11:45</div>Unified inbox across email and WhatsApp. Both attendees leaned in, three follow-up questions.</div>
+        </div>
+        <div class="card tight">
+          <div class="eyebrow" style="margin-bottom:8px">Fitment</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div><div class="sub" style="font-size:12px">Functional</div><div style="font-size:20px;font-weight:700" class="num">100%</div><div class="bar" style="margin-top:5px"><span style="width:100%;background:var(--green)"></span></div></div>
+            <div><div class="sub" style="font-size:12px">Technical</div><div style="font-size:20px;font-weight:700" class="num">100%</div><div class="bar" style="margin-top:5px"><span style="width:100%;background:var(--green)"></span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabpane on" id="t-score">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <h2>QIP · demo profile</h2><span class="pill">86 / 100 · weighted</span>
+      </div>
+      <p class="sub" style="margin-bottom:14px">Click any theme for the evidence. Four themes carry 40 of the 100 points.</p>
+      <div style="display:grid;grid-template-columns:1fr 78px 120px 74px 20px;gap:12px;padding:0 4px 8px;border-bottom:1px solid var(--line)" class="eyebrow">
+        <div>Theme</div><div>Score</div><div>Weighted</div><div>Confidence</div><div></div>
+      </div>
+      <div id="scorerows"></div>
+      <div class="note" style="margin-top:14px"><b>Provisional · shadow profile.</b> On a troubleshooting call this strip would read: Provisional — troubleshooting scoring is still in shadow. Shown here; left out of averages and the team view.</div>
+      <div style="display:flex;gap:8px;margin-top:16px"><button class="btn sm">Override a score</button><button class="btn sm">Compare to my average</button></div>
+    </div>
+  </div>
+
+  <div class="tabpane" id="t-deal">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <h2>MEDPICC</h2><p class="sub" style="margin-bottom:12px">4 of 8 surfaced on this call</p>
+        <div id="medp"></div>
+      </div>
+      <div class="grid">
+        <div class="card tight">
+          <div class="eyebrow" style="margin-bottom:10px">Objections</div>
+          <div style="font-size:13px">
+            <div style="padding-bottom:9px;border-bottom:1px solid var(--line)">
+              <div style="font-weight:600">"Is the AI going to answer wrong?"</div>
+              <div class="sub" style="font-size:12px">Guardrail demo at 28:40 · <span style="color:var(--green)">landed</span></div>
+            </div>
+            <div style="padding-top:9px">
+              <div style="font-weight:600">"We've been burned by a bot before"</div>
+              <div class="sub" style="font-size:12px">Acknowledged at 33:10, not answered · <span style="color:var(--red)">open</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card tight" style="border-color:var(--red-line)">
+          <div class="eyebrow" style="margin-bottom:8px">Traction · warm</div>
+          <div style="font-size:13px;line-height:1.75">
+            · No next step owned by the customer<br>
+            · Pricing never came up<br>
+            · Economic buyer absent for a third call
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabpane" id="t-prod">
+    <div class="card">
+      <h2>Raised on this call</h2>
+      <p class="sub" style="margin-bottom:12px">Grouped by theme from the customer's words</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)">
+        <div><div style="font-weight:600">WhatsApp template approval in-product</div>
+        <div class="ev bad" style="margin-top:6px"><div class="ts">24:05</div>"We shouldn't have to leave the product to get a template signed off."</div>
+        <div class="sub" style="font-size:12px;margin-top:6px">Channels › WhatsApp · hard blocker · <span class="pill red" style="font-size:10.5px">Real gap</span></div></div>
+        <span class="pill blue">Roadmap Q3</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)">
+        <div><div style="font-weight:600">Prepaid meter event ingestion via webhook</div>
+        <div class="sub" style="font-size:12px;margin-top:4px">Integrations › Webhooks · <span class="pill amber" style="font-size:10.5px">Enablement</span> — routed to enablement; the product already does this; the SE didn't know</div></div>
+        <span class="pill amber">With enablement</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px">
+        <div><div style="font-weight:600">Copilot reply drafting landed</div>
+        <div class="ev good" style="margin-top:6px"><div class="ts">31:20</div>"That would save my team the whole morning."</div></div>
+        <span class="pill green">What's working</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabpane" id="t-mom">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h2>Minutes of meeting</h2><span class="pill blue">Customer-facing · never sends on its own</span>
+      </div>
+      <p class="sub" style="margin-bottom:12px">Drafted from commitments made aloud, with timestamps kept underneath.</p>
+      <div style="background:#FAFBFC;border:1px solid var(--line);border-radius:10px;padding:16px;font-size:13.5px;line-height:1.75">
+        <div style="font-weight:700;margin-bottom:8px">Freshdesk Omni — demo recap, 29 April</div>
+        Thanks for your time today. A short recap of what we covered and what happens next.<br><br>
+        <b>What you're solving</b><br>
+        Customer queries arriving across email and WhatsApp with no single queue, no SLA visibility, and manual assignment across your 14 agents.<br><br>
+        <b>What we showed</b><br>
+        Unified inbox across both channels, SLA policies with escalation, automated routing by query type, and Copilot drafting replies from your existing responses.<br><br>
+        <b>Next steps</b><br>
+        · SLA configuration guide — <i>Nivedha, by 2 May</i><br>
+        · Confirm whether WhatsApp template approval is a blocker — <i>Sunil</i><br>
+        · Follow-up call on commercials — <i>date to be confirmed</i>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri sm">Edit and send</button><button class="btn sm">Copy minutes</button><button class="btn sm">Regenerate minutes</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ACCOUNTS ===== -->
+<section class="screen" id="accounts">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+    <div><h1>Accounts</h1><p class="sub">Every account in the org. Deals roll up here, not the other way round.</p></div>
+    <div style="display:flex;gap:8px">
+      <input placeholder="Search accounts" style="width:200px">
+      <select style="width:auto"><option>All regions</option><option>APMEA</option><option>EU</option><option>US</option></select>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Accounts</div><div class="v num">128</div><div class="h">41 with open deals</div></div>
+    <div class="metric"><div class="l">Total ARR</div><div class="v num">$4.2M</div><div class="h">closed + pipeline</div></div>
+    <div class="metric"><div class="l">Multi-deal accounts</div><div class="v num">17</div><div class="h">cross-sell live</div></div>
+    <div class="metric"><div class="l">At risk</div><div class="v num" style="color:var(--red)">9</div><div class="h">$186K</div></div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <table>
+      <thead><tr><th style="padding-left:14px">Account</th><th>Region</th><th>Deals</th><th>Total ARR</th><th>Products</th><th>Calls</th><th>Health</th><th>Last touch</th></tr></thead>
+      <tbody id="acctrows"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== ACCOUNT DETAIL ===== -->
+<section class="screen" id="account">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:16px">
+    <div>
+      <h1>Pioneer Metering</h1>
+      <p class="sub">pioneermetering.co.za · APMEA · MEA · South Africa · Johannesburg · 14 support agents</p>
+    </div>
+    <div style="text-align:right"><div style="font-size:26px;font-weight:700;color:var(--navy)" class="num">$15K–$20K</div><div class="mono" style="font-size:11px;color:var(--ink-3)">Total account ARR · estimate</div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+  <div class="grid">
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:7px">Account summary · generated from 3 calls across 1 deal · 17 Jul</div>
+      <p style="line-height:1.7">South African prepaid utility metering company — prepaid electricity, prepaid water, sub-metering and billing for residential and commercial properties. Support today is split across email and WhatsApp with no SLA layer and no routing, which is the entire reason they are here. Sunil Prasad (ops) is the only voice on every call and no economic buyer has appeared. Copilot landed well on the 29 Apr demo — they described it back to us unprompted, the strongest buying signal on this account. Nothing has moved since 18 May.</p>
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span class="sub">Industry</span><span>Utility metering</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Incumbent</span><span>Email, WhatsApp</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Support agents</span><span>14</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Competitor</span><span style="color:var(--ink-3)">Unknown</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:18px 8px 4px">
+      <div class="eyebrow" style="padding:0 12px 12px">Deals on this account</div>
+      <table>
+        <thead><tr><th style="padding-left:14px">Deal</th><th>Product</th><th>Stage</th><th>ARR</th><th>SE</th><th>Traction</th></tr></thead>
+        <tbody>
+          <tr class="clik" data-go="deal"><td style="padding-left:14px;font-weight:700">Pioneer Metering — FD Omni</td><td>FD Omni Growth</td><td><span class="pill">Solutioning</span></td><td class="num">$15K–$20K</td><td>Pavithra V</td><td><span class="pill red">Cold</span></td></tr>
+        </tbody>
+      </table>
+      <div class="empty" style="margin:12px 14px">No second deal yet. Freshservice came up once on 22 Apr — open a deal if that pursuit is real.</div>
+    </div>
+
+    <div class="card" style="padding:18px 8px 4px">
+      <div class="eyebrow" style="padding:0 12px 12px">All calls on this account</div>
+      <table>
+        <thead><tr><th style="padding-left:14px">Call</th><th>Type</th><th>Date</th><th>SE</th><th>QIP</th><th>MEDPICC</th></tr></thead>
+        <tbody>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">FD Omni with Copilot</td><td><span class="pill blue">Demo</span></td><td class="mono">29 Apr</td><td>Pavithra V</td><td><span class="pill green">86</span></td><td><span class="pill amber">42</span></td></tr>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">Initial scoping</td><td><span class="pill purple">Discovery</span></td><td class="mono">22 Apr</td><td>Pavithra V</td><td><span class="pill amber">61</span></td><td><span class="pill red">28</span></td></tr>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">Qualification intro</td><td><span class="pill">Q&amp;A</span></td><td class="mono">15 Apr</td><td>Pavithra V</td><td><span class="pill amber">64</span></td><td><span class="pill red">18</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:11px">Product gaps raised by this account</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:11px;border-bottom:1px solid var(--line)">
+        <div><div style="font-weight:600">WhatsApp template approval in-product</div><div class="sub" style="font-size:12px">Channels › WhatsApp · hard blocker · raised twice</div></div>
+        <span class="pill blue">Roadmap Q3</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:11px">
+        <div><div style="font-weight:600">Prepaid meter webhook ingestion</div><div class="sub" style="font-size:12px">Integrations › Webhooks · routed to enablement</div></div>
+        <span class="pill amber">With enablement</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:10px">ARR derivation</div>
+      <div style="font-size:12.5px;line-height:1.9;font-family:var(--m)">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">14 agents</span><span>extracted 22 Apr</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">FD Omni Growth</span><span>$29 /agent/mo</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">annual term</span><span>× 12</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">Copilot 14 seats</span><span>$29 /agent/mo</span></div>
+        <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700"><span>Point estimate</span><span>$9,744</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--ink-2)"><span>Band ±30%</span><span>$15K–$20K</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--amber);margin-top:4px"><span>AI Agent</span><span>Excluded</span></div>
+      </div>
+      <p class="sub" style="font-size:11px;margin-top:9px">Band widened for unconfirmed tier. Never asked from the SE — derived from the price book and shown so it can be argued with.</p>
+      <p class="sub" style="font-size:11px;margin-top:6px;color:var(--amber)">AI Agent discussed — quantity never stated. Excluded from ARR until you confirm a number.</p>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:10px">Contacts</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+        <div style="width:34px;height:34px;border-radius:50%;background:#EFEBFD;color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:12px">SP</div>
+        <div><div style="font-weight:600">Sunil Prasad</div><div class="sub" style="font-size:12px">Ops · 3 of 3 calls</div></div>
+      </div>
+      <div class="empty" style="padding:13px;font-size:12.5px;text-align:left">No economic buyer identified. Add who owns the budget, or put it on the next call agenda.</div>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:9px">Reason for evaluation</div>
+      <p style="font-size:13px;line-height:1.6">Support headcount frozen for FY27 while meter installs grow ~30%. They must absorb volume without hiring.</p>
+      <div class="sub" style="font-size:11px;margin-top:7px">Compelling event · extracted 22 Apr</div>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:9px">Why AI</div>
+      <p style="font-size:13px;line-height:1.6">Queries fragmented across email and WhatsApp. Interested in Copilot only once it was shown, not before.</p>
+      <div class="sub" style="font-size:11px;margin-top:7px">Why-AI theme: <span style="color:var(--brand);font-weight:600">agent speed · shown, not asked</span></div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- ===== ALL CALLS ===== -->
+<section class="screen" id="calls">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+    <div><h1>All calls</h1><p class="sub">Every call you've run. Each one carries its own QIP, technical commit contribution, and minutes.</p></div>
+    <div style="display:flex;gap:8px">
+      <select style="width:auto"><option>All types</option><option>Demo</option><option>Discovery</option><option>Technical deep dive</option><option>Reverse demo</option><option>Use case discussion</option><option>Trial setup</option><option>Troubleshooting</option><option>Q&amp;A session</option></select>
+      <select style="width:auto"><option>Last 90 days</option><option>This quarter</option><option>All time</option></select>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Calls</div><div class="v num">27</div><div class="h">last 90 days</div></div>
+    <div class="metric"><div class="l">Hours on calls</div><div class="v num">19.4</div><div class="h">avg 43 min</div></div>
+    <div class="metric"><div class="l">Minutes sent</div><div class="v num">22 / 27</div><div class="h">5 never sent</div></div>
+    <div class="metric"><div class="l">No next step</div><div class="v num" style="color:var(--amber)">6</div><div class="h">22% of calls</div></div>
+    <div class="metric"><div class="l">Gaps surfaced</div><div class="v num">14</div><div class="h">across 9 accounts</div></div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <table>
+      <thead><tr><th style="padding-left:14px">Call</th><th>Type</th><th>Account</th><th>Deal</th><th>Date</th><th>Len</th><th>QIP</th><th>What TC moved</th><th>MoM</th></tr></thead>
+      <tbody id="allcallrows"></tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:12px;font-size:12px">QIP lives here because it grades the call. Scores are only comparable within a call type — demo against demo, discovery against discovery.</p>
+</section>
+
+<!-- ===== MY DEALS ===== -->
+<section class="screen on" id="deals">
+  <h1>Your deals</h1>
+  <p class="sub" style="margin-bottom:18px">Nine open. Sorted by traction, not close date — close date is what you typed in April.</p>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">ARR in play</div><div class="v num">$412K</div><div class="h">9 open deals</div></div>
+    <div class="metric"><div class="l">Technical commit</div><div class="v num">6 / 9</div><div class="h">$287K committed</div></div>
+    <div class="metric"><div class="l">Cold</div><div class="v num" style="color:var(--red)">3</div><div class="h">$74K at risk</div></div>
+    <div class="metric"><div class="l">AI attach</div><div class="v num">7 / 9</div><div class="h">Copilot or Agent</div></div>
+    <div class="metric"><div class="l">Open follow-ups</div><div class="v num">7</div><div class="h">2 overdue</div></div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <table>
+      <thead><tr><th style="padding-left:14px">Deal</th><th>Account</th><th>Stage</th><th>ARR</th><th>Calls</th><th>MEDPICC</th><th>TC</th><th>AI</th><th>Traction</th><th>Silent</th></tr></thead>
+      <tbody id="dealrows"></tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:12px;font-size:12px">QIP grades you. MEDPICC grades the deal. When they diverge sharply, the gap is the story.</p>
+</section>
+
+<!-- ===== DEAL RECORD ===== -->
+<section class="screen" id="deal">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:14px">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px"><h1>Pioneer Metering — FD Omni</h1><span class="mono" style="color:var(--ink-3)">006Kc000009kEYd</span></div>
+      <p class="sub"><a data-go="account" style="color:var(--blue);cursor:pointer">Pioneer Metering</a> · APMEA · MEA · Ajay Embar (AE) · Pavithra Velkannan (SE)</p>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-size:26px;font-weight:700;color:var(--navy)" class="num">$15K–$20K</div>
+      <div class="mono" style="color:var(--ink-3);font-size:11px">Derived · 14 agents · Omni Growth</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
+    <span class="pill blue">Solutioning</span><span class="pill green">TC · yes</span>
+    <span class="pill green">Ahead of competition</span><span class="pill purple">Copilot · 14 of 14</span><span class="pill red">Cold · 60 days silent</span>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 340px;align-items:start">
+  <div class="grid">
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:7px">Deal summary · regenerated after every call</div>
+      <p style="line-height:1.7">Consolidating email and WhatsApp support onto FD Omni with Copilot for all 14 agents. Functional and technical fitment both clean — no blocker on our side beyond WhatsApp template approval, which is on the Q3 roadmap. The deal is stalled on the buying side, not the technical side: three calls in, only ops has attended, pricing has never come up, and the last customer commitment was on 12 May.</p>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card tight"><div class="sub" style="font-size:12px">MEDPICC · deal qualification</div><div style="font-size:24px;font-weight:700;color:var(--amber)" class="num">42 <span style="font-size:13px;color:var(--ink-3);font-weight:500">/ 100</span></div><div class="mono" style="font-size:10.5px;color:var(--ink-3)">4 of 8 surfaced</div><div class="bar" style="margin-top:7px"><span style="width:42%;background:var(--amber)"></span></div></div>
+      <div class="card tight"><div class="sub" style="font-size:12px">Deal velocity</div><div style="font-size:24px;font-weight:700;color:var(--red)" class="num">86d <span style="font-size:13px;color:var(--ink-3);font-weight:500">in stage</span></div><div class="mono" style="font-size:10.5px;color:var(--ink-3)">3 calls · 60d silent · median for stage is 34d</div><div class="bar" style="margin-top:7px"><span style="width:100%;background:var(--red)"></span></div></div>
+    </div>
+
+    <div class="card" style="border-color:var(--red-line)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="eyebrow">Why this is cold</div><span class="pill red">Cold</span></div>
+      <div style="display:grid;gap:7px;font-size:13.5px">
+        <div>· Customer said they'd get back to us on 12 May. They didn't.</div>
+        <div>· No decision maker has ever joined a call. Sunil is ops.</div>
+        <div>· Every next step is owned by the AE. None owned by the customer.</div>
+        <div>· Pricing has not come up across any of the three calls.</div>
+      </div>
+      <div style="margin-top:13px;padding-top:12px;border-top:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:5px">Recommended action</div>
+        <p style="font-size:13.5px">Go around Sunil. Use the WhatsApp blocker resolution as the reason to request a call with whoever owns the support budget.</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:13px"><button class="btn pri sm">Draft re-engagement note</button><button class="btn sm">Mark dormant</button></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card tight"><div class="sub" style="font-size:12px">Functional fitment</div><div style="font-size:24px;font-weight:700;color:var(--navy)" class="num">100%</div><div class="bar" style="margin-top:7px"><span style="width:100%;background:var(--green)"></span></div></div>
+      <div class="card tight"><div class="sub" style="font-size:12px">Technical fitment</div><div style="font-size:24px;font-weight:700;color:var(--navy)" class="num">100%</div><div class="bar" style="margin-top:7px"><span style="width:100%;background:var(--green)"></span></div></div>
+    </div>
+    <p class="sub" style="font-size:12px;margin-top:-4px">Perfect fit, dying anyway. The problem isn't technical, so no amount of SE work fixes it.</p>
+
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:8px">Technical commit · justification</div>
+      <p style="line-height:1.7;margin-bottom:14px">Straightforward helpdesk consolidation. Fragmented queries across email and WhatsApp, needs SLAs and automated routing. No technical block identified.</p>
+      <div style="border-top:1px solid var(--line);padding-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span class="sub">Incumbent</span><span>Email, WhatsApp</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Competitor</span><span style="color:var(--ink-3)">Unknown</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Go live</span><span>Jun 2026</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="sub">Expected close</span><span style="color:var(--red)">30 Jun 2026</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:18px 8px 4px">
+      <div class="eyebrow" style="padding:0 12px 12px">Calls on this deal</div>
+      <table>
+        <thead><tr><th style="padding-left:14px">Call</th><th>Type</th><th>Date</th><th>Length</th><th>MEDPICC</th><th>What it moved</th></tr></thead>
+        <tbody>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">FD Omni with Copilot</td><td><span class="pill blue">Demo</span></td><td class="mono">29 Apr</td><td class="mono">48m</td><td><span class="pill amber">42</span></td><td class="sub" style="font-size:12.5px">AI attach confirmed · new risk logged</td></tr>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">Initial scoping</td><td><span class="pill purple">Discovery</span></td><td class="mono">22 Apr</td><td class="mono">31m</td><td><span class="pill red">28</span></td><td class="sub" style="font-size:12.5px">Incumbent and pain confirmed</td></tr>
+          <tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">Qualification intro</td><td><span class="pill">Q&amp;A</span></td><td class="mono">15 Apr</td><td class="mono">22m</td><td><span class="pill red">18</span></td><td class="sub" style="font-size:12.5px">Deal created</td></tr>
+        </tbody>
+      </table>
+      <p class="sub" style="padding:12px 14px;font-size:12px">No QIP column here on purpose — QIP grades the SE, not the deal. It lives on the call, in your coaching, and in the team view.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card tight"><div class="eyebrow" style="margin-bottom:11px">MEDPICC</div><div id="medp2"></div></div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:10px">Open items</div>
+      <div style="display:grid;gap:9px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;gap:9px"><span>AE to follow up with Sunil</span><span class="pill red">60d</span></div>
+        <div style="display:flex;justify-content:space-between;gap:9px"><span>Send SLA config doc</span><span class="pill">Open</span></div>
+      </div>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:10px">ARR derivation</div>
+      <div style="font-size:12.5px;line-height:1.9;font-family:var(--m)">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">Agents</span><span>14</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">Omni Growth</span><span>$29 × 12</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-2)">Copilot × 14</span><span>$29 × 12</span></div>
+        <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700"><span>Point estimate</span><span>$9,744</span></div>
+      </div>
+      <p class="sub" style="font-size:11px;margin-top:8px">Source: derived from agent count. Switches to the Salesforce amount when that field is connected.</p>
+      <div class="empty" style="margin-top:10px;padding:11px;font-size:12px;text-align:left">Freshservice Enterprise has no list price. ARR stays blank until deal desk quotes it — do not use the Pro figure.</div>
+      <div class="empty" style="margin-top:8px;padding:11px;font-size:12px;text-align:left">This deal is monthly-term and the monthly price book has no row yet. ARR stays blank rather than inventing one from the annual figure.</div>
+    </div>
+    <div class="card tight">
+      <div class="eyebrow" style="margin-bottom:10px">Deal details</div>
+      <div style="display:grid;gap:6px;font-size:12.5px;color:var(--ink-2)">
+        <div style="display:flex;justify-content:space-between"><span>Created</span><span class="mono">29/04/2026</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Updated</span><span class="mono">05/05/2026</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Sub region</span><span>MEA</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Forecast month</span><span>Jun 2026</span></div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- ===== COACHING ===== -->
+<section class="screen" id="coaching">
+  <h1>Your coaching</h1>
+  <p class="sub" style="margin-bottom:18px">Private to you. Your manager sees trends and themes, never a leaderboard.</p>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Demo average</div><div class="v num">78</div><div class="h">9 calls · up 6</div></div>
+    <div class="metric"><div class="l">Discovery average</div><div class="v num">71</div><div class="h">5 calls · flat</div></div>
+    <div class="metric"><div class="l">Strongest theme</div><div class="v" style="font-size:17px;padding:6px 0 4px">Solutioning</div><div class="h">92 · all types</div></div>
+    <div class="metric"><div class="l">Weakest theme</div><div class="v" style="font-size:17px;padding:6px 0 4px;color:var(--red)">CTA</div><div class="h">54 · all types</div></div>
+  </div>
+  <div class="note" style="margin-bottom:16px"><b>Why two averages.</b> Each call type uses its own weight profile, so a single blended QIP would be meaningless. Theme scores compare across every type; composites only compare within one.</div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+    <div class="card">
+      <h2>Score trend</h2><p class="sub" style="margin-bottom:14px">Last 14 scored calls · demo solid, discovery dashed</p>
+      <svg viewBox="0 0 480 150" width="100%" height="150" role="img" aria-label="Score trend rising over 14 calls">
+        <line x1="30" y1="20" x2="470" y2="20" stroke="#EEF0F4"/><line x1="30" y1="70" x2="470" y2="70" stroke="#EEF0F4"/><line x1="30" y1="120" x2="470" y2="120" stroke="#EEF0F4"/>
+        <text x="0" y="24" font-size="10" fill="#93A0B4" font-family="monospace">100</text><text x="6" y="74" font-size="10" fill="#93A0B4" font-family="monospace">70</text><text x="6" y="124" font-size="10" fill="#93A0B4" font-family="monospace">40</text>
+        <polyline points="40,107 102,110 164,92 226,84 288,75 350,66 412,58 443,48" fill="none" stroke="#6B4EE6" stroke-width="2.2"/>
+        <polyline points="71,99 133,88 195,80 257,71 319,62 381,55" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-dasharray="4 3"/>
+        <circle cx="443" cy="48" r="3.6" fill="#6B4EE6"/>
+      </svg>
+    </div>
+    <div class="card"><h2>Themes</h2><p class="sub" style="margin-bottom:14px">Across all call types · comparable because themes are shared</p><div id="themebars" style="display:grid;gap:9px"></div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <h2>Your weakest theme, with the receipts</h2>
+    <p class="sub" style="margin-bottom:12px">CTA · 54 average · scored on 11 of 14 calls</p>
+    <div class="ev bad"><div class="ts">Pioneer Metering · 29 Apr · 46:12</div>Closed with "let us know if you have questions and we'll take it from there." No date, no owner, no artifact. The customer went silent for 60 days from this exact moment.</div>
+    <div class="ev bad"><div class="ts">InnBucks · 12 May · 39:48</div>Next step agreed but the owner was left as "we". Nobody on the customer side committed to anything by a date.</div>
+    <div style="display:flex;gap:8px;margin-top:14px"><button class="btn pri sm">Show me a strong close</button><button class="btn sm">Dispute a score</button></div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <div class="eyebrow" style="padding:0 12px 12px">Your scored calls · every type is scored</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">Call</th><th>Type</th><th>Account</th><th>Date</th><th>Profile</th><th>Confidence</th><th>Score</th></tr></thead>
+      <tbody id="mycalls"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== TEAM ===== -->
+<section class="screen" id="team">
+  <h1>Team</h1>
+  <p class="sub" style="margin-bottom:18px">APMEA SMBC-CX · 6 SEs · 41 calls this quarter · click any SE or number to drill in</p>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric clik" data-go="se"><div class="l">Team average</div><div class="v num">74</div><div class="h">weighted by type</div></div>
+    <div class="metric clik" data-go="se"><div class="l">Deals cold</div><div class="v num" style="color:var(--red)">9</div><div class="h">$186K exposed</div></div>
+    <div class="metric clik" data-go="se"><div class="l">No next step</div><div class="v num" style="color:var(--amber)">12</div><div class="h">29% of calls</div></div>
+    <div class="metric clik" data-go="se"><div class="l">AI attach</div><div class="v num">68%</div><div class="h">of won deals</div></div>
+    <div class="metric"><div class="l">Calls scored</div><div class="v num">41</div><div class="h">all 8 types</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <h2>Where the team is weak</h2>
+    <p class="sub" style="margin-bottom:16px"><b>Read the columns, not the rows.</b> A red column is an enablement problem, not a person problem. Click any cell to see the calls behind it.</p>
+    <div style="overflow-x:auto">
+      <table style="min-width:820px">
+        <thead><tr><th style="padding-left:0">SE</th><th>Research</th><th>Questions</th><th>Slide deck</th><th>CDE</th><th>Solutioning</th><th>Story</th><th>Call flow</th><th>AI</th><th>Value</th><th>Objections</th><th>ROI</th><th>Comp</th><th>CTA</th></tr></thead>
+        <tbody id="heat"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:14px;font-size:11.5px;color:var(--ink-2);flex-wrap:wrap">
+      <span>Weak</span>
+      <div style="display:flex;gap:3px"><div style="width:22px;height:11px;border-radius:2px;background:#F5CDD5"></div><div style="width:22px;height:11px;border-radius:2px;background:#FBE3C8"></div><div style="width:22px;height:11px;border-radius:2px;background:#E9EEF4"></div><div style="width:22px;height:11px;border-radius:2px;background:#C9EADC"></div><div style="width:22px;height:11px;border-radius:2px;background:#8FD6BA"></div></div>
+      <span>Strong</span>
+      <span style="color:var(--ink-3)">Comp pitch and ROI red across five of six. One missing battle card, not six coaching conversations.</span>
+    </div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <div class="eyebrow" style="padding:0 12px 12px">Your SEs</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">SE</th><th>Accounts</th><th>Deals</th><th>ARR</th><th>Calls</th><th>Avg score</th><th>Trend</th><th>Cold deals</th></tr></thead>
+      <tbody id="serows"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== SE DETAIL ===== -->
+<section class="screen" id="se">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+    <div style="display:flex;gap:13px;align-items:center">
+      <div style="width:46px;height:46px;border-radius:50%;background:#EFEBFD;color:var(--brand);display:grid;place-items:center;font-weight:700">PV</div>
+      <div><h1>Pavithra Velkannan</h1><p class="sub">Solution Engineer · APMEA · MEA · reports to you</p></div>
+    </div>
+    <button class="btn sm">Start a coaching note</button>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Demo average</div><div class="v num">74</div><div class="h">6 calls</div></div>
+    <div class="metric"><div class="l">Discovery average</div><div class="v num">69</div><div class="h">4 calls</div></div>
+    <div class="metric"><div class="l">Accounts</div><div class="v num">7</div><div class="h">2 multi-deal</div></div>
+    <div class="metric"><div class="l">ARR owned</div><div class="v num">$186K</div><div class="h">9 open deals</div></div>
+    <div class="metric"><div class="l">Cold</div><div class="v num" style="color:var(--red)">2</div><div class="h">$33K at risk</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+    <div class="card"><h2>Themes</h2><p class="sub" style="margin-bottom:14px">Against team average · click for the calls</p><div id="sethemes" style="display:grid;gap:9px"></div></div>
+    <div class="card">
+      <h2>Weakest theme · the receipts</h2>
+      <p class="sub" style="margin-bottom:12px">Comp pitch · 48 · scored on 7 calls</p>
+      <div class="ev bad" style="cursor:pointer" data-go="call"><div class="ts">Pioneer Metering · 29 Apr · 36:40</div>Competitor came up and was left unanswered. No differentiation offered, conversation moved on.</div>
+      <div class="ev bad" style="cursor:pointer" data-go="call"><div class="ts">InnBucks · 12 May · 21:15</div>Incumbent named favourably by the customer. Not challenged.</div>
+      <p class="sub" style="font-size:12px;margin-top:12px">Five of six SEs are red here. Check the team column before booking a 1:1.</p>
+    </div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px;margin-bottom:14px">
+    <div class="eyebrow" style="padding:0 12px 12px">Their accounts</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">Account</th><th>Deals</th><th>ARR</th><th>Calls</th><th>Health</th><th>Last touch</th></tr></thead>
+      <tbody>
+        <tr class="clik" data-go="account"><td style="padding-left:14px;font-weight:700">Pioneer Metering</td><td class="num">1</td><td class="num">$15K–$20K</td><td class="num">3</td><td><span class="pill red">At risk</span></td><td class="mono">60d</td></tr>
+        <tr class="clik" data-go="account"><td style="padding-left:14px;font-weight:700">InnBucks</td><td class="num">1</td><td class="num">$12K–$18K</td><td class="num">4</td><td><span class="pill red">At risk</span></td><td class="mono">18d</td></tr>
+        <tr class="clik" data-go="account"><td style="padding-left:14px;font-weight:700">Zando</td><td class="num">2</td><td class="num">$58K–$74K</td><td class="num">6</td><td><span class="pill green">Healthy</span></td><td class="mono">3d</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <div class="eyebrow" style="padding:0 12px 12px">Their calls</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">Call</th><th>Type</th><th>Account</th><th>Date</th><th>Confidence</th><th>Score</th></tr></thead>
+      <tbody id="secalls"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== PIPELINE ===== -->
+<section class="screen" id="pipeline">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+    <div><h1>Pipeline review</h1><p class="sub">APMEA · descending by agent count and ARR</p></div>
+    <div style="display:flex;gap:8px">
+      <select style="width:auto"><option>Q3 FY26</option><option>Q2 FY26</option><option>Q1 FY26</option></select>
+      <select style="width:auto"><option>All sub-regions</option><option>MEA</option><option>ASEAN</option><option>India</option></select>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Pipeline ARR</div><div class="v num">$1.84M</div><div class="h">32 open deals</div></div>
+    <div class="metric"><div class="l">TC = yes</div><div class="v num">21 / 32</div><div class="h">$1.21M</div></div>
+    <div class="metric"><div class="l">Hot</div><div class="v num" style="color:var(--green)">11</div><div class="h">$742K</div></div>
+    <div class="metric"><div class="l">Cold</div><div class="v num" style="color:var(--red)">9</div><div class="h">$186K</div></div>
+    <div class="metric"><div class="l">AI attach</div><div class="v num">68%</div><div class="h">22 of 32</div></div>
+  </div>
+  <div class="card" style="padding:18px 8px 4px">
+    <table>
+      <thead><tr><th style="padding-left:14px">Opportunity / account</th><th>Agents</th><th>ARR</th><th>TC</th><th>Blockers</th><th>Traction</th><th>Pending</th><th>AI attach</th></tr></thead>
+      <tbody id="piperows"></tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:12px;font-size:12px">Same table as the SE deal list, different default sort. Leadership wants the big ones first; the SE wants the rotting ones first.</p>
+</section>
+
+<!-- ===== PRODUCT SIGNAL ===== -->
+<section class="screen" id="signal">
+  <h1>Product signal</h1>
+  <p class="sub" style="margin-bottom:18px">Clustered from 41 calls across APMEA. Every row is a theme, not a ticket.</p>
+  <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:18px">
+    <div class="metric"><div class="l">Distinct gaps</div><div class="v num">23</div><div class="h">from 61 raw asks</div></div>
+    <div class="metric"><div class="l">ARR touched</div><div class="v num">$294K</div><div class="h">17 deals</div></div>
+    <div class="metric"><div class="l">Hard blockers</div><div class="v num" style="color:var(--red)">6</div><div class="h">$112K exposed</div></div>
+    <div class="metric"><div class="l">Enablement gaps</div><div class="v num" style="color:var(--amber)">8</div><div class="h">we already do this</div></div>
+    <div class="metric"><div class="l">Loop closed</div><div class="v num">9</div><div class="h">SE told outcome</div></div>
+  </div>
+  <div class="note" style="margin-bottom:16px"><b>Eight of 23 are enablement gaps</b> — the product already does it and the SE didn't know. Those go to enablement, not a PM backlog. Sorting them out is most of the value on this screen.</div>
+  <div class="card" style="padding:18px 8px 4px;margin-bottom:14px">
+    <div class="eyebrow" style="padding:0 12px 12px">What's not working</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">Gap</th><th>Area</th><th>Tags</th><th>Deals</th><th>ARR</th><th>Type</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">Data residency for ASEAN tenants</div><div class="sub" style="font-size:12px">"Our regulator won't allow data outside Singapore"</div></td><td><span class="pill">Platform</span></td><td><span class="pill amber">residency</span></td><td class="num">5</td><td class="num" style="font-weight:700">$88K</td><td><span class="pill red">Real gap</span></td><td><span class="pill amber">Under review</span></td></tr>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">WhatsApp template approval in-product</div><div class="sub" style="font-size:12px">"We shouldn't have to leave to get a template signed off"</div></td><td><span class="pill">Channels › WhatsApp</span></td><td style="color:var(--ink-3)">—</td><td class="num">4</td><td class="num" style="font-weight:700">$54K</td><td><span class="pill red">Real gap</span></td><td><span class="pill blue">Roadmap Q3</span></td></tr>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">AI Agent on non-Freshworks knowledge</div><div class="sub" style="font-size:12px">"Our docs live in Confluence and they're staying there"</div></td><td><span class="pill">AI › Knowledge</span></td><td style="color:var(--ink-3)">—</td><td class="num">6</td><td class="num" style="font-weight:700">$47K</td><td><span class="pill amber">Enablement</span></td><td><span class="pill green">Enablement published</span></td></tr>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">Bulk admin config via API</div><div class="sub" style="font-size:12px">"Clicking through 200 groups isn't a migration plan"</div></td><td><span class="pill">Admin › Bulk config</span></td><td><span class="pill amber">migration</span></td><td class="num">3</td><td class="num" style="font-weight:700">$31K</td><td><span class="pill red">Real gap</span></td><td><span class="pill">Needs triage</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card" style="padding:18px 8px 4px;margin-bottom:14px">
+    <div class="eyebrow" style="padding:0 12px 12px">What's working · reference and case study pipeline</div>
+    <table>
+      <thead><tr><th style="padding-left:14px">What landed</th><th>Area</th><th>Deals</th><th>Reference candidate</th></tr></thead>
+      <tbody>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">Copilot reply drafting in demo</div><div class="sub" style="font-size:12px">"That would save my team the whole morning" — Pioneer Metering</div></td><td><span class="pill">AI › Copilot</span></td><td class="num">14</td><td><span class="pill green">6 accounts</span></td></tr>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">Unified inbox across email and WhatsApp</div><div class="sub" style="font-size:12px">Consistently the moment the room leans in</div></td><td><span class="pill">Channels</span></td><td class="num">11</td><td><span class="pill green">4 accounts</span></td></tr>
+        <tr><td style="padding-left:14px"><div style="font-weight:700">Setup speed vs incumbent</div><div class="sub" style="font-size:12px">Named unprompted in 7 competitive deals</div></td><td><span class="pill">Admin</span></td><td class="num">7</td><td><span class="pill green">3 accounts</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+      <h2>Why customers opt into AI</h2><p class="sub" style="margin-bottom:14px">29 won deals · this is the attach story</p>
+      <div style="display:grid;gap:9px">
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Deflection · volume they can't staff for</span><span class="num">41%</span></div><div class="bar"><span style="width:41%;background:var(--brand)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Consolidation · channels fragmented</span><span class="num">27%</span></div><div class="bar"><span style="width:27%;background:var(--brand)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Agent speed · Copilot shown in demo</span><span class="num">19%</span></div><div class="bar"><span style="width:19%;background:var(--brand)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Board mandate · "we need an AI story"</span><span class="num">13%</span></div><div class="bar"><span style="width:13%;background:var(--brand)"></span></div></div>
+      </div>
+      <p class="sub" style="font-size:12px;margin-top:14px">19% of AI attach happens because an SE showed Copilot to someone who wasn't asking for it. That number is an enablement argument.</p>
+    </div>
+    <div class="card">
+      <h2>Why they don't</h2><p class="sub" style="margin-bottom:14px">12 deals where AI was shown and declined</p>
+      <div style="display:grid;gap:9px">
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Data residency or compliance</span><span class="num">42%</span></div><div class="bar"><span style="width:42%;background:var(--red)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Knowledge base isn't ready</span><span class="num">25%</span></div><div class="bar"><span style="width:25%;background:var(--red)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Price of the add-on</span><span class="num">17%</span></div><div class="bar"><span style="width:17%;background:var(--red)"></span></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Burned by a previous bot</span><span class="num">16%</span></div><div class="bar"><span style="width:16%;background:var(--red)"></span></div></div>
+      </div>
+      <p class="sub" style="font-size:12px;margin-top:14px">Residency alone is $88K blocked in ASEAN — same root cause as the top gap above. Two axes in the taxonomy is what lets those two facts meet.</p>
+    </div>
+  </div>
+</section>
+
+</div>
+</main>
+</div>
+
+<script>
+/* ---------- navigation with breadcrumb trail ---------- */
+var meta={
+  precall:{t:"Pre-call",p:null},
+  intake:{t:"Add a call",p:null},
+  calls:{t:"All calls",p:null},
+  call:{t:"FD Omni with Copilot",p:"calls"},
+  accounts:{t:"Accounts",p:null},
+  account:{t:"Pioneer Metering",p:"accounts"},
+  deals:{t:"Your deals",p:null},
+  deal:{t:"Pioneer Metering — FD Omni",p:"deals"},
+  coaching:{t:"Your coaching",p:null},
+  team:{t:"Team",p:null},
+  se:{t:"Pavithra Velkannan",p:"team"},
+  pipeline:{t:"Pipeline review",p:null},
+  signal:{t:"Product signal",p:null}
+};
+var stack=[];
+function trail(id){
+  var chain=[],cur=id;
+  while(cur){chain.unshift(cur);cur=meta[cur].p}
+  var h='';
+  for(var i=0;i<chain.length;i++){
+    if(i<chain.length-1) h+='<a data-go="'+chain[i]+'">'+meta[chain[i]].t+'</a><span>›</span>';
+    else h+='<span class="cur">'+meta[chain[i]].t+'</span>';
+  }
+  document.getElementById('trail').innerHTML=h;
+  document.getElementById('bk').style.visibility=chain.length>1?'visible':'hidden';
+}
+function go(id){
+  if(!meta[id])return;
+  document.querySelectorAll('.screen').forEach(function(s){s.classList.toggle('on',s.id===id)});
+  document.querySelectorAll('.nav button').forEach(function(b){b.classList.toggle('on',b.dataset.go===id)});
+  trail(id);
+  window.scrollTo(0,0);
+}
+document.addEventListener('click',function(e){
+  var tb=e.target.closest('[data-tab]');
+  if(tb){
+    document.querySelectorAll('.tabs button').forEach(function(b){b.classList.toggle('on',b===tb)});
+    document.querySelectorAll('.tabpane').forEach(function(p){p.classList.toggle('on',p.id===tb.dataset.tab)});
+    return;
+  }
+  var sr=e.target.closest('.srow .hd');
+  if(sr){sr.parentElement.classList.toggle('open');return}
+  var t=e.target.closest('[data-go]');
+  if(t){e.preventDefault();go(t.dataset.go)}
+});
+document.getElementById('bk').addEventListener('click',function(){
+  var cur=document.querySelector('.screen.on').id;
+  if(meta[cur].p)go(meta[cur].p);
+});
+trail('deals');
+
+/* ---------- stakeholders on the call ---------- */
+var people=[
+ ["SP","Sunil Prasad","Head of Operations","customer","brand","24%","On","3 of 3 calls · likely champion, no budget"],
+ ["TM","Thabo Mokoena","Support Team Lead","customer","blue","5%","Off","First call · joined 09:10, left 41:00"],
+ ["PV","Pavithra Velkannan","Solution Engineer","internal","","71%","On","Host"]];
+var pv='';
+for(var i=0;i<people.length;i++){
+  var p=people[i];
+  pv+='<div style="display:flex;gap:10px;padding:9px 0;'+(i<people.length-1?'border-bottom:1px solid var(--line)':'')+'">'+
+   '<div style="width:32px;height:32px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:11px;'+
+   (p[4]==='brand'?'background:#EFEBFD;color:var(--brand)':p[4]==='blue'?'background:#E8F0FE;color:#1D4FD8':'background:#F1F3F7;color:var(--ink-2)')+'">'+p[0]+'</div>'+
+   '<div style="min-width:0"><div style="font-weight:600;font-size:13px">'+p[1]+'</div>'+
+   '<div class="sub" style="font-size:12px">'+p[2]+'</div>'+
+   '<div style="display:flex;gap:6px;margin-top:4px"><span class="pill" style="font-size:10.5px">Talk '+p[5]+'</span>'+
+   '<span class="pill '+(p[6]==='On'?'green':'')+'" style="font-size:10.5px">Camera '+(p[6]==='On'?'on':'off')+'</span></div>'+
+   '<div class="sub" style="font-size:11.5px;margin-top:4px">'+p[7]+'</div></div></div>';
+}
+document.getElementById('stake').innerHTML=pv;
+
+/* ---------- all calls ---------- */
+var allc=[
+ ["FD Omni with Copilot","Demo","blue","Pioneer Metering","FD Omni","29 Apr","48m",86,"green","New risk logged","Sent"],
+ ["Trial exit review","Trial setup","","Thule","EU expansion","24 Apr","36m",72,"amber","Exit criteria set","Sent"],
+ ["Initial scoping","Discovery","purple","Pioneer Metering","FD Omni","22 Apr","31m",61,"amber","Incumbent confirmed","Sent"],
+ ["Architecture deep dive","Technical","","Speedoc","Freshservice","18 Apr","54m",79,"green","Residency risk raised","Sent"],
+ ["Webhook debugging","Troubleshooting","","InnBucks","FD Omni","11 Apr","28m",81,"green","—","Not sent"],
+ ["Open questions session","Q&A","","Creditspring","FD Omni","08 Apr","22m",67,"amber","Competitor named","Sent"],
+ ["Customer-led walkthrough","Reverse demo","","Zando","FD Omni","03 Apr","45m",74,"amber","Champion identified","Not sent"]];
+var ah2='';
+for(var i=0;i<allc.length;i++){
+  var c=allc[i];
+  ah2+='<tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">'+c[0]+'</td>'+
+   '<td><span class="pill '+c[2]+'">'+c[1]+'</span></td><td class="sub">'+c[3]+'</td>'+
+   '<td class="sub" style="font-size:12.5px">'+c[4]+'</td><td class="mono">'+c[5]+'</td><td class="mono">'+c[6]+'</td>'+
+   '<td><span class="pill '+c[8]+'">'+c[7]+' / 100</span></td>'+
+   '<td class="sub" style="font-size:12.5px">'+c[9]+'</td>'+
+   '<td><span class="pill '+(c[10]==='Sent'?'green':'amber')+'">'+c[10]+'</span></td></tr>';
+}
+document.getElementById('allcallrows').innerHTML=ah2;
+
+/* ---------- call timeline spine ---------- */
+var segs=[[0,8,"Slides","#EFEBFD","#4A3BA8"],[8,26,"Product / CDE","#E3F5EE","#0D5C41"],
+ [26,34,"Customer screen","#E8F0FE","#1D4FD8"],[34,41,"Slides","#EFEBFD","#4A3BA8"],[41,48,"No share","#F1F3F7","#5A6B82"]];
+var marks=[[24.05,"gap raised"],[28.4,"objection"],[31.2,"what worked"],[46.2,"weak CTA"]];
+var sh='';
+for(var i=0;i<segs.length;i++){
+  var s=segs[i],l=(s[0]/48*100),w=((s[1]-s[0])/48*100);
+  sh+='<div class="seg" style="left:'+l+'%;width:'+w+'%;background:'+s[3]+';color:'+s[4]+
+      (i===0?';border-radius:6px 0 0 6px':i===segs.length-1?';border-radius:0 6px 6px 0':'')+'">'+(w>11?s[2]:'')+'</div>';
+}
+for(var i=0;i<marks.length;i++){
+  var m=marks[i],l=(m[0]/48*100);
+  sh+='<div class="mk" style="left:'+l+'%"></div><div class="mkl" style="left:'+l+'%">'+m[1]+'</div>';
+}
+document.getElementById('spine').innerHTML=sh;
+
+/* ---------- scorecard rows ---------- */
+var qip=[
+ ["Research & agenda",5,5,"high","Compared to the brief","good","02:10 · compared to brief","Ran 4 of the 5 agenda items from the brief and probed the flagged incumbent unprompted."],
+ ["Questions",5,4,"high","","good","06:40","Four open discovery questions before opening the product. Missed budget entirely."],
+ ["Slide deck",5,3,"low","Deck proxies only — low confidence","","03:20","Deck was generic. Customer logo on slide 1, nothing customer-specific after."],
+ ["CDE / build",10,9,"high","From video","good","19:40 · vision","Demo tenant carries the customer's logo and prepaid-meter ticket subjects. Real build, not a renamed sandbox."],
+ ["Solutioning",5,5,"high","","good","22:15","Mapped SLA policy directly to their escalation pain, named back to them."],
+ ["Storytelling",5,4,"high","","","14:05","User and agent personas carried well. Admin lens never appeared."],
+ ["Call flow",10,9,"high","From screen share","good","—","Clean sequencing, one 6m40s monologue at 18:00 cost a point."],
+ ["AI",5,5,"high","","good","29:50","Copilot shown against their actual reply patterns, not a canned example."],
+ ["Value",10,8,"high","","","35:10","Value stated qualitatively. No numbers attached to the headcount freeze they'd already described."],
+ ["Objections",5,3,"high","","bad","33:10","'Burned by a bot before' was acknowledged and never answered."],
+ ["Case study & ROI",5,2,"high","","bad","—","No customer story referenced. No ROI figure offered at any point."],
+ ["Comp pitch",5,4,"high","","","36:40","Incumbent addressed. No named competitor came up so there was little to do."],
+ ["Summarise",5,4,"high","","","44:50","Recapped what was shown. Didn't recap what it was worth."],
+ ["Camera on",5,5,"high","From video","good","—","On for 100% of sampled frames."],
+ ["Customer engagement",10,9,"high","","good","—","9 customer questions, both attendees spoke, one camera on throughout."],
+ ["CTA",5,2,"high","","bad","46:12","'Let us know if you have questions and we'll take it from there.' No date, no owner, no artifact."]];
+var sr='';
+for(var i=0;i<qip.length;i++){
+  var q=qip[i],pct=q[2]/q[1],col=pct>=.8?'var(--green)':pct>=.6?'var(--amber)':'var(--red)',heavy=q[1]===10;
+  sr+='<div class="srow"><div class="hd">'+
+    '<div><span style="font-weight:'+(heavy?'700':'500')+'">'+q[0]+'</span>'+(heavy?' <span class="pill purple" style="font-size:10px">10 pt</span>':'')+
+    (q[4]?'<div class="sub" style="font-size:11.5px">'+q[4]+'</div>':'')+'</div>'+
+    '<div class="num" style="font-weight:700;color:'+col+'">'+q[2]+'<span style="color:var(--ink-3);font-weight:400"> / '+q[1]+'</span></div>'+
+    '<div class="bar"><span style="width:'+Math.round(pct*100)+'%;background:'+col+'"></span></div>'+
+    '<div>'+(q[3]==='low'?'<span class="pill red">Low</span>':'<span class="pill green">High</span>')+'</div>'+
+    '<div class="chev">›</div></div>'+
+    '<div class="bd"><div class="ev '+(q[5]||'')+'"><div class="ts">'+q[6]+'</div>'+q[7]+'</div></div></div>';
+}
+sr+='<div class="eyebrow" style="padding:14px 4px 8px">Example states · not in this call\'s 86</div>';
+sr+='<div class="srow" style="opacity:.72"><div class="hd" style="cursor:default">'+
+  '<div><span style="font-weight:500">Camera on</span><div class="sub" style="font-size:11.5px">Not applicable — no video, so camera-on cannot be scored.</div></div>'+
+  '<div class="num" style="color:var(--ink-3)">—</div><div class="bar"></div>'+
+  '<div><span class="pill">N/A</span></div><div></div></div></div>';
+sr+='<div class="srow" style="opacity:.72"><div class="hd" style="cursor:default">'+
+  '<div><span style="font-weight:500">Comp pitch</span><div class="sub" style="font-size:11.5px">Hidden until scoring repeats reliably. Not in your total.</div></div>'+
+  '<div class="num" style="color:var(--ink-3)">—</div><div class="bar"></div>'+
+  '<div><span class="pill amber">Stabilising</span></div><div></div></div></div>';
+document.getElementById('scorerows').innerHTML=sr;
+
+/* ---------- MEDPICC ---------- */
+var med=[["Metrics","Volume growth ~30%, headcount frozen",1],["Economic buyer","No economic buyer identified",0],
+ ["Decision criteria","SLA + routing + WhatsApp",1],["Decision process","Not identified on this call",0],
+ ["Paper process","Not identified on this call",0],["Identified pain","Fragmented queues, no SLA",1],
+ ["Champion","Sunil is ops, not a champion",0],["Competition","None named",0]];
+var mh='';
+for(var i=0;i<med.length;i++){
+  var m=med[i];
+  mh+='<div style="display:flex;gap:9px;padding:7px 0;'+(i<med.length-1?'border-bottom:1px solid var(--line)':'')+'">'+
+      '<div style="width:7px;height:7px;border-radius:50%;margin-top:6px;flex-shrink:0;background:'+(m[2]?'var(--green)':'var(--red-line)')+'"></div>'+
+      '<div><div style="font-weight:600;font-size:12.5px">'+m[0]+'</div><div class="sub" style="font-size:12px;'+(m[2]?'':'color:var(--ink-3)')+'">'+m[1]+'</div></div></div>';
+}
+document.getElementById('medp').innerHTML=mh;
+document.getElementById('medp2').innerHTML=mh;
+
+/* ---------- accounts ---------- */
+var accts=[
+ ["Pioneer Metering","pioneermetering.co.za","MEA",1,"$15K–$20K","FD Omni",3,"At risk","red","60d"],
+ ["Zando","zando.co.za","MEA",2,"$58K–$74K","FD Omni, Freshservice",6,"Healthy","green","3d"],
+ ["Speedoc","speedoc.com","ASEAN",1,"$36K–$47K","Freshservice",5,"Watch","amber","21d"],
+ ["InnBucks","innbucks.co.zw","MEA",1,"$12K–$18K","FD Omni",4,"At risk","red","18d"],
+ ["Thule","thule.com","EU",3,"$82K–$96K","FD Omni, Freshsales",9,"Healthy","green","5d"],
+ ["Creditspring","creditspring.co.uk","UK",1,"$56K–$70K","FD Omni",4,"Healthy","green","2d"]];
+var ah='';
+for(var i=0;i<accts.length;i++){
+  var a=accts[i];
+  ah+='<tr class="clik" data-go="account"><td style="padding-left:14px"><div style="font-weight:700">'+a[0]+'</div><div class="sub" style="font-size:12px">'+a[1]+'</div></td>'+
+   '<td>'+a[2]+'</td><td class="num">'+a[3]+'</td><td class="num">'+a[4]+'</td>'+
+   '<td class="sub" style="font-size:12.5px">'+a[5]+'</td><td class="num">'+a[6]+'</td>'+
+   '<td><span class="pill '+a[8]+'">'+a[7]+'</span></td><td class="num">'+a[9]+'</td></tr>';
+}
+document.getElementById('acctrows').innerHTML=ah;
+
+/* ---------- deals ---------- */
+var deals=[
+ ["Pioneer Metering — FD Omni","Pioneer Metering","Solutioning","$15K–$20K",3,42,"Yes","Yes","Cold","red","60d"],
+ ["Speedoc — Freshservice","Speedoc","Evaluation","$36K–$47K",5,58,"At risk","No","Warm","amber","21d"],
+ ["InnBucks — FD Omni","InnBucks","Solutioning","$12K–$18K",4,44,"Pending","No","Cold","red","18d"],
+ ["Creditspring — FD Omni","Creditspring","Demo booked","$56K–$70K",4,74,"Yes","Yes","Hot","green","2d"],
+ ["Thule — EU expansion","Thule","Negotiation","$82K–$96K",9,82,"Yes","Yes","Hot","green","5d"]];
+var dh='';
+for(var i=0;i<deals.length;i++){
+  var d=deals[i],mc=d[5]>=70?'green':d[5]>=50?'amber':'red';
+  dh+='<tr class="clik" data-go="deal"><td style="padding-left:14px;font-weight:700">'+d[0]+'</td>'+
+   '<td class="sub">'+d[1]+'</td><td><span class="pill">'+d[2]+'</span></td><td class="num">'+d[3]+'</td>'+
+   '<td class="num">'+d[4]+'</td><td><span class="pill '+mc+'">'+d[5]+'</span></td>'+
+   '<td><span class="pill '+(d[6]==='Yes'?'green':d[6]==='At risk'?'amber':'')+'">'+d[6]+'</span></td>'+
+   '<td><span class="pill '+(d[7]==='Yes'?'purple':'')+'">'+d[7]+'</span></td>'+
+   '<td><span class="pill '+d[9]+'">'+d[8]+'</span></td>'+
+   '<td class="num" style="color:var(--'+(d[9]==='green'?'ink-2':d[9])+')">'+d[10]+'</td></tr>';
+}
+document.getElementById('dealrows').innerHTML=dh;
+
+/* ---------- pipeline ---------- */
+var pipe=[
+ ["Thule — EU expansion","Thule",180,"$82K–$96K","Yes","—","Hot","green",1,"Yes"],
+ ["Creditspring — FD Omni","Creditspring",140,"$56K–$70K","Yes","Pricing approval","Hot","green",2,"Yes"],
+ ["Speedoc — Freshservice","Speedoc",96,"$36K–$47K","At risk","Data residency","Warm","amber",3,"No"],
+ ["Pioneer Metering — FD Omni","Pioneer Metering",14,"$15K–$20K","Yes","WhatsApp templates","Cold","red",2,"Yes"],
+ ["InnBucks — FD Omni","InnBucks",12,"$12K–$18K","Pending","WhatsApp templates","Cold","red",4,"No"]];
+var ph='';
+for(var i=0;i<pipe.length;i++){
+  var p=pipe[i];
+  ph+='<tr class="clik" data-go="deal"><td style="padding-left:14px"><div style="font-weight:700">'+p[0]+'</div><div class="sub" style="font-size:12px">'+p[1]+'</div></td>'+
+   '<td class="num" style="font-weight:700">'+p[2]+'</td><td class="num">'+p[3]+'</td>'+
+   '<td><span class="pill '+(p[4]==='Yes'?'green':p[4]==='At risk'?'amber':'')+'">'+p[4]+'</span></td>'+
+   '<td class="sub" style="font-size:12.5px">'+p[5]+'</td><td><span class="pill '+p[7]+'">'+p[6]+'</span></td>'+
+   '<td class="num">'+p[8]+'</td><td><span class="pill '+(p[9]==='Yes'?'purple':'')+'">'+p[9]+'</span></td></tr>';
+}
+document.getElementById('piperows').innerHTML=ph;
+
+/* ---------- themes ---------- */
+function bars(el,arr){
+  var b='';
+  for(var i=0;i<arr.length;i++){
+    var t=arr[i],c=t[1]>=80?'var(--green)':t[1]>=65?'var(--amber)':'var(--red)';
+    b+='<div style="cursor:pointer" data-go="call"><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>'+t[0]+'</span><span class="num">'+t[1]+'</span></div><div class="bar"><span style="width:'+t[1]+'%;background:'+c+'"></span></div></div>';
+  }
+  document.getElementById(el).innerHTML=b;
+}
+bars('themebars',[["Solutioning",92],["Storytelling",85],["Call flow",84],["AI",81],["CDE / build",80],["Questions",70],["Objections",64],["Case study & ROI",58],["CTA",54]]);
+bars('sethemes',[["Solutioning",88],["CDE / build",84],["Call flow",79],["Questions",74],["Storytelling",70],["Value",68],["Objections",62],["Case study & ROI",55],["Comp pitch",48]]);
+
+/* ---------- call tables ---------- */
+var mycalls=[
+ ["FD Omni with Copilot","Demo","blue","Pioneer Metering","29 Apr","demo v1.2","High","green",86,"green"],
+ ["Initial scoping","Discovery","purple","Pioneer Metering","22 Apr","disc v1.0","High","green",61,"amber"],
+ ["Architecture deep dive","Technical","","Speedoc","18 Apr","tech v1.0","Provisional","amber",79,"green"],
+ ["Trial kickoff","Trial setup","","Thule","14 Apr","trial v1.0","Provisional","amber",72,"amber"],
+ ["Webhook debugging","Troubleshooting","","InnBucks","11 Apr","tshoot v1.0","Provisional","amber",81,"green"],
+ ["Open questions session","Q&A","","Creditspring","08 Apr","qa v1.0","Provisional","amber",67,"amber"]];
+function callrows(el,rows,acct){
+  var h='';
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    h+='<tr class="clik" data-go="call"><td style="padding-left:14px;font-weight:600">'+r[0]+'</td>'+
+     '<td><span class="pill '+r[2]+'">'+r[1]+'</span></td><td class="sub">'+r[3]+'</td><td class="mono">'+r[4]+'</td>'+
+     (acct?'':'<td class="mono" style="color:var(--ink-3)">'+r[5]+'</td>')+
+     '<td><span class="pill '+r[7]+'">'+r[6]+'</span></td><td><span class="pill '+r[9]+'">'+r[8]+' / 100</span></td></tr>';
+  }
+  document.getElementById(el).innerHTML=h;
+}
+callrows('mycalls',mycalls,false);
+callrows('secalls',mycalls,true);
+
+/* ---------- SE list ---------- */
+var ses=[["Nivedha N",9,12,"$412K",14,79,"↑ 6","green",1],["Pavithra V",7,9,"$186K",10,74,"↑ 2","green",2],
+ ["Tendai C",6,7,"$121K",8,66,"↓ 11","red",3],["Arun K",8,10,"$298K",11,77,"→ 0","",1],
+ ["Mei L",5,6,"$164K",7,73,"↑ 4","green",1],["Rahul M",7,8,"$243K",9,81,"↑ 3","green",1]];
+var seh='';
+for(var i=0;i<ses.length;i++){
+  var s=ses[i];
+  seh+='<tr class="clik" data-go="se"><td style="padding-left:14px;font-weight:700">'+s[0]+'</td>'+
+   '<td class="num">'+s[1]+'</td><td class="num">'+s[2]+'</td><td class="num">'+s[3]+'</td><td class="num">'+s[4]+'</td>'+
+   '<td><span class="pill '+(s[5]>=78?'green':s[5]>=70?'':'amber')+'">'+s[5]+'</span></td>'+
+   '<td><span class="pill '+s[7]+'">'+s[6]+'</span></td>'+
+   '<td><span class="pill '+(s[8]>1?'red':'')+'">'+s[8]+'</span></td></tr>';
+}
+document.getElementById('serows').innerHTML=seh;
+
+/* ---------- heatmap ---------- */
+var hses=["Nivedha N","Pavithra V","Tendai C","Arun K","Mei L","Rahul M"];
+var scores=[[88,70,82,90,92,85,84,81,79,64,58,52,54],[80,84,75,72,88,70,79,68,74,71,55,48,62],
+ [72,66,70,68,74,64,71,60,66,49,44,41,58],[84,78,80,86,82,76,80,88,70,68,60,55,47],
+ [76,80,72,74,80,82,77,70,78,66,52,50,69],[90,74,86,80,86,80,85,84,82,74,61,58,72]];
+function shade(v){
+  if(v<55)return['#F5CDD5','#8C2237'];
+  if(v<65)return['#FBE3C8','#8A5A11'];
+  if(v<75)return['#E9EEF4','#4A5A72'];
+  if(v<85)return['#C9EADC','#0D5C41'];
+  return['#8FD6BA','#0A4732'];
+}
+var hm='';
+for(var i=0;i<hses.length;i++){
+  hm+='<tr><td style="padding-left:0;font-weight:600;white-space:nowrap;cursor:pointer" data-go="se">'+hses[i]+'</td>';
+  for(var j=0;j<scores[i].length;j++){
+    var c=shade(scores[i][j]);
+    hm+='<td style="padding:5px 4px"><div data-go="se" style="cursor:pointer;background:'+c[0]+';color:'+c[1]+';border-radius:5px;padding:7px 0;text-align:center;font-weight:600;font-size:12px;font-family:JetBrains Mono,monospace">'+scores[i][j]+'</div></td>';
+  }
+  hm+='</tr>';
+}
+document.getElementById('heat').innerHTML=hm;
+</script>
+</body>
+</html>

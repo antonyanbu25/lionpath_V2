@@ -1,0 +1,165 @@
+{
+  "_readme": [
+    "Shared by worker/scripts/test-context-attachments.ts and",
+    "web/scripts/test-prep-context-attachments.mjs. If the two implementations drift,",
+    "one suite fails.",
+    "An input of { fileName, pad: N } means text = 'x'.repeat(N) — JSON cannot express",
+    "a 25k-character literal, and both suites expand it with this same rule."
+  ],
+  "normalize": [
+    {
+      "name": "empty and nullish inputs yield no attachments",
+      "in": [],
+      "expect": []
+    },
+    {
+      "name": "trims and keeps a normal file",
+      "in": [{ "fileName": "  notes.txt  ", "text": "  Support runs on Zendesk today.  " }],
+      "expect": [{ "fileName": "notes.txt", "text": "Support runs on Zendesk today." }]
+    },
+    {
+      "name": "drops text below the extraction-failure floor",
+      "in": [{ "fileName": "scan.pdf", "text": "abc" }],
+      "expect": []
+    },
+    {
+      "name": "strips control characters without dropping the file",
+      "in": [{ "fileName": "a.txt", "text": "tickets\u0000per\u0007month about 4000" }],
+      "expect": [{ "fileName": "a.txt", "text": "tickets per month about 4000" }]
+    },
+    {
+      "name": "keeps newlines and tabs",
+      "in": [{ "fileName": "a.csv", "text": "channel\tvolume\nemail\t1200" }],
+      "expect": [{ "fileName": "a.csv", "text": "channel\tvolume\nemail\t1200" }]
+    },
+    {
+      "name": "missing file name falls back rather than dropping the text",
+      "in": [{ "text": "Renewal is in March, incumbent is Intercom." }],
+      "expect": [{ "fileName": "attachment", "text": "Renewal is in March, incumbent is Intercom." }]
+    },
+    {
+      "name": "duplicate file names are dropped case-insensitively",
+      "in": [
+        { "fileName": "Notes.txt", "text": "first copy of the notes here" },
+        { "fileName": "notes.txt", "text": "second copy of the notes here" }
+      ],
+      "expect": [{ "fileName": "Notes.txt", "text": "first copy of the notes here" }]
+    },
+    {
+      "name": "caps at MAX_CONTEXT_ATTACHMENTS files",
+      "in": [
+        { "fileName": "1.txt", "text": "aaaaaaaaaaaaaaaaaaaaaaaa" },
+        { "fileName": "2.txt", "text": "bbbbbbbbbbbbbbbbbbbbbbbb" },
+        { "fileName": "3.txt", "text": "cccccccccccccccccccccccc" },
+        { "fileName": "4.txt", "text": "dddddddddddddddddddddddd" },
+        { "fileName": "5.txt", "text": "eeeeeeeeeeeeeeeeeeeeeeee" },
+        { "fileName": "6.txt", "text": "ffffffffffffffffffffffff" }
+      ],
+      "expectNames": ["1.txt", "2.txt", "3.txt", "4.txt", "5.txt"]
+    },
+    {
+      "name": "one oversized file is truncated to the per-file cap",
+      "in": [{ "fileName": "manual.pdf", "pad": 25000 }],
+      "expect": [{ "fileName": "manual.pdf", "len": 20000, "truncated": true }]
+    },
+    {
+      "name": "total budget truncates the second file, not just the first",
+      "in": [
+        { "fileName": "a.xlsx", "pad": 30000 },
+        { "fileName": "b.xlsx", "pad": 30000 }
+      ],
+      "expect": [
+        { "fileName": "a.xlsx", "len": 20000, "truncated": true },
+        { "fileName": "b.xlsx", "len": 20000, "truncated": true }
+      ]
+    },
+    {
+      "name": "a file arriving after the total budget is exhausted is dropped",
+      "in": [
+        { "fileName": "a.xlsx", "pad": 20000 },
+        { "fileName": "b.xlsx", "pad": 20000 },
+        { "fileName": "c.txt", "text": "this should not survive the budget" }
+      ],
+      "expectNames": ["a.xlsx", "b.xlsx"]
+    }
+  ],
+  "merge": [
+    {
+      "name": "no attachments returns the typed context untouched",
+      "context": "AE says renewal is Q3.",
+      "attachments": [],
+      "expect": "AE says renewal is Q3."
+    },
+    {
+      "name": "no typed context returns only the file block",
+      "context": "",
+      "attachments": [{ "fileName": "notes.txt", "text": "They run 12 agents on Zendesk." }],
+      "expect": "=== Attached file: notes.txt ===\nThey run 12 agents on Zendesk."
+    },
+    {
+      "name": "typed context leads, files follow in attach order",
+      "context": "AE says renewal is Q3.",
+      "attachments": [
+        { "fileName": "a.txt", "text": "Channel mix is email and chat." },
+        { "fileName": "b.txt", "text": "Peak volume is 4000 tickets a month." }
+      ],
+      "expect": "AE says renewal is Q3.\n\n=== Attached file: a.txt ===\nChannel mix is email and chat.\n\n=== Attached file: b.txt ===\nPeak volume is 4000 tickets a month."
+    },
+    {
+      "name": "unusable attachments do not leave a stray separator",
+      "context": "AE says renewal is Q3.",
+      "attachments": [{ "fileName": "scan.pdf", "text": "x" }],
+      "expect": "AE says renewal is Q3."
+    },
+    {
+      "name": "whitespace-only typed context does not lead with a blank line",
+      "context": "   \n  ",
+      "attachments": [{ "fileName": "a.txt", "text": "They run 12 agents on Zendesk." }],
+      "expect": "=== Attached file: a.txt ===\nThey run 12 agents on Zendesk."
+    }
+  ],
+  "fingerprint": [
+    {
+      "name": "no attachments fingerprints empty so cache keys stay unchanged",
+      "a": [],
+      "b": null,
+      "same": true
+    },
+    {
+      "name": "same files in a different order fingerprint the same",
+      "a": [
+        { "fileName": "a.txt", "text": "Channel mix is email and chat." },
+        { "fileName": "b.txt", "text": "Peak volume is 4000 tickets a month." }
+      ],
+      "b": [
+        { "fileName": "b.txt", "text": "Peak volume is 4000 tickets a month." },
+        { "fileName": "a.txt", "text": "Channel mix is email and chat." }
+      ],
+      "same": true
+    },
+    {
+      "name": "different text fingerprints differently",
+      "a": [{ "fileName": "a.txt", "text": "Channel mix is email and chat." }],
+      "b": [{ "fileName": "a.txt", "text": "Channel mix is email, chat and voice." }],
+      "same": false
+    },
+    {
+      "name": "an added file changes the fingerprint",
+      "a": [{ "fileName": "a.txt", "text": "Channel mix is email and chat." }],
+      "b": [
+        { "fileName": "a.txt", "text": "Channel mix is email and chat." },
+        { "fileName": "b.txt", "text": "Peak volume is 4000 tickets a month." }
+      ],
+      "same": false
+    },
+    {
+      "name": "an empty attachment list does not change the fingerprint",
+      "a": [{ "fileName": "a.txt", "text": "Channel mix is email and chat." }],
+      "b": [
+        { "fileName": "a.txt", "text": "Channel mix is email and chat." },
+        { "fileName": "junk.pdf", "text": "x" }
+      ],
+      "same": true
+    }
+  ]
+}

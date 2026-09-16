@@ -1,0 +1,45 @@
+{
+  "description": "Expected attribution shape for meeting-room-multi-persona.vtt — one shared 'Meeting Room' mic label picking up two distinct customer personas at different time spans. Consumed by tests asserting either the raw LLM-suggestion shape (RoomSegmentSuggestion, worker/src/postcall/speaker-attribution.ts) or the confirmed shape (ConfirmedRoomAttribution) that feeds buildEffectiveTranscriptForScoring / PostCallScorecardInput.roomAttributions.",
+  "roomLabel": "Meeting Room",
+  "roomSegmentSuggestions": [
+    {
+      "label": "Meeting Room",
+      "startS": 15.5,
+      "endS": 28,
+      "attributedTo": "Sunil Prasad",
+      "confidence": 0.7,
+      "quote": "On our side we're mainly evaluating ticket routing and reporting for the support org.",
+      "reason": "Speaks to requirements/evaluation criteria — the primary customer stakeholder."
+    },
+    {
+      "label": "Meeting Room",
+      "startS": 40.5,
+      "endS": 55,
+      "attributedTo": "Farhan Sidek",
+      "confidence": 0.8,
+      "quote": "This is Farhan from the IT security team — before we go further, can you confirm this is SOC 2 compliant and where data is hosted?",
+      "reason": "Self-introduces by name and role (IT security) before asking a compliance question."
+    },
+    {
+      "label": "Meeting Room",
+      "startS": 65.5,
+      "endS": 78,
+      "attributedTo": "Sunil Prasad",
+      "confidence": 0.65,
+      "quote": "Got it, that covers my concern for now — back to you on the routing question.",
+      "reason": "Refers back to the routing topic Sunil raised earlier — same voice/thread."
+    }
+  ],
+  "confirmedRoomAttributions": [
+    {
+      "roomLabel": "Meeting Room",
+      "spans": [
+        { "startS": 15.5, "endS": 28, "person": "Sunil Prasad", "role": "Customer" },
+        { "startS": 40.5, "endS": 55, "person": "Farhan Sidek", "role": "Executive" },
+        { "startS": 65.5, "endS": 78, "person": "Sunil Prasad", "role": "Customer" }
+      ]
+    }
+  ],
+  "expectedRosterPersons": ["Sunil Prasad", "Farhan Sidek"],
+  "expectedDistinctPersonaCount": 2
+}

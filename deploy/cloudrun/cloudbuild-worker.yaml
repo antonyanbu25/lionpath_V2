@@ -1,0 +1,25 @@
+steps:
+  - name: gcr.io/k8s-skaffold/pack
+    dir: worker
+    args:
+      - pack
+      - build
+      - gcr.io/se-singha-paathi/github.com/antony-sagayaraj/janus-prod:${_GITHUB_SHA}
+      - --builder
+      - gcr.io/buildpacks/builder
+      - --publish
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - prep-portal-api
+      - --project=se-singha-paathi
+      - --image=gcr.io/se-singha-paathi/github.com/antony-sagayaraj/janus-prod:${_GITHUB_SHA}
+      - --region=us-central1
+      - --platform=managed
+      - --quiet
+
+options:
+  logging: CLOUD_LOGGING_ONLY

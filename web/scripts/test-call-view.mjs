@@ -1,0 +1,583 @@
+/**
+ * Smoke tests — call record view renders from local history without Firestore profile.
+ */
+import { getStore, initDomainStore } from "../domain/store.js";
+import { savePostCallAnalysis, getPostCallAnalysis } from "../history.js";
+import { renderCallView } from "../call-view.js";
+import {
+  effectiveSessionUserId,
+  withEffectiveUserId,
+} from "../domain/session.js";
+import { stableUserIdForEmail } from "../domain/id.js";
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+const storeData = new Map();
+globalThis.localStorage = {
+  getItem: (k) => storeData.get(k) ?? null,
+  setItem: (k, v) => storeData.set(k, v),
+  removeItem: (k) => storeData.delete(k),
+  key: (i) => [...storeData.keys()][i] ?? null,
+  get length() {
+    return storeData.size;
+  },
+};
+globalThis.sessionStorage = {
+  getItem: (k) => storeData.get(`ss:${k}`) ?? null,
+  setItem: (k, v) => storeData.set(`ss:${k}`, v),
+  removeItem: (k) => storeData.delete(`ss:${k}`),
+};
+
+initDomainStore(null);
+
+const email = "se@freshworks.com";
+
+/** Firebase SSO shape when Firestore upsert fails — email + authUid only. */
+const firebaseSession = {
+  role: "se",
+  email,
+  name: "Test SE",
+  authUid: "firebase-auth-uid-abc123",
+  teamId: "team_ajay",
+};
+
+assert(
+  effectiveSessionUserId(firebaseSession) === stableUserIdForEmail(email),
+  "effectiveSessionUserId falls back to stable id from email",
+);
+const enriched = withEffectiveUserId(firebaseSession);
+assert(
+  enriched.userId === stableUserIdForEmail(email),
+  "withEffectiveUserId assigns stable domain id",
+);
+assert(enriched.uid === enriched.userId, "uid mirrors userId");
+
+const saved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/sso-test" },
+  {
+    analysis: {
+      callHeader: { title: "Acme · Demo", duration: "48 min", attendees: [{ name: "Pat", role: "Customer" }] },
+      callNotes: "- Strong demo overall.\n- Pricing objection surfaced at 35m and was not fully closed.",
+      momentum: { status: "Advancing" },
+    },
+    scorecard: {
+      callType: "demo",
+      rubricVersion: "2.1",
+      provisional: false,
+      overall: 7.8,
+      confidence: 0.85,
+      categoryScores: {
+        discovery_qualification: 7,
+        solution_technical_fit: 8,
+        business_value: 7,
+        credibility_objections: 7,
+        communication_control: 7.8,
+      },
+      lines: [{
+        themeKey: "call_flow",
+        grade: 7.8,
+        credit: 3,
+        category: "communication_control",
+        applicable: true,
+        subParameters: [{ score: 2, evidence: [] }, { score: 2, evidence: [] }, { score: 1, evidence: [] }, { score: 2, evidence: [] }, { score: 1, evidence: [] }],
+      }],
+    },
+    analysisMeta: { callType: "demo", analysisConfidence: 0.85 },
+  },
+);
+assert(saved?.id, "history save returned record id");
+const callId = saved.id;
+assert(getPostCallAnalysis(email, callId)?.id === callId, "record readable from local history");
+
+const container = { innerHTML: "" };
+Object.defineProperty(container, "querySelector", {
+  value: () => null,
+  configurable: true,
+});
+Object.defineProperty(container, "querySelectorAll", {
+  value: () => [],
+  configurable: true,
+});
+
+await renderCallView(container, firebaseSession, { callId });
+
+assert(container.innerHTML.includes("call-record"), "renders call record shell");
+assert(!container.innerHTML.includes("call-record--loading"), "finished render replaces loading shell");
+assert(container.innerHTML.includes("Acme · Demo"), "shows call title");
+assert(container.innerHTML.includes("call-postcall-summary-row"), "shows KPI+star+room row");
+assert(container.innerHTML.includes('class="metrics"'), "shows metrics column");
+assert(container.innerHTML.includes("Call Quality Score"), "shows Call Quality Score KPI");
+assert(container.innerHTML.includes("Qualification · MEDDPICC"), "shows MEDDPICC KPI");
+assert(container.innerHTML.includes("How the 48 minutes went"), "timeline title from duration");
+assert(!container.innerHTML.includes("call-spine-metrics"), "metrics strip removed from timeline");
+assert(!container.innerHTML.includes("Call 3 of 3"), "no call sequence phrasing");
+assert(!container.innerHTML.includes("call-record-notes-row"), "old notes+room row removed");
+assert(!container.innerHTML.includes("← All calls"), "no All calls back button");
+assert(!container.innerHTML.includes("Transcript-only call"), "no transcript-only dev copy");
+const starCount = (container.innerHTML.match(/class="[^"]*\bqip-star-svg\b[^"]*"/g) || []).length;
+assert(starCount === 1, "QIP radar shown once at top");
+assert(container.innerHTML.includes('viewBox="0 0 600 500"'), "radar uses labs 600x500 viewBox");
+assert(container.innerHTML.includes("qip-radar-ring"), "radar has pentagon grid rings");
+assert(!container.innerHTML.match(/<circle class="ring r\d"/), "radar grid uses pentagons not circles");
+const dataMatch = container.innerHTML.match(/class="qip-radar-data" points="([^"]+)"/);
+const radarVerts = dataMatch ? dataMatch[1].trim().split(/\s+/).length : 0;
+assert(radarVerts === 5, "radar data polygon is 5-vertex pentagon not 10-vertex star");
+assert(container.innerHTML.includes("qip-radar-ring-outer"), "radar has outer pentagon boundary at score 10");
+assert(container.innerHTML.includes("star-overall-pill"), "overall score in header pill");
+assert(container.innerHTML.includes(">7.8<"), "overall QIP score shown in header pill");
+assert(container.innerHTML.includes("qip-star-animated"), "star has entrance animations");
+assert(container.innerHTML.includes("qip-radar-wash"), "radar has multi-colour wash");
+assert(!container.innerHTML.includes("qip-star-core"), "no center score core");
+assert(!container.innerHTML.includes('viewBox="0 0 700 600"'), "old 700x600 radar removed");
+assert(container.innerHTML.includes("qip-weight-key"), "scorecard has weight key near score");
+assert(container.innerHTML.includes('class="wt"'), "scorecard has weight bars");
+assert(!container.innerHTML.includes('class="legend"'), "verbose scorecard legend removed");
+assert(!container.innerHTML.includes("How to read this"), "how-to-read copy removed");
+assert(container.innerHTML.includes('class="pill high"') || container.innerHTML.includes('class="pill med"'), "scorecard uses wireframe confidence pills");
+assert(container.innerHTML.includes("qip-radar-data"), "radar has filled score polygon");
+assert(!container.innerHTML.includes("-dataClip"), "radar no longer uses wedge clipPath fill");
+assert(!container.innerHTML.includes("Demo profile"), "no profile version subline on KPI");
+assert(!container.innerHTML.includes('viewBox="0 0 400 400"'), "old 400x400 radar removed");
+assert(container.innerHTML.includes("Who was in the room"), "shows room panel");
+assert(container.innerHTML.includes("Call Quality Score"), "shows Call Quality Score tab");
+assert(!container.innerHTML.includes("Call Quality Scorecard"), "no Scorecard suffix on tab");
+assert(container.innerHTML.includes("Technical commit"), "shows TC tab");
+assert(container.innerHTML.includes("What worked"), "shows what worked tile");
+assert(container.innerHTML.includes("What didn"), "shows what didn't tile");
+assert(container.innerHTML.includes("/ 10"), "shows /10 scores");
+assert(
+  !/Call Quality Score[\s\S]{0,120}\/ 100/.test(container.innerHTML),
+  "Call Quality Score KPI uses /10 not /100",
+);
+assert(container.innerHTML.includes("Positive"), "shows positive sentiment for advancing call");
+assert(container.innerHTML.includes("Overall call sentiment"), "sentiment KPI on side column");
+assert(container.innerHTML.includes("Evaluation signal"), "Call Quality star radar in center column");
+assert(container.innerHTML.includes("qip-star-card"), "star sits on white tile card");
+assert(!container.innerHTML.includes("background:transparent"), "star card not forced transparent");
+assert(!container.innerHTML.includes("from call momentum"), "sentiment not momentum placeholder");
+assert(!container.innerHTML.includes("Provisional"), "no provisional badge");
+assert(!container.innerHTML.includes("Weighted"), "no weighted column");
+assert(container.innerHTML.includes("call-notes-bullets"), "shows call notes bullets");
+const notesStart = container.innerHTML.indexOf("call-notes-bullets");
+const notesEnd = container.innerHTML.indexOf("</ul>", notesStart);
+const notesSection = container.innerHTML.slice(notesStart, notesEnd);
+const notesLiCount = (notesSection.match(/<li>/g) || []).length;
+assert(notesLiCount <= 3, "call notes capped to 3 lines");
+assert(container.innerHTML.includes("Open deal"), "shows open deal action");
+assert(!container.innerHTML.includes("Edit notes"), "no edit notes action");
+assert(!container.innerHTML.includes("call-notes-editor"), "textarea not mounted until edit mode");
+assert(container.innerHTML.includes("Re-run"), "shows re-run action");
+assert(
+  !container.innerHTML.includes("We could not load your profile"),
+  "must not show profile gate error",
+);
+
+// The optimistic local paint must be immediate, but the returned promise must
+// stay pending until background enrichment finishes. app.js uses that promise
+// to coalesce hydration-triggered refreshes; resolving early permits concurrent
+// stale enrichments to replace newer call data and restart every animation.
+const domainStore = getStore();
+const originalGetCall = domainStore.getCall;
+let releaseGetCall;
+domainStore.getCall = () => new Promise((resolve) => {
+  releaseGetCall = () => resolve(null);
+});
+const trackedContainer = { innerHTML: "" };
+Object.defineProperty(trackedContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(trackedContainer, "querySelectorAll", { value: () => [], configurable: true });
+let trackedRenderSettled = false;
+const trackedRender = renderCallView(trackedContainer, firebaseSession, { callId })
+  .then(() => { trackedRenderSettled = true; });
+for (let i = 0; i < 20 && !releaseGetCall; i += 1) await Promise.resolve();
+await new Promise((resolve) => setTimeout(resolve, 0));
+const settledBeforeEnrichment = trackedRenderSettled;
+const paintedBeforeEnrichment = trackedContainer.innerHTML.includes("Acme · Demo");
+releaseGetCall?.();
+await trackedRender;
+domainStore.getCall = originalGetCall;
+assert(paintedBeforeEnrichment, "optimistic call content paints before enrichment finishes");
+assert(!settledBeforeEnrichment, "render promise tracks enrichment for refresh coalescing");
+
+// BUG-A regression: local history mutating DURING Firestore enrichment (the postcall
+// pipeline writes summarise/technicalCommit) must NOT discard the enriched paint. The
+// enriched bundle's Firestore-only fields (technicalCommit, callNotes) must be merged
+// onto the freshest local record, not dropped by a content-snapshot staleness guard.
+const mergeSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/merge-test" },
+  {
+    analysis: {
+      callHeader: { title: "MergeCo · Demo", duration: "20 min" },
+    },
+    result: { hydration: { pending: ["commit", "summarise"], progressMessage: "Summarising next steps…" } },
+  },
+);
+// Firestore getCall returns an enriched detail (technicalCommit + callNotes) that the
+// local optimistic record does not yet have — the exact scenario that used to flicker.
+const mergeStore = getStore();
+const origMergeGetCall = mergeStore.getCall;
+mergeStore.getCall = async () => ({
+  id: mergeSaved.id,
+  detail: {
+    technicalCommit: {
+      status: "identified",
+      competitor: { value: "Legacy Inc" },
+      incumbent: { value: "In-house" },
+    },
+    callNotes: "- Firestore note A.\n- Firestore note B.",
+  },
+});
+const mergeContainer = { innerHTML: "" };
+Object.defineProperty(mergeContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(mergeContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(mergeContainer, firebaseSession, { callId: mergeSaved.id });
+mergeStore.getCall = origMergeGetCall;
+assert(
+  mergeContainer.innerHTML.includes("Firestore note A"),
+  "enriched Firestore callNotes merged onto local record despite concurrent local mutation",
+);
+assert(
+  mergeContainer.innerHTML.includes("Legacy Inc"),
+  "enriched Firestore technicalCommit (competitor) rendered after merge",
+);
+
+
+const camSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/cam-test",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Pradeep Solai",
+      customerIdentities: ["Israel"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "CamCo · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Pat", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true },
+    videoFacts: {
+      status: "ready",
+      streamKind: "video",
+      cameraOnPct: 82,
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 75, cameraOn: true, cameraOnPct: 82 },
+        { name: "Pradeep Solai", role: "Account Executive", talkPct: 5, cameraOn: false, cameraOnPct: 12 },
+        { name: "Israel", role: "Customer", talkPct: 20, cameraOn: true, cameraOnPct: 60 },
+      ],
+    },
+  },
+);
+const camContainer = { innerHTML: "" };
+Object.defineProperty(camContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(camContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(camContainer, firebaseSession, { callId: camSaved.id });
+assert(camContainer.innerHTML.includes("talk 75%"), "shows talk pct from videoFacts");
+assert(!camContainer.innerHTML.includes("cam On"), "camera pills removed from who was in the room");
+assert(!camContainer.innerHTML.includes("cam Off"), "camera pills removed from who was in the room");
+
+const seCamFallbackSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/se-cam-fallback",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Priyal",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "CamFallback · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true, pass2Debug: { route: "ffmpeg" } },
+    videoFacts: {
+      status: "ready",
+      streamKind: "video",
+      cameraOnPct: 82,
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Priyal", role: "Account Executive", talkPct: 5, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 25, cameraOn: null },
+      ],
+    },
+  },
+);
+const seCamFallbackContainer = { innerHTML: "" };
+Object.defineProperty(seCamFallbackContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(seCamFallbackContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(seCamFallbackContainer, firebaseSession, { callId: seCamFallbackSaved.id });
+assert(seCamFallbackContainer.innerHTML.includes("talk 70%"), "still shows talk share without camera pills");
+assert(!seCamFallbackContainer.innerHTML.includes("cam On"), "room no longer shows camera pills");
+assert(!seCamFallbackContainer.innerHTML.includes("82%"), "room does not surface camera-on percent");
+
+const transcriptOnlySaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/transcript-only",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      aeIdentity: "Priyal",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "TranscriptOnly · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: { callType: "demo", videoAvailable: true, pass2Debug: { route: "transcript" } },
+    videoFacts: {
+      status: "ready",
+      streamKind: "transcript_infer",
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Priyal", role: "Account Executive", talkPct: 5, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 25, cameraOn: null },
+      ],
+    },
+  },
+);
+const transcriptOnlyContainer = { innerHTML: "" };
+Object.defineProperty(transcriptOnlyContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(transcriptOnlyContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(transcriptOnlyContainer, firebaseSession, { callId: transcriptOnlySaved.id });
+assert(
+  !transcriptOnlyContainer.innerHTML.includes("cam On") &&
+    !transcriptOnlyContainer.innerHTML.includes("Pass 2 used transcript only"),
+  "who was in the room no longer shows camera or Pass 2 camera notes",
+);
+
+const ffmpegMissingSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/ffmpeg-missing",
+    confirmedIdentities: {
+      seIdentity: "Sathish Kuttan",
+      customerIdentities: ["Harshveer"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "FfmpegMissing · Demo",
+        duration: "30 min",
+        attendees: [{ name: "Harshveer", role: "Customer" }],
+      },
+    },
+    analysisMeta: {
+      callType: "demo",
+      videoAvailable: true,
+      pass2Debug: { route: "transcript", ffmpegOk: false, hasRecordingUrl: true },
+    },
+    videoFacts: {
+      status: "ready",
+      streamKind: "transcript_infer",
+      attendeeCurveJson: [
+        { name: "Sathish Kuttan", role: "Solution Engineer", talkPct: 70, cameraOn: null },
+        { name: "Harshveer", role: "Customer", talkPct: 30, cameraOn: null },
+      ],
+    },
+  },
+);
+const ffmpegMissingContainer = { innerHTML: "" };
+Object.defineProperty(ffmpegMissingContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(ffmpegMissingContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(ffmpegMissingContainer, firebaseSession, { callId: ffmpegMissingSaved.id });
+assert(
+  !ffmpegMissingContainer.innerHTML.includes("videoPass.ffmpeg") &&
+    !ffmpegMissingContainer.innerHTML.includes("cam -") &&
+    !ffmpegMissingContainer.innerHTML.includes("cam On"),
+  "who was in the room no longer shows camera or ffmpeg camera notes",
+);
+
+const emmaSaved = await savePostCallAnalysis(
+  email,
+  {
+    recordingUrl: "https://zoom.us/rec/emma-merge",
+    confirmedIdentities: {
+      seIdentity: "Antony S.",
+      customerIdentities: ["Emma Wark"],
+    },
+  },
+  {
+    analysis: {
+      callHeader: {
+        title: "Gamersheek · Demo",
+        duration: "45 min",
+        attendees: [
+          { name: "Emma Wark", role: "Customer" },
+          { name: "emma w", email: "emma.w@gamersheek.co.uk", role: "Customer" },
+        ],
+      },
+    },
+    analysisMeta: { callType: "demo" },
+    videoFacts: {
+      attendeeCurveJson: [
+        { name: "Antony S.", role: "Solution Engineer", talkPct: 60, cameraOn: true },
+        { name: "emma w", role: "Customer", talkPct: 40, cameraOn: true },
+      ],
+    },
+  },
+);
+const emmaContainer = { innerHTML: "" };
+Object.defineProperty(emmaContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(emmaContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(emmaContainer, firebaseSession, { callId: emmaSaved.id });
+const emmaNameMatches = (emmaContainer.innerHTML.match(/Emma Wark/g) || []).length;
+const emmaLowerMatches = (emmaContainer.innerHTML.match(/>\s*emma w\s*</gi) || []).length;
+assert(emmaNameMatches >= 1, "shows merged Emma Wark name");
+assert(emmaLowerMatches === 0, "does not show duplicate emma w row label");
+const emmaStakeholderCards = (emmaContainer.innerHTML.match(/class="call-stakeholder-card(?: |")/g) || []).length;
+assert(emmaStakeholderCards === 2, `room shows SE + one merged customer, got ${emmaStakeholderCards} cards`);
+
+const junkCurveSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/junk-curve" },
+  {
+    analysis: {
+      callHeader: { title: "Junk Curve · Demo", duration: "30 min", attendees: [{ name: "Pat", role: "Customer" }] },
+    },
+    scorecard: {
+      callType: "demo",
+      overall: 7.2,
+      categoryScores: {
+        discovery_qualification: 7,
+        solution_technical_fit: 7,
+        business_value: 7,
+        credibility_objections: 7,
+        communication_control: 7.2,
+      },
+      lines: [{
+        themeKey: "call_flow",
+        grade: 7.2,
+        credit: 3,
+        category: "communication_control",
+        subParameters: [{ score: 2 }, { score: 2 }, { score: 1 }, { score: 1 }, { score: 1 }],
+      }],
+    },
+    videoFacts: {
+      attendeeCurveJson: {
+        0: { name: "Pat", role: "Customer", talkPct: 40, cameraOn: true, cameraOnPct: 70 },
+        junk: null,
+      },
+    },
+  },
+);
+const junkCurveContainer = { innerHTML: "" };
+Object.defineProperty(junkCurveContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(junkCurveContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(junkCurveContainer, firebaseSession, { callId: junkCurveSaved.id });
+assert(!junkCurveContainer.innerHTML.includes("Could not load this call"), "malformed attendee curve must not break call record");
+assert(junkCurveContainer.innerHTML.includes("qip-star-svg"), "star still renders with sanitized attendee curve");
+
+const legacyLabelSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/legacy-label" },
+  {
+    analysis: {
+      callHeader: { title: "Gamersheek · Demo", duration: "33 min", attendees: [{ name: "Emma", role: "Customer" }] },
+    },
+    scorecard: {
+      callType: "Demo",
+      rubricVersion: "1.0",
+      overall: 0,
+      lines: [{
+        themeKey: "call_flow",
+        grade: 0,
+        credit: 3,
+        category: "communication_control",
+        subParameters: [{ score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }],
+      }],
+    },
+  },
+);
+const legacyLabelContainer = { innerHTML: "" };
+Object.defineProperty(legacyLabelContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(legacyLabelContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(legacyLabelContainer, firebaseSession, { callId: legacyLabelSaved.id });
+assert(!legacyLabelContainer.innerHTML.includes("Could not load this call"), "display-label callType (Demo) must not break call record");
+assert(legacyLabelContainer.innerHTML.includes("Gamersheek"), "legacy label callType still shows call title");
+
+const objectLinesSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/object-lines" },
+  {
+    analysis: { callHeader: { title: "Gamersheek · Demo", duration: "33 min" } },
+    scorecard: {
+      callType: "Demo",
+      rubricVersion: "1.0",
+      overall: 0,
+      lines: {
+        0: {
+          themeKey: "call_flow",
+          grade: 0,
+          credit: 3,
+          category: "communication_control",
+          subParameters: [{ score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }, { score: 0 }],
+        },
+      },
+    },
+  },
+);
+const objectLinesContainer = { innerHTML: "" };
+Object.defineProperty(objectLinesContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(objectLinesContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(objectLinesContainer, firebaseSession, { callId: objectLinesSaved.id });
+assert(!objectLinesContainer.innerHTML.includes("Could not load this call"), "object-map scorecard lines must not break call record");
+
+// ARR compute failure is optional — must not replace deal context or hide the rest of the record.
+const arrFailSaved = await savePostCallAnalysis(
+  email,
+  { recordingUrl: "https://zoom.us/rec/arr-fail" },
+  {
+    analysis: {
+      callHeader: { title: "Proxymity · Demo", duration: "30 min" },
+      callNotes: "- Demo went well.\n- Pricing discussed.",
+      momentum: { status: "Advancing" },
+    },
+    scorecard: {
+      callType: "demo",
+      overall: 7.2,
+      confidence: 0.8,
+      categoryScores: { discovery_qualification: 7, solution_technical_fit: 7 },
+      lines: [{ themeKey: "call_flow", grade: 7.2, applicable: true, subParameters: [] }],
+    },
+    hydration: {
+      pending: [],
+      errors: { arr: "ARR estimate could not be computed." },
+    },
+  },
+);
+const arrFailContainer = { innerHTML: "" };
+Object.defineProperty(arrFailContainer, "querySelector", { value: () => null, configurable: true });
+Object.defineProperty(arrFailContainer, "querySelectorAll", { value: () => [], configurable: true });
+await renderCallView(arrFailContainer, firebaseSession, { callId: arrFailSaved.id });
+assert(arrFailContainer.innerHTML.includes("call-deal-context"), "deal context strip still renders when ARR fails");
+assert(arrFailContainer.innerHTML.includes("call-postcall-summary-row"), "KPI row still renders when ARR fails");
+assert(arrFailContainer.innerHTML.includes("call-notes-bullets"), "call notes still render when ARR fails");
+assert(
+  !arrFailContainer.innerHTML.includes("ARR estimate could not be computed"),
+  "legacy ARR hydration errors must not surface in the call record UI",
+);
+assert(
+  !arrFailContainer.innerHTML.includes('class="call-section-retry card-wire"'),
+  "ARR failure must not show full-page retry card",
+);
+
+console.log("test-call-view: ok");

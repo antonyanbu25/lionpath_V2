@@ -1,0 +1,308 @@
+/**
+ * Domain store factory — Firestore when Firebase enabled, localStorage shim otherwise.
+ */
+
+import { firebaseConfig, WORKER_BASE_URL } from "../firebase-config.js";
+import { createLocalStore } from "./local-store.js";
+import { createFirestoreStore } from "./firestore-store.js";
+import { createApiStore } from "./api-store.js";
+import { isFirebasePermissionError } from "./safe-store.js";
+import { runMeddpiccDealMigrationIfNeeded } from "./migrate-meddpicc-to-deals.js";
+
+/** @type {ReturnType<createLocalStore>|null} */
+let storeInstance = null;
+/** @type {ReturnType<createLocalStore>|null} */
+let readStoreInstance = null;
+/** @type {ReturnType<createLocalStore>|null} */
+let writeStoreInstance = null;
+
+let fbReadyResolve = null;
+/** Resolves when initDomainStore has been called with a non-null fb.db (Firestore ready). */
+export const fbReadyPromise = new Promise((resolve) => {
+  fbReadyResolve = resolve;
+});
+
+function useFirestore(fb) {
+  return !!firebaseConfig.projectId && !!fb?.db;
+}
+
+function isLocalDevHost() {
+  if (typeof location === "undefined") return false;
+  const host = location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+/** @returns {"local"|"firestore"|"api"} */
+function resolveReadMode(fb) {
+  if (!useFirestore(fb)) {
+    // Firebase configured but db not yet initialized (lazy init) — use API mode.
+    if (!!firebaseConfig.projectId && !fb?.db) return "api";
+    return "local";
+  }
+  if (typeof location !== "undefined" && typeof sessionStorage !== "undefined") {
+    const params = new URLSearchParams(location.search || "");
+    const override = params.get("storeMode");
+    if (override === "api" || override === "firestore") {
+      sessionStorage.setItem("lionpath.storeMode", override);
+    }
+    const sessionOverride = sessionStorage.getItem("lionpath.storeMode");
+    if (sessionOverride === "api") return "api";
+    if (sessionOverride === "firestore") return "firestore";
+  }
+  if (typeof localStorage !== "undefined") {
+    const override = localStorage.getItem("lionpath.readVia");
+    if (override === "api") return "api";
+    if (override === "firestore") return "firestore";
+  }
+  // SQL migration (ADR-008): the worker API is the read path for ALL roles and
+  // ALL hosts, including localhost.
+  //
+  // This line previously returned "firestore" on localhost, so the browser
+  // read Firestore DIRECTLY and bypassed the worker entirely -- which meant a
+  // local run could not exercise the Postgres read path at all, however well
+  // the worker was wired. Direct browser Firestore reads are retired now that
+  // PERSISTENCE_READ_MODE=pg serves every API-first lookup.
+  //
+  // The ?storeMode=firestore / localStorage overrides above still work, so a
+  // direct read is available deliberately for debugging -- just not by
+  // default because of where the page happens to be served from.
+  return "api";
+}
+
+/** @returns {"local"|"firestore"|"api"} */
+export function resolveWriteMode(fb) {
+  if (!useFirestore(fb)) {
+    // Firebase configured but db not yet initialized (or direct browser reads are unavailable):
+    // still send writes through the worker so dual-write reaches PostgreSQL.
+    if (!!firebaseConfig.projectId) return "api";
+    return "local";
+  }
+  // Localhost used to write via the browser Firestore SDK directly, on the
+  // grounds that "worker Admin often lacks GCP creds". That bypassed the
+  // worker completely, so the dual-write to Postgres NEVER RAN locally -- a
+  // local session looked like it was working while writing to Firestore only.
+  //
+  // The worker now has credentials (GOOGLE_APPLICATION_CREDENTIALS in
+  // worker/.dev.vars, and /api/config reports firestore admin ready), so the
+  // reason no longer holds. All writes go through the worker, which is the
+  // only path that reaches Postgres.
+  return "api";
+}
+
+/** @returns {"local"|"firestore"|"api"} legacy read-mode shim */
+export function resolveStoreMode(fb) {
+  return resolveReadMode(fb);
+}
+
+function createStoreForMode(mode, fb) {
+  if (mode === "api") {
+    return createApiFallbackStore(fb);
+  }
+  if (mode === "firestore") return createFirestoreStore(fb);
+  return createLocalStore();
+}
+
+function isWriteMethod(prop) {
+  const name = String(prop || "");
+  return (
+    name === "setPrimaryDealContact" ||
+    name.startsWith("create") ||
+    name.startsWith("update") ||
+    name.startsWith("upsert") ||
+    name.startsWith("delete") ||
+    name.startsWith("remove")
+  );
+}
+
+function isWorkerPreferredLookup(prop) {
+  const name = String(prop || "");
+  return (
+    name === "findAccountBySlug" ||
+    name === "findAccountsByDomain" ||
+    name === "findAccountsByName" ||
+    name === "findContactsByEmail" ||
+    name === "findContactByAccountEmail" ||
+    name === "listContactsByAccount" ||
+    name === "findDealContact" ||
+    name === "listContactsByDeal" ||
+    name === "getDeal" ||
+    name === "getDealDetail" ||
+    name === "listDealsByAccount" ||
+    name === "findActiveDeal" ||
+    name === "findWonNbDealInGrace" ||
+    name === "getLifecycle" ||
+    name === "findActiveLifecycle" ||
+    name === "findActiveLifecycleByDeal" ||
+    name === "findLifecycleByDealAndOwner" ||
+    name === "listActiveLifecyclesForAccount" ||
+    name === "listLifecycleEvents" ||
+    name === "listPrepBriefsByLifecycle" ||
+    name === "listPostCallsByLifecycle" ||
+    name === "listPostCallsByAccount" ||
+    name === "findPostCallByIdentity" ||
+    name === "listTasksByLifecycle"
+  );
+}
+
+function fallbackForLookup(prop) {
+  const name = String(prop || "");
+  if (
+    name.startsWith("list") ||
+    name === "findAccountsByDomain" ||
+    name === "findAccountsByName" ||
+    name === "findContactsByEmail"
+  ) {
+    return [];
+  }
+  return null;
+}
+
+function createApiFallbackStore(fb) {
+  return createApiStore({
+    workerBaseUrl: WORKER_BASE_URL,
+    getToken: () => fb?.auth?.currentUser?.getIdToken(),
+    fb,
+  });
+}
+
+function createReadFallbackStore(primary, fallback) {
+  if (!fallback || primary === fallback) return primary;
+  return new Proxy(primary, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function" || isWriteMethod(prop)) return value;
+      const fallbackValue = Reflect.get(fallback, prop, fallback);
+      if (typeof fallbackValue !== "function") return value.bind(target);
+
+      if (prop === "subscribeDealDetail") {
+        return (dealId, cb) => {
+          void fallback.getDealDetail?.(dealId)
+            ?.then((detail) => detail && cb?.(detail))
+            ?.catch((err) => {
+              if (!isFirebasePermissionError(err)) {
+                console.warn("[domain] deal detail API fallback failed:", err?.message || err);
+              }
+            });
+          return value.call(target, dealId, cb);
+        };
+      }
+
+      if (prop === "subscribeCallDetail") {
+        return (callId, cb) => {
+          void fallback.getPostCallDetail?.(callId)
+            ?.then((detail) => detail && cb?.(detail))
+            ?.catch((err) => {
+              if (!isFirebasePermissionError(err)) {
+                console.warn("[domain] call detail API fallback failed:", err?.message || err);
+              }
+            });
+          return value.call(target, callId, cb);
+        };
+      }
+
+      return async (...args) => {
+        try {
+          return await value.apply(target, args);
+        } catch (err) {
+          if (!isFirebasePermissionError(err)) throw err;
+          console.warn(`[domain] ${String(prop)} permission denied; using worker API fallback`);
+          return fallbackValue.apply(fallback, args);
+        }
+      };
+    },
+  });
+}
+
+function createSplitStore(readStore, writeStore, readMode, writeMode) {
+  if (readStore === writeStore) return readStore;
+  return new Proxy(readStore, {
+    get(target, prop, receiver) {
+      if (prop === "mode") return readMode;
+      if (prop === "readMode") return readMode;
+      if (prop === "writeMode") return writeMode;
+      const useWorkerLookup = writeMode === "api" && isWorkerPreferredLookup(prop) && prop in writeStore;
+      const source = (isWriteMethod(prop) || useWorkerLookup) && prop in writeStore ? writeStore : target;
+      const value = Reflect.get(source, prop, source === target ? receiver : source);
+      if (typeof value !== "function") return value;
+      if (!useWorkerLookup || source === target) return value.bind(source);
+      const readValue = Reflect.get(target, prop, receiver);
+      return async (...args) => {
+        try {
+          return await value.apply(source, args);
+        } catch (apiErr) {
+          if (typeof readValue !== "function") throw apiErr;
+          try {
+            return await readValue.apply(target, args);
+          } catch (readErr) {
+            if (isFirebasePermissionError(readErr)) {
+              console.warn(`[domain] ${String(prop)} permission denied after worker lookup failed; continuing`);
+              return fallbackForLookup(prop);
+            }
+            throw readErr;
+          }
+        }
+      };
+    },
+    set(target, prop, value, receiver) {
+      const useWorkerLookup = writeMode === "api" && isWorkerPreferredLookup(prop) && prop in writeStore;
+      const source = (isWriteMethod(prop) || useWorkerLookup) && prop in writeStore ? writeStore : target;
+      return Reflect.set(source, prop, value, source === target ? receiver : source);
+    },
+    has(target, prop) {
+      return prop in target || prop in writeStore;
+    },
+  });
+}
+
+/**
+ * Initialize the domain store. Call from app.js after Firebase init (or at boot for dummy mode).
+ * @param {object|null} fb Firebase helpers from initFirebase (null for dummy mode)
+ */
+export function initDomainStore(fb) {
+  const readMode = resolveReadMode(fb);
+  const writeMode = resolveWriteMode(fb);
+  readStoreInstance = createStoreForMode(readMode, fb);
+  if (readMode === "firestore" && writeMode === "api") {
+    readStoreInstance = createReadFallbackStore(readStoreInstance, createApiFallbackStore(fb));
+  }
+  writeStoreInstance =
+    writeMode === readMode ? readStoreInstance : createStoreForMode(writeMode, fb);
+  storeInstance = createSplitStore(readStoreInstance, writeStoreInstance, readMode, writeMode);
+  console.info("[domain] store mode:", readMode, "writes:", writeMode);
+  // Wake up all callers waiting for the store to be Firestore-ready.
+  if (fbReadyResolve && readMode === "firestore") {
+    fbReadyResolve(storeInstance);
+    fbReadyResolve = null;
+  }
+  void runMeddpiccDealMigrationIfNeeded(storeInstance).catch((err) => {
+    console.warn("[domain] meddpicc deal migration failed:", err.message);
+  });
+  return storeInstance;
+}
+
+/** @returns {ReturnType<createLocalStore>} */
+export function getStore() {
+  if (!storeInstance) {
+    storeInstance = createLocalStore();
+  }
+  return storeInstance;
+}
+
+export function isDomainStoreReady() {
+  return !!storeInstance;
+}
+
+/**
+ * Resolves once the domain store is usable, in ANY mode — not just firestore.
+ * fbReadyPromise only resolves when the store transitions into "firestore"
+ * mode specifically (the lazy Firebase-init case), which never happens at all
+ * in the default "api" mode — initDomainStore sets storeInstance synchronously
+ * there. Callers that awaited fbReadyPromise directly therefore hung forever
+ * on every subscription attempt in the default mode (astra-audit F-031/E-066).
+ * Use this instead everywhere a caller needs "the store is ready," regardless
+ * of which mode that turned out to be.
+ */
+export async function waitForDomainStoreReady() {
+  if (isDomainStoreReady()) return;
+  await fbReadyPromise;
+}

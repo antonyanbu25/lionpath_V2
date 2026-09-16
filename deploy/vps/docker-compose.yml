@@ -1,0 +1,79 @@
+# SE Singha Paathai — VPS stack (Docker Compose + Caddy)
+#
+# Web UI:  portal.benjaminsquare.com  → web:8788
+# API:    portalapi.benjaminsquare.com → worker:8787
+#
+# First-time setup: see docs/VPS_DEPLOY.md and run setup.sh on the VPS.
+
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8787"
+      HOST: "0.0.0.0"
+      HISTORY_FILE_DIR: /data/history
+      VIDEO_DATA_DIR: /data/video
+      VIDEO_PASS_ENABLED: "1"
+      RATE_LIMIT_ENABLED: "1"
+      RATE_LIMIT_PER_MINUTE: "120"
+      RATE_LIMIT_BURST: "600"
+      # Janus SQL migration (dual-write): set DATABASE_URL in the VPS .env.
+      # PERSISTENCE_MODE=dual routes CRM writes to Postgres with Firestore
+      # projected via sync_outbox; firestore (default) keeps current behavior.
+      DATABASE_URL: "${DATABASE_URL:-}"
+      PERSISTENCE_MODE: "${PERSISTENCE_MODE:-firestore}"
+    volumes:
+      - /var/lib/se-paathai/history:/data/history
+      - /var/lib/se-paathai/video:/data/video
+    ports:
+      - "127.0.0.1:8787:8787"
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/config').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - paathai
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ../../web:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "8788"
+    networks:
+      - paathai
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - worker
+      - web
+    networks:
+      - paathai
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  paathai:
+    driver: bridge

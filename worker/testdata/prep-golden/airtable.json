@@ -1,0 +1,11 @@
+{
+  "id": "airtable",
+  "input": {
+    "companyName": "Airtable",
+    "companyDomain": "airtable.com",
+    "prospectEmail": "sales@airtable.com",
+    "prepType": "new_business"
+  },
+  "expectedFacts": { "minWithSource": 2 },
+  "minAccuracy": 0.5
+}

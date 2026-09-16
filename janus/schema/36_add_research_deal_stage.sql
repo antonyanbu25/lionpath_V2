@@ -1,0 +1,28 @@
+-- ============================================================================
+-- Janus Data Model - add the missing "research" deal stage
+--
+-- deal_stage_enum (00_phase0_infra_and_org.sql) only ever had prospecting,
+-- discovery, demo_poc, proposal, closing, closed_won, closed_lost. But the
+-- app's lifecycle model creates every brand-new lifecycle-as-deal with
+-- stage: "research" (worker/src/routes.ts, the createLifecycle domain-write
+-- case -- "Lifecycle IS deal in this model") -- a stage that comes BEFORE
+-- prospecting in the funnel. Postgres rejects that insert outright:
+-- `invalid input value for enum deal_stage_enum: "research"`.
+--
+-- This throw aborts the entire linkPostCallToLifecycle sequence client-side
+-- -- not just deal creation. attachPostCall and persistScorecardDraft never
+-- run afterward, so activity/post_call/scorecard silently never land for
+-- ANY call, new account or long-standing one, every single time a lifecycle
+-- write happens. Confirmed live on staging 2026-09-09: a real post-call to
+-- an EXISTING account with a real, fully-populated scorecard draft
+-- (16 lines, overall 1.41) still never reached upsertScorecard, because
+-- createLifecycle died first on this exact enum mismatch.
+--
+-- Postgres forbids using a new enum value in the same transaction that adds
+-- it (see 24b_audit_notification_enums.sql, 10b_integration_enum.sql), so
+-- this lives in its own file, same pattern.
+--
+-- Idempotent. Run after 35_fix_account_rls_recursion.sql.
+-- ============================================================================
+
+ALTER TYPE deal_stage_enum ADD VALUE IF NOT EXISTS 'research' BEFORE 'prospecting';
